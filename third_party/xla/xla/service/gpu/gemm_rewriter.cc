@@ -1997,18 +1997,6 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
     }
     workspace = std::min(workspace, operands_byte_size);
 
-    // If CUDA graphs are disabled (command buffer implementation detail),
-    // then we reset the workspace size to 0 and rely on cuBlas to allocate
-    // workspace from its own pool.
-    //
-    // TODO(ezhulenev): Remove this work around, allocating workspace
-    // explicitly should always be better than relying on cuBlas.
-    bool cuda_graphs_disabled = instr->GetModule()
-                                    ->config()
-                                    .debug_options()
-                                    .xla_gpu_enable_command_buffer_size() == 0;
-    if (cuda_graphs_disabled) workspace = 0;
-
     // Append workspace buffer to instruction outputs.
     std::vector<Shape> output_shapes = {instr->shape()};
     output_shapes.emplace_back(ShapeUtil::MakeShape(S8, {workspace}));
