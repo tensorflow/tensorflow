@@ -75,6 +75,8 @@ class CommandBufferScheduling : public HloModulePass {
   using CommandBufferConfig =
       absl::flat_hash_set<DebugOptions::CommandBufferCmdType>;
 
+  explicit CommandBufferScheduling(int32_t gpu_runtime_version);
+
   absl::string_view name() const override {
     return "command-buffer-scheduling";
   }
@@ -119,6 +121,9 @@ class CommandBufferScheduling : public HloModulePass {
   static Status RewriteCommandBuffer(HloComputation* parent,
                                      const HloInstructionSequence& seq,
                                      CommandBuffer command_buffer);
+
+ private:
+  int32_t gpu_runtime_version_;
 };
 
 }  // namespace xla::gpu

@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -448,6 +449,9 @@ Status CommandBufferScheduling::RewriteCommandBuffer(
 
 //===----------------------------------------------------------------------===//
 
+CommandBufferScheduling::CommandBufferScheduling(int32_t gpu_runtime_version)
+    : gpu_runtime_version_(gpu_runtime_version) {}
+
 StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -462,6 +466,27 @@ StatusOr<bool> CommandBufferScheduling::Run(
   for (auto cmd_type :
        module->config().debug_options().xla_gpu_enable_command_buffer()) {
     config.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
+  }
+
+  // Erase command buffer cmd types that are not supported by the gpu runtime.
+  static constexpr auto kRequireConditionals = {DebugOptions::WHILE};
+  static constexpr auto kRequireTracing = {DebugOptions::CUBLAS,
+                                           DebugOptions::CUDNN};
+
+  auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
+    for (auto cmd : cmds) {
+      if (config.erase(cmd)) {
+        LOG(WARNING) << "Removed command buffer support for "
+                     << DebugOptions::CommandBufferCmdType_Name(cmd)
+                     << " as it's not supported with gpu runtime version "
+                     << gpu_runtime_version_;
+      }
+    }
+  };
+
+  if (gpu_runtime_version_ < 12030) {
+    erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
+    erase(kRequireConditionals);  // on-device control flow
   }
 
   // TODO(b/315874495): We should traverse all computations in topological order

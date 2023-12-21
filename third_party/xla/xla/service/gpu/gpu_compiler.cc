@@ -230,14 +230,10 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
-#elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
-#endif
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "xla/util.h"
@@ -253,6 +249,16 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
+
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#endif
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 #ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
@@ -2072,7 +2078,9 @@ Status GpuCompiler::RunPostSchedulingPipelines(
   // can decide how to wrap them into command buffers.
   if (!IsXlaRuntimeExecutableEnabled(module->config())) {
     HloPassPipeline pipeline("command-buffer-scheduling");
-    pipeline.AddPass<CommandBufferScheduling>();
+    auto gpu_runtime_version = se::gpu::GpuRuntime::GetRuntimeVersion();
+    pipeline.AddPass<CommandBufferScheduling>(
+        gpu_runtime_version.value_or(CUDA_VERSION));
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
