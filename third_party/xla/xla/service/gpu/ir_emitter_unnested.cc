@@ -2243,11 +2243,8 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
 
 #endif  // GOOGLE_CUDA
 
-Status IrEmitterUnnested::EmitFusion(
-    const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis,
-    mlir::Operation* op,
-    const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-        hlo_for_lmhlo) {
+Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
+                                     HloFusionAnalysis& fusion_analysis) {
   FusionEmissionResult emission_result;
   switch (fusion_analysis.GetEmitterFusionKind()) {
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
@@ -3726,7 +3723,7 @@ Status IrEmitterUnnested::EmitOp(
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(instr, &device_info));
-      return EmitFusion(instr, fusion_analysis, op, hlo_for_lmhlo);
+      return EmitFusion(instr, fusion_analysis);
     }
 
     return EmitFusion(op, hlo_for_lmhlo);
@@ -3892,7 +3889,7 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                           HloFusionAnalysis::Create(fusion, &device_info));
-      return EmitFusion(fusion, fusion_analysis, nullptr, {});
+      return EmitFusion(fusion, fusion_analysis);
     }
     case HloOpcode::kWhile:
       return EmitWhile(instr);
