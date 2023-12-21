@@ -423,9 +423,41 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(XorOp)
 // Async ops
 //===----------------------------------------------------------------------===//
 
-Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types) {
-  if (types.size() == 1 && !types[0].isa<TupleType>()) return types[0];
+Type maybeTupleFromTypes(MLIRContext* ctx, ArrayRef<Type> types,
+                         bool expectsTuple = false) {
+  if (!expectsTuple && types.size() == 1 && !types[0].isa<TupleType>())
+    return types[0];
   return TupleType::get(ctx, TypeRange(types));
+}
+
+template <typename AsyncOp>
+LogicalResult verifyAsyncBundleType(AsyncOp* op, AsyncBundleType bundleType,
+                                    FunctionType calleeType) {
+  auto bundleTypes = bundleType.getTypes();
+  if (bundleTypes.size() < 2)
+    return op->emitOpError() << "bundle is expected to have at least 2 "
+                             << "components, but got " << bundleTypes.size();
+
+  auto calleeInputTypes = calleeType.getInputs();
+  auto calleeResultTypes = calleeType.getResults();
+  MLIRContext* ctx = op->getContext();
+  // TODO(vsytch): Cleanup callee operand verification when old-style HLO async
+  // types are removed.
+  //
+  // async-* expects the computation operand's types to be wrapped in a tuple.
+  // Old style async ops did not do this, so we need to check both cases.
+  if (bundleTypes[0] != maybeTupleFromTypes(ctx, calleeInputTypes) &&
+      bundleTypes[0] != maybeTupleFromTypes(ctx, calleeInputTypes,
+                                            /*expectsTuple=*/true)) {
+    return op->emitOpError()
+           << "component #0 of async bundle doesn't match callee input types";
+  }
+  if (bundleTypes[1] != maybeTupleFromTypes(ctx, calleeResultTypes)) {
+    return op->emitOpError()
+           << "component #1 of async bundle doesn't match callee result types";
+  }
+
+  return success();
 }
 
 LogicalResult AsyncStartOp::verify() {
@@ -436,8 +468,6 @@ LogicalResult AsyncStartOp::verify() {
     return emitOpError() << "can't find function: " << getCalledComputation();
   }
   FunctionType calleeType = callee.getFunctionType();
-  auto calleeInputTypes = calleeType.getInputs();
-  auto calleeResultTypes = calleeType.getResults();
 
   auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
   if (!calleeThreadName)
@@ -466,21 +496,8 @@ LogicalResult AsyncStartOp::verify() {
     }
   }
 
-  auto resultTypes = getResult().getType().cast<AsyncBundleType>().getTypes();
-  if (resultTypes.size() < 2)
-    return emitOpError() << "result is expected to be a bundle of at least 2 "
-                            "components, but got "
-                         << resultTypes.size();
-  if (resultTypes[0] != maybeTupleFromTypes(getContext(), calleeInputTypes)) {
-    return emitOpError()
-           << "component #0 of return type doesn't match callee input types";
-  }
-  if (resultTypes[1] != maybeTupleFromTypes(getContext(), calleeResultTypes)) {
-    return emitOpError()
-           << "component #1 of return type doesn't match callee result types";
-  }
-
-  return success();
+  auto bundleType = getResult().getType().cast<AsyncBundleType>();
+  return verifyAsyncBundleType(this, bundleType, calleeType);
 }
 
 LogicalResult AsyncUpdateOp::verify() {
@@ -491,9 +508,6 @@ LogicalResult AsyncUpdateOp::verify() {
     return emitOpError() << "can't find function: " << getCalledComputation();
   }
   FunctionType calleeType = callee.getFunctionType();
-  auto calleeInputTypes = calleeType.getInputs();
-  auto calleeResultTypes = calleeType.getResults();
-  auto bundleTypes = getBundle().getType().cast<AsyncBundleType>().getTypes();
 
   auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
   if (!calleeThreadName)
@@ -505,20 +519,8 @@ LogicalResult AsyncUpdateOp::verify() {
                          << calleeThreadName << ".";
   }
 
-  if (bundleTypes.size() < 2)
-    return emitOpError() << "operand is expected to be a bundle of at least 2 "
-                            "components, but got "
-                         << bundleTypes.size();
-  if (bundleTypes[0] != maybeTupleFromTypes(getContext(), calleeInputTypes)) {
-    return emitOpError() << "component #0 of operand bundle type doesn't match "
-                            "callee input types";
-  }
-  if (bundleTypes[1] != maybeTupleFromTypes(getContext(), calleeResultTypes)) {
-    return emitOpError() << "component #1 of operand bundle type doesn't match "
-                            "callee result types";
-  }
-
-  return success();
+  auto bundleType = getResult().getType().cast<AsyncBundleType>();
+  return verifyAsyncBundleType(this, bundleType, calleeType);
 }
 
 LogicalResult AsyncUpdateOp::inferReturnTypes(
@@ -539,9 +541,6 @@ LogicalResult AsyncDoneOp::verify() {
     return emitOpError() << "can't find function: " << getCalledComputation();
   }
   FunctionType calleeType = callee.getFunctionType();
-  auto calleeInputTypes = calleeType.getInputs();
-  auto calleeResultTypes = calleeType.getResults();
-  auto bundleTypes = getBundle().getType().cast<AsyncBundleType>().getTypes();
 
   auto calleeThreadName = callee->getAttrOfType<StringAttr>("execution_thread");
   if (!calleeThreadName)
@@ -553,20 +552,8 @@ LogicalResult AsyncDoneOp::verify() {
                          << calleeThreadName << ".";
   }
 
-  if (bundleTypes.size() < 2)
-    return emitOpError() << "operand is expected to be a bundle of at least 2 "
-                            "components, but got "
-                         << bundleTypes.size();
-  if (bundleTypes[0] != maybeTupleFromTypes(getContext(), calleeInputTypes)) {
-    return emitOpError()
-           << "operand type component #0 doesn't match callee input types";
-  }
-  if (bundleTypes[1] != maybeTupleFromTypes(getContext(), calleeResultTypes)) {
-    return emitOpError()
-           << "operand type component #1 doesn't match callee result types";
-  }
-
-  return success();
+  auto bundleType = getBundle().getType().cast<AsyncBundleType>();
+  return verifyAsyncBundleType(this, bundleType, calleeType);
 }
 
 LogicalResult AsyncDoneOp::inferReturnTypes(
