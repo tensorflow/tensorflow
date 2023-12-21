@@ -483,7 +483,15 @@ StatusOr<bool> CommandBufferScheduling::Run(
                      << DebugOptions::CommandBufferCmdType_Name(cmd)
                      << " as it's not supported with gpu toolkit version "
                      << gpu_toolkit_version_ << " and driver version "
-                     << gpu_driver_version_;
+                     << gpu_driver_version_
+                     << ". This might negatively impact peformance. To enable "
+                     << DebugOptions::CommandBufferCmdType_Name(cmd)
+                     << " support in command buffers use cuda-compat package: "
+#if defined(PLATFORM_GOOGLE)
+                     << "set CUDA_COMPAT_LOAD=1 env variable.";
+#else
+                     << "https://docs.nvidia.com/deploy/cuda-compatibility/.";
+#endif
       }
     }
   };
