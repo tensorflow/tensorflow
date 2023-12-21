@@ -1948,9 +1948,9 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
   template <DataType DTYPE>
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
-    std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu"};
-    if (IsMKLEnabled()) activations.push_back("Tanh");
 
+    std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu",
+                                       "Tanh"};
     for (const string& activation : activations) {
       if (DTYPE == DT_HALF && activation != "Relu") continue;
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1978,7 +1978,7 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           return ops::Identity(fetch, ops::Relu6(activate, bias_add));
         } else if (activation == "Elu") {
           return ops::Identity(fetch, ops::Elu(activate, bias_add));
-        } else if (IsMKLEnabled() && activation == "Tanh") {
+        } else if (activation == "Tanh") {
           return ops::Identity(fetch, ops::Tanh(activate, bias_add));
         } else if (activation == "LeakyRelu") {
           auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
