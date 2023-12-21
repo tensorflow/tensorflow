@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
+// TODO(intel-tf): Move all MKL ops in this file to a separate file,
+// mkl_math_ops.cc.
+
 namespace tensorflow {
 
 using shape_inference::DimensionHandle;
