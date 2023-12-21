@@ -732,36 +732,5 @@ TEST_F(PriorityFusionTest, DontFuseConcat) {
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
-// TEST_F(PriorityFusionTest, DontFuseConstantWithInPlaceScatterOperand) {
-//   auto module = ParseAndReturnVerifiedModule(R"(
-//     HloModule jit_wrapped_fun, entry_computation_layout={(s8[2,3,4]{2,1,0},
-//     s32[24,1]{1,0})->s64[1]{0}}
-
-//     region_0 {
-//       p0 = s64[] parameter(0)
-//       p1 = s64[] parameter(1)
-//       ROOT add.5 = s64[] add(p0, p1)
-//     }
-
-//     ENTRY main.116 {
-//       c.0 = s64[1] constant({0})
-//       c.1 = s64[] constant(1)
-//       p.0 = s32[24,1]{1,0} parameter(0)
-//       broadcast.0 = s64[24,1] broadcast(c.1), dimensions={}
-//       ROOT scatter = s64[1] scatter(c.0, p.0, broadcast.0),
-//       update_window_dims={1}, inserted_window_dims={},
-//       scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=region_0
-//     }
-//   )")
-//                     .value();
-
-//   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
-
-//   LOG(ERROR) << module->ToString();
-//   HloInstruction* root = module->entry_computation()->root_instruction();
-//   EXPECT_THAT(root, GmockMatch(m::Fusion()));
-//   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kLoop);
-// }
-
 }  // namespace gpu
 }  // namespace xla
