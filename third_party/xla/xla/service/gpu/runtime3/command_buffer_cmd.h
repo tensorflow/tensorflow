@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME3_COMMAND_BUFFER_CMD_H_
 #define XLA_SERVICE_GPU_RUNTIME3_COMMAND_BUFFER_CMD_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -155,6 +155,9 @@ class CommandBufferCmdSequence {
   // Returns buffer allocations indices referenced by commands in this sequence.
   const absl::flat_hash_set<BufferAllocation::Index>& allocs_indices() const;
 
+  bool empty() const { return commands_.empty(); }
+  size_t size() const { return commands_.size(); }
+
  private:
   std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
 
@@ -219,6 +222,7 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
 
   absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_;
 };
+
 //===----------------------------------------------------------------------===//
 // MemcpyDeviceToDeviceCmd
 //===----------------------------------------------------------------------===//

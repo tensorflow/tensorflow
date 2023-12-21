@@ -15,13 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_thunk.h"
 
-#include <cstdint>
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
@@ -61,6 +59,7 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
 
     if (recorded_allocs.size() <= index) {
       recorded_allocs.resize(index + 1);
+      should_update = true;
     }
 
     if (!recorded_allocs[index].IsSameAs(alloc)) {
