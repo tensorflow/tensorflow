@@ -1949,8 +1949,12 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
-    std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu",
-                                       "Tanh"};
+    std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu"};
+
+#if !defined(GOOGLE_CUDA)
+    activations.push_back("Tanh");
+#endif  // !GOOGLE_CUDA
+
     for (const string& activation : activations) {
       if (DTYPE == DT_HALF && activation != "Relu") continue;
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1978,8 +1982,10 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           return ops::Identity(fetch, ops::Relu6(activate, bias_add));
         } else if (activation == "Elu") {
           return ops::Identity(fetch, ops::Elu(activate, bias_add));
+#if !defined(GOOGLE_CUDA)
         } else if (activation == "Tanh") {
           return ops::Identity(fetch, ops::Tanh(activate, bias_add));
+#endif  // !GOOGLE_CUDA
         } else if (activation == "LeakyRelu") {
           auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
           return ops::Identity(
