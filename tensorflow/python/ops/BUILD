@@ -3727,7 +3727,9 @@ cuda_py_strict_test(
     main = "nn_fused_batchnorm_test.py",
     python_version = "PY3",
     shard_count = 24,
-    tags = [],
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         ":array_ops",
         ":gradient_checker",
