@@ -260,7 +260,7 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
 #endif
   single_option_run_params_->Set<bool>("use_xnnpack", false);
-  //single_option_run_params_->Set<bool>("xnnpack_force_fp16", false);
+  single_option_run_params_->Set<bool>("xnnpack_force_fp16", false);
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
