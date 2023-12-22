@@ -332,6 +332,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
+        "//xla/service:global_device_id",
         "//xla/service:name_uniquer",
         "//xla/service/gpu/fusions",
         "//xla/service/gpu/fusions:fusion_emitter",

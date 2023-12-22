@@ -364,6 +364,7 @@ cc_library(
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
+        "//xla/service:global_device_id",
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/base:core_headers",

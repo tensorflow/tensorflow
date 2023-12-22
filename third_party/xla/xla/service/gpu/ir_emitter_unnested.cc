@@ -93,6 +93,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
@@ -3504,6 +3505,14 @@ static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
   return result;
 }
 
+static std::optional<GlobalDeviceId> DeviceConstraint(
+    const HloInstruction* hlo) {
+  if (hlo->has_sharding() && hlo->sharding().HasUniqueDevice()) {
+    return GlobalDeviceId(hlo->sharding().GetUniqueDevice());
+  }
+  return std::nullopt;
+}
+
 Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
   if (!instr->channel_id().has_value())
     return absl::InternalError("Unknown send instruction channel id");
@@ -3515,7 +3524,8 @@ Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
   AddThunkToThunkSequence(std::make_unique<SendThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), src->shape(), buffer,
       *instr->channel_id(), send_recv_events_,
-      ConvertFrontendAttributes(instr->frontend_attributes())));
+      ConvertFrontendAttributes(instr->frontend_attributes()),
+      DeviceConstraint(instr)));
 
   return OkStatus();
 }
@@ -3527,7 +3537,7 @@ Status IrEmitterUnnested::EmitSendDoneThunk(
 
   AddThunkToThunkSequence(std::make_unique<SendDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
-      send_recv_events_));
+      send_recv_events_, DeviceConstraint(instr)));
 
   return OkStatus();
 }
@@ -3543,7 +3553,8 @@ Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
       Thunk::ThunkInfo::WithProfileAnnotation(instr),
       instr->shape().tuple_shapes()[0], buffer, *instr->channel_id(),
       send_recv_events_,
-      ConvertFrontendAttributes(instr->frontend_attributes())));
+      ConvertFrontendAttributes(instr->frontend_attributes()),
+      DeviceConstraint(instr)));
 
   return OkStatus();
 }
@@ -3555,7 +3566,7 @@ Status IrEmitterUnnested::EmitRecvDoneThunk(
 
   AddThunkToThunkSequence(std::make_unique<RecvDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
-      send_recv_events_));
+      send_recv_events_, DeviceConstraint(instr)));
 
   return OkStatus();
 }
