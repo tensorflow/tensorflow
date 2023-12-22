@@ -1447,7 +1447,7 @@ FunctionalHloRunner::FetchAndLogOutput(
                "same device";
         output_slice.emplace_back(
             ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
-        buffer->ToLiteral(&output_slice.back(), [&](Status s) {
+        buffer->ToLiteral(&output_slice.back()).OnReady([&](Status s) {
           absl::MutexLock lock(&mu);
           --num_pending_transfers;
           status.Update(s);

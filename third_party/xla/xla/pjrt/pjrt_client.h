@@ -1054,20 +1054,11 @@ class PjRtBuffer {
   // particular layout, set the layout before calling `ToLiteral`.
   virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
 
-  // Copies the buffer's value into `literal`. Calls `on_ready` when the value
-  // (or an error) is ready. The transfer respects the layout of `literal`; to
-  // specify a particular layout, set the layout before calling `ToLiteral`.
-  ABSL_DEPRECATED("Use ToLiteral(...).OnReady() instead")
-  void ToLiteral(MutableLiteralBase* literal,
-                 std::function<void(Status)> on_ready) {
-    ToLiteral(literal).OnReady(std::move(on_ready));
-  }
-
   // Synchronous overload of ToLiteral, as a convenience.
   Status ToLiteralSync(MutableLiteralBase* literal) {
     absl::Notification done;
     Status status;
-    ToLiteral(literal, [&](Status s) {
+    ToLiteral(literal).OnReady([&](Status s) {
       status = std::move(s);
       done.Notify();
     });
