@@ -1329,7 +1329,8 @@ class MatMulEmitterHelper {
     // Return the batch stride of the HLO passed as a parameter. If the
     // parameter HLO has no batch dimension, a zero stride is returned.
     // Also sets offset_batch and updates has_batch_offset as a side effect.
-    auto get_batch_stride = [&](const HloInstruction* hlo_param) -> Value {
+    auto get_batch_stride = [this, &side, &offset_batch, &has_batch_offset](
+                                const HloInstruction* hlo_param) -> Value {
       int64_t stride_batch = 0;
       if (side.scope != TritonFusionAnalysis::Scope::RHS &&
           dims_.lhs_noncontracting_split) {
