@@ -45,6 +45,8 @@ void AddStablehloQuantToIntPasses(mlir::OpPassManager &pm) {
       mlir::quant::stablehlo::createConvertMHLOQuantToIntPass(
           /*legalize_chlo=*/true));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::stablehlo::CreateOptimizeIntGraphPass());
   pm.addPass(mlir::createSymbolDCEPass());
   // MHLO -> StableHLO legalization.
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
