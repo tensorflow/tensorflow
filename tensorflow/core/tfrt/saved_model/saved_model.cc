@@ -326,7 +326,7 @@ tensorflow::Status PreprocessSignature(
     const auto& tensor_info = signature_def.outputs().at(output_key);
 
     VLOG(1) << "Importing Signature Output: output_key = " << output_key
-            << ", tensor_info = " << tensor_info.DebugString();
+            << ", tensor_info = " << tensor_info;
 
     TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
         << "Only dense tensor is supported, but got encoding case "
@@ -473,8 +473,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   // memory.
   session_options.config.mutable_experimental()->set_optimize_for_static_graph(
       true);
-  LOG_FIRST_N(INFO, 10) << "SessionOptions: "
-                        << session_options.config.DebugString();
+  LOG_FIRST_N(INFO, 10) << "SessionOptions: " << session_options.config;
   LOG_FIRST_N(INFO, 10) << "GraphExecutionOptions: "
                         << options.graph_execution_options;
 
@@ -944,7 +943,7 @@ StatusOr<JoinedSignature> JoinSignatures(
           << tensor_info.encoding_case();
 
       VLOG(1) << "Importing Signature Input: input_key = " << iter.first
-              << ", tensor_info = " << tensor_info.DebugString();
+              << ", tensor_info = " << tensor_info;
 
       tensorflow::ArrayInfo array_info;
       array_info.imported_dtype = tensor_info.dtype();
@@ -969,7 +968,7 @@ StatusOr<JoinedSignature> JoinSignatures(
       const auto& tensor_info = signature_def.outputs().at(output_key);
 
       VLOG(1) << "Importing Signature Output: output_key = " << output_key
-              << ", tensor_info = " << tensor_info.DebugString();
+              << ", tensor_info = " << tensor_info;
 
       TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
           << "Only dense tensor is supported, but got encoding case "

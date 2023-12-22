@@ -99,7 +99,7 @@ std::vector<std::string> FindNamesForValidSignatures(
                      is_dense_tensor_info)) {
       LOG(WARNING) << "Unsupported signature with non-dense tensors as "
                       "input/output. Name: "
-                   << sig_key << "; Signature: " << signature.DebugString();
+                   << sig_key << "; Signature: " << signature;
       continue;
     }
     if (std::any_of(signature.inputs().begin(), signature.inputs().end(),
@@ -108,7 +108,7 @@ std::vector<std::string> FindNamesForValidSignatures(
                     is_ref_type_tensor_info)) {
       LOG(WARNING) << "Unsupported signature with ref type tensors as "
                       "input/output. Name: "
-                   << sig_key << "; Signature: " << signature.DebugString();
+                   << sig_key << "; Signature: " << signature;
       continue;
     }
     valid_signature_names.push_back(sig_key);

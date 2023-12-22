@@ -213,8 +213,7 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
       CreateDefaultSessionOptions(*aot_options.graph_execution_options);
   session_options.config.mutable_experimental()->set_optimize_for_static_graph(
       true);
-  LOG_FIRST_N(INFO, 10) << "SessionOptions: "
-                        << session_options.config.DebugString();
+  LOG_FIRST_N(INFO, 10) << "SessionOptions: " << session_options.config;
   LOG_FIRST_N(INFO, 10) << "GraphExecutionOptions: "
                         << *aot_options.graph_execution_options;
 
