@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
@@ -130,6 +131,11 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation* const> allocations);
+
+StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+    const HloFusionInstruction* fusion,
+    const BufferAssignment* buffer_assignment,
+    const std::vector<const HloInstruction*>& roots);
 
 // Returns the dynamic-update-slice instructions defining the results of a
 // fusion node. A dynamic slice update is said to be "defining" of a result if

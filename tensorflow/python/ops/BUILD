@@ -782,7 +782,10 @@ cuda_py_strict_test(
 
 py_strict_library(
     name = "array_ops",
-    srcs = ["array_ops.py"],
+    srcs = [
+        "array_ops.py",
+        "tensor_getitem_override.py",
+    ],
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
@@ -1643,6 +1646,7 @@ py_strict_library(
         ":math_grad",
         ":math_ops",
         ":nccl_ops",
+        ":nn_grad",
         ":optional_grad",
         ":parsing_grad",
         ":proto_ops",
@@ -2058,7 +2062,10 @@ py_strict_library(
 
 py_strict_library(
     name = "math_ops",
-    srcs = ["math_ops.py"],
+    srcs = [
+        "math_ops.py",
+        "tensor_math_operator_overrides.py",
+    ],
     srcs_version = "PY3",
     deps = [
         ":array_ops",
@@ -2074,12 +2081,12 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:indexed_slices",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:override_binary_operator",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/ops/numpy_ops:np_dtypes",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
@@ -2088,7 +2095,6 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:traceback_utils",
         "//third_party/py/numpy",
     ],
 )
@@ -3142,7 +3148,6 @@ py_strict_library(
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:core",
-        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:object_identity",
@@ -3722,7 +3727,9 @@ cuda_py_strict_test(
     main = "nn_fused_batchnorm_test.py",
     python_version = "PY3",
     shard_count = 24,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+    ],
     deps = [
         ":array_ops",
         ":gradient_checker",

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
+#include <array>
 #include <map>
 #include <memory>
 #include <optional>
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/pjrt/stream_executor_executable.h"
@@ -63,8 +65,8 @@ limitations under the License.
 
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/gpu/gpu_metrics.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
-#include "xla/pjrt/metrics.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/xla.pb.h"
@@ -543,7 +545,7 @@ StreamExecutorGpuClient::Compile(const XlaComputation& computation,
       se::StreamExecutor* executor = local_device_state->executor();
       int device_ordinal = executor->device_ordinal();
       if (executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
-        metrics::RecordFreeGpuSystemMemory(device_ordinal, free_memory);
+        gpu_metrics::RecordFreeGpuSystemMemory(device_ordinal, free_memory);
       } else {
         LOG(ERROR) << "Failed to query available memory for GPU "
                    << device_ordinal;
@@ -846,13 +848,26 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
+  int64_t core_index = 0;
+  description().SetCoreOnChip(core_index);
+  std::array<int, 1> coords = {local_device_id().value()};
+  description().SetCoords(coords);
+  std::vector<int64_t> v_coords(description().coords().begin(),
+                                description().coords().end());
+
   description().SetAttributes({
+      {"coords", xla::PjRtDeviceAttribute(v_coords)},
+      {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
       {"device_vendor", device_vendor_},
       {"slice_index", static_cast<int64_t>(slice_index)},
   });
   description().SetToString(absl::StrFormat(
-      "StreamExecutorGpuDevice(id=%i, process_index=%i, slice_index=%i)", id,
-      process_index(), slice_index));
+      "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
+      "slice_index=%i))",
+      description().device_kind(), id, process_index(), slice_index));
+  description().SetDebugString(absl::StrFormat("%s_%i(process=%i,(%i))",
+                                               description().device_kind(), id,
+                                               process_index(), v_coords[0]));
 }
 
 int StreamExecutorGpuDevice::slice_index() const { return slice_index_; }
@@ -873,11 +888,19 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
       tensorflow::down_cast<se::MultiDeviceAdapter*>(
           tensorflow::down_cast<PjRtStreamExecutorClient*>(client())
               ->allocator())
-          ->GetAllocator(local_hardware_id()));
+          ->GetAllocator(local_device_id().value()));
 
   auto stats = allocator->GetStats();
   TF_RET_CHECK(stats.has_value());
   return stats.value();
+}
+
+absl::Span<int const> StreamExecutorGpuDevice::coords() const {
+  return description().coords();
+}
+
+int StreamExecutorGpuDevice::core_on_chip() const {
+  return description().core_on_chip();
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(

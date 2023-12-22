@@ -896,7 +896,7 @@ func.func @broadcast(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
 
 func.func @broadcast_bad_sizes_rank(%arg0: tensor<3xi32>) -> tensor<1x2x3xi32> {
   // expected-error@+2 {{'mhlo.broadcast' op failed to infer returned types}}
-  // expected-error@+1 {{broadcast_sizes has rank 2 instead of rank 1}}
+  // expected-error@+1 {{broadcast_sizes has rank 2 instead of required rank 1.}}
   %0 = "mhlo.broadcast"(%arg0) {broadcast_sizes = dense<[[1, 2]]> : tensor<1x2xi64>} : (tensor<3xi32>) -> tensor<1x2x3xi32>
   func.return %0 : tensor<1x2x3xi32>
 }
@@ -2421,7 +2421,7 @@ func.func @dynamic_slice_dynamic_dim(%arg0: tensor<?x4xi32>, %arg1: tensor<i64>,
 
 func.func @dynamic_slice_i3(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
   // @expected-error@+2 {{'mhlo.dynamic_slice' op failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes should be rank 1, but got rank 0.}}
+  // expected-error@+1 {{slice_sizes has rank 0 instead of required rank 1.}}
   %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<1> : tensor<i64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   func.return %0 : tensor<1x4xi32>
 }
@@ -2545,7 +2545,7 @@ func.func @transpose_missing_permutation(%arg0: tensor<1x2x3x4xi32>) -> tensor<2
 
 func.func @transpose_bad_permutations_rank(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
   // @expected-error@+2 {{'mhlo.transpose' op failed to infer returned types}}
-  // expected-error@+1 {{permutation has rank 2 instead of rank 1}}
+  // expected-error@+1 {{permutation has rank 2 instead of required rank 1.}}
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[[1]]> : tensor<1x1xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   func.return %0: tensor<2x1x4x3xi32>
 }
@@ -2563,7 +2563,7 @@ func.func @transpose_bad_permutations_size(%arg0: tensor<1x2x3x4xi32>) ->  tenso
 
 func.func @transpose_bad_permutation(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
   // @expected-error@+2 {{'mhlo.transpose' op failed to infer returned types}}
-  // expected-error@+1 {{attribute permutation must be a permutation of [0, 1, 2, 3] but got dense<[1, 0, 3, 9]> : tensor<4xi64>}}
+  // expected-error@+1 {{attribute permutation must be a permutation of [0, 1, 2, 3] but got 1, 0, 3, 9}}
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 9]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   func.return %0: tensor<2x1x4x3xi32>
 }
@@ -6097,10 +6097,10 @@ func.func @quantization_supported_ops(%arg0: tensor<1x2x2x!quant.uniform<i8:f32,
 }
 
 func.func @per_axis_quantized_ops(%arg0: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>, %arg1: tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) {
-  %0 = "stablehlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0,1,3]> : tensor<3xi64>} : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.1:-30, 0.5:-20}>>
-  %1 = "stablehlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[0,1,2]> : tensor<3xi64>} : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) -> tensor<2x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.1:-30}>>
-  %2 = stablehlo.reshape %arg0 : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
-  %3 = "stablehlo.transpose"(%arg0) {permutation = dense<[0,2,1]> : tensor<3xi64>}: (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0,1,3]> : tensor<3xi64>} : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x3x2x!quant.uniform<i8<-128:127>:f32:3, {0.1:-30, 0.5:-20}>>
+  %1 = "mhlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[0,1,2]> : tensor<3xi64>} : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30}>>) -> tensor<2x2x2x!quant.uniform<i8<-128:127>:f32:0, {0.1:-30, 0.1:-30}>>
+  %2 = mhlo.reshape %arg0 : (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
+  %3 = "mhlo.transpose"(%arg0) {permutation = dense<[0,2,1]> : tensor<3xi64>}: (tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:2, {0.1:-30, 0.5:-20}>>) -> tensor<1x2x2x!quant.uniform<i8<-128:127>:f32:1, {0.1:-30, 0.5:-20}>>
   func.return
 }
 

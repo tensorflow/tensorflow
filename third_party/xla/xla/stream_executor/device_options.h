@@ -24,8 +24,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/strings/str_join.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 

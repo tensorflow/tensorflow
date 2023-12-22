@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
@@ -58,7 +57,7 @@ static void BM_RowMajorGemm(benchmark::State& state) {
   auto custom_kernel =
       GetCutlassGemmKernel("cutlass_gemm", PrimitiveType::BF16, m, n, k,
                            /*indices=*/{0, 1, 2}, /*slices=*/{}, device);
-  TF_ASSERT_OK(executor->GetKernel(custom_kernel->kernel_spec(), &gemm));
+  TF_CHECK_OK(executor->GetKernel(custom_kernel->kernel_spec(), &gemm));
 
   // Prepare arguments: a=1.1, b=1.2, c=0.0
   se::DeviceMemory<float> a = executor->AllocateArray<float>(m * k, 0);

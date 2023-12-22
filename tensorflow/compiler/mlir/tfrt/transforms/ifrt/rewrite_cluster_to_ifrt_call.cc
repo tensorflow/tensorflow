@@ -17,13 +17,18 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -35,11 +40,18 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/tpu_metadata_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -47,15 +59,29 @@ namespace {
 
 // A pass that inserts tf.ifrt_call and create its callee as a Ifrt
 // Program.
+// TODO(b/316179709): define pass using td file if allowed in oss build.
 class RewriteClusterToIfrtCallPass
     : public mlir::PassWrapper<RewriteClusterToIfrtCallPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
-  RewriteClusterToIfrtCallPass() = default;
+  RewriteClusterToIfrtCallPass()
+      : mlir::PassWrapper<RewriteClusterToIfrtCallPass,
+                          mlir::OperationPass<mlir::ModuleOp>>() {}
+  RewriteClusterToIfrtCallPass(const RewriteClusterToIfrtCallPass &other)
+      : mlir::PassWrapper<RewriteClusterToIfrtCallPass,
+                          mlir::OperationPass<mlir::ModuleOp>>(other){};
   RewriteClusterToIfrtCallPass &operator=(
       const RewriteClusterToIfrtCallPass &) = delete;
 
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RewriteClusterToIfrtCallPass)
+
+ protected:
+  mlir::Pass::Option<bool> tpu_compile_metadata_debug_{
+      *this, "tpu-compile-metadata-debug",
+      llvm::cl::desc(
+          "if enabled, output compile metadata as readable string in "
+          "an extra __tpu_compile_metadata_debug attribute for debug"),
+      llvm::cl::init(false)};
 
  private:
   // Returns a new unique program id.
@@ -80,6 +106,10 @@ class RewriteClusterToIfrtCallPass
     mlir::ModuleOp module = getOperation();
     mlir::SymbolTable symbol_table(module);
 
+    mlir::TF::RuntimeDevices devices;
+    if (failed(tensorflow::GetDevicesFromOp(module.getOperation(), &devices)))
+      return signalPassFailure();
+
     // key: original callee function in tf_device.cluster_func. value: ifrt
     // program.
     llvm::DenseMap<mlir::func::FuncOp, mlir::func::FuncOp>
@@ -90,7 +120,7 @@ class RewriteClusterToIfrtCallPass
       cluster_func_ops.push_back(cluster_func);
     });
     for (auto cluster_func : cluster_func_ops) {
-      Rewrite(symbol_table, cluster_to_ifrt_program, cluster_func);
+      Rewrite(symbol_table, cluster_to_ifrt_program, cluster_func, devices);
     }
 
     // TODO(b/304839793): Move this to a separate pass. The old remove
@@ -108,10 +138,64 @@ class RewriteClusterToIfrtCallPass
     }
   }
 
+  mlir::LogicalResult GetTpuCompileMetadata(
+      mlir::tf_device::ClusterFuncOp cluster_func,
+      mlir::TF::RuntimeDevices &devices,
+      tensorflow::tpu::TPUCompileMetadataProto *metadata) {
+    // Collect `num_replicas` and `num_cores_per_replica` attributes.
+    int num_replicas = 1;
+    mlir::tf_device::ReplicateOp replicate =
+        cluster_func->getParentOfType<mlir::tf_device::ReplicateOp>();
+    if (replicate) num_replicas = replicate.getN();
+
+    auto num_cores_per_replica_attr =
+        cluster_func->getAttrOfType<mlir::IntegerAttr>(
+            tensorflow::kNumCoresPerReplicaAttr);
+    if (!num_cores_per_replica_attr)
+      return cluster_func.emitOpError()
+             << "Attribute" << tensorflow::kNumCoresPerReplicaAttr
+             << " is missing";
+    int num_cores_per_replica = num_cores_per_replica_attr.getInt();
+
+    std::optional<xla::DeviceAssignmentProto> xla_device_assignment;
+    auto topology_attr = cluster_func->getAttrOfType<mlir::StringAttr>(
+        tensorflow::kTopologyAttr);
+    // Get device assignment.
+    auto device_assignment_attr = cluster_func->getAttrOfType<mlir::ArrayAttr>(
+        tensorflow::kDeviceAssignmentAttr);
+    if (topology_attr && device_assignment_attr && !topology_attr.empty() &&
+        !device_assignment_attr.empty()) {
+      auto device_coordinates =
+          tensorflow::GetDeviceCoordinates(device_assignment_attr);
+      if (!device_coordinates.ok())
+        return cluster_func.emitError()
+               << "error in parsing tpu device coordinates: "
+               << device_coordinates.status().message();
+
+      auto device_assignment = tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices.device_names(), num_replicas, num_cores_per_replica,
+          topology_attr.getValue(), *device_coordinates);
+      if (!device_assignment.ok())
+        return cluster_func.emitError()
+               << "error in parsing TPU compilation/execution devices: "
+               << device_assignment.status().message();
+      if (!device_assignment->xla_device_assignment) {
+        return cluster_func.emitError()
+               << "Unexpected empty xla_device_assignment";
+      }
+      xla_device_assignment = device_assignment->xla_device_assignment;
+    }
+
+    return mlir::TFTPU::SetMetadataProtoFromClusterFuncOp(
+        cluster_func, num_replicas, num_cores_per_replica,
+        std::move(xla_device_assignment), metadata);
+  }
+
   void Rewrite(mlir::SymbolTable &symbol_table,
                llvm::DenseMap<mlir::func::FuncOp, mlir::func::FuncOp>
                    &cluster_to_ifrt_program,
-               mlir::tf_device::ClusterFuncOp cluster_func) {
+               mlir::tf_device::ClusterFuncOp cluster_func,
+               mlir::TF::RuntimeDevices &devices) {
     mlir::OpBuilder builder(cluster_func);
     mlir::FlatSymbolRefAttr callee_symbol = cluster_func.getFuncAttr();
     mlir::func::FuncOp callee_func =
@@ -146,7 +230,6 @@ class RewriteClusterToIfrtCallPass
 
       return;
     }
-
     mlir::OpBuilder::InsertionGuard insertion_guard(builder);
     builder.setInsertionPoint(callee_func);
 
@@ -156,6 +239,24 @@ class RewriteClusterToIfrtCallPass
     mlir::IRMapping mapper;
     callee_func.cloneInto(cloned_ifrt_program, mapper);
 
+    tensorflow::tpu::TPUCompileMetadataProto metadata;
+    if (mlir::failed(GetTpuCompileMetadata(cluster_func, devices, &metadata))) {
+      return signalPassFailure();
+    }
+
+    cloned_ifrt_program->setAttr(
+        "tpu_compile_metadata",
+        builder.getStringAttr(metadata.SerializeAsString()));
+
+    if (tpu_compile_metadata_debug_) {
+      std::string serialized_metadata;
+      tsl::protobuf::TextFormat::Printer printer;
+      printer.SetSingleLineMode(true);
+      printer.PrintToString(metadata, &serialized_metadata);
+
+      cloned_ifrt_program->setAttr("__tpu_compile_metadata_debug",
+                                   builder.getStringAttr(serialized_metadata));
+    }
     cloned_ifrt_program.setName(ifrt_program_name);
 
     int64_t program_id = NewProgramId();

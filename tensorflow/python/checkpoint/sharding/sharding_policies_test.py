@@ -18,9 +18,11 @@ import random
 import string
 
 from tensorflow.python.checkpoint import checkpoint
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.checkpoint.sharding import sharding_util
+from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import device as device_lib
 from tensorflow.python.framework import dtypes
@@ -30,17 +32,20 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
+from tensorflow.python.training import server_lib
 from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.training.saving import saveable_object_util
 
 
 class ShardingPoliciesTest(test.TestCase):
 
-  def _get_shardable_tensors(self, root):
+  def _get_shardable_tensors_by_task(self, root):
     serialized_tensors, _, _, _ = (
         checkpoint.TrackableSaver(graph_view.ObjectGraphView(root))
         ._gather_serialized_tensors(None))
 
-    shardable_tensors = []
+    shardable_tensors_by_task = {}
     for obj, tensor_dict in serialized_tensors.items():
       # Divide tensor_dict by device.
       for checkpoint_key, tensor_slice_dict in tensor_dict.items():
@@ -59,7 +64,9 @@ class ShardingPoliciesTest(test.TestCase):
           device = (device_lib.DeviceSpec.from_string(tensor_save_spec.device)
                     if isinstance(tensor_save_spec.device, str)
                     else tensor_save_spec.device)
-          shardable_tensors.append(
+          task = device_lib.DeviceSpec.from_string(
+              saveable_object_util.set_cpu0(device.to_string()))
+          shardable_tensors_by_task.setdefault(task, []).append(
               sharding_util.ShardableTensor(
                   _tensor_save_spec=tensor_save_spec,
                   tensor=save_spec_tensor,
@@ -70,43 +77,77 @@ class ShardingPoliciesTest(test.TestCase):
                   slice_spec=slice_spec,
                   checkpoint_key=checkpoint_key,
                   trackable=obj))
-    return shardable_tensors
+    return shardable_tensors_by_task.values()
 
-  def test_ShardByDevicePolicy(self):
+  def test_ShardByTaskPolicy(self):
+    servers = [server_lib.Server.create_local_server() for _ in range(3)]
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": [s.target[len("grpc://"):] for s in servers]})
+    remote.connect_to_cluster(cluster_spec)
     root = module.Module()
-    with ops.device("cpu:0"):
+    with ops.device("/job:worker/task:0/cpu:0"):
       v0 = resource_variable_ops.ResourceVariable(0.0, name="v0")
-    with ops.device("cpu:1"):
+    with ops.device("/job:worker/task:1/cpu:0"):
       v1 = resource_variable_ops.ResourceVariable(1.0, name="v1")
-    with ops.device("cpu:2"):
+    with ops.device("/job:worker/task:2/cpu:0"):
       v2 = resource_variable_ops.ResourceVariable(2.0, name="v2")
     root.v0 = v0
     root.v1 = v1
     root.v2 = v2
 
-    shardable_tensors = self._get_shardable_tensors(root)
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
 
-    callback = sharding_policies.ShardByDevicePolicy()
-    shards = callback(shardable_tensors)
+    callback = sharding_policies.ShardByTaskPolicy()
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertAllEqual(
-        [list(shard.keys()) for shard in shards],
-        [[
-            "v0/.ATTRIBUTES/VARIABLE_VALUE",
-            "v1/.ATTRIBUTES/VARIABLE_VALUE",
-            "v2/.ATTRIBUTES/VARIABLE_VALUE",
-            "_CHECKPOINTABLE_OBJECT_GRAPH"
-        ]])
+        [set(shard.keys()) for shard in shards],
+        [
+            {"v0/.ATTRIBUTES/VARIABLE_VALUE"},
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE"},
+            {"v2/.ATTRIBUTES/VARIABLE_VALUE"},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH"}
+        ])
 
     self.assertEqual(
         self.evaluate(shards[0]["v0/.ATTRIBUTES/VARIABLE_VALUE"][""]),
         v0.numpy())
     self.assertEqual(
-        self.evaluate(shards[0]["v1/.ATTRIBUTES/VARIABLE_VALUE"][""]),
+        self.evaluate(shards[1]["v1/.ATTRIBUTES/VARIABLE_VALUE"][""]),
         v1.numpy())
     self.assertEqual(
-        self.evaluate(shards[0]["v2/.ATTRIBUTES/VARIABLE_VALUE"][""]),
+        self.evaluate(shards[2]["v2/.ATTRIBUTES/VARIABLE_VALUE"][""]),
         v2.numpy())
+
+  def test_CheckpointOption_ShardByTaskPolicy(self):
+    servers = [server_lib.Server.create_local_server() for _ in range(3)]
+    cluster_spec = server_lib.ClusterSpec({
+        "worker": [s.target[len("grpc://"):] for s in servers]})
+    remote.connect_to_cluster(cluster_spec)
+    root = module.Module()
+    with ops.device("/job:worker/task:0/cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable(0.0, name="v0")
+    self.evaluate(v0.initializer)
+    with ops.device("/job:worker/task:1/cpu:0"):
+      v1 = resource_variable_ops.ResourceVariable(1.0, name="v1")
+    self.evaluate(v1.initializer)
+    with ops.device("/job:worker/task:2/cpu:0"):
+      v2 = resource_variable_ops.ResourceVariable(2.0, name="v2")
+    self.evaluate(v2.initializer)
+    root.v0 = v0
+    root.v1 = v1
+    root.v2 = v2
+
+    tmp_dir = self.create_tempdir("ckpt")
+    ckpt = checkpoint.Checkpoint(root)
+    save_path = ckpt.save(
+        tmp_dir, options=checkpoint_options.CheckpointOptions(
+            experimental_sharding_callback=(
+                sharding_policies.ShardByTaskPolicy())))
+    self.assertLen(gfile.Glob(save_path + ".data*"), 4)
+    ckpt.restore(save_path)
 
   @test_util.run_in_graph_and_eager_modes
   def test_MaxShardSizePolicy_1D(self):
@@ -115,14 +156,13 @@ class ShardingPoliciesTest(test.TestCase):
       v0 = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0, 3.0],
                                                   name="v0",
                                                   dtype=dtypes.float32)
-    self.evaluate(v0.initializer)
-    with ops.device("cpu:1"):
       v1 = resource_variable_ops.ResourceVariable([[4],
                                                    [5],
                                                    [6],
                                                    [7]],
                                                   name="v1",
                                                   dtype=dtypes.int32)
+    self.evaluate(v0.initializer)
     self.evaluate(v1.initializer)
     root.v0 = v0
     root.v1 = v1
@@ -146,7 +186,7 @@ class ShardingPoliciesTest(test.TestCase):
             var_offset=var_offset,
             var_shape=var_shape)
 
-    shardable_tensors = self._get_shardable_tensors(root)
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
 
     # Test sharding the v0 & v1 tensors with different max shard sizes.
 
@@ -154,7 +194,9 @@ class ShardingPoliciesTest(test.TestCase):
     # Each element of v0/v1 is a 32 bit/4 byte value, so each variable should be
     # split into 4 shards.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=4)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
@@ -166,8 +208,7 @@ class ShardingPoliciesTest(test.TestCase):
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -199,7 +240,9 @@ class ShardingPoliciesTest(test.TestCase):
     # max_shard_size: 8 bytes
     # v0/v1 haven't changed, so they should now be split into 2 shards each.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=8)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
@@ -207,8 +250,7 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -233,7 +275,9 @@ class ShardingPoliciesTest(test.TestCase):
     # 10 bytes is an uneven boundary for 4 byte elements. v0/v1 should be split
     # into 2 shards each.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=10)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
@@ -241,8 +285,7 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -266,14 +309,15 @@ class ShardingPoliciesTest(test.TestCase):
     # max_shard_size: 16 bytes
     # 16 bytes the exact size of each variable, so they should get 1 shard each.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=16)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
         [
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -290,14 +334,15 @@ class ShardingPoliciesTest(test.TestCase):
     # 18 bytes slightly larger than the size of each variable, but not large
     # enough to fit another 4 byte element, so they should get 1 shard each.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=18)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
         [
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -318,11 +363,10 @@ class ShardingPoliciesTest(test.TestCase):
                                                    [2, 3],
                                                    [4, 5]],
                                                   name="v0")
-    self.evaluate(v0.initializer)
-    with ops.device("cpu:1"):
       v1 = resource_variable_ops.ResourceVariable([[[6.0], [7.0]],
                                                    [[8.0], [9.0]],
                                                    [[10.0], [11.0]]], name="v1")
+    self.evaluate(v0.initializer)
     self.evaluate(v1.initializer)
     root.v0 = v0
     root.v1 = v1
@@ -346,7 +390,7 @@ class ShardingPoliciesTest(test.TestCase):
             var_offset=var_offset,
             var_shape=var_shape)
 
-    shardable_tensors = self._get_shardable_tensors(root)
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
 
     # Test sharding the v0 & v1 tensors with different max shard sizes.
 
@@ -354,7 +398,9 @@ class ShardingPoliciesTest(test.TestCase):
     # Each element of v0/v1 is a 32 bit/4 byte value, so each variable should be
     # split into 3 shards.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=8)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
@@ -364,8 +410,7 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -398,7 +443,9 @@ class ShardingPoliciesTest(test.TestCase):
     # 10 bytes is an uneven boundary for 4 byte elements. v0/v1 should be split
     # into 3 shards each.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=10)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
@@ -408,8 +455,7 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -449,7 +495,9 @@ class ShardingPoliciesTest(test.TestCase):
     # chosen), but not within a single iteration of adding a tensor partition to
     # the shard.) So, v0/v1 should be split into 3 shards each.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=12)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
@@ -459,8 +507,7 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -493,15 +540,16 @@ class ShardingPoliciesTest(test.TestCase):
     # Each variable should be split into 1.5 shards. The middle shard will
     # contain elements from both variables.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=16)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
         [
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE", "v1/.ATTRIBUTES/VARIABLE_VALUE"},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -546,14 +594,16 @@ class ShardingPoliciesTest(test.TestCase):
             var_offset=var_offset,
             var_shape=var_shape)
 
-    shardable_tensors = self._get_shardable_tensors(root)
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
 
     # Test sharding the v0 & v1 tensors with different max shard sizes.
 
     # max_shard_size: 10 bytes
     # Each string in v0 is 10 bytes, so there should be 1 string per shard.
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=10)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
@@ -561,8 +611,7 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v0/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     slice_spec = V0SaveSliceInfo(var_offset=[0], var_shape=[1]).spec
@@ -594,23 +643,53 @@ class ShardingPoliciesTest(test.TestCase):
 
     v0_name = "v0/.ATTRIBUTES/VARIABLE_VALUE"
 
-    shardable_tensors = self._get_shardable_tensors(root)
+    shardable_tensors = self._get_shardable_tensors_by_task(root)
 
     # max_shard_size: 8 bytes
     callback = sharding_policies.MaxShardSizePolicy(max_shard_size=8)
-    shards = callback(shardable_tensors)
+    shards = []
+    for tensors in shardable_tensors:
+      shards.extend(callback(tensors))
 
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
         [
-            {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",},
+            {"v0/.ATTRIBUTES/VARIABLE_VALUE",}
         ])
 
-    tensor_val = (self.evaluate(shards[0][v0_name][""])
+    tensor_val = (self.evaluate(shards[1][v0_name][""])
                   if ops.context.executing_eagerly()
-                  else shards[0][v0_name][""])
+                  else shards[1][v0_name][""])
     self.assertEqual(tensor_val, v_string)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_CheckpointOption_MaxShardSizePolicy(self):
+    root = module.Module()
+    with ops.device("cpu:0"):
+      v0 = resource_variable_ops.ResourceVariable([[0, 1],
+                                                   [2, 3],
+                                                   [4, 5]],
+                                                  name="v0")
+      v1 = resource_variable_ops.ResourceVariable([[[6.0], [7.0]],
+                                                   [[8.0], [9.0]],
+                                                   [[10.0], [11.0]]], name="v1")
+      v2 = resource_variable_ops.ResourceVariable("test_string", name="v1")
+    self.evaluate(v0.initializer)
+    self.evaluate(v1.initializer)
+    self.evaluate(v2.initializer)
+    root.v0 = v0
+    root.v1 = v1
+    root.v2 = v2
+
+    tmp_dir = self.create_tempdir("ckpt")
+    ckpt = checkpoint.Checkpoint(root)
+    save_path = ckpt.save(
+        tmp_dir, options=checkpoint_options.CheckpointOptions(
+            experimental_sharding_callback=(
+                sharding_policies.MaxShardSizePolicy(max_shard_size=10))))
+    self.assertLen(gfile.Glob(save_path + ".data*"), 8)
+    ckpt.restore(save_path)
 
 
 if __name__ == "__main__":

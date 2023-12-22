@@ -44,6 +44,15 @@ namespace {
   return mhlo::Name##Attr::get(attr.getContext(), hloValue.value())
 
 Attribute convertAttr(Attribute stablehloAttr) {
+  // StableHLO uses DenseArray for some attributes, MHLO is in the process
+  // of integrating this change. In the meantime, convert DenseArray to
+  // DenseElementsAttr.
+  if (auto attr = stablehloAttr.dyn_cast<DenseI64ArrayAttr>()) {
+    return DenseIntElementsAttr::get(
+        RankedTensorType::get(attr.getSize(), attr.getElementType()),
+        attr.asArrayRef());
+  }
+
   // Handle StableHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
   // attributes) lives below.

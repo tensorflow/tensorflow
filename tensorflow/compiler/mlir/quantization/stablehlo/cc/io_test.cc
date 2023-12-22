@@ -29,10 +29,12 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/types.h"
 
+namespace stablehlo::quantization::io {
 namespace {
 
-using ::stablehlo::quantization::io::CreateTmpDir;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
+using ::testing::Not;
 using ::tsl::testing::IsOk;
 using ::tsl::testing::StatusIs;
 
@@ -82,16 +84,44 @@ class TestEnvBrokenFileSystem : public tsl::Env {
     return tsl::string("dummy_path");
   }
 
+  // This is the part that would break the `CreateTmpDir` function because it
+  // fails to provide a valid file system.
   absl::Status GetFileSystemForFile(const std::string& fname,
                                     tsl::FileSystem** result) override {
     return absl::InternalError("Broken file system");
   }
 
  private:
-  // This is the part that essentially breaks the `CreateTmpDir` function
+  void GetLocalTempDirectories(std::vector<tsl::string>* list) override {
+    list->push_back("/tmp");
+  }
+};
+
+// Represents an environment with broken file system and no available local tmp
+// directories.
+class TestEnvBrokenFileSystemAndNoLocalTempDirs
+    : public TestEnvBrokenFileSystem {
+ private:
+  // This is the part that essentially breaks the `GetLocalTmpFileName` function
   // because it doesn't provide any available temp dirs.
   void GetLocalTempDirectories(std::vector<tsl::string>* list) override {}
 };
+
+TEST(IoTest, GetLocalTmpFileNameGivesValidFileName) {
+  absl::StatusOr<std::string> tmp_file_name = GetLocalTmpFileName();
+
+  ASSERT_THAT(tmp_file_name, IsOk());
+  EXPECT_THAT(*tmp_file_name, Not(IsEmpty()));
+}
+
+TEST(IoTest, GetLocalTmpFileNameWhenNoTempDirsReturnsInternalError) {
+  TestEnvBrokenFileSystemAndNoLocalTempDirs broken_env;
+  absl::StatusOr<std::string> tmp_file_name = GetLocalTmpFileName(&broken_env);
+
+  EXPECT_THAT(tmp_file_name,
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("Failed to create tmp file name")));
+}
 
 TEST(IoTest, CreateTmpDirReturnsValidTmpPath) {
   absl::StatusOr<std::string> tmp_dir = CreateTmpDir();
@@ -111,3 +141,4 @@ TEST(IoTest, CreateTmpDirWhenInvalidPathReturnsInternalError) {
 }
 
 }  // namespace
+}  // namespace stablehlo::quantization::io

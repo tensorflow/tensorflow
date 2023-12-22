@@ -22,9 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/min_max_value.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow::quantization {
@@ -36,21 +37,6 @@ namespace tensorflow::quantization {
 class PyFunctionLibrary {
  public:
   virtual ~PyFunctionLibrary() = default;
-
-  // Assigns UUIDs to each CustomAggregator op found in each GraphDef in
-  // `exported_model`. The UUIDs are set to the `id` attributes. The UUIDs will
-  // be used during calibration step to identify the collected quantization
-  // statistics for each CustsomAggregator op.
-  //
-  // If the function signature changes, likely its corresponding .pyi type
-  // hinting and definition should also change.
-  // LINT.IfChange
-  virtual ExportedModel AssignIdsToCustomAggregatorOps(
-      const ExportedModel& exported_model) const = 0;
-  // LINT.ThenChange(
-  //     pywrap_function_lib.pyi:assign_ids_to_custom_aggregator_ops,
-  //     py_function_lib.py:assign_ids_to_custom_aggregator_ops,
-  // )
 
   // Saves `exported_model` to `dst_saved_model_path` as SavedModel.
   // `src_saved_model_path` is the path to the source SavedModel from which the
@@ -91,17 +77,31 @@ class PyFunctionLibrary {
   // If the function signature changes, likely its corresponding .pyi type
   // hinting and definition should also change.
   // LINT.IfChange(run_calibration)
-  virtual ExportedModel RunCalibration(
+  virtual void RunCalibration(
       absl::string_view saved_model_path,
       const std::vector<std::string>& signature_keys,
       const std::unordered_set<std::string>& tags,
-      const ExportedModel& exported_model,
       const CalibrationOptions& calibration_options,
       bool force_graph_mode_calibration,
       pybind11::object representative_dataset) const = 0;
   // LINT.ThenChange(
   //     pywrap_function_lib.pyi:run_calibration,
   //     py_function_lib.py:run_calibration,
+  // )
+
+  // Retrieves min and max value from `calibration_statistics`, based on the
+  // calibration method specified by `calibration_options`.
+  //
+  // If the function signature changes, likely its corresponding .pyi type
+  // hinting and definition should also change.
+  // LINT.IfChange(get_calibration_min_max_value)
+  virtual stablehlo::quantization::MinMaxValue GetCalibrationMinMaxValue(
+      const tensorflow::calibrator::CalibrationStatistics&
+          calibration_statistics,
+      const CalibrationOptions& calibration_options) const = 0;
+  // LINT.ThenChange(
+  //     pywrap_function_lib.pyi:get_calibration_min_max_value,
+  //     py_function_lib.py:get_calibration_min_max_value,
   // )
 };
 

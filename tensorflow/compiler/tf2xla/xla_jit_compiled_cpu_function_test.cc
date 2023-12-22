@@ -213,6 +213,26 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   EXPECT_EQ(0, function.num_variables());
   EXPECT_EQ(function.LookupVariableIndex("x"), -1);
 
+  // Expect that name and index lookups match.
+  for (int i = 0; i < function.num_args(); ++i) {
+    const char* name = function.GetArgName(i);
+    ASSERT_NE(name, nullptr);
+    const int roundtrip_i = function.LookupArgIndex(name);
+    EXPECT_EQ(roundtrip_i, i) << " name= " << name;
+  }
+  for (int i = 0; i < function.num_results(); ++i) {
+    const char* name = function.GetResultName(i);
+    ASSERT_NE(name, nullptr);
+    const int roundtrip_i = function.LookupResultIndex(name);
+    EXPECT_EQ(roundtrip_i, i) << " name= " << name;
+  }
+  // Expect correct handling of invalid indices.
+  EXPECT_EQ(function.GetArgName(-1), nullptr);
+  EXPECT_EQ(function.GetArgName(function.num_args()), nullptr);
+  EXPECT_EQ(function.GetResultName(-1), nullptr);
+  EXPECT_EQ(function.GetResultName(function.num_results()), nullptr);
+  EXPECT_EQ(function.GetVariableName(0), nullptr);
+
   // Check program shape.
   using xla::ShapeUtil;
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
@@ -262,6 +282,11 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
 
   EXPECT_EQ(1, function.num_variables());
   EXPECT_EQ(function.LookupVariableIndex("myvar"), 1);
+
+  const char* name = function.GetVariableName(0);
+  EXPECT_EQ(std::string(name), "myvar");
+  EXPECT_EQ(function.GetVariableName(1), nullptr);
+  EXPECT_EQ(function.GetVariableName(-1), nullptr);
 
   // Check program shape.
   using xla::ShapeUtil;

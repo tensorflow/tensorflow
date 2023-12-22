@@ -70,6 +70,10 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 
 // x: T -> x * 2.
 FunctionDef XTimesTwo();
+// Same as `XTimesTwo` above, but with the `x` input as a control dependency.
+FunctionDef XTimesTwoWithControlInput();
+// Same as `XTimesTwo` above, but with a `dummy` control output node.
+FunctionDef XTimesTwoWithControlOutput();
 
 // x: T -> cpu(x * 2) + cpu(x * 3).
 FunctionDef TwoDeviceTimesFive();

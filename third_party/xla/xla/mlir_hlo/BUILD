@@ -823,7 +823,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:VectorDialect",
     ],
 )
 

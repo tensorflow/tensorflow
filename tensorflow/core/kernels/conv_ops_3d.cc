@@ -227,19 +227,9 @@ struct LaunchConv3DOp<GPUDevice, Eigen::bfloat16> {
                                                   strides.end());
     gtl::InlinedVector<int64_t, 3> casted_dilations(dilations.begin(),
                                                     dilations.end());
-    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
-    auto* stream = ctx->op_device_context()->stream();
-#if GOOGLE_CUDA
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
-#else 
-    const bool cast_to_float = false;
-#endif
-    Tensor casted_input = input_param;
-    Tensor casted_filter = filter;
-    Tensor casted_out = *output;
 
+    auto* stream = ctx->op_device_context()->stream();
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
 
     if (cast_to_float) {
       Tensor casted_input = input_param;

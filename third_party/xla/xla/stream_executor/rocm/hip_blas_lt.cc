@@ -111,7 +111,8 @@ static tsl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
     case gpu::BlasLt::Epilogue::kGELU:
       return HIPBLASLT_EPILOGUE_GELU;
     default:
-      return tsl::errors::Internal("Unsupported epilogue");
+      return tsl::errors::Internal("Unsupported epilogue: " +
+                                   std::to_string((int)epilogue));
   }
 }
 
@@ -152,6 +153,12 @@ tsl::Status BlasLt::Init() {
   if (!batch_stride) {
     batch_stride = (m.batch_size > 1) ? m.num_rows * m.num_cols : 0;
   }
+  VLOG(2) << "BlasLt::MatrixLayout::Create type: " << (int)type
+          << " rows: " << m.num_rows << " cols: " << m.num_cols
+          << " batch_size: " << m.batch_size
+          << " leading_dim_stride: " << *leading_dim_stride
+          << " batch_stride: " << *batch_stride;
+
   TF_RETURN_IF_ERROR(SetAttr(
       hip_layout, HIPBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, *batch_stride));
   return std::move(layout);
@@ -162,9 +169,11 @@ tsl::Status BlasLt::Init() {
     blas::Transpose trans_a, blas::Transpose trans_b, Epilogue epilogue,
     PointerMode pointer_mode) {
   hipblasLtMatmulDesc_t hip_desc;
-  VLOG(2) << "BlasLt::MatmulDesc::Create compute_type" << int(compute_type)
-          << " scale_type " << int(scale_type) << " epilogue " << int(epilogue)
-          << " pointer_mode " << int(pointer_mode);
+  VLOG(2) << "BlasLt::MatmulDesc::Create compute_type: " << int(compute_type)
+          << " scale_type: " << int(scale_type)
+          << " epilogue: " << int(epilogue) << " trans_a: " << int(trans_a)
+          << " trans_b: " << int(trans_b) << " pointer_mode "
+          << int(pointer_mode);
   auto hip_scale_type = AsHipblasDataType(scale_type);
   auto hip_compute_type = AsHipblasComputeType(compute_type);
   SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmulDescCreate(

@@ -10,6 +10,7 @@ package_group(
     name = "internal",
     packages = [
         "//learning/brain/experimental/tfrt/native_lowering/kernels/...",
+        "//tensorflow/compiler/mlir/tfrt/tests/tfrt_fallback/...",
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/utils/...",
     ],

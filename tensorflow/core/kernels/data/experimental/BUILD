@@ -243,6 +243,7 @@ tf_kernel_library(
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
@@ -919,6 +920,8 @@ tf_kernel_library(
         ":data_service_dataset_op",
         ":data_service_ops",
         ":distributed_save_op",
+        "//tensorflow/core/data/service/snapshot:list_snapshot_chunks_dataset_op",
+        "//tensorflow/core/data/service/snapshot:snapshot_chunk_dataset_op",
     ],
 )
 
@@ -964,7 +967,6 @@ tf_kernel_library(
         ":to_tf_record_op",
         ":unbatch_dataset_op",
         ":unique_dataset_op",
-        "//tensorflow/core/data/service/snapshot:snapshot_chunk_dataset_op",
     ] + select({
         "//tensorflow:fuchsia": [],
         "//conditions:default": [":lmdb_dataset_op"],

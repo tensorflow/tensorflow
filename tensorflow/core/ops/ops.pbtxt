@@ -4204,6 +4204,20 @@ op {
       b: false
     }
   }
+  attr {
+    name: "grad_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "BatchMatMulV2"
@@ -4249,6 +4263,20 @@ op {
   }
   attr {
     name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_y"
     type: "bool"
     default_value {
       b: false
@@ -4333,6 +4361,20 @@ op {
   }
   attr {
     name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_y"
     type: "bool"
     default_value {
       b: false
@@ -23103,6 +23145,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -23151,6 +23194,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -25219,6 +25263,50 @@ op {
   }
 }
 op {
+  name: "ListSnapshotChunksDataset"
+  input_arg {
+    name: "snapshot_path"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "LoadAllTPUEmbeddingParameters"
   input_arg {
     name: "parameters"
@@ -27098,6 +27186,20 @@ op {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
+    }
+  }
+  attr {
+    name: "grad_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_b"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }

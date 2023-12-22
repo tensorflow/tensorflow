@@ -1927,6 +1927,9 @@ Status CopyInsertion::AddCopiesToResolveInterference(
                       HloAliasAnalysis::Run(module, can_share_buffer_));
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    if (computation->IsAsyncComputation()) {
+      continue;
+    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
@@ -1940,7 +1943,13 @@ Status CopyInsertion::AddCopiesToResolveInterference(
         // have been copied.
         absl::flat_hash_set<int64_t> copied_operands;
         for (const auto& operand_and_output_index :
-             HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
+             HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+                 // Input/output buffer aliasing analysis needs to be done
+                 // directly with the wrapped instruction when the compiler sees
+                 // an async box.
+                 instruction->opcode() == HloOpcode::kAsyncStart
+                     ? instruction->async_wrapped_instruction()
+                     : instruction)) {
           const HloOperandIndex& operand_index = operand_and_output_index.first;
           if (copied_operands.contains(operand_index.operand_number)) {
             continue;
@@ -2162,7 +2171,8 @@ static int64_t GetNumExistingCopies(
 Status CopyInsertion::RemoveUnnecessaryCopies(
     HloModule* module, bool check_live_range_ordering,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(4, module->ToString());
+  XLA_VLOG_LINES(
+      4, module->ToString(HloPrintOptions().set_syntax_sugar_async_ops(false)));
 
   // Use SequentialHloOrdering if the module has a schedule. The schedule can
   // provide more information on the ordering, allowing for detecting more

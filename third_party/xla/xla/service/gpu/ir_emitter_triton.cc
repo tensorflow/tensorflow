@@ -722,8 +722,8 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
   const int numCTAs = 1;
-  // Based on optimize_ttir() in
-  // @triton//:python/triton/compiler/compiler.py
+  // Based on make_ttir() in
+  // @triton//:python/triton/compiler/backends/cuda.py
   pm.addPass(mt::createRewriteTensorPointerPass(ccAsInt));
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
@@ -732,17 +732,16 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  // Based on ttir_to_ttgir() in
-  // @triton//:python/triton/compiler/compiler.py
+  // Based on make_ttgir() in
+  // @triton//:python/triton/compiler/backends/cuda.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(num_warps, threadsPerWarp,
                                                     numCTAs, ccAsInt));
-  // Based on optimize_ttgir() in
-  // @triton//:python/triton/compiler/compiler.py
   pm.addPass(mlir::createTritonGPUCoalescePass());
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(/*clusterInfo=*/));
   pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(/*clusterInfo=*/));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
+  pm.addPass(mlir::createTritonGPUOptimizeThreadLocalityPass());
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
@@ -765,7 +764,6 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
     pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
   }
   pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
-  pm.addPass(mlir::createTritonGPUOptimizeThreadLocalityPass());
   pm.addPass(mlir::createCanonicalizerPass());
   // Based on translateTritonGPUToLLVMIR() in
   // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
@@ -1031,14 +1029,15 @@ MatMulLaunchConfig::MatMulLaunchConfig(const TritonGemmConfig& config,
   if (large_batch) {
     batch_program_id_dim = mt::ProgramIDDim::X;
     noncontracting_program_id_dim = mt::ProgramIDDim::Y;
-    launch_dims = {{batch_size, grid_m * grid_n, config.split_k},
-                   {config.num_warps * WarpSize(), 1, 1}};
+    launch_dims = LaunchDimensions(
+        se::BlockDim(batch_size, grid_m * grid_n, config.split_k),
+        se::ThreadDim(config.num_warps * WarpSize(), 1, 1));
   } else {
     batch_program_id_dim = mt::ProgramIDDim::Y;
     noncontracting_program_id_dim = mt::ProgramIDDim::X;
-    launch_dims =
-        LaunchDimensions{{grid_m * grid_n, batch_size, config.split_k},
-                         {config.num_warps * WarpSize(), 1, 1}};
+    launch_dims = LaunchDimensions(
+        se::BlockDim(grid_m * grid_n, batch_size, config.split_k),
+        se::ThreadDim(config.num_warps * WarpSize(), 1, 1));
   }
 }
 
@@ -1234,16 +1233,18 @@ class MatMulEmitterHelper {
       CHECK_EQ(bases.size(), hlo->operand_count());
 
       concat_boundaries.reserve(hlo->operand_count() - 1);
+      int64_t accumulated_size = 0;
       for (int i = 0; i < hlo->operand_count() - 1; ++i) {
-        const TensorIterationSpec::IterationSpecFragment& fragment =
+        const int64_t operand_size =
             analysis_.IterSpec(side.scope, hlo->operand(i), concat_dim_idx)
-                ->at(0);
-        if (fragment.sliced_count % properties.block_size != 0) {
+                ->at(0)
+                .count;
+        if (operand_size % properties.block_size != 0) {
           return UncompilableMatmul(
               "Operand is not divisible by the block size.");
         }
-        concat_boundaries.push_back(
-            Cst32(-fragment.slice_start + fragment.sliced_count));
+        accumulated_size += operand_size;
+        concat_boundaries.push_back(Cst32(accumulated_size));
       }
 
       concat_dim_pid_offset =
@@ -1283,8 +1284,10 @@ class MatMulEmitterHelper {
         specs.push_back(
             analysis_.IterSpec(side.scope, input, properties.index));
         input_strides.push_back(Cst64(specs.back()->at(0).stride));
-        input_offsets.push_back(b_.create<ma::AddIOp>(
-            pid_offset, Cst32(specs.back()->at(0).slice_start)));
+        input_offsets.push_back(b_.create<ma::SubIOp>(
+            pid_offset, input_offsets.empty()
+                            ? Cst32(0)
+                            : concat_boundaries[input_offsets.size() - 1]));
         input_bounds.push_back(Cst64(specs.back()->at(0).count));
       }
       strides.push_back(EmitMultiSelect(b_, concat_dim_pid_offset,
@@ -1296,10 +1299,10 @@ class MatMulEmitterHelper {
             EmitMultiSelect(b_, pid_offset, concat_boundaries, input_bounds));
       } else {
         block_offsets.push_back(pid_offset);
-        int64_t count = specs.front()->at(0).count;
+        int64_t count = specs.back()->at(0).count;
         if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
             properties.index == dims_.out_lhs_noncontracting_dim_idx &&
-            specs.front()->size() == 1 &&
+            specs.back()->size() == 1 &&
             dims_.lhs_noncontracting_split.has_value()) {
           // Dimension of the output produced by the non-contracting LHS one
           // is logically split, major part is addressed using pid_batch.
@@ -1310,7 +1313,7 @@ class MatMulEmitterHelper {
           boundary_checks.push_back(bounds.size() - 1);
         }
       }
-      tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
+      tensor_offsets.push_back(Cst32(specs.back()->at(0).slice_start));
       block_dims.push_back(properties.block_size);
       dim_order.emplace(dim_order.begin(), dim_order.size());
     };
@@ -1319,41 +1322,67 @@ class MatMulEmitterHelper {
       add_dim(dim);
     }
 
-    int64_t stride_batch = 0;
     int64_t offset_batch = 0;
-    if (side.scope != TritonFusionAnalysis::Scope::RHS &&
-        dims_.lhs_noncontracting_split) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis_.IterSpec(side.scope, hlo, side.tiled_dims[0].index);
-      if (spec != nullptr) {
-        if (spec->size() > 1) {
-          // Support one specific kind of output transpose that splits the
-          // dimension originating from the split LHS non-contracting one.
-          stride_batch = spec->at(1).stride;
-        } else {
-          // Because the major part of the split is implemented using the
-          // batch logic stride_batch is populated here as the stride of
-          // the minor part times its size.
-          stride_batch = spec->at(0).stride *
-                         (spec->at(0).count / *dims_.lhs_noncontracting_split);
+    bool has_batch_offset = false;
+    Value batch_stride;
+
+    // Return the batch stride of the HLO passed as a parameter. If the
+    // parameter HLO has no batch dimension, a zero stride is returned.
+    // Also sets offset_batch and updates has_batch_offset as a side effect.
+    auto get_batch_stride = [&](const HloInstruction* hlo_param) -> Value {
+      int64_t stride_batch = 0;
+      if (side.scope != TritonFusionAnalysis::Scope::RHS &&
+          dims_.lhs_noncontracting_split) {
+        const TensorIterationSpec::DimIterationSpec* spec =
+            analysis_.IterSpec(side.scope, hlo_param, side.tiled_dims[0].index);
+        if (spec != nullptr) {
+          if (spec->size() > 1) {
+            // Support one specific kind of output transpose that splits the
+            // dimension originating from the split LHS non-contracting one.
+            stride_batch = spec->at(1).stride;
+          } else {
+            // Because the major part of the split is implemented using the
+            // batch logic stride_batch is populated here as the stride of
+            // the minor part times its size.
+            stride_batch =
+                spec->at(0).stride *
+                (spec->at(0).count / *dims_.lhs_noncontracting_split);
+          }
+          CHECK_NE(stride_batch, 0);
         }
-        CHECK_NE(stride_batch, 0);
+      } else if (side.batch_dim_idx.has_value()) {
+        const TensorIterationSpec::DimIterationSpec* spec =
+            analysis_.IterSpec(side.scope, hlo_param, *side.batch_dim_idx);
+        if (spec != nullptr) {
+          stride_batch = spec->at(0).stride;
+          offset_batch = spec->at(0).slice_start;
+          CHECK_NE(stride_batch, 0);
+        }
       }
-    } else if (side.batch_dim_idx.has_value()) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis_.IterSpec(side.scope, hlo, *side.batch_dim_idx);
-      if (spec != nullptr) {
-        stride_batch = spec->at(0).stride;
-        offset_batch = spec->at(0).slice_start;
-        CHECK_NE(stride_batch, 0);
+
+      has_batch_offset |= stride_batch != 0;
+      return Cst(stride_batch);
+    };
+
+    if (hlo->opcode() == HloOpcode::kConcatenate) {
+      std::vector<Value> batch_strides;
+      batch_strides.reserve(hlo->operands().size());
+      for (const HloInstruction* operand : hlo->operands()) {
+        batch_strides.push_back(get_batch_stride(operand));
       }
+      batch_stride = EmitMultiSelect(b_, concat_dim_pid_offset,
+                                     concat_boundaries, batch_strides);
+    } else {
+      batch_stride = get_batch_stride(hlo);
     }
-    if (stride_batch != 0) {
+
+    // Avoid generating logic to compute batch offset if unnecessary.
+    if (has_batch_offset) {
       Value pid_batch =
           b_.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
       Value pid_offset_batch = b_.create<ma::MulIOp>(
           b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
-          Cst(stride_batch));
+          batch_stride);
       base = AddPtr(b_, base, pid_offset_batch);
     }
 
@@ -1392,7 +1421,7 @@ class MatMulEmitterHelper {
   }
 
   Value Cst(int64_t v) { return CreateConst(b_, index_ty_, v); }
-  Value Cst32(int32_t v) { return CreateConst(b_, i32_ty_, v); }
+  Value Cst32(int64_t v) { return CreateConst(b_, i32_ty_, v); }
   Value Cst64(int64_t v) { return CreateConst(b_, i64_ty_, v); }
 
   ImplicitLocOpBuilder& b_;
@@ -1728,22 +1757,6 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
                           mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   }
   return OkStatus();
-}
-
-LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
-                                            const TritonGemmConfig& config) {
-  auto reduce = HloFindIf(fusion.GetRoots(), fusion, [](auto node) {
-    return node.opcode() == HloOpcode::kReduce;
-  });
-  CHECK(reduce != std::nullopt);
-  const Shape& reduce_input_shape = reduce->instruction().operand(0)->shape();
-  int num_rows = 1;
-  for (int minor_axis = 1; minor_axis < reduce_input_shape.rank();
-       ++minor_axis) {
-    num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
-  }
-
-  return {{num_rows, 1, 1}, {config.num_warps * WarpSize(), 1, 1}};
 }
 
 Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,

@@ -75,6 +75,7 @@ bool IsRemovableWhile(HloInstruction* instruction,
     if (instruction->IsDead() && computation->IsSafelyRemovable(instruction) &&
         (!instruction->IsCustomCall("Sharding") ||
          (!instruction->operand(0)->IsRoot() &&
+          instruction->operand(0)->opcode() != HloOpcode::kParameter &&
           instruction->operand(0)->user_count() == 1)) &&
         (!instruction->HasSideEffect() ||
          (remove_cross_partition_collective_ops && maybe_collective_op &&

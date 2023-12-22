@@ -648,7 +648,8 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       rhs_shape_size >=
           options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
       (!rhs || check_users_sharding(rhs)) &&
-      !disable_windowed_einsum(/*lhs_needs_ag=*/false, /*rhs_needs_ag=*/true)) {
+      !disable_windowed_einsum(/*lhs_needs_ag=*/false, /*rhs_needs_ag=*/true) &&
+      options.enable_windowed_einsum_for_all_gather) {
     if (rhs_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,
@@ -676,7 +677,8 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       lhs_shape_size >=
           options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
       (!lhs || check_users_sharding(lhs)) &&
-      !disable_windowed_einsum(/*lhs_needs_ag=*/true, /*rhs_needs_ag=*/false)) {
+      !disable_windowed_einsum(/*lhs_needs_ag=*/true, /*rhs_needs_ag=*/false) &&
+      options.enable_windowed_einsum_for_all_gather) {
     if (lhs_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::LHS,
@@ -706,7 +708,8 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
       output_shape_size >=
           options.threshold_for_windowed_einsum_mib * 1024 * 1024 &&
       !disable_windowed_einsum(/*lhs_needs_ag=*/false,
-                               /*rhs_needs_ag=*/false)) {
+                               /*rhs_needs_ag=*/false) &&
+      options.enable_windowed_einsum_for_reduce_scatter) {
     if (output_lhs_non_contracting_partitions == num_partitions) {
       return WindowedEinsumConfig{
           /*windowed_op=*/WindowedEinsumOperand::RHS,

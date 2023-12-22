@@ -226,7 +226,7 @@ func.func @matmulNoTransposeAOrB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1
   // CHECK-LABEL: matmulNoTransposeAOrB
   // CHECK: %[[RES:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi32>}> : () -> tensor<?xi32>
   // CHECK: %[[TRANS:.*]] = "tf.Transpose"(%arg1, %[[RES]]) : (tensor<1280x1000xf32>, tensor<?xi32>) -> tensor<*xf32>
-  // CHECK: %[[MM:.*]] = "tf.MatMul"(%arg0, %[[TRANS]]) <{transpose_a = false, transpose_b = true}> : (tensor<1x1280xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
+  // CHECK: %[[MM:.*]] = "tf.MatMul"(%arg0, %[[TRANS]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = true}> : (tensor<1x1280xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
   // CHECK: return %[[MM]] : tensor<1x1000xf32>
  }
 
@@ -238,7 +238,7 @@ func.func @matmulNoTransposeB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000
   // CHECK: %[[RES:.*]] = "tf.Const"() <{value = dense<[1, 0]> : tensor<2xi32>}> : () -> tensor<?xi32>
   // CHECK: %[[TRANS1:.*]] = "tf.Transpose"(%arg0, %[[RES]]) : (tensor<1x1280xf32>, tensor<?xi32>) -> tensor<*xf32>
   // CHECK: %[[TRANS2:.*]] = "tf.Transpose"(%arg1, %[[RES]]) : (tensor<1280x1000xf32>, tensor<?xi32>) -> tensor<*xf32>
-  // CHECK: %[[MM:.*]] = "tf.MatMul"(%[[TRANS1]], %[[TRANS2]]) <{transpose_a = false, transpose_b = true}> : (tensor<*xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
+  // CHECK: %[[MM:.*]] = "tf.MatMul"(%[[TRANS1]], %[[TRANS2]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = true}> : (tensor<*xf32>, tensor<*xf32>) -> tensor<1x1000xf32>
   // CHECK: return %[[MM]] : tensor<1x1000xf32>
 
 }
@@ -718,7 +718,7 @@ func.func @QuantDequantTranspose(%arg0: tensor<2x3xf32>) -> (tensor<2x4xf32>) {
   // CHECK: %[[QUANT:.*]] = "tfl.quantize"(%[[CST_0]]) {qtype = tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>} : (tensor<3x4xf32>) -> tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>
   // CHECK: %[[DEQUANT:.*]] = "tfl.dequantize"(%[[QUANT]]) : (tensor<3x4x!quant.uniform<u8:f32:1, {0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128,0.0078431372549019607:128}>>) -> tensor<3x4xf32>
   // CHECK: %[[TRANSPOSE:.*]] = "tf.Transpose"(%[[DEQUANT]], %[[CST]]) : (tensor<3x4xf32>, tensor<?xi32>) -> tensor<*xf32>
-  // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %[[TRANSPOSE]]) <{transpose_a = false, transpose_b = true}> : (tensor<2x3xf32>, tensor<*xf32>) -> tensor<2x4xf32>
+  // CHECK: %[[MATMUL:.*]] = "tf.MatMul"(%arg0, %[[TRANSPOSE]]) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = true}> : (tensor<2x3xf32>, tensor<*xf32>) -> tensor<2x4xf32>
   // CHECK: return %[[MATMUL]] : tensor<2x4xf32>
 }
 

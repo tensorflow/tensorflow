@@ -248,10 +248,11 @@ class DistributedSaveTest(
           test_base.default_test_combinations(),
           combinations.combine(
               num_workers=[1, 3],
+              repeated_load=[1, 5],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
                   data_service_ops.ShardingPolicy.DYNAMIC])))
-  def testDistributedLoad(self, num_workers, sharding_policy):
+  def testDistributedLoad(self, num_workers, repeated_load, sharding_policy):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     dataset = dataset_ops.Dataset.range(10)
     self.evaluate(
@@ -260,18 +261,19 @@ class DistributedSaveTest(
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
+    if repeated_load > 1:
+      dataset = dataset.repeat(repeated_load)
     dataset = dataset.apply(
         data_service_ops.distribute(
             processing_mode=sharding_policy,
             service=cluster.dispatcher_address()))
 
     ignore_order = num_workers > 0
-    expected = list(range(10))
+    expected = list(range(10)) * repeated_load
     if sharding_policy == data_service_ops.ShardingPolicy.OFF:
       expected *= num_workers
     self.assertDatasetProduces(
-        dataset, expected, assert_items_equal=ignore_order
-    )
+        dataset, expected, assert_items_equal=ignore_order)
 
   @combinations.generate(test_base.default_test_combinations())
   def testImbalancedZipAndRepeat(self):

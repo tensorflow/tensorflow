@@ -27,12 +27,14 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base
 from tensorflow.python.training.saving import saveable_object
+from tensorflow.python.util import tf_export
 
 
 TensorSlice = MutableMapping[tensor_spec.TensorSpec, tensor_lib.Tensor]
 TensorSliceDict = MutableMapping[str, TensorSlice]
 
 
+@tf_export.tf_export("train.experimental.ShardableTensor")
 @dataclasses.dataclass(frozen=True)
 class ShardableTensor:
   """Tensor wrapper containing data necessary for sharding.
@@ -68,16 +70,18 @@ class ShardableTensor:
             f"  trackable={self.trackable!r}")
 
 
+@tf_export.tf_export("train.experimental.ShardingCallback")
 class ShardingCallback(abc.ABC):
   """Checkpoint sharding callback function, along with a text description.
 
   A callback function wrapper that will be executed to determine how tensors
   will be split into shards when the saver writes the checkpoint shards to disk.
 
-  When calling the callback, it takes a list of
-  `tf.train.experimental.ShardableTensor`s as input (as well as any kwargs
-  defined by the `tf.train.experimental.ShardingCallback` subclass), and outputs
-  a `tensors_by_shard` dict.
+  The callback takes a list of `tf.train.experimental.ShardableTensor`s as input
+  (as well as any kwargs defined by the `tf.train.experimental.ShardingCallback`
+  subclass), and organizes the input tensors into different shards. Tensors are
+  first organized by device task (see `tf.DeviceSpec`), then the callback will
+  be called for each collection of tensors.
 
   There are a few restrictions to keep in mind when creating a custom callback:
     - Tensors must not be removed from the checkpoint.
@@ -140,13 +144,14 @@ class ShardingCallback(abc.ABC):
   @abc.abstractmethod
   def __call__(
       self, shardable_tensors: Sequence[ShardableTensor]
-  ) -> Sequence[TensorSlice]:
+  ) -> Sequence[TensorSliceDict]:
     pass
 
   def __hash__(self) -> int:
     hash_val = hash(self.description)
-    for attr_name, attr_val in inspect.getmembers(self):
-      if not inspect.ismethod(attr_val) and not inspect.isfunction(attr_val):
+    # vars() only includes user-defined attributes.
+    for attr_name, attr_val in vars(self).items():
+      if not (inspect.ismethod(attr_val) or inspect.isfunction(attr_val)):
         hash_val ^= hash(attr_name)
         if isinstance(attr_val, Hashable):
           hash_val ^= hash(attr_val)

@@ -31,6 +31,11 @@ namespace TF {
 // don't do this to avoid explicit casts (implicit conversion from
 // `absl::string_view` to `llvm::StringRef` is not supported until C++17).
 
+// Whether soft placement is allowed. If true, the marked node is eligible for
+// outside compilation.
+inline constexpr llvm::StringRef kAllowSoftPlacementAttr =
+    "allow_soft_placement";
+
 // Marks a node for XLA compilation. The attribute value indicates the
 // compilation device type.
 inline constexpr llvm::StringRef kCompileDeviceTypeAttr =

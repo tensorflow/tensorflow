@@ -1126,7 +1126,16 @@ def _create_local_cuda_repository(repository_ctx):
 
     # Select the headers based on the cuDNN version (strip '64_' for Windows).
     cudnn_headers = ["cudnn.h"]
-    if cuda_config.cudnn_version.rsplit("_", 1)[-1] >= "8":
+    if cuda_config.cudnn_version.rsplit("_", 1)[-1] >= "9":
+        cudnn_headers += [
+            "cudnn_adv.h",
+            "cudnn_backend.h",
+            "cudnn_cnn.h",
+            "cudnn_graph.h",
+            "cudnn_ops.h",
+            "cudnn_version.h",
+        ]
+    elif cuda_config.cudnn_version.rsplit("_", 1)[-1] >= "8":
         cudnn_headers += [
             "cudnn_backend.h",
             "cudnn_adv_infer.h",

@@ -623,7 +623,7 @@ void DumpToFileInDirOrStdout(const HloModule& module, string_view file_prefix,
   CanonicalDebugOptions opts(module.config().debug_options());
   if (opts.dumping_to_stdout()) return op->dump();
 
-  mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags().useLocalScope();
+  mlir::OpPrintingFlags print_flags = mlir::OpPrintingFlags();
   // Enable debug info so that it is easier to see the corresponding HLO node.
   if (file_prefix == "lmhlo") {
     print_flags.enableDebugInfo(/*enable=*/true,

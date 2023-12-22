@@ -19,11 +19,13 @@ cc_library(
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
     deps = [
+        ":sharding_utils",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -35,12 +37,16 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/pjrt:pjrt_executable",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
-        "@tf_runtime//:ref_count",
+        "@local_xla//xla/service:computation_placer_hdr",
     ],
 )
 
@@ -72,6 +78,65 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "sharding_utils",
+    srcs = [
+        "sharding_utils.cc",
+    ],
+    hdrs = [
+        "sharding_utils.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/tpu/kernels:sharding_utils",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:executable_run_options",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/pjrt_ifrt",
+        "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
+    ],
+)
+
+tf_cc_test(
+    name = "sharding_utils_test",
+    srcs = ["sharding_utils_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":sharding_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:tensor_matcher",
+        "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+    ],
+)
+
 tf_cc_test(
     name = "ifrt_serving_executable_test",
     srcs = [
@@ -88,6 +153,8 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_matcher",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/strings",

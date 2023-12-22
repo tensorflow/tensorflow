@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
@@ -152,15 +153,14 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kBitcast) {
+  if (instr.opcode() == HloOpcode::kBitcast || instr.IsCustomFusion()) {
     return false;
   }
-  auto& hero = FindNonTrivialHero(instr);
-  if (GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) {
-    return true;
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return HasAnyTiledTransposeRoot(*instr.fused_instructions_computation());
   }
-  return !instr.IsCustomFusion() && instr.opcode() == HloOpcode::kFusion &&
-         HasAnyTiledTransposeRoot(*instr.called_computations()[0]);
+  auto& hero = FindNonTrivialHero(instr);
+  return GetDescriptionForTiledTransposeEmitter(instr, hero).has_value();
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -867,8 +867,7 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
           instr.IsElementwise());
 }
 
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& /*producer*/,
-                                            const HloInstruction& consumer) {
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer) {
   return IsInputFusible(consumer) ? HloInstruction::FusionKind::kInput
                                   : HloInstruction::FusionKind::kLoop;
 }
@@ -948,6 +947,14 @@ bool IsRealReductionHero(const HloInstruction& root,
   return &root == &hero ||
          ReductionIsRaceFree(hero.GetModule()->config(),
                              GetReductionKindAndContiguousComponents(hero));
+}
+
+bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kFusion &&
+         instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
+         instr.backend_config<FusionBackendConfig>().ok() &&
+         instr.backend_config<FusionBackendConfig>()->kind() ==
+             kTritonSoftmaxFusionKind;
 }
 
 }  // namespace gpu

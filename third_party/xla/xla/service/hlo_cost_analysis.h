@@ -334,15 +334,15 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
    private:
     // These must match GetOperandUtilizationKey(0, {}) etc.
     static inline constexpr absl::string_view kOperand0UtilizationKey =
-        "utilization operand 0 {}";
+        "utilization0{}";
     static inline constexpr absl::string_view kOperand1UtilizationKey =
-        "utilization operand 1 {}";
+        "utilization1{}";
     static inline constexpr absl::string_view kOperand0BytesAccessedKey =
-        "bytes accessed operand 0 {}";
+        "bytes accessed0{}";
     static inline constexpr absl::string_view kOperand1BytesAccessedKey =
-        "bytes accessed operand 1 {}";
+        "bytes accessed1{}";
     static inline constexpr absl::string_view kOutputRootBytesAccessedKey =
-        "bytes accessed output {}";
+        "bytes accessedout{}";
 
     float flops_;
     float transcendentals_;
@@ -399,7 +399,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     }
 
     // Returns the specified per-second rate used by cost analysis.
-    float per_second_rate(const std::string& key) const {
+    float per_second_rate(absl::string_view key) const {
       return per_second_rates[key];
     }
   };
@@ -547,7 +547,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Returns the specified per-second rate used by cost analysis.
   float per_second_rate(absl::string_view key) const {
-    return options_.per_second_rates[key];
+    return options_.per_second_rate(key);
   }
 
   // Return the key that is used to index into Properties for the specified

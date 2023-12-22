@@ -305,7 +305,6 @@ class LogicalDevice(
       placement.
     device_type: String declaring the type of device such as "CPU" or "GPU".
   """
-  pass
 
 
 @tf_export("config.LogicalDeviceConfiguration",
@@ -688,6 +687,10 @@ class Context:
 
     # Clear all the caches in case there are remote tensors in them.
     self._clear_caches()
+    # Also clear the device parsing cache since it caches the resolution of
+    # partial device names, which may become different due to the set_server_def
+    # call as we may have defined different devices.
+    _device_parsing_cache.clear()
 
   def update_server_def(self, server_def, keep_alive_secs=_KEEP_ALIVE_SECS):
     """Update a server_def on the context.

@@ -16,10 +16,17 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/command_buffer_cmd_emitter.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "absl/container/inlined_vector.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/copy_thunk.h"
+#include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
+#include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -27,32 +34,84 @@ limitations under the License.
 
 namespace xla::gpu {
 
-namespace {
+using Command = std::unique_ptr<CommandBufferCmd>;
 
-StatusOr<std::unique_ptr<CommandBufferCmd>> ConvertToCommand(
-    const Thunk& thunk) {
-  switch (thunk.kind()) {
-    // TODO(anlunx): Support other thunk kinds.
-    case Thunk::Kind::kKernel: {
-      auto& kernel_thunk = static_cast<const KernelThunk&>(thunk);
-      auto kernel_cmd = std::make_unique<LaunchCmd>(
-          kernel_thunk.kernel_name(), kernel_thunk.arguments(),
-          kernel_thunk.launch_dimensions(), kernel_thunk.shmem_bytes());
-      return kernel_cmd;
-    }
-    default:
-      return InternalError("Unsupported thunk kind");
+static StatusOr<Command> ConvertKernelThunk(const KernelThunk& thunk) {
+  absl::InlinedVector<CommandBufferCmd::MemoryAccess, 4> args_access;
+  args_access.reserve(thunk.written().size());
+  for (bool written : thunk.written()) {
+    args_access.push_back(written ? CommandBufferCmd::MemoryAccess::kWrite
+                                  : CommandBufferCmd::MemoryAccess::kRead);
   }
+  return std::make_unique<LaunchCmd>(thunk.kernel_name(), thunk.arguments(),
+                                     args_access, thunk.launch_dimensions(),
+                                     thunk.shmem_bytes());
 }
 
-}  // namespace
+static StatusOr<Command> ConvertCustomKernelThunk(
+    const CustomKernelThunk& thunk) {
+  absl::InlinedVector<CommandBufferCmd::MemoryAccess, 4> args_access;
+  args_access.reserve(thunk.written().size());
+  for (bool written : thunk.written()) {
+    args_access.push_back(written ? CommandBufferCmd::MemoryAccess::kWrite
+                                  : CommandBufferCmd::MemoryAccess::kRead);
+  }
+  return std::make_unique<CustomKernelLaunchCmd>(thunk.arguments(), args_access,
+                                                 thunk.custom_kernel());
+}
+
+static StatusOr<Command> ConvertCopyThunk(
+    const DeviceToDeviceCopyThunk& thunk) {
+  return std::make_unique<MemcpyDeviceToDeviceCmd>(
+      thunk.destination(), thunk.source(), thunk.size_bytes());
+}
+
+static StatusOr<Command> ConvertWhileThunk(const WhileThunk& thunk) {
+  TF_ASSIGN_OR_RETURN(
+      CommandBufferCmdSequence cond_cmds,
+      ConvertToCommands(thunk.condition_thunk_sequence()->thunks()));
+  TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence body_cmds,
+                      ConvertToCommands(thunk.body_thunk_sequence()->thunks()));
+  return std::make_unique<WhileCmd>(thunk.condition_result_buffer(),
+                                    std::move(cond_cmds), std::move(body_cmds));
+}
+
+static StatusOr<Command> ConvertGemmThunk(const GemmThunk& thunk) {
+  std::optional<const BufferAllocation::Slice> workspace = thunk.workspace();
+  if (!workspace.has_value()) {
+    return InternalError("Gemm thunk does not contain a workspace buffer");
+  }
+  return std::make_unique<GemmCmd>(thunk.config(), thunk.lhs_buffer(),
+                                   thunk.rhs_buffer(), thunk.output_buffer(),
+                                   workspace.value(), thunk.deterministic());
+}
+
+static StatusOr<Command> ConvertThunk(const Thunk& thunk) {
+  switch (thunk.kind()) {
+    case Thunk::Kind::kKernel:
+      return ConvertKernelThunk(static_cast<const KernelThunk&>(thunk));
+    case Thunk::Kind::kCustomKernel:
+      return ConvertCustomKernelThunk(
+          static_cast<const CustomKernelThunk&>(thunk));
+    case Thunk::Kind::kCopy:
+      return ConvertCopyThunk(
+          static_cast<const DeviceToDeviceCopyThunk&>(thunk));
+    case Thunk::Kind::kWhile:
+      return ConvertWhileThunk(static_cast<const WhileThunk&>(thunk));
+    case Thunk::Kind::kGemm: {
+      return ConvertGemmThunk(static_cast<const GemmThunk&>(thunk));
+    }
+    default:
+      return InternalError("Unsupported thunk kind: %s",
+                           Thunk::KindToString(thunk.kind()));
+  }
+}
 
 StatusOr<CommandBufferCmdSequence> ConvertToCommands(
     const ThunkSequence& sequence) {
   CommandBufferCmdSequence cmd_sequence;
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<CommandBufferCmd> cmd,
-                        ConvertToCommand(*thunk));
+    TF_ASSIGN_OR_RETURN(Command cmd, ConvertThunk(*thunk));
     cmd_sequence.Append(std::move(cmd));
   }
   return cmd_sequence;

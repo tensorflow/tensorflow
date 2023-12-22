@@ -50,6 +50,7 @@ typedef TFLDialect TensorFlowLiteDialect;
 class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name = "tfl.control";
 };
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"

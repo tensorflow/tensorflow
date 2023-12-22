@@ -1198,7 +1198,9 @@ It is computed as:
     Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64]>, [{2-D or higher with shape `[..., r_y, c_y]`.}]>:$y,
 
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$grad_x,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$grad_y
   );
 
   let results = (outs
@@ -1245,7 +1247,9 @@ about broadcasting
     Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{2-D or higher with shape `[..., r_y, c_y]`.}]>:$y,
 
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$grad_x,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$grad_y
   );
 
   let results = (outs
@@ -1292,7 +1296,9 @@ about broadcasting
     Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint8]>, [{2-D or higher with shape `[..., r_y, c_y]`.}]>:$y,
 
     DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_x,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$adj_y,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$grad_x,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$grad_y
   );
 
   let results = (outs
@@ -8615,7 +8621,9 @@ cublas.
     TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int32, TF_Int64, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$b,
 
     DefaultValuedOptionalAttr<BoolAttr, "false">:$transpose_a,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$transpose_b
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$transpose_b,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$grad_a,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$grad_b
   );
 
   let results = (outs

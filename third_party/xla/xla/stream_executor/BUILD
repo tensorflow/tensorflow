@@ -208,9 +208,8 @@ cc_library(
     hdrs = ["device_options.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor/platform",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

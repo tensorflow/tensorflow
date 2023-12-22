@@ -210,13 +210,13 @@ class RocmComputeCapability {
   std::string gcn_arch_name_ = "gfx000";  // default to invalid arch.
 
   static constexpr absl::string_view kSupportedGfxVersions[]{
-      "gfx900",  // MI25
-      "gfx906",  // MI50 / MI60
-      "gfx908",  // MI100
-      "gfx90a",  // MI200
-      "gfx940",  "gfx941", "gfx942",
-      "gfx1030",  // Navi21
-      "gfx1100"   // Navi31
+      "gfx900",                       // MI25
+      "gfx906",                       // MI50 / MI60
+      "gfx908",                       // MI100
+      "gfx90a",                       // MI200
+      "gfx940",  "gfx941", "gfx942",  // MI300
+      "gfx1030",                      // Navi21
+      "gfx1100"                       // Navi31
   };
 };
 

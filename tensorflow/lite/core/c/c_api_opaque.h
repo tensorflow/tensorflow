@@ -45,9 +45,9 @@ extern "C" {
 // clang-format off
 // NOLINTBEGIN(whitespace/line_length)
 /// \note Users of TensorFlow Lite should use
-///
-///     #include "tensorflow/lite/c/c_api_opaque.h"
-///
+/// \code
+/// #include "tensorflow/lite/c/c_api_opaque.h"
+/// \endcode
 /// to access the APIs documented on this page.
 // NOLINTEND(whitespace/line_length)
 // clang-format on
@@ -108,6 +108,7 @@ TFL_CAPI_EXPORT extern size_t TfLiteOpaqueTensorByteSize(
     const TfLiteOpaqueTensor* opaque_tensor);
 
 /// Returns a pointer to the underlying data buffer.
+/// Returns nullptr if input is also nullptr.
 TFL_CAPI_EXPORT extern void* TfLiteOpaqueTensorData(
     const TfLiteOpaqueTensor* opaque_tensor);
 

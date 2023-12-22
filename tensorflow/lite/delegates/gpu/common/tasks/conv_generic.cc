@@ -1749,8 +1749,7 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
     conv_params.fixed_work_group_size = false;
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM_X4;
-  } else if (gpu_info.IsIntel() ||
-             (gpu_info.IsApiOpenCl() && gpu_info.opencl_info.IsCLVK())) {
+  } else if (gpu_info.IsIntel()) {
     if (different_weights_for_height) {
       work_group_size_ = int3(16, 1, 1);
       work_group_launch_order_ = int3(0, 1, 2);

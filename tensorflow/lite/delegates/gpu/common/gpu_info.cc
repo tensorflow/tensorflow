@@ -626,15 +626,6 @@ void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
   absl::AsciiStrToLower(&lowered);
   gpu_info->vendor = GetGpuVendor(lowered);
 
-  // Because clvk is an OpenCL layer on top of vulkan, it does not react to CL
-  // optimisation as native CL implementation does.
-  // AMD is particularly affected, thus let's manage it differently to get the
-  // best performances out of it.
-  if (gpu_info->IsApiOpenCl() && gpu_info->opencl_info.IsCLVK() &&
-      gpu_info->IsAMD()) {
-    gpu_info->vendor = GpuVendor::kUnknown;
-  }
-
   if (gpu_info->IsAdreno()) {
     gpu_info->adreno_info = AdrenoInfo(lowered);
   } else if (gpu_info->IsApple()) {

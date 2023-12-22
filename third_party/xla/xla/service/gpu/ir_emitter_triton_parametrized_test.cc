@@ -516,22 +516,22 @@ TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
 
   const std::string kHloTestTemplate = R"(
 triton_gemm___computation {
-  parameter_0 = $1[92,11]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  parameter_2 = $0[11,63]{1,0} parameter(2)
-  parameter_3 = pred[11,63]{1,0} parameter(3)
-  f1.1 = $0[11,63]{1,0} select(parameter_3, parameter_1, parameter_2)
-  c.1 = $1[11,63]{1,0} convert(f1.1)
+  parameter_0 = $1[92,13]{1,0} parameter(0)
+  parameter_1 = $0[13,63]{1,0} parameter(1)
+  parameter_2 = $0[13,63]{1,0} parameter(2)
+  parameter_3 = pred[13,63]{1,0} parameter(3)
+  f1.1 = $0[13,63]{1,0} select(parameter_3, parameter_1, parameter_2)
+  c.1 = $1[13,63]{1,0} convert(f1.1)
   ROOT _.1 = $1[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
     operand_precision={HIGH, HIGH}
 }
 
 ENTRY e {
-  p0 = $1[92,11]{1,0} parameter(0)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p2 = $0[11,63]{1,0} parameter(2)
-  p3 = pred[11,63]{1,0} parameter(3)
+  p0 = $1[92,13]{1,0} parameter(0)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p2 = $0[13,63]{1,0} parameter(2)
+  p3 = pred[13,63]{1,0} parameter(3)
   ROOT triton_gemm__ = $1[92,63]{1,0} fusion(p0, p1, p2, p3), kind=kCustom,
     calls=triton_gemm___computation,
     backend_config={"kind":"__triton_gemm",
@@ -545,19 +545,19 @@ ENTRY e {
 
   const std::string kHloRefTemplate = R"(
 fused_computation {
-  p0 = $0[11,63]{1,0} parameter(0)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p2 = pred[11,63]{1,0} parameter(2)
-  f.1 = $0[11,63]{1,0} select(p2, p0, p1)
-  ROOT convert.1 = $1[11,63]{1,0} convert(f.1)
+  p0 = $0[13,63]{1,0} parameter(0)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p2 = pred[13,63]{1,0} parameter(2)
+  f.1 = $0[13,63]{1,0} select(p2, p0, p1)
+  ROOT convert.1 = $1[13,63]{1,0} convert(f.1)
 }
 
 ENTRY e {
-  p3 = pred[11,63]{1,0} parameter(3)
-  p2 = $0[11,63]{1,0} parameter(2)
-  p1 = $0[11,63]{1,0} parameter(1)
-  p0 = $1[92,11]{1,0} parameter(0)
-  fusion = $1[11,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
+  p3 = pred[13,63]{1,0} parameter(3)
+  p2 = $0[13,63]{1,0} parameter(2)
+  p1 = $0[13,63]{1,0} parameter(1)
+  p0 = $1[92,13]{1,0} parameter(0)
+  fusion = $1[13,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
     calls=fused_computation
   gemm = ($1[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
@@ -879,11 +879,7 @@ ENTRY main {
   if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
                                se::CudaComputeCapability::AMPERE)) {
     hlo_ref_template = R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
-; CHECK:      %[[FUSED_REDUCE:.*]] = f32[127]{0} fusion(%[[P0]])
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]], %[[FUSED_REDUCE]])
+; CHECK-NOT: triton
 )";
   } else {
     hlo_ref_template = R"(

@@ -88,6 +88,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:debugger",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:assign_ids",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:statistics",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
@@ -95,6 +97,7 @@ tf_python_pybind_extension(
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:type_casters",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",

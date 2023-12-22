@@ -145,7 +145,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
       index_primitive_type, pointer_primitive_type, element_size_in_bits,
       memory_space, std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return shape;
+  return std::move(shape);
 }
 
 template <typename T>
@@ -311,7 +311,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
                            static_cast<int>(element_type),
                            absl::StrJoin(dimensions, ","));
   }
-  return shape;
+  return std::move(shape);
 }
 
 /* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
@@ -337,7 +337,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
           "Cannot mark a dynamic dimension at dim=%d as static", i);
     }
   }
-  return shape;
+  return std::move(shape);
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
@@ -790,7 +790,16 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
                                             const Shape& rhs) {
   CHECK(lhs.IsArray());
   CHECK(rhs.IsArray());
-  return absl::c_equal(lhs.dimensions(), rhs.dimensions());
+  if (!SameRank(lhs, rhs)) return false;
+  for (int i = 0; i < lhs.rank(); ++i) {
+    if (!lhs.is_unbounded_dynamic_dimension(i) &&
+        !rhs.is_unbounded_dynamic_dimension(i) &&
+        lhs.dimensions(i) != rhs.dimensions(i)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /* static */ bool ShapeUtil::SameRank(const Shape& lhs, const Shape& rhs) {
@@ -1470,9 +1479,8 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
           IndexUtil::MultidimensionalIndexToLinearIndex(input_shape_dim0_major,
                                                         input_unit_index);
       // output_index has the same logical linear index as input_unit_index.
-      std::vector<int64_t> output_index =
-          IndexUtil::LinearIndexToMultidimensionalIndex(output_shape_dim0_major,
-                                                        logical_linear_index);
+      auto output_index = IndexUtil::LinearIndexToMultidimensionalIndex(
+          output_shape_dim0_major, logical_linear_index);
       // Check input_unit_index and output_index have the same physical linear
       // index.
       if (IndexUtil::MultidimensionalIndexToLinearIndex(input_shape,

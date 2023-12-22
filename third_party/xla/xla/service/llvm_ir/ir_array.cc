@@ -191,8 +191,6 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
       shape_(std::move(shape)) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
-  CHECK(llvm::cast<llvm::PointerType>(base_ptr_->getType())
-            ->isOpaqueOrPointeeTypeMatches(pointee_type));
   int depth = 0;
   element_type_ = pointee_type;
   while (llvm::ArrayType* array_type =

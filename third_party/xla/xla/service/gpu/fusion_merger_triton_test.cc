@@ -72,9 +72,49 @@ ENTRY main {
               GmockMatch(m::Fusion(m::Parameter())));
 }
 
+TEST_F(FusionMergerTritonTest, CanMergeWithTwoParameterConsumer) {
+  const std::string kHloText = R"(
+HloModule t
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+consumer_computation {
+  parameter_0 = f32[125]{0} parameter(0)
+  parameter_1 = f32[125,127]{1,0} parameter(1)
+  broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(parameter_1, broadcast)
+}
+
+triton_softmax_computation {
+  parameter_0 = f32[125,127]{1,0} parameter(0)
+  multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[125,127]{1,0} parameter(0)
+  param_1 = f32[125]{0} parameter(1)
+  triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_1, triton_softmax), kind=kLoop, calls=consumer_computation
+})";
+  auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  FusionMergerTriton fusion_merger{};
+  EXPECT_TRUE(fusion_merger.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
 TEST_F(
     FusionMergerTritonTest,
-    CanMergeProducerFusionIntoTritonSoftmaxConsumerWhenTheConsumerIsNotRoot) {  // NOLINT(whitespace/line_length)
+    CanMergeProducerFusionIntoTritonSoftmaxConsumerWhenTheConsumerIsNotRoot) {
   const std::string kHloText = R"(
 HloModule t
 add {
@@ -316,6 +356,191 @@ ENTRY main {
   VLOG(2) << module->ToString();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Fusion())));
+}
+
+TEST_F(FusionMergerTritonTest, CanMergeWithBothProducerAndConsumerFusions) {
+  const std::string kHloText = R"(
+HloModule t
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+producer_computation {
+  parameter_0 = f32[125]{0} parameter(0)
+  ROOT broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
+}
+
+consumer_computation {
+  parameter_0 = f32[125,127]{1,0} parameter(0)
+  parameter_1 = f32[125,127]{1,0} parameter(1)
+  ROOT multiply = f32[125,127]{1,0} multiply(parameter_1, parameter_0)
+}
+
+triton_softmax_computation {
+  parameter_0 = f32[125,127]{1,0} parameter(0)
+  multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[125]{0} parameter(0)
+  param_1 = f32[125,127]{1,0} parameter(1)
+  producer_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=producer_computation
+  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_1, triton_softmax), kind=kLoop, calls=consumer_computation
+})";
+  auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  FusionMergerTriton fusion_merger{};
+  EXPECT_TRUE(fusion_merger.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
+TEST_F(FusionMergerTritonTest,
+       CanMergeWithMultiInputProducerAndConsumerFusions) {
+  const std::string kHloText = R"(
+HloModule t
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+producer_computation {
+  parameter_0 = f32[125]{0} parameter(0)
+  parameter_1 = f32[125,127]{1,0} parameter(1)
+  broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
+  ROOT add = f32[125,127]{1,0} add(parameter_1, broadcast)
+}
+
+consumer_computation {
+  parameter_0 = f32[125,127]{1,0} parameter(0)
+  parameter_1 = f32[125,127]{1,0} parameter(1)
+  ROOT multiply = f32[125,127]{1,0} multiply(parameter_1, parameter_0)
+}
+
+triton_softmax_computation {
+  parameter_0 = f32[125,127]{1,0} parameter(0)
+  multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[125]{0} parameter(0)
+  param_1 = f32[125,127]{1,0} parameter(1)
+  param_2 = f32[125,127]{1,0} parameter(2)
+  producer_fusion = f32[125,127]{1,0} fusion(param_0, param_1), kind=kLoop, calls=producer_computation
+  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_2, triton_softmax), kind=kLoop, calls=consumer_computation
+})";
+  auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  FusionMergerTriton fusion_merger{};
+  EXPECT_TRUE(fusion_merger.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+}
+
+TEST_F(FusionMergerTritonTest,
+       CanMergeWithBothProducerAndConsumerFusionsSharingParameter) {
+  const std::string kHloText = R"(
+HloModule t
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+producer_computation {
+  parameter_0 = f32[125]{0} parameter(0)
+  ROOT broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
+}
+
+consumer_computation {
+  parameter_0 = f32[125]{0} parameter(0)
+  parameter_1 = f32[125,127]{1,0} parameter(1)
+  broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(parameter_1, broadcast)
+}
+
+triton_softmax_computation {
+  parameter_0 = f32[125,127]{1,0} parameter(0)
+  multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[125]{0} parameter(0)
+  producer_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=producer_computation
+  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_0, triton_softmax), kind=kLoop, calls=consumer_computation
+})";
+  auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  FusionMergerTriton fusion_merger{};
+  EXPECT_TRUE(fusion_merger.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter())));
+}
+
+TEST_F(FusionMergerTritonTest, DoesNotMergeSoftmaxWithMultiOutputConsumer) {
+  const std::string kHloText = R"(
+HloModule t
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+producer_computation {
+  parameter_0 = f32[125]{0} parameter(0)
+  ROOT broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
+}
+
+consumer_computation {
+  parameter_0 = f32[125,127]{1,0} parameter(0)
+  parameter_1 = f32[125,127]{1,0} parameter(1)
+  add = f32[125,127]{1,0} add(parameter_1, parameter_0)
+  multiply = f32[125,127]{1,0} multiply(parameter_1, parameter_0)
+  ROOT tuple = (f32[125,127]{1,0}, f32[125,127]{1,0}) tuple(add, multiply)
+}
+
+triton_softmax_computation {
+  parameter_0 = f32[125,127]{1,0} parameter(0)
+  multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+}
+
+ENTRY main {
+  param_0 = f32[125,127]{1,0} parameter(0)
+  triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT consumer_fusion = (f32[125,127]{1,0}, f32[125,127]{1,0}) fusion(param_0, triton_softmax), kind=kLoop, calls=consumer_computation
+})";
+  auto module = ParseAndReturnVerifiedModule(kHloText).value();
+  FusionMergerTriton fusion_merger;
+  EXPECT_FALSE(fusion_merger.Run(module.get()).value());
+  VLOG(2) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Fusion(m::Parameter(), m::Fusion())));
 }
 
 }  // namespace

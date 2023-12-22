@@ -993,16 +993,28 @@ LogicalResult DotGeneralOp::reifyReturnTypeShapes(
 //===----------------------------------------------------------------------===//
 // FftOp
 //===----------------------------------------------------------------------===//
+LogicalResult verify1dTensor(std::optional<Location> loc,
+                             DenseIntElementsAttr attr, std::string attrName) {
+  auto rank = attr.getType().getRank();
+  if (rank != 1) {
+    return emitOptionalError(loc, attrName, " has rank ", rank,
+                             " instead of required rank 1.");
+  }
+  return success();
+}
 
 LogicalResult FftOp::inferReturnTypeComponents(
     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   FftOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferFftOp(location, adaptor.getOperand(),
-                         adaptor.getFftType() == FftType::RFFT,
-                         adaptor.getFftType() == FftType::IRFFT,
-                         adaptor.getFftLength(), inferredReturnShapes);
+  if (failed(verify1dTensor(location, adaptor.getFftLength(), "fft_length")))
+    return failure();
+  return hlo::inferFftOp(
+      location, adaptor.getOperand(), adaptor.getFftType() == FftType::RFFT,
+      adaptor.getFftType() == FftType::IRFFT,
+      llvm::to_vector(adaptor.getFftLength().getValues<int64_t>()),
+      inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2230,9 +2242,13 @@ LogicalResult BroadcastOp::inferReturnTypeComponents(
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BroadcastOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferBroadcastOp(location, adaptor.getOperand(),
-                               adaptor.getBroadcastSizes(),
-                               inferredReturnShapes);
+  if (failed(verify1dTensor(location, adaptor.getBroadcastSizes(),
+                            "broadcast_sizes")))
+    return failure();
+  return hlo::inferBroadcastOp(
+      location, adaptor.getOperand(),
+      llvm::to_vector(adaptor.getBroadcastSizes().getValues<int64_t>()),
+      inferredReturnShapes);
 }
 
 LogicalResult BroadcastOp::reifyReturnTypeShapes(
@@ -3007,10 +3023,13 @@ LogicalResult DynamicSliceOp::inferReturnTypeComponents(
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   DynamicSliceOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferDynamicSliceOp(location, adaptor.getOperand().getType(),
-                                  adaptor.getStartIndices().getTypes(),
-                                  adaptor.getSliceSizes(),
-                                  inferredReturnShapes);
+  if (failed(verify1dTensor(location, adaptor.getSliceSizes(), "slice_sizes")))
+    return failure();
+  return hlo::inferDynamicSliceOp(
+      location, adaptor.getOperand().getType(),
+      adaptor.getStartIndices().getTypes(),
+      llvm::to_vector(adaptor.getSliceSizes().getValues<int64_t>()),
+      inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3994,7 +4013,11 @@ LogicalResult OptimizationBarrierOp::inferReturnTypes(
 // ReverseOp
 //===----------------------------------------------------------------------===//
 LogicalResult ReverseOp::verify() {
-  return hlo::verifyReverseOp(getLoc(), getOperand(), getDimensions());
+  if (failed(verify1dTensor(getLoc(), getDimensions(), "dimensions")))
+    return failure();
+  return hlo::verifyReverseOp(
+      getLoc(), getOperand(),
+      llvm::to_vector(getDimensions().getValues<int64_t>()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -4152,11 +4175,20 @@ LogicalResult PadOp::inferReturnTypes(
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   PadOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferPadOp(location, adaptor.getOperand().getType(),
-                         adaptor.getPaddingValue().getType(),
-                         adaptor.getEdgePaddingLow(),
-                         adaptor.getEdgePaddingHigh(),
-                         adaptor.getInteriorPadding(), inferredReturnTypes);
+  if (failed(verify1dTensor(location, adaptor.getEdgePaddingLow(),
+                            "edge_padding_low")) ||
+      failed(verify1dTensor(location, adaptor.getEdgePaddingHigh(),
+                            "edge_padding_high")) ||
+      failed(verify1dTensor(location, adaptor.getInteriorPadding(),
+                            "interior_padding")))
+    return failure();
+  return hlo::inferPadOp(
+      location, adaptor.getOperand().getType(),
+      adaptor.getPaddingValue().getType(),
+      llvm::to_vector(adaptor.getEdgePaddingLow().getValues<int64_t>()),
+      llvm::to_vector(adaptor.getEdgePaddingHigh().getValues<int64_t>()),
+      llvm::to_vector(adaptor.getInteriorPadding().getValues<int64_t>()),
+      inferredReturnTypes);
 }
 
 template <typename T>
@@ -5138,9 +5170,18 @@ LogicalResult SliceOp::inferReturnTypes(
     ValueRange operands, DictionaryAttr attributes, OpaqueProperties,
     RegionRange /*regions*/, SmallVectorImpl<Type>& inferredReturnTypes) {
   SliceOpAdaptor adaptor(operands, attributes);
-  return hlo::inferSliceOp(location, adaptor.getOperand().getType(),
-                           adaptor.getStartIndices(), adaptor.getLimitIndices(),
-                           adaptor.getStrides(), inferredReturnTypes);
+  if (failed(verify1dTensor(location, adaptor.getStartIndices(),
+                            "start_indices")) ||
+      failed(verify1dTensor(location, adaptor.getLimitIndices(),
+                            "limit_indices")) ||
+      failed(verify1dTensor(location, adaptor.getStrides(), "strides")))
+    return failure();
+  return hlo::inferSliceOp(
+      location, adaptor.getOperand().getType(),
+      llvm::to_vector(adaptor.getStartIndices().getValues<int64_t>()),
+      llvm::to_vector(adaptor.getLimitIndices().getValues<int64_t>()),
+      llvm::to_vector(adaptor.getStrides().getValues<int64_t>()),
+      inferredReturnTypes);
 }
 
 template <typename I, typename E>
@@ -5597,8 +5638,12 @@ LogicalResult TransposeOp::inferReturnTypes(
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   TransposeOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return hlo::inferTransposeOp(loc, adaptor.getOperand(),
-                               adaptor.getPermutation(), inferredReturnTypes);
+  if (failed(verify1dTensor(loc, adaptor.getPermutation(), "permutation")))
+    return failure();
+  return hlo::inferTransposeOp(
+      loc, adaptor.getOperand(),
+      llvm::to_vector(adaptor.getPermutation().getValues<int64_t>()),
+      inferredReturnTypes);
 }
 
 //===----------------------------------------------------------------------===//

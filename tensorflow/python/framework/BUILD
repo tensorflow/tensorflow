@@ -237,10 +237,11 @@ tf_cc_test(
     ],
 )
 
+# Do not depend on this rule! Depend on the fine-grained sub-targets instead.
 py_strict_library(
     name = "for_generated_wrappers",
-    deprecation = "Depending on this target can cause build dependency cycles. Depend on the fine-grained sub-targets instead.",
     srcs_version = "PY3",
+    tags = ["avoid_dep"],
     visibility = ["//visibility:public"],
     deps = [
         ":byte_swap_tensor",
@@ -335,7 +336,10 @@ py_strict_library(
 
 py_strict_library(
     name = "constant_op",
-    srcs = ["constant_op.py"],
+    srcs = [
+        "constant_op.py",
+        "constant_tensor_conversion.py",
+    ],
     srcs_version = "PY3",
     visibility = visibility + [
         "//smartass:__subpackages__",
@@ -703,6 +707,23 @@ py_strict_library(
         ":_op_def_registry",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:pywrap_tensorflow",
+    ],
+)
+
+py_strict_library(
+    name = "override_binary_operator",
+    srcs = ["override_binary_operator.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":dtypes",
+        ":ops",
+        ":tensor",
+        ":tensor_shape",
+        "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/ops/numpy_ops:np_dtypes",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:traceback_utils",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1582,6 +1603,7 @@ py_strict_library(
         ":constant_op",
         ":dtypes",
         ":ops",
+        ":override_binary_operator",
         ":tensor",
         ":tensor_shape",
         ":tensor_spec",
@@ -1592,10 +1614,10 @@ py_strict_library(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:tf2",
         "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:sparse_ops_gen",
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types:internal",
-        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -1653,7 +1675,6 @@ py_strict_library(
     visibility = visibility,
     deps = [
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
     ],
@@ -1799,7 +1820,6 @@ pytype_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/types:internal",
         "//tensorflow/python/types:trace",
-        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
@@ -1991,7 +2011,6 @@ py_strict_library(
         "//tensorflow/python/saved_model:nested_structure_coder",
         "//tensorflow/python/types:core",
         "//tensorflow/python/types:internal",
-        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:object_identity",

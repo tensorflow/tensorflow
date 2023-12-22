@@ -368,7 +368,6 @@ pytype_strict_library(
     srcs = ["tf_contextlib.py"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//learning/brain/analytics:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
@@ -383,7 +382,6 @@ py_strict_library(
     srcs = ["tf_decorator.py"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//learning/brain/analytics:__subpackages__",
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow:__subpackages__",
@@ -1040,14 +1038,12 @@ py_strict_library(
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
-        ":compat",
         ":nest_util",
         # global_test_configuration is added here because all major tests depend on this
         # library. It isn't possible to add these test dependencies via tensorflow.bzl's
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
-        "@pypi_wrapt//:pkg",
         ":_pywrap_utils",
         ":_pywrap_nest",
     ],

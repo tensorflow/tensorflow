@@ -367,9 +367,9 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 
   // Copy data into new literal, element-by-element.
   for (int64_t i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
-    std::vector<int64_t> from_multi_index =
+    auto from_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(literal.shape(), i);
-    std::vector<int64_t> to_multi_index =
+    auto to_multi_index =
         IndexUtil::LinearIndexToMultidimensionalIndex(shape_with_layout, i);
     primitive_util::PrimitiveTypeSwitch<void>(
         [&](auto primitive_type_constant) -> void {

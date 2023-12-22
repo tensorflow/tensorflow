@@ -15,7 +15,7 @@ limitations under the License.
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
 
 // Combines the two variadic arguments ($in_tensors and $captured_tensors).
 def GetBatchFunctionOpArgOperands:

@@ -1068,8 +1068,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
     absl::string_view mlir_module, DebugOptions debug_options,
     absl::string_view asm_text, absl::string_view binary,
-    std::vector<ConstantInfo> constants, se::GpuComputeCapability gpu_version,
-    se::StreamExecutor* executor) {
+    std::vector<ConstantInfo> constants, se::GpuComputeCapability gpu_version) {
   VLOG(1) << "Load serialized Gpu executable from object file: module="
           << hlo_module->name();
 

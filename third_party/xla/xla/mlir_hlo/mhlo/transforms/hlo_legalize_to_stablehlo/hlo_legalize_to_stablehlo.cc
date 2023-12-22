@@ -154,6 +154,26 @@ bool hasPublicFeaturesNotInStablehlo(HloOpTy op) {
   return getPublicFeaturesNotInStablehlo(op).has_value();
 }
 
+template <typename StablehloOpTy>
+Attribute convertDenseArray(Attribute hloAttr) {
+  auto denseInts = hloAttr.dyn_cast<DenseIntElementsAttr>();
+  if (!denseInts) return {};
+
+  // Handle DenseIntElementsAttr --> DenseI64ArrayAttr for StableHLO ops that
+  // use dense arrays. This is temporary while MHLO integrates this change.
+  if constexpr (std::is_same<StablehloOpTy, stablehlo::BroadcastOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::DynamicSliceOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::FftOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::PadOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::ReverseOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::SliceOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::TransposeOp>::value) {
+    return DenseI64ArrayAttr::get(
+        hloAttr.getContext(), llvm::to_vector(denseInts.getValues<int64_t>()));
+  }
+  return {};
+}
+
 #define RETURN_CONVERTED_ENUM_ATTR(Name)                      \
   auto hloValue = mhlo::stringify##Name(attr.getValue());     \
   auto stablehloValue = stablehlo::symbolize##Name(hloValue); \
@@ -500,7 +520,11 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
             hloOp.getCustomCallSchedule() == mhlo::CustomCallSchedule::NONE)
           continue;
       }
-      auto stablehloAttr = convertAttr(hloAttr.getValue());
+      auto stablehloAttr =
+          convertDenseArray<HloToStablehloOp<HloOpTy>>(hloAttr.getValue());
+      if (!stablehloAttr) {
+        stablehloAttr = convertAttr(hloAttr.getValue());
+      }
       if (!stablehloAttr) return failure();
       stablehloAttrs.push_back({hloAttr.getName(), stablehloAttr});
     }

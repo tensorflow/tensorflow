@@ -1872,16 +1872,16 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
     %p = u32[2] broadcast(%sum), dimensions={}
 
     %after-all = token[] after-all()
-    %recv = (u32[2], u32[], token[]) recv(%after-all), channel_id=1, frontend_attributes={
+    %recv = (u32[2], u32[], token[]) recv(%after-all), channel_id=0, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{1,0}}"
     }
-    %send = (u32[2], u32[], token[]) send(%p, %after-all), channel_id=1, control-predecessors={%recv}, frontend_attributes={
+    %send = (u32[2], u32[], token[]) send(%p, %after-all), channel_id=0, control-predecessors={%recv}, frontend_attributes={
       _xla_send_recv_source_target_pairs="{{1,0}}"
     }
 
-    %recv-done = (u32[2], token[]) recv-done(%recv), channel_id=1
+    %recv-done = (u32[2], token[]) recv-done(%recv), channel_id=0
     %recv-data = u32[2] get-tuple-element(%recv-done), index=0
-    %send-done = token[] send-done(%send), channel_id=1, control-predecessors={%recv}
+    %send-done = token[] send-done(%send), channel_id=0, control-predecessors={%recv}
     ROOT copy = u32[2] copy(%recv-data)
   }
   )";

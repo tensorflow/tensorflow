@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
@@ -403,6 +404,10 @@ class StreamExecutor {
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const Kernel& kernel,
                      const KernelArgs& args);
+
+  tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                     const BlockDim& block_dims, const ClusterDim& cluster_dims,
+                     const Kernel& kernel, const KernelArgs& args);
 
   // Submits command buffer for execution to the underlying platform driver.
   tsl::Status Submit(Stream* stream, const CommandBuffer& command_buffer);

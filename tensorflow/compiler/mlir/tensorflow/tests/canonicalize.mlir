@@ -27,7 +27,7 @@ func.func @testGatherToV2(%params: tensor<4x3xf32>, %indices: tensor<1x2xi32>) -
 
 // CHECK-LABEL: testBatchMatMulToV2
 func.func @testBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<2x5x7xf32>) -> tensor<2x3x7xf32> {
-  // CHECK: "tf.BatchMatMulV2"(%arg0, %arg1) <{adj_x = false, adj_y = false}> {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
+  // CHECK: "tf.BatchMatMulV2"(%arg0, %arg1) <{adj_x = false, adj_y = false, grad_x = false, grad_y = false}> {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   %0 = "tf.BatchMatMul"(%arg0, %arg1) <{adj_x = false, adj_y = false}> {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3x5xf32>, tensor<2x5x7xf32>) -> tensor<2x3x7xf32>
   func.return %0: tensor<2x3x7xf32>
 }
@@ -41,7 +41,7 @@ func.func @testDynamicBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<?x
 
 // CHECK-LABEL: testBatchMatMulToMatMul
 func.func @testBatchMatMulToMatMul(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32>) -> tensor<2x2xf32> {
-  // CHECK: %0 = "tf.MatMul"(%arg0, %arg1) <{transpose_a = false, transpose_b = false}> {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
+  // CHECK: %0 = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = false, transpose_b = false}> {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
   %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
   // CHECK: return %0
   func.return %0: tensor<2x2xf32>
@@ -49,7 +49,7 @@ func.func @testBatchMatMulToMatMul(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32
 
 // CHECK-LABEL: testBatchMatMulV2ToMatMul
 func.func @testBatchMatMulV2ToMatMul(%arg0: tensor<4x3xf32>, %arg1: tensor<4x5xf32>) -> tensor<3x5xf32> {
-  // CHECK: %0 = "tf.MatMul"(%arg0, %arg1) <{transpose_a = true, transpose_b = false}> {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<4x3xf32>, tensor<4x5xf32>) -> tensor<3x5xf32>
+  // CHECK: %0 = "tf.MatMul"(%arg0, %arg1) <{grad_a = false, grad_b = false, transpose_a = true, transpose_b = false}> {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<4x3xf32>, tensor<4x5xf32>) -> tensor<3x5xf32>
   %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<4x3xf32>, tensor<4x5xf32>) -> tensor<3x5xf32>
   // CHECK: return %0
   func.return %0: tensor<3x5xf32>

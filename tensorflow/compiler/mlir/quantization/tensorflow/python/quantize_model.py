@@ -637,24 +637,17 @@ def _populate_quantization_options_default_values(
   # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
   # please also update default value in tflite converter:
   # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
-  if (
-      quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
-  ) or (
-      quantization_options.quantization_method.preset_method
-      == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8
-  ):
-    if quantization_options.min_num_elements_for_weights == 0:
-      quantization_options.min_num_elements_for_weights = (
-          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
-      )
-      logging.warning(
-          (
-              'QuantizationOptions.min_num_elements_for_weights is not set (0).'
-              ' Setting to the default value: %d.'
-          ),
-          _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
-      )
+  if quantization_options.min_num_elements_for_weights == 0:
+    quantization_options.min_num_elements_for_weights = (
+        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
+    )
+    logging.warning(
+        (
+            'QuantizationOptions.min_num_elements_for_weights is not set (0).'
+            ' Setting to the default value: %d.'
+        ),
+        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
+    )
 
   # TODO: b/307900054 - Set the per-channel quantization by default.
   if quantization_options.enable_per_channel_quantization and not (

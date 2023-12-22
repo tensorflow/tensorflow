@@ -28,7 +28,7 @@ namespace mlir::quant::stablehlo {
 
 // Creates a `QuantizePass` that quantizes ops according to surrounding qcast /
 // dcast ops.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizePass(
     const quant::QuantizationSpecs& quantization_specs);
 
 // Creates a pass that quantizes weight component of StableHLO graph.

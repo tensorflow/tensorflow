@@ -588,9 +588,10 @@ class Translator {
 
   // Returns TFLite buffer populated with constant value if the operation is
   // TFLite constant operation. Otherwise, returns an empty buffer. Emits error
-  // and returns std::nullopt on failure.
-  std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(Value value,
-                                                          int index);
+  // and returns std::nullopt on failure. The buffer index may be changed if
+  // duplicated buffer is found.
+  std::optional<BufferOffset<tflite::Buffer>> BuildBuffer(
+      Value value, bool can_be_deduplicated, int& index);
 
   // Build TFLite tensor from the given type. This function is for tfl.lstm
   // intermediates, which should have UniformQuantizedType.
@@ -844,6 +845,10 @@ class Translator {
   bool require_use_buffer_offset_ = false;
 
   std::optional<size_t> custom_option_alignment_ = std::nullopt;
+
+  // Map from mlir constant attribute to the buffer index. This is used to
+  // deduplicate the buffers in the flatbuffer.
+  llvm::DenseMap<mlir::ElementsAttr, int> const_attribute_to_buffer_map_;
 };
 
 bool Translator::EstimateArithmeticCount(int64_t* count) {
@@ -867,7 +872,7 @@ std::string Translator::UniqueName(mlir::Value val) {
 }
 
 std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
-    mlir::Value value, int index) {
+    mlir::Value value, bool can_be_deduplicated, int& index) {
   auto inst = value.getDefiningOp();
   ElementsAttr attr;
   if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
@@ -888,6 +893,15 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     attr = cst.getCompressedData();
   } else {
     return empty_buffer_;
+  }
+
+  if (can_be_deduplicated) {
+    if (const_attribute_to_buffer_map_.find(attr) !=
+        const_attribute_to_buffer_map_.end()) {
+      index = const_attribute_to_buffer_map_[attr];
+      return empty_buffer_;
+    }
+    const_attribute_to_buffer_map_[attr] = index;
   }
 
   // TF doesn't currently support 4-bit types (DT_INT4), so we'll run into
@@ -1629,12 +1643,12 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildStablehloPadOp(
   uint32_t opcode_index =
       GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_PAD);
 
-  auto edge_padding_low = builder_.CreateVector(
-      mlir::GetOptionalVector<int64_t>(pad_op.getEdgePaddingLowAttr()));
-  auto edge_padding_high = builder_.CreateVector(
-      mlir::GetOptionalVector<int64_t>(pad_op.getEdgePaddingHighAttr()));
-  auto interior_padding = builder_.CreateVector(
-      mlir::GetOptionalVector<int64_t>(pad_op.getInteriorPaddingAttr()));
+  auto edge_padding_low =
+      builder_.CreateVector(pad_op.getEdgePaddingLow().vec());
+  auto edge_padding_high =
+      builder_.CreateVector(pad_op.getEdgePaddingHigh().vec());
+  auto interior_padding =
+      builder_.CreateVector(pad_op.getInteriorPadding().vec());
 
   auto pad_option = tflite::CreateStablehloPadOptions(
       builder_, edge_padding_low, edge_padding_high, interior_padding);
@@ -1863,8 +1877,7 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         uint32_t opcode_index = GetOpcodeIndex(
             op_name, tflite::BuiltinOperator_STABLEHLO_DYNAMIC_SLICE);
 
-        auto slice_sizes = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getSliceSizes()));
+        auto slice_sizes = builder_.CreateVector(shlo_op.getSliceSizes().vec());
 
         auto dynamic_slice_option =
             tflite::CreateStablehloDynamicSliceOptions(builder_, slice_sizes);
@@ -1920,12 +1933,11 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         uint32_t opcode_index =
             GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_SLICE);
 
-        auto start_indices = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getStartIndicesAttr()));
-        auto limit_indices = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getLimitIndicesAttr()));
-        auto strides = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getStridesAttr()));
+        auto start_indices =
+            builder_.CreateVector(shlo_op.getStartIndices().vec());
+        auto limit_indices =
+            builder_.CreateVector(shlo_op.getLimitIndices().vec());
+        auto strides = builder_.CreateVector(shlo_op.getStrides().vec());
 
         auto slice_option = tflite::CreateStablehloSliceOptions(
             builder_, start_indices, limit_indices, strides);
@@ -2197,8 +2209,7 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             op_name, tflite::BuiltinOperator_STABLEHLO_TRANSPOSE);
 
         auto transpose_option = tflite::CreateStablehloTransposeOptions(
-            builder_, builder_.CreateVector(mlir::GetOptionalVector<int64_t>(
-                          shlo_op.getPermutation())));
+            builder_, builder_.CreateVector(shlo_op.getPermutation().vec()));
 
         return tflite::CreateOperator(
             builder_, opcode_index, builder_.CreateVector(operands),
@@ -2419,22 +2430,31 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
         quant_parameters = GetQuantizationForQuantStatsOpOutput(stats_op);
       }
     }
-    auto tensor_or =
-        BuildTensor(value, tensor_name, buffers_.size(), quant_parameters);
-    if (!tensor_or) return false;
-    tensors.push_back(*tensor_or);
 
+    int buffer_index = buffers_.size();
+    // If a constant is returned as subgraph's output, this constant cannot be
+    // deduplicated.
+    const bool not_returned_by_subgraph = llvm::none_of(
+        value.getUsers(),
+        [](Operation* user) { return llvm::isa<mlir::func::ReturnOp>(user); });
     // TODO(ashwinm): Check if for stateful tensors, if it is also needed to
     // make the Buffer empty apart from setting the buffer_idx=0 in the
     // Tensor. This does not seem to affect runtime behavior for RNN/LSTM,
     // but would be good for reducing memory footprint.
     if (value.getDefiningOp()) {
-      auto buffer_or = BuildBuffer(value, buffers_.size());
+      auto buffer_or =
+          BuildBuffer(value, not_returned_by_subgraph, buffer_index);
       if (!buffer_or) return false;
       buffers_.push_back(*buffer_or);
     } else {
       buffers_.push_back(empty_buffer_);
     }
+
+    auto tensor_or =
+        BuildTensor(value, tensor_name, buffer_index, quant_parameters);
+    if (!tensor_or) return false;
+    tensors.push_back(*tensor_or);
+
     return true;
   };
 

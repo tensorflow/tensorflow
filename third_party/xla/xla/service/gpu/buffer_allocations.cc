@@ -18,9 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <set>
 
+#include "absl/types/span.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/util.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -82,9 +85,19 @@ se::DeviceMemoryBase& BufferAllocations::GetMutableDeviceAddress(
 
 se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
     const BufferAllocation::Slice& buffer_slice) const {
-  se::DeviceMemoryBase base = GetDeviceAddress(buffer_slice.index());
-  CHECK_LE(buffer_slice.offset(), base.size());
-  CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
+  int64_t index = buffer_slice.index();
+  se::DeviceMemoryBase base = GetDeviceAddress(index);
+
+  int64_t offset = buffer_slice.offset();
+  CHECK_LE(buffer_slice.offset(), base.size())
+      << "slice offset " << offset << " must be smaller than buffer #" << index
+      << " size " << base.size();
+
+  int64_t extent = offset + buffer_slice.size();
+  CHECK_LE(extent, base.size())
+      << "slice extent " << extent << " must be smaller than buffer #" << index
+      << " size " << base.size();
+
   return base.GetByteSlice(buffer_slice.offset(), buffer_slice.size());
 }
 

@@ -40,8 +40,6 @@ std::string AutoShardingOption::ToString() const {
         absl::StrCat("memory_budget_per_device: ",
                      memory_budget_per_device / (1024 * 1024 * 1024), " GB"));
   }
-  lines.push_back(
-      absl::StrCat("try_multiple_mesh_shapes: ", try_multiple_mesh_shapes));
 
   lines.push_back(absl::StrCat("force_override_all_gather_cost: ",
                                force_override_all_gather_cost));
@@ -85,6 +83,8 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("allow_mixed_mesh_shape: ", allow_mixed_mesh_shape));
   lines.push_back(
       absl::StrCat("grad_acc_num_micro_batches: ", grad_acc_num_micro_batches));
+  lines.push_back(absl::StrCat("solve_nd_sharding_iteratively: ",
+                               solve_nd_sharding_iteratively));
   lines.push_back(
       absl::StrCat("force_simple_heuristic: ", force_simple_heuristic));
   lines.push_back(absl::StrCat("force_strategy: ", force_strategy));
@@ -116,6 +116,25 @@ std::string AutoShardingOption::ToString() const {
                                absl::StrJoin(device_mesh_alpha, ","), "]"));
   lines.push_back(absl::StrCat("device_mesh_beta: [",
                                absl::StrJoin(device_mesh_beta, ","), "]"));
+
+  lines.push_back(
+      absl::StrCat("try_multiple_mesh_shapes: ", try_multiple_mesh_shapes));
+
+  lines.push_back(
+      absl::StrCat("solver_timeout_in_seconds: ", solver_timeout_in_seconds));
+
+  lines.push_back(absl::StrCat("loop_iteration_count_estimate: ",
+                               loop_iteration_count_estimate));
+
+  lines.push_back(absl::StrCat("allow_alias_to_follower_conversion: ",
+                               allow_alias_to_follower_conversion));
+
+  lines.push_back(
+      absl::StrCat("small_tensor_byte_size: ", small_tensor_byte_size));
+
+  lines.push_back(
+      absl::StrCat("use_sharding_propagation_for_default_shardings: ",
+                   use_sharding_propagation_for_default_shardings));
 
   return absl::StrJoin(lines, "\n");
 }

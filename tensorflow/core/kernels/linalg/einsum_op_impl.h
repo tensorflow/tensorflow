@@ -471,6 +471,7 @@ struct EinsumHelper {
         ReshapeToRank3(*output, bcast.output_batch_size(), &output_reshaped));
     LaunchBatchMatMul<Device, T>::Launch(ctx, lhs, rhs, /*adj_x=*/false,
                                          /*adj_y=*/false, trans_x, trans_y,
+                                         /*grad_x=*/false, /*grad_y=*/false,
                                          bcast, &output_reshaped);
     return OkStatus();
   }

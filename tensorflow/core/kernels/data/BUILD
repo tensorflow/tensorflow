@@ -996,6 +996,7 @@ tf_kernel_library(
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
         "@com_google_absl//absl/memory",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
@@ -1064,6 +1065,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -1514,8 +1517,6 @@ filegroup(
         "//tensorflow/core/data:captured_function.h",
         "//tensorflow/core/data:compression_utils.h",
         "//tensorflow/core/data:dataset_utils.h",
-        "//tensorflow/core/data:file_logger_client_interface.h",
-        "//tensorflow/core/data:file_logger_client_no_op.h",
         "//tensorflow/core/data:finalization_utils.h",
         "//tensorflow/core/data:metric_utils.h",
         "//tensorflow/core/data:name_utils.h",

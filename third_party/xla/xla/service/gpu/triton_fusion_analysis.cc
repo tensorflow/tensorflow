@@ -46,6 +46,7 @@ namespace {
 
 using triton_fusion::DimOrdersAndReqs;
 using triton_fusion::DimOrdersAndReqsOrError;
+using triton_fusion::DotRequirements;
 using triton_fusion::FusionContext;
 using triton_fusion::GetPropagatedDimOrdersAndRequirements;
 using triton_fusion::kNoSplitRequirement;
@@ -86,19 +87,19 @@ namespace triton_fusion {
 
 /*static*/ FusionContext FusionContext::FromDotOutput(
     const HloInstruction& dot, const int split_k,
-    const int64_t splittable_dimension_major_part_size) {
+    DotRequirements requirements) {
   // Allow non-contracting dimension originating from LHS to split if
   // this dimension is split at the output at the same ratio as
   // at the input.
   int splittable_dimension_index = kNoDimensionIndex;
-  if (splittable_dimension_major_part_size > 1) {
+  if (requirements.splittable_dimension_major_part_size > 1) {
     // Split-K dimension is the first one in the output if present;
     // LHS non-contracting follows (batch is absent in this case).
     splittable_dimension_index = (split_k > 1) ? 1 : 0;
   }
   FusionContext context(DotProperties{/*noncontracting_dimension=*/-1,
                                       splittable_dimension_index},
-                        DotRequirements(splittable_dimension_major_part_size));
+                        std::move(requirements));
   context.dim_orders_[&dot] = DimensionOrder::FromDotOperandOrOutput(dot);
   return context;
 }
@@ -221,20 +222,20 @@ Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
 
 Status TritonFusionAnalysis::ExecuteForDotFusion(const HloInstruction& dot,
                                                  const int split_k) {
-  int64_t lhs_nc_split_major_part_size = kNoSplitRequirement;
+  DotRequirements lhs_requirements(kNoSplitRequirement);
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);
     auto context = FusionContext::FromDotOperand(dot, operand_number, split_k);
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
     if (scope == Scope::LHS) {
-      lhs_nc_split_major_part_size =
-          context.splittable_dimension_major_part_size();
+      lhs_requirements = std::get<DotRequirements>(context.requirements());
     }
   }
 
-  auto context =
-      FusionContext::FromDotOutput(dot, split_k, lhs_nc_split_major_part_size);
+  // For now the RHS doesn't support splits, so it also doesn't impose any
+  // requirements.
+  auto context = FusionContext::FromDotOutput(dot, split_k, lhs_requirements);
   const HloInstruction* output = &dot;
   // Currently supported is one fusion output and one path from dot to it.
   // Propagate dimension order from dot to root.
@@ -267,10 +268,8 @@ const TensorIterationSpec::DimIterationSpec* TritonFusionAnalysis::IterSpec(
     const int dimension) const {
   auto hlo_spec = iter_specs_.at(scope).find(hlo);
   if (hlo_spec != iter_specs_.at(scope).cend()) {
-    auto dim_spec = hlo_spec->second.Storage().find(dimension);
-    if (dim_spec != hlo_spec->second.Storage().cend()) {
-      return &dim_spec->second;
-    }
+    // The pointer returned here may also be nullptr.
+    return hlo_spec->second.Find(dimension);
   }
   return nullptr;
 }
