@@ -28,6 +28,9 @@ message AutoShardingSolverRequest {
   message Nodes {
     repeated int64 nodes = 1;
   }
+  message Edges {
+    repeated int64 edges = 1;
+  }
   message SolverTimeout {
     int64 solver_timeout_in_seconds = 1;
   }
@@ -42,9 +45,11 @@ message AutoShardingSolverRequest {
   repeated int64 s_hint = 5;
   repeated Pair edges = 6;
   repeated Nodes live = 7;
+  repeated Edges live_edges = 28;
   repeated Costs computation_costs = 8;
   repeated Costs communication_costs = 9;
   repeated Costs memory_costs = 10;
+  repeated Costs memory_edge_costs = 29;
   repeated Costs departure_costs = 11;
   repeated Costs resharding_costs = 12;
   repeated Costs duration_costs = 13;

@@ -30,6 +30,7 @@ namespace {
 
 using CostMatrix = std::vector<std::vector<double>>;
 using NodeMatrix = std::vector<std::vector<int64_t>>;
+using EdgeMatrix = std::vector<std::vector<int64_t>>;
 
 void AddCosts(proto2::RepeatedPtrField<AutoShardingSolverRequest_Costs>* costs,
               const CostMatrix& cost_matrix) {
@@ -46,6 +47,15 @@ void AddNodes(proto2::RepeatedPtrField<AutoShardingSolverRequest_Nodes>* nodes,
     AutoShardingSolverRequest_Nodes node;
     node.mutable_nodes()->Add(node_row.begin(), node_row.end());
     nodes->Add(std::move(node));
+  }
+}
+
+void AddEdges(proto2::RepeatedPtrField<AutoShardingSolverRequest_Edges>* edges,
+              const EdgeMatrix& edge_matrix) {
+  for (const auto& edge_row : edge_matrix) {
+    AutoShardingSolverRequest_Edges edge;
+    edge.mutable_edges()->Add(edge_row.begin(), edge_row.end());
+    edges->Add(std::move(edge));
   }
 }
 
@@ -257,6 +267,30 @@ TEST(CallORToolsSolverTest, HonorsMaxCost) {
   const AutoShardingSolverResult result = CallORToolsSolver(request);
 
   EXPECT_TRUE(absl::IsInternal(result.status.status()));
+}
+
+TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const EdgeMatrix live_edges = {{}, {0}, {0, 1}, {1}, {}};
+  const CostMatrix memory_edge_costs = {{1000000, 1100, 1200, 1300,
+                                         2000, 2100, 2200, 2300,
+                                         3000, 3100, 3200, 3300,
+                                         4000, 4100, 4200, 4300},
+                                        {5000000, 5100, 5200, 5300,
+                                         6000, 6100, 6200, 6300,
+                                         7000, 7100, 7200, 7300}};
+  AddEdges(request.mutable_live_edges(), live_edges);
+  AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {1, 1};
+  const double objective_value = 7872.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(s_val), std::move(e_val), objective_value), false};
+  EXPECT_EQ(result, expected_result);
 }
 
 TEST(AutoShardingEvaluatorTest, NoViolations) {
