@@ -104,6 +104,9 @@ class CommandBufferCmd {
   // updates, thus they need to be consistent across calls to the function.
   virtual BufferUsageVector buffers() = 0;
 
+  // Returns true if command implemented as a nested command buffer.
+  virtual bool IsNestedCommandBuffer() const { return false; }
+
   virtual ~CommandBufferCmd() = default;
 };
 
@@ -447,6 +450,8 @@ class GemmCmd : public CommandBufferCmd {
                 se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
 
  private:
   const GemmConfig config_;

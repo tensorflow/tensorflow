@@ -160,6 +160,7 @@ Status CommandBufferCmdSequence::Record(
   };
 
   // Track the number of commands recorded between barriers.
+  bool first_recorded_command = true;
   int64_t num_recorded_commands = 0;
 
   for (auto& cmd : commands_) {
@@ -175,6 +176,17 @@ Status CommandBufferCmdSequence::Record(
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
     track_buffers(buffers);
     ++num_recorded_commands;
+
+    // If this was the first recorded command and it is implemented as a nested
+    // command buffer we force a barrier before recording a next command as
+    // a work around a CUDA graph bug, where child CUDA graph must be a single
+    // CUDA graph root node.
+    if (first_recorded_command && cmd->IsNestedCommandBuffer()) {
+      VLOG(3) << "Force a barrier after a nested command buffer recorded first";
+      TF_RETURN_IF_ERROR(command_buffer->Barrier(params.executor));
+    }
+
+    first_recorded_command = false;
   }
 
   if (mode == RecordMode::kExclusive) {

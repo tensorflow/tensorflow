@@ -274,9 +274,14 @@ tsl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
   }
 
   if (state_ == State::kUpdate) {
-    barrier_ = nodes_[update_state_.node_idx];
-    // Increment update node index only if we added an no-op node earlier.
-    if (barriers_[update_state_.barrier_idx++]) update_state_.node_idx++;
+    // Increment update node index only if we added a no-op node earlier and it
+    // means that we just updated a "real" barrier node, otherwise barrier is
+    // the last updated node.
+    if (barriers_[update_state_.barrier_idx++]) {
+      barrier_ = nodes_[update_state_.node_idx++];
+    } else if (update_state_.node_idx) {
+      barrier_ = nodes_[update_state_.node_idx - 1];
+    }
     return tsl::OkStatus();
   }
 
