@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -98,6 +100,15 @@ static int64_t NotifyExecDestroyed() {
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
+static std::string_view ModeToString(CommandBuffer::Mode mode) {
+  switch (mode) {
+    case CommandBuffer::Mode::kPrimary:
+      return "primary";
+    case CommandBuffer::Mode::kNested:
+      return "nested";
+  }
+}
+
 GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
                                    GpuGraphHandle graph, bool is_owned_graph)
     : mode_(mode),
@@ -105,7 +116,8 @@ GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
       graph_(graph),
       is_owned_graph_(is_owned_graph) {
   VLOG(5) << "Created command buffer for graph " << graph_
-          << " (is_owned_graph=" << is_owned_graph << ")";
+          << "; mode=" << ModeToString(mode)
+          << "; is_owned_graph=" << is_owned_graph_;
 }
 
 GpuCommandBuffer::~GpuCommandBuffer() {
@@ -797,6 +809,17 @@ tsl::Status GpuCommandBuffer::While(StreamExecutor* executor,
 
 tsl::Status GpuCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
+
+  // Maybe dump created CUDA graph to a dot file for debugging.
+  if (state_ == State::kCreate && VLOG_IS_ON(10)) {
+    std::string path = tsl::io::GetTempFilename(/*extension=*/"dot");
+    auto printed = GpuDriver::GraphDebugDotPrint(
+        graph_, path.c_str(), /*return_printed_graph=*/VLOG_IS_ON(100));
+    if (VLOG_IS_ON(100) && printed.ok()) {
+      VLOG(100) << "Printed Gpu graph " << graph_ << " to: " << path << "\n"
+                << *printed;
+    }
+  }
 
   if (mode_ == Mode::kPrimary && state_ == State::kCreate) {
     // If this is the first time we finalize command buffer after construction,

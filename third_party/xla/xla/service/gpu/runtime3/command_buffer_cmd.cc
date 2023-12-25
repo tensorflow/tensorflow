@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -89,9 +91,23 @@ Status CommandBufferCmdSequence::Initialize(
   return OkStatus();
 }
 
+static std::string_view RecordModeString(
+    CommandBufferCmdSequence::RecordMode mode) {
+  switch (mode) {
+    case CommandBufferCmdSequence::RecordMode::kExclusive:
+      return "exclusive";
+    case CommandBufferCmdSequence::RecordMode::kConditional:
+      return "conditional";
+  }
+}
+
 Status CommandBufferCmdSequence::Record(
     const CommandBufferCmd::RecordParams& params,
     se::CommandBuffer* command_buffer, RecordMode mode) {
+  VLOG(3) << "Record " << commands_.size() << " commands into command buffer"
+          << "; mode=" << RecordModeString(mode);
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+
   if (mode == RecordMode::kExclusive) {
     if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
       TF_RETURN_IF_ERROR(command_buffer->Update());
@@ -143,18 +159,32 @@ Status CommandBufferCmdSequence::Record(
     return conflict;
   };
 
+  // Track the number of commands recorded between barriers.
+  int64_t num_recorded_commands = 0;
+
   for (auto& cmd : commands_) {
     CommandBufferCmd::BufferUsageVector buffers = cmd->buffers();
+
     if (has_conflict(buffers)) {
+      VLOG(3) << "Add command buffer barrier after " << num_recorded_commands
+              << " recorded commands";
       TF_RETURN_IF_ERROR(command_buffer->Barrier(params.executor));
+      num_recorded_commands = 0;
     }
-    track_buffers(buffers);
+
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
+    track_buffers(buffers);
+    ++num_recorded_commands;
   }
 
   if (mode == RecordMode::kExclusive) {
     TF_RETURN_IF_ERROR(command_buffer->Finalize());
   }
+
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
+  VLOG(3) << "Recorded " << commands_.size()
+          << " commands into command buffer in " << (end_micros - start_micros)
+          << " μs; mode=" << RecordModeString(mode);
 
   return OkStatus();
 }
@@ -610,10 +640,6 @@ Status GemmCmd::Initialize(se::StreamExecutor* executor,
 
 Status GemmCmd::Record(const RecordParams& params,
                        se::CommandBuffer* command_buffer) {
-  VLOG(5) << "GemmCmd: lhs=" << lhs_buffer_ << ", rhs=" << rhs_buffer_
-          << ", output=" << output_buffer_
-          << ", deterministic=" << deterministic_;
-
   se::DeviceMemoryBase lhs =
       params.buffer_allocations->GetDeviceAddress(lhs_buffer_);
   se::DeviceMemoryBase rhs =
@@ -622,6 +648,12 @@ Status GemmCmd::Record(const RecordParams& params,
       params.buffer_allocations->GetDeviceAddress(output_buffer_);
   se::DeviceMemoryBase workspace =
       params.buffer_allocations->GetDeviceAddress(workspace_);
+
+  VLOG(5) << "GemmCmd: deterministic=" << deterministic_;
+  VLOG(5) << "  Lhs: " << lhs_buffer_ << " (" << lhs.opaque() << ")";
+  VLOG(5) << "  Lhs: " << rhs_buffer_ << " (" << rhs.opaque() << ")";
+  VLOG(5) << "  Out: " << output_buffer_ << " (" << out.opaque() << ")";
+  VLOG(5) << "  Workspace: " << workspace_ << " (" << workspace.opaque() << ")";
 
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,

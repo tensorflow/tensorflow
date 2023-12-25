@@ -169,9 +169,12 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   KernelArgsDeviceMemoryArray args({a, b, c}, 0);
 
   // Create a command buffer by tracing kernel launch operations.
-  auto cmd_buffer = CommandBuffer::Trace(executor, [&](Stream* stream) {
-    return executor->Launch(stream, ThreadDim(), BlockDim(4), add, args);
-  });
+  auto cmd_buffer = CommandBuffer::Trace(
+      executor,
+      [&](Stream* stream) {
+        return executor->Launch(stream, ThreadDim(), BlockDim(4), add, args);
+      },
+      primary);
 
   TF_ASSERT_OK(cmd_buffer.status());
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));

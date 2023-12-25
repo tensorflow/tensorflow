@@ -721,8 +721,8 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   return ::tsl::OkStatus();
 }
 
-/* static */ tsl::Status GpuDriver::GraphDebugDotPrint(CUgraph graph,
-                                                       const char* path) {
+/* static */ tsl::StatusOr<std::string> GpuDriver::GraphDebugDotPrint(
+    CUgraph graph, const char* path, bool return_printed_graph) {
 #if CUDA_VERSION >= 12000
   VLOG(2) << "Print CUDA graph " << graph << " debug dot file to " << path;
 
@@ -730,17 +730,17 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   RETURN_IF_CUDA_RES_ERROR(cuGraphDebugDotPrint(graph, path, flags),
                            "Failed to print gpu graph debug file");
 
-  if (VLOG_IS_ON(100)) {
+  if (return_printed_graph) {
     std::string data;
     if (tsl::ReadFileToString(tsl::Env::Default(), path, &data).ok()) {
-      VLOG(200) << "CUDA graph " << graph << " debug file:\n" << data;
+      return data;
     } else {
       LOG(WARNING) << "failed to read gpu graph debug file " << path;
     }
   }
 #endif  // CUDA_VERSION >= 12000
 
-  return ::tsl::OkStatus();
+  return std::string(path);
 }
 
 /* static */ tsl::Status GpuDriver::DeviceGraphMemTrim(CUdevice device) {

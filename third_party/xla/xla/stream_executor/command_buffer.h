@@ -96,11 +96,14 @@ class CommandBuffer {
   // can't be updated.
   //
   // Command buffer tracing should be used only when it is impossible to use
-  // explicit construction APIs, e.g. when calling external libraries.
+  // explicit construction APIs, e.g. when calling external libraries. By
+  // default we construct traced command buffers in nested mode because the
+  // primary use case for traced command buffers is to be inserted into primary
+  // command buffers constructed with explicit APIs.
   static tsl::StatusOr<CommandBuffer> Trace(
       StreamExecutor* executor,
       absl::AnyInvocable<tsl::Status(Stream*)> function,
-      Mode mode = Mode::kPrimary);
+      Mode mode = Mode::kNested);
 
   //===--------------------------------------------------------------------===//
   // Command buffer properties

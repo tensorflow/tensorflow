@@ -21,6 +21,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -438,7 +439,9 @@ class GpuDriver {
   // Write a DOT file describing graph structure.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g0fb0c4d319477a0a98da005fcb0dacc4
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static tsl::Status GraphDebugDotPrint(GpuGraphHandle graph, const char* path);
+  static tsl::StatusOr<std::string> GraphDebugDotPrint(
+      GpuGraphHandle graph, const char* path,
+      bool return_printed_graph = false);
 
   // Returns a stream's capture status.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g37823c49206e3704ae23c7ad78560bca
