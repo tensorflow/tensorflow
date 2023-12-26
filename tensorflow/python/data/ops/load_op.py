@@ -16,7 +16,7 @@
 import multiprocessing
 import os
 import time
-from typing import Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from google.protobuf import message
 from google.protobuf import text_format
@@ -37,7 +37,12 @@ from tensorflow.python.saved_model import nested_structure_coder
 _LOAD_TIMEOUT_SECONDS = 1800
 
 
-def _load(path, element_spec, compression, reader_func):
+def _load(  # pylint: disable=unused-private-name
+    path: str,
+    element_spec: Any,
+    compression: Optional[str],
+    reader_func: Optional[Callable[[dataset_ops.Dataset], dataset_ops.Dataset]]
+) -> dataset_ops.Dataset:
   """Loads dataset from tf.data snapshot."""
 
   if reader_func is None:
@@ -61,8 +66,13 @@ def _load(path, element_spec, compression, reader_func):
   return _LoadDataset(path, element_spec, compression, reader_func)
 
 
-def _load_with_retry(
-    path, element_spec=None, compression=None, reader_func=None):
+def _load_with_retry(  # pylint: disable=unused-private-name
+    path: str,
+    element_spec: Any = None,
+    compression: Optional[str] = None,
+    reader_func: Optional[
+        Callable[[dataset_ops.Dataset], dataset_ops.Dataset]] = None,
+) -> dataset_ops.Dataset:
   """Tries loading the snapshot. Retries if not found with a timeout."""
 
   deadline = time.time() + _LOAD_TIMEOUT_SECONDS
@@ -122,7 +132,12 @@ def _load_distributed_snapshot(
 class _LoadDataset(dataset_ops.DatasetSource):
   """A dataset that loads previously saved dataset."""
 
-  def __init__(self, path, element_spec, compression, reader_func):
+  def __init__(
+      self,
+      path: str,
+      element_spec: Any,
+      compression: str,
+      reader_func: Callable[[dataset_ops.Dataset], dataset_ops.Dataset]):
     self._path = path
     self._element_spec = element_spec
     self._compression = compression
@@ -142,14 +157,14 @@ class _LoadDataset(dataset_ops.DatasetSource):
     super().__init__(variant_tensor)
 
   @property
-  def element_spec(self):
+  def element_spec(self) -> Any:
     return self._element_spec
 
 
 class _SnapshotChunkDataset(dataset_ops.DatasetSource):
   """A dataset for one chunk file from a tf.data distributed snapshot."""
 
-  def __init__(self, chunk_file, element_spec, compression):
+  def __init__(self, chunk_file: str, element_spec: Any, compression: str):
     self._chunk_file = chunk_file
     self._element_spec = element_spec
     variant_tensor = ged_ops.snapshot_chunk_dataset(
@@ -159,7 +174,7 @@ class _SnapshotChunkDataset(dataset_ops.DatasetSource):
     super().__init__(variant_tensor)
 
   @property
-  def element_spec(self):
+  def element_spec(self) -> Any:
     return self._element_spec
 
 
@@ -181,7 +196,11 @@ class _ListSnapshotChunksDataset(dataset_ops.DatasetSource):
     return tensor_spec.TensorSpec([], dtypes.string)
 
 
-def _validate_snapshot(path, metadata, element_spec, compression):
+def _validate_snapshot(
+    path: str,
+    metadata: snapshot_pb2.DistributedSnapshotMetadata,
+    element_spec: Any,
+    compression: str) -> None:
   """Validates a tf.data distributed snapshot.
 
   Args:
@@ -215,7 +234,7 @@ def _validate_snapshot(path, metadata, element_spec, compression):
         f"{metadata.compression}.")
 
 
-def _parse_element_spec(encoded_element_spec):
+def _parse_element_spec(encoded_element_spec: Union[bytes, str]) -> Any:
   struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
   struct_pb.ParseFromString(encoded_element_spec)
   return nested_structure_coder.decode_proto(struct_pb)
