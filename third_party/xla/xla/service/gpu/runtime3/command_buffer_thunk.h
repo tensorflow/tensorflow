@@ -85,6 +85,9 @@ class CommandBufferThunk : public Thunk {
     // and block sizes) captured by commands at construction time and do not
     // change.
     std::vector<se::DeviceMemoryBase> recorded_allocs ABSL_GUARDED_BY(mutex);
+
+    // Number of command buffer executions since last update.
+    int64_t num_executions ABSL_GUARDED_BY(mutex) = 0;
   };
 
   // Command buffer thunk owns commands buffers instantiated on all executors.

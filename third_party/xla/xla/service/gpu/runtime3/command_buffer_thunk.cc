@@ -112,10 +112,10 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
       executor, params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations)};
 
-  VLOG(3) << "Execute CommmandBuffer on executor " << executor;
-
   if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
-    VLOG(3) << "Update command buffer by recoding command buffer cmd sequence";
+    VLOG(3) << "Update command buffer by recoding command buffer cmd sequence"
+            << " after " << cmd_buffer->num_executions
+            << " executions since last update";
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     TF_RETURN_IF_ERROR(
@@ -124,8 +124,11 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Updated command buffer in " << (end_micros - start_micros)
             << " μs";
+    cmd_buffer->num_executions = 0;
   }
 
+  VLOG(3) << "Execute command buffer on executor " << executor
+          << "; num_executions=" << ++cmd_buffer->num_executions;
   return executor->Submit(params.stream, cmd_buffer->command_buffer);
 }
 
