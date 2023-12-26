@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -163,13 +164,33 @@ class CommandBufferCmdSequence {
   size_t size() const { return commands_.size(); }
 
  private:
-  std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
+  struct Command {
+    Command(std::unique_ptr<CommandBufferCmd> cmd, bool requires_barrier)
+        : cmd(std::move(cmd)), requires_barrier(requires_barrier) {}
+
+    std::unique_ptr<CommandBufferCmd> cmd;
+    bool requires_barrier;
+  };
+
+  // Functions for tracking buffer usage of recorded commands and figuring out
+  // when the next command requires a barrier for correctness.
+  bool HasConflicts(const CommandBufferCmd::BufferUsageVector& buffers);
+  void TrackBuffers(const CommandBufferCmd::BufferUsageVector& buffers);
+  void ClearTrackedBuffers();
+
+  std::vector<Command> commands_;
 
   // Buffers referenced by commands in this sequence.
   absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers_;
 
   // Buffer allocations indices referenced by commands in this sequence.
   absl::flat_hash_set<BufferAllocation::Index> allocs_indices_;
+
+  // We track read and write sets of commands recorded into the command
+  // sequence to detect conflicts and insert explicit barriers. These are the
+  // buffer allocation slices used by commands appended since the last barrier.
+  absl::flat_hash_set<BufferAllocation::Slice> read_set_;
+  absl::flat_hash_set<BufferAllocation::Slice> write_set_;
 };
 
 //===----------------------------------------------------------------------===//
