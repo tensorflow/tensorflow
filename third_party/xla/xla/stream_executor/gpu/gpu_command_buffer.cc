@@ -227,13 +227,6 @@ tsl::Status GpuCommandBuffer::CheckNotFinalized() {
   return tsl::OkStatus();
 }
 
-tsl::Status GpuCommandBuffer::CheckPrimary() {
-  if (mode_ != Mode::kPrimary)
-    return absl::InternalError(
-        "Command can't be added to a non-primary command buffer");
-  return tsl::OkStatus();
-}
-
 tsl::Status GpuCommandBuffer::CheckNumCommandBuffers(
     const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers) {
   if (cmd_buffers.handles.size() != num_cmd_buffers) {
@@ -353,7 +346,6 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
 tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
     const CommandBuffer& nested) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
-  TF_RETURN_IF_ERROR(CheckPrimary());
 
   GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
 
