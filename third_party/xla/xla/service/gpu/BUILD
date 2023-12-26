@@ -175,11 +175,9 @@ xla_cc_test(
     ]),
 )
 
-# TODO(ddunleavy): why does this sometimes get built on CPU Kokoro despite
-# `{build,test}_tag_filters?
 xla_cc_test(
     name = "gpu_copy_insertion_test",
-    srcs = if_gpu_is_configured(["gpu_copy_insertion_test.cc"]),
+    srcs = ["gpu_copy_insertion_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
         ":buffer_sharing",
@@ -5274,7 +5272,7 @@ xla_cc_test(
 
 xla_cc_test(
     name = "determinism_test",
-    srcs = if_gpu_is_configured(["determinism_test.cc"]),
+    srcs = ["determinism_test.cc"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
