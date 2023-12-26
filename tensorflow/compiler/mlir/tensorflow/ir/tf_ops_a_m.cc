@@ -1093,24 +1093,6 @@ OpFoldResult CastOp::fold(FoldAdaptor) {
 }
 
 //===----------------------------------------------------------------------===//
-// CheckNumericsOp
-//===----------------------------------------------------------------------===//
-
-void CheckNumericsOp::getEffects(
-    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
-        effects) {
-  effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::CheckNumerics::get());
-  MarkResourceAsReadOnly(getTensor(), effects);
-}
-
-// For `CheckNumerics` ops the `device` attribute corresponds to the resource
-// instance.
-std::optional<std::string> CheckNumericsOp::GetResourceInstanceStr() {
-  return GetDeviceAttrAsResourceInstanceStr(*this);
-}
-
-//===----------------------------------------------------------------------===//
 // CollectiveReduceV2Op
 //===----------------------------------------------------------------------===//
 
