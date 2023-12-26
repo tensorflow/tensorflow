@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/kernels/cutlass_gemm_adaptor.cu.h"
 
+// CUTLASS headers must be included after adaptor
 #include "cutlass/epilogue/collective/collective_builder.hpp"
 #include "cutlass/gemm/collective/collective_builder.hpp"
 #include "cutlass/gemm/device/gemm_universal_adapter.h"
 
-namespace xla::gpu::kernel::gemm_universal {
+// Custom epilogue must be included after CUTLASS headers
+#include "xla/service/gpu/kernels/cutlass_gemm_epilogue.cu.h"
 
-using cute::sizeof_bits_v;  // TODO(ezhulenev): remove after CUTLASS fix
+namespace xla::gpu::kernel::gemm_universal {
 
 using EpilogueLoop = typename cutlass::epilogue::collective::CollectiveBuilder<
     cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp,
@@ -29,8 +31,9 @@ using EpilogueLoop = typename cutlass::epilogue::collective::CollectiveBuilder<
     cute::Shape<cute::_1, cute::_2, cute::_1>,
     cutlass::epilogue::collective::EpilogueTileAuto, float, float,
     cutlass::bfloat16_t, cutlass::layout::RowMajor, 8, cutlass::bfloat16_t,
-    cutlass::layout::RowMajor, 8,
-    cutlass::epilogue::NoSmemWarpSpecialized>::CollectiveOp;
+    cutlass::layout::RowMajor, 8, cutlass::epilogue::NoSmemWarpSpecialized,
+    LinearCombinationWithDynamicSlice<cutlass::bfloat16_t, float,
+                                      /*dynamic_offset=*/1>>::CollectiveOp;
 
 using MainLoop = typename cutlass::gemm::collective::CollectiveBuilder<
     cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp, cutlass::bfloat16_t,

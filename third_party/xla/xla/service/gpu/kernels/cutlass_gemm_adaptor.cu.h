@@ -257,7 +257,10 @@ static typename Traits<Tag>::Arguments OpArguments(const Arguments &args) {
       reinterpret_cast<typename Operation::ElementC *>(args.out),
       stride_c,
       reinterpret_cast<typename Operation::ElementC *>(args.out),
-      stride_d};
+      stride_d,
+      {{args.slices.out}, {args.m * args.n}},  // dynamic offsets for C
+      {{args.slices.out}, {args.m * args.n}},  // dynamic offsets for D
+  };
 
   return typename Operation::Arguments{mode, problem_shape, mainloop_args,
                                        epilogue_args, hw_info};
@@ -397,7 +400,8 @@ __global__ void Kernel2EntryPoint(typename Kernel::Params params,
 //===----------------------------------------------------------------------===//
 
 template <typename Kernel>
-__global__ void Kernel3EntryPoint(typename Kernel::Params params) {
+__global__ void Kernel3EntryPoint(
+    CUTLASS_GRID_CONSTANT const typename Kernel::Params params) {
   extern __shared__ char shared_memory[];
 
   Kernel kernel;
