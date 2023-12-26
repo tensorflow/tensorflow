@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -832,7 +833,20 @@ tsl::Status GpuCommandBuffer::Finalize() {
     GpuDriver::GraphInstantiateFlags flags;
 
     uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-    TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
+
+    // If we get a "resource exhausted error" we retry instantiating Gpu graph
+    // one more time after releasing unused device memory allocated for graphs.
+    auto instantiated = GpuDriver::GraphInstantiate(&exec_, graph_, flags);
+    if (instantiated.code() == absl::StatusCode::kResourceExhausted) {
+      LOG(WARNING) << "Retry CUDA graph instantiation after OOM error"
+                   << "; nodes=" << nodes_.size()
+                   << "; conditionals=" << conditional_command_buffers_.size()
+                   << "; alive executable graphs: " << AliveExecs();
+
+      TF_RETURN_IF_ERROR(GpuDriver::DeviceGraphMemTrim(parent_->device()));
+      TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
+    }
+
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
     VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated() << " "
