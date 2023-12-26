@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/strings/ascii.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -73,7 +74,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
   auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(commands.Record({executor, &allocations}, &command_buffer));
+  TF_ASSERT_OK(
+      commands.Record({executor, &stream, &allocations}, &command_buffer));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(executor->Submit(&stream, command_buffer));
@@ -133,7 +135,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
   auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(commands.Record({executor, &allocations}, &command_buffer));
+  TF_ASSERT_OK(
+      commands.Record({executor, &stream, &allocations}, &command_buffer));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(executor->Submit(&stream, command_buffer));

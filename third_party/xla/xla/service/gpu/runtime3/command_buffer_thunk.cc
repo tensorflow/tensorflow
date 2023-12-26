@@ -109,7 +109,8 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::MutexLock lock(&cmd_buffer->mutex);
 
   CommandBufferCmd::RecordParams record_params = {
-      executor, const_cast<BufferAllocations*>(params.buffer_allocations)};
+      executor, params.command_buffer_trace_stream,
+      const_cast<BufferAllocations*>(params.buffer_allocations)};
 
   VLOG(3) << "Execute CommmandBuffer on executor " << executor;
 

@@ -669,10 +669,11 @@ Status GemmCmd::Record(const RecordParams& params,
 
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,
-      se::CommandBuffer::Trace(params.executor, [&](se::Stream* stream) {
-        return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
-                       stream);
-      }));
+      se::CommandBuffer::Trace(
+          params.executor, params.trace_stream, [&](se::Stream* stream) {
+            return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
+                           stream);
+          }));
 
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
 }
@@ -680,7 +681,8 @@ Status GemmCmd::Record(const RecordParams& params,
 CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
   return {{lhs_buffer_, MemoryAccess::kRead},
           {rhs_buffer_, MemoryAccess::kRead},
-          {output_buffer_, MemoryAccess::kWrite}};
+          {output_buffer_, MemoryAccess::kWrite},
+          {workspace_, MemoryAccess::kWrite}};
 }
 
 }  // namespace xla::gpu

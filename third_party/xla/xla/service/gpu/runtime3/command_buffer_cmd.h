@@ -85,6 +85,7 @@ class CommandBufferCmd {
   // the target address as se::DeviceMemoryBase{nullptr, size}.
   struct RecordParams {
     se::StreamExecutor* executor;
+    se::Stream* trace_stream;
     const BufferAllocations* buffer_allocations;
   };
 

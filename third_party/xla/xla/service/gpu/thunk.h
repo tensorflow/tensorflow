@@ -165,12 +165,21 @@ class Thunk {
   struct ExecuteParams {
     ExecuteParams(const ServiceExecutableRunOptions& run_options,
                   const BufferAllocations& buffer_allocations,
-                  se::Stream* stream,
+                  se::Stream* stream, se::Stream* command_buffer_trace_stream,
                   absl::Span<se::Stream* const> async_streams);
 
     const BufferAllocations* buffer_allocations;  // never null
+
+    // Main compute stream on which thunks launch operations.
     se::Stream* stream;
+
+    // Auxiliary stream for tracing command buffers. We use a separate stream to
+    // avoid accidental tracing of unrelated activities on a main stream.
+    se::Stream* command_buffer_trace_stream;
+
+    // Streams for asynchronous collective communications.
     absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams;
+
     NcclExecuteParams nccl_params;
 
     // Streams for moving data between host and device.

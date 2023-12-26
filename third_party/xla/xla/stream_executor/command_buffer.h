@@ -105,6 +105,13 @@ class CommandBuffer {
       absl::AnyInvocable<tsl::Status(Stream*)> function,
       Mode mode = Mode::kNested);
 
+  // Creates a new command buffer on the given executor by tracing `function`
+  // invocation using a user provided stream that will be passed to `function`.
+  static tsl::StatusOr<CommandBuffer> Trace(
+      StreamExecutor* executor, Stream* stream,
+      absl::AnyInvocable<tsl::Status(Stream*)> function,
+      Mode mode = Mode::kNested);
+
   //===--------------------------------------------------------------------===//
   // Command buffer properties
   //===--------------------------------------------------------------------===//
