@@ -59,7 +59,8 @@ bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
-         op == HloOpcode::kBroadcast || hlo.IsEffectiveBitcast();
+         op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
+         hlo.IsEffectiveBitcast();
 }
 }  // namespace
 
