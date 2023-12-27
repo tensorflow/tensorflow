@@ -473,6 +473,7 @@ cc_library(
         ":triton_tiling_propagation",
         "//xla:autotuning_proto_cc",
         "//xla:comparison_util",
+        "//xla:debug_options_flags",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
@@ -521,6 +522,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
@@ -528,6 +530,7 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@triton//:TritonDialects",
+        "@triton//:TritonTmaMetadata",
         "@triton//:TritonTransforms",
     ] + if_cuda_is_configured([
         "@triton//:NVGPUToLLVM",

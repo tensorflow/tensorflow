@@ -90,6 +90,9 @@ limitations under the License.
 // VLOG(4): Print all fusions
 // VLOG(5): Profiling information for every tiling
 
+// TODO(b/317016172): Update usages of TritonGemmConfig to use newly exposed
+// parameters.
+
 namespace xla {
 namespace gpu {
 

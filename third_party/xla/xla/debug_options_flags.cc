@@ -208,6 +208,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cub_radix_sort(true);
   opts.set_xla_gpu_enable_cudnn_layer_norm(false);
   opts.set_xla_gpu_threshold_for_windowed_einsum_mib(100000);
+
+  opts.set_xla_gpu_enable_triton_hopper(false);
+
   return opts;
 }
 
@@ -1415,6 +1418,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_threshold_for_windowed_einsum_mib(),
       "Threshold to enable windowed einsum (collective matmul) in MB."
       "Default is 100000"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_triton_hopper",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_hopper),
+      debug_options->xla_gpu_enable_triton_hopper(),
+      "Enable Hopper-specific optimizations such as MMA_V3 and pipelining."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
