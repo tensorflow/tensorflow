@@ -199,7 +199,7 @@ class UnreachableThunk : public Thunk {
   UnreachableThunk(const UnreachableThunk&) = delete;
   UnreachableThunk& operator=(const UnreachableThunk&) = delete;
 
-  Status Initialize(se::StreamExecutor*, ExecutableSource) final {
+  Status Initialize(const InitializeParams& params) final {
     return tsl::errors::Internal(error_message_);
   }
 

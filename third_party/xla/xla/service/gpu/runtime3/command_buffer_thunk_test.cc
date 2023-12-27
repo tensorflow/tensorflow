@@ -403,7 +403,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = ExecutableSource();
-  TF_ASSERT_OK(thunk.Initialize(executor, source));
+  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -496,7 +496,7 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = ExecutableSource();
-  TF_ASSERT_OK(thunk.Initialize(executor, source));
+  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -607,7 +607,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(thunk.Initialize(executor, source));
+  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -704,7 +704,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = ExecutableSource();
-  TF_ASSERT_OK(thunk.Initialize(executor, source));
+  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -816,7 +816,7 @@ TEST(CommandBufferThunkTest, IfCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = ExecutableSource();
-  TF_ASSERT_OK(thunk.Initialize(executor, source));
+  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -912,7 +912,7 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = ExecutableSource();
-  TF_ASSERT_OK(thunk.Initialize(executor, source));
+  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -998,7 +998,7 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = ExecutableSource();
-  TF_ASSERT_OK(thunk.Initialize(executor, source));
+  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -1074,7 +1074,7 @@ TEST(CommandBufferThunkTest, ForCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = ExecutableSource();
-  TF_ASSERT_OK(thunk.Initialize(executor, source));
+  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value 10 times.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));

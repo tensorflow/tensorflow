@@ -200,6 +200,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":sequential_thunk",
+        "//xla:status",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:buffer_allocations",
@@ -298,6 +299,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":sequential_thunk",
+        "//xla:status",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:buffer_allocations",
@@ -348,6 +350,7 @@ cc_library(
     ]),
     visibility = ["//visibility:public"],
     deps = [
+        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:thunk",
@@ -412,6 +415,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":sequential_thunk",
+        "//xla:status",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:thunk",

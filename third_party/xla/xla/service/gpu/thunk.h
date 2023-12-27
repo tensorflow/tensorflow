@@ -25,13 +25,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/status.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -44,7 +47,9 @@ enum AsyncStreamKind {
   kAsyncStreamCollective = 0,  // Stream for asynchronous collective ops.
   kAsyncStreamP2P = 1,         // Stream for P2P Send and Recv ops.
 };
+
 constexpr static int64_t kAsyncStreamTotal = kAsyncStreamP2P + 1;
+
 // Assigns a unique ID to a stream for asynchronous or synchronous execution.
 // These IDs can be used, for example, to look up the NCCL communicator.
 inline uint64_t GetStreamId(
@@ -132,36 +137,23 @@ class Thunk {
     mlir::Operation* op;
   };
 
-  // The hlo_instruction argument is meant to be the instruction this thunk was
-  // generated from, but Thunk never uses this argument other than to save it
-  // to Thunk::hlo_instruction, so it can be null.
-  Thunk(Kind kind, ThunkInfo thunk_info)
-      : kind_(kind),
-        profile_annotation_(thunk_info.profile_annotation),
-        op_(thunk_info.op) {}
-  virtual ~Thunk() = default;
-  Thunk(const Thunk&) = delete;
-  Thunk& operator=(const Thunk&) = delete;
+  // Parameters passed to Initialize. At thunk initialization time we do not
+  // launch any "work" on device and only prepare thunks for execution, i.e.
+  // we pre-load kernels on device and instantiate all command buffers.
+  struct InitializeParams {
+    se::StreamExecutor* executor;
+    ExecutableSource src;
 
-  virtual std::string ToStringExtra(int indent) const { return ""; }
-  Kind kind() const { return kind_; }
-  std::string profile_annotation() const { return profile_annotation_; }
-  // Only valid during compilation, i.e., lowering thunks to kernel-launch
-  // related XLA runtime custom calls). nullptr at runtime. MLIR codegen will
-  // cease the practice of lowering thunks to XLA runtime custom calls.
-  mlir::Operation* op() { return op_; }
+    const BufferAllocations* buffer_allocations;
 
-  // Prepares the thunk for execution on the given StreamExecutor.
-  //
-  // This may be called multiple times.  Its main purpose is to give us a chance
-  // to do initialization outside of ExecuteOnStream() so that the
-  // time spent initializing doesn't count towards our execution profile.
-  virtual Status Initialize(se::StreamExecutor*, ExecutableSource) {
-    return OkStatus();
-  }
+    // Auxiliary stream for tracing command buffers. We use a separate stream to
+    // avoid accidental tracing of unrelated activities on a main stream.
+    se::Stream* command_buffer_trace_stream;
+  };
 
-  // Parameters passed to ExecuteOnStream.  Encapsulated in a struct so that
-  // when we add something we don't have to change every subclass of Thunk.
+  // Parameters passed to ExecuteOnStream. ExecuteOnStream is responsible for
+  // launching "work" on device, i.e. it launches kernels, executes command
+  // buffers and calls into libraries (cuBLAS, cuDNN etc.).
   struct ExecuteParams {
     ExecuteParams(const ServiceExecutableRunOptions& run_options,
                   const BufferAllocations& buffer_allocations,
@@ -190,6 +182,35 @@ class Thunk {
     SendDeviceMemoryFunction* send_device_memory_function;
     RecvDeviceMemoryFunction* recv_device_memory_function;
   };
+
+  // The hlo_instruction argument is meant to be the instruction this thunk was
+  // generated from, but Thunk never uses this argument other than to save it
+  // to Thunk::hlo_instruction, so it can be null.
+  Thunk(Kind kind, ThunkInfo thunk_info)
+      : kind_(kind),
+        profile_annotation_(thunk_info.profile_annotation),
+        op_(thunk_info.op) {}
+  virtual ~Thunk() = default;
+  Thunk(const Thunk&) = delete;
+  Thunk& operator=(const Thunk&) = delete;
+
+  virtual std::string ToStringExtra(int indent) const { return ""; }
+  Kind kind() const { return kind_; }
+  std::string profile_annotation() const { return profile_annotation_; }
+
+  // Only valid during compilation, i.e., lowering thunks to kernel-launch
+  // related XLA runtime custom calls). nullptr at runtime. MLIR codegen will
+  // cease the practice of lowering thunks to XLA runtime custom calls.
+  mlir::Operation* op() { return op_; }
+
+  // Prepares the thunk for execution on the given StreamExecutor.
+  //
+  // This may be called multiple times.  Its main purpose is to give us a chance
+  // to do initialization outside of ExecuteOnStream() so that the
+  // time spent initializing doesn't count towards our execution profile.
+  virtual Status Initialize(const InitializeParams& params) {
+    return OkStatus();
+  }
 
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's

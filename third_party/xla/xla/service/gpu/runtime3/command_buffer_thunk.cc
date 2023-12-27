@@ -71,9 +71,8 @@ CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
   TrackCommandBuffers(state_);
 }
 
-Status CommandBufferThunk::Initialize(se::StreamExecutor* executor,
-                                      ExecutableSource executable_source) {
-  return commands_.Initialize(executor, executable_source);
+Status CommandBufferThunk::Initialize(const InitializeParams& params) {
+  return commands_.Initialize(params.executor, params.src);
 }
 
 bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/status.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -35,10 +36,9 @@ WhileThunk::WhileThunk(
       body_thunk_sequence_(std::make_unique<SequentialThunk>(
           ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
 
-Status WhileThunk::Initialize(se::StreamExecutor* executor,
-                              ExecutableSource src) {
-  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(executor, src));
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executor, src));
+Status WhileThunk::Initialize(const InitializeParams& params) {
+  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(params));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
   return OkStatus();
 }
 

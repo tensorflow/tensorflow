@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME3_CONDITIONAL_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME3_CONDITIONAL_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -24,6 +25,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/status.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -53,8 +55,7 @@ class ConditionalThunk : public Thunk {
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
+  Status Initialize(const InitializeParams& params) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
   absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() {

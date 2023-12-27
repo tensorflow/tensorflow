@@ -63,7 +63,9 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -204,6 +206,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
 
 Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
                      const ThunkSequence& thunk_sequence,
+                     Thunk::ExecutableSource executable_source,
                      const ServiceExecutableRunOptions* run_options,
                      const BufferAllocations& buffer_allocations,
                      bool block_host_until_done,
@@ -235,15 +238,24 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
     command_buffer_trace_stream = borrowed_command_buffer_trace_stream->get();
   }
 
-  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  Thunk::ExecuteParams thunk_params{*run_options, buffer_allocations,
-                                    main_stream, command_buffer_trace_stream,
-                                    async_comms_streams};
+  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+
+  // Initialize thunks to prepare them for execution.
+  Thunk::InitializeParams initialize_params{executor, executable_source,
+                                            &buffer_allocations,
+                                            command_buffer_trace_stream};
+
+  for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
+    TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
+  }
+
+  Thunk::ExecuteParams execute_params{*run_options, buffer_allocations,
+                                      main_stream, command_buffer_trace_stream,
+                                      async_comms_streams};
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -258,7 +270,7 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
       }
     }
 
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
+    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(execute_params));
   }
   return MaybeSyncAndProfile(run_options, start_nanos,
                              block_host_until_done ? main_stream : nullptr);
@@ -794,15 +806,11 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
   ModuleAnnotationManager set_current_kernel_annotations{annotation_info_};
 
   if (thunks_) {
-    se::StreamExecutor* executor = run_options->stream()->parent();
     Thunk::ExecutableSource executable_source = {text_, binary_};
-    for (const std::unique_ptr<Thunk>& thunk : *thunks_) {
-      TF_RETURN_IF_ERROR(thunk->Initialize(executor, executable_source));
-    }
 
     return ExecuteThunks(
-        module_name_, unique_id, *thunks_, run_options, buffer_allocations,
-        block_host_until_done,
+        module_name_, unique_id, *thunks_, executable_source, run_options,
+        buffer_allocations, block_host_until_done,
         /*use_highest_priority_for_async_stream*/
         has_module() ? module_config()
                            .debug_options()

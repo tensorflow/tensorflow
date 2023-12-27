@@ -39,7 +39,7 @@ class CommandBufferThunk : public Thunk {
   explicit CommandBufferThunk(CommandBufferCmdSequence commands,
                               ThunkInfo thunk_info);
 
-  Status Initialize(se::StreamExecutor*, ExecutableSource) override;
+  Status Initialize(const InitializeParams& params) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
   // Return the allocation address that was lazilly allocated inside command

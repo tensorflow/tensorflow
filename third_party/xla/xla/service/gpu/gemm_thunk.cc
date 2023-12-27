@@ -55,9 +55,8 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
                  deterministic_, params.stream);
 }
 
-Status GemmThunk::Initialize(se::StreamExecutor* executor,
-                             ExecutableSource src) {
-  if (!executor->AsBlas()) {
+Status GemmThunk::Initialize(const InitializeParams& params) {
+  if (!params.executor->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support");
   }
   return OkStatus();
