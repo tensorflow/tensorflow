@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/platform_util.h"
+#include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/multi_platform_manager.h"
@@ -34,6 +35,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
+using BufferUsage = CommandBufferCmd::BufferUsage;
+using BufferUsageVector = CommandBufferCmd::BufferUsageVector;
 using MemoryAccess = CommandBufferCmd::MemoryAccess;
 
 static se::StreamExecutor* GpuExecutor() {
@@ -41,6 +44,83 @@ static se::StreamExecutor* GpuExecutor() {
       absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
   auto* platform = se::MultiPlatformManager::PlatformWithName(name).value();
   return platform->ExecutorForDevice(0).value();
+}
+
+// A command buffer cmd for testing automatic barriers insertion by the command
+// buffer cmd sequence. We never execute this command, we need it only to pass
+// buffer usage vector to the command buffer cmd sequence.
+struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
+  explicit TestOnlyCommandBufferCmd(BufferUsageVector buffer_usage)
+      : buffer_usage(buffer_usage) {}
+
+  Status Record(const RecordParams&, se::CommandBuffer*) override {
+    return OkStatus();
+  }
+
+  BufferUsageVector buffers() override { return buffer_usage; }
+
+  BufferUsageVector buffer_usage;
+};
+
+TEST(CommandBufferCmdTest, NoReadBarrier) {
+  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
+
+  auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
+  auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
+
+  // Reads from overlapping slices do not require barriers.
+  auto use0 = BufferUsage(slice0, MemoryAccess::kRead);
+  auto use1 = BufferUsage(slice1, MemoryAccess::kRead);
+
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use1});
+
+  ASSERT_EQ(commands.barriers().size(), 2);
+  EXPECT_EQ(commands.barriers().at(0), false);
+  EXPECT_EQ(commands.barriers().at(1), false);
+}
+
+TEST(CommandBufferCmdTest, NoWriteBarrier) {
+  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
+
+  // Writes to non-overlapping slices do not require barriers.
+  auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
+  auto slice1 = BufferAllocation::Slice(&alloc0, 200, 100);
+
+  auto use0 = BufferUsage(slice0, MemoryAccess::kWrite);
+  auto use1 = BufferUsage(slice1, MemoryAccess::kWrite);
+
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use1});
+
+  ASSERT_EQ(commands.barriers().size(), 2);
+  EXPECT_EQ(commands.barriers().at(0), false);
+  EXPECT_EQ(commands.barriers().at(1), false);
+}
+
+TEST(CommandBufferCmdTest, WriteConflictBarrier) {
+  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
+
+  auto slice0 = BufferAllocation::Slice(&alloc0, 0, 100);
+  auto slice1 = BufferAllocation::Slice(&alloc0, 50, 100);
+
+  // Reads from overlapping slices can be done in parallel, and before a write
+  // into overlapping slice we need to insert a barrier.
+  auto use0 = BufferUsage(slice0, MemoryAccess::kRead);
+  auto use1 = BufferUsage(slice0, MemoryAccess::kRead);
+  auto use2 = BufferUsage(slice1, MemoryAccess::kWrite);
+
+  CommandBufferCmdSequence commands;
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use0});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use1});
+  commands.Emplace<TestOnlyCommandBufferCmd>(BufferUsageVector{use2});
+
+  ASSERT_EQ(commands.barriers().size(), 3);
+  EXPECT_EQ(commands.barriers().at(0), false);
+  EXPECT_EQ(commands.barriers().at(1), false);
+  EXPECT_EQ(commands.barriers().at(2), true);
 }
 
 TEST(CommandBufferCmdTest, MemcpyCmd) {

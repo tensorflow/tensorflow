@@ -18,6 +18,7 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -203,6 +204,13 @@ CommandBufferCmdSequence::buffers() const {
 const absl::flat_hash_set<BufferAllocation::Index>&
 CommandBufferCmdSequence::allocs_indices() const {
   return allocs_indices_;
+}
+
+std::vector<bool> CommandBufferCmdSequence::barriers() const {
+  std::vector<bool> barriers;
+  absl::c_transform(commands_, std::back_inserter(barriers),
+                    [](auto& command) { return command.requires_barrier; });
+  return barriers;
 }
 
 //===----------------------------------------------------------------------===//

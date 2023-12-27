@@ -160,6 +160,10 @@ class CommandBufferCmdSequence {
   // Returns buffer allocations indices referenced by commands in this sequence.
   const absl::flat_hash_set<BufferAllocation::Index>& allocs_indices() const;
 
+  // Returns a vector that tells if command at the given index requires a
+  // barrier.
+  std::vector<bool> barriers() const;
+
   bool empty() const { return commands_.empty(); }
   size_t size() const { return commands_.size(); }
 
