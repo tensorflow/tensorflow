@@ -71,10 +71,6 @@ CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
   TrackCommandBuffers(state_);
 }
 
-Status CommandBufferThunk::Initialize(const InitializeParams& params) {
-  return commands_.Initialize(params.executor, params.src);
-}
-
 bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
     const CommandBufferCmdSequence& commands,
     const CommandBufferCmd::RecordParams& params) {
@@ -100,6 +96,40 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
   return should_update;
 }
 
+Status CommandBufferThunk::Initialize(const InitializeParams& params) {
+  TF_RETURN_IF_ERROR(commands_.Initialize(params.executor, params.src));
+
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
+                      GetOrCreateCommandBuffer(params.executor));
+
+  absl::MutexLock lock(&cmd_buffer->mutex);
+
+  CommandBufferCmd::RecordParams record_params = {
+      params.executor, params.command_buffer_trace_stream,
+      const_cast<BufferAllocations*>(params.buffer_allocations)};
+
+  // If command buffer is in `kCreate` state it means that command buffer
+  // sequence was never recorded into it. We initialize all command buffers
+  // before execution, because command buffers when instantiated will allocate
+  // memory on device and this might lead to deadlocks when we have concurrent
+  // NCCL operations in flight.
+  if (cmd_buffer->command_buffer.state() == se::CommandBuffer::State::kCreate &&
+      cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
+    VLOG(3) << "Initialize command buffer by recoding command buffer "
+            << "cmd sequence; num_commands=" << commands_.size();
+    uint64_t start_micros = tsl::Env::Default()->NowMicros();
+
+    TF_RETURN_IF_ERROR(
+        commands_.Record(record_params, &cmd_buffer->command_buffer));
+
+    uint64_t end_micros = tsl::Env::Default()->NowMicros();
+    VLOG(3) << "Initialized command buffer in " << (end_micros - start_micros)
+            << " μs; num_commands=" << commands_.size();
+  }
+
+  return OkStatus();
+}
+
 Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
@@ -114,7 +144,8 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
     VLOG(3) << "Update command buffer by recoding command buffer cmd sequence"
             << " after " << cmd_buffer->num_executions
-            << " executions since last update";
+            << " executions since last update"
+            << "; num_commands=" << commands_.size();
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
     TF_RETURN_IF_ERROR(
@@ -122,7 +153,7 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
     VLOG(3) << "Updated command buffer in " << (end_micros - start_micros)
-            << " μs";
+            << " μs; num_commands=" << commands_.size();
     cmd_buffer->num_executions = 0;
   }
 
