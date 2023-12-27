@@ -105,18 +105,15 @@ tflite::PointerAlignedPointerPair AlignedRealloc(
 tflite::PointerAlignedPointerPair AlignedAlloc(size_t size, size_t alignment) {
 #if TF_LITE_HAS_ALIGNED_ALLOC
   // (std::)aligned_alloc requires size to be multiple of alignment.
-  const size_t allocation_size = AlignTo(alignment, size);
+  // TODO(b/311495100): when bug is fixed, remove `size + alignment - 1` part.
+  const size_t allocation_size = AlignTo(alignment, size + alignment - 1);
   char* pointer =
       reinterpret_cast<char*>(::aligned_alloc(alignment, allocation_size));
   char* aligned_ptr = pointer;
 #else
-  // malloc guarantees returned pointers are aligned to at least max_align_t.
-  // If the required alignment is larger, we need to increase the buffer size.
-  const size_t allocation_size =
-      size + (alignment > alignof(std::max_align_t)
-                  ? alignment - alignof(std::max_align_t)
-                  : size_t{0});
-
+  // TODO(b/311495100): when bug is fixed, change this to
+  // `size + std::max(size_t{0}, alignment - alignof(std::max_align_t))`
+  const size_t allocation_size = size + alignment - 1;
   char* pointer = reinterpret_cast<char*>(std::malloc(allocation_size));
   char* aligned_ptr = reinterpret_cast<char*>(
       AlignTo(alignment, reinterpret_cast<std::uintptr_t>(pointer)));
