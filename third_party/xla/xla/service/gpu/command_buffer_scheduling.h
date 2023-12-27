@@ -89,6 +89,7 @@ class CommandBufferScheduling : public HloModulePass {
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
       HloInstructionSequence inst_sequence, const CommandBufferConfig& config,
+      absl::flat_hash_set<HloComputation*>& processed_command_buffers,
       int32_t min_num_commands = 1);
 
   // Moves kParameter and kConstant instructions in a computation to

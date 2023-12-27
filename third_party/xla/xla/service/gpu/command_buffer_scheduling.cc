@@ -113,8 +113,8 @@ template <>
 bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
                                   const CommandBufferConfig& config) {
   return config.contains(DebugOptions::WHILE) &&
-         IsCommand(hlo->while_condition(), config) &&
-         IsCommand(hlo->while_body(), config);
+         IsCommand(hlo->while_body(), config) &&
+         IsCommand(hlo->while_condition(), config);
 }
 
 static bool IsCommand(const HloCustomCallInstruction* hlo,
@@ -169,10 +169,20 @@ struct Accumulator {
 std::vector<HloInstructionSequence>
 CommandBufferScheduling::CollectCommandBufferSequences(
     const HloInstructionSequence inst_sequence,
-    const CommandBufferConfig& config, int32_t min_num_commands) {
+    const CommandBufferConfig& config,
+    absl::flat_hash_set<HloComputation*>& processed_command_buffers,
+    int32_t min_num_commands) {
   auto start_new_sequence = [&](Accumulator* acc) {
     if (acc->num_commands_in_current_seq >= std::max(1, min_num_commands)) {
       RemoveTrailingNoOps(acc->current_seq);
+      // If there are any computations called by one of the instructions from
+      // the current sequence (which are known to be commands at this point),
+      // they should all be processed already.
+      for (auto inst : acc->current_seq.instructions()) {
+        for (auto comp : inst->called_computations()) {
+          processed_command_buffers.insert(comp);
+        }
+      }
       acc->sequences.push_back(acc->current_seq);
     }
     acc->current_seq = HloInstructionSequence();
@@ -499,22 +509,27 @@ StatusOr<bool> CommandBufferScheduling::Run(
     erase(kRequireConditionals);  // on-device control flow
   }
 
-  // TODO(b/315874495): We should traverse all computations in topological order
-  // to discover command buffers inside nested control flow computations.
-  HloComputation* entry = module->entry_computation();
-  TF_RETURN_IF_ERROR(MoveParametersAndConstantsToFront(entry));
+  auto order = module->MakeComputationPostOrder();
+  std::reverse(order.begin(), order.end());
+  absl::flat_hash_set<HloComputation*> processed_command_buffers;
+  for (HloComputation* comp : order) {
+    if (processed_command_buffers.contains(comp)) continue;
+    TF_RETURN_IF_ERROR(MoveParametersAndConstantsToFront(comp));
+    std::vector<HloInstructionSequence> sequences =
+        CollectCommandBufferSequences(
+            module->schedule().sequence(comp), config,
+            processed_command_buffers,
+            debug_options.xla_gpu_graph_min_graph_size());
 
-  std::vector<HloInstructionSequence> sequences = CollectCommandBufferSequences(
-      module->schedule().sequence(entry), config,
-      debug_options.xla_gpu_graph_min_graph_size());
+    for (const HloInstructionSequence& seq : sequences) {
+      TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
+                          PrepareCommandBuffer(seq));
+      TF_RETURN_IF_ERROR(
+          RewriteCommandBuffer(comp, seq, std::move(command_buffer)));
+    }
 
-  for (const HloInstructionSequence& seq : sequences) {
-    TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
-                        PrepareCommandBuffer(seq));
-    TF_RETURN_IF_ERROR(
-        RewriteCommandBuffer(entry, seq, std::move(command_buffer)));
+    processed_command_buffers.insert(comp);
   }
-
   TF_RETURN_IF_ERROR(module->schedule().Update());
 
   return true;
