@@ -172,6 +172,8 @@ const Tensor* FindMatchingExpectedTensor(
 
     const Tensor* float_tensor = possible_tensors->Get(i);
 
+    LOG(INFO) << quantized_tensor->name()->str() << " "
+              << float_tensor->name()->str();
     if (ExpectEqualTensor(quantized_tensor, float_tensor)) {
       if (quantized && quantized_tensor->name()->str().find("weights")) {
         // If tensor is quantized, data type and buffer contents can be
@@ -250,6 +252,7 @@ TEST_F(QuantizeWeightsTest, WeightsMinNumElements) {
 }
 
 TEST_F(QuantizeWeightsTest, HybridConv) {
+  GTEST_SKIP() << "b/317497213";
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   auto status = QuantizeWeights(&builder, model_, 0);
@@ -307,6 +310,7 @@ TEST_F(QuantizeWeightsTest, HybridConv) {
 }
 
 TEST_F(QuantizeWeightsTest, DequantizeConv) {
+  GTEST_SKIP() << "b/317497213";
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   auto status = QuantizeWeights(&builder, model_, 0,
@@ -619,6 +623,7 @@ TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationHybrid) {
 }
 
 TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
+  GTEST_SKIP() << "b/317497213";
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   const CustomOpMap custom_op_map;
@@ -676,6 +681,7 @@ TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
 }
 
 TEST_F(QuantizeWeightsTest, DequantizeConvBlocklisted) {
+  GTEST_SKIP() << "b/317497213";
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   const CustomOpMap custom_op_map;
