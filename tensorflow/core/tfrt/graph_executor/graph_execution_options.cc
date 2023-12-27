@@ -125,7 +125,7 @@ std::ostream& operator<<(std::ostream& os,
             << options.enable_grappler_function_optimizer
             << ", enable_tfrt_gpu = " << options.enable_tfrt_gpu
             << ", runtime = " << options.runtime
-            << ", model_metadata = " << absl::StrCat(options.model_metadata)
+            << ", model_metadata = " << options.model_metadata.DebugString()
             << ", compile_options = " << options.compile_options << "}";
 }
 
