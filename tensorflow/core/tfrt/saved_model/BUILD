@@ -277,6 +277,7 @@ cc_library(
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:thread_annotations",

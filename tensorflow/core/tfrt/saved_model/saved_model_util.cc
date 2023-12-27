@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -47,8 +49,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/gpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
@@ -116,22 +121,52 @@ std::vector<std::string> FindNamesForValidSignatures(
   return valid_signature_names;
 }
 
+tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
+  return tensorflow::Tensor(tensorflow::tstring(str));
+}
+
+// Create the tensor for the bound input, which can be a variable or an asset.
+//
+// TODO(chky): For V2 models, the bound input can also be a resource.
+StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
+    mlir::Operation* bound_input, absl::string_view saved_model_dir) {
+  // Assets are files in the saved model directory. We pass their filenames to
+  // functions so that they can be used.
+  if (auto asset = llvm::dyn_cast<mlir::tf_saved_model::AssetOp>(bound_input)) {
+    // The filename in the asset is a relative path. So we prefix it with the
+    // directory path.
+    return CreateScalarStringTensor(
+        tsl::io::JoinPath(saved_model_dir, asset.getFilename().str()));
+  }
+
+  return absl::AbortedError(
+      "Failed to create captured tensors: unknown bound input type.");
+}
+
 StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module) {
+    mlir::ModuleOp module, absl::string_view saved_model_dir) {
   InitializersAndSignatures result;
+
+  const bool should_initialize_inputs = !saved_model_dir.empty();
+  // A map for initializer inputs.
+  absl::flat_hash_map<std::string, std::vector<tensorflow::Tensor>>
+      initializer_input_map;
 
   // Create placeholders for initializers.
   for (auto session_initializer_name :
        mlir::tf_saved_model::GetSessionInitializerExportedName(module)) {
     Initializer initializer;
     initializer.name = session_initializer_name.str();
+    if (should_initialize_inputs) initializer_input_map[initializer.name];
     result.initializers.push_back(std::move(initializer));
   }
 
   auto& signatures = result.signature_map;
+  tensorflow::StatusGroup status_group;
   TF_RETURN_IF_ERROR(tensorflow::MapFunctionSignaturesFromTFSavedModelMLIR(
-      module,
-      [&signatures](const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
+      module, [&status_group, &signatures, &initializer_input_map,
+               saved_model_dir, should_initialize_inputs](
+                  const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
         auto signature_name = std::string(sig_info.func_name);
         auto& signature = signatures[signature_name];
 
@@ -155,7 +190,35 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
         for (auto& spec : sig_info.output_specs) {
           signature.output_specs.push_back(TensorSpec(spec.first, spec.second));
         }
+
+        if (should_initialize_inputs) {
+          auto init_iter = initializer_input_map.find(signature_name);
+          if (init_iter == initializer_input_map.end()) return;
+
+          auto& init_inputs = init_iter->second;
+
+          for (auto* bound_input : sig_info.bound_inputs) {
+            auto capture =
+                CreateTensorFromBoundInput(bound_input, saved_model_dir);
+            if (!capture.ok()) {
+              status_group.Update(capture.status());
+              // Insert a random tensor in case of errors.
+              init_inputs.push_back(tensorflow::Tensor());
+            } else {
+              init_inputs.push_back(*std::move(capture));
+            }
+          }
+        }
       }));
+
+  if (!status_group.ok()) return status_group.as_concatenated_status();
+
+  if (should_initialize_inputs) {
+    for (auto& initializer : result.initializers) {
+      initializer.inputs =
+          std::move(initializer_input_map.at(initializer.name));
+    }
+  }
 
   return result;
 }
