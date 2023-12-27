@@ -724,6 +724,10 @@ Status CreateTritonPipeline(mlir::OpPassManager& pm,
                             const TritonGemmConfig& config) {
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
+  mlir::triton::nvidia_gpu::ClusterInfo clusterInfo;
+  clusterInfo.clusterDimX = config.cluster_dims.x;
+  clusterInfo.clusterDimY = config.cluster_dims.y;
+  clusterInfo.clusterDimZ = config.cluster_dims.z;
   // Based on make_ttir() in
   // @triton//:python/triton/compiler/backends/cuda.py
   pm.addPass(mt::createRewriteTensorPointerPass(ccAsInt));
@@ -739,9 +743,9 @@ Status CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
   pm.addPass(mlir::createTritonGPUCoalescePass());
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(/*clusterInfo=*/));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
   pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(/*clusterInfo=*/));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUOptimizeThreadLocalityPass());
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
