@@ -23,7 +23,6 @@ load(
     "tf_protobuf_compiler_deps",
     "tf_resource_deps",
     "tf_stream_executor_deps",
-    "tf_testing_deps",
     "tf_windows_aware_platform_deps",
     "tsl_cc_test",
     "tsl_protobuf_deps",
@@ -889,9 +888,13 @@ cc_library(
 cc_library(
     name = "resource_loader",
     testonly = 1,
+    srcs = ["resource_loader.cc"],
     textual_hdrs = ["resource_loader.h"],
     visibility = ["//visibility:public"],
-    deps = tf_testing_deps("resource_loader"),
+    deps = [
+        ":path",
+        ":test",
+    ],
 )
 
 cc_library(
