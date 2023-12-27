@@ -137,6 +137,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "@com_google_absl//absl/base:prefetch",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -854,6 +855,7 @@ ARRAY_DEPS = [
     ":gather_functor",
     ":ops_util",
     ":transpose_functor",
+    "@com_google_absl//absl/base:prefetch",
     "//tensorflow/core:array_grad",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
@@ -1685,6 +1687,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 
@@ -2004,6 +2007,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:bounds_check",
+        "@com_google_absl//absl/base:prefetch",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -3628,6 +3632,7 @@ tf_kernel_library(
     prefix = "cwise_op",
     deps = MATH_DEPS + [
         "//tensorflow/core/kernels/mlir_generated:cwise_op",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 
