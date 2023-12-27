@@ -246,7 +246,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "snapshot_chunk_dataset_op",
     srcs = ["snapshot_chunk_dataset_op.cc"],
     compatible_with = get_compatible_with_portable(),
