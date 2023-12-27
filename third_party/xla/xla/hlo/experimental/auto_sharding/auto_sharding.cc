@@ -1646,7 +1646,8 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
 
 AutoShardingSolverResult CallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
-    const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
+    const LivenessNodeSet& liveness_node_set,
+    const LivenessEdgeSet& liveness_edge_set, const StrategyMap& strategy_map,
     const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
     const bool compute_iis, const int64_t solver_timeout_in_seconds,
@@ -1681,12 +1682,17 @@ AutoShardingSolverResult CallSolver(
     raw_edge.set_second(edge.second);
     *request.add_edges() = raw_edge;
     AutoShardingSolverRequest_Costs rij;
+    AutoShardingSolverRequest_Costs mij;
+    const StrategyGroup* strategy_group = strategy_groups[edge.second];
     for (NodeStrategyIdx i = 0; i < edge_cost.n_; i++) {
       for (NodeStrategyIdx j = 0; j < edge_cost.m_; j++) {
         rij.add_costs(edge_cost(i, j));
+        const ShardingStrategy& strategy = strategy_group->strategies[j];
+        mij.add_costs(0.0 * strategy.memory_cost);  // TODO: make this non-zero.
       }
     }
     request.mutable_resharding_costs()->Add(std::move(rij));
+    request.mutable_memory_edge_costs()->Add(std::move(mij));
   }
 
   const HloInstructionSequence& sequence =
@@ -1825,6 +1831,12 @@ AutoShardingSolverResult CallSolver(
     nodes.mutable_nodes()->Add(liveness_node_subset.begin(),
                                liveness_node_subset.end());
     request.mutable_live()->Add(std::move(nodes));
+  }
+  for (const auto& liveness_edge_subset : liveness_edge_set) {
+    AutoShardingSolverRequest_Edges edges;
+    edges.mutable_edges()->Add(liveness_edge_subset.begin(),
+                               liveness_edge_subset.end());
+    request.mutable_live_edges()->Add(std::move(edges));
   }
 
   PopulateTemporalValues(cost_graph, request);
@@ -3530,8 +3542,16 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     spmd::CostGraph cost_graph(strategy_groups, associative_dot_pairs);
     cost_graph.Simplify(option_.simplify_graph);
 
-    // ----- Build the liveness node set -----
+    // ----- Build the liveness node & edge sets -----
+    std::vector<absl::flat_hash_set<spmd::EdgeIdx>> node_to_edges(
+        strategy_groups.size());
+    spmd::EdgeIdx edge_idx = 0;
+    for (const auto& [edge, _] : cost_graph.edge_costs_) {
+      node_to_edges[edge.second].insert(edge_idx);
+      ++edge_idx;
+    }
     spmd::LivenessNodeSet liveness_node_set(liveness_set.size());
+    spmd::LivenessEdgeSet liveness_edge_set(liveness_set.size());
     for (spmd::LivenessIdx t = 0; t < liveness_set.size(); ++t) {
       for (const HloValue* value : liveness_set[t]) {
         const HloInstruction* instruction = value->instruction();
@@ -3541,9 +3561,14 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
             strategy_map.at(instruction).get();
         const spmd::NodeIdx node_idx =
             strategy_group->GetSubStrategyGroup(index)->node_idx;
-        if (node_idx >= 0) liveness_node_set[t].push_back(node_idx);
+        if (node_idx < 0) continue;
+        liveness_node_set[t].push_back(node_idx);
+        for (const spmd::EdgeIdx edge_idx : node_to_edges[node_idx]) {
+          liveness_edge_set[t].push_back(edge_idx);
+        }
       }
       std::sort(liveness_node_set[t].begin(), liveness_node_set[t].end());
+      std::sort(liveness_edge_set[t].begin(), liveness_edge_set[t].end());
     }
 
     // ----- Call the ILP Solver -----
@@ -3551,8 +3576,8 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
     auto solver_result =
-        Solve(*module, *hlo_live_range, liveness_node_set, strategy_map,
-              strategy_groups, cost_graph, alias_set, option_,
+        Solve(*module, *hlo_live_range, liveness_node_set, liveness_edge_set,
+              strategy_map, strategy_groups, cost_graph, alias_set, option_,
               sharding_propagation_solution);
     if (solver_result.skip_auto_sharding) {
       return AutoShardingResult::kModuleUnchangedNoShardingPerformed;

@@ -217,7 +217,8 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
 // The high-level "recipe" for solving an Auto Sharding problem.
 AutoShardingSolverResult Solve(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
-    const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
+    const LivenessNodeSet& liveness_node_set,
+    const LivenessEdgeSet& liveness_edge_set, const StrategyMap& strategy_map,
     const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&

@@ -202,6 +202,8 @@ struct StrategyGroup {
 using LivenessSet = std::vector<std::vector<const HloValue*>>;
 // A liveness set using node indices instead of HLO values.
 using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
+// A liveness set using edge indices instead of HLO values.
+using LivenessEdgeSet = std::vector<std::vector<EdgeIdx>>;
 // Map an instruction to its strategy group.
 using StrategyMap =
     StableHashMap<const HloInstruction*, std::unique_ptr<StrategyGroup>>;
