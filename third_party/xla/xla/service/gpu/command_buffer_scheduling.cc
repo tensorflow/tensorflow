@@ -90,23 +90,6 @@ static bool IsCommand(const HloComputation* computation,
 template <HloOpcode op>
 static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 
-// Fusions compiled to device kernels (or lowered to custom kernels) which
-// always have a corresponding command buffer command.
-static bool IsCommand(const HloFusionInstruction* fusion,
-                      const CommandBufferConfig& config) {
-  // TODO(vuson): Support custom kernels as command buffer commands.
-  auto backend_config = fusion->backend_config<FusionBackendConfig>();
-  return config.contains(DebugOptions::FUSION) && backend_config.ok() &&
-         backend_config->kind() != kCustomFusionKind;
-}
-
-// Sort operations lowered to memcpy and device kernels and we have a
-// corresponding command buffer commands for them.
-static bool IsCommand(const HloSortInstruction* sort,
-                      const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::FUSION);
-}
-
 // While loops can be executed inside command buffers only if condition and body
 // regions can be executed as command buffers.
 template <>
@@ -125,10 +108,10 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
 static bool IsCommand(const HloInstruction* hlo,
                       const CommandBufferConfig& config) {
   if (auto* fusion = DynCast<HloFusionInstruction>(hlo))
-    return IsCommand(fusion, config);
+    return config.contains(DebugOptions::FUSION);
 
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
-    return IsCommand(sort, config);
+    return config.contains(DebugOptions::FUSION);
 
   if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo))
     return IsCommand(custom_call, config);
