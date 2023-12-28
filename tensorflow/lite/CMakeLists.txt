@@ -295,7 +295,8 @@ if(TFLITE_ENABLE_GPU)
   if(TFLITE_ENABLE_GLES3)
     find_path(OPENGL_EGL_INCLUDE_DIRS "EGL/egl.h" REQUIRED)
     find_library(OPENGL_egl_LIBRARY NAMES EGL libEGL REQUIRED)
-    find_path(OPENGL_GLES3_INCLUDE_DIR "GLES3/gl3.h" REQUIRED) # "version 310 es"
+    find_path(OPENGL_INCLUDE_DIR "GLES3/gl3.h" REQUIRED) # "version 310 es"
+    find_path(OPENGL_GLES3_INCLUDE_DIR "GLES3/gl3.h" REQUIRED)
     find_library(OPENGL_gles3_LIBRARY NAMES GLESv3 libGLESv3 GLESv2 libGLESv2 REQUIRED)
     find_library(OPENGL_gl_LIBRARY NAMES GLESv3 libGLESv3 GLESv2 libGLESv2 REQUIRED)
     # OpenGL::GLES3 requires CMake 3.27
