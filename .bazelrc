@@ -1,7 +1,7 @@
 # TensorFlow Bazel configuration file.
 # This file tries to group and simplify build options for TensorFlow
 #
-# ----CONFIG OPTIONS----
+# ----CONFIG OPTIONS----;m;lm
 # Android options:
 #    android:
 #    android_arm:
