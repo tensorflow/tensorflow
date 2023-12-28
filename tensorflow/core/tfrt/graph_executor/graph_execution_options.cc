@@ -124,8 +124,12 @@ std::ostream& operator<<(std::ostream& os,
             << ", enable_grappler_function_optimizer = "
             << options.enable_grappler_function_optimizer
             << ", enable_tfrt_gpu = " << options.enable_tfrt_gpu
-            << ", runtime = " << options.runtime
-            << ", model_metadata = " << absl::StrCat(options.model_metadata)
+            << ", runtime = "
+            << options.runtime
+            // clang-tidy off
+            << ", model_metadata = "
+            << options.model_metadata.DebugString()
+            // clang-tidy on
             << ", compile_options = " << options.compile_options << "}";
 }
 
