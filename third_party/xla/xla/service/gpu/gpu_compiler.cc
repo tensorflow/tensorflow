@@ -994,8 +994,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddPass<FlattenCallGraph>();
     ChannelLayoutConstraints layout_constraints;
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout(), stream_exec,
-        &layout_constraints);
+        hlo_module->mutable_entry_computation_layout(), gpu_version,
+        dnn_version, &layout_constraints);
     // Run SubByteNormalization because GpuLayoutAssignment may modify a
     // Layout's element_size_in_bits field.
     pipeline.AddPass<SubByteNormalization>(
