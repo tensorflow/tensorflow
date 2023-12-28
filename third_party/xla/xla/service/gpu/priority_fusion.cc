@@ -611,6 +611,19 @@ class GpuPriorityFusionQueue : public FusionQueue {
   return InstructionFusion::IsExpensive(instruction);
 }
 
+// Return true, if instr is a small constant.
+//
+// There is not single definition for what is a small constant in XLA.
+// IrEmitterContext::emit_constant treats as small only constants of 1 element.
+// HloPrintOptions::print_large_constants is effective for constants larger
+// than 10 elements.
+//
+// This function matches the emitter logic.
+bool IsSmallConstant(const HloInstruction* instr) {
+  return instr->opcode() == HloOpcode::kConstant && instr->shape().IsArray() &&
+         ShapeUtil::ElementsIn(instr->shape()) <= 1;
+}
+
 StatusOr<bool> GpuPriorityFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -644,7 +657,14 @@ StatusOr<bool> GpuPriorityFusion::Run(
     for (auto* computation : GetFusionComputations(module, execution_threads)) {
       std::vector<HloInstruction*> constants;
       for (auto* instruction : computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kConstant) {
+        // Small constants should be fused, because they can be folded and
+        // codegened efficiently.
+        // Fusing large constants doesn't give much benefits, because they're
+        // treated like parameters and read from global memory anyway. Fusion
+        // and duplication of large constants can, however, cause problems if we
+        // want to dump hlo and parse back, because in that case duplicated
+        // constants will be filled with different data.
+        if (IsSmallConstant(instruction)) {
           constants.push_back(instruction);
         }
       }

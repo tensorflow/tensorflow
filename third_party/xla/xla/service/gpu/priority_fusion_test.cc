@@ -732,5 +732,28 @@ TEST_F(PriorityFusionTest, DontFuseConcat) {
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
 }
 
+TEST_F(PriorityFusionTest, FuseOnlySmallConstant) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    ENTRY main {
+      param_0 = f32[32,32]{1,0} parameter(0)
+      c_1 = f32[] constant(1)
+      c_2 = f32[32,32] constant({...})
+      broadcast = f32[32,32]{1,0} broadcast(c_1), dimensions={}
+      add = f32[32,32]{1,0} add(param_0, broadcast)
+      ROOT mul = f32[32,32]{1,0} multiply(c_2, add)
+    }
+  )");
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Fusion(m::Constant(), m::Parameter())));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Multiply(
+                  m::Parameter(),
+                  m::Add(m::Parameter(), m::Broadcast(m::Constant())))));
+}
+
 }  // namespace gpu
 }  // namespace xla
