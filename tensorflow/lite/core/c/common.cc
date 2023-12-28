@@ -384,6 +384,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
+// LINT.IfChange
 #ifndef TF_LITE_STATIC_MEMORY
 TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
@@ -419,6 +420,7 @@ void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
 
   return tflite_delegate->opaque_delegate_builder->data;
 }
+// LINT.ThenChange(Google-internal path)
 
 // Returns a tensor data allocation strategy.
 TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(
