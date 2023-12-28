@@ -25,7 +25,7 @@ package_group(
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/python/...",
-        # copybara:uncomment "//tensorflow_serving/...",
+        "//tensorflow_serving/...",
         # copybara:uncomment "//third_party/tf_runtime_google/...",
     ],
 )
