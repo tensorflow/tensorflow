@@ -306,6 +306,7 @@ if(TFLITE_ENABLE_GPU)
     find_package(opengl_headers REQUIRED)
     find_package(egl_headers REQUIRED)
   endif()
+  # see delegates/gpu/BUILD and search with //tensorflow:android
   if(ANDROID)
     populate_tflite_source_vars("delegates/utils" TFLITE_DELEGATES_UTILS_SRCS FILTER "(_test)\\.(cc|h)$")
     populate_tflite_source_vars("async" TFLITE_ASYNC_SRCS FILTER "(_test)\\.(cc|h)$")
@@ -324,6 +325,7 @@ if(TFLITE_ENABLE_GPU)
     else()
       set(FLATC flatc)
     endif()
+    # follow flatbuffer_cc_library of Bazel
     add_custom_command(
       OUTPUT
         ${TFLITE_SOURCE_DIR}/delegates/gpu/gl/common_generated.h
@@ -353,13 +355,16 @@ if(TFLITE_ENABLE_GPU)
       ${TFLITE_DELEGATES_GPU_GL_WORKGROUPS_SRCS}
     )
   endif()
+  # see delegates/gpu/cl/BUILD
   if(NOT TFLITE_ENABLE_GLES3)
+    # config_setting: opencl_delegate_no_gl
     populate_tflite_source_vars(
       "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
       FILTER "(_test|gl_interop|gpu_api_delegate|egl_sync)\\.(cc|h)$"
     )
     list(APPEND TFLITE_TARGET_PRIVATE_DEFINITIONS "CL_DELEGATE_NO_GL")
   else()
+    # cc_library: egl_sync
     populate_tflite_source_vars(
       "delegates/gpu/cl" TFLITE_DELEGATES_GPU_CL_SRCS
       FILTER "(_test)\\.(cc|h)$"
