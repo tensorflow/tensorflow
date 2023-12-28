@@ -350,6 +350,7 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:resource_loader",
         "@local_tsl//tsl/platform:subprocess",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
