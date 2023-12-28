@@ -73,6 +73,7 @@ option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
 option(TFLITE_ENABLE_METAL "Enable Metal delegate (iOS only)" OFF)
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 option(TFLITE_ENABLE_EXTERNAL_DELEGATE "Enable External Delegate backend" ON)
+option(TFLITE_ENABLE_GLES3 "Enable OpenGL ES 3 delegate" OFF)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
 if(TFLITE_KERNEL_TEST AND ${CMAKE_CROSSCOMPILING})
@@ -291,7 +292,17 @@ if(TFLITE_ENABLE_GPU)
   find_package(vulkan_headers REQUIRED)
   find_package(fp16_headers REQUIRED)
   # Android NDK already has OpenGL, EGL headers.
-  if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  if(TFLITE_ENABLE_GLES3)
+    find_path(OPENGL_EGL_INCLUDE_DIRS "EGL/egl.h" REQUIRED)
+    find_library(OPENGL_egl_LIBRARY NAMES EGL libEGL REQUIRED)
+    find_path(OPENGL_GLES3_INCLUDE_DIR "GLES3/gl3.h" REQUIRED) # "version 310 es"
+    find_library(OPENGL_gles3_LIBRARY NAMES GLESv3 libGLESv3 GLESv2 libGLESv2 REQUIRED)
+    find_library(OPENGL_gl_LIBRARY NAMES GLESv3 libGLESv3 GLESv2 libGLESv2 REQUIRED)
+    # OpenGL::GLES3 requires CMake 3.27
+    find_package(OpenGL REQUIRED COMPONENTS GLES3)
+    list(APPEND TFLITE_TARGET_DEPENDENCIES OpenGL::GLES3 ${OPENGL_egl_LIBRARY})
+    list(APPEND TFLITE_TARGET_PRIVATE_DEFINITIONS "EGL_EGLEXT_PROTOTYPES")
+  else()
     find_package(opengl_headers REQUIRED)
     find_package(egl_headers REQUIRED)
   endif()
@@ -658,6 +669,9 @@ endif()
 target_compile_options(tensorflow-lite
   PUBLIC ${TFLITE_TARGET_PUBLIC_OPTIONS}
   PRIVATE ${TFLITE_TARGET_PRIVATE_OPTIONS}
+)
+target_compile_definitions(tensorflow-lite
+  PRIVATE ${TFLITE_TARGET_PRIVATE_DEFINITIONS}
 )
 add_library(${PROJECT_NAME}::tensorflowlite ALIAS tensorflow-lite)
 
