@@ -7,25 +7,16 @@
     },
     "configurePresets": [
         {
-            "name": "vcpkg-find",
+            "name": "cmake-android",
             "hidden": true,
-            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-            "debug": {
-                "find": true
-            }
-        },
-        {
-            "name": "vcpkg-android",
-            "hidden": true,
-            "inherits": "vcpkg-find",
+            "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
             "cacheVariables": {
-                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
                 "CMAKE_SYSTEM_NAME": "Android",
                 "CMAKE_SYSTEM_VERSION": "26",
                 "ANDROID_PLATFORM": "android-26"
             },
             "debug": {
-                "tryCompile": true
+                "find": true
             }
         },
         {
@@ -42,15 +33,14 @@
         {
             "name": "arm64-android",
             "inherits": [
-                "vcpkg-android",
+                "cmake-android",
                 "tflite-gpu-options"
             ],
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/../../cmake_build",
             "installDir": "${sourceDir}/../../install",
             "cacheVariables": {
-                "ANDROID_ABI": "arm64-v8a",
-                "VCPKG_TARGET_TRIPLET": "arm64-android"
+                "ANDROID_ABI": "arm64-v8a"
             }
         }
     ],
