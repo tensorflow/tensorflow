@@ -546,12 +546,12 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
 // dimensions are defined in
 // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dot_general.
 struct DotLikeDimensionNumbers {
-  ArrayRef<int64_t> lhs_batching_dims;
-  ArrayRef<int64_t> lhs_spatial_dims;
-  ArrayRef<int64_t> lhs_contracting_dims;
-  ArrayRef<int64_t> rhs_batching_dims;
-  ArrayRef<int64_t> rhs_spatial_dims;
-  ArrayRef<int64_t> rhs_contracting_dims;
+  SmallVector<int64_t> lhs_batching_dims;
+  SmallVector<int64_t> lhs_spatial_dims;
+  SmallVector<int64_t> lhs_contracting_dims;
+  SmallVector<int64_t> rhs_batching_dims;
+  SmallVector<int64_t> rhs_spatial_dims;
+  SmallVector<int64_t> rhs_contracting_dims;
 };
 
 // A shared matchAndRewrite implementation for dot-like hybrid quantized
@@ -604,7 +604,7 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
 
 Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
                                    Value tensor, const int64_t other_tensor_zp,
-                                   ArrayRef<int64_t> reduction_dims) {
+                                   SmallVector<int64_t> reduction_dims) {
   // This function calculates part of the zero-point-offset by using
   // mhlo::Reduce to sum over the contracting dims of the tensor, and then
   // multiply by zp of the other tensor.
@@ -674,38 +674,14 @@ Value GetDimValue(OpBuilder &builder, Location loc, Value tensor,
   }
 }
 
-Value CalculateDynamicOutputDims(OpBuilder &builder, Location loc, Value lhs,
-                                 Value rhs,
+Value CalculateDynamicOutputDims(OpBuilder &builder, Location loc, Value output,
+                                 ShapedType output_tensor_type,
                                  const DotLikeDimensionNumbers &dims) {
-  mlir::ShapedType lhs_shape = lhs.getType().cast<mlir::ShapedType>();
-  mlir::ShapedType rhs_shape = rhs.getType().cast<mlir::ShapedType>();
-  // Calculate each output dim and concatenate into a 1D tensor.
-  // Output dims are batching dims, spatial dims, LHS result dims, RHS result
-  // dims.
+  // Calculate each output tensor dim and concatenate into a 1D tensor.
   SmallVector<Value> output_dims;
-  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.lhs_batching_dims, i) != 0) {
-      output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
-    }
-  }
-  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.lhs_spatial_dims, i) != 0) {
-      output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
-    }
-  }
-  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.lhs_batching_dims, i) == 0 &&
-        absl::c_count(dims.lhs_spatial_dims, i) == 0 &&
-        absl::c_count(dims.lhs_contracting_dims, i) == 0) {
-      output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
-    }
-  }
-  for (int64_t i = 0; i < rhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.rhs_batching_dims, i) == 0 &&
-        absl::c_count(dims.rhs_spatial_dims, i) == 0 &&
-        absl::c_count(dims.rhs_contracting_dims, i) == 0) {
-      output_dims.push_back(GetDimValue(builder, loc, rhs, rhs_shape, i));
-    }
+  for (int64_t i = 0; i < output_tensor_type.getRank(); ++i) {
+    output_dims.push_back(
+        GetDimValue(builder, loc, output, output_tensor_type, i));
   }
   return builder.create<mhlo::ConcatenateOp>(loc, output_dims,
                                              builder.getI64IntegerAttr(0));
@@ -715,9 +691,9 @@ Value BroadcastZpContribution(OpBuilder &builder, Location loc,
                               Value zp_contribution,
                               ArrayRef<int64_t> reduction_dims,
                               ArrayRef<int64_t> batching_dims,
-                              int64_t non_batching_starting_idx,
+                              int64_t non_batching_starting_idx, Value output,
                               TensorType output_tensor_type,
-                              Value &output_dims_value, Value lhs, Value rhs,
+                              Value &output_dims_value,
                               const DotLikeDimensionNumbers &dims) {
   // This function calculates the dims for broadcasting from the
   // zero-point-offset tensor to the final output tensor, and then do the
@@ -755,8 +731,8 @@ Value BroadcastZpContribution(OpBuilder &builder, Location loc,
             broadcast_dims));
   } else {
     if (!output_dims_value) {
-      output_dims_value =
-          CalculateDynamicOutputDims(builder, loc, lhs, rhs, dims);
+      output_dims_value = CalculateDynamicOutputDims(builder, loc, output,
+                                                     output_tensor_type, dims);
     }
     zp_contribution = builder.create<mhlo::DynamicBroadcastInDimOp>(
         loc, output_tensor_type, zp_contribution, output_dims_value,
@@ -769,8 +745,8 @@ Value BroadcastZpContribution(OpBuilder &builder, Location loc,
 }
 
 Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
-                               Value rhs, int64_t lhs_zp, int64_t rhs_zp,
-                               TensorType output_tensor_type,
+                               Value rhs, Value output, int64_t lhs_zp,
+                               int64_t rhs_zp, TensorType output_tensor_type,
                                const DotLikeDimensionNumbers &dims) {
   mlir::ShapedType lhs_shape = lhs.getType().cast<mlir::ShapedType>();
   mlir::ShapedType rhs_shape = rhs.getType().cast<mlir::ShapedType>();
@@ -785,8 +761,8 @@ Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
     // Broadcast lhs ZP contribution to result tensor shape.
     lhs_zp_contribution = BroadcastZpContribution(
         builder, loc, lhs_zp_contribution, reduction_dims,
-        dims.lhs_batching_dims, dims.lhs_batching_dims.size(),
-        output_tensor_type, output_dims_value, lhs, rhs, dims);
+        dims.lhs_batching_dims, dims.lhs_batching_dims.size(), output,
+        output_tensor_type, output_dims_value, dims);
     result = lhs_zp_contribution;
   }
   // Calculate RHS contribution when LHS zp is non-zero.
@@ -799,8 +775,8 @@ Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
     rhs_zp_contribution = BroadcastZpContribution(
         builder, loc, rhs_zp_contribution, reduction_dims,
         dims.rhs_batching_dims,
-        lhs_shape.getRank() - dims.lhs_contracting_dims.size(),
-        output_tensor_type, output_dims_value, lhs, rhs, dims);
+        lhs_shape.getRank() - dims.lhs_contracting_dims.size(), output,
+        output_tensor_type, output_dims_value, dims);
     if (result) {
       result = builder.create<mhlo::AddOp>(loc, result, rhs_zp_contribution);
     } else {
@@ -950,7 +926,8 @@ LogicalResult matchAndRewriteDotLikeOp(DotLikeOp op, DotLikeOpAdaptor adaptor,
   // Here we assume LHS must be per-tensor quantized.
   // If RHS is per-channel quantized, it must has 0 zp.
   Value zp_offset = CalculateZeroPointOffset(
-      rewriter, op->getLoc(), lhs, rhs, lhs_element_quant_type.getZeroPoint(),
+      rewriter, op->getLoc(), lhs, rhs, res_i32,
+      lhs_element_quant_type.getZeroPoint(),
       (rhs_element_quant_type ? rhs_element_quant_type.getZeroPoint() : 0),
       res_int32_tensor_type, dims);
 
@@ -1098,12 +1075,14 @@ class ConvertUniformQuantizedDotGeneralOp
       return matchAndRewriteDotLikeOp(
           op, adaptor, op->getAttrs(),
           DotLikeDimensionNumbers{
-              op.getDotDimensionNumbers().getLhsBatchingDimensions(),
+              to_vector(op.getDotDimensionNumbers().getLhsBatchingDimensions()),
               /*lhs_spatial_dims=*/{},
-              op.getDotDimensionNumbers().getLhsContractingDimensions(),
-              op.getDotDimensionNumbers().getRhsBatchingDimensions(),
+              to_vector(
+                  op.getDotDimensionNumbers().getLhsContractingDimensions()),
+              to_vector(op.getDotDimensionNumbers().getRhsBatchingDimensions()),
               /*rhs_spatial_dims=*/{},
-              op.getDotDimensionNumbers().getRhsContractingDimensions()},
+              to_vector(
+                  op.getDotDimensionNumbers().getRhsContractingDimensions())},
           rewriter);
     }
   }
@@ -1275,7 +1254,8 @@ class ConvertGenericOp : public ConversionPattern {
     if (!isa<mhlo::BroadcastInDimOp, mhlo::ConcatenateOp, mhlo::ConstantOp,
              mhlo::ConvertOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
              mhlo::PadOp, mhlo::ReshapeOp, mhlo::SelectOp, mhlo::SliceOp,
-             mhlo::TransposeOp>(op)) {
+             mhlo::TransposeOp, mhlo::GetDimensionSizeOp,
+             mhlo::DynamicBroadcastInDimOp>(op)) {
       return failure();
     }
 

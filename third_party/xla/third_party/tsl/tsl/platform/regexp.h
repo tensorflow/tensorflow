@@ -18,7 +18,10 @@ limitations under the License.
 
 #include "tsl/platform/platform.h"
 
-// TODO(b/305283688): make a platform macro for internal windows builds
+#if TSL_IS_IN_OSS
 #include "re2/re2.h"
+#else
+#include "third_party/re2/re2.h"
+#endif  // TSL_IS_IN_OSS
 
 #endif  // TENSORFLOW_TSL_PLATFORM_REGEXP_H_

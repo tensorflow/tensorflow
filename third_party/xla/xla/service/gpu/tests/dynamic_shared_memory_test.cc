@@ -137,8 +137,9 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
 
   // Use 90% of the available shared memory to verify that a fractional
   // amount works as well, not only the full size.
-  const int n_cols = executor->GetDeviceDescription().threads_per_block_limit();
-  const int n_rows =
+  const unsigned n_cols =
+      executor->GetDeviceDescription().threads_per_block_limit();
+  const unsigned n_rows =
       0.9 * executor->GetDeviceDescription().shared_memory_per_block_optin() /
       n_cols;
   const int n_elements = n_cols * n_rows;

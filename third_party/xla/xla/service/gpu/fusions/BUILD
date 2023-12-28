@@ -39,6 +39,7 @@ cc_library(
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:kernel_reuse_cache",
         "//xla/service/gpu:thunk",
+        "//xla/service/gpu/runtime3:copy_thunk",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",

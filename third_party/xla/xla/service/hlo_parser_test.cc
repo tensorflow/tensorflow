@@ -4803,5 +4803,79 @@ TEST_F(HloParserTest, LexesAsJsonDict) {
   EXPECT_FALSE(LexesAsJsonDict("{{{{}}}"));
 }
 
+TEST_F(HloParserTest, AsyncStartMissingOperandWrapper) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY AsyncStartMissingOperandWrapper {
+  p0 = f32[2,3] parameter(0)
+  async-start = (f32[2,3], f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-update = ((f32[2,3]), f32[3,2], s32[]) async-update(async-start), calls=async_computation
+  ROOT async-done = f32[3,2] async-done(async-update), calls=async_computation
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
+                    "in the form of "
+                    "((async-operands), async-outputs, state).")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateMissingOperandWrapper) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY AsyncUpdateMissingOperandWrapper {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
+  async-update = (f32[2,3], f32[3,2], s32[]) async-update(async-start), calls=async_computation
+  ROOT async-done = f32[3,2] async-done(async-update), calls=async_computation
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
+                    "in the form of "
+                    "((async-operands), async-outputs, state).")));
+}
+
+TEST_F(HloParserTest, AsyncOpTupleWrongType) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+async_computation {
+  p = f32[2,3] parameter(0)
+  ROOT custom-call = f32[3,2] custom-call(p), custom_call_target="foo"
+}
+
+ENTRY AsyncStartAndAsyncDone {
+  p0 = f32[2,3] parameter(0)
+  async-start = ((f32[2,3])) async-start(p0), calls=async_computation
+  ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
+                    "in the form of "
+                    "((async-operands), async-outputs, state).")));
+}
+
 }  // namespace
 }  // namespace xla

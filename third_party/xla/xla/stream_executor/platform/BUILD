@@ -1,7 +1,7 @@
-load("@local_tsl//tsl:tsl.bzl", "set_external_visibility")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_stream_executor_deps")
 load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
+load("@local_tsl//tsl:tsl.bzl", "set_external_visibility")
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_stream_executor_deps")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],

@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -615,11 +616,14 @@ std::vector<ActiveTask> DataServiceWorkerImpl::GetActiveTasks() const
       mutex_lock task_lock(task->mu);
       task_initialized = task->initialized;
     }
-    if (task_initialized && task->task_runner != nullptr) {
-      std::optional<double> processing_time_nsec =
-          task->task_runner->GetProcessingTimeNsec();
-      active_task.set_processing_time_nsec(
-          processing_time_nsec ? processing_time_nsec.value() : 0.0);
+
+    if (task_initialized && task->task_runner != nullptr &&
+        task->task_runner->model() != nullptr) {
+      std::shared_ptr<model::Model> model = task->task_runner->model();
+      double processing_time_nsec = model->ComputeSnapshotProcessingTimeNsec();
+      if (processing_time_nsec > 0) {
+        active_task.set_processing_time_nsec(processing_time_nsec);
+      }
     }
     active_tasks.push_back(std::move(active_task));
   }

@@ -1,7 +1,7 @@
 # Distributed snapshot library.
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies", "tf_kernel_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_profiler_service")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 
@@ -35,6 +35,7 @@ tf_cc_test(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
@@ -82,6 +83,29 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "list_snapshot_chunks_dataset_op",
+    srcs = ["list_snapshot_chunks_dataset_op.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":file_utils",
+        ":snapshot_chunk_provider",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/data:name_utils",
+        "//tensorflow/core/data:split_utils",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:tstring",
     ],
 )
 
@@ -222,7 +246,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "snapshot_chunk_dataset_op",
     srcs = ["snapshot_chunk_dataset_op.cc"],
     compatible_with = get_compatible_with_portable(),
@@ -250,16 +274,24 @@ cc_library(
     deps = [
         ":file_utils",
         ":path_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/distributed_runtime/rpc:grpc_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:tstring",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 
@@ -271,6 +303,7 @@ tf_cc_test(
         ":file_utils",
         ":path_utils",
         ":snapshot_chunk_provider",
+        "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
@@ -282,7 +315,10 @@ tf_cc_test(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:status_to_from_proto",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:tstring",
+        "@local_tsl//tsl/protobuf:status_proto_cc",
     ],
 )
 

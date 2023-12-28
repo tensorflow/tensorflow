@@ -471,6 +471,8 @@ def compute_capabilities(repository_ctx):
                 continue
             if len(capability) == len(prefix) + 2 and capability[-2:].isdigit():
                 continue
+            if len(capability) == len(prefix) + 3 and capability.endswith("90a"):
+                continue
             auto_configure_fail("Invalid compute capability: %s" % capability)
 
     return capabilities
@@ -1126,7 +1128,16 @@ def _create_local_cuda_repository(repository_ctx):
 
     # Select the headers based on the cuDNN version (strip '64_' for Windows).
     cudnn_headers = ["cudnn.h"]
-    if cuda_config.cudnn_version.rsplit("_", 1)[-1] >= "8":
+    if cuda_config.cudnn_version.rsplit("_", 1)[-1] >= "9":
+        cudnn_headers += [
+            "cudnn_adv.h",
+            "cudnn_backend.h",
+            "cudnn_cnn.h",
+            "cudnn_graph.h",
+            "cudnn_ops.h",
+            "cudnn_version.h",
+        ]
+    elif cuda_config.cudnn_version.rsplit("_", 1)[-1] >= "8":
         cudnn_headers += [
             "cudnn_backend.h",
             "cudnn_adv_infer.h",

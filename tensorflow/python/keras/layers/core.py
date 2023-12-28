@@ -52,6 +52,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -1559,7 +1560,7 @@ class TFSlicingOpDispatcher(dispatch.OpDispatcher):
       return self.NOT_SUPPORTED
 
 for slicing_op in [
-    array_ops._slice_helper,  # pylint: disable=protected-access
+    tensor_getitem_override._slice_helper,  # pylint: disable=protected-access
     array_ops.boolean_mask,
     array_ops.boolean_mask_v2,
     ragged_getitem.ragged_tensor_getitem

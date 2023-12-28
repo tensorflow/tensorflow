@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/custom_fusion_rewriter.h"
 
+#include <cstdint>
 #include <optional>
 #include <utility>
 
@@ -33,17 +34,20 @@ namespace xla::gpu {
 // Simple pattern matchers for testing custom fusion rewriter.
 //===----------------------------------------------------------------------===//
 
-class SimpleGemmPattern : public CustomFusionPattern {
- public:
+struct SimpleGemmPattern : public CustomFusionPattern {
+  explicit SimpleGemmPattern(int64_t workspace = 0) : workspace(workspace) {}
+
   std::optional<Match> TryMatch(const se::DeviceDescription& device,
                                 HloInstruction* instr) const override {
     if (auto* dot = DynCast<HloDotInstruction>(instr)) {
       CustomFusionConfig config;
       config.set_name("simple_gemm");
-      return Match{config, {instr}};
+      return Match{config, {instr}, workspace};
     }
     return std::nullopt;
   }
+
+  int64_t workspace;
 };
 
 //===----------------------------------------------------------------------===//
@@ -82,6 +86,49 @@ TEST_F(CustomFusionRewriterTest, SimpleGemm) {
 
   CustomFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomFusionRewriter pass(&device, &patterns);
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
+}
+
+TEST_F(CustomFusionRewriterTest, SimpleGemmWithWorkspace) {
+  const char* hlo = R"(
+    HloModule test
+
+    ENTRY %main (p0: f16[15,19], p1: f16[19,17]) -> f16[15,17] {
+      %p0 = f16[15,19]{1,0} parameter(0)
+      %p1 = f16[19,17]{1,0} parameter(1)
+      ROOT %r = f16[15,17]{1,0} dot(%p0, %p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+
+  const char* expected = R"(
+    ; CHECK: %simple_gemm {{.*}} {
+    ; CHECK:   [[P0:%[^ ]+]] = f16[15,19]{1,0} parameter(0)
+    ; CHECK:   [[P1:%[^ ]+]] = f16[19,17]{1,0} parameter(1)
+    ; CHECK:   [[DOT:%[^ ]+]] = f16[15,17]{1,0} dot([[P0]], [[P1]]),
+    ; CHECK:     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    ; CHECK:   [[WORKSPACE:%[^ ]+]] = u8[1024]{0} custom-call(),
+    ; CHECK:     custom_call_target="__custom_fusion$workspace"
+    ; CHECK:   ROOT [[TUPLE:%[^ ]+]] = (f16[15,17]{1,0}, u8[1024]{0})
+    ; CHECK:     tuple([[DOT]], [[WORKSPACE]])
+    ; CHECK: }
+
+    ; CHECK: ENTRY %main {{.*}} {
+    ; CHECK:   [[FUSION:%[^ ]+]] = (f16[15,17]{1,0}, u8[1024]{0}) fusion
+    ; CHECK:     kind=kCustom, calls=%simple_gemm,
+    ; CHECK:     backend_config={
+    ; CHECK:       "kind":"__custom_fusion",
+    ; CHECK:       "custom_fusion_config":{"name":"simple_gemm"}
+    ; CHECK:     }
+    ; CHECK:   ROOT {{.*}} get-tuple-element([[FUSION]]), index=0
+    ; CHECK: }
+  )";
+
+  CustomFusionPatternRegistry patterns;
+  patterns.Emplace<SimpleGemmPattern>(1024);
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   CustomFusionRewriter pass(&device, &patterns);

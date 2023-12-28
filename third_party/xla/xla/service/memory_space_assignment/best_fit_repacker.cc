@@ -189,14 +189,17 @@ class BestFitRepacker
     for (AllocationBlock* allocation_block : allocation_blocks_) {
       // Check if any of the colocations are already added to buffer_intervals_.
       bool need_allocation = true;
-      auto aliased_it = absl::c_find_if(
-          allocation_block->colocations, [&](AllocationBlock* search) {
-            return full_buffer_interval_map_.contains(search);
-          });
-      if (aliased_it != allocation_block->colocations.end()) {
-        full_buffer_interval_map_[*aliased_it].colocations.push_back(
-            allocation_block);
-        need_allocation = false;
+      CHECK_NE(allocation_block->next_colocated, nullptr);
+      for (AllocationBlock* colocated = allocation_block->next_colocated;
+           colocated != allocation_block;
+           colocated = colocated->next_colocated) {
+        auto aliased_it = full_buffer_interval_map_.find(colocated);
+        if (aliased_it != full_buffer_interval_map_.end() &&
+            aliased_it->second.need_allocation) {
+          aliased_it->second.colocations.push_back(allocation_block);
+          need_allocation = false;
+          break;
+        }
       }
       full_buffer_interval_map_.insert(
           std::make_pair(allocation_block,

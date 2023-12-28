@@ -191,6 +191,7 @@ cc_library(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
+        ":coalescing_analysis",
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
         "//xla:shape_util",
@@ -239,11 +240,40 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "indexing_map_simplifier",
+    srcs = ["indexing_map_simplifier.cc"],
+    hdrs = ["indexing_map_simplifier.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "indexing_map_simplifier_test",
+    srcs = ["indexing_map_simplifier_test.cc"],
+    deps = [
+        ":indexing_map_simplifier",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "tile_analysis",
     srcs = ["tile_analysis.cc"],
     hdrs = ["tile_analysis.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":indexing_map_simplifier",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
@@ -254,8 +284,8 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -281,6 +311,42 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "coalescing_analysis",
+    srcs = ["coalescing_analysis.cc"],
+    hdrs = ["coalescing_analysis.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tile_analysis",
+        "//xla:permutation_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_fusible",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "coalescing_analysis_test",
+    srcs = ["coalescing_analysis_test.cc"],
+    deps = [
+        ":coalescing_analysis",
+        ":tile_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:test",
     ],
 )

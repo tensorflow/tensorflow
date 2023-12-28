@@ -996,9 +996,9 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
     ENTRY after_optimizations_test {
     %parameter.1 = bf16[8]{0} parameter(0)
     %collective-permute.2 = bf16[8]{0} collective-permute(bf16[8]{0} parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}
-    %constant.3 = bf16[] constant(1)
-    %broadcast.4 = bf16[8]{0} broadcast(bf16[] %constant.3), dimensions={}
-    %add.5 = bf16[8]{0} add(%collective-permute.2, %broadcast.4)
+    %add.3 = bf16[8]{0} add(%parameter.1, %parameter.1)
+    %add.4 = bf16[8]{0} add(%add.3, parameter.1)
+    %add.5 = bf16[8]{0} add(%collective-permute.2, %add.4)
     %collective-permute.6 = bf16[8]{0} collective-permute(bf16[8]{0} add.5), source_target_pairs={{1,0},{0,3},{3,2}}
   }
 )";
@@ -1035,7 +1035,7 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
                              original_instruction_sequence[3]),
             PositionInVector(new_instruction_sequence,
                              original_instruction_sequence[4]));
-  EXPECT_EQ(original_instruction_sequence[0]->user_count(), 1);
+  EXPECT_EQ(original_instruction_sequence[0]->user_count(), 3);
   EXPECT_EQ(original_instruction_sequence[0]->users()[0]->opcode(),
             HloOpcode::kCollectivePermuteStart);
   HloInstruction* collective_permute_start_1 =

@@ -52,11 +52,16 @@ CreateVerifyQuantLegalizationPass();
 // Add all passes for lowering TF quant ops and types to MHLO int.
 void AddQuantizationLoweringPasses(mlir::OpPassManager &pm);
 
+// Creates an instance of OptimizeIntGraphPass, which optimizes the int graph
+// lowered from the quantized graph.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeIntGraphPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #define GEN_PASS_DECL_CONVERTTFQUANTOPSTOMHLO
 #define GEN_PASS_DECL_CONVERTTFQUANTTYPES
 #define GEN_PASS_DECL_VERIFYQUANTLEGALIZATION
+#define GEN_PASS_DECL_OPTIMIZEINTGRAPH
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
 }  // namespace mlir::quant::stablehlo
 

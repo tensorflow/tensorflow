@@ -45,14 +45,19 @@ class WhileThunk : public Thunk {
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
+  Status Initialize(const InitializeParams& params) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  SequentialThunk* condition_thunk_sequence() {
+  SequentialThunk* condition_thunk_sequence() const {
     return condition_thunk_sequence_.get();
   }
-  SequentialThunk* body_thunk_sequence() { return body_thunk_sequence_.get(); }
+  SequentialThunk* body_thunk_sequence() const {
+    return body_thunk_sequence_.get();
+  }
+
+  const BufferAllocation::Slice& condition_result_buffer() const {
+    return condition_result_buffer_index_;
+  }
 
  private:
   const BufferAllocation::Slice condition_result_buffer_index_;

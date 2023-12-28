@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
+#include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/cpu/collectives_interface.h"
+#include "xla/service/cpu/cpu_executable_run_options.h"
 #include "xla/service/cpu/in_process_collectives.h"
 #include "xla/service/cpu/xfeed_manager.h"
 #include "xla/service/global_device_id.h"
@@ -158,6 +160,8 @@ extern const char* const kPartitionIdSymbolName =
 extern const char* const kReplicaIdSymbolName = "__xla_cpu_runtime_ReplicaId";
 extern const char* const kOneDnnMatMulSymbolName =
     "__xla_cpu_runtime_OneDnnMatMul";
+extern const char* const kOneDnnSoftmaxSymbolName =
+    "__xla_cpu_runtime_OneDnnSoftmax";
 extern const char* const kOneDnnLayerNormSymbolName =
     "__xla_cpu_runtime_OneDnnLayerNorm";
 
@@ -322,7 +326,16 @@ CollectivesInterface* GetInProcessCollectivesImpl() {
   return c;
 }
 
-absl::Duration DefaultCollectiveTimeout() { return absl::InfiniteDuration(); }
+CollectivesInterface* GetCollectivesImpl(
+    const ExecutableRunOptions* run_options) {
+  if (run_options->cpu_executable_run_options() &&
+      run_options->cpu_executable_run_options()->collectives()) {
+    return run_options->cpu_executable_run_options()->collectives();
+  }
+  return GetInProcessCollectivesImpl();
+}
+
+absl::Duration DefaultCollectiveTimeout() { return absl::Minutes(30); }
 
 absl::StatusOr<int> RankInGlobalDevices(
     absl::Span<GlobalDeviceId const> devices, GlobalDeviceId device) {
@@ -355,8 +368,12 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(source_buffers,
+                                      sizeof(void*) * num_buffers);
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(destination_buffers,
+                                      sizeof(void*) * num_buffers);
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
   TF_CHECK_OK(communicator->AllToAll(
@@ -383,7 +400,7 @@ void AllGatherImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
@@ -412,7 +429,7 @@ void ReduceScatterImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
@@ -449,7 +466,7 @@ void AllReduceImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();
@@ -498,7 +515,7 @@ void CollectivePermuteImpl(const ExecutableRunOptions* run_options,
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
-  CollectivesInterface* collectives = GetInProcessCollectivesImpl();
+  CollectivesInterface* collectives = GetCollectivesImpl(run_options);
 
   auto communicator =
       collectives->GetCommunicator(rendezvous_key.global_devices, rank).value();

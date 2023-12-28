@@ -2,9 +2,9 @@
 #   Host-platform specific StreamExecutor support code.
 
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("@local_tsl//tsl:tsl.bzl", "set_external_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -62,7 +62,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",

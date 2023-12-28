@@ -80,14 +80,20 @@ bool SameDeterministicAttr(const NodeDef& parallel_map_node,
   return false;
 }
 
-// Constructs a name for a new node that fuses the two input nodes. This is not
-// only for debugging: in some cases, graphs are optimized separately and then
-// later combined without name deduping, in which case, if this optimization
-// were to add new nodes with the same name to multiple graphs, there would be
-// collisions.
-string GetFusedName(const NodeDef& parent_map_node, const NodeDef& map_node) {
-  return absl::StrCat("fused_map/", parent_map_node.name(), "/",
-                      map_node.name());
+// Returns a name for a new node or function that fuses the inputs.
+// - For nodes, this is only for debugging.
+// - For functions, this additionally prevents collisions (upstream of this
+// optimizer, the act of optimizing a single graph entails individually
+// optimizing each function in that graph and later aggregating any new
+// functions introduced during these individual optimizations into that single
+// graph's collective function library).
+// TODO(mpcallanan): Look at deduping names in a more generic fashion upstream.
+string GetFusedName(const NodeDef& parent, const NodeDef& child) {
+  return absl::StrCat("map_fusion_nodes/", parent.name(), "/", child.name());
+}
+string GetFusedName(const FunctionDef& parent, const FunctionDef& child) {
+  return absl::StrCat("map_fusion_funcs/", parent.signature().name(), "/",
+                      child.signature().name());
 }
 
 // Sets basic function parameters and copies attributes from parent and map
@@ -168,7 +174,8 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
 
   auto get_map_node = [&graph](const NodeDef& node) -> const NodeDef* {
     // TODO(b/148614504): Support ParallelMapDataset and MapAndBatchDataset.
-    // TODO(b/148614315): Support captured inputs.
+    // TODO(b/148614315): Support captured inputs and additionally look into a
+    // Python test for control outputs per b/171265131.
     if (node.op() == kMapDatasetOp && node.input_size() == 1) return &node;
     // Only parallel map with no captured inputs (empty `other_arguments`) and
     // parallelism set to "AUTOTUNE" would be eligible for rewrite.
@@ -197,7 +204,7 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
       return nullptr;
     }
     return fusion_utils::FuseFunctions(
-        *parent_func, *func, GetFusedName(*parent_map_node, *map_node),
+        *parent_func, *func, GetFusedName(*parent_func, *func),
         fusion_utils::ComposeSignature, fusion_utils::ComposeInput,
         fusion_utils::ComposeOutput, fusion_utils::MergeNodes,
         output->mutable_library());

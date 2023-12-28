@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
-include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/IR/PatternBase.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 def DenseElementsAttr : ElementsAttrBase<
   CPred<"$_self.isa<DenseElementsAttr>()">,
@@ -60,6 +60,10 @@ def IsF32ElementType : Constraint<
 // Checks if the value has the type of bfloat16.
 def IsBF16ElementType : Constraint<
   CPred<"getElementTypeOrSelf($0).isBF16()">>;
+
+// Checks if the value has the type of UniformQuantizedType.
+def IsUniformQuantizedType : Constraint<
+  CPred<"getElementTypeOrSelf($0).isa<mlir::quant::UniformQuantizedType>()">>;
 
 // Checks if the given two values have the same type.
 def AreTheSameElementType : Constraint<

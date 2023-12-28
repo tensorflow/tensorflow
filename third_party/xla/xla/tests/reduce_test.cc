@@ -1064,6 +1064,30 @@ ENTRY main.8 {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
+XLA_TEST_F(ReduceHloTest, ReduceWithEpilogueMultiOutputFusion) {
+  absl::string_view hlo_string = R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+
+    ENTRY main {
+      %p0 = f32[1024] parameter(0)
+      %p1 = f32[] parameter(1)
+      %reduce = f32[] reduce(%p0, %p1), dimensions={0}, to_apply=add
+      %p2 = f32[1024] parameter(2)
+      %reduce2 = f32[] reduce(%p2, %p1), dimensions={0}, to_apply=add
+      %negate = f32[] negate(%reduce)
+      %log = f32[] log(%reduce)
+      ROOT %tuple = (f32[], f32[], f32[]) tuple(%negate, %reduce2, %log)
+    })";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 class VariadicReduceTest : public HloTestBase {};
 
 XLA_TEST_F(VariadicReduceTest, Reduce_R3x2_to_R2x2_simple) {

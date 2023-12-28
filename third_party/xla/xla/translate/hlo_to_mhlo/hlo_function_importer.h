@@ -28,6 +28,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -167,6 +169,12 @@ class HloFunctionImporter {
       const xla::HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::OpBuilder* builder);
+
+  // Imports custom_calls prefixed with `stablehlo.`.
+  StatusOr<mlir::Operation*> ImportCustomCallAsOp(
+      const HloInstruction* instruction, mlir::Location loc,
+      mlir::Type result_type, mlir::ValueRange operands,
+      mlir::OpBuilder* func_builder);
 
   // Imports an instruction.
   StatusOr<mlir::Operation*> ImportInstructionWithLayout(

@@ -163,17 +163,18 @@ double ClusterEnvironment::CollectivePermuteCost(
 // Overestimate the cost of replicating a tensor by decomposing the resharding
 // operation as an all-gather on all mesh dimensions.
 double ClusterEnvironment::OverestimateReplicationCost(
-    const Shape& shape, const HloSharding& src_spec) const {
+    const Shape& shape, const HloSharding& src_spec,
+    const Array<int64_t>& device_mesh) const {
   if (src_spec.IsTileMaximal() || src_spec.IsManual()) {
     // TODO(b/238210866) Do not use kInfinityCost.
     return kInfinityCost;
   }
   int64_t bytes_moved = GetBytes(shape) / src_spec.NumTiles();
   double cost = 0.0;
-  for (size_t i = 0; i < device_mesh_.num_dimensions(); ++i) {
+  for (size_t i = 0; i < device_mesh.num_dimensions(); ++i) {
     auto this_cost = this->AllGatherCost(bytes_moved, i);
     cost += this_cost;
-    bytes_moved *= device_mesh_.dimensions()[i];
+    bytes_moved *= device_mesh.dimensions()[i];
   }
   return cost;
 }
@@ -213,10 +214,9 @@ double ClusterEnvironment::TryCollectivePermuteForResharding(
   // Since we only estimate communication costs here, we only need to consider
   // the cost of step 1, ie. replicating the tensor starting from sharding
   // s2. We estimate this cost by invoking OverestimateReplicationCost.
-  return OverestimateReplicationCost(shape, src_spec);
+  return OverestimateReplicationCost(shape, src_spec, device_mesh_);
 }
 
-// The communication cost of resharding a tensor from src to dst
 double ClusterEnvironment::ReshardingCost(const Shape& shape,
                                           const HloSharding& src_spec,
                                           const HloSharding& dst_spec) const {
@@ -224,6 +224,17 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
   if (src_spec == dst_spec || IsUndefined(src_spec) ||
       src_spec.IsReplicated()) {
     return 0.0;
+  }
+
+  if (src_spec.tile_assignment().num_elements() > device_mesh_.num_elements() ||
+      dst_spec.tile_assignment().num_elements() > device_mesh_.num_elements()) {
+    LOG(WARNING)
+        << "Full device sharding found when solving for the partial mesh "
+        << spmd::ToString(device_mesh_.dimensions())
+        << ". Overestimating the resharding cost by assuming full replication "
+           "on the full device mesh "
+        << spmd::ToString(device_mesh_.dimensions()) << ".";
+    return OverestimateReplicationCost(shape, src_spec, original_device_mesh_);
   }
 
   CHECK(!IsUndefined(dst_spec));

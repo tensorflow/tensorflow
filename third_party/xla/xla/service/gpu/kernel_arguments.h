@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
@@ -78,6 +79,11 @@ class KernelArguments {
   static StatusOr<KernelArguments> Create(
       absl::Span<const BufferAllocation* const> allocations,
       mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands);
+
+  static StatusOr<KernelArguments> Create(
+      const BufferAssignment& buffer_assignment,
+      const HloInstruction* non_fusion_hlo,
+      absl::Span<const HloInstruction* const> needed_operands);
 
   const std::vector<KernelArgument>& args() const { return args_; }
 

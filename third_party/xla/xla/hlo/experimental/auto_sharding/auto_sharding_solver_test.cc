@@ -13,13 +13,14 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 
@@ -29,6 +30,7 @@ namespace {
 
 using CostMatrix = std::vector<std::vector<double>>;
 using NodeMatrix = std::vector<std::vector<int64_t>>;
+using EdgeMatrix = std::vector<std::vector<int64_t>>;
 
 void AddCosts(proto2::RepeatedPtrField<AutoShardingSolverRequest_Costs>* costs,
               const CostMatrix& cost_matrix) {
@@ -45,6 +47,15 @@ void AddNodes(proto2::RepeatedPtrField<AutoShardingSolverRequest_Nodes>* nodes,
     AutoShardingSolverRequest_Nodes node;
     node.mutable_nodes()->Add(node_row.begin(), node_row.end());
     nodes->Add(std::move(node));
+  }
+}
+
+void AddEdges(proto2::RepeatedPtrField<AutoShardingSolverRequest_Edges>* edges,
+              const EdgeMatrix& edge_matrix) {
+  for (const auto& edge_row : edge_matrix) {
+    AutoShardingSolverRequest_Edges edge;
+    edge.mutable_edges()->Add(edge_row.begin(), edge_row.end());
+    edges->Add(std::move(edge));
   }
 }
 
@@ -243,6 +254,39 @@ TEST(CallORToolsSolverTest, UsesHint) {
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
   const std::vector<EdgeStrategyIdx> e_val = {0, 0};
   const double objective_value = 7650.0;
+  const AutoShardingSolverResult expected_result = {
+      std::make_tuple(
+          std::move(s_val), std::move(e_val), objective_value), false};
+  EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, HonorsMaxCost) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.mutable_max_cost()->set_coeff(7600.0);  // Best possible is 7650.0
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  EXPECT_TRUE(absl::IsInternal(result.status.status()));
+}
+
+TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const EdgeMatrix live_edges = {{}, {0}, {0, 1}, {1}, {}};
+  const CostMatrix memory_edge_costs = {{1000000, 1100, 1200, 1300,
+                                         2000, 2100, 2200, 2300,
+                                         3000, 3100, 3200, 3300,
+                                         4000, 4100, 4200, 4300},
+                                        {5000000, 5100, 5200, 5300,
+                                         6000, 6100, 6200, 6300,
+                                         7000, 7100, 7200, 7300}};
+  AddEdges(request.mutable_live_edges(), live_edges);
+  AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
+  const std::vector<EdgeStrategyIdx> e_val = {1, 1};
+  const double objective_value = 7872.0;
   const AutoShardingSolverResult expected_result = {
       std::make_tuple(
           std::move(s_val), std::move(e_val), objective_value), false};
@@ -464,6 +508,108 @@ TEST(AutoShardingRationalizerTest, RationalizesProperly) {
       "computation cost increases for A (10 -> 13)",
       "resharding cost increases for A and C (1200 -> 4200)"};
   EXPECT_EQ(rationales, expected_rationales);
+}
+
+TEST(ScaleRequest, ScalesProperly) {
+  AutoShardingSolverRequest unscaled_request;
+  const CostMatrix c = {{10000000, 11000000, 12000000, 13000000},
+                        {20000000, 21000000, 22000000},
+                        {30000000, 31000000, 32000000, 33000000},
+                        {40000000, 41000000, 42000000, 43000000},
+                        {50000000, 51000000, 52000000, 53000000}};
+  const CostMatrix d = {{100000000, 110000000, 120000000, 130000000},
+                        {200000000, 210000000, 220000000},
+                        {300000000, 310000000, 320000000, 330000000},
+                        {400000000, 410000000, 420000000, 430000000},
+                        {500000000, 510000000, 520000000}};
+  const CostMatrix r = {{1000000000, 1100000000, 1200000000, 1300000000,
+                         2000000000, 2100000000, 2200000000, 2300000000,
+                         3000000000, 3100000000, 3200000000, 3300000000,
+                         4000000000, 4100000000, 4200000000, 4300000000},
+                        {5000000000, 5100000000, 5200000000, 5300000000,
+                         6000000000, 6100000000, 6200000000, 6300000000,
+                         7000000000, 7100000000, 7200000000, 10000000000000}};
+  AddCosts(unscaled_request.mutable_computation_costs(), c);
+  AddCosts(unscaled_request.mutable_communication_costs(), d);
+  AddCosts(unscaled_request.mutable_resharding_costs(), r);
+  unscaled_request.mutable_coeff_limit()->set_coeff(1e7);
+
+  AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
+
+  AutoShardingSolverRequest expected_request;
+  const CostMatrix expected_c = {{10, 11, 12, 13},
+                                 {20, 21, 22},
+                                 {30, 31, 32, 33},
+                                 {40, 41, 42, 43},
+                                 {50, 51, 52, 53}};
+  const CostMatrix expected_d = {{100, 110, 120, 130},
+                                 {200, 210, 220},
+                                 {300, 310, 320, 330},
+                                 {400, 410, 420, 430},
+                                 {500, 510, 520}};
+  const CostMatrix expected_r = {{1000, 1100, 1200, 1300,
+                                  2000, 2100, 2200, 2300,
+                                  3000, 3100, 3200, 3300,
+                                  4000, 4100, 4200, 4300},
+                                 {5000, 5100, 5200, 5300,
+                                  6000, 6100, 6200, 6300,
+                                  7000, 7100, 7200, 10000000}};
+  AddCosts(expected_request.mutable_computation_costs(), expected_c);
+  AddCosts(expected_request.mutable_communication_costs(), expected_d);
+  AddCosts(expected_request.mutable_resharding_costs(), expected_r);
+  expected_request.mutable_coeff_limit()->set_coeff(1e7);
+  EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
+}
+
+TEST(ScaleRequest, SkipsScaling) {
+  AutoShardingSolverRequest unscaled_request;
+  const CostMatrix c = {{10, 11, 12, 13},
+                        {20, 21, 22},
+                        {30, 31, 32, 33},
+                        {40, 41, 42, 43},
+                        {50, 51, 52, 53}};
+  const CostMatrix d = {{100, 110, 120, 130},
+                        {200, 210, 220},
+                        {300, 310, 320, 330},
+                        {400, 410, 420, 430},
+                        {500, 510, 520}};
+  const CostMatrix r = {{1000, 1100, 1200, 1300,
+                         2000, 2100, 2200, 2300,
+                         3000, 3100, 3200, 3300,
+                         4000, 4100, 4200, 4300},
+                        {5000, 5100, 5200, 5300,
+                         6000, 6100, 6200, 6300,
+                         7000, 7100, 7200, 10000000}};
+  AddCosts(unscaled_request.mutable_computation_costs(), c);
+  AddCosts(unscaled_request.mutable_communication_costs(), d);
+  AddCosts(unscaled_request.mutable_resharding_costs(), r);
+  unscaled_request.mutable_coeff_limit()->set_coeff(1e7);
+
+  AutoShardingSolverRequest request = ScaleRequest(unscaled_request);
+
+  AutoShardingSolverRequest expected_request;
+  const CostMatrix expected_c = {{10, 11, 12, 13},
+                                 {20, 21, 22},
+                                 {30, 31, 32, 33},
+                                 {40, 41, 42, 43},
+                                 {50, 51, 52, 53}};
+  const CostMatrix expected_d = {{100, 110, 120, 130},
+                                 {200, 210, 220},
+                                 {300, 310, 320, 330},
+                                 {400, 410, 420, 430},
+                                 {500, 510, 520}};
+  const CostMatrix expected_r = {{1000, 1100, 1200, 1300,
+                                  2000, 2100, 2200, 2300,
+                                  3000, 3100, 3200, 3300,
+                                  4000, 4100, 4200, 4300},
+                                 {5000, 5100, 5200, 5300,
+                                  6000, 6100, 6200, 6300,
+                                  7000, 7100, 7200, 10000000}};
+  AddCosts(expected_request.mutable_computation_costs(), expected_c);
+  AddCosts(expected_request.mutable_communication_costs(), expected_d);
+  AddCosts(expected_request.mutable_resharding_costs(), expected_r);
+  expected_request.mutable_coeff_limit()->set_coeff(1e7);
+  EXPECT_THAT(request, ::testing::EqualsProto(expected_request));
 }
 
 // clang-format on

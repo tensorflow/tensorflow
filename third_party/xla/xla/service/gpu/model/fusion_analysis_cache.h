@@ -46,6 +46,9 @@ class HloFusionAnalysisCache {
   // removes all producer-consumer fusions that involve this instruction.
   void Invalidate(const HloInstruction& instruction);
 
+  // Delete all cache entries.
+  void Clear();
+
  private:
   const stream_executor::DeviceDescription& device_info_;
 

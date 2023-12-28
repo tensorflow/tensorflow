@@ -21,6 +21,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -327,6 +328,13 @@ class GpuDriver {
   static tsl::Status StreamBeginCapture(GpuStreamHandle stream,
                                         StreamCaptureMode mode);
 
+  // Begins graph capture on a stream to an existing graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1gac495e0527d1dd6437f95ee482f61865
+  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
+  static tsl::Status StreamBeginCaptureToGraph(GpuStreamHandle stream,
+                                               GpuGraphHandle graph,
+                                               StreamCaptureMode mode);
+
   // Ends capture on a stream, returning the captured graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g03dab8b2ba76b00718955177a929970c
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
@@ -360,6 +368,12 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
   static tsl::Status GraphLaunch(GpuGraphExecHandle exec,
                                  GpuStreamHandle stream);
+
+  // Enables or disables the specified node in the given exec.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g371b20eb0c0658731e38db7e68f12c78
+  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___graph.html#ga8902200d9fed1df7644fc7a51c4d327b
+  static tsl::Status GraphNodeSetEnabled(GpuGraphExecHandle exec,
+                                         GpuGraphNodeHandle node, bool enabled);
 
   // Graph update result.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g8edc8969ff6ae00b7cd5d7292f812c3c
@@ -425,7 +439,9 @@ class GpuDriver {
   // Write a DOT file describing graph structure.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g0fb0c4d319477a0a98da005fcb0dacc4
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#graph-management
-  static tsl::Status GraphDebugDotPrint(GpuGraphHandle graph, const char* path);
+  static tsl::StatusOr<std::string> GraphDebugDotPrint(
+      GpuGraphHandle graph, const char* path,
+      bool return_printed_graph = false);
 
   // Returns a stream's capture status.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g37823c49206e3704ae23c7ad78560bca
@@ -894,7 +910,7 @@ class GpuDriver {
   // compatible driver).
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VERSION.html#group__CUDA__VERSION_1g8b7a10395392e049006e61bcdc8ebe71
-  static bool GetDriverVersion(int* driver_version);
+  static tsl::StatusOr<int32_t> GetDriverVersion();
 
   // -- Other calls
 

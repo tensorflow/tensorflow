@@ -77,8 +77,6 @@ class RangeIterator : public TaskIterator {
     return repeat_ ? kInfiniteCardinality : range_;
   }
 
-  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
-
  private:
   const int64_t range_;
   const bool repeat_;
@@ -95,8 +93,6 @@ class InfiniteRangeIterator : public TaskIterator {
   }
 
   int64_t Cardinality() const override { return kInfiniteCardinality; }
-
-  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
 
  private:
   int64_t next_ = 0;
@@ -120,8 +116,6 @@ class ElementOrErrorIterator : public TaskIterator {
   }
 
   int64_t Cardinality() const override { return elements_.size(); }
-
-  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
 
  private:
   const std::vector<StatusOr<T>> elements_;

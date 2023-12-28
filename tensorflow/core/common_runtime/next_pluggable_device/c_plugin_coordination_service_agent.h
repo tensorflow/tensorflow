@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_COORDINATION_SERVICE_AGENT_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_COORDINATION_SERVICE_AGENT_H_
 
+#include <cstdint>
 #include <string>
+#include <string_view>
 
+#include "absl/time/time.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -36,12 +39,14 @@ class CPluginCoordinationServiceAgent : public PluginCoordinationServiceAgent {
     return TF_CoordinationServiceIsInitialized(agent_);
   }
 
-  Status InsertKeyValue(const std::string& key,
-                        const std::string& value) override;
+  Status InsertKeyValue(std::string_view key, std::string_view value) override;
 
-  StatusOr<std::string> GetKeyValue(const std::string& key) override;
+  StatusOr<std::string> GetKeyValue(std::string_view key) override;
+  StatusOr<std::string> GetKeyValue(std::string_view key,
+                                    absl::Duration timeout) override;
+  StatusOr<std::string> TryGetKeyValue(std::string_view key) override;
 
-  Status DeleteKeyValue(const std::string& key) override;
+  Status DeleteKeyValue(std::string_view key) override;
 
  private:
   TF_CoordinationServiceAgent* agent_;

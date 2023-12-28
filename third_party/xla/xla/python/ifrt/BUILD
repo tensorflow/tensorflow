@@ -88,7 +88,9 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/concurrency:ref_count",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -153,7 +155,11 @@ xla_cc_test(
     srcs = ["shape_test.cc"],
     deps = [
         ":ifrt",
+        ":types_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -298,12 +304,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":ifrt",
+        "//xla:literal",
         "//xla:test",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/concurrency:ref_count",
@@ -361,6 +369,7 @@ cc_library(
         ":serdes",
         ":sharding_proto_cc",
         "//xla:statusor",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -373,10 +382,12 @@ xla_cc_test(
     deps = [
         ":ifrt",
         ":serdes",
+        ":serdes_proto_cc",
         ":sharding_serdes",
         ":sharding_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

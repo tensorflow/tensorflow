@@ -97,6 +97,7 @@ using SliceProposalCollection =
 using MSA = memory_space_assignment::MemorySpaceAssignment;
 using ::testing::_;
 using ::testing::Return;
+using ::testing::UnorderedElementsAre;
 
 constexpr int64_t kPointerSize = 8;
 constexpr float kAsyncCopyBandwidth = 100;
@@ -6423,7 +6424,7 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
     for (AllocationBlock* block : allocations) {
       absl::flat_hash_set<int64_t> colocations;
       std::string colocations_str;
-      for (const AllocationBlock* colocation : block->colocations) {
+      for (const AllocationBlock* colocation : block->GetColocations()) {
         absl::StrAppend(&colocations_str, colocation->id, ", ");
         colocations.insert(colocation->id);
       }
@@ -6440,7 +6441,7 @@ class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
       } else {
         block->offset = block->initial_offset;
       }
-      for (AllocationBlock* colocation : block->colocations) {
+      for (AllocationBlock* colocation : block->GetColocations()) {
         if (it != repack_map_.end()) {
           colocation->offset = it->second;
         } else {
@@ -6674,12 +6675,12 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
   auto check_fun =
       [](absl::Span<MemorySpaceAssignmentRepacker::AllocationBlock*>
              allocations) {
-        EXPECT_TRUE(allocations.at(0)->colocations.size() == 1 ||
-                    allocations.at(0)->colocations.size() == 3);
-        EXPECT_EQ(allocations.at(1)->colocations.size(), 3);
-        EXPECT_EQ(allocations.at(2)->colocations.size(), 3);
-        EXPECT_TRUE(allocations.at(3)->colocations.size() == 1 ||
-                    allocations.at(3)->colocations.size() == 3);
+        EXPECT_TRUE(allocations.at(0)->GetColocationsCount() == 1 ||
+                    allocations.at(0)->GetColocationsCount() == 3);
+        EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 3);
+        EXPECT_EQ(allocations.at(2)->GetColocationsCount(), 3);
+        EXPECT_TRUE(allocations.at(3)->GetColocationsCount() == 1 ||
+                    allocations.at(3)->GetColocationsCount() == 3);
       };
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
@@ -6729,8 +6730,8 @@ ENTRY entry {
   auto check_fun =
       [&](absl::Span<MemorySpaceAssignmentRepacker::AllocationBlock*>
               allocations) {
-        EXPECT_EQ(allocations.at(0)->colocations.size(), 2);
-        EXPECT_EQ(allocations.at(1)->colocations.size(), 2);
+        EXPECT_EQ(allocations.at(0)->GetColocationsCount(), 2);
+        EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 2);
         repacker_ran = true;
       };
   FakeMemorySpaceAssignmentRepacker repacker =
@@ -6918,7 +6919,7 @@ TEST_P(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
         for (MemorySpaceAssignmentRepacker::AllocationBlock* block :
              allocations) {
           if (block->inclusive_start_time == block->end_time) {
-            EXPECT_GT(block->colocations.size(), 0);
+            EXPECT_GT(block->GetColocationsCount(), 0);
           }
         }
       };
@@ -12570,5 +12571,38 @@ ENTRY main {
       {copy_start, first_while, second_while, copy_done}));
 }
 
+using RepackingTest = ::testing::Test;
+
+TEST_F(RepackingTest, Colocations) {
+  MemorySpaceAssignmentRepacker::AllocationBlock a{10, 20, 100, 0, 1000, 0};
+  MemorySpaceAssignmentRepacker::AllocationBlock b{15, 25, 150, 0, 2000, 1};
+  MemorySpaceAssignmentRepacker::AllocationBlock c{18, 22, 50, 0, 500, 2};
+  MemorySpaceAssignmentRepacker::AllocationBlock d{5, 9, 20, 0, 3000, 3};
+  MemorySpaceAssignmentRepacker::AllocationBlock e{17, 22, 100, 0, 1500, 4};
+  MemorySpaceAssignmentRepacker::AllocationBlock f{25, 27, 150, 0, 2500, 5};
+
+  // a doesn't have other colocations.
+  a.next_colocated = &a;
+  // b and c are colocated.
+  b.next_colocated = &c;
+  c.next_colocated = &b;
+  // d, e, and f are colocated.
+  d.next_colocated = &f;
+  e.next_colocated = &d;
+  f.next_colocated = &e;
+
+  EXPECT_EQ(a.GetColocationsCount(), 1);
+  EXPECT_THAT(a.GetColocations(), UnorderedElementsAre(&a));
+  EXPECT_EQ(b.GetColocationsCount(), 2);
+  EXPECT_THAT(b.GetColocations(), UnorderedElementsAre(&b, &c));
+  EXPECT_EQ(c.GetColocationsCount(), 2);
+  EXPECT_THAT(c.GetColocations(), UnorderedElementsAre(&b, &c));
+  EXPECT_EQ(d.GetColocationsCount(), 3);
+  EXPECT_THAT(d.GetColocations(), UnorderedElementsAre(&d, &e, &f));
+  EXPECT_EQ(e.GetColocationsCount(), 3);
+  EXPECT_THAT(e.GetColocations(), UnorderedElementsAre(&d, &e, &f));
+  EXPECT_EQ(f.GetColocationsCount(), 3);
+  EXPECT_THAT(f.GetColocations(), UnorderedElementsAre(&d, &e, &f));
+}
 }  // namespace
 }  // namespace xla

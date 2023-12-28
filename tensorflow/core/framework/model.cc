@@ -551,7 +551,7 @@ class InterleaveMany : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::INTERLEAVE_MANY);
     return OkStatus();
@@ -763,7 +763,7 @@ class AsyncInterleaveMany : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  double MaximumBufferedBytes() const override TF_SHARED_LOCKS_REQUIRED(mu_) {
     auto* parameter = gtl::FindOrNull(parameters_, kMaxBufferedElements);
     if (parameter == nullptr) {
       parameter = gtl::FindOrNull(parameters_, kParallelism);
@@ -774,7 +774,7 @@ class AsyncInterleaveMany : public Node {
     return (*parameter)->value * AverageBufferedElementSizeLocked();
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_INTERLEAVE_MANY);
     return OkStatus();
@@ -866,7 +866,7 @@ class KnownRatio : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::KNOWN_RATIO);
     node_proto->set_ratio(ratio_);
@@ -1245,7 +1245,7 @@ class UnknownRatio : public Node {
         self_processing_time + inputs_processing_time;
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::UNKNOWN_RATIO);
     return OkStatus();
@@ -1299,7 +1299,7 @@ class Unknown : public Node {
         TotalProcessingTimeForInputs(*total_processing_times);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::UNKNOWN);
     return OkStatus();
@@ -1328,7 +1328,7 @@ class AsyncKnownRatio : public AsyncRatio {
         parameters);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_KNOWN_RATIO);
     node_proto->set_ratio(Ratio());
@@ -1373,7 +1373,7 @@ class AsyncUnknownRatio : public AsyncRatio {
         Args{id_, name_, std::move(output)}, parameters);
   }
 
-  Status ToProto(ModelProto::Node* node_proto) const {
+  Status ToProto(ModelProto::Node* node_proto) const override {
     TF_RETURN_IF_ERROR(Node::ToProto(node_proto));
     node_proto->set_node_class(NodeClass::ASYNC_UNKNOWN_RATIO);
     return OkStatus();
@@ -2204,8 +2204,9 @@ Status Node::FromProto(ModelProto::Node node_proto,
   return FromProtoHelper(node_proto, *node);
 }
 
-Model::Model()
-    : optimization_period_ms_(kOptimizationPeriodMinMs),
+Model::Model(std::optional<std::string> dataset_name)
+    : dataset_name_(std::move(dataset_name)),
+      optimization_period_ms_(kOptimizationPeriodMinMs),
       safe_to_collect_metrics_(std::make_shared<GuardedBool>(true)) {
   model_id_ = strings::StrCat(reinterpret_cast<uint64>(this));
   model_gauge_cell_ = metrics::GetTFDataModelGauge(model_id_);
@@ -2228,6 +2229,9 @@ Model::Model()
               tf_shared_lock l(gap_mu_);
               *model_proto.mutable_gap_times() = {gap_times_usec_.begin(),
                                                   gap_times_usec_.end()};
+              if (dataset_name_.has_value()) {
+                model_proto.set_dataset_name(dataset_name_.value());
+              }
               return model_proto.DebugString();
             }
             LOG(WARNING) << s.message();
@@ -2394,6 +2398,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
       }
     }
   }
+  VLOG(2) << ram_budget_manager.DebugString();
 }
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {

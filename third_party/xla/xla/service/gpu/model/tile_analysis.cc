@@ -32,12 +32,11 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
-#include "absl/strings/str_join.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -45,7 +44,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/permutation_util.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/indexing_map_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -60,12 +61,9 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
-using mlir::AffineBinaryOpExpr;
-using mlir::AffineDimExpr;
 using mlir::AffineExpr;
 using mlir::AffineExprKind;
 using mlir::AffineMap;
-using mlir::AffineSymbolExpr;
 using mlir::getAffineBinaryOpExpr;
 using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
@@ -76,7 +74,7 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputCwiseOpIndexing(
   auto dims = instr->shape().dimensions();
   IndexingMap identity_map{.affine_map = AffineMap::getMultiDimIdentityMap(
                                dims.size(), mlir_context),
-                           .input_dims_sizes = {}};
+                           .domain = Domain::FromUpperBounds(dims, {})};
 
   HloInstructionIndexing instr_indexing;
   int64_t operand_count = instr->operand_count();
@@ -91,7 +89,7 @@ StatusOr<HloInstructionIndexing> ComputeInputToOutputCwiseOpIndexing(
   auto dims = instr->shape().dimensions();
   IndexingMap identity_map{.affine_map = AffineMap::getMultiDimIdentityMap(
                                dims.size(), mlir_context),
-                           .input_dims_sizes = {}};
+                           .domain = Domain::FromUpperBounds(dims, {})};
   return HloInstructionIndexing::FromIndexingMaps({identity_map});
 }
 
@@ -107,7 +105,7 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputBroadcastOpIndexing(
   IndexingMap indexing_map{
       .affine_map = AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
                                    mlir_context),
-      .input_dims_sizes = {}};
+      .domain = Domain::FromUpperBounds(output_dims, {})};
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
@@ -137,7 +135,9 @@ StatusOr<HloInstructionIndexing> ComputeInputToOutputBroadcastOpIndexing(
   IndexingMap indexing_map{
       .affine_map = AffineMap::get(input_shape.rank(), added_dims_sizes.size(),
                                    exprs, mlir_context),
-      .input_dims_sizes = std::move(added_dims_sizes)};
+      .domain =
+          Domain::FromUpperBounds(input_shape.dimensions(), added_dims_sizes)};
+
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
@@ -152,7 +152,7 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& producer_map,
   // After the composition some of the symbols might become unused, e.g. when a
   // dimension was added by broadcasting as then reduced. We should remove these
   // dimensions from the composed affine map and also from the resulting
-  // `input_dim_sizes`.
+  // `domain.symbol_ranges`.
   //
   // For example, if there is a reduction(broadcast):
   //
@@ -160,32 +160,37 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& producer_map,
   //   bcast = f32[15, 20] broadcast(p0), dimensions={0}
   //   reduce = f32[15, 20] reduce(bcast, init) dimensions={1}
   //
-  // then `reduce` has (d0)[s0] -> (d0, s0) with size(s0) = 20
+  // then `reduce` has (d0)[s0] -> (d0, s0) with s0 in [0, 20).
   // and  `bcast` has (d0, d1) -> (d0) indexing map.
   //
-  // The composition of there two maps yields (d0)[s0] -> (d0) with size(s0),
+  // The composition of there two maps yields (d0)[s0] -> (d0),
   // although `s0` is not used in the mapping. In order to remove such symbols,
   // we get the indices of unused symbols and remove them from the composed
-  // affine map and the `input_dim_sizes`.
+  // affine map and the `domain.symbol_ranges`.
   auto unused_symbols_bit_vector =
       mlir::getUnusedSymbolsBitVector({composed_map});
   composed_map = mlir::compressSymbols(composed_map, unused_symbols_bit_vector);
 
-  // The input dims symbols in the composed map, i.e. combined
+  // The symbols in the composed map, i.e. combined
   // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
-  // symbols(consumer_map)]. In that order we are adding the sizes for the input
-  // dims while skipping the symbols that are unused.
-  std::vector<int64_t> combined_sizes;
-  combined_sizes.reserve(producer_map.input_dims_sizes.size() +
-                         consumer_map.input_dims_sizes.size());
+  // symbols(consumer_map)]. In that order we are adding the symbol ranges while
+  // skipping the symbols that are unused.
+  std::vector<Range> combined_symbol_ranges;
+  combined_symbol_ranges.reserve(producer_map.domain.symbol_ranges.size() +
+                                 consumer_map.domain.symbol_ranges.size());
   int64_t symbol_id = 0;
-  for (int64_t dim : llvm::concat<const int64_t>(
-           producer_map.input_dims_sizes, consumer_map.input_dims_sizes)) {
+  for (const Range& symbol_range :
+       llvm::concat<const Range>(producer_map.domain.symbol_ranges,
+                                 consumer_map.domain.symbol_ranges)) {
     if (unused_symbols_bit_vector[symbol_id++]) continue;
-    combined_sizes.push_back(dim);
+    combined_symbol_ranges.push_back(symbol_range);
   }
-  return IndexingMap{.affine_map = std::move(composed_map),
-                     .input_dims_sizes = std::move(combined_sizes)};
+  IndexingMap composed_indexing_map{
+      .affine_map = std::move(composed_map),
+      .domain = Domain{.dimension_ranges = consumer_map.domain.dimension_ranges,
+                       .symbol_ranges = combined_symbol_ranges}};
+  composed_indexing_map.Simplify();
+  return composed_indexing_map;
 }
 
 // Composes instruction indexing maps starting at the root instruction
@@ -302,12 +307,14 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputDotOpIndexing(
   IndexingMap lhs_indexing_map{
       .affine_map = AffineMap::get(dot->shape().rank(), input_dim_sizes.size(),
                                    lhs_exprs, mlir_context),
-      .input_dims_sizes = input_dim_sizes};
+      .domain =
+          Domain::FromUpperBounds(dot->shape().dimensions(), input_dim_sizes)};
 
   IndexingMap rhs_indexing_map{
       .affine_map = AffineMap::get(dot->shape().rank(), input_dim_sizes.size(),
                                    rhs_exprs, mlir_context),
-      .input_dims_sizes = input_dim_sizes};
+      .domain =
+          Domain::FromUpperBounds(dot->shape().dimensions(), input_dim_sizes)};
   return HloInstructionIndexing::FromIndexingMaps(
       {lhs_indexing_map, rhs_indexing_map});
 }
@@ -340,11 +347,12 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputReduceOpIndexing(
   IndexingMap inputs_indexing_map{
       .affine_map = AffineMap::get(output_shape.rank(), reduce_dims_ids.size(),
                                    exprs, mlir_context),
-      .input_dims_sizes = parallel_dims_sizes};
+      .domain = Domain::FromUpperBounds(output_shape.dimensions(),
+                                        parallel_dims_sizes)};
   IndexingMap inits_indexing_map{
       .affine_map = AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {},
                                    mlir_context),
-      .input_dims_sizes = {}};
+      .domain = Domain::FromUpperBounds(output_shape.dimensions(), {})};
 
   HloInstructionIndexing instr_indexing;
   for (int64_t id = 0; id < reduce->input_count(); ++id) {
@@ -383,12 +391,11 @@ StatusOr<HloInstructionIndexing> ComputeInputToOutputReduceOpIndexing(
   IndexingMap inputs_indexing_map{
       .affine_map = AffineMap::get(input_shape.rank(), /*symbolCount=*/0,
                                    inputs_exprs, mlir_context),
-      .input_dims_sizes = {}};
+      .domain = Domain::FromUpperBounds(input_shape.dimensions(), {})};
   IndexingMap inits_indexing_map{
       .affine_map = AffineMap::get(0, /*symbolCount=*/output_rank, inits_exprs,
                                    mlir_context),
-      .input_dims_sizes = {output_shape.dimensions().begin(),
-                           output_shape.dimensions().end()}};
+      .domain = Domain::FromUpperBounds({}, output_shape.dimensions())};
 
   HloInstructionIndexing instr_indexing;
   for (int64_t id = 0; id < reduce->input_count(); ++id) {
@@ -505,9 +512,9 @@ void ComputeMinimalReshapeIndexing(
 // This is an optimization that allows us to construct simpler affine maps,
 // otherwise we would need to linearize/delinearize even some of the simpler
 // cases.
-IndexingMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
-                                      absl::Span<const int64_t> output_dims,
-                                      MLIRContext* mlir_context) {
+AffineMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
+                                    absl::Span<const int64_t> output_dims,
+                                    MLIRContext* mlir_context) {
   size_t input_rank = input_dims.size();
   size_t output_rank = output_dims.size();
 
@@ -549,29 +556,32 @@ IndexingMap ComputeReshapeIndexingMap(absl::Span<const int64_t> input_dims,
     output_subshape.clear();
     output_dims_exprs.clear();
   }
-  return IndexingMap{
-      .affine_map = AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
-                                   mlir_context),
-      .input_dims_sizes = {}};
-}
+  return AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
+                        mlir_context);
+};
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputReshapeOpIndexing(
     const HloReshapeInstruction* reshape, MLIRContext* mlir_context) {
   auto input_dims = reshape->operand(0)->shape().dimensions();
   auto output_dims = reshape->shape().dimensions();
-  IndexingMap reshape_indexing_map =
-      ComputeReshapeIndexingMap(input_dims, output_dims, mlir_context);
 
+  IndexingMap reshape_indexing_map{
+      .affine_map =
+          ComputeReshapeIndexingMap(input_dims, output_dims, mlir_context),
+      .domain = Domain::FromUpperBounds(output_dims, {})};
+  reshape_indexing_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
-
 StatusOr<HloInstructionIndexing> ComputeInputToOutputReshapeOpIndexing(
     const HloReshapeInstruction* reshape, MLIRContext* mlir_context) {
   auto input_dims = reshape->operand(0)->shape().dimensions();
   auto output_dims = reshape->shape().dimensions();
-  IndexingMap reshape_indexing_map =
-      ComputeReshapeIndexingMap(output_dims, input_dims, mlir_context);
 
+  IndexingMap reshape_indexing_map{
+      .affine_map =
+          ComputeReshapeIndexingMap(output_dims, input_dims, mlir_context),
+      .domain = Domain::FromUpperBounds(input_dims, {})};
+  reshape_indexing_map.Simplify();
   return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
 }
 
@@ -599,7 +609,7 @@ StatusOr<HloInstructionIndexing> ComputeReverseOpIndexing(
   IndexingMap indexing_map{
       .affine_map = AffineMap::get(output_dims.size(), /*symbolCount=*/0, exprs,
                                    mlir_context),
-      .input_dims_sizes = {}};
+      .domain = Domain::FromUpperBounds(output_dims, {})};
 
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
@@ -624,37 +634,30 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputSliceOpIndexing(
   IndexingMap indexing_map{
       .affine_map =
           AffineMap::get(output_rank, /*symbolCount=*/0, exprs, mlir_context),
-      .input_dims_sizes = {}};
+      .domain = Domain::FromUpperBounds(slice->shape().dimensions(), {})};
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
-}
-
-IndexingMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
-                                        MLIRContext* mlir_context) {
-  auto forward_permutation = AffineMap::getPermutationMap(
-      std::vector<unsigned>(permutation.begin(), permutation.end()),
-      mlir_context);
-  return IndexingMap{
-      .affine_map = mlir::inversePermutation(forward_permutation),
-      .input_dims_sizes = {}};
 }
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
-  return HloInstructionIndexing::FromIndexingMaps(
-      {ComputeTransposeIndexingMap(transpose->dimensions(), mlir_context)});
+  AffineMap inverse_permutation = ComputeTransposeIndexingMap(
+      InversePermutation(transpose->dimensions()), mlir_context);
+  return HloInstructionIndexing::FromIndexingMaps({IndexingMap{
+      .affine_map = inverse_permutation,
+      .domain = Domain::FromUpperBounds(transpose->shape().dimensions(), {})}});
 }
 
 StatusOr<HloInstructionIndexing> ComputeInputToOutputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
-  auto forward_permutation = AffineMap::getPermutationMap(
-      std::vector<unsigned>(transpose->dimensions().begin(),
-                            transpose->dimensions().end()),
-      mlir_context);
+  AffineMap forward_permutation =
+      ComputeTransposeIndexingMap(transpose->dimensions(), mlir_context);
   return HloInstructionIndexing::FromIndexingMaps(
-      {IndexingMap{.affine_map = forward_permutation, .input_dims_sizes = {}}});
+      {IndexingMap{.affine_map = forward_permutation,
+                   .domain = Domain::FromUpperBounds(
+                       transpose->operand(0)->shape().dimensions(), {})}});
 }
 
-StatusOr<HloInstructionIndexing> ComputeOutputToInputBitcastOpIndexingImpl(
+StatusOr<AffineMap> ComputeOutputToInputBitcastOpIndexingImpl(
     const Shape& input_shape, const Shape& output_shape,
     MLIRContext* mlir_context) {
   ShapeUtil::BitcastDecomposition decomposed_bitcast =
@@ -666,43 +669,57 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputBitcastOpIndexingImpl(
         input_shape, output_shape);
     CHECK(permutation.has_value())
         << "Failed to deduce permutation for a bitcast.";
-    return HloInstructionIndexing::FromIndexingMaps(
-        {ComputeTransposeIndexingMap(*permutation, mlir_context)});
+
+    return ComputeTransposeIndexingMap(InversePermutation(permutation.value()),
+                                       mlir_context);
   }
   if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
           decomposed_bitcast)) {
-    IndexingMap reshape_indexing_map = ComputeReshapeIndexingMap(
-        input_shape.dimensions(), output_shape.dimensions(), mlir_context);
-    return HloInstructionIndexing::FromIndexingMaps({reshape_indexing_map});
+    return ComputeReshapeIndexingMap(input_shape.dimensions(),
+                                     output_shape.dimensions(), mlir_context);
   }
   // `trt` stands for transpose-reshape-transpose decomposition of bitcast.
   auto trt = std::get<ShapeUtil::BitcastDecompositionTrt>(decomposed_bitcast);
-  IndexingMap transpose_map_1 =
-      ComputeTransposeIndexingMap(trt.transpose1_dims, mlir_context);
-  IndexingMap reshape_map =
+  AffineMap transpose_map_1 = ComputeTransposeIndexingMap(
+      InversePermutation(trt.transpose1_dims), mlir_context);
+  AffineMap reshape_map =
       ComputeReshapeIndexingMap(trt.transpose1_shape.dimensions(),
                                 trt.reshape_shape.dimensions(), mlir_context);
-  IndexingMap transpose_map_2 =
-      ComputeTransposeIndexingMap(trt.transpose2_dims, mlir_context);
-  IndexingMap composed_map = ComposeIndexingMaps(
-      ComposeIndexingMaps(transpose_map_1, reshape_map), transpose_map_2);
-  return HloInstructionIndexing::FromIndexingMaps({composed_map});
+  AffineMap transpose_map_2 = ComputeTransposeIndexingMap(
+      InversePermutation(trt.transpose2_dims), mlir_context);
+  return transpose_map_1.compose(reshape_map).compose(transpose_map_2);
 }
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
   const Shape& input_shape = bitcast->operand(0)->shape();
   const Shape& output_shape = bitcast->shape();
-  return ComputeOutputToInputBitcastOpIndexingImpl(input_shape, output_shape,
-                                                   mlir_context);
+  TF_ASSIGN_OR_RETURN(auto bitcast_affine_map,
+                      ComputeOutputToInputBitcastOpIndexingImpl(
+                          input_shape, output_shape, mlir_context));
+  IndexingMap bitcast_indexing_map{
+      .affine_map = bitcast_affine_map,
+      .domain = Domain::FromUpperBounds(output_shape.dimensions(), {})};
+  bitcast_indexing_map.Simplify();
+
+  return HloInstructionIndexing::FromIndexingMaps({bitcast_indexing_map});
 }
 
 StatusOr<HloInstructionIndexing> ComputeInputToOutputBitcastOpIndexing(
     const HloInstruction* bitcast, MLIRContext* mlir_context) {
   const Shape& input_shape = bitcast->operand(0)->shape();
   const Shape& output_shape = bitcast->shape();
-  return ComputeOutputToInputBitcastOpIndexingImpl(output_shape, input_shape,
-                                                   mlir_context);
+
+  TF_ASSIGN_OR_RETURN(auto bitcast_affine_map,
+                      ComputeOutputToInputBitcastOpIndexingImpl(
+                          output_shape, input_shape, mlir_context));
+
+  IndexingMap bitcast_indexing_map{
+      .affine_map = bitcast_affine_map,
+      .domain = Domain::FromUpperBounds(input_shape.dimensions(), {})};
+  bitcast_indexing_map.Simplify();
+
+  return HloInstructionIndexing::FromIndexingMaps({bitcast_indexing_map});
 }
 
 template <typename T>
@@ -713,258 +730,28 @@ std::string ToStringImpl(const T& value) {
   return ss.str();
 }
 
-int64_t FloorDiv(int64_t dividend, int64_t divisor) {
-  return dividend / divisor -
-         (((dividend >= 0) != (divisor >= 0) && dividend % divisor) ? 1 : 0);
-}
-
-struct IndexingMapSimplifier {
-  struct Bounds {
-    int64_t lower;
-    int64_t upper;
-  };
-
-  Bounds BoundsInclusive(AffineExpr expr) {
-    auto bound = bounds.find(expr);
-    if (bound != bounds.end()) return bound->second;
-
-    switch (expr.getKind()) {
-      case AffineExprKind::Constant: {
-        int64_t value = mlir::cast<mlir::AffineConstantExpr>(expr).getValue();
-        return bounds[expr] = {value, value};
-      }
-      case AffineExprKind::DimId: {
-        int64_t size =
-            dimension_sizes[mlir::cast<AffineDimExpr>(expr).getPosition()];
-        return bounds[expr] = {0, size - 1};
-      }
-      case AffineExprKind::SymbolId: {
-        int64_t size =
-            symbol_sizes[mlir::cast<AffineSymbolExpr>(expr).getPosition()];
-        return bounds[expr] = {0, size - 1};
-      }
-      default:
-        auto binary_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
-        CHECK(binary_op);
-        auto lhs = BoundsInclusive(binary_op.getLHS());
-        auto rhs = BoundsInclusive(binary_op.getRHS());
-
-        auto& result = bounds[expr];
-        switch (expr.getKind()) {
-          case AffineExprKind::Add:
-            return result = {lhs.lower + rhs.lower, lhs.upper + rhs.upper};
-          case AffineExprKind::Mul: {
-            int64_t a = lhs.lower * rhs.lower;
-            int64_t b = lhs.upper * rhs.upper;
-            return result = {std::min(a, b), std::max(a, b)};
-          }
-          case AffineExprKind::Mod: {
-            CHECK_EQ(rhs.lower, rhs.upper) << "RHS of mod must be a constant";
-            int64_t m = rhs.lower;
-            if (0 <= lhs.lower && lhs.upper < m) {
-              return result = lhs;
-            }
-            return result = {0, m - 1};
-          }
-          case AffineExprKind::FloorDiv: {
-            CHECK_EQ(rhs.lower, rhs.upper)
-                << "RHS of floor_div must be a constant";
-            int64_t d = rhs.lower;
-            int a = FloorDiv(lhs.lower, d);
-            int b = FloorDiv(lhs.upper, d);
-            return result = {std::min(a, b), std::max(a, b)};
-          }
-          default:
-            // We don't use ceildiv, so we don't support it.
-            LOG(FATAL) << "Unsupported expression";
-        }
-    }
-  }
-
-  // Simplifier for mod.
-  // - Rewrites (a * 100 + ...) % 100 to (...) % 100
-  // - Rewrites a % b to a if a is known to be less than b.
-  AffineExpr RewriteMod(AffineBinaryOpExpr mod) {
-    auto lhs_simplified = SimplifyOnce(mod.getLHS());
-
-    auto lhs = BoundsInclusive(lhs_simplified);
-    auto rhs = BoundsInclusive(mod.getRHS());
-
-    // a % b where b is always larger than a?
-    if (0 <= lhs.lower && lhs.upper < rhs.lower) return lhs_simplified;
-
-    // The logic below assumes we have a constant RHS.
-    if (rhs.lower != rhs.upper) return mod;
-    int64_t m = rhs.lower;
-
-    auto new_lhs = RewriteSumIf(lhs_simplified, [&](AffineExpr expr) {
-      if (expr.getKind() != AffineExprKind::Mul) {
-        return true;
-      }
-
-      auto mul_rhs =
-          BoundsInclusive(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
-      bool remove = mul_rhs.lower == mul_rhs.upper && (mul_rhs.lower % m) == 0;
-      return !remove;  // We keep it if we don't remove it!
-    });
-
-    // If we weren't able to remove or simplify anything, return the original
-    // expression.
-    if (new_lhs == mod.getLHS()) {
-      return mod;
-    }
-    // If we removed everything, return 0.
-    if (!new_lhs) {
-      return getAffineConstantExpr(0, mlir_context);
-    }
-    // Otherwise, return new_sum % m.
-    return getAffineBinaryOpExpr(AffineExprKind::Mod, new_lhs, mod.getRHS());
-  }
-
-  // Simplifier for floordiv.
-  // - Rewrites (a * 100 + ...) / 100 to a + (...) / 100
-  // - Rewrites a / 100 to 0 when a is known to be less than 100.
-  AffineExpr RewriteFloorDiv(AffineBinaryOpExpr div) {
-    auto lhs_simplified = SimplifyOnce(div.getLHS());
-    auto lhs = BoundsInclusive(lhs_simplified);
-    auto rhs = BoundsInclusive(div.getRHS());
-
-    if (0 <= lhs.lower && lhs.upper < rhs.lower) {
-      return getAffineConstantExpr(0, mlir_context);
-    }
-
-    // The logic below assumes we have a constant RHS.
-    if (rhs.lower != rhs.upper) return div;
-    int64_t d = rhs.lower;
-
-    int64_t a = FloorDiv(lhs.lower, d);
-    int64_t b = FloorDiv(lhs.upper, d);
-    if (a == b) {
-      return getAffineConstantExpr(a, mlir_context);
-    }
-
-    AffineExpr extracted = getAffineConstantExpr(0, mlir_context);
-    auto new_dividend = RewriteSumIf(lhs_simplified, [&](AffineExpr expr) {
-      if (auto multiplier = GetConstantRhsMultiplier(expr)) {
-        // (x * 7 + ...) / 3 -> can't extract. We could extract x * 2 and keep
-        // one x, but we currently have no reason to do that.
-        if (*multiplier % d != 0) return true;
-        int64_t factor = *multiplier / d;
-        extracted = getAffineBinaryOpExpr(
-            AffineExprKind::Add, extracted,
-            getAffineBinaryOpExpr(AffineExprKind::Mul,
-                                  mlir::cast<AffineBinaryOpExpr>(expr).getLHS(),
-                                  getAffineConstantExpr(factor, mlir_context)));
-        // Remove from dividend.
-        return false;
-      }
-
-      // Not a constant multiplier, keep in dividend.
-      return true;
-    });
-
-    // If we removed everything, skip the div.
-    if (!new_dividend) return extracted;
-    // If we removed nothing, return the original division.
-    if (extracted == getAffineConstantExpr(0, mlir_context) &&
-        new_dividend == div.getLHS()) {
-      return div;
-    }
-
-    return getAffineBinaryOpExpr(
-        AffineExprKind::Add, extracted,
-        getAffineBinaryOpExpr(AffineExprKind::FloorDiv, new_dividend,
-                              div.getRHS()));
-  }
-
-  std::optional<int64_t> GetConstantRhsMultiplier(AffineExpr expr) {
-    if (expr.getKind() != AffineExprKind::Mul) return std::nullopt;
-    auto bound = BoundsInclusive(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
-    if (bound.lower != bound.upper) return std::nullopt;
-    return bound.lower;
-  }
-
-  AffineExpr RewriteSumIf(AffineExpr expr,
-                          const std::function<bool(AffineExpr)>& pred) {
-    if (expr.getKind() == AffineExprKind::Add) {
-      auto add = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
-      auto lhs = RewriteSumIf(add.getLHS(), pred);
-      auto rhs = RewriteSumIf(add.getRHS(), pred);
-      if (lhs == add.getLHS() && rhs == add.getRHS()) {
-        return add;
-      }
-      if (lhs && rhs) {
-        return getAffineBinaryOpExpr(AffineExprKind::Add, lhs, rhs);
-      }
-      return lhs ? lhs : (rhs ? rhs : nullptr);
-    }
-    return pred(expr) ? expr : nullptr;
-  }
-
-  // Attempts to simplify the expression, but doesn't attempt to simplify the
-  // result further.
-  AffineExpr SimplifyOnce(AffineExpr expr) {
-    switch (expr.getKind()) {
-      case AffineExprKind::Mul:
-      case AffineExprKind::Add: {
-        auto binop = mlir::cast<AffineBinaryOpExpr>(expr);
-        auto lhs = SimplifyOnce(binop.getLHS());
-        auto rhs = SimplifyOnce(binop.getRHS());
-        if (lhs == binop.getLHS() && rhs == binop.getRHS()) {
-          return expr;
-        }
-        return getAffineBinaryOpExpr(expr.getKind(), lhs, rhs);
-      }
-      case AffineExprKind::Mod:
-        return RewriteMod(mlir::cast<AffineBinaryOpExpr>(expr));
-      case AffineExprKind::FloorDiv:
-        return RewriteFloorDiv(mlir::cast<AffineBinaryOpExpr>(expr));
-      default:
-        return expr;
-    }
-  }
-
-  // Simplifies the expression as much as possible.
-  AffineExpr Simplify(AffineExpr expr) {
-    while (true) {
-      auto simplified = SimplifyOnce(expr);
-      if (simplified == expr) return expr;
-      expr = simplified;
-    }
-  }
-
-  MLIRContext* mlir_context;
-  absl::Span<const int64_t> dimension_sizes;
-  absl::Span<const int64_t> symbol_sizes;
-  llvm::DenseMap<AffineExpr, Bounds> bounds{};
-};
-
 }  // namespace
 
-bool IndexingMap::Simplify(absl::Span<const int64_t> dimension_sizes) {
-  IndexingMapSimplifier simplifier{affine_map.getContext(), dimension_sizes,
-                                   input_dims_sizes};
-  std::vector<AffineExpr> results;
-  results.reserve(affine_map.getNumResults());
-  bool any_changed = false;
-  for (auto expr : affine_map.getResults()) {
-    auto simplified = simplifier.Simplify(expr);
-    any_changed |= simplified != expr;
-    results.push_back(simplified);
+bool IndexingMap::Simplify() {
+  auto* mlir_context = affine_map.getContext();
+  IndexingMapSimplifier simplifier{mlir_context};
+  for (const auto& [index, range] : llvm::enumerate(domain.dimension_ranges)) {
+    simplifier.SetInclusiveBounds(getAffineDimExpr(index, mlir_context),
+                                  range.lower_bound, range.upper_bound - 1);
   }
-
-  if (!any_changed) {
+  for (const auto& [index, range] : llvm::enumerate(domain.symbol_ranges)) {
+    simplifier.SetInclusiveBounds(getAffineSymbolExpr(index, mlir_context),
+                                  range.lower_bound, range.upper_bound - 1);
+  }
+  AffineMap simplified_affine_map = simplifier.Simplify(affine_map);
+  if (simplified_affine_map == affine_map) {
     return false;
   }
-
-  affine_map = mlir::simplifyAffineMap(
-      AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
-                     results, affine_map.getContext()));
+  affine_map = simplified_affine_map;
   return true;
 }
 
-bool HloInstructionIndexing::Simplify(
-    absl::Span<const int64_t> dimension_sizes) {
+bool HloInstructionIndexing::Simplify() {
   bool any_simplified = false;
   for (auto& operand_indexing : indexing_maps) {
     std::vector<IndexingMap> to_remove;
@@ -972,7 +759,7 @@ bool HloInstructionIndexing::Simplify(
     absl::flat_hash_set<IndexingMap>& indexing_maps = operand_indexing.second;
     for (IndexingMap map : indexing_maps) {
       to_remove.push_back(map);
-      if (map.Simplify(dimension_sizes)) {
+      if (map.Simplify()) {
         to_add.push_back(map);
       } else {
         to_remove.pop_back();
@@ -989,21 +776,38 @@ bool HloInstructionIndexing::Simplify(
   return any_simplified;
 }
 
-std::string ToString(const AffineMap& affine_map) {
-  std::string s;
-  llvm::raw_string_ostream ss(s);
-  affine_map.print(ss);
-  return s;
+bool operator==(const Range& lhs, const Range& rhs) {
+  return lhs.lower_bound == rhs.lower_bound &&
+         lhs.upper_bound == rhs.upper_bound;
+}
+
+bool operator==(const Domain& lhs, const Domain& rhs) {
+  return lhs.dimension_ranges == rhs.dimension_ranges &&
+         lhs.symbol_ranges == rhs.symbol_ranges;
 }
 
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
-  return lhs.affine_map == rhs.affine_map &&
-         lhs.input_dims_sizes == rhs.input_dims_sizes;
+  return lhs.affine_map == rhs.affine_map && lhs.domain == rhs.domain;
+}
+
+std::ostream& operator<<(std::ostream& out, const Range& range) {
+  out << '[' << range.lower_bound << ", " << range.upper_bound << ")";
+  return out;
+}
+
+std::ostream& operator<<(std::ostream& out, const Domain& domain) {
+  for (const auto& [index, range] : llvm::enumerate(domain.dimension_ranges)) {
+    out << 'd' << index << " in " << range << '\n';
+  }
+  for (const auto& [index, range] : llvm::enumerate(domain.symbol_ranges)) {
+    out << 's' << index << " in " << range << '\n';
+  }
+  return out;
 }
 
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
-  out << ToString(indexing_map.affine_map) << " with sizes "
-      << absl::StrJoin(indexing_map.input_dims_sizes, ", ") << "\n";
+  out << ToString(indexing_map.affine_map) << " with domain\n"
+      << indexing_map.domain << "\n";
   return out;
 }
 
@@ -1016,6 +820,26 @@ std::ostream& operator<<(std::ostream& out,
     }
   }
   return out;
+}
+
+std::string Range::ToString() const { return ToStringImpl(*this); }
+
+std::string Domain::ToString() const { return ToStringImpl(*this); }
+
+Domain Domain::FromUpperBounds(absl::Span<const int64_t> dimension_upper_bounds,
+                               absl::Span<const int64_t> symbol_upper_bounds) {
+  Domain domain;
+  domain.dimension_ranges.reserve(dimension_upper_bounds.size());
+  for (const int64_t ub : dimension_upper_bounds) {
+    CHECK_GT(ub, 0);
+    domain.dimension_ranges.push_back({.lower_bound = 0, .upper_bound = ub});
+  }
+  domain.symbol_ranges.reserve(symbol_upper_bounds.size());
+  for (const int64_t ub : symbol_upper_bounds) {
+    CHECK_GT(ub, 0);
+    domain.symbol_ranges.push_back({.lower_bound = 0, .upper_bound = ub});
+  }
+  return domain;
 }
 
 std::string IndexingMap::ToString() const { return ToStringImpl(*this); }
@@ -1069,6 +893,13 @@ Status FuseProducerConsumerOutputToInputIndexing(
   }
   consumer_indexing->erase(producer_instr);
   return OkStatus();
+}
+
+AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
+                                      MLIRContext* mlir_context) {
+  return AffineMap::getPermutationMap(
+      std::vector<unsigned>(permutation.begin(), permutation.end()),
+      mlir_context);
 }
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(

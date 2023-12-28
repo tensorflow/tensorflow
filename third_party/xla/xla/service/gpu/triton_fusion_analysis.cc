@@ -268,10 +268,8 @@ const TensorIterationSpec::DimIterationSpec* TritonFusionAnalysis::IterSpec(
     const int dimension) const {
   auto hlo_spec = iter_specs_.at(scope).find(hlo);
   if (hlo_spec != iter_specs_.at(scope).cend()) {
-    auto dim_spec = hlo_spec->second.Storage().find(dimension);
-    if (dim_spec != hlo_spec->second.Storage().cend()) {
-      return &dim_spec->second;
-    }
+    // The pointer returned here may also be nullptr.
+    return hlo_spec->second.Find(dimension);
   }
   return nullptr;
 }

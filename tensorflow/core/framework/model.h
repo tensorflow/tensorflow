@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.pb.h"
@@ -234,6 +235,13 @@ class RamBudgetManager {
     mutex_lock l(mu_);
     budget_ = budget;
     VLOG(2) << "Updated ram budget to " << budget;
+  }
+
+  std::string DebugString() {
+    mutex_lock l(mu_);
+    return absl::StrCat("RamBudgetManager: budget_: ", budget_,
+                        " prefetch allocated: ", legacy_prefetch_allocated_,
+                        " model allocated: ", model_allocated_);
   }
 
  private:
@@ -908,7 +916,8 @@ class Model {
   using NodeValues = Node::NodeValues;
   using ParameterGradients = Node::ParameterGradients;
 
-  Model();
+  explicit Model(std::optional<std::string> dataset_name);
+  explicit Model() : Model(std::nullopt) {}
   ~Model();
 
   // Returns a pointer to the model's output node.
@@ -1143,6 +1152,7 @@ class Model {
   // buffers were full.
   double TotalMaximumBufferedBytes(std::shared_ptr<Node> node);
 
+  std::optional<std::string> dataset_name_;
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to
   // existing nodes is protected by a node mutex.
@@ -1168,11 +1178,11 @@ class Model {
   };
   std::shared_ptr<GuardedBool> safe_to_collect_metrics_;
 
-  // Time use for rate limitting the recomputation of human-readable string
-  // represention of the model.
+  // Time use for rate limiting the recomputation of human-readable string
+  // representation of the model.
   absl::Time cache_until_ = absl::InfinitePast();
   // Cached result of the `DebugString()` invocation used to implement rate
-  // limitting of the computation.
+  // limiting of the computation.
   std::string cached_debug_string_ = "";
   // Used to coordinate gap time updates between different threads. Gap time is
   // the time between the completion of the previous `GetNext()` and the start

@@ -48,7 +48,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 222
+_version = 227
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -67,6 +67,7 @@ def make_cpu_client(
     distributed_client=None,
     node_id=0,
     num_nodes=1,
+    collectives=None
 ) -> ...:
   register_custom_call_handler('cpu', _xla.register_custom_call_target)
   return _xla.get_tfrt_cpu_client(
@@ -74,6 +75,7 @@ def make_cpu_client(
       distributed_client=distributed_client,
       node_id=node_id,
       num_nodes=num_nodes,
+      collectives=collectives,
   )
 
 
@@ -88,10 +90,6 @@ def make_gpu_client(
   """Returns a GPU client. BFC allocator is used by default."""
   options = generate_pjrt_gpu_plugin_options()
   allocator = options['allocator']
-  memory_fraction = (
-      options['memory_fraction'] if 'memory_fraction' in options else None
-  )
-  preallocate = options['preallocate'] if 'preallocate' in options else None
   config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
     config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
@@ -101,9 +99,10 @@ def make_gpu_client(
     config.kind = _xla.GpuAllocatorConfig.Kind.BFC
   if allocator == 'cuda_async':
     config.kind = _xla.GpuAllocatorConfig.Kind.CUDA_ASYNC
-  if memory_fraction:
-    config.memory_fraction = float(memory_fraction)
-  config.preallocate = preallocate not in ('0', 'false', 'False')
+  if 'memory_fraction' in options:
+    config.memory_fraction = options['memory_fraction']
+  if 'preallocate' in options:
+    config.preallocate = options['preallocate']
   register_custom_call_handler('CUDA', _xla.register_custom_call_target)
   register_custom_call_handler('ROCM', _xla.register_custom_call_target)
 
@@ -257,10 +256,12 @@ float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
+    PrimitiveType.S4: np.dtype('int4'),
     PrimitiveType.S8: np.dtype('int8'),
     PrimitiveType.S16: np.dtype('int16'),
     PrimitiveType.S32: np.dtype('int32'),
     PrimitiveType.S64: np.dtype('int64'),
+    PrimitiveType.U4: np.dtype('uint4'),
     PrimitiveType.U8: np.dtype('uint8'),
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),

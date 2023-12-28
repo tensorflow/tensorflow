@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -34,8 +35,11 @@ namespace xla::gpu {
 //===----------------------------------------------------------------------===//
 
 CustomFusionPattern::Match::Match(CustomFusionConfig config,
-                                  std::vector<HloInstruction*> instructions)
-    : config_(std::move(config)), instructions_(std::move(instructions)) {}
+                                  std::vector<HloInstruction*> instructions,
+                                  int64_t workspace_size_bytes)
+    : config_(std::move(config)),
+      instructions_(std::move(instructions)),
+      workspace_size_bytes_(workspace_size_bytes) {}
 
 void CustomFusionPattern::Match::AddReplacement(HloInstruction* instr,
                                                 Replacement replacement) {

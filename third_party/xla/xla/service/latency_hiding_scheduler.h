@@ -182,6 +182,10 @@ class AsyncTracker {
   virtual bool IsSupportedAsyncStart(const HloInstruction& hlo) const;
 
   // Returns resources used (i.e., occupied or released) by this instruction
+  virtual ResourcesVector GetResourcesFromInstructionImpl(
+      const HloInstruction& hlo) const;
+
+  // Returns resources used (i.e., occupied or released) by this instruction
   virtual ResourcesVector GetResourcesFromInstruction(
       const HloInstruction& hlo) const;
 
@@ -258,6 +262,10 @@ class AsyncTracker {
                               absl::flat_hash_map<int64_t, int64_t>>
       async_in_computation_cache_;
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
+
+ protected:
+  mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
+      resources_cache_;
 };
 
 // Base class for the core scheduling algorithm.

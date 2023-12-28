@@ -84,6 +84,13 @@ if [[ "$TFCI_PYTHON_VERSION" == "3.12" ]]; then
   brew install cmake
 fi
 
+# TFCI Mac VM images do not have twine installed by default so we need to
+# install it manually. We use Twine in nightly builds to upload Python packages
+# to PyPI.
+if [[ "$TFCI_MACOS_TWINE_INSTALL_ENABLE" == 1 ]]; then
+  pip install twine==3.6.0
+fi
+
 # Scheduled nightly and release builds upload build artifacts (Pip packages,
 # Libtensorflow archives) to GCS buckets. TFCI Mac VMs need to authenticate as
 # a service account that has the right permissions to be able to do so.
@@ -92,3 +99,19 @@ if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
   gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
 fi
 set -x
+
+# When cross-compiling with RBE, we need to copy the macOS sysroot to be
+# inside the TensorFlow root directory. We then define them as a filegroup
+# target inside "tensorflow/tools/toolchains/cross_compile/cc" so that Bazel
+# can register it as an input to compile/link actions and send it to the remote
+# VMs when needed.
+# TODO(b/316932689): Avoid copying and replace with a local repository rule.
+if [[ "$TFCI_MACOS_CROSS_COMPILE_ENABLE" == 1 ]]; then
+  mkdir -p "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/usr"
+  mkdir -p "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/System/Library/Frameworks/"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/usr/include" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/usr/include"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/usr/lib" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/usr/lib"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/System/Library/Frameworks/CoreFoundation.framework" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/System/Library/Frameworks/CoreFoundation.framework"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/System/Library/Frameworks/Security.framework" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/System/Library/Frameworks/Security.framework"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/System/Library/Frameworks/SystemConfiguration.framework" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/System/Library/Frameworks/SystemConfiguration.framework"
+fi

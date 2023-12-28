@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_KERNELS_CUTLASS_GEMM_CUSTOM_KERNEL_H_
 
 #include <cstdint>
+#include <string>
 
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
@@ -26,10 +27,19 @@ limitations under the License.
 
 namespace xla::gpu::kernel::gemm_universal {
 
+// Returns a pre-compiled custom kernel for a given data type and problem size.
 StatusOr<CustomKernel> GetCutlassGemmKernel(
     std::string name, PrimitiveType dtype, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device);
+
+// Loads custom kernel for a given data type and problem size from a shared
+// library. It's up to the caller to guarantee that CUTLASS kernel in the shared
+// library is compatible with the data type and problem size.
+StatusOr<CustomKernel> LoadCutlassGemmKernel(
+    std::string name, const std::string& library_path, PrimitiveType dtype,
+    int32_t m, int32_t n, int32_t k, const ArgsIndices& indices,
+    const DynamicSliceIndices& slices, const se::DeviceDescription& device);
 
 }  // namespace xla::gpu::kernel::gemm_universal
 

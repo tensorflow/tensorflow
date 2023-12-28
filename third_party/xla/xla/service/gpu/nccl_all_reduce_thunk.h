@@ -65,8 +65,6 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
   static Status CheckImplementable(mlir::lmhlo_gpu::AllReduceStartOp op,
                                    int64_t replica_count,
                                    int64_t partition_count);
-  static bool IsDegenerate(mlir::lmhlo_gpu::AllReduceStartOp op,
-                           int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllReduceStartOp op);
 
@@ -89,8 +87,6 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
   static Status CheckImplementable(mlir::lmhlo_gpu::ReduceScatterStartOp op,
                                    int64_t replica_count,
                                    int64_t partition_count);
-  static bool IsDegenerate(mlir::lmhlo_gpu::ReduceScatterStartOp op,
-                           int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::ReduceScatterStartOp op);
 

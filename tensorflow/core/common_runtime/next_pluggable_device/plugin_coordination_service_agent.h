@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_COORDINATION_SERVICE_AGENT_H_
 
 #include <string>
+#include <string_view>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
@@ -30,12 +32,15 @@ class PluginCoordinationServiceAgent {
 
   virtual bool IsInitialized() const = 0;
 
-  virtual Status InsertKeyValue(const std::string& key,
-                                const std::string& value) = 0;
+  virtual Status InsertKeyValue(std::string_view key,
+                                std::string_view value) = 0;
 
-  virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
+  virtual StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
+  virtual StatusOr<std::string> GetKeyValue(std::string_view key,
+                                            absl::Duration timeout) = 0;
+  virtual StatusOr<std::string> TryGetKeyValue(std::string_view key) = 0;
 
-  virtual Status DeleteKeyValue(const std::string& key) = 0;
+  virtual Status DeleteKeyValue(std::string_view key) = 0;
 };
 
 }  // namespace tensorflow

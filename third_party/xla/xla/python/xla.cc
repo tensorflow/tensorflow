@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/python/py_client.h"
+#include "xla/service/cpu/collectives_interface.h"
 #include "tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
 
@@ -60,7 +61,16 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+
+#ifdef __linux__
+#include "third_party/gloo/gloo/transport/tcp/attr.h"
+#include "third_party/gloo/gloo/transport/tcp/device.h"
+#include "xla/pjrt/cpu/gloo_collectives.h"
+#include "xla/pjrt/cpu/gloo_kv_store.h"
+#endif  // __linux__
+
 #include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -159,10 +169,12 @@ static void Init(py::module_& m) {
   py::enum_<PrimitiveType>(m, "PrimitiveType")
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)
       .value("PRED", PRED)
+      .value("S4", S4)
       .value("S8", S8)
       .value("S16", S16)
       .value("S32", S32)
       .value("S64", S64)
+      .value("U4", U4)
       .value("U8", U8)
       .value("U16", U16)
       .value("U32", U32)
@@ -492,30 +504,58 @@ static void Init(py::module_& m) {
         throw py::attribute_error(absl::StrCat("Unknown attribute ", name));
       });
 
+  py::class_<xla::cpu::CollectivesInterface,
+             std::shared_ptr<xla::cpu::CollectivesInterface>>
+      cpu_collectives(m, "CpuCollectives");
+
+  m.def(
+      "make_gloo_tcp_collectives",
+      [](std::shared_ptr<DistributedRuntimeClient> distributed_client,
+
+         std::optional<std::string> hostname,
+         std::optional<std::string> interface)
+          -> std::shared_ptr<xla::cpu::CollectivesInterface> {
+#ifdef __linux__
+        std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
+        if (distributed_client != nullptr) {
+          kv_store = GetDistributedKeyValueStore(distributed_client,
+                                                 /*key_prefix=*/"cpu:");
+        }
+        auto gloo_kv_store = std::make_unique<cpu::GlooKeyValueStore>(kv_store);
+        auto tcp_attrs = gloo::transport::tcp::attr();
+        if (hostname) {
+          tcp_attrs.hostname = *hostname;
+        }
+        if (interface) {
+          tcp_attrs.iface = *interface;
+        }
+        auto tcp_device = gloo::transport::tcp::CreateDevice(tcp_attrs);
+        return std::make_shared<cpu::GlooCollectives>(std::move(gloo_kv_store),
+                                                      std::move(tcp_device));
+#else   // __linux__
+        throw xla::XlaRuntimeError(
+            "make_gloo_tcp_collectives only implemented for linux");
+#endif  // __linux__
+      },
+      py::arg("distributed_client"), py::arg("hostname") = std::nullopt,
+      py::arg("interface") = std::nullopt);
+
   m.def(
       "get_tfrt_cpu_client",
       [](bool asynchronous,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id, int num_nodes) -> std::shared_ptr<PyClient> {
+         int node_id, int num_nodes,
+         std::shared_ptr<xla::cpu::CollectivesInterface> collectives)
+          -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
         CpuClientOptions options;
         if (distributed_client != nullptr) {
-          std::string key_prefix = "cpu:";
-          options.kv_get =
-              [distributed_client, key_prefix](
-                  std::string_view k,
-                  absl::Duration timeout) -> xla::StatusOr<std::string> {
-            return distributed_client->BlockingKeyValueGet(
-                absl::StrCat(key_prefix, k), timeout);
-          };
-          options.kv_put = [distributed_client, key_prefix](
-                               std::string_view k,
-                               std::string_view v) -> xla::Status {
-            return distributed_client->KeyValueSet(absl::StrCat(key_prefix, k),
-                                                   v);
-          };
+          options.kv_store = GetDistributedKeyValueStore(distributed_client,
+                                                         /*key_prefix=*/"cpu:");
           options.node_id = node_id;
           options.num_nodes = num_nodes;
+
+          options.collectives = std::move(collectives);
         }
 
         options.asynchronous = asynchronous;
@@ -525,7 +565,9 @@ static void Init(py::module_& m) {
             ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("asynchronous") = true, py::arg("distributed_client") = nullptr,
-      py::arg("node_id") = 0, py::arg("num_nodes") = 1);
+      py::arg("node_id") = 0, py::arg("num_nodes") = 1,
+      py::arg("collectives") =
+          std::shared_ptr<xla::cpu::CollectivesInterface>());
   m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
     xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
     return pjrt_api.ok();
@@ -564,22 +606,10 @@ static void Init(py::module_& m) {
          std::optional<std::string> platform_name,
          std::optional<bool> mock = false) -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
-        PjRtClient::KeyValueGetCallback kv_get = nullptr;
-        PjRtClient::KeyValuePutCallback kv_put = nullptr;
+        std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
         if (distributed_client != nullptr) {
-          // Use the plugin name as key prefix.
-          std::string key_prefix = "gpu:";
-          kv_get = [distributed_client, key_prefix](
-                       std::string_view k,
-                       absl::Duration timeout) -> xla::StatusOr<std::string> {
-            return distributed_client->BlockingKeyValueGet(
-                absl::StrCat(key_prefix, k), timeout);
-          };
-          kv_put = [distributed_client, key_prefix](
-                       std::string_view k, std::string_view v) -> xla::Status {
-            return distributed_client->KeyValueSet(absl::StrCat(key_prefix, k),
-                                                   v);
-          };
+          kv_store = GetDistributedKeyValueStore(distributed_client,
+                                                 /*key_prefix=*/"gpu:");
         }
         GpuClientOptions options;
         options.allocator_config = allocator_config;
@@ -587,8 +617,7 @@ static void Init(py::module_& m) {
         options.num_nodes = num_nodes;
         options.allowed_devices = allowed_devices;
         options.platform_name = platform_name;
-        options.kv_get = kv_get;
-        options.kv_put = kv_put;
+        options.kv_store = kv_store;
         options.enable_mock_nccl = mock.value_or(false);
         std::unique_ptr<PjRtClient> client =
             xla::ValueOrThrow(GetStreamExecutorGpuClient(options));
@@ -609,22 +638,14 @@ static void Init(py::module_& m) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client)
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
-        PjRtClient::KeyValueGetCallback kv_get = nullptr;
-        PjRtClient::KeyValuePutCallback kv_put = nullptr;
+        std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
         if (distributed_client != nullptr) {
-          kv_get = [distributed_client, platform_name](std::string_view k,
-                                                       absl::Duration timeout) {
-            return distributed_client->BlockingKeyValueGet(
-                absl::StrCat(platform_name, ":", k), timeout);
-          };
-          kv_put = [distributed_client, platform_name](std::string_view k,
-                                                       std::string_view v) {
-            return distributed_client->KeyValueSet(
-                absl::StrCat(platform_name, ":", k), v);
-          };
+          kv_store = GetDistributedKeyValueStore(
+              distributed_client,
+              /*key_prefix=*/absl::StrCat(platform_name, ":"));
         }
-        std::unique_ptr<PjRtClient> c_api_client = xla::ValueOrThrow(
-            GetCApiClient(platform_name, options, kv_get, kv_put));
+        std::unique_ptr<PjRtClient> c_api_client =
+            xla::ValueOrThrow(GetCApiClient(platform_name, options, kv_store));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(c_api_client)));
       },

@@ -212,18 +212,6 @@ class Stream {
   // N.B. Base recursion case for the variadic ThenWaitFor.
   Stream &ThenWaitFor(Stream *other);
 
-  // Waits for all streams values in others.
-  // Checks that there is no shallow circular wait (i.e. that "this" is not in
-  // others)
-  template <typename P>
-  Stream &ThenWaitFor(P others) {
-    for (auto &stream : *others) {
-      CHECK_NE(stream.get(), this);
-      ThenWaitFor(stream.get());
-    }
-    return *this;
-  }
-
   // Waits for an event object to be set.
   // Note that ThenRecordEvent must have been called on the event before
   // you call this function; otherwise the event will be considered complete
@@ -540,57 +528,6 @@ class Stream {
         is_flash_attention, is_causal_mask);
   }
 
-  Stream &ThenSeparableConvolve(
-      const dnn::BatchDescriptor &input_descriptor,
-      const DeviceMemory<float> &input_data,
-      const dnn::FilterDescriptor &filter_descriptor, int depth_multiplier,
-      const DeviceMemory<float> &first_weights,
-      const DeviceMemory<float> &second_weights,
-      const dnn::ConvolutionDescriptor &convolution_descriptor,
-      const dnn::BatchDescriptor &output_descriptor,
-      DeviceMemory<float> *output);
-
-  Stream &ThenMatMul(const DeviceMemory<float> &input_data,
-                     const DeviceMemory<float> &weights,
-                     const dnn::BatchDescriptor &input_dimensions,
-                     const dnn::BatchDescriptor &output_dimensions,
-                     DeviceMemory<float> *output_data);
-
-  Stream &ThenMatMulQuantized(const DeviceMemory<float> &input_data,
-                              const DeviceMemory<int8_t> &weights,
-                              const DeviceMemory<float> &weight_scales,
-                              const dnn::BatchDescriptor &input_dimensions,
-                              const dnn::BatchDescriptor &output_dimensions,
-                              DeviceMemory<float> *output_data);
-
-  Stream &ThenMatMulQuantized(const DeviceMemory<float> &input_data,
-                              const DeviceMemory<int16> &weights,
-                              const DeviceMemory<float> &weight_scales,
-                              const dnn::BatchDescriptor &input_dimensions,
-                              const dnn::BatchDescriptor &output_dimensions,
-                              DeviceMemory<float> *output_data);
-
-  Stream &ThenBiasAdd(const DeviceMemory<float> &input_data,
-                      const DeviceMemory<float> &biases,
-                      const dnn::BatchDescriptor &dimensions,
-                      DeviceMemory<float> *output_data);
-
-  template <typename ElementType>
-  tsl::Status ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
-                              const dnn::BatchDescriptor &input_dimensions,
-                              const DeviceMemory<ElementType> &input_data,
-                              const dnn::BatchDescriptor &output_dimensions,
-                              DeviceMemory<ElementType> *output_data,
-                              ScratchAllocator *workspace_allocator = nullptr) {
-    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
-                                pooling_dimensions, input_dimensions,
-                                input_data, output_dimensions, *output_data,
-                                workspace_allocator);
-    }
-    return tsl::errors::Unimplemented("DNN library is not found.");
-  }
-
   template <typename ElementType>
   tsl::Status ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
                               const NumericOptions &numeric_options,
@@ -642,80 +579,10 @@ class Stream {
       DeviceMemory<float> *raw_variable_gradient,
       ScratchAllocator *workspace_allocator = nullptr);
 
-  Stream &ThenActivate(dnn::ActivationMode activation_mode,
-                       const dnn::BatchDescriptor &dimensions,
-                       const DeviceMemory<float> &input_data,
-                       DeviceMemory<float> *output_data);
-
-  // Same as ThenActivate, but also takes an options argument that can be used
-  // for platform-specific option flags.
-  Stream &ThenActivateWithOptions(dnn::ActivationMode activation_mode,
-                                  const dnn::BatchDescriptor &dimensions,
-                                  const DeviceMemory<float> &input_data,
-                                  DeviceMemory<float> *output_data,
-                                  uint64_t options);
-
   Stream &ThenDepthConcatenate(
       absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float> *const> input_data,
       DeviceMemory<float> *output_data);
-
-  Stream &ThenElementwiseOperate(
-      dnn::ElementwiseOperation operation,
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float> *const> input_data,
-      const dnn::BatchDescriptor &output_dimensions,
-      DeviceMemory<float> *output_data);
-
-  Stream &ThenXYPad(const dnn::BatchDescriptor &dimensions,
-                    const DeviceMemory<float> &input_data, int64_t left_pad,
-                    int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
-                    DeviceMemory<float> *output_data);
-
-  Stream &ThenXYSlice(const dnn::BatchDescriptor &dimensions,
-                      const DeviceMemory<float> &input_data, int64_t left_trim,
-                      int64_t right_trim, int64_t top_trim, int64_t bottom_trim,
-                      DeviceMemory<float> *output_data);
-
-  // Grows the input tensor by replicating the X and Y dimensions. The batch and
-  // depth/feature_map dimensions are unchanged. Currently, the input tensor is
-  // limited to X=1 and Y=1.
-  Stream &ThenXYBroadcast(const dnn::BatchDescriptor &dimensions,
-                          const DeviceMemory<float> &input_data,
-                          int64_t replicate_x, int64_t replicate_y,
-                          DeviceMemory<float> *output_data);
-
-  // See DnnSupport::DoMemcpyD2HQuantized.
-  Stream &ThenMemcpyD2HQuantized(const DeviceMemory<float> &gpu_unquantized_src,
-                                 dnn::QuantizedActivationMode mode,
-                                 void *host_dst, uint64_t size);
-
-  // Template version of ThenMemcpyD2HQuantized that takes a mutable span and
-  // uses the Quantization trait to call the generic version of
-  // ThenMemcpyD2HQuantized with the correct QuantizedActivationMode.
-  template <typename ElementType>
-  Stream &ThenMemcpyD2HQuantized(const DeviceMemory<float> &gpu_unquantized_src,
-                                 absl::Span<ElementType> host_dst) {
-    return ThenMemcpyD2HQuantized(
-        gpu_unquantized_src, Quantization<ElementType>::kModeId,
-        host_dst.data(), host_dst.size() * sizeof(ElementType));
-  }
-
-  // See DnnSupport::DoMemcpyH2DQuantized.
-  Stream &ThenMemcpyH2DQuantized(const void *host_src, uint64_t size,
-                                 dnn::QuantizedActivationMode mode,
-                                 DeviceMemory<float> *gpu_unquantized_dst);
-
-  // Template version of ThenMemcpyH2DQuantized that takes an array slice
-  // and uses the Quantization trait to call the generic version of
-  // ThenMemcpyH2DQuantized with the correct QuantizedActivationMode.
-  template <typename ElementType>
-  Stream &ThenMemcpyH2DQuantized(absl::Span<const ElementType> host_src,
-                                 DeviceMemory<float> *gpu_unquantized_dst) {
-    return ThenMemcpyH2DQuantized(
-        host_src.data(), host_src.size() * sizeof(ElementType),
-        Quantization<ElementType>::kModeId, gpu_unquantized_dst);
-  }
 
   /////////////////
   // BLAS support
@@ -948,25 +815,6 @@ class Stream {
                               int batch_count,
                               const NumericOptions &numeric_options,
                               blas::CallContext context);
-
-  Stream &ThenBlasGemmBatched(blas::Transpose transa, blas::Transpose transb,
-                              uint64_t m, uint64 n, uint64_t k,
-                              std::complex<float> alpha,
-                              DeviceMemorySlice<std::complex<float>> a, int lda,
-                              DeviceMemorySlice<std::complex<float>> b, int ldb,
-                              std::complex<float> beta,
-                              DeviceMemorySlice<std::complex<float>> c, int ldc,
-                              int batch_count,
-                              const NumericOptions &numeric_options,
-                              blas::CallContext context);
-  Stream &ThenBlasGemmBatched(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<double> alpha,
-      DeviceMemorySlice<std::complex<double>> a, int lda,
-      DeviceMemorySlice<std::complex<double>> b, int ldb,
-      std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
-      int ldc, int batch_count, const NumericOptions &numeric_options,
-      blas::CallContext context);
 
   Stream &ThenBlasGemmBatchedWithScratch(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,

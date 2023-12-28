@@ -139,6 +139,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      // LINT.IfChange(GetNextInternal)
       mutex_lock l(mu_);
       do {
         if (!input_impl_) {
@@ -149,28 +150,39 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
+          // Create a new context so that we have a separate `checkpoint`
+          // different from `ctx->checkpoint()`
           auto nested_ctx = MakeNestedIteratorContext(ctx);
           TF_RETURN_IF_ERROR(current_element_iterator_->GetNext(
               &nested_ctx, out_tensors, &end_of_element));
+
+          // Merge the checkpoint so that the changes made to
+          // `current_element_iterator_` is propagated
           ctx->MergeCheckpoint(nested_ctx.checkpoint());
           if (!end_of_element) {
             // Produce the subelement as output.
             *end_of_sequence = false;
             return OkStatus();
           }
+          // Since this sub-iterator is done,
+          // we can commit `input_ckpt_` to `ctx->checkpoint()`
           ctx->MergeCheckpoint(input_ckpt_.get());
 
+          // Also clean up this sub-iterator's checkpoint inside of
+          // `ctx->checkpoint()` since it has been consumed.
+          ctx->PurgeCheckpoint(current_element_iterator_->prefix());
           // We have reached the end of the current element, so maybe move on
           // to the next element.
-          ctx->PurgeCheckpoint(current_element_iterator_->prefix());
           current_element_iterator_.reset();
         }
-
         // Get the next element from the input dataset.
         inputs_.clear();
         auto input_ctx = std::make_unique<IteratorContext>(*ctx);
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(input_ctx.get(), &inputs_, end_of_sequence));
+        // Merge the checkpoint to `input_ckpt_` but do not commit to
+        // `ctx->checkpoint()` yet until the sub-iterator created from
+        // this `inputs_` is consumed.
         input_ckpt_->Merge(input_ctx->checkpoint());
         if (*end_of_sequence) {
           input_impl_.reset();
@@ -180,10 +192,12 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/true));
       } while (true);
+      // LINT.ThenChange(:SkipInternal)
     }
 
     Status SkipInternal(IteratorContext* ctx, int num_to_skip,
                         bool* end_of_sequence, int* num_skipped) override {
+      // LINT.IfChange(SkipInternal)
       mutex_lock l(mu_);
       *num_skipped = 0;
       while (*num_skipped < num_to_skip) {
@@ -191,33 +205,65 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           *end_of_sequence = true;
           return OkStatus();
         }
-        if (!current_element_iterator_) {
-          // Get the next element from the input dataset.
-          inputs_.clear();
-          TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, &inputs_, end_of_sequence));
-          if (*end_of_sequence) {
-            input_impl_.reset();
-            *end_of_sequence = true;
-            return OkStatus();
+        if (current_element_iterator_) {
+          // We are currently processing a mapped element, so try to get the
+          // next subelement.
+
+          bool end_of_element;
+          // Create a new context so that we have a separate `checkpoint`
+          // different from `ctx->checkpoint()`
+          auto nested_ctx = MakeNestedIteratorContext(ctx);
+
+          // `last_num_skipped` stores how many elements
+          // we have actually skipped.
+          int last_num_skipped;
+          TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
+              &nested_ctx, num_to_skip - *num_skipped, &end_of_element,
+              &last_num_skipped));
+          *num_skipped += last_num_skipped;
+
+          // Merge the checkpoint so that the changes made to
+          // `current_element_iterator_` is propagated
+          ctx->MergeCheckpoint(nested_ctx.checkpoint());
+          if (!end_of_element) {
+            if (*num_skipped != num_to_skip) {
+              return absl::InternalError(absl::StrFormat(
+                  "Expected `num_skipped` and `num_to_skip` to be the same. Got"
+                  " %d(num_skipped) and %d(num_to_skip)",
+                  *num_skipped, num_to_skip));
+            }
+            continue;
           }
-          TF_RETURN_IF_ERROR(
-              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
-        }
-        bool end_of_element;
-        int last_num_skipped;
-        TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
-            MakeNestedIteratorContext(ctx), num_to_skip - *num_skipped,
-            &end_of_element, &last_num_skipped));
-        *num_skipped += last_num_skipped;
-        if (end_of_element) {
+          // Since this sub-iterator is done,
+          // we can commit `input_ckpt_` to `ctx->checkpoint()`
+          ctx->MergeCheckpoint(input_ckpt_.get());
+          // Also clean up this sub-iterator's checkpoint inside of
+          // `ctx->checkpoint()` since it has been consumed.
+          ctx->PurgeCheckpoint(current_element_iterator_->prefix());
           // We have reached the end of the current element, so maybe move on
           // to the next element.
           current_element_iterator_.reset();
         }
+        // Get the next element from the input dataset.
+        inputs_.clear();
+        auto input_ctx = std::make_unique<IteratorContext>(*ctx);
+        TF_RETURN_IF_ERROR(
+            input_impl_->GetNext(input_ctx.get(), &inputs_, end_of_sequence));
+        // Merge the checkpoint to `input_ckpt_` but do not commit to
+        // `ctx->checkpoint()` yet until the sub-iterator created from
+        // this `inputs_` is consumed.
+        input_ckpt_->Merge(input_ctx->checkpoint());
+        if (*end_of_sequence) {
+          input_impl_.reset();
+          *end_of_sequence = true;
+          return OkStatus();
+        }
+        TF_RETURN_IF_ERROR(
+            BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
       }
       *end_of_sequence = false;
       return OkStatus();
+      // LINT.ThenChange(:GetNextInternal)
     }
 
    protected:

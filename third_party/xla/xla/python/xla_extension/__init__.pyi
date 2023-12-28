@@ -59,10 +59,12 @@ class XlaRuntimeError(RuntimeError):
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType
+  S4: PrimitiveType
   S8: PrimitiveType
   S16: PrimitiveType
   S32: PrimitiveType
   S64: PrimitiveType
+  U4: PrimitiveType
   U8: PrimitiveType
   U16: PrimitiveType
   U32: PrimitiveType
@@ -514,11 +516,20 @@ class Client:
   ) -> Any: ...
   def __getattr__(self, name: str) -> Any: ...
 
+class CpuCollectives: ...
+
+def make_gloo_tcp_collectives(
+    distributed_client: Optional[DistributedRuntimeClient] = ...,
+    hostname: Optional[str] = ...,
+    interface: Optional[str] = ...,
+) -> CpuCollectives: ...
+
 def get_tfrt_cpu_client(
     asynchronous: bool = ...,
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     num_nodes: int = ...,
+    collectives: Optional[CpuCollectives] = ...,
 ) -> Client: ...
 def get_gpu_client(
     asynchronous: bool = ...,
@@ -594,12 +605,10 @@ def batched_device_put(
     shards: Sequence[Any],
     devices: List[Device],
     committed: bool = True,
-) -> ArrayImpl:
-  ...
-
+) -> ArrayImpl: ...
 def check_and_canonicalize_memory_kind(
-    memory_kind: Optional[str], device_list: DeviceList) -> Optional[str]: ...
-
+    memory_kind: Optional[str], device_list: DeviceList
+) -> Optional[str]: ...
 def array_result_handler(
     aval: Any, sharding: Any, committed: bool, _skip_checks: bool = ...
 ) -> Callable: ...
@@ -734,7 +743,8 @@ def get_distributed_runtime_service(
     heartbeat_interval: Optional[int] = ...,
     max_missing_heartbeats: Optional[int] = ...,
     cluster_register_timeout: Optional[int] = ...,
-    shutdown_timeout: Optional[int] = ...) -> DistributedRuntimeService: ...
+    shutdown_timeout: Optional[int] = ...,
+) -> DistributedRuntimeService: ...
 def get_distributed_runtime_client(
     address: str,
     node_id: int,
@@ -859,6 +869,7 @@ def pjit(
     static_argnames: Sequence[str],
     donate_argnums: Sequence[int],
     pytree_registry: pytree.PyTreeRegistry,
+    shard_arg_fallback: Callable,
     cache: Optional[PjitFunctionCache] = ...,
 ) -> PjitFunction: ...
 

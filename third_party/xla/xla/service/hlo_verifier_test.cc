@@ -1129,12 +1129,17 @@ TEST_F(HloVerifierTest, AsyncOpTupleWrongType) {
 
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3])) async-start(p0), calls=async_computation
+    async-start = ((f32[2,3]), f32[3,2], s32[]) async-start(p0), calls=async_computation
     ROOT async-done = f32[3,2] async-done(async-start), calls=async_computation
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
+
+  // The parser checks that the async op's shape type is valid, so we need to
+  // invalidate it in the C++ representation.
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  async_start->mutable_shape()->clear_tuple_shapes();
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());

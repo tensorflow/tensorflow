@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -98,8 +99,7 @@ std::string KernelThunk::ToStringExtra(int indent) const {
                          launch_dimensions_.ToString());
 }
 
-Status KernelThunk::Initialize(se::StreamExecutor* executor,
-                               ExecutableSource src) {
+Status KernelThunk::Initialize(const InitializeParams& params) {
   absl::MutexLock lock(&mutex_);
 
   // Load the kernel into the device if necessary.
@@ -107,13 +107,14 @@ Status KernelThunk::Initialize(se::StreamExecutor* executor,
   // We could alternatively do this within ExecuteOnStream, but doing it here
   // lets the time spent loading the kernel not count towards our execution
   // profiles.
-  auto it = kernel_cache_.find(executor);
+  auto it = kernel_cache_.find(params.executor);
   if (kernel_cache_.end() == it) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                        CreateKernel(kernel_name_, args_.size(), src.text,
-                                     src.binary, executor, shmem_bytes_));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<se::Kernel> kernel,
+        CreateKernel(kernel_name_, args_.size(), params.src.text,
+                     params.src.binary, params.executor, shmem_bytes_));
 
-    kernel_cache_.emplace(executor, std::move(kernel));
+    kernel_cache_.emplace(params.executor, std::move(kernel));
   }
 
   return OkStatus();
@@ -209,16 +210,15 @@ std::string CustomKernelThunk::ToStringExtra(int indent) const {
   return custom_kernel_.ToString();
 }
 
-Status CustomKernelThunk::Initialize(se::StreamExecutor* executor,
-                                     ExecutableSource src) {
+Status CustomKernelThunk::Initialize(const InitializeParams& params) {
   absl::MutexLock lock(&mutex_);
 
-  auto it = kernel_cache_.find(executor);
+  auto it = kernel_cache_.find(params.executor);
   if (kernel_cache_.end() == it) {
-    auto kernel = std::make_unique<se::Kernel>(executor);
+    auto kernel = std::make_unique<se::Kernel>(params.executor);
     TF_RETURN_IF_ERROR(
-        executor->GetKernel(custom_kernel_.kernel_spec(), kernel.get()));
-    kernel_cache_.emplace(executor, std::move(kernel));
+        params.executor->GetKernel(custom_kernel_.kernel_spec(), kernel.get()));
+    kernel_cache_.emplace(params.executor, std::move(kernel));
   }
 
   return OkStatus();

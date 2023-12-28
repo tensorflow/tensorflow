@@ -153,6 +153,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                    });
     return result;
   };
+  const auto output_to_operand_aliasing = [&proto]() {
+    std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+        output_to_operand_aliasing;
+    for (const auto& aliasing : proto.output_operand_aliasing()) {
+      output_to_operand_aliasing.emplace_back(
+          ShapeIndex(aliasing.output_shape_index().begin(),
+                     aliasing.output_shape_index().end()),
+          std::make_pair(aliasing.operand_index(),
+                         ShapeIndex(aliasing.operand_shape_index().begin(),
+                                    aliasing.operand_shape_index().end())));
+    }
+    return output_to_operand_aliasing;
+  };
   const auto computations = [&computation_map, &proto](int index) {
     return computation_map.at(proto.called_computation_ids(index));
   };
@@ -467,19 +480,9 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "No fusion computation with id " << fusion_id;
       instruction =
           CreateFusion(shape, fusion_kind, all_operands(), fused_computation);
-      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
-          output_to_operand_aliasing;
-      for (const auto& aliasing : proto.output_operand_aliasing()) {
-        output_to_operand_aliasing.emplace_back(
-            ShapeIndex(aliasing.output_shape_index().begin(),
-                       aliasing.output_shape_index().end()),
-            std::make_pair(aliasing.operand_index(),
-                           ShapeIndex(aliasing.operand_shape_index().begin(),
-                                      aliasing.operand_shape_index().end())));
-      }
       auto fusion_instr = DynCast<HloFusionInstruction>(instruction.get());
       fusion_instr->set_output_to_operand_aliasing(
-          std::move(output_to_operand_aliasing));
+          output_to_operand_aliasing());
       break;
     }
     case HloOpcode::kRng:
@@ -836,18 +839,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
       *custom_call_instr->mutable_precision_config() = precision_config;
-      std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
-          output_to_operand_aliasing;
-      for (const auto& aliasing : proto.output_operand_aliasing()) {
-        output_to_operand_aliasing.emplace_back(
-            ShapeIndex(aliasing.output_shape_index().begin(),
-                       aliasing.output_shape_index().end()),
-            std::make_pair(aliasing.operand_index(),
-                           ShapeIndex(aliasing.operand_shape_index().begin(),
-                                      aliasing.operand_shape_index().end())));
-      }
       custom_call_instr->set_output_to_operand_aliasing(
-          std::move(output_to_operand_aliasing));
+          output_to_operand_aliasing());
       custom_call_instr->set_custom_call_schedule(proto.custom_call_schedule());
       custom_call_instr->set_api_version(proto.custom_call_api_version());
       break;
@@ -1006,27 +999,38 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           shape, operands(0), absl::MakeSpan(operand_vector).subspan(1));
       break;
     }
+    case HloOpcode::kCall: {
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "Call should have 1 called computation but has "
+          << proto.called_computation_ids_size();
+      TF_RET_CHECK(!proto.has_precision_config())
+          << instruction->opcode() << proto.name();
+      TF_RET_CHECK(!proto.has_dot_dimension_numbers()) << instruction->opcode();
+
+      auto call_instruction = new HloCallInstruction(
+          shape, all_operands(),
+          computation_map.at(proto.called_computation_ids()[0]));
+      call_instruction->set_output_to_operand_aliasing(
+          output_to_operand_aliasing());
+      instruction = absl::WrapUnique(call_instruction);
+      break;
+    }
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, shape));
+      if (instruction->opcode() == HloOpcode::kWhile) {
+        TF_RET_CHECK(proto.called_computation_ids_size() == 2)
+            << "While should have 2 called computation but has "
+            << proto.called_computation_ids_size();
+      }
+
       for (const int64_t operand_id : proto.operand_ids()) {
         instruction->AppendOperand(instruction_map.at(operand_id));
       }
-      if (instruction->opcode() != HloOpcode::kFusion) {
-        if (instruction->opcode() == HloOpcode::kCall) {
-          TF_RET_CHECK(proto.called_computation_ids_size() == 1)
-              << "Call should have 1 called computation but has "
-              << proto.called_computation_ids_size();
-        }
-        if (instruction->opcode() == HloOpcode::kWhile) {
-          TF_RET_CHECK(proto.called_computation_ids_size() == 2)
-              << "While should have 2 called computation but has "
-              << proto.called_computation_ids_size();
-        }
-        for (const int64_t computation_id : proto.called_computation_ids()) {
-          instruction->called_computations_.push_back(
-              computation_map.at(computation_id));
-        }
+      for (const int64_t computation_id : proto.called_computation_ids()) {
+        instruction->called_computations_.push_back(
+            computation_map.at(computation_id));
       }
+
       TF_RET_CHECK(!proto.has_precision_config())
           << instruction->opcode() << proto.DebugString();
       TF_RET_CHECK(!proto.has_dot_dimension_numbers()) << instruction->opcode();

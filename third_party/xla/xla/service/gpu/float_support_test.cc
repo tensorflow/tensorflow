@@ -26,11 +26,11 @@ namespace {
 
 class FloatSupportTest : public HloTestBase {
  public:
-  se::CudaComputeCapability GetCudaComputeCapability() {
+  const se::GpuComputeCapability& GetGpuComputeCapability() {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
-        .cuda_compute_capability();
+        .gpu_compute_capability();
   }
 };
 
@@ -72,9 +72,16 @@ ENTRY e {
 }
 
 TEST_F(FloatSupportTestWithTriton, MixedTypeDotWithBF16IsNotUpcasted) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    GTEST_SKIP() << "No BF16 before Ampere.";
+  bool skip_test =
+      std::visit(se::VariantVisitor{
+                     [](const se::CudaComputeCapability& cc) {
+                       return !cc.IsAtLeast(se::CudaComputeCapability::AMPERE);
+                     },
+                     [](const se::RocmComputeCapability&) { return true; }},
+                 GetGpuComputeCapability());
+
+  if (skip_test) {
+    GTEST_SKIP() << "Not supported on this GPU architecture";
   }
 
   constexpr absl::string_view kHloText = R"(

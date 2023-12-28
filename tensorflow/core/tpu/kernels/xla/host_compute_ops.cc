@@ -389,7 +389,7 @@ class HostComputeOp : public XlaOpKernel {
           TensorShapeProto shape_proto;
           shape_ctx->ShapeHandleToProto(handle, &shape_proto);
           (*output_shapes)[i] = TensorShape(shape_proto);
-          VLOG(2) << "Inferred shape " << shape_proto.DebugString();
+          VLOG(2) << "Inferred shape " << shape_proto;
         }
       }
     }

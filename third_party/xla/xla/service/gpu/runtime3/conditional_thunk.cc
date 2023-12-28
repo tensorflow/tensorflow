@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/status.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -31,15 +32,14 @@ ConditionalThunk::ConditionalThunk(
       config_(std::move(config)),
       branch_index_buffer_index_(branch_index_buffer_index) {}
 
-Status ConditionalThunk::Initialize(se::StreamExecutor* executor,
-                                    ExecutableSource src) {
+Status ConditionalThunk::Initialize(const InitializeParams& params) {
   if (config_.branch_index_is_bool) {
     TF_RET_CHECK(config_.branch_thunks.size() == 2);
   } else {
     TF_RET_CHECK(!config_.branch_thunks.empty());
   }
   for (auto& branch_thunk : config_.branch_thunks) {
-    TF_RETURN_IF_ERROR(branch_thunk->Initialize(executor, src));
+    TF_RETURN_IF_ERROR(branch_thunk->Initialize(params));
   }
   return OkStatus();
 }

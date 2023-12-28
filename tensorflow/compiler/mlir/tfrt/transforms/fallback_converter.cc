@@ -52,7 +52,7 @@ mlir::Value ConvertCoreRTTensorHandleToFallbackTensor(
 
   mlir::OpBuilder::InsertionGuard guard(rewriter);
 
-  if (device.endswith("CPU:0") && !device.startswith("/job:")) {
+  if (device.ends_with("CPU:0") && !device.starts_with("/job:")) {
     // Canonicalize CPU device name. This is needed as corert library only uses
     // the default CPU device name (i.e.
     // "/job:localhost/replica:0/task:0/device:CPU:0") and cannot recoganize
@@ -95,7 +95,7 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
       // defining op (it should be defined in TF OpKernel). If HostMemory
       // annotation is set for an output tensor, we should use CPU device here.
       // TODO(b/200896904): Support HostMemory annotation.
-      if (!device_attr.getValue().endswith("TPU_SYSTEM:0")) {
+      if (!device_attr.getValue().ends_with("TPU_SYSTEM:0")) {
         device = device_attr.getValue();
       }
     }

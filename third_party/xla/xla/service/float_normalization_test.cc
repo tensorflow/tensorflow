@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/service/float_normalization.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -25,11 +27,14 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -540,7 +545,7 @@ class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
 };
 
 TEST_F(FloatNormalizationNoComputeSupportTest,
-       NoNormalizationForToApplyMultiOuputAllReduce) {
+       NoNormalizationForToApplyMultiOutputAllReduce) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(

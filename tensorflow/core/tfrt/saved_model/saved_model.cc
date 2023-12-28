@@ -326,7 +326,7 @@ tensorflow::Status PreprocessSignature(
     const auto& tensor_info = signature_def.outputs().at(output_key);
 
     VLOG(1) << "Importing Signature Output: output_key = " << output_key
-            << ", tensor_info = " << tensor_info.DebugString();
+            << ", tensor_info = " << tensor_info;
 
     TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
         << "Only dense tensor is supported, but got encoding case "
@@ -340,8 +340,12 @@ tensorflow::Status PreprocessSignature(
 
 bool AotPackageExists(absl::string_view saved_model_dir) {
   Env* env = Env::Default();
-  const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
-  return env->FileExists(aot_package_directory).ok();
+  const std::string aot_package_path = GetAotPackagePath(saved_model_dir);
+  const std::string aot_mlir_path = GetMlirFilePath(aot_package_path);
+  const std::string aot_bef_path = GetBefFilePath(aot_package_path);
+  return env->FileExists(aot_package_path).ok() &&
+         env->FileExists(aot_mlir_path).ok() &&
+         env->FileExists(aot_bef_path).ok();
 }
 
 }  // namespace
@@ -453,7 +457,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   // Register TFRT dialects
   mlir::DialectRegistry registry;
   if (aot_exist) {
-    LOG(INFO) << "Found AoT package. Register required dialects.";
+    LOG(INFO) << "Found AOT package. Register required dialects.";
     RegisterTfrtDialectsForAot(registry);
   }
   RegisterMlirDialect(registry);
@@ -469,8 +473,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   // memory.
   session_options.config.mutable_experimental()->set_optimize_for_static_graph(
       true);
-  LOG_FIRST_N(INFO, 10) << "SessionOptions: "
-                        << session_options.config.DebugString();
+  LOG_FIRST_N(INFO, 10) << "SessionOptions: " << session_options.config;
   LOG_FIRST_N(INFO, 10) << "GraphExecutionOptions: "
                         << options.graph_execution_options;
 
@@ -492,7 +495,7 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
   if (aot_exist) {
-    LOG(INFO) << "Found AoT package. Load and deserialize MLIR module.";
+    LOG(INFO) << "Found AOT package. Load and deserialize MLIR module.";
 
     TF_RETURN_IF_ERROR(
         DeserializeAotMlirModule(saved_model_dir, &context, &mlir_module));
@@ -556,7 +559,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;
   if (aot_exist) {
-    LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
+    LOG(INFO) << "Found AOT package. Load and deserialize BEF.";
     if (options.graph_execution_options.enable_mlrt) {
       // TODO(b/303504882): Add deserialization for mlrt path
       return absl::InternalError("AOT is not supported in MLRT");
@@ -940,7 +943,7 @@ StatusOr<JoinedSignature> JoinSignatures(
           << tensor_info.encoding_case();
 
       VLOG(1) << "Importing Signature Input: input_key = " << iter.first
-              << ", tensor_info = " << tensor_info.DebugString();
+              << ", tensor_info = " << tensor_info;
 
       tensorflow::ArrayInfo array_info;
       array_info.imported_dtype = tensor_info.dtype();
@@ -965,7 +968,7 @@ StatusOr<JoinedSignature> JoinSignatures(
       const auto& tensor_info = signature_def.outputs().at(output_key);
 
       VLOG(1) << "Importing Signature Output: output_key = " << output_key
-              << ", tensor_info = " << tensor_info.DebugString();
+              << ", tensor_info = " << tensor_info;
 
       TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
           << "Only dense tensor is supported, but got encoding case "

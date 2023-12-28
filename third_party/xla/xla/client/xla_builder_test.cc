@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
+#include "xla/client/padding.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/value_inference.h"
 #include "xla/client/xla_computation.h"
@@ -1605,6 +1607,193 @@ TEST_F(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
 
+TEST_F(XlaBuilderTest, UnboundedBatchNormGrad) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand, grad_operand;
+  operand = grad_operand = ParseShape("f32[?, ?, 7]");
+  StatusOr<Shape> scale = ParseShape("f32[5]");
+  StatusOr<Shape> mean, variance, grad_scale, grad_offset;
+  mean = variance = grad_scale = grad_offset = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(grad_operand.status());
+  ASSERT_IS_OK(scale.status());
+  ASSERT_IS_OK(mean.status());
+  ASSERT_IS_OK(variance.status());
+  ASSERT_IS_OK(grad_scale.status());
+  ASSERT_IS_OK(grad_offset.status());
+  StatusOr<Shape> grad_output = ParseShape("f32[5, ?, 7]");
+  ASSERT_IS_OK(grad_output.status());
+  BatchNormGrad(Parameter(&b, 0, operand.value(), "operand"),
+                Parameter(&b, 1, scale.value(), "scale"),
+                Parameter(&b, 2, mean.value(), "mean"),
+                Parameter(&b, 3, variance.value(), "variance"),
+                Parameter(&b, 4, grad_output.value(), "grad_output"), 1.0, 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  Shape expected_tuple_shape = ShapeUtil::MakeTupleShape(
+      {grad_operand.value(), grad_scale.value(), grad_offset.value()});
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected_tuple_shape))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
+}
+
+TEST_F(XlaBuilderTest, UnboundedBatchNormInference) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand, expected, scale, offset, mean, variance;
+  operand = expected = ParseShape("f32[?, ?, 7]");
+  scale = offset = mean = variance = ParseShape("f32[5]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(expected.status());
+  ASSERT_IS_OK(scale.status());
+  ASSERT_IS_OK(offset.status());
+  ASSERT_IS_OK(mean.status());
+  ASSERT_IS_OK(variance.status());
+  BatchNormInference(Parameter(&b, 0, operand.value(), "operand"),
+                     Parameter(&b, 1, scale.value(), "scale"),
+                     Parameter(&b, 2, offset.value(), "offset"),
+                     Parameter(&b, 3, mean.value(), "mean"),
+                     Parameter(&b, 4, variance.value(), "variance"), 1.0, 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedBatchNormTraining) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand, output;
+  operand = output = ParseShape("f32[?, ?, 7]");
+  StatusOr<Shape> scale, offset;
+  scale = offset = ParseShape("f32[5]");
+  StatusOr<Shape> batch_mean, batch_var;
+  batch_mean = batch_var = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(output.status());
+  ASSERT_IS_OK(scale.status());
+  ASSERT_IS_OK(offset.status());
+  ASSERT_IS_OK(batch_mean.status());
+  ASSERT_IS_OK(batch_var.status());
+  BatchNormTraining(Parameter(&b, 0, operand.value(), "operand"),
+                    Parameter(&b, 1, scale.value(), "scale"),
+                    Parameter(&b, 2, offset.value(), "offset"), 1.0, 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  Shape expected_tuple_shape = ShapeUtil::MakeTupleShape(
+      {output.value(), batch_mean.value(), batch_var.value()});
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected_tuple_shape))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
+}
+
+TEST_F(XlaBuilderTest, UnboundedClamp) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> ehs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  ASSERT_IS_OK(expected.status());
+  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
+        Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs.value(), "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto result = module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedClampUnsupportedScalarMinMax) {
+  XlaBuilder b(TestName());
+  Shape lhs = ShapeUtil::MakeScalarShape(F32);
+  StatusOr<Shape> rhs = ParseShape("f32[?, 2, <=2]");
+  Shape ehs = ShapeUtil::MakeScalarShape(F32);
+  ASSERT_IS_OK(rhs.status());
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  ASSERT_THAT(
+      build_status.status().message(),
+      HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[1]");
+  StatusOr<Shape> ehs = ParseShape("f32[?, 10]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
+        Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs.value(), "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  ASSERT_THAT(build_status.status().message(),
+              HasSubstr("ShapeUtil::SameDimensions(non_scalar_shape.value(), "
+                        "*shape) Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedConcatenate) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand1 = ParseShape("f32[3, ?, 2, ?, <=2, ?, ?]");
+  StatusOr<Shape> operand2 = ParseShape("f32[?, 4, ?, 2, ?, <=2, ?]");
+  StatusOr<Shape> operand3 = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
+  StatusOr<Shape> expected = ParseShape("f32[3, 4, ?, 2, <=2, <=2, ?]");
+  ASSERT_IS_OK(operand1.status());
+  ASSERT_IS_OK(operand2.status());
+  ASSERT_IS_OK(operand3.status());
+  ASSERT_IS_OK(expected.status());
+  ConcatInDim(&b,
+              {Parameter(&b, 0, operand1.value(), "operand1"),
+               Parameter(&b, 1, operand2.value(), "operand2"),
+               Parameter(&b, 2, operand3.value(), "operand3")},
+              2);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanStringWithLayout(result)
+      << " expected: " << ShapeUtil::HumanStringWithLayout(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedConvolution) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 2, ?, 128]");
+  StatusOr<Shape> rhs = ParseShape("f32[2, 2, <=128, 8]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 1, ?, 8]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+  ConvWithGeneralDimensions(Parameter(&b, 0, lhs.value(), "lhs"),
+                            Parameter(&b, 1, rhs.value(), "rhs"),
+                            /*window_strides=*/{1, 1}, Padding::kValid, dnums);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()));
+}
+
 TEST_F(XlaBuilderTest, UnboundedDiv) {
   XlaBuilder b(TestName());
   StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
@@ -1635,6 +1824,50 @@ TEST_F(XlaBuilderTest, UnboundedDivUnsupportedImplicitBroadcast) {
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedDot) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 10]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+
+  Dot(Parameter(&b, 0, lhs.value(), "lhs"),
+      Parameter(&b, 1, rhs.value(), "rhs"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  ASSERT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
+}
+
+TEST_F(XlaBuilderTest, UnboundedDotGeneral) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, <=3, ?]");
+  StatusOr<Shape> rhs = ParseShape("f32[2, 4, 5]");
+  StatusOr<Shape> expected = ParseShape("f32[?, <=3, 5]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(expected.status());
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(2);
+  dnums.add_rhs_contracting_dimensions(1);
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(0);
+
+  DotGeneral(Parameter(&b, 0, lhs.value(), "lhs"),
+             Parameter(&b, 1, rhs.value(), "rhs"), dnums);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  ASSERT_TRUE(ShapeUtil::Equal(result, expected.value()))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected.value());
 }
 
 TEST_F(XlaBuilderTest, UnboundedExp) {
@@ -1716,6 +1949,27 @@ TEST_F(XlaBuilderTest, UnboundedMulUnsupportedImplicitBroadcast) {
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
 
+TEST_F(XlaBuilderTest, UnboundedPad) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[?, 10]");
+  StatusOr<Shape> expected = ParseShape("f32[?, 21]");
+  ASSERT_IS_OK(operand.status());
+  ASSERT_IS_OK(expected.status());
+  PaddingConfig padding_config;
+  for (int i = 0; i < 2; i++) {
+    auto dimension = padding_config.add_dimensions();
+    dimension->set_edge_padding_low(1);
+    dimension->set_edge_padding_high(1);
+    dimension->set_interior_padding(1);
+  }
+  Pad(Parameter(&b, 0, operand.value(), "operand"),
+      /*padding_value=*/ConstantR0<float>(&b, 0), padding_config);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()));
+}
+
 TEST_F(XlaBuilderTest, UnboundedPow) {
   XlaBuilder b(TestName());
   StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
@@ -1746,6 +2000,70 @@ TEST_F(XlaBuilderTest, UnboundedPowUnsupportedImplicitBroadcast) {
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedReduce) {
+  XlaBuilder b(TestName());
+  XlaOp input0 = Parameter(&b, 0, ParseShape("f32[7, 5]").value(), "input0");
+  XlaOp input1 = Parameter(&b, 1, ParseShape("f32[?, 5]").value(), "input1");
+  XlaOp input2 = Parameter(&b, 2, ParseShape("f32[7, ?]").value(), "input2");
+  XlaOp init = Parameter(&b, 3, ShapeUtil::MakeShape(F32, {}), "init");
+
+  XlaBuilder bsum(TestName());
+  XlaOp arg0 = Parameter(&bsum, 0, ShapeUtil::MakeShape(F32, {}), "arg0");
+  XlaOp arg1 = Parameter(&bsum, 1, ShapeUtil::MakeShape(F32, {}), "arg1");
+  XlaOp arg2 = Parameter(&bsum, 2, ShapeUtil::MakeShape(F32, {}), "arg2");
+  XlaOp arg3 = Parameter(&bsum, 3, ShapeUtil::MakeShape(F32, {}), "arg3");
+  XlaOp arg4 = Parameter(&bsum, 4, ShapeUtil::MakeShape(F32, {}), "arg4");
+  XlaOp arg5 = Parameter(&bsum, 5, ShapeUtil::MakeShape(F32, {}), "arg5");
+
+  std::vector<XlaOp> output_operands = {Add(arg0, arg1), Add(arg2, arg3),
+                                        Add(arg4, arg5)};
+  Tuple(&bsum, absl::MakeSpan(output_operands));
+  TF_ASSERT_OK_AND_ASSIGN(auto sum, bsum.Build());
+  Reduce(&b, {input0, input1, input2}, {init, init, init}, sum, {1});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  Shape shape = ShapeUtil::MakeShape(F32, {7}, {false});
+  Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected));
+}
+
+TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported1) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  Reshape(Parameter(&b, 0, operand.value(), "operand"), /*dimensions=*/{0},
+          /*new_sizes=*/{2, 3});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_THAT(
+      statusor.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported2) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[6]");
+  ASSERT_IS_OK(operand.status());
+  Reshape(Parameter(&b, 0, operand.value(), "operand"), /*dimensions=*/{0},
+          /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_THAT(
+      statusor.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported3) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> operand = ParseShape("f32[?]");
+  ASSERT_IS_OK(operand.status());
+  Reshape(operand.value(), Parameter(&b, 0, operand.value(), "operand"));
+  auto statusor = BuildHloModule(&b);
+  ASSERT_THAT(
+      statusor.status().message(),
+      HasSubstr("Reshaping with unbounded dimensions is not supported."));
 }
 
 TEST_F(XlaBuilderTest, UnboundedSlice) {

@@ -20,12 +20,6 @@ on:
     branches:
       - master
       - r2.**
-  pull_request:
-    types: [labeled, opened, synchronize, reopened]
-    branches:
-      - master
-      - r2.**
-
 permissions:
   contents: read
 

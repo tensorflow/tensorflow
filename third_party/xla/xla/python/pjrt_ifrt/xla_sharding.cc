@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -100,6 +102,14 @@ HloSharding::Disassemble(const Shape& shape) const {
                       SingleDeviceSharding::Create(devices_[i], memory_kind_)});
   }
   return result;
+}
+
+StatusOr<std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
+HloSharding::Disassemble(const DynamicShape& dynamic_shape) const {
+  return InvalidArgument(
+      "HloSharding can only disassemble static shape, but was asked "
+      "to disassemble dynamic shape %s",
+      dynamic_shape.DebugString());
 }
 
 StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(

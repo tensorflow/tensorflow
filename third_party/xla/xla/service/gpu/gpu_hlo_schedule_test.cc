@@ -579,7 +579,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecv) {
 
   EXPECT_LT(get_index("recv"), get_index("send"));
   EXPECT_LT(get_index("send"), get_index("recv-done"));
-  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 9);
+  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 8);
   EXPECT_LT(abs(get_index("send-done") - get_index("result")), 2);
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }

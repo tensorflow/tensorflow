@@ -1623,13 +1623,11 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       // 8-bit values is a 9-bit value. We only use the bottom 8 bits of each
       // table to avoid having the slope between two 16-bit table entries be
       // greater than 16 bits, causing potential interpolation errors
-      auto exp_func = [](double x) -> double { return std::exp(x); };
-
       Value exp_table_const_01, exp_table_const_02, exp_table_const_03,
           exp_table_const_04;
-      getTosaConst32bitTable(rewriter, op, beta * in_quant_type.getScale(), 0,
-                             exp_func, exp_table_const_01, exp_table_const_02,
-                             exp_table_const_03, exp_table_const_04);
+      getTosaConst32bitSoftmaxExpTable(
+          rewriter, op, beta, in_quant_type.getScale(), exp_table_const_01,
+          exp_table_const_02, exp_table_const_03, exp_table_const_04);
 
       Value op4_rescale_op3 =
           buildRescale(rewriter, op, int16_logits_type,

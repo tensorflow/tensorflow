@@ -98,11 +98,19 @@ TF_CAPI_EXPORT extern void TF_CoordinationServiceInsertKeyValue(
     const char* key, int64_t key_size, const char* value, int64_t value_size,
     TF_CoordinationServiceAgent* agent, TF_Status* status);
 
-// Obtains key-value from coorination service agent. The returned `TF_Buffer`
+// Obtains key-value from coordination service agent. The returned `TF_Buffer`
 // is a newly allocated buffer to hold the string key-value, and caller is
 // responsible for managing the lifetime. If error, `status` will be set and a
 // nullptr will be returned.
 TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceGetKeyValue(
+    const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
+    TF_Status* status);
+
+TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceGetKeyValueWithTimeout(
+    const char* key, int64_t key_size, int64_t timeout_seconds,
+    TF_CoordinationServiceAgent* agent, TF_Status* status);
+
+TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceTryGetKeyValue(
     const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
     TF_Status* status);
 

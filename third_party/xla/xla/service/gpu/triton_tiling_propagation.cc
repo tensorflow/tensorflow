@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/triton_tiling_propagation.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <list>
@@ -48,24 +49,36 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-bool TensorIterationSpec::operator==(const TensorIterationSpec& other) const {
-  VLOG(9) << this->ToString();
-  VLOG(9) << other.ToString();
-  auto it_this = dim_iteration_specs_.cbegin();
-  while (it_this != dim_iteration_specs_.cend()) {
-    auto it_other = other.dim_iteration_specs_.find(it_this->first);
-    if (it_other == other.dim_iteration_specs_.cend()) {
+const TensorIterationSpec::DimIterationSpec* TensorIterationSpec::Find(
+    const int dimension) const {
+  if (auto it = dim_iteration_specs_.find(dimension);
+      it != dim_iteration_specs_.end()) {
+    return &it->second;
+  }
+  return nullptr;
+}
+
+bool TensorIterationSpec::IsPhysicallyEquivalent(
+    const TensorIterationSpec& other) const {
+  if (dim_iteration_specs_.size() != other.dim_iteration_specs_.size()) {
+    return false;
+  }
+  for (const auto& pair : dim_iteration_specs_) {
+    int dimension = pair.first;
+    const DimIterationSpec& dim_iter_spec = pair.second;
+    auto other_it = other.dim_iteration_specs_.find(dimension);
+    if (other_it == other.dim_iteration_specs_.end()) {
       return false;
     }
-    if (it_this->second.size() != it_other->second.size()) {
+    const DimIterationSpec& other_dim_iter_spec = other_it->second;
+    if (dim_iter_spec.size() != other_dim_iter_spec.size()) {
       return false;
     }
-    for (int fragment = 0; fragment < it_this->second.size(); ++fragment) {
-      if (it_this->second[fragment] != it_other->second[fragment]) {
+    for (size_t i = 0; i < dim_iter_spec.size(); i++) {
+      if (!dim_iter_spec[i].IsPhysicallyEquivalent(other_dim_iter_spec[i])) {
         return false;
       }
     }
-    ++it_this;
   }
   return true;
 }
@@ -75,12 +88,6 @@ std::string TensorIterationSpec::IterationSpecFragment::ToString() const {
                       ", slice_start=", slice_start,
                       ", sliced_count=", sliced_count, ", subfragments=[",
                       absl::StrJoin(subfragments, ", "), "]}");
-}
-
-bool TensorIterationSpec::IterationSpecFragment::operator!=(
-    const IterationSpecFragment& other) const {
-  return stride != other.stride || count != other.count ||
-         slice_start != other.slice_start || sliced_count != other.sliced_count;
 }
 
 std::string TensorIterationSpec::ToString() const {

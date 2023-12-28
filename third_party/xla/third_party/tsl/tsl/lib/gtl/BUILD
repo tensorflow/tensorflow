@@ -40,8 +40,8 @@ cc_library(
     hdrs = ["flatrep.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:prefetch",
         "//tsl/platform:types",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 

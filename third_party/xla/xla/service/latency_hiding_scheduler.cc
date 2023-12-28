@@ -52,10 +52,14 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+const int64_t kDefaultMemorySpace = 0;
+
 bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
          hlo.IsEffectiveBitcast();
 }
 }  // namespace
@@ -167,7 +171,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   return false;
 }
 
-ResourcesVector AsyncTracker::GetResourcesFromInstruction(
+ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
     const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   auto get_resource_for_op = [](HloOpcode op) -> ResourceType {
@@ -242,6 +246,14 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     default:
       return ResourcesVector{};
   }
+}
+
+ResourcesVector AsyncTracker::GetResourcesFromInstruction(
+    const HloInstruction& hlo) const {
+  if (!resources_cache_.contains(&hlo)) {
+    resources_cache_.insert({&hlo, GetResourcesFromInstructionImpl(hlo)});
+  }
+  return resources_cache_.at(&hlo);
 }
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
@@ -527,6 +539,10 @@ void MemoryPressureTracker::Initialize(
   if (!initial_live_buffers.empty()) {
     for (HloBuffer::Id id : initial_live_buffers) {
       auto& buffer = buffer_tracker_.GetBufferInfo(id);
+      if (buffer.value->values()[0]->shape().has_layout() &&
+          buffer.value->values()[0]->shape().layout().memory_space() != 0) {
+        continue;
+      }
       live_buffers_[buffer.value->id()] = 1;
       initial_memory_pressure_ += buffer.buffer_size;
     }
@@ -553,7 +569,10 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   for (auto* op : instruction->operands()) {
     auto& output_values = output_buffers_[op];
     for (auto& info : output_values) {
-      if (ShouldSkipBufferAllocations(instruction, info.second)) {
+      if (ShouldSkipBufferAllocations(instruction, info.second) ||
+          (info.first.value->values()[0]->shape().has_layout() &&
+           info.first.value->values()[0]->shape().layout().memory_space() !=
+               kDefaultMemorySpace)) {
         continue;
       }
       if (live_buffers_[info.first.value->id()] == 0) {
@@ -569,8 +588,14 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   CHECK(it != defined_buffers_.end());
   if (!ShouldSkipBufferReleases(instruction)) {
     for (auto& b : it->second) {
+      if (b.value->values()[0]->shape().has_layout() &&
+          b.value->values()[0]->shape().layout().memory_space() !=
+              kDefaultMemorySpace) {
+        continue;
+      }
       if (live_buffers_[b.value->id()] != 0) {
         if (b.first_definition == instruction) {
+          // VLOG(0) << "Removing " << b.buffer_size;
           live_memory_usage_ -= b.buffer_size;
           live_buffers_set_.erase(b.value->id());
         }
@@ -604,7 +629,10 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
     auto it = output_buffers_.find(op);
     CHECK(it != output_buffers_.end());
     for (auto& b : it->second) {
-      if (ShouldSkipBufferAllocations(instruction, b.second)) {
+      if (ShouldSkipBufferAllocations(instruction, b.second) ||
+          (b.first.value->values()[0]->shape().has_layout() &&
+           b.first.value->values()[0]->shape().layout().memory_space() !=
+               kDefaultMemorySpace)) {
         continue;
       }
       if (!live_buffers_[b.first.value->id()]) {
@@ -618,6 +646,11 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
   // Decrease memory pressure if some buffers are released.
   if (!ShouldSkipBufferReleases(instruction)) {
     for (auto& b : it->second) {
+      if (b.value->values()[0]->shape().has_layout() &&
+          b.value->values()[0]->shape().layout().memory_space() !=
+              kDefaultMemorySpace) {
+        continue;
+      }
       if (live_buffers_[b.value->id()]) {
         if (b.first_definition == instruction) {
           increase -= b.buffer_size;

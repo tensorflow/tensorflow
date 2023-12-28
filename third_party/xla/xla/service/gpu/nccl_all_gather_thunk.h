@@ -40,8 +40,6 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
   static Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
                                    int64_t replica_count,
                                    int64_t partition_count);
-  static bool IsDegenerate(mlir::lmhlo_gpu::AllGatherStartOp op,
-                           int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllGatherStartOp op);
 

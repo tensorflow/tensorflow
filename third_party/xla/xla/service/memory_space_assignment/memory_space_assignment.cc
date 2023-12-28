@@ -5142,22 +5142,23 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   // Add a repack allocation block for the Allocation objects in alternate
   // memory.
-  std::vector<RepackAllocationBlock*> colocations;
+  std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
   for (int i = allocations_initial_size; i < allocations_->size(); ++i) {
     const auto& allocation = allocations_->at(i);
     if (allocation->memory_space() == MemorySpace::kAlternate) {
       repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
           allocation->start_time(), allocation->end_time(),
           allocation->chunk().size, allocation->chunk().offset,
-          static_cast<int64_t>(colocations.size()), allocation.get()));
-      RepackAllocationBlock* inserted = &repack_allocation_blocks_.back();
-      for (RepackAllocationBlock* colocation : colocations) {
-        inserted->colocations.push_back(colocation);
-        colocation->colocations.push_back(inserted);
-      }
-      inserted->colocations.emplace_back(inserted);
-      colocations.emplace_back(inserted);
+          static_cast<int64_t>(repack_allocation_blocks_.size()),
+          allocation.get()));
+      colocations.push_back(&repack_allocation_blocks_.back());
     }
+  }
+  for (int i = 0; i < colocations.size() - 1; ++i) {
+    colocations[i]->next_colocated = colocations[i + 1];
+  }
+  if (!colocations.empty()) {
+    colocations.back()->next_colocated = colocations.front();
   }
 
   ClearPendingChunks();
@@ -5166,12 +5167,13 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
   const auto& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
-  std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
   for (int i = 0; i < instruction_sequence.size(); ++i) {
     const HloInstruction* instruction = instruction_sequence[i];
-    int64_t reserved_scoped_memory = options_.reserved_scoped_memory_fn(
-        instruction, /*operands_in_alternate_memory=*/{},
-        /*outputs_in_alternate_memory=*/{});
+    int64_t reserved_scoped_memory =
+        std::min(options_.reserved_scoped_memory_fn(
+                     instruction, /*operands_in_alternate_memory=*/{},
+                     /*outputs_in_alternate_memory=*/{}),
+                 options_.max_size_in_bytes);
     if (reserved_scoped_memory != 0) {
       VLOG(1) << "Allocate reserved scoped memory at " << i << " ("
               << instruction->name() << "): " << reserved_scoped_memory;
@@ -5181,7 +5183,6 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
       interval.start = i;
       interval.end = i;
       interval.need_allocation = true;
-      interval.colocations = {};
       Chunk chunk_candidate =
           FindChunkCandidate(interval, /*preferred_offset=*/0);
       CHECK_EQ(chunk_candidate.offset, 0);
@@ -5202,7 +5203,6 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
           /*initial_offset=*/0,
           static_cast<int64_t>(repack_allocation_blocks_.size()),
           allocations_->back().get()));
-      colocations.push_back(&repack_allocation_blocks_.back());
     }
   }
   // If requested, make all scoped allocations to colocate with each other so
@@ -5211,13 +5211,19 @@ void AlternateMemoryBestFitHeap::AllocateReservedScopedAllocations() {
   // opportunity to deduplicate different ops.  However, this may hurt the
   // memory packing efficiency.
   if (options_.allocate_reserved_scoped_memory_at_same_offset) {
-    for (MemorySpaceAssignmentRepacker::AllocationBlock* repack_block :
-         colocations) {
-      repack_block->colocations = colocations;
+    for (auto allocation_block_it = repack_allocation_blocks_.begin();
+         allocation_block_it != repack_allocation_blocks_.end() &&
+         std::next(allocation_block_it) != repack_allocation_blocks_.end();
+         ++allocation_block_it) {
+      allocation_block_it->next_colocated = &*std::next(allocation_block_it);
+    }
+    if (!repack_allocation_blocks_.empty()) {
+      repack_allocation_blocks_.back().next_colocated =
+          &repack_allocation_blocks_.front();
     }
   } else {
     for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
-      allocation_block.colocations.push_back(&allocation_block);
+      allocation_block.next_colocated = &allocation_block;
     }
   }
   ClearPendingChunks();
@@ -5399,23 +5405,24 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
           continue;
         }
         int64_t constant_instruction_time = constant_instruction_it->second;
-        for (const auto& indexed_shape :
-             ShapeUtil::GetLeafShapes(instruction->shape())) {
-          const ShapeIndex& index = indexed_shape.index;
-          for (const HloBuffer* buffer :
-               alias_analysis_.ComputeBuffersAt(instruction, index)) {
-            for (const HloValue* value : buffer->values()) {
-              VLOG(3) << "Adding required assignment for constant value = "
-                      << value->ToShortString()
-                      << " time = " << constant_instruction_time
-                      << " space = def";
-              AddRequiredAssignment(value, instruction, MemorySpace::kDefault,
-                                    constant_instruction_time,
-                                    /*offset=*/nullptr,
-                                    /*add_to_pending=*/false);
-            }
-          }
-        }
+        ShapeUtil::ForEachLeafShape(
+            instruction->shape(),
+            [&](const Shape& /*sub_shape*/, const ShapeIndex& index) {
+              for (const HloBuffer* buffer :
+                   alias_analysis_.ComputeBuffersAt(instruction, index)) {
+                for (const HloValue* value : buffer->values()) {
+                  VLOG(3) << "Adding required assignment for constant value = "
+                          << value->ToShortString()
+                          << " time = " << constant_instruction_time
+                          << " space = def";
+                  AddRequiredAssignment(value, instruction,
+                                        MemorySpace::kDefault,
+                                        constant_instruction_time,
+                                        /*offset=*/nullptr,
+                                        /*add_to_pending=*/false);
+                }
+              }
+            });
       }
     }
   }
@@ -5768,9 +5775,11 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
           colocated_allocation));
       colocations.push_back(&repack_allocation_blocks_.back());
     }
-    for (MemorySpaceAssignmentRepacker::AllocationBlock* repack_block :
-         colocations) {
-      repack_block->colocations = colocations;
+    for (int i = 0; i < colocations.size() - 1; ++i) {
+      colocations[i]->next_colocated = colocations[i + 1];
+    }
+    if (!colocations.empty()) {
+      colocations.back()->next_colocated = colocations.front();
     }
   }
   ClearPendingChunks();

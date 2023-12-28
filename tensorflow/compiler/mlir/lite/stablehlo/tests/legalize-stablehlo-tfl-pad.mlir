@@ -3,9 +3,9 @@
 module {
 func.func @main(%arg0: tensor<8x128xf32>, %arg1: tensor<f32>) -> tensor<11x131xf32> {
   %0 = "stablehlo.pad"(%arg0, %arg1) {
-    edge_padding_low = dense<[1, 0]> : tensor<2xi64>,
-    edge_padding_high = dense<[2, 3]> : tensor<2xi64>,
-    interior_padding = dense<0> : tensor<2xi64>
+    edge_padding_low = array<i64: 1, 0>,
+    edge_padding_high = array<i64: 2, 3>,
+    interior_padding = array<i64: 0, 0>
   } : (tensor<8x128xf32>, tensor<f32>) -> tensor<11x131xf32>
   func.return %0 : tensor<11x131xf32>
 }

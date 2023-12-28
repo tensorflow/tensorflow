@@ -15,19 +15,38 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_norm_rewriter.h"
 
-#include <numeric>
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <limits>
+#include <optional>
+#include <vector>
 
+#include "google/protobuf/wrappers.pb.h"
+#include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/stream_executor/dnn.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/types.h"
+#include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cudnn/cudnn.h"
+#include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
+#include "third_party/gpus/cudnn/cudnn.h"        // IWYU pragma: keep
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #endif
 
 namespace xla {

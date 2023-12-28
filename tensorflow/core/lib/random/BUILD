@@ -6,13 +6,6 @@ package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
-        # tensorflow/core/platform/cloud depends on random.h
-        "//tensorflow/core/platform:__subpackages__",
-        # All of the following packages depend on random/simple_philox.h for tests
-        "//tensorflow/core/lib/core:__pkg__",
-        "//tensorflow/core/lib/gtl:__pkg__",
-        "//tensorflow/core/lib/io:__pkg__",
-        "//tensorflow/core/lib/strings:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -48,7 +41,7 @@ cc_library(
     hdrs = ["random_distributions_utils.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/lite:__subpackages__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         ":philox_random",
@@ -60,10 +53,6 @@ cc_library(
     name = "philox_random",
     hdrs = ["philox_random.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/lite:__subpackages__",
-    ],
     deps = ["@local_tsl//tsl/lib/random:philox_random"],
 )
 
@@ -71,14 +60,8 @@ cc_library(
     name = "random",
     hdrs = ["random.h"],
     visibility = [
-        "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/grappler/optimizers:__pkg__",
-        "//tensorflow/core/lib/core:__pkg__",
-        "//tensorflow/core/lib/gtl:__pkg__",
-        "//tensorflow/core/lib/io:__pkg__",
-        "//tensorflow/core/lib/strings:__pkg__",
-        "//tensorflow/core/platform:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/platform:random",

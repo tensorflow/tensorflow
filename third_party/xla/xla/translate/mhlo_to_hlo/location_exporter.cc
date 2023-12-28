@@ -36,7 +36,7 @@ static std::string GetNameFromLocImpl(Location loc) {
       // in functions where the op's name is first.
       auto name = name_loc.getName().strref().split('@').first;
       // Skip if the name is for op type.
-      if (!name.endswith(":")) {
+      if (!name.ends_with(":")) {
         loc_names.push_back(name);
       }
       continue;
@@ -71,7 +71,7 @@ static std::string GetOpTypeFromLoc(Location loc) {
       // Add name in NameLoc. For NameLoc we also account for names due to ops
       // in functions where the op's name is first.
       auto op_type = name_loc.getName().strref().split('@').first;
-      if (op_type.endswith(":")) {
+      if (op_type.ends_with(":")) {
         op_type = op_type.substr(0, op_type.size() - 1);
         loc_op_types.push_back(op_type);
       }

@@ -14,14 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/repeat_dataset_op.h"
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace data {
@@ -72,6 +76,50 @@ bool HasDataServiceInput(const DatasetBase* dataset) {
   }
   return false;
 }
+
+// Updates an input split provider with the appropriate cardinality count based
+// on how many times it is repeated.
+class RepeatedSplitProvider : public SplitProvider {
+ public:
+  explicit RepeatedSplitProvider(std::unique_ptr<SplitProvider> split_provider,
+                                 int64_t count)
+      : split_provider_(std::move(split_provider)), count_(count) {}
+
+  // Updates the cardinality based on the times the input dataset is repeated.
+  int64_t Cardinality() const override {
+    if (split_provider_->Cardinality() == 0 || count_ == 0) {
+      return 0;
+    }
+    // From tensorflow/python/data/ops/repeat_op.py, the repeat op uses -1 for
+    // infinite repetitions.
+    if (count_ < 0) {
+      return kInfiniteCardinality;
+    }
+    if (split_provider_->Cardinality() < 0) {
+      return split_provider_->Cardinality();
+    }
+    return split_provider_->Cardinality() * count_;
+  }
+
+  // The following are the same as the input split provider.
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override {
+    return split_provider_->GetNext(split, end_of_splits);
+  }
+  absl::Status Reset() override { return split_provider_->Reset(); }
+  absl::Status Save(std::function<std::string(std::string)> full_name,
+                    IteratorStateWriter* writer) override {
+    return split_provider_->Save(full_name, writer);
+  }
+  absl::Status Restore(std::function<std::string(std::string)> full_name,
+                       IteratorStateReader* reader) override {
+    return split_provider_->Restore(full_name, reader);
+  }
+  void Cancel() override { split_provider_->Cancel(); }
+
+ private:
+  const std::unique_ptr<SplitProvider> split_provider_;
+  const int64_t count_;
+};
 }  // namespace
 
 class RepeatDatasetOp::Dataset : public DatasetBase {
@@ -95,6 +143,19 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return std::make_unique<FiniteIterator>(FiniteIterator::Params{
           this, name_utils::IteratorPrefix(kFiniteRepeat, prefix)});
     }
+  }
+
+  absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
+                                      split_providers) const override {
+    std::vector<std::unique_ptr<SplitProvider>> input_split_providers;
+    TF_RETURN_IF_ERROR(input_->MakeSplitProviders(&input_split_providers));
+
+    split_providers->clear();
+    for (auto& split_provider : input_split_providers) {
+      split_providers->push_back(std::make_unique<RepeatedSplitProvider>(
+          std::move(split_provider), count_));
+    }
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -213,6 +274,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
+        input_impl_.reset();
         for (const auto& provider : ctx->split_providers()) {
           TF_RETURN_IF_ERROR(provider->Reset());
         }

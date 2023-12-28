@@ -164,5 +164,34 @@ StatusOr<KernelArguments> KernelArguments::Create(
   return KernelArguments{std::move(kernel_arguments)};
 }
 
+StatusOr<KernelArguments> KernelArguments::Create(
+    const BufferAssignment& buffer_assignment,
+    const HloInstruction* non_fusion_hlo,
+    absl::Span<const HloInstruction* const> needed_operands) {
+  std::vector<KernelArgument> kernel_arguments;
+  for (const HloInstruction* operand : needed_operands) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        buffer_assignment.GetUniqueSlice(operand, {}));
+    kernel_arguments.emplace_back(KernelArgument(
+        /*value=*/nullptr, operand->shape(), slice, /*written=*/false));
+  }
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      non_fusion_hlo->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if (!subshape.IsArray()) return OkStatus();
+
+        TF_ASSIGN_OR_RETURN(
+            BufferAllocation::Slice slice,
+            buffer_assignment.GetUniqueSlice(non_fusion_hlo, index));
+
+        kernel_arguments.emplace_back(KernelArgument(
+            /*value=*/nullptr, subshape, slice, /*written=*/true));
+        return OkStatus();
+      }));
+
+  return KernelArguments{std::move(kernel_arguments)};
+}
+
 }  // namespace gpu
 }  // namespace xla

@@ -507,6 +507,12 @@ static std::string_view StreamCaptureModeToString(
   return ::tsl::OkStatus();
 }
 
+/* static */ tsl::Status GpuDriver::StreamBeginCaptureToGraph(
+    GpuStreamHandle stream, GpuGraphHandle graph, StreamCaptureMode mode) {
+  return absl::UnimplementedError(
+      "StreamBeginCaptureToGraph is not implemented");
+}
+
 /* static */ tsl::Status GpuDriver::StreamEndCapture(GpuStreamHandle stream,
                                                      hipGraph_t* graph) {
   VLOG(2) << "End stream " << stream << " capture";
@@ -520,7 +526,7 @@ static std::string_view StreamCaptureModeToString(
 /* static */ tsl::Status GpuDriver::GraphInstantiate(
     hipGraphExec_t* exec, hipGraph_t graph,
     const GraphInstantiateFlags& flags) {
-  VLOG(2) << "Instante HIP executable graph from graph " << graph << " ("
+  VLOG(2) << "Instantiate HIP executable graph from graph " << graph << " ("
           << "auto_free_on_launch=" << flags.auto_free_on_launch << ", "
           << "device_launch=" << flags.device_launch << ", "
           << "use_node_priority=" << flags.use_node_prirotiy << ", "
@@ -537,6 +543,18 @@ static std::string_view StreamCaptureModeToString(
           << stream;
   RETURN_IF_ROCM_ERROR(wrap::hipGraphLaunch(exec, stream),
                        "Failed to launch HIP graph");
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphNodeSetEnabled(hipGraphExec_t exec,
+                                                        hipGraphNode_t node,
+                                                        bool enabled) {
+  // Node is enabled if value != 0, otherwise the node is disabled.
+  unsigned value = enabled ? 1 : 0;
+  VLOG(2) << "Set HIP executable graph " << exec << " node " << node
+          << " enabled flag to " << value;
+  RETURN_IF_ROCM_ERROR(wrap::hipGraphNodeSetEnabled(exec, node, value),
+                       "Failed to set HIP graph node enabled flag");
   return ::tsl::OkStatus();
 }
 
@@ -794,7 +812,7 @@ GpuDriver::GraphAddNode(hipGraphNode_t* node, hipGraph_t graph,
 
   RETURN_IF_ROCM_ERROR(
       wrap::hipGraphExecChildGraphNodeSetParams(exec, node, child),
-      "Failed to set ROCm graph child node params");
+      "Failed to set HIP graph child node params");
 
   return tsl::OkStatus();
 }
@@ -840,7 +858,7 @@ static hipMemAllocationType ToHipAllocationType(
     absl::Span<GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst) {
   RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemFreeNode(node, graph, deps.data(),
                                                     deps.size(), gpu_dst),
-                       "Failed to add memory free node to a ROCM graph");
+                       "Failed to add memory free node to a HIP graph");
   return ::tsl::OkStatus();
 }
 
@@ -1762,7 +1780,13 @@ struct BitPatternToValue {
   hipDeviceProp_t props;
   hipError_t result = wrap::hipGetDeviceProperties(&props, device);
   if (result == hipSuccess) {
-    *version = props.gcnArch;
+    std::string gcnName = props.gcnArchName;
+    std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
+    std::string amdgpu_version = gcnName;
+    if (!tokens.empty() && tokens[0].size() >= 3) {
+      amdgpu_version = tokens[0].substr(3);
+    }
+    *version = stoi(amdgpu_version);
     return tsl::OkStatus();
   }
   *version = 0;
@@ -1795,13 +1819,9 @@ struct BitPatternToValue {
   if (result == hipSuccess) {
     std::string gcnArchName = props.gcnArchName;
     VLOG(3) << "GCN arch name " << gcnArchName;
-    auto pos = gcnArchName.find(":");
-    if (pos != string::npos) gcnArchName = gcnArchName.substr(0, pos);
-    pos = gcnArchName.find("gfx");
-    if (pos != string::npos) gcnArchName = gcnArchName.substr(pos + 3);
-    VLOG(3) << "GCN arch name (stripped) " << gcnArchName;
-    return ((gcnArchName == "908") || (gcnArchName == "909") ||
-            (gcnArchName == "90a") || (gcnArchName == "940"));
+    auto compute_capability = RocmComputeCapability(gcnArchName);
+    VLOG(3) << "GCN arch name (stripped) " << compute_capability.gfx_version();
+    return compute_capability.gfx9_mi100_or_later();
   }
   return tsl::Status{
       absl::StatusCode::kInternal,
@@ -1942,17 +1962,21 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   }
 
   std::string gcnArchName = props.gcnArchName;
+  auto compute_capability = RocmComputeCapability(gcnArchName);
   // On gfx90a, we hide 1 GB of GPU memory (512MB for gfx908) from TF,
   // to allow for late allocations by internal ROCm libraries
   // (e.g. rocBLAS alone needs~200 MB to put its kernels as of ROCm 4.1)
   const uint64_t RESERVED_GFX908 = 1048576 * 512;
   const uint64_t RESERVED_GFX9_X = 1048576 * 1024;
-  if (gcnArchName.substr(0, 6) == "gfx908") {
+  const uint64_t RESERVED_GFX10_X = 1048576 * 512;
+  if (compute_capability.gfx_version() == "gfx908") {
     *reserve = RESERVED_GFX908;
-  } else if (gcnArchName.substr(0, 6) == "gfx90a" ||
-             gcnArchName.substr(0, 6) == "gfx940") {
+  } else if (compute_capability.gfx9_mi200_or_later()) {
     *reserve = RESERVED_GFX9_X;
+  } else if (compute_capability.navi21() || compute_capability.navi31()) {
+    *reserve = RESERVED_GFX10_X;
   }
+
   return true;
 }
 

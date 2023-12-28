@@ -14,9 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/alias_passthrough_params.h"
 
+#include <cstdint>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {

@@ -504,6 +504,36 @@ ENTRY main {
             LayoutUtil::MakeLayout({3, 1, 4, 2, 0}).minor_to_major());
 }
 
+TEST_F(LayoutAssignmentTest, ReduceOperandLayoutDivisorOfWarpSize) {
+  // Same as ReduceOperandLayout, but with a small reduction dimension that
+  // is a divisor of the warp size.
+  const char* module_str = R"(
+scalar_add_computation {
+  scalar_lhs = c64[] parameter(0)
+  scalar_rhs = c64[] parameter(1)
+  ROOT add.1 = c64[] add(scalar_lhs, scalar_rhs)
+}
+
+ENTRY main {
+  param_0 = c64[512,16,1024,128]{3,2,1,0} parameter(0)
+  negate = c64[512,16,1024,128]{3,2,1,0} negate(param_0)
+  constant_7 = c64[] constant((0, 0))
+  ROOT reduce.2 = c64[512,1024,128]{2,1,0} reduce(negate, constant_7), dimensions={1}, to_apply=scalar_add_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  auto reduce = m->entry_computation()->root_instruction();
+  EXPECT_EQ(reduce->operand(0)->shape().layout().minor_to_major(),
+            LayoutUtil::MakeLayout({1, 3, 2, 0}).minor_to_major());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

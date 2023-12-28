@@ -319,9 +319,24 @@ cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "tensorflow_lite_canonicalize_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "ir/tfl_canonicalize.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/tfl_canonicalize.td",
+    deps = [":tensorflow_lite_patterns_td_files"],
+)
+
 cc_library(
     name = "tensorflow_lite",
     srcs = [
+        "ir/tfl_canonicalize.inc",
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
@@ -343,8 +358,10 @@ cc_library(
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     deps = [
+        ":converter_inc",
         ":cost_estimators",
         ":size_utils",
+        ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops_inc_gen",
@@ -360,6 +377,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",

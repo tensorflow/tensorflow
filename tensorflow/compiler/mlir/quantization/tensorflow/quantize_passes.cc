@@ -37,7 +37,7 @@ using ::tensorflow::quantization::QuantizationOptions;
 // Currently server cannot handle UniformQuantizedTypes. Instead, unpack
 // quantized ops to primitive StableHLO ops. We currently go through a
 // StableHLO <-> MHLO roundtrip to utilize the MHLOQuantToInt pass.
-void AddStablehloQuantToIntPasses(mlir::PassManager &pm) {
+void AddStablehloQuantToIntPasses(mlir::OpPassManager &pm) {
   pm.addPass(mlir::createInlinerPass());
   // StableHLO -> MHLO legalization.
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
@@ -45,18 +45,20 @@ void AddStablehloQuantToIntPasses(mlir::PassManager &pm) {
       mlir::quant::stablehlo::createConvertMHLOQuantToIntPass(
           /*legalize_chlo=*/true));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::stablehlo::CreateOptimizeIntGraphPass());
   pm.addPass(mlir::createSymbolDCEPass());
   // MHLO -> StableHLO legalization.
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
 }
 
 void AddStaticRangeQuantizationPass(
-    mlir::PassManager &pm,
+    mlir::OpPassManager &pm,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addPass(mlir::quant::stablehlo::createQuantizeCompositeFunctionsPass());
 }
 
-void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
+void AddConvertTpuToCpuModelPasses(mlir::OpPassManager &pm) {
   pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
@@ -65,7 +67,7 @@ void AddConvertTpuToCpuModelPasses(mlir::PassManager &pm) {
 
 // Legalizes shape/tensor/arith dialect ops to StableHLO for handling dynamic
 // shapes, by going through a round-trip to MHLO.
-void AddShapeLegalizationPasses(mlir::PassManager &pm) {
+void AddShapeLegalizationPasses(mlir::OpPassManager &pm) {
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createShapeLegalizeToHloPass(/*legalizeConstraints=*/true));
@@ -81,7 +83,7 @@ void AddShapeLegalizationPasses(mlir::PassManager &pm) {
 // Serializes the StableHLO module into a tf.XlaCallModuleOp for compatibility
 // with passes that expect TF format. This also allows the StableHLO ops to be
 // exported as a TF SavedModel.
-void AddCallModuleSerializationPasses(mlir::PassManager &pm) {
+void AddCallModuleSerializationPasses(mlir::OpPassManager &pm) {
   AddShapeLegalizationPasses(pm);
   pm.addPass(
       mlir::quant::stablehlo::
@@ -94,7 +96,7 @@ void AddCallModuleSerializationPasses(mlir::PassManager &pm) {
 }  // namespace
 
 void AddQuantizeQatPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    mlir::OpPassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertFakeQuantToQdqPass());
@@ -142,7 +144,7 @@ void AddQuantizeQatPasses(
 }
 
 void AddQuantizePtqDynamicRangePasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    mlir::OpPassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
@@ -186,7 +188,7 @@ void AddQuantizePtqDynamicRangePasses(
 }
 
 void AddQuantizePtqPreCalibrationPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
+    mlir::OpPassManager &pm, const QuantizationOptions &quantization_options) {
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
@@ -214,7 +216,7 @@ void AddQuantizePtqPreCalibrationPasses(
 }
 
 void AddQuantizePtqPostCalibrationPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    mlir::OpPassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -248,7 +250,7 @@ void AddQuantizePtqPostCalibrationPasses(
 
 // StableHLO Quantization passes that are ran if StableHLO opset is selected.
 void AddQuantizePtqPreCalibrationStablehloPasses(
-    mlir::PassManager &pm, const CalibrationOptions &calibration_options) {
+    mlir::OpPassManager &pm, const CalibrationOptions &calibration_options) {
   pm.addPass(
       mlir::quant::stablehlo::createLiftQuantizableSpotsAsFunctionsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -261,24 +263,18 @@ void AddQuantizePtqPreCalibrationStablehloPasses(
 }
 
 void AddQuantizePtqPostCalibrationStablehloPasses(
-    mlir::PassManager &pm,
+    mlir::OpPassManager &pm,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
-  // Deserializes the StableHLO module embedded in tf.XlaCallModule and lifts
-  // the StableHLO functions to the top level module. This is needed for
-  // StableHLO quantization.
-  pm.addPass(mlir::TF::CreateXlaCallModuleDeserializationPass());
-  pm.addPass(mlir::quant::stablehlo::createRestoreFunctionNamePass());
-  pm.addPass(mlir::quant::stablehlo::createUnwrapXlaCallModuleOpPass());
-  pm.addPass(mlir::createSymbolDCEPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   AddStaticRangeQuantizationPass(pm, mlir_dump_file_prefix);
+  pm.addPass(mlir::quant::stablehlo::createOptimizeGraphPass());
   AddStablehloQuantToIntPasses(pm);
   AddCallModuleSerializationPasses(pm);
 }
 
 void AddQuantizeWeightOnlyPasses(
-    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    mlir::OpPassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   // Add PrepareLiftingPass to utilize its functionalities like folding batch

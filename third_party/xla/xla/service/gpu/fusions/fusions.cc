@@ -177,16 +177,27 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
       if (IsDynamicUpdateSliceFusion(analysis)) {
-        if (!std::holds_alternative<LmhloFusionInfo>(fusion_info)) {
-          return std::nullopt;
-        }
-        auto lmhlo_fusion_info = std::get<LmhloFusionInfo>(fusion_info);
-        absl::Span<const BufferAllocation* const> allocations =
-            lmhlo_fusion_info.allocations;
-        mlir::lmhlo::FusionOp fusion_op = lmhlo_fusion_info.fusion_op;
-        if (CanEmitFusedDynamicUpdateSliceInPlaceForGpu(fusion_op,
-                                                        allocations)) {
-          return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
+        if (std::holds_alternative<LmhloFusionInfo>(fusion_info)) {
+          auto lmhlo_fusion_info = std::get<LmhloFusionInfo>(fusion_info);
+          absl::Span<const BufferAllocation* const> allocations =
+              lmhlo_fusion_info.allocations;
+          mlir::lmhlo::FusionOp fusion_op = lmhlo_fusion_info.fusion_op;
+          if (CanEmitFusedDynamicUpdateSliceInPlaceForGpu(fusion_op,
+                                                          allocations)) {
+            return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
+          }
+        } else {
+          auto hlo_fusion_info = std::get<HloFusionInfo>(fusion_info);
+          const HloFusionInstruction* fusion = hlo_fusion_info.instr;
+          const BufferAssignment* buffer_assignment =
+              hlo_fusion_info.buffer_assignment;
+          TF_ASSIGN_OR_RETURN(
+              bool can_emit_dynamic_update_slice_in_place,
+              CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+                  fusion, buffer_assignment, analysis.fusion_roots()));
+          if (can_emit_dynamic_update_slice_in_place) {
+            return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
+          }
         }
       }
       TF_ASSIGN_OR_RETURN(

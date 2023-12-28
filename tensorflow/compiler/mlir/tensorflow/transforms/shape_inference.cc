@@ -1257,7 +1257,12 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
   if (!status.ok()) {
     LLVM_DEBUG(llvm::dbgs() << "Failed during XlaCallModule shape refinement: "
                             << status.ToString());
-    return false;
+    // RefineDynamicShapes returns ok only when it produces full static shapes.
+    // It may partially succeed by producing RankedTensor shapes with dynamic
+    // dimensions. Such info is still useful for the downstream. We don't need
+    // to abort here.
+    // TODO(b/316639984): improve RefineDynamicShapes return values to include
+    // these info.
   }
 
   bool changed = false;
@@ -2962,6 +2967,8 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
       RecordValue(ValuePort(std::get<0>(result)), attr);
     } else {
       auto value = fold_result.get<Value>();
+      assert(value.getType() == std::get<0>(result).getType() &&
+             "folder produced value of incorrect type");
       if ((attr = ComputeOutputComponent(ValuePort(value)))) {
         DCOMMENT("\t\tValue Result mapped to " << attr);
         RecordValue(ValuePort(std::get<0>(result)), attr);

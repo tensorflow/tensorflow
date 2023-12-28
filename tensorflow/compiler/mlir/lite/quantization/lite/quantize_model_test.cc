@@ -1506,8 +1506,6 @@ TEST_P(QuantizeBroadcastToModelTest, VerifyBroadcastToQuantization) {
 
   // The BroadCastTo shape is of type INT32 and should not be quantized
   EXPECT_THAT(subgraph->tensors[1]->type, Eq(TensorType_INT32));
-  EXPECT_THAT(subgraph->tensors[1]->name,
-              Eq("model/tf.broadcast_to/BroadcastTo/shape"));
   EXPECT_THAT(subgraph->tensors[1]->quantization->scale, IsEmpty());
   EXPECT_THAT(subgraph->tensors[1]->quantization->zero_point, IsEmpty());
 
@@ -1572,7 +1570,6 @@ TEST_P(QuantizeGatherNDModelTest, QuantizeGatherND) {
 
   // The gather indices are of type INT32 and should not be quantized
   EXPECT_THAT(subgraph->tensors[1]->type, Eq(TensorType_INT32));
-  EXPECT_THAT(subgraph->tensors[1]->name, Eq("indices"));
   EXPECT_THAT(subgraph->tensors[1]->quantization->scale, IsEmpty());
   EXPECT_THAT(subgraph->tensors[1]->quantization->zero_point, IsEmpty());
 

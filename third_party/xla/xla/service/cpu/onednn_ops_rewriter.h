@@ -25,8 +25,8 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-// This pass pattern-matches elementwise hlo instructions and rewrites into
-// custom calls.
+// This pass fuses hlo instructions that can be fused into single oneDNN
+// operation and rewrites into custom calls.
 class OneDnnOpsRewriter : public HloModulePass {
  public:
   absl::string_view name() const override { return "onednn-ops-rewriter"; }

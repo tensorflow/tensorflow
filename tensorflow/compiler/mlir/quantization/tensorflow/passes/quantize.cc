@@ -384,7 +384,7 @@ class QuantizeSameScaleOpsPattern
     }
 
     const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
-    if (!f_attr || !f_attr.getValue().startswith("composite_")) {
+    if (!f_attr || !f_attr.getValue().starts_with("composite_")) {
       return false;
     }
 

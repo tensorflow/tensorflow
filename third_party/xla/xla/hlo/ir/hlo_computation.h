@@ -816,17 +816,15 @@ class HloComputation {
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
 
-  enum VisitState { kVisiting, kVisited };
+  class VisitMap;
   void ComputeInstructionPostOrder(
       HloInstruction* root, const ChannelDependencies& channel_dependencies,
-      absl::flat_hash_map<HloInstruction*, VisitState>& visited,
-      std::vector<HloInstruction*>& post_order,
+      VisitMap& visited, std::vector<HloInstruction*>& post_order,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
   void ForEachInstructionPostOrderImpl(
       absl::FunctionRef<void(HloInstruction*)> func, HloInstruction* root,
-      const ChannelDependencies& channel_dependencies,
-      absl::flat_hash_map<HloInstruction*, VisitState>& visited,
+      const ChannelDependencies& channel_dependencies, VisitMap& visited,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
   Status RemoveUnusedParametersImpl(bool allow_non_fusion);

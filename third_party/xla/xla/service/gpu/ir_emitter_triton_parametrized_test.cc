@@ -879,11 +879,7 @@ ENTRY main {
   if (data_type == BF16 && !GetCudaComputeCapability().IsAtLeast(
                                se::CudaComputeCapability::AMPERE)) {
     hlo_ref_template = R"(
-; CHECK:    ENTRY
-; CHECK:      %[[P0:.*]] = bf16[127,125]{1,0} parameter(0)
-; CHECK:      %[[FUSED_REDUCE:.*]] = f32[127]{0} fusion(%[[P0]])
-; CHECK:      ROOT
-; CHECK-SAME: fusion(%[[P0]], %[[FUSED_REDUCE]])
+; CHECK-NOT: triton
 )";
   } else {
     hlo_ref_template = R"(

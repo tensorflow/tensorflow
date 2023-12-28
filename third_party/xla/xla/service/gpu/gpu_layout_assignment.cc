@@ -32,7 +32,9 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/window_util.h"
 #include "xla/xla.pb.h"
@@ -515,13 +517,16 @@ Status GpuLayoutAssignment::SetDotLayout(const HloInstruction* instruction,
 
 bool GpuLayoutAssignment::PropagateReductionLayoutToOperand(
     const HloInstruction* user) {
-  // Propagating the layout is only beneficial if the total size of reduction
-  // dims is large enough.
+  // We try to propagate a layout to make the reduction a row reduction. But
+  // propagating the layout is only beneficial if the reduction emitter would be
+  // used for the row reduction.
   int64_t reduction_size = 1;
   for (int64_t reduction_dim : user->dimensions()) {
     reduction_size *= user->operand(0)->shape().dimensions(reduction_dim);
   }
-  return reduction_size >= 32;
+  int64_t kept_dimension_size = ShapeUtil::ElementsIn(user->shape());
+  return IsUnnestedReductionFasterThanElemental(
+      {/*is_row_reduction=*/true, {1, kept_dimension_size, reduction_size}});
 }
 
 }  // namespace gpu

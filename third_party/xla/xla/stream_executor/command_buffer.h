@@ -96,11 +96,21 @@ class CommandBuffer {
   // can't be updated.
   //
   // Command buffer tracing should be used only when it is impossible to use
-  // explicit construction APIs, e.g. when calling external libraries.
+  // explicit construction APIs, e.g. when calling external libraries. By
+  // default we construct traced command buffers in nested mode because the
+  // primary use case for traced command buffers is to be inserted into primary
+  // command buffers constructed with explicit APIs.
   static tsl::StatusOr<CommandBuffer> Trace(
       StreamExecutor* executor,
       absl::AnyInvocable<tsl::Status(Stream*)> function,
-      Mode mode = Mode::kPrimary);
+      Mode mode = Mode::kNested);
+
+  // Creates a new command buffer on the given executor by tracing `function`
+  // invocation using a user provided stream that will be passed to `function`.
+  static tsl::StatusOr<CommandBuffer> Trace(
+      StreamExecutor* executor, Stream* stream,
+      absl::AnyInvocable<tsl::Status(Stream*)> function,
+      Mode mode = Mode::kNested);
 
   //===--------------------------------------------------------------------===//
   // Command buffer properties
@@ -113,6 +123,10 @@ class CommandBuffer {
   //===--------------------------------------------------------------------===//
   // Command buffer API
   //===--------------------------------------------------------------------===//
+
+  // Adds an execution barrier to a command buffer: all commands added before a
+  // barrier will complete before any of the commands added after a barrier.
+  tsl::Status Barrier(StreamExecutor* executor);
 
   // Adds a kernel launch command to the command buffer.
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
@@ -129,6 +143,16 @@ class CommandBuffer {
   using BitPattern = std::variant<uint8_t, uint16_t, uint32_t>;
   tsl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
                      size_t num_elements);
+
+  //--------------------------------------------------------------------------//
+  // Command buffer memory allocation API
+  //--------------------------------------------------------------------------//
+
+  // Adds a device memory allocation command to the command buffer.
+  tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes);
+
+  // This API free buffer that is allocated by Allocate command
+  tsl::Status Free(DeviceMemoryBase dst);
 
   //--------------------------------------------------------------------------//
   // Command buffer condtitional commands API
@@ -177,12 +201,6 @@ class CommandBuffer {
                     Builder cond_builder, Builder body_builder);
 
   //--------------------------------------------------------------------------//
-
-  // Adds a device memory allocation command to the command buffer.
-  tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes);
-
-  // This API free buffer that is allocated by Allocate command
-  tsl::Status Free(DeviceMemoryBase dst);
 
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
