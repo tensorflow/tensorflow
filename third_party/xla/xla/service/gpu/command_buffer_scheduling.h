@@ -89,7 +89,6 @@ class CommandBufferScheduling : public HloModulePass {
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
       HloInstructionSequence inst_sequence, const CommandBufferConfig& config,
-      absl::flat_hash_set<HloComputation*>& processed_command_buffers,
       int32_t min_num_commands = 1);
 
   // Moves kParameter and kConstant instructions in a computation to
@@ -121,9 +120,9 @@ class CommandBufferScheduling : public HloModulePass {
 
   // Rewrites prepared command buffer computation into Hlo operations in the
   // parent computation (calls command buffer and replaced all users).
-  static Status RewriteCommandBuffer(HloComputation* parent,
-                                     const HloInstructionSequence& seq,
-                                     CommandBuffer command_buffer);
+  static StatusOr<HloComputation*> RewriteCommandBuffer(
+      HloComputation* parent, const HloInstructionSequence& seq,
+      CommandBuffer command_buffer);
 
  private:
   // For NVIDIA gpus XLA can be compiled with a CUDA version that is larger than

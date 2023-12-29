@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -232,10 +231,8 @@ TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   CommandBufferScheduling::CommandBufferConfig config;
   config.insert(DebugOptions::FUSION);
 
-  absl::flat_hash_set<HloComputation*> processed_command_buffers;
   std::vector<HloInstructionSequence> command_buffer_sequences =
-      CommandBufferScheduling::CollectCommandBufferSequences(
-          seq, config, processed_command_buffers);
+      CommandBufferScheduling::CollectCommandBufferSequences(seq, config);
   EXPECT_EQ(command_buffer_sequences.size(), 2);
 
   std::vector<HloInstruction*> seq_0 =
@@ -430,74 +427,74 @@ TEST_F(CommandBufferSchedulingTest, RelayControlDependencies) {
 
 TEST_F(CommandBufferSchedulingTest, WhileNotCommand) {
   const char* hlo = R"(
-      HloModule TestModule, is_scheduled=true
+    HloModule TestModule, is_scheduled=true
 
-      %fused_computation.1 (param_0.1: f32[1], param_1: f32[1]) -> f32[1] {
-        %param_0.1 = f32[1]{0} parameter(0)
-        %param_1 = f32[1]{0} parameter(1)
-        ROOT %add.2 = f32[1]{0} add(f32[1]{0} %param_0.1, f32[1]{0} %param_1)
-      }
+    %fused_computation (param_0: f32[1]) -> f32[1] {
+      %param_0 = f32[1]{0} parameter(0)
+      ROOT %copy.5 = f32[1]{0} copy(f32[1]{0} %param_0)
+    }
 
-      %fused_computation.3 (param_0.1: f32[1], param_1: f32[1]) -> f32[1] {
-        %param_0.1 = f32[1]{0} parameter(0)
-        %param_1 = f32[1]{0} parameter(1)
-        ROOT %add.2 = f32[1]{0} add(f32[1]{0} %param_0.1, f32[1]{0} %param_1)
-      }
+    %fused_computation.1 (param_0.1: f32[1], param_1: f32[1]) -> f32[1] {
+      %param_0.1 = f32[1]{0} parameter(0)
+      %param_1 = f32[1]{0} parameter(1)
+      ROOT %add.2 = f32[1]{0} add(f32[1]{0} %param_0.1, f32[1]{0} %param_1)
+    }
 
-      %region_0.2 (Arg_.3: f32[1]) -> f32[1] {
-        %constant_4 = f32[1]{0} constant({1})
-        %Arg_.3 = f32[1]{0} parameter(0)
-        %custom-call = s32[] custom-call(), custom_call_target="some target"
-        %add = f32[1]{0} fusion(f32[1]{0} %Arg_.3, f32[1]{0} %constant_4), kind=kLoop, calls=%fused_computation.1, control-predecessors={%custom-call}
-        ROOT %wrapped_add.1 = f32[1]{0} fusion(f32[1]{0} %add, f32[1]{0} %constant_4), kind=kLoop, calls=%fused_computation.3, control-predecessors={%custom-call}
-      }
+    %fused_computation.2 (param_0.2: f32[1], param_1.1: f32[1]) -> pred[1] {
+      %param_0.2 = f32[1]{0} parameter(0)
+      %param_1.1 = f32[1]{0} parameter(1)
+      ROOT %compare.3 = pred[1]{0} compare(f32[1]{0} %param_0.2, f32[1]{0} %param_1.1), direction=LT
+    }
 
-      %fused_computation.2 (param_0.2: f32[1], param_1.1: f32[1]) -> pred[1] {
-        %param_0.2 = f32[1]{0} parameter(0)
-        %param_1.1 = f32[1]{0} parameter(1)
-        ROOT %compare.3 = pred[1]{0} compare(f32[1]{0} %param_0.2, f32[1]{0} %param_1.1), direction=LT
-      }
+    %fused_computation.3 (param_0.1: f32[1], param_1: f32[1]) -> f32[1] {
+      %param_0.1 = f32[1]{0} parameter(0)
+      %param_1 = f32[1]{0} parameter(1)
+      ROOT %add.2 = f32[1]{0} add(f32[1]{0} %param_0.1, f32[1]{0} %param_1)
+    }
 
-      %region_1.10 (Arg_.11: f32[1]) -> pred[] {
-        %constant = f32[1]{0} constant({100})
-        %Arg_.11 = f32[1]{0} parameter(0)
-        %wrapped_compare.2 = pred[1]{0} fusion(f32[1]{0} %Arg_.11, f32[1]{0} %constant), kind=kLoop, calls=%fused_computation.2
-        ROOT %bitcast = pred[] bitcast(pred[1]{0} %wrapped_compare.2)
-      }
+    %body (Arg_.3: f32[1]) -> f32[1] {
+      %constant_4 = f32[1]{0} constant({1})
+      %Arg_.3 = f32[1]{0} parameter(0)
+      %custom-call = s32[] custom-call(), custom_call_target="some target"
+      %add = f32[1]{0} fusion(f32[1]{0} %Arg_.3, f32[1]{0} %constant_4), kind=kLoop, calls=%fused_computation.1, control-predecessors={%custom-call}
+      ROOT %wrapped_add.1 = f32[1]{0} fusion(f32[1]{0} %add, f32[1]{0} %constant_4), kind=kLoop, calls=%fused_computation.3, control-predecessors={%custom-call}
+    }
 
-      %fused_computation (param_0: f32[1]) -> f32[1] {
-        %param_0 = f32[1]{0} parameter(0)
-        ROOT %copy.5 = f32[1]{0} copy(f32[1]{0} %param_0)
-      }
+    %cond (Arg_.11: f32[1]) -> pred[] {
+      %constant = f32[1]{0} constant({100})
+      %Arg_.11 = f32[1]{0} parameter(0)
+      %wrapped_compare.2 = pred[1]{0} fusion(f32[1]{0} %Arg_.11, f32[1]{0} %constant), kind=kLoop, calls=%fused_computation.2
+      ROOT %bitcast = pred[] bitcast(pred[1]{0} %wrapped_compare.2)
+    }
 
-      ENTRY %main.18 (Arg_0.1: f32[1]) -> f32[] {
-        %Arg_0.1 = f32[1]{0} parameter(0), sharding={replicated}
-        %wrapped_copy.4 = f32[1]{0} fusion(f32[1]{0} %Arg_0.1), kind=kLoop, calls=%fused_computation
-        %while.16 = f32[1]{0} while(f32[1]{0} %wrapped_copy.4), condition=%region_1.10, body=%region_0.2
-        ROOT %bitcast.1 = f32[] bitcast(f32[1]{0} %while.16)
-      })";
+    ENTRY %main.18 (Arg_0.1: f32[1]) -> f32[] {
+      %Arg_0.1 = f32[1]{0} parameter(0), sharding={replicated}
+      %wrapped_copy.4 = f32[1]{0} fusion(f32[1]{0} %Arg_0.1), kind=kLoop, calls=%fused_computation
+      %while.16 = f32[1]{0} while(f32[1]{0} %wrapped_copy.4), condition=%cond, body=%body
+      ROOT %bitcast.1 = f32[] bitcast(f32[1]{0} %while.16)
+    })";
 
   const char* expected = R"(
-// CHECK: %command_buffer ([[P0:.+]]: f32[1], [[P1:.+]]: f32[1]) -> f32[1] {
-// CHECK:   %[[P0]] = f32[1]{0} parameter(0)
-// CHECK:   %[[P1]] = f32[1]{0} parameter(1)
-// CHECK:   %[[ADD:.*]] = f32[1]{0} fusion(%[[P0]], %[[P1]]), kind=kLoop
-// CHECK:   ROOT {{.*}} = f32[1]{0} fusion(%[[ADD]], %[[P1]]), kind=kLoop
-// CHECK: }
-//
-// CHECK: %[[BODY:[a-z_0-9.]+]] ([[P0:.+]]: f32[1]) -> f32[1] {
-// CHECK:   %[[C1:.*]] = f32[1]{0} constant({1})
-// CHECK:   %[[P0]] = f32[1]{0} parameter(0)
-// CHECK:   %[[CC:.*]] = s32[] custom-call(), custom_call_target="some target"
-// CHECK:   ROOT %call = f32[1]{0} call(%[[P0]], %[[C1]]), to_apply=%command_buffer, control-predecessors={%[[CC]]}
-// CHECK: }
-//
-// CHECK: ENTRY %[[MAIN:.+]] ([[ARG0:.+]]: f32[1]) -> f32[] {
-// CHECK:   %[[ARG0]] = f32[1]{0} parameter(0)
-// CHECK:   %[[COPY:.*]] = f32[1]{0} fusion(%[[ARG0]]), kind=kLoop
-// CHECK:   %[[WHILE:.*]] = f32[1]{0} while(%[[COPY]]), condition=%[[COND:[a-z_0-9.]+]], body=%[[BODY]]
-// CHECK:   ROOT %[[BC:.+]] = f32[] bitcast(%[[WHILE]])
-// CHECK: })";
+    CHECK: %command_buffer ([[P0:.+]]: f32[1], [[P1:.+]]: f32[1]) -> f32[1] {
+    CHECK:   %[[P0]] = f32[1]{0} parameter(0)
+    CHECK:   %[[P1]] = f32[1]{0} parameter(1)
+    CHECK:   %[[ADD:.*]] = f32[1]{0} fusion(%[[P0]], %[[P1]]), kind=kLoop
+    CHECK:   ROOT {{.*}} = f32[1]{0} fusion(%[[ADD]], %[[P1]]), kind=kLoop
+    CHECK: }
+
+    CHECK: %[[BODY:[a-z_0-9.]+]] ([[P0:.+]]: f32[1]) -> f32[1] {
+    CHECK:   %[[C1:.*]] = f32[1]{0} constant({1})
+    CHECK:   %[[P0]] = f32[1]{0} parameter(0)
+    CHECK:   %[[CC:.*]] = s32[] custom-call(), custom_call_target="some target"
+    CHECK:   ROOT %call = f32[1]{0} call(%[[P0]], %[[C1]]), to_apply=%command_buffer, control-predecessors={%[[CC]]}
+    CHECK: }
+
+    CHECK: ENTRY %[[MAIN:.+]] ([[ARG0:.+]]: f32[1]) -> f32[] {
+    CHECK:   %[[ARG0]] = f32[1]{0} parameter(0)
+    CHECK:   %[[COPY:.*]] = f32[1]{0} fusion(%[[ARG0]]), kind=kLoop
+    CHECK:   %[[WHILE:.*]] = f32[1]{0} while(%[[COPY]]), condition=%[[COND:[a-z_0-9.]+]], body=%[[BODY]]
+    CHECK:   ROOT %[[BC:.+]] = f32[] bitcast(%[[WHILE]])
+    CHECK: })";
 
   RunAndFilecheckHloRewrite(hlo,
                             CommandBufferScheduling(kCudaVersion, kCudaVersion),
@@ -509,57 +506,57 @@ TEST_F(CommandBufferSchedulingTest, WhileNotCommand) {
 
 TEST_F(CommandBufferSchedulingTest, While) {
   const char* hlo = R"(
-      HloModule TestModule, is_scheduled=true
+    HloModule TestModule, is_scheduled=true
 
-      %fused_computation.1 (param_0.1: f32[1], param_1: f32[1]) -> f32[1] {
-        %param_0.1 = f32[1]{0} parameter(0)
-        %param_1 = f32[1]{0} parameter(1)
-        ROOT %add.2 = f32[1]{0} add(f32[1]{0} %param_0.1, f32[1]{0} %param_1)
-      }
+    %fused_computation (param_0: f32[1]) -> f32[1] {
+      %param_0 = f32[1]{0} parameter(0)
+      ROOT %copy.5 = f32[1]{0} copy(f32[1]{0} %param_0)
+    }
 
-      %region_0.2 (Arg_.3: f32[1]) -> f32[1] {
-        %constant_4 = f32[1]{0} constant({1})
-        %Arg_.3 = f32[1]{0} parameter(0)
-        ROOT %wrapped_add.1 = f32[1]{0} fusion(f32[1]{0} %Arg_.3, f32[1]{0} %constant_4), kind=kLoop, calls=%fused_computation.1
-      }
+    %fused_computation.1 (param_0.1: f32[1], param_1: f32[1]) -> f32[1] {
+      %param_0.1 = f32[1]{0} parameter(0)
+      %param_1 = f32[1]{0} parameter(1)
+      ROOT %add.2 = f32[1]{0} add(f32[1]{0} %param_0.1, f32[1]{0} %param_1)
+    }
 
-      %fused_computation.2 (param_0.2: f32[1], param_1.1: f32[1]) -> pred[1] {
-        %param_0.2 = f32[1]{0} parameter(0)
-        %param_1.1 = f32[1]{0} parameter(1)
-        ROOT %compare.3 = pred[1]{0} compare(f32[1]{0} %param_0.2, f32[1]{0} %param_1.1), direction=LT
-      }
+    %fused_computation.2 (param_0.2: f32[1], param_1.1: f32[1]) -> pred[1] {
+      %param_0.2 = f32[1]{0} parameter(0)
+      %param_1.1 = f32[1]{0} parameter(1)
+      ROOT %compare.3 = pred[1]{0} compare(f32[1]{0} %param_0.2, f32[1]{0} %param_1.1), direction=LT
+    }
 
-      %region_1.10 (Arg_.11: f32[1]) -> pred[] {
-        %constant = f32[1]{0} constant({100})
-        %Arg_.11 = f32[1]{0} parameter(0)
-        %wrapped_compare.2 = pred[1]{0} fusion(f32[1]{0} %Arg_.11, f32[1]{0} %constant), kind=kLoop, calls=%fused_computation.2
-        ROOT %bitcast = pred[] bitcast(pred[1]{0} %wrapped_compare.2)
-      }
+    %body (Arg_.3: f32[1]) -> f32[1] {
+      %constant_4 = f32[1]{0} constant({1})
+      %Arg_.3 = f32[1]{0} parameter(0)
+      ROOT %wrapped_add.1 = f32[1]{0} fusion(f32[1]{0} %Arg_.3, f32[1]{0} %constant_4), kind=kLoop, calls=%fused_computation.1
+    }
 
-      %fused_computation (param_0: f32[1]) -> f32[1] {
-        %param_0 = f32[1]{0} parameter(0)
-        ROOT %copy.5 = f32[1]{0} copy(f32[1]{0} %param_0)
-      }
+    %cond (Arg_.11: f32[1]) -> pred[] {
+      %constant = f32[1]{0} constant({100})
+      %Arg_.11 = f32[1]{0} parameter(0)
+      %wrapped_compare.2 = pred[1]{0} fusion(f32[1]{0} %Arg_.11, f32[1]{0} %constant), kind=kLoop, calls=%fused_computation.2
+      ROOT %bitcast = pred[] bitcast(pred[1]{0} %wrapped_compare.2)
+    }
 
-      ENTRY %main.18 (Arg_0.1: f32[1]) -> f32[] {
-        %Arg_0.1 = f32[1]{0} parameter(0), sharding={replicated}
-        %wrapped_copy.4 = f32[1]{0} fusion(f32[1]{0} %Arg_0.1), kind=kLoop, calls=%fused_computation
-        %while.16 = f32[1]{0} while(f32[1]{0} %wrapped_copy.4), condition=%region_1.10, body=%region_0.2
-        ROOT %bitcast.1 = f32[] bitcast(f32[1]{0} %while.16)
-      })";
+    ENTRY %main.18 (Arg_0.1: f32[1]) -> f32[] {
+      %Arg_0.1 = f32[1]{0} parameter(0), sharding={replicated}
+      %wrapped_copy.4 = f32[1]{0} fusion(f32[1]{0} %Arg_0.1), kind=kLoop, calls=%fused_computation
+      %while.16 = f32[1]{0} while(f32[1]{0} %wrapped_copy.4), condition=%cond, body=%body
+      ROOT %bitcast.1 = f32[] bitcast(f32[1]{0} %while.16)
+    })";
 
   const char* expected = R"(
-// CHECK: %command_buffer ([[P0:.+]]: f32[1]) -> f32[1] {
-// CHECK:   %[[P0]] = f32[1]{0} parameter(0)
-// CHECK:   %[[COPY:.*]] = f32[1]{0} fusion(%[[P0]]), kind=kLoop
-// CHECK:   ROOT {{.*}} = f32[1]{0} while(%[[COPY]]), condition=%[[COND:[a-z_0-9.]+]], body=%[[BODY:[a-z_0-9.]+]]
-// CHECK: }
-//
-// CHECK: ENTRY %[[MAIN:.+]] ([[ARG0:.+]]: f32[1]) -> f32[] {
-// CHECK:   %[[ARG0]] = f32[1]{0} parameter(0)
-// CHECK:   %call = f32[1]{0} call(%[[ARG0]]), to_apply=%command_buffer
-// CHECK:   ROOT %[[BC:.+]] = f32[] bitcast(%call)
-// CHECK: })";
+    CHECK: %command_buffer ([[P0:.+]]: f32[1]) -> f32[1] {
+    CHECK:   %[[P0]] = f32[1]{0} parameter(0)
+    CHECK:   %[[COPY:.*]] = f32[1]{0} fusion(%[[P0]]), kind=kLoop
+    CHECK:   ROOT {{.*}} = f32[1]{0} while(%[[COPY]]), condition=%[[COND:[a-z_0-9.]+]], body=%[[BODY:[a-z_0-9.]+]]
+    CHECK: }
+
+    CHECK: ENTRY %[[MAIN:.+]] ([[ARG0:.+]]: f32[1]) -> f32[] {
+    CHECK:   %[[ARG0]] = f32[1]{0} parameter(0)
+    CHECK:   %call = f32[1]{0} call(%[[ARG0]]), to_apply=%command_buffer
+    CHECK:   ROOT %[[BC:.+]] = f32[] bitcast(%call)
+    CHECK: })";
 
   RunAndFilecheckHloRewrite(hlo,
                             CommandBufferScheduling(kCudaVersion, kCudaVersion),
