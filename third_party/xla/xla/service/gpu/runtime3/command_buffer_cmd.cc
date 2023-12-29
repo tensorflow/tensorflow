@@ -76,6 +76,9 @@ static std::vector<se::CommandBuffer::Builder> ConditionBuilders(
 // CommandBufferCmdSequence
 //===----------------------------------------------------------------------===//
 
+CommandBufferCmdSequence::CommandBufferCmdSequence(bool force_barriers)
+    : force_barriers_(force_barriers) {}
+
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
   for (const CommandBufferCmd::BufferUsage& buffer : cmd->buffers()) {
     buffers_.insert(buffer);
@@ -84,6 +87,11 @@ void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
 
   CommandBufferCmd::BufferUsageVector buffers = cmd->buffers();
   bool requires_barrier = HasConflicts(buffers);
+
+  // Always add barriers between commands if we want to linearize execution.
+  if (force_barriers_ && !commands_.empty()) {
+    requires_barrier = true;
+  }
 
   // If the first recorded command is implemented as a nested command buffer we
   // force a barrier before recording the next command as a workaround for CUDA

@@ -121,7 +121,7 @@ class CommandBufferCmd {
 // purpose is to manipulate command buffers at run time.
 class CommandBufferCmdSequence {
  public:
-  CommandBufferCmdSequence() = default;
+  explicit CommandBufferCmdSequence(bool force_barriers = false);
 
   enum class RecordMode {
     // In exclusive mode no one else is recording commands into the command
@@ -182,6 +182,7 @@ class CommandBufferCmdSequence {
   void TrackBuffers(const CommandBufferCmd::BufferUsageVector& buffers);
   void ClearTrackedBuffers();
 
+  bool force_barriers_;
   std::vector<Command> commands_;
 
   // Buffers referenced by commands in this sequence.

@@ -794,10 +794,18 @@ Status IrEmitterUnnested::EmitCommandBufferThunk(const HloInstruction* instr) {
   TF_RETURN_IF_ERROR(ir_emitter->EmitHloComputation(command_buffer));
   std::unique_ptr<ThunkSequence> thunk_sequence =
       ir_emitter->ConsumeThunkSequence();
+
+  // Linearize all commands in a sequence by forcing barriers between all
+  // recorded commands. This guarantees that we execute all device operations
+  // in the exact same order as a thunk sequence.
+  bool force_barriers = !ir_emitter_context_->debug_options()
+                             .xla_gpu_graph_enable_concurrent_region();
+
   TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence cmd_sequence,
-                      ConvertToCommands(*thunk_sequence));
+                      ConvertToCommands(*thunk_sequence, force_barriers));
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr)));
+
   return OkStatus();
 }
 
