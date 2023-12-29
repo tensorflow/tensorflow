@@ -968,7 +968,7 @@ StatusOr<JoinedSignature> JoinSignatures(
       const auto& tensor_info = signature_def.outputs().at(output_key);
 
       VLOG(1) << "Importing Signature Output: output_key = " << output_key
-              << ", tensor_info = " << tensor_info;
+              << ", tensor_info = " << tensor_info.DebugString();
 
       TF_RET_CHECK(tensor_info.encoding_case() == tensorflow::TensorInfo::kName)
           << "Only dense tensor is supported, but got encoding case "
