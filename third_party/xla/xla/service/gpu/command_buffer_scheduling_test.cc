@@ -366,56 +366,96 @@ TEST_F(CommandBufferSchedulingTest, PrepareCommandBuffer) {
   EXPECT_EQ(results[1], instructions[4]);
 }
 
-TEST_F(CommandBufferSchedulingTest, RelayControlDependencies) {
+TEST_F(CommandBufferSchedulingTest, ForwardControlDependencies) {
   const char* hlo = R"(
-      HloModule TestModule, is_scheduled=true
+    HloModule TestModule, is_scheduled=true
 
-      %fused_computation (param_0: s32[], param_1: s32[]) -> s32[] {
-        %p0 = s32[] parameter(0)
-        %p1 = s32[] parameter(1)
-        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
-      }
+    %fused_computation (param_0: s32[], param_1: s32[]) -> s32[] {
+      %p0 = s32[] parameter(0)
+      %p1 = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+    }
 
-      %fused_computation.1 (param_0: s32[], param_1: s32[]) -> s32[] {
-        %p0 = s32[] parameter(0)
-        %p1 = s32[] parameter(1)
-        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
-      }
+    %fused_computation.1 (param_0: s32[], param_1: s32[]) -> s32[] {
+      %p0 = s32[] parameter(0)
+      %p1 = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+    }
 
-      %fused_computation.2 (param_0: s32[], param_1: s32[]) -> s32[] {
-        %p0 = s32[] parameter(0)
-        %p1 = s32[] parameter(1)
-        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
-      }
+    %fused_computation.2 (param_0: s32[], param_1: s32[]) -> s32[] {
+      %p0 = s32[] parameter(0)
+      %p1 = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+    }
 
-      ENTRY %main (a: s32[], b: s32[]) -> s32[] {
-        %a = s32[] parameter(0)
-        %b = s32[] parameter(1)
-        %custom-call = s32[] custom-call(), custom_call_target="some target"
-        %fusion = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation, control-predecessors={%custom-call}
-        %fusion.1 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.1, control-predecessors={%fusion}
-        %custom-call.1 = s32[] custom-call(), custom_call_target="some target"
-        %fusion.2 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.2, control-predecessors={%fusion.1}
-        ROOT %custom-call.2 = s32[] custom-call(s32[] %fusion.1, s32[] %fusion.2), custom_call_target="some target"
-      })";
+    ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+      %a = s32[] parameter(0)
+      %b = s32[] parameter(1)
+      %custom-call = s32[] custom-call(), custom_call_target="some target"
+      %fusion = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation, control-predecessors={%custom-call}
+      %fusion.1 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.1, control-predecessors={%fusion}
+      %custom-call.1 = s32[] custom-call(), custom_call_target="some target"
+      %fusion.2 = s32[] fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation.2, control-predecessors={%fusion.1}
+      ROOT %custom-call.2 = s32[] custom-call(s32[] %fusion.1, s32[] %fusion.2), custom_call_target="some target"
+    })";
 
   const char* expected = R"(
-// CHECK: %command_buffer ([[P0:.+]]: s32[], [[P1:.+]]: s32[]) -> s32[] {
-// CHECK:   %[[P0]] = s32[] parameter(0)
-// CHECK:   %[[P1]] = s32[] parameter(1)
-// CHECK:   %[[F0:.+]] = s32[] fusion(%[[P0]], %[[P1]])
-// CHECK:   ROOT {{.*}} = s32[] fusion(%[[P0]], %[[P1]]), {{.*}} control-predecessors={%[[F0]]}
-// CHECK: }
-//
-// CHECK: ENTRY %main (a: s32[], b: s32[]) -> s32[] {
-// CHECK:   %a = s32[] parameter(0)
-// CHECK:   %b = s32[] parameter(1)
-// CHECK:   %custom-call = s32[] custom-call(), custom_call_target="some target"
-// CHECK:   %call = s32[] call(%a, %b), to_apply=%command_buffer, control-predecessors={%custom-call}
-// CHECK:   %custom-call.1 = s32[] custom-call(), custom_call_target="some target"
-// CHECK:   %[[F3:.+]] = s32[] fusion(%a, %b), kind=kLoop, calls=%fused_computation.2, control-predecessors={%call}
-// CHECK:   ROOT %custom-call.2 = s32[] custom-call(%call, %[[F3]]), custom_call_target="some target"
-// CHECK: })";
+    CHECK: %command_buffer ([[P0:.+]]: s32[], [[P1:.+]]: s32[]) -> s32[] {
+    CHECK:   %[[P0]] = s32[] parameter(0)
+    CHECK:   %[[P1]] = s32[] parameter(1)
+    CHECK:   %[[F0:.+]] = s32[] fusion(%[[P0]], %[[P1]])
+    CHECK:   ROOT {{.*}} = s32[] fusion(%[[P0]], %[[P1]]), {{.*}} control-predecessors={%[[F0]]}
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+    CHECK:   %a = s32[] parameter(0)
+    CHECK:   %b = s32[] parameter(1)
+    CHECK:   %custom-call = s32[] custom-call(), custom_call_target="some target"
+    CHECK:   %call = s32[] call(%a, %b), to_apply=%command_buffer, control-predecessors={%custom-call}
+    CHECK:   %custom-call.1 = s32[] custom-call(), custom_call_target="some target"
+    CHECK:   %[[F3:.+]] = s32[] fusion(%a, %b), kind=kLoop, calls=%fused_computation.2, control-predecessors={%call}
+    CHECK:   ROOT %custom-call.2 = s32[] custom-call(%call, %[[F3]]), custom_call_target="some target"
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(hlo,
+                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
+                            expected, [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
+}
+
+TEST_F(CommandBufferSchedulingTest, ForwardControlDependenciesToParams) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    %fused_computation.0 (p0: s32[], p1: s32[]) -> s32[] {
+      %p0 = s32[] parameter(0)
+      %p1 = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+    }
+
+    %fused_computation.1 (p0: s32[], p1: s32[]) -> s32[] {
+      %p0 = s32[] parameter(0)
+      %p1 = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+    }
+
+    ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+      %a = s32[] parameter(0)
+      %b = s32[] parameter(1)
+      %custom-call = s32[] custom-call(), custom_call_target="some target"
+      %fusion = s32[] fusion(s32[] %custom-call, s32[] %a), kind=kLoop, calls=%fused_computation.0, control-predecessors={%custom-call}
+      ROOT %fusion.1 = s32[] fusion(s32[] %fusion, s32[] %b), kind=kLoop, calls=%fused_computation.1
+    })";
+
+  const char* expected = R"(
+    CHECK: ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+    CHECK:   %a = s32[] parameter(0)
+    CHECK:   %b = s32[] parameter(1)
+    CHECK:   %[[CUSTOM_CALL:.+]] = s32[] custom-call(), custom_call_target="some target"
+    CHECK:   ROOT {{.*}} call(%[[CUSTOM_CALL]], %a, %b), to_apply=%command_buffer, control-predecessors={%[[CUSTOM_CALL]]}
+    CHECK: })";
 
   RunAndFilecheckHloRewrite(hlo,
                             CommandBufferScheduling(kCudaVersion, kCudaVersion),

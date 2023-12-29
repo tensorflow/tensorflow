@@ -400,8 +400,15 @@ StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     // buffer, forward the dependency to the command buffer call instead.
     for (HloInstruction* predecessor : inst->control_predecessors()) {
       if (auto it = inst_mapping.find(predecessor); it != inst_mapping.end()) {
+        // If predecessor mapped to a parameter instruction it means that we
+        // need to forward control dependency to a call operation, otherwise
+        // we add control dependency between commands in the command buffer.
         HloInstruction* cmd_predecessor = it->second;
-        TF_RETURN_IF_ERROR(cmd_predecessor->AddControlDependencyTo(cmd_inst));
+        if (IsParameter(cmd_predecessor)) {
+          TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call));
+        } else {
+          TF_RETURN_IF_ERROR(cmd_predecessor->AddControlDependencyTo(cmd_inst));
+        }
       } else {
         TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call));
       }
