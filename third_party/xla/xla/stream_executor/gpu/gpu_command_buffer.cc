@@ -238,6 +238,11 @@ tsl::Status GpuCommandBuffer::CheckNumCommandBuffers(
 }
 
 tsl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
+  // We don't support adding barriers as root nodes and simply skip them.
+  if ((state_ == State::kCreate && nodes_.empty()) ||
+      (state_ == State::kUpdate && update_state_.node_idx == 0))
+    return tsl::OkStatus();
+
   if (state_ == State::kCreate) {
     // Collect nodes that will become a new barrier dependencies.
     Dependencies dependencies;
