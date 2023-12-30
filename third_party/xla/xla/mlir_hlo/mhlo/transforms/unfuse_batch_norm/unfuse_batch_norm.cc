@@ -33,8 +33,8 @@ namespace mhlo {
 
 namespace {
 
-// Broadcasts the 1D value tensor 'value_1d' to the shape of 'result_type'. If
-// 'shape_value' is initialized, creates a dynamic broadcast, otherwise creates
+// Broadcasts the 1D value tensor 'value1d' to the shape of 'resultType'. If
+// 'shapeValue' is initialized, creates a dynamic broadcast, otherwise creates
 // a static broadcast.
 Value broadcastToFeatureDim(Location loc, RankedTensorType resultType,
                             Value value1d, Value shapeValue, int64_t featureDim,
@@ -103,19 +103,19 @@ class UnfuseBatchNormInferencePattern
  public:
   using OpRewritePattern<mhlo::BatchNormInferenceOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(mhlo::BatchNormInferenceOp bn_op,
+  LogicalResult matchAndRewrite(mhlo::BatchNormInferenceOp bnOp,
                                 PatternRewriter &rewriter) const override {
     // Enforce type invariants.
     // Note that we deduce the actual element type from the variance,
     // which should not be subject to quantization at a higher level.
-    auto input_type = bn_op.getOperand().getType().dyn_cast<RankedTensorType>();
-    auto variance_type =
-        bn_op.getVariance().getType().dyn_cast<RankedTensorType>();
-    if (!input_type || !variance_type) {
+    auto inputType = bnOp.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto varianceType =
+        bnOp.getVariance().getType().dyn_cast<RankedTensorType>();
+    if (!inputType || !varianceType) {
       return failure();
     }
-    auto fp_type = variance_type.getElementType().dyn_cast<FloatType>();
-    if (!fp_type) {
+    auto fpType = varianceType.getElementType().dyn_cast<FloatType>();
+    if (!fpType) {
       return failure();
     }
 
@@ -124,42 +124,41 @@ class UnfuseBatchNormInferencePattern
     // (x - mean) * scale / sqrt(variance + epsilon) + offset,
     // is then to compute (x * multiplier) + (offset - mean * multiplier).
 
-    auto epsilon = materializeEpsilon(
-        bn_op.getOperation(), bn_op.getEpsilonAttr(), fp_type,
-        bn_op.getVariance(), variance_type, rewriter);
+    auto epsilon =
+        materializeEpsilon(bnOp.getOperation(), bnOp.getEpsilonAttr(), fpType,
+                           bnOp.getVariance(), varianceType, rewriter);
     if (!epsilon) {
       return failure();
     }
 
     // Compute multiplier = scale / sqrt(variance + epsilon)
     Value multiplier = rewriter.create<mhlo::AddOp>(
-        bn_op.getLoc(), bn_op.getVariance(), epsilon);
-    multiplier = rewriter.create<mhlo::RsqrtOp>(bn_op.getLoc(), multiplier);
-    multiplier = rewriter.create<mhlo::MulOp>(bn_op.getLoc(), multiplier,
-                                              bn_op.getScale());
+        bnOp.getLoc(), bnOp.getVariance(), epsilon);
+    multiplier = rewriter.create<mhlo::RsqrtOp>(bnOp.getLoc(), multiplier);
+    multiplier = rewriter.create<mhlo::MulOp>(bnOp.getLoc(), multiplier,
+                                              bnOp.getScale());
 
     // Compute rhs = offset - mean * multiplier
-    Value rhs = rewriter.create<mhlo::MulOp>(bn_op.getLoc(), multiplier,
-                                             bn_op.getMean());
-    rhs = rewriter.create<mhlo::SubtractOp>(bn_op.getLoc(), bn_op.getOffset(),
-                                            rhs);
+    Value rhs =
+        rewriter.create<mhlo::MulOp>(bnOp.getLoc(), multiplier, bnOp.getMean());
+    rhs =
+        rewriter.create<mhlo::SubtractOp>(bnOp.getLoc(), bnOp.getOffset(), rhs);
 
     // Broadcast `multiplier` and `rhs`
-    Value shape_value;
-    if (!input_type.hasStaticShape()) {
-      shape_value = getShapeValue(bn_op.getLoc(), bn_op.getOperand(), rewriter);
+    Value shapeValue;
+    if (!inputType.hasStaticShape()) {
+      shapeValue = getShapeValue(bnOp.getLoc(), bnOp.getOperand(), rewriter);
     }
-    int64_t feature_dim = bn_op.getFeatureIndex();
-    auto broadcast_multiplier =
-        broadcastToFeatureDim(bn_op.getLoc(), input_type, multiplier,
-                              shape_value, feature_dim, rewriter);
-    auto broadcast_rhs = broadcastToFeatureDim(
-        bn_op.getLoc(), input_type, rhs, shape_value, feature_dim, rewriter);
+    int64_t featureDim = bnOp.getFeatureIndex();
+    auto broadcastMultiplier = broadcastToFeatureDim(
+        bnOp.getLoc(), inputType, multiplier, shapeValue, featureDim, rewriter);
+    auto broadcastRhs = broadcastToFeatureDim(bnOp.getLoc(), inputType, rhs,
+                                              shapeValue, featureDim, rewriter);
 
     // Computes x * multiplier + rhs
-    Value lhs = rewriter.create<mhlo::MulOp>(bn_op.getLoc(), bn_op.getOperand(),
-                                             broadcast_multiplier);
-    rewriter.replaceOpWithNewOp<mhlo::AddOp>(bn_op, lhs, broadcast_rhs);
+    Value lhs = rewriter.create<mhlo::MulOp>(bnOp.getLoc(), bnOp.getOperand(),
+                                             broadcastMultiplier);
+    rewriter.replaceOpWithNewOp<mhlo::AddOp>(bnOp, lhs, broadcastRhs);
 
     return success();
   }
