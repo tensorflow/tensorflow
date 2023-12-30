@@ -179,8 +179,8 @@ cc_library(
     hdrs = ["device_memory.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@local_tsl//tsl/platform:logging",
         "//xla/stream_executor/platform",
-        "@com_google_absl//absl/log:check",
     ],
 )
 
