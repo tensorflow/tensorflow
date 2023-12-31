@@ -1,10 +1,92 @@
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/sparse_utils.h"
+#include "tensorflow/core/kernels/sampled_addmm_op.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
+namespace functor {
+
 template <typename T>
+struct SampledADDMMFunctor<CPUDevice, T> {
+  static Status Compute(OpKernelContext* ctx, const Tensor& indices_t,
+                     const Tensor& values_t, const Tensor& dense_shape_t,
+                     const Tensor& mat1, const Tensor& mat2, 
+                     const int32_t batch_size, const T beta_, const T alpha_,
+                     const int32_t mat1_num_rows, const int32_t mat1_num_cols,
+                     const int32_t mat2_num_rows, const int32_t mat2_num_cols,
+                     const int32_t mat_num_batches, const int32_t sparse_rank,
+                     Tensor* out) {
+    auto dense_shape = dense_shape_t.vec<int32_t>();
+    const int32_t sparse_num_batches = sparse_rank == 3 ? dense_shape(0) : 1;
+    const int32_t sparse_num_rows = dense_shape(sparse_rank == 2 ? 0 : 1);
+    const int32_t sparse_num_cols = dense_shape(sparse_rank == 2 ? 1 : 2);
+
+    if (sparse_num_batches != mat_num_batches || sparse_num_rows != mat1_num_rows) {
+      return errors::InvalidArgument(
+                              "Matrix size incompatible: mat1: ",
+                              mat1.shape().DebugString(),
+                              ", SparseTensor: (", sparse_num_batches, ",", sparse_num_rows, ",",
+                              sparse_num_cols, ")");
+    } 
+
+    if (sparse_num_cols != mat2_num_cols) {
+      return errors::InvalidArgument(
+                    "Matrix size incompatible: mat2: ",
+                    mat2.shape().DebugString(),
+                    ", SparseTensor: (", sparse_num_batches, ",", sparse_num_rows, ",",
+                    sparse_num_cols, ")");
+    }
+
+    auto mat1_ptr = mat1.flat<T>().data();
+    auto mat2_ptr = mat2.flat<T>().data();
+    auto values_ptr = values_t.flat<T>().data();
+    auto indices_ptr = indices_t.flat<int32_t>().data();
+
+    auto output_flat = out->flat<T>();
+
+    // Process the individual batches in parallel using a threadpool.
+    auto shard = [&](int32_t batch_begin, int32_t batch_end) {
+      for (int32_t batch_idx = batch_begin; batch_idx < batch_end; ++batch_idx) {
+        const int32_t sparse_batch_offset = batch_idx * batch_size;
+        const int32_t indices_batch_offset = sparse_batch_offset * 2;
+        const int32_t mat1_batch_offset = batch_idx * mat1_num_rows * mat1_num_cols;
+        const int32_t mat2_batch_offset = batch_idx * mat2_num_rows * mat2_num_cols;
+
+        for (int32_t i = 0; i < batch_size; ++i) {
+          T val = values_ptr[sparse_batch_offset + i];
+          auto row_idx = indices_ptr[indices_batch_offset + 2 * i];
+          auto col_idx = indices_ptr[indices_batch_offset + 2 * i + 1];
+          T dot = 0;
+
+          if (alpha_ != 0) {
+            for (int32_t j = 0; j < mat1_num_cols; ++j) {
+              auto mat1_idx = mat1_batch_offset + row_idx * mat1_num_cols + j;
+              auto mat2_idx = mat2_batch_offset + j * mat2_num_cols + col_idx;
+              dot += mat1_ptr[mat1_idx] * mat2_ptr[mat2_idx];
+            }
+          }
+
+          output_flat(sparse_batch_offset + i) = alpha_ * dot + beta_ * val;
+        }
+      }
+    };
+
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, sparse_num_batches,
+          batch_size, shard);
+
+    return OkStatus();
+  }
+};
+
+} // namespace functor
+
+template <typename Device, typename T>
 class SampledADDMMOp : public OpKernel {
 
   public:
@@ -25,13 +107,8 @@ class SampledADDMMOp : public OpKernel {
                   errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
                                           "but indices has rank: ", sparse_rank));
 
-      auto dense_shape = dense_shape_t.vec<int32_t>();
-      const int32_t sparse_num_batches = sparse_rank == 3 ? dense_shape(0) : 1;
-      const int32_t sparse_num_rows = dense_shape(sparse_rank == 2 ? 0 : 1);
-      const int32_t sparse_num_cols = dense_shape(sparse_rank == 2 ? 1 : 2);
-
       const TensorShape& values_shape = values_t.shape();
-      const int32_t num_values_per_batch = values_shape.dim_size(sparse_rank == 2 ? 0 : 1);
+      const int32_t batch_size = values_shape.dim_size(sparse_rank == 2 ? 0 : 1);
 
       const int32_t mat1_rank = mat1.dims();
       const int32_t mat2_rank = mat2.dims();
@@ -61,60 +138,14 @@ class SampledADDMMOp : public OpKernel {
                                 "Matrix size incompatible: mat1: ",
                                 mat1_shape.DebugString(),
                                 ", mat2: ", mat2_shape.DebugString()));
-      OP_REQUIRES(ctx, sparse_num_batches == mat1_num_batches &&
-                       sparse_num_rows == mat1_num_rows,
-                            errors::InvalidArgument(
-                                "Matrix size incompatible: mat1: ",
-                                mat1_shape.DebugString(),
-                                ", SparseTensor: (", sparse_num_rows, ",",
-                                sparse_num_cols, ")"));
-      OP_REQUIRES(ctx, sparse_num_cols == mat2_num_cols,
-                  errors::InvalidArgument(
-                      "Matrix size incompatible: mat2: ",
-                      mat2_shape.DebugString(),
-                      ", SparseTensor: (", sparse_num_rows, ",",
-                      sparse_num_cols, ")"));
-
-      auto mat1_ptr = mat1.flat<T>().data();
-      auto mat2_ptr = mat2.flat<T>().data();
-      auto values_ptr = values_t.flat<T>().data();
-      auto indices_ptr = indices_t.flat<int32_t>().data();
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, values_shape, &output));
 
-      auto output_flat = output->flat<T>();
-        
-      // Process the individual batches in parallel using a threadpool.
-      auto shard = [&](int32_t batch_begin, int32_t batch_end) {
-        for (int32_t batch_idx = batch_begin; batch_idx < batch_end; ++batch_idx) {
-          const int32_t sparse_batch_offset = batch_idx * num_values_per_batch;
-          const int32_t indices_batch_offset = batch_idx * num_values_per_batch * 2;
-          const int32_t mat1_batch_offset = batch_idx * mat1_num_rows * mat1_num_cols;
-          const int32_t mat2_batch_offset = batch_idx * mat2_num_rows * mat2_num_cols;
-
-          for (int32_t i = 0; i < num_values_per_batch; ++i) {
-            T val = values_ptr[sparse_batch_offset + i];
-            auto row_idx = indices_ptr[indices_batch_offset + 2 * i];
-            auto col_idx = indices_ptr[indices_batch_offset + 2 * i + 1];
-            T dot = 0;
-
-            if (alpha_ != 0) {
-              for (int32_t j = 0; j < mat1_num_cols; ++j) {
-                auto mat1_idx = mat1_batch_offset + row_idx * mat1_num_cols + j;
-                auto mat2_idx = mat2_batch_offset + j * mat2_num_cols + col_idx;
-                dot += mat1_ptr[mat1_idx] * mat2_ptr[mat2_idx]; 
-              }
-            }
-
-            output_flat(sparse_batch_offset + i) = alpha_ * dot + beta_ * val;
-          } 
-        }
-      };
-
-      auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-      Shard(worker_threads.num_threads, worker_threads.workers, sparse_num_batches,
-            num_values_per_batch, shard);
+      OP_REQUIRES_OK(ctx, functor::SampledADDMMFunctor<Device, T>::Compute(ctx, indices_t, values_t,
+          dense_shape_t, mat1, mat2, batch_size, beta_, alpha_, 
+          mat1_num_rows, mat1_num_cols, mat2_num_rows, mat2_num_cols,
+          mat1_num_batches, sparse_rank, output));  
     }
 
   private:
@@ -125,7 +156,13 @@ class SampledADDMMOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("SampledADDMM")            
                             .Device(DEVICE_CPU)         
                             .TypeConstraint<float>("T"),
-                        SampledADDMMOp<float>);
+                        SampledADDMMOp<CPUDevice, float>);
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("SampledADDMM")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<float>("T"),
+                        SampledADDMMOp<GPUDevice, float>);
+#endif // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-}
+} // namespace tensorflow

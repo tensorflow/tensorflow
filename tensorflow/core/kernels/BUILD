@@ -3466,7 +3466,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sampled_addmm_op",
     prefix = "sampled_addmm_op",
-    deps = MATH_DEPS + [":sparse_utils"],
+    deps = MATH_DEPS + if_cuda_or_rocm([":gpu_utils",]),
 )
 
 cc_library(
