@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -37,6 +38,7 @@ namespace xla::gpu::kernel::gemm_universal {
 
 static constexpr auto Default = Arch::kDefault;  // NOLINT
 static constexpr auto Sm80 = Arch::kSm80;        // NOLINT
+static constexpr auto Sm90 = Arch::kSm90;        // NOLINT
 
 // Each individual CUTLASS kernel adaptor will be compiled in a separate
 // cuda_library and linked into the `cutlass_gemm_custom_kernels` target. We use
@@ -59,6 +61,9 @@ extern template struct DeviceKernel<Bf16xBf16ToBf16<Default>>;
 extern template struct Adaptor<Bf16xBf16ToBf16<Sm80>>;
 extern template struct DeviceKernel<Bf16xBf16ToBf16<Sm80>>;
 
+extern template struct Adaptor<Bf16xBf16ToBf16<Sm90>>;
+extern template struct DeviceKernel<Bf16xBf16ToBf16<Sm90>>;
+
 //===----------------------------------------------------------------------===//
 // CUTLASS kernel arguments packing
 //===----------------------------------------------------------------------===//
@@ -66,8 +71,14 @@ extern template struct DeviceKernel<Bf16xBf16ToBf16<Sm80>>;
 using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
 
 template <typename Dim>
-static Dim As(Dim3 d) {
-  return Dim(d.x, d.y, d.z);
+static Dim As(Dim3 dim3) {
+  return Dim(dim3.x, dim3.y, dim3.z);
+}
+
+template <typename Dim>
+static std::optional<Dim> As(std::optional<Dim3> dim3) {
+  if (dim3.has_value()) return Dim(dim3->x, dim3->y, dim3->z);
+  return std::nullopt;
 }
 
 // Returns a pointer to device memory holding a slice offset.
@@ -89,16 +100,30 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
   // object constructed in the storage. For now we ignore it, and it's textbook
   // definition of UB, but for CUTLASS kernels we use today it's perfectly safe.
   struct Params {
-    alignas(32) std::byte storage[1024];
+    alignas(64) std::byte storage[1024];
   };
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
     auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
 
     Arguments arguments = {m, n, k};
-    arguments.a = const_cast<void*>(mem_args->device_memory_ptr(indices.lhs));
-    arguments.b = const_cast<void*>(mem_args->device_memory_ptr(indices.rhs));
-    arguments.c = const_cast<void*>(mem_args->device_memory_ptr(indices.out));
+    arguments.lhs = const_cast<void*>(mem_args->device_memory_ptr(indices.lhs));
+    arguments.rhs = const_cast<void*>(mem_args->device_memory_ptr(indices.rhs));
+    arguments.out = const_cast<void*>(mem_args->device_memory_ptr(indices.out));
+
+    // Workspace argument always passed as the last one (if passed at all).
+    if (indices.has_workspace) {
+      size_t num_mem_args = mem_args->device_memory_args().size();
+      arguments.workspace =
+          const_cast<void*>(mem_args->device_memory_ptr(num_mem_args - 1));
+    } else {
+      arguments.workspace = nullptr;
+    }
+
+    // Set up dynamic slices if they are available.
+    if (slices.out.has_value()) {
+      arguments.slices.out = SlicePtr(mem_args, *slices.out);
+    }
 
     if (!adaptor.CanImplement(arguments)) {
       return absl::InternalError(absl::StrCat(
@@ -134,17 +159,13 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
     Params params;
     adaptor.Initialize(&params, arguments, device_sms, sm_occupancy);
 
-    // Optionally set up dynamic slice parameters to allow kernel adjust
-    // buffer pointers passed via `params`.
-    DynamicSliceParams slice_params;
-    if (slices.out.has_value()) {
-      slice_params.out = SlicePtr(mem_args, *slices.out);
-    }
-
     // TODO(ezhulenev): We need to support EmplaceKernelArgs with inplace
     // construction to avoid copying 1kb of byte storage.
-    return se::PackKernelArgs<Params, DynamicSliceParams>(
-        args.number_of_shared_bytes(), params, slice_params);
+    //
+    // TODO(ezhulenev): Remove `DynamicSliceArguments` once we encode
+    // dynamic slice offsets in kernel parameters.
+    return se::PackKernelArgs<Params, DynamicSliceArguments>(
+        args.number_of_shared_bytes(), params, arguments.slices);
   };
 }
 //===----------------------------------------------------------------------===//
@@ -157,6 +178,7 @@ static StatusOr<CustomKernel> Load(std::string name, int32_t m, int32_t n,
                                    Adaptor<Tag> adaptor = {},
                                    DeviceKernel<Tag> kernel = {}) {
   // Get the dispatch grid size and shared memory requirements.
+  auto cluster_dim = As<se::ClusterDim>(adaptor.ClusterDim());
   auto block_dim = As<se::BlockDim>(adaptor.BlockDim(m, n, k));
   auto thread_dim = As<se::ThreadDim>(adaptor.ThreadDim());
   auto shared_memory_bytes = adaptor.SharedMemoryBytes();
@@ -167,8 +189,13 @@ static StatusOr<CustomKernel> Load(std::string name, int32_t m, int32_t n,
   se::MultiKernelLoaderSpec spec(/*arity=*/2, std::move(packing));
   spec.AddInProcessSymbol(kernel.symbol(), name);
 
-  return CustomKernel(std::move(name), std::move(spec), block_dim, thread_dim,
-                      shared_memory_bytes);
+  if (cluster_dim.has_value()) {
+    return CustomKernel(std::move(name), std::move(spec), block_dim, thread_dim,
+                        *cluster_dim, shared_memory_bytes);
+  } else {
+    return CustomKernel(std::move(name), std::move(spec), block_dim, thread_dim,
+                        shared_memory_bytes);
+  }
 }
 
 StatusOr<CustomKernel> GetCutlassGemmKernel(
@@ -183,7 +210,10 @@ StatusOr<CustomKernel> GetCutlassGemmKernel(
       return Load<F32xF32ToF32<Default>>(std::move(name), m, n, k, indices,
                                          slices, device);
     case PrimitiveType::BF16:
-      if (cuda_cc.IsAtLeastAmpere()) {
+      if (cuda_cc.IsAtLeastHopper()) {
+        return Load<Bf16xBf16ToBf16<Sm90>>(std::move(name), m, n, k, indices,
+                                           slices, device);
+      } else if (cuda_cc.IsAtLeastAmpere()) {
         return Load<Bf16xBf16ToBf16<Sm80>>(std::move(name), m, n, k, indices,
                                            slices, device);
       }

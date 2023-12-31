@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -553,9 +554,8 @@ struct CpuClientOptions {
   // My node ID.
   int node_id = 0;
 
-  // KV store primitives for sharing topology information.
-  PjRtClient::KeyValueGetCallback kv_get = nullptr;
-  PjRtClient::KeyValuePutCallback kv_put = nullptr;
+  // KV store for sharing topology information.
+  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
 
   // Distributed collectives implementation. Optional. If not provided, an
   // in-process collectives implementation will be used.

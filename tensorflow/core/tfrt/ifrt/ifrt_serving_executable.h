@@ -36,8 +36,12 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
@@ -71,7 +75,7 @@ class IfrtServingExecutable {
 
   int num_executables() const {
     absl::MutexLock lock(&mutex_);
-    return ifrt_executables_.size();
+    return executable_bundles_.size();
   }
 
  private:
@@ -93,6 +97,11 @@ class IfrtServingExecutable {
     }
   };
 
+  struct CachedExecutableBundle {
+    std::shared_ptr<xla::ifrt::LoadedExecutable> ifrt_executable;
+    tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
+  };
+
   std::string model_name_;
   std::string signature_name_;
 
@@ -104,16 +113,26 @@ class IfrtServingExecutable {
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<Key, xla::ifrt::Future<absl::StatusOr<
-                               std::shared_ptr<xla::ifrt::LoadedExecutable>>>>
-      ifrt_executables_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<Key,
+                      xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>>
+      executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
-      const tensorflow::Tensor& tensor);
+      const tensorflow::Tensor& tensor,
+      const xla::ifrt::DeviceList& device_list,
+      const xla::OpSharding& sharding);
 
-  xla::ifrt::Future<
-      absl::StatusOr<std::shared_ptr<xla::ifrt::LoadedExecutable>>>
+  xla::ifrt::Future<absl::StatusOr<CachedExecutableBundle>>
   LookUpOrCreateExecutable(absl::Span<const tensorflow::Tensor> inputs);
+  absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>
+  CreateExecutableSynchronously(absl::Span<const tensorflow::Tensor> inputs);
+
+  absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
+      int num_devices, const xla::ifrt::Shape& arg_xla_shape,
+      const xla::ifrt::Shape& sharded_shapes);
+
+  std::vector<xla::ifrt::Shape> GetArgShape(
+      int arg_index, const CachedExecutableBundle& entry);
 };
 
 }  // namespace ifrt_serving

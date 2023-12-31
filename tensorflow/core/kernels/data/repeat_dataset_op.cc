@@ -76,7 +76,6 @@ bool HasDataServiceInput(const DatasetBase* dataset) {
   }
   return false;
 }
-}  // namespace
 
 // Updates an input split provider with the appropriate cardinality count based
 // on how many times it is repeated.
@@ -115,11 +114,13 @@ class RepeatedSplitProvider : public SplitProvider {
                        IteratorStateReader* reader) override {
     return split_provider_->Restore(full_name, reader);
   }
+  void Cancel() override { split_provider_->Cancel(); }
 
  private:
   const std::unique_ptr<SplitProvider> split_provider_;
   const int64_t count_;
 };
+}  // namespace
 
 class RepeatDatasetOp::Dataset : public DatasetBase {
  public:
@@ -273,6 +274,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         }
         ctx->PurgeCheckpoint(nested_prefix(prefix(), i_));
         ++i_;
+        input_impl_.reset();
         for (const auto& provider : ctx->split_providers()) {
           TF_RETURN_IF_ERROR(provider->Reset());
         }

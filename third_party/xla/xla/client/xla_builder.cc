@@ -1083,6 +1083,8 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
       TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
       TF_ASSIGN_OR_RETURN(const Shape* ehs_shape, GetShapePtr(ehs));
 
+      // The shape is not scalar, it may have unbounded/bounded dynamic
+      // dimensions.
       std::optional<Shape> non_scalar_shape;
       for (const Shape* shape : {lhs_shape, rhs_shape, ehs_shape}) {
         if (shape->IsArray() && shape->rank() != 0) {
@@ -1090,8 +1092,8 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
             // TODO(jpienaar): The case where we need to compute the broadcasted
             // shape by considering multiple of the shapes is not implemented.
             // Consider reusing getBroadcastedType from mlir/Dialect/Traits.h.
-            TF_RET_CHECK(non_scalar_shape.value().dimensions() ==
-                         shape->dimensions())
+            TF_RET_CHECK(
+                ShapeUtil::SameDimensions(non_scalar_shape.value(), *shape))
                 << "Unimplemented implicit broadcast.";
           } else {
             non_scalar_shape = ShapeUtil::MakeStaticShape(*shape);
@@ -1099,15 +1101,22 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
         }
       }
       if (non_scalar_shape.has_value()) {
+        bool is_unbounded_dynamic = non_scalar_shape->is_unbounded_dynamic();
         if (ShapeUtil::IsScalar(*lhs_shape)) {
+          TF_RET_CHECK(!is_unbounded_dynamic)
+              << "Unimplemented implicit broadcast.";
           TF_ASSIGN_OR_RETURN(updated_lhs,
                               AddBroadcastSequence(*non_scalar_shape, lhs));
         }
         if (ShapeUtil::IsScalar(*rhs_shape)) {
+          TF_RET_CHECK(!is_unbounded_dynamic)
+              << "Unimplemented implicit broadcast.";
           TF_ASSIGN_OR_RETURN(updated_rhs,
                               AddBroadcastSequence(*non_scalar_shape, rhs));
         }
         if (ShapeUtil::IsScalar(*ehs_shape)) {
+          TF_RET_CHECK(!is_unbounded_dynamic)
+              << "Unimplemented implicit broadcast.";
           TF_ASSIGN_OR_RETURN(updated_ehs,
                               AddBroadcastSequence(*non_scalar_shape, ehs));
         }
@@ -1292,6 +1301,12 @@ XlaOp XlaBuilder::BroadcastInDim(
 StatusOr<XlaOp> XlaBuilder::ReshapeInternal(const Shape& shape, XlaOp operand,
                                             int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(first_error_);
+
+  TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+  if (shape.is_unbounded_dynamic() || operand_shape->is_unbounded_dynamic()) {
+    return InvalidArgument(
+        "Reshaping with unbounded dimensions is not supported.");
+  }
 
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();

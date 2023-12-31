@@ -58,14 +58,19 @@ void CommandBuffer::Deleter::operator()(
     StreamExecutor* executor, absl::AnyInvocable<tsl::Status(Stream*)> function,
     Mode mode) {
   Stream stream(executor);
-
-  // TODO(ezhulenev): Keep a dedicated stream for command buffer tracing in the
-  // StreamExecutor itself, and maybe add a StreamPool argument to the traced
-  // function arguments to be able to trace multiple stream simultaneously.
-  stream.Init();
-  if (!stream.ok())
+  if (stream.Init(); !stream.ok())
     return absl::InternalError(
         "Failed to initialize stream for command buffer tracing");
+
+  return Trace(executor, &stream, std::move(function), mode);
+}
+
+/*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Trace(
+    StreamExecutor* executor, Stream* stream,
+    absl::AnyInvocable<tsl::Status(Stream*)> function, Mode mode) {
+  if (stream == nullptr)
+    return absl::InvalidArgumentError(
+        "Can't trace command buffer on a null stream");
 
   // Prepare an empty command buffer instance.
   TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
@@ -73,7 +78,7 @@ void CommandBuffer::Deleter::operator()(
 
   // Trace and finalize the command buffer.
   TF_RETURN_IF_ERROR(command_buffer.implementation()->Trace(
-      &stream, [&]() { return function(&stream); }));
+      stream, [&]() { return function(stream); }));
   TF_RETURN_IF_ERROR(command_buffer.implementation()->Finalize());
 
   return command_buffer;
@@ -116,6 +121,10 @@ CommandBuffer::CommandBuffer(
 
 CommandBuffer::CommandBuffer(internal::CommandBufferInterface* implementation)
     : implementation_(implementation, {/*owned=*/false}) {}
+
+tsl::Status CommandBuffer::Barrier(StreamExecutor* executor) {
+  return implementation_->Barrier(executor);
+}
 
 tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
                                   const BlockDim& blocks, const Kernel& kernel,

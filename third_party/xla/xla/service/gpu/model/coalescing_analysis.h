@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_COALESCING_ANALYSIS_H_
 #define XLA_SERVICE_GPU_MODEL_COALESCING_ANALYSIS_H_
 
+#include <optional>
+
+#include "absl/container/flat_hash_map.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/tile_analysis.h"
 
 namespace xla {
 namespace gpu {
@@ -25,11 +30,15 @@ namespace gpu {
 // Returns true if all input reads are coalesced. If consumer is not nullptr,
 // producer and consumer are considered as one fusion, otherwise it's only the
 // producer.
-//
-// This is a crude heuristic until we get proper tile analysis.
-bool IsReadCoalesced(const std::optional<HloFusionAnalysis>& fusion_analysis,
-                     const HloInstruction* producer,
-                     const HloInstruction* consumer = nullptr);
+bool IsReadCoalescedHeuristic(
+    const std::optional<HloFusionAnalysis>& fusion_analysis,
+    const HloInstruction* producer, const HloInstruction* consumer = nullptr);
+
+// Returns true, if operand's read is coalesced.
+bool IsReadCoalesced(const HloInstruction* operand, const HloInstruction* instr,
+                     const absl::flat_hash_map<const HloInstruction*,
+                                               IndexingMapSet>& indexing_maps,
+                     mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

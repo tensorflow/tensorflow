@@ -48,9 +48,7 @@ bool IsDistributiveOverAddition(const HloInstruction& hlo) {
 // through F32 and converts have to be inserted into the HLO graph, but
 // they can be missing during fusion.
 bool IsTritonSupportedDataType(PrimitiveType type,
-                               se::GpuComputeCapability gpu_version) {
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(gpu_version);
+                               const se::GpuComputeCapability& gpu_version) {
   switch (type) {
     case PRED:
     case S8:
@@ -60,8 +58,16 @@ bool IsTritonSupportedDataType(PrimitiveType type,
     case F32:
       return true;
     case BF16:
-      return cuda_compute_capability.IsAtLeast(
-          stream_executor::CudaComputeCapability::AMPERE);
+      return std::visit(
+          se::VariantVisitor{
+              [](const se::CudaComputeCapability& cc) {
+                return cc.IsAtLeast(
+                    stream_executor::CudaComputeCapability::AMPERE);
+              },
+              [](const se::RocmComputeCapability& cc) {
+                return cc.has_bf16_dtype_support();
+              }},
+          gpu_version);
     default:
       return false;
   }

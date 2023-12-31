@@ -7,38 +7,6 @@ load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 _cuda_version = %{cuda_version}
 _cuda_clang = %{cuda_clang}
 
-def _gen_device_srcs_impl(ctx):
-    ops = ["sum", "prod", "min", "max", "premulsum", "sumpostdiv"]
-    # TF uses CUDA version > 11.0, so enable bf16 type unconditionally.
-    types = ["i8", "u8", "i32", "u32", "i64", "u64", "f16", "bf16", "f32", "f64"]
-    hdr_tail = "****************************************/"
-    defines = "\n\n#define NCCL_OP %d\n#define NCCL_TYPE %d"
-
-    files = []
-    for NCCL_OP, op in enumerate(ops):
-        for NCCL_TYPE, dt in enumerate(types):
-            substitutions = {
-                hdr_tail: hdr_tail + defines % (NCCL_OP, NCCL_TYPE),
-            }
-            for src in ctx.files.srcs:
-                name = "%s_%s_%s" % (op, dt, src.basename)
-                file = ctx.actions.declare_file(name, sibling = src)
-                ctx.actions.expand_template(
-                    output = file,
-                    template = src,
-                    substitutions = substitutions,
-                )
-                files.append(file)
-    return [DefaultInfo(files = depset(files))]
-
-gen_device_srcs = rule(
-    implementation = _gen_device_srcs_impl,
-    attrs = {
-        "srcs": attr.label_list(allow_files = True),
-    },
-)
-"""Adds prefix to each file name in srcs and adds #define NCCL_OP."""
-
 def _rdc_copts():
     """Returns copts for compiling relocatable device code."""
 

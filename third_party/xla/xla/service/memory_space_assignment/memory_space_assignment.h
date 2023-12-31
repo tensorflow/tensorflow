@@ -2712,7 +2712,7 @@ class AlternateMemoryBestFitHeap
     allocation_block.offset = -1;
     allocation_block.initial_offset = initial_offset;
     allocation_block.id = id;
-    allocation_block.colocations = {};
+    allocation_block.next_colocated = nullptr;
     allocation_block.allocation = allocation;
     return allocation_block;
   }

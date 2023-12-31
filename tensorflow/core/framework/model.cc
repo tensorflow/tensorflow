@@ -2204,8 +2204,9 @@ Status Node::FromProto(ModelProto::Node node_proto,
   return FromProtoHelper(node_proto, *node);
 }
 
-Model::Model()
-    : optimization_period_ms_(kOptimizationPeriodMinMs),
+Model::Model(std::optional<std::string> dataset_name)
+    : dataset_name_(std::move(dataset_name)),
+      optimization_period_ms_(kOptimizationPeriodMinMs),
       safe_to_collect_metrics_(std::make_shared<GuardedBool>(true)) {
   model_id_ = strings::StrCat(reinterpret_cast<uint64>(this));
   model_gauge_cell_ = metrics::GetTFDataModelGauge(model_id_);
@@ -2228,6 +2229,9 @@ Model::Model()
               tf_shared_lock l(gap_mu_);
               *model_proto.mutable_gap_times() = {gap_times_usec_.begin(),
                                                   gap_times_usec_.end()};
+              if (dataset_name_.has_value()) {
+                model_proto.set_dataset_name(dataset_name_.value());
+              }
               return model_proto.DebugString();
             }
             LOG(WARNING) << s.message();
@@ -2394,6 +2398,7 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
       }
     }
   }
+  VLOG(2) << ram_budget_manager.DebugString();
 }
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {

@@ -102,7 +102,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
     HloInstruction* consumer = user;
     if (consumer->opcode() != HloOpcode::kFusion) {
       consumer = computation_->AddInstruction(HloInstruction::CreateFusion(
-          user->shape(), ChooseFusionKind(*producer, *user), user));
+          user->shape(), ChooseFusionKind(*user), user));
       TF_CHECK_OK(computation_->ReplaceInstruction(user, consumer));
     }
 

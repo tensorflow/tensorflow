@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/shape_util.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/errors.h"
@@ -114,8 +115,8 @@ static StatusOr<HloComputation*> CreateFusionBody(
     return operands;
   };
 
-  // For every parameter create a parameter instruction in the computation body
-  // and set up instruction mapping.
+  // For every captured value create a parameter instruction in the computation
+  // body and set up instruction mapping.
   for (const HloInstruction* capture : captures) {
     int64_t index = instr_mapping.size();
     instr_mapping[capture] =
@@ -128,6 +129,20 @@ static StatusOr<HloComputation*> CreateFusionBody(
   for (HloInstruction* instr : match.instructions()) {
     instr_mapping[instr] = builder.AddInstruction(
         instr->CloneWithNewOperands(instr->shape(), mapped_operands(instr)));
+  }
+
+  HloInstruction* root = builder.last_added_instruction();
+
+  // If custom fusion requires a workspace we add a custom call that allocates
+  // workspace and return a tuple of "real" result and a workspace.
+  if (match.workspace_size_bytes() > 0) {
+    auto workspace_shape =
+        ShapeUtil::MakeShape(PrimitiveType::U8, {match.workspace_size_bytes()});
+    HloInstruction* workspace =
+        builder.AddInstruction(HloInstruction::CreateCustomCall(
+            workspace_shape, {}, CustomFusionPattern::kWorkspace, "",
+            CustomCallApiVersion::API_VERSION_TYPED_FFI));
+    builder.AddInstruction(HloInstruction::CreateTuple({root, workspace}));
   }
 
   return module->AddComputationAndUnifyNamesAndIds(builder.Build(), false);
@@ -143,7 +158,8 @@ static StatusOr<HloInstruction*> CreateFusionInstruction(
 
   // Add a fusion operation calling outlined fusion computation.
   HloInstruction* fusion = parent->AddInstruction(HloInstruction::CreateFusion(
-      root->shape(), HloInstruction::FusionKind::kCustom, captures, body));
+      body->root_instruction()->shape(), HloInstruction::FusionKind::kCustom,
+      captures, body));
   module->SetAndUniquifyInstrName(fusion, match.config().name());
 
   // Set backends config to a matched custom fusion config.
@@ -152,7 +168,12 @@ static StatusOr<HloInstruction*> CreateFusionInstruction(
   *backend_config.mutable_custom_fusion_config() = match.config();
   TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(backend_config)));
 
-  return fusion;
+  // If we don't have workspace we can return constructed fusion instruction.
+  if (match.workspace_size_bytes() == 0) return fusion;
+
+  // Otherwise have to get result corresponding to the original value;
+  return parent->AddInstruction(
+      HloInstruction::CreateGetTupleElement(fusion, 0));
 }
 
 StatusOr<bool> CustomFusionRewriter::Run(

@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/gemm_thunk.h"
 
+#include <optional>
 #include <utility>
 
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
@@ -30,29 +32,31 @@ GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
                      const BufferAllocation::Slice& lhs_buffer,
                      const BufferAllocation::Slice& rhs_buffer,
                      const BufferAllocation::Slice& output_buffer,
+                     std::optional<const BufferAllocation::Slice> workspace,
                      bool deterministic)
     : Thunk(Kind::kGemm, thunk_info),
       config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
+      workspace_(workspace),
       deterministic_(deterministic) {}
 
 Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Running GEMM thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
-  // TODO(ezhulenev): Pass a correct workspace. For now we ignore it as Thunks
-  // are disabled by default, and they do not interact with CUDA graphs.
-  se::DeviceMemoryBase workspace(nullptr, 0);
+  se::DeviceMemoryBase workspace(/*opaque=*/nullptr, /*size=*/0);
+  if (workspace_.has_value()) {
+    workspace = allocs.GetDeviceAddress(workspace_.value());
+  }
   return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
                  allocs.GetDeviceAddress(rhs_buffer_),
                  allocs.GetDeviceAddress(output_buffer_), workspace,
                  deterministic_, params.stream);
 }
 
-Status GemmThunk::Initialize(se::StreamExecutor* executor,
-                             ExecutableSource src) {
-  if (!executor->AsBlas()) {
+Status GemmThunk::Initialize(const InitializeParams& params) {
+  if (!params.executor->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support");
   }
   return OkStatus();

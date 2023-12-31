@@ -796,17 +796,8 @@ cc_library(
     strip_include_prefix = ".",
     visibility = ["//visibility:public"],
     deps = [
-        ":lhlo",
         ":map_lhlo_to_hlo_op",
         ":map_mhlo_to_scalar_op",
-        ":mlir_hlo",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ComplexDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:SCFDialect",
     ],
 )
 
@@ -823,7 +814,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:VectorDialect",
     ],
 )
 
@@ -868,7 +858,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":mlir_hlo",
-        "@llvm-project//mlir:IR",
         "@stablehlo//:stablehlo_ops",
     ],
 )

@@ -52,7 +52,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
-#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform/port.h"

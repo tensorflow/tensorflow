@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/logger.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/util/proto/proto_utils.h"
@@ -146,14 +145,6 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
             *reference_algorithm);
       }
     }
-  }
-
-  if (!autotune_config.should_crash_on_check_failure()) {
-    AutotuningLog log;
-    for (const AutotuneResult& result : results) {
-      *log.add_results() = result;
-    }
-    tsl::Logger::GetSingleton()->LogProto(log);
   }
 
   StatusOr<AutotuneResult> best =
@@ -265,10 +256,17 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
       AutotunerUtil::CreateBuffer(buffer_allocator, output_shape,
                                   autotune_config, rng_state));
 
-  int64_t workspace_size =
-      autotune_config.GetCudaComputeCapability().IsAtLeastHopper()
-          ? GemmConfig::kHopperWorkspace
-          : GemmConfig::kDefaultWorkspace;
+  int64_t workspace_size = std::visit(
+      se::VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                           return cc.IsAtLeastHopper()
+                                      ? GemmConfig::kHopperWorkspace
+                                      : GemmConfig::kDefaultWorkspace;
+                         },
+                         [](const se::RocmComputeCapability&) {
+                           return GemmConfig::kDefaultWorkspace;
+                         }},
+      autotune_config.GetGpuComputeCapability());
+
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase workspace_buffer,
       AutotunerUtil::CreateBuffer(buffer_allocator,
@@ -401,13 +399,19 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 
   GemmBackendConfig updated_config = gemm_config;
 
-  // We only set the 'algorithm' field on non-Ampere architectures, as for
-  // Ampere it's ignored in any case.
-  bool update_algorithm = true;
-#if GOOGLE_CUDA
-  auto capability = config.GetCudaComputeCapability();
-  update_algorithm = !capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
-#endif
+  bool update_algorithm =
+      std::visit(se::VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                      // We only set the 'algorithm' field on
+                                      // non-Ampere architectures, as for Ampere
+                                      // it's ignored in any case.
+                                      return !cc.IsAtLeast(
+                                          se::CudaComputeCapability::AMPERE);
+                                    },
+                                    [](const se::RocmComputeCapability&) {
+                                      return true;  // TODO: not decided yet
+                                    }},
+                 config.GetGpuComputeCapability());
+
   if (update_algorithm) {
     if (algorithm.has_gemm()) {
       updated_config.set_selected_algorithm(algorithm.gemm().algorithm());

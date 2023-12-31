@@ -147,6 +147,7 @@ class IrEmitterUnnested : public IrEmitter {
           hlo_for_lmhlo);
   Status EmitConvolutionThunk(mlir::Operation* op);
   Status EmitGemmThunk(mlir::Operation* op);
+  Status EmitGemmThunk(const HloCustomCallInstruction* instr);
 #if GOOGLE_CUDA || TF_HIPBLASLT
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
@@ -172,11 +173,8 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
-  Status EmitFusion(
-      const HloFusionInstruction* instr, HloFusionAnalysis& fusion_analysis,
-      mlir::Operation* op,
-      const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
-          hlo_for_lmhlo);
+  Status EmitFusion(const HloFusionInstruction* instr,
+                    HloFusionAnalysis& fusion_analysis);
   Status EmitSelectAndScatter(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -189,6 +187,9 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitInfeed(mlir::Operation* op);
   Status EmitOutfeed(mlir::Operation* op);
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
+  Status EmitRngGetAndUpdateState(
+      const HloRngGetAndUpdateStateInstruction* instr);
+
   Status EmitSort(mlir::Operation* op, const HloSortInstruction* sort);
   Status EmitSort(const HloSortInstruction* sort);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -204,13 +205,13 @@ class IrEmitterUnnested : public IrEmitter {
 
   template <typename NcclThunkType, typename OpT>
   Status EmitNcclThunk(mlir::Operation* op);
-  template <typename OpT>
-  Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op);
+
+  Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op,
+                           mlir::Value token);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);
 
-  template <typename NcclThunkType, typename OpT>
   Status EmitCollectivePermute(mlir::Operation* op);
 
   Status EmitOp(

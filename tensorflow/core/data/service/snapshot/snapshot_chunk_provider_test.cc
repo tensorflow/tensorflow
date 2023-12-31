@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
@@ -42,6 +45,7 @@ namespace data {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAreArray;
 using ::tsl::testing::IsOkAndHolds;
@@ -81,12 +85,13 @@ absl::StatusOr<std::vector<std::string>> GetAllChunks(
     SnapshotChunkProvider& snapshot_chunk_provider) {
   std::vector<std::string> chunks;
   while (true) {
-    TF_ASSIGN_OR_RETURN(std::optional<std::string> chunk,
-                        snapshot_chunk_provider.GetNext());
-    if (!chunk.has_value()) {
-      break;
+    Tensor split;
+    bool end_of_splits = false;
+    TF_RETURN_IF_ERROR(snapshot_chunk_provider.GetNext(&split, &end_of_splits));
+    if (end_of_splits) {
+      return chunks;
     }
-    chunks.push_back(*chunk);
+    chunks.push_back(split.unaligned_flat<tsl::tstring>().data()[0]);
   }
   return chunks;
 }
@@ -126,6 +131,27 @@ TEST(SnapshotChunkProviderTest, SingleReader) {
   EXPECT_THAT(GetAllChunks(snapshot_chunk_provider),
               IsOkAndHolds(
                   UnorderedElementsAreArray(JoinPaths(snapshot_path, chunks))));
+}
+
+TEST(SnapshotChunkProviderTest, Cardinality) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_0_0_0"));
+  SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
+                                                tsl::Env::Default());
+  // Cardinality is unknown when the snapshot is unfinished.
+  EXPECT_EQ(snapshot_chunk_provider.Cardinality(), kUnknownCardinality);
+
+  std::vector<std::string> chunks = {"chunk_1_1_1", "chunk_2_2_2",
+                                     "chunk_3_3_3", "chunk_4_4_4"};
+  for (absl::string_view chunk : chunks) {
+    TF_ASSERT_OK(WriteChunk(snapshot_path, chunk));
+  }
+  // Cardinality is unknown when the snapshot is unfinished.
+  EXPECT_EQ(snapshot_chunk_provider.Cardinality(), kUnknownCardinality);
+
+  // Cardinality is 5 when the snapshot is finished.
+  TF_ASSERT_OK(SetDone(snapshot_path));
+  EXPECT_EQ(snapshot_chunk_provider.Cardinality(), 5);
 }
 
 TEST(SnapshotChunkProviderTest, WaitForSnapshot) {
@@ -178,13 +204,15 @@ TEST(SnapshotChunkProviderTest, ConcurrentReadWrite) {
         [&snapshot_chunk_provider, &mu, &result]() {
           while (true) {
             tsl::Env::Default()->SleepForMicroseconds(25);
-            TF_ASSERT_OK_AND_ASSIGN(std::optional<std::string> chunk,
-                                    snapshot_chunk_provider.GetNext());
-            if (!chunk.has_value()) {
+            Tensor split;
+            bool end_of_splits = false;
+            TF_ASSERT_OK(
+                snapshot_chunk_provider.GetNext(&split, &end_of_splits));
+            if (end_of_splits) {
               break;
             }
             absl::MutexLock l(&mu);
-            result.push_back(std::move(*chunk));
+            result.push_back(split.unaligned_flat<tsl::tstring>().data()[0]);
           }
         })));
   }
@@ -234,6 +262,28 @@ TEST(SnapshotChunkProviderTest, SnapshotError) {
   TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_2_0_0"));
   TF_ASSERT_OK(
       SetStatus(snapshot_path, absl::FailedPreconditionError("Test error.")));
+  reader_thread.reset();
+}
+
+TEST(SnapshotChunkProviderTest, Cancel) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
+  SnapshotChunkProvider snapshot_chunk_provider(snapshot_path,
+                                                tsl::Env::Default());
+
+  std::unique_ptr<tsl::Thread> reader_thread =
+      absl::WrapUnique(tsl::Env::Default()->StartThread(
+          /*thread_options=*/{}, /*name=*/"Reader",
+          [&snapshot_chunk_provider]() {
+            EXPECT_THAT(
+                GetAllChunks(snapshot_chunk_provider),
+                StatusIs(absl::StatusCode::kCancelled,
+                         HasSubstr("Cancelled loading tf.data snapshot at")));
+          }));
+
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_0_0_0"));
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_1_0_0"));
+  TF_ASSERT_OK(WriteChunk(snapshot_path, "chunk_2_0_0"));
+  snapshot_chunk_provider.Cancel();
   reader_thread.reset();
 }
 

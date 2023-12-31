@@ -332,7 +332,7 @@ class XlaNDConcatenator {
                                         has_paddings);
   }
   absl::Status ComputeInternal(
-      absl::Span<Tensor> inputs,
+      absl::Span<const Tensor> inputs,
       const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
       const std::function<StatusOr<Tensor*>()>& get_output_fn,
       const Device& device) {
@@ -429,9 +429,8 @@ class XlaNDConcatenator {
         has_paddings_(has_paddings) {}
 
   template <int Rank>
-  void TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssign(const Device& device,
-                                                 absl::Span<Tensor> inputs,
-                                                 Tensor* output) {
+  void TF_ATTRIBUTE_NOINLINE MaybeUnpadAndAssign(
+      const Device& device, absl::Span<const Tensor> inputs, Tensor* output) {
     for (int i = 0; i < num_slices_; ++i) {
       MaybeUnpadAndAssignState<Rank> r(num_concats_, inputs[0], output, i);
       if (r.num_complete_pad_dims_ == Rank) {

@@ -118,12 +118,14 @@ xla_cc_test(
 
 cc_library(
     name = "repacking",
+    srcs = ["repacking.cc"],
     hdrs = ["repacking.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla:types",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],

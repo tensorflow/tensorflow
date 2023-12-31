@@ -15,17 +15,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_CHUNK_PROVIDER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_SNAPSHOT_CHUNK_PROVIDER_H_
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/btree_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/env.h"
 
 namespace tensorflow {
@@ -33,7 +35,7 @@ namespace data {
 
 // Provides the next chunk to read. Blocks until the next chunk is unavailable,
 // or all the chunks have been read. This class is thread-safe.
-class SnapshotChunkProvider {
+class SnapshotChunkProvider : public SplitProvider {
  public:
   SnapshotChunkProvider(absl::string_view snapshot_path, tsl::Env* env);
   virtual ~SnapshotChunkProvider() = default;
@@ -42,16 +44,24 @@ class SnapshotChunkProvider {
 
   // Returns the absolute file path of next snapshot chunk to read. If there is
   // no available chunk, blocks until the next chunk is unavailable, or all the
-  // chunks are read. Returns std::nullopt if all chunks have been read.
-  absl::StatusOr<std::optional<std::string>> GetNext();
+  // chunks are read. Sets `end_of_splits` to true if all chunks have been read.
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override;
+
+  absl::Status Reset() override;
 
   // Supports checkpointing.
   absl::Status Save(std::function<std::string(std::string)> full_name,
-                    IteratorStateWriter* writer);
+                    IteratorStateWriter* writer) override;
   absl::Status Restore(std::function<std::string(std::string)> full_name,
-                       IteratorStateReader* reader);
+                       IteratorStateReader* reader) override;
 
-  // TODO(b/297930782): Support cancellation.
+  // If the snapshot is finished, returns the number of committed chunks.
+  // If the snapshot is unfinished or has failed, returns kUnknownCardinality.
+  int64_t Cardinality() const override;
+
+  // Cancels the provider. After cancelling, if the snapshot is unfinished,
+  // in-flight `GetNext` calls will return Cancelled status.
+  void Cancel() override;
 
  private:
   // State of the snapshot.
@@ -85,10 +95,11 @@ class SnapshotChunkProvider {
   mutable absl::Mutex mu_;
 
   // The set of read chunks.
-  absl::flat_hash_set<std::string> chunks_read_ ABSL_GUARDED_BY(mu_);
+  absl::btree_set<std::string> chunks_read_ ABSL_GUARDED_BY(mu_);
 
-  // The set of unread chunks.
-  absl::flat_hash_set<std::string> chunks_unread_ ABSL_GUARDED_BY(mu_);
+  // The set of unread chunks. Uses an ordered set to make sure repeated reads
+  // produce data in a deterministic order.
+  absl::btree_set<std::string> chunks_unread_ ABSL_GUARDED_BY(mu_);
 
   // State of the snapshot.
   SnapshotState snapshot_state_ ABSL_GUARDED_BY(mu_);

@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 
@@ -38,8 +38,7 @@ StatusOr<std::string> GetBootIdString();
 Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
                           absl::Duration get_local_topology_timeout,
                           absl::Duration get_global_topology_timeout,
-                          const PjRtClient::KeyValueGetCallback& kv_get,
-                          const PjRtClient::KeyValuePutCallback& kv_put,
+                          KeyValueStoreInterface* kv_store,
                           const LocalTopologyProto& local_topology,
                           GlobalTopologyProto* global_topology);
 

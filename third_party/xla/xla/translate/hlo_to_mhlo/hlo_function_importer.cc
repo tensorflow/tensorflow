@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -32,10 +34,13 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -664,6 +669,56 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 
+StatusOr<mlir::Operation*> HloFunctionImporter::ImportCustomCallAsOp(
+    const HloInstruction* instruction, mlir::Location loc,
+    const Type result_type, mlir::ValueRange operands,
+    mlir::OpBuilder* func_builder) {
+  auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+  if (custom_call->custom_call_target() == "mhlo.dynamic_broadcast_in_dim") {
+    auto raw_backend_config = custom_call->raw_backend_config_string();
+    if (raw_backend_config.empty()) {
+      return Internal("backend_config attribute cannot be empty.");
+    }
+
+    auto attr = mlir::parseAttribute(raw_backend_config, builder_->getContext())
+                    .dyn_cast<mlir::DictionaryAttr>();
+    if (!attr) {
+      return Internal(
+          "Couldn't parse backend config into a dictionary attribute");
+    }
+
+    auto broadcast_dimensions_attr =
+        attr.get("broadcast_dimensions").dyn_cast_or_null<mlir::ArrayAttr>();
+    if (!broadcast_dimensions_attr) {
+      return Internal("broadcast_dimensions attribute is required.");
+    }
+
+    std::vector<int64_t> broadcast_dimensions(broadcast_dimensions_attr.size());
+    for (auto [i, broadcast_dimension] :
+         llvm::enumerate(broadcast_dimensions_attr)) {
+      broadcast_dimensions[i] =
+          broadcast_dimension.cast<mlir::IntegerAttr>().getInt();
+    }
+
+    return func_builder
+        ->create<mlir::mhlo::DynamicBroadcastInDimOp>(
+            loc, result_type, operands[0], operands[1],
+            builder_->getI64TensorAttr(broadcast_dimensions))
+        .getOperation();
+  }
+  if (custom_call->custom_call_target() == "mhlo.dynamic_reshape") {
+    auto raw_backend_config = custom_call->raw_backend_config_string();
+    if (!raw_backend_config.empty()) {
+      return Internal("backend_config attribute should be empty.");
+    }
+    return func_builder
+        ->create<mlir::mhlo::DynamicReshapeOp>(loc, result_type, operands)
+        .getOperation();
+  }
+  return InvalidArgument("Unsupported MHLO op custom_call %s",
+                         custom_call->custom_call_target());
+}
+
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
@@ -869,6 +924,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCustomCall: {
       auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+      if (absl::StrContains(custom_call->custom_call_target(), "mhlo.")) {
+        return ImportCustomCallAsOp(instruction, loc, result_type, operands,
+                                    func_builder);
+      }
       const auto& called_computations = custom_call->called_computations();
       if (!called_computations.empty()) {
         llvm::SmallVector<mlir::Attribute> callees;

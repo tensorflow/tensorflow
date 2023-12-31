@@ -100,11 +100,16 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
 operations_research::MPVariable* CreateMakespanVar(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<operations_research::MPVariable*>>& e,
-    operations_research::MPSolver& solver);
+    operations_research::MPSolver& solver,
+    operations_research::MPConstraint& cost_constraint);
 
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
                         const AutoShardingSolverResult& result,
                         AutoShardingEvaluation& evaluation);
+
+// Scale down values to reduce the range of costs & coefficients in the solver.
+AutoShardingSolverRequest ScaleRequest(
+    const AutoShardingSolverRequest& request);
 
 }  // namespace spmd
 }  // namespace xla

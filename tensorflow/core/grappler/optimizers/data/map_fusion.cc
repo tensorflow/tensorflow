@@ -174,7 +174,8 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
 
   auto get_map_node = [&graph](const NodeDef& node) -> const NodeDef* {
     // TODO(b/148614504): Support ParallelMapDataset and MapAndBatchDataset.
-    // TODO(b/148614315): Support captured inputs.
+    // TODO(b/148614315): Support captured inputs and additionally look into a
+    // Python test for control outputs per b/171265131.
     if (node.op() == kMapDatasetOp && node.input_size() == 1) return &node;
     // Only parallel map with no captured inputs (empty `other_arguments`) and
     // parallelism set to "AUTOTUNE" would be eligible for rewrite.

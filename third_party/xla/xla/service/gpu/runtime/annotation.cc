@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime/annotation.h"
 
+#include <cstddef>
+#include <string_view>
+
+#include "absl/strings/str_split.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 
 namespace xla::gpu {
@@ -62,26 +66,20 @@ Status VisitInstAndCalledButNotOperands(Visitor& visitor,
 // unspecified which argument the return value points into.
 std::string_view LongestPrefix(std::string_view a, std::string_view b,
                                char delim = '/') {
-  if (a.size() > b.size()) a.swap(b);  // allow assumption that b is longer
-  for (auto start_a = a.begin(), iter_a = start_a, start_b = b.begin(),
-            iter_b = start_b;
-       ; ++iter_a, ++iter_b) {
-    if (iter_a == a.end() && (iter_b == b.end() || *iter_b == delim)) {
-      // reached both ends without finding a mismatch, or reached the end of `a`
-      // and not `b` but it was the end of the chunk in `b`
-      return a;
-    }
-    if (*iter_a != *iter_b) {
-      // mismatch in this chunk
-      return {a.begin(),
-              static_cast<std::size_t>(std::distance(a.begin(), start_a))};
-    }
-    if (*iter_a == delim) {
-      // end of this chunk, start the next one
-      start_a = iter_a;
-      start_b = iter_b;
-    }
+  auto split_a = absl::StrSplit(a, delim);
+  auto split_b = absl::StrSplit(b, delim);
+
+  size_t common_prefix_len = 0;
+
+  for (auto a_it = split_a.begin(), b_it = split_b.begin();
+       a_it != split_a.end() && b_it != split_b.end(); ++a_it, ++b_it) {
+    if (*a_it != *b_it) break;
+
+    if (common_prefix_len) ++common_prefix_len;  // account for delimiter
+    common_prefix_len += a_it->size();           // length of a matching token
   }
+
+  return std::string_view(a.data(), common_prefix_len);
 }
 
 // Find the longest prefix among instructions' op_name metadata

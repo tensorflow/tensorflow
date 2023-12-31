@@ -90,6 +90,9 @@ limitations under the License.
 // VLOG(4): Print all fusions
 // VLOG(5): Profiling information for every tiling
 
+// TODO(b/317016172): Update usages of TritonGemmConfig to use newly exposed
+// parameters.
+
 namespace xla {
 namespace gpu {
 
@@ -229,11 +232,12 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
   GemmConfigSet GetGemmConfigSet(const HloFusionInstruction* fusion) {
     const DebugOptions& debug_options =
         fusion->GetModule()->config().debug_options();
+    auto cuda_comp =
+        std::get<se::CudaComputeCapability>(config_.GetGpuComputeCapability());
     return {GetPossibleMatmulAutotuneConfigs(
         *Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
             *fusion->called_computations().at(0), HloOpcode::kDot)),
-        config_.GetCudaComputeCapability(), debug_options,
-        config_.ExhaustiveTilingSearch())};
+        cuda_comp, debug_options, config_.ExhaustiveTilingSearch())};
   }
 
   AutotuneConfig config_;
@@ -280,13 +284,35 @@ constexpr std::array<int, 4> NUM_STAGES = {1, 2, 3, 4};
 constexpr std::array<int, 4> NUM_WARPS = {2, 4, 8, 16};
 constexpr std::array<int, 5> SPLIT_K = {1, 2, 4, 8, 16};
 
+// For arch >= Hopper autotuning.
+constexpr std::array<TritonGemmConfig::ClusterDims, 7> CLUSTER_DIMS = {
+    TritonGemmConfig::ClusterDims(1, 1, 1),
+    TritonGemmConfig::ClusterDims(2, 2, 1),
+    TritonGemmConfig::ClusterDims(2, 4, 1),
+    TritonGemmConfig::ClusterDims(4, 2, 1),
+    TritonGemmConfig::ClusterDims(4, 4, 1),
+    TritonGemmConfig::ClusterDims(2, 8, 1),
+    TritonGemmConfig::ClusterDims(8, 2, 1),
+};
+constexpr std::array<bool, 2> WARP_SPECIALIZATION = {false, true};
+
+// Currently we believe that num_ctas is inferable from cluster_dims.
+int InferNumCtas(TritonGemmConfig::ClusterDims cluster_dims) {
+  return cluster_dims.x * cluster_dims.y * cluster_dims.z;
+}
+
 std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
     const HloDotInstruction& dot,
-    const se::CudaComputeCapability compute_capability, const int max_split_k) {
+    const se::CudaComputeCapability compute_capability, const int max_split_k,
+    const DebugOptions& debug_options) {
   const TileSizeLimit limit = GetUpperLimit(dot);
   std::vector<TritonGemmConfig> configs;
   bool mma_layout_v2 =
       compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE);
+  bool enable_hopper_optimizations =
+      debug_options.xla_gpu_enable_triton_hopper() &&
+      compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER);
+
   for (int num_warps : NUM_WARPS) {
     for (int num_stages : NUM_STAGES) {
       // Volta doesn't support num_stages > 2.
@@ -313,9 +339,21 @@ std::vector<TritonGemmConfig> GetExhaustiveMatmulAutotuneConfigs(
                                     GetSplitKLimit(block_k, limit.block_k))) {
                 continue;
               }
-              auto config = TritonGemmConfig(block_m, block_n, block_k, split_k,
-                                             num_stages, num_warps);
-              configs.push_back(std::move(config));
+              if (!enable_hopper_optimizations) {
+                configs.push_back(TritonGemmConfig(
+                    block_m, block_n, block_k, split_k, num_stages, num_warps));
+                continue;
+              }
+
+              // Arch >= Hopper autotuning.
+              for (bool enable_ws : WARP_SPECIALIZATION) {
+                for (TritonGemmConfig::ClusterDims cluster_dims :
+                     CLUSTER_DIMS) {
+                  configs.push_back(TritonGemmConfig(
+                      block_m, block_n, block_k, split_k, num_stages, num_warps,
+                      InferNumCtas(cluster_dims), cluster_dims, enable_ws));
+                }
+              }
             }
           }
         }
@@ -436,7 +474,7 @@ StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     if (root->opcode() == HloOpcode::kReduce) {
       HloInstruction* fusion_instruction =
           entry_computation->AddInstruction(HloInstruction::CreateFusion(
-              root->shape(), ChooseFusionKind(*root->operand(0), *root), root));
+              root->shape(), ChooseFusionKind(*root), root));
       HloInstruction* init_value = root->mutable_operand(1);
       TF_CHECK_OK(
           entry_computation->ReplaceInstruction(root, fusion_instruction));
@@ -456,7 +494,7 @@ StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
       AutotunerUtil::ExtractComputationIntoNewModule(*fusion_computation);
   new_module->mutable_config().set_debug_options(debug_opts);
 
-  GemmRewriter rewriter(config.GetCudaComputeCapability());
+  GemmRewriter rewriter(config.GetGpuComputeCapability());
   GpuInstructionFusion fusion_pass(
       /*may_duplicate=*/false, config.GetExecutor()->GetDeviceDescription());
   TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());
@@ -904,7 +942,7 @@ std::vector<TritonGemmConfig> GetPossibleMatmulAutotuneConfigs(
           : 1;
   return exhaustive_tiling_search
              ? GetExhaustiveMatmulAutotuneConfigs(dot, compute_capability,
-                                                  max_split_k)
+                                                  max_split_k, debug_options)
              : ReduceTileSizes(dot, GetFixedMatmulAutotuneConfigs(
                                         compute_capability, max_split_k));
 }

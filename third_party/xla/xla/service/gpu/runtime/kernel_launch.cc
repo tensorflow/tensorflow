@@ -84,8 +84,8 @@ static absl::Status LaunchImpl(
   se::StreamExecutor* executor = stream->parent();
 
   LaunchDimensions launch_dimensions(
-      {grid_size_x, grid_size_y, grid_size_z},
-      {block_size_x, block_size_y, block_size_z});
+      se::BlockDim(grid_size_x, grid_size_y, grid_size_z),
+      se::ThreadDim(block_size_x, block_size_y, block_size_z));
 
   const int args_size_including_temp_buffer = args.size() + 1;
 
@@ -215,8 +215,8 @@ static absl::Status CustomLaunchImpl(
   se::StreamExecutor* executor = stream->parent();
 
   LaunchDimensions launch_dimensions(
-      {grid_size_x, grid_size_y, grid_size_z},
-      {block_size_x, block_size_y, block_size_z});
+      se::BlockDim(grid_size_x, grid_size_y, grid_size_z),
+      se::ThreadDim(block_size_x, block_size_y, block_size_z));
 
   // If kernel does not exist load it from a custom fusion computation.
   TF_ASSIGN_OR_RETURN(

@@ -36,6 +36,16 @@ extern "C" {
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResetVariableTensors(
     TfLiteInterpreter* interpreter);
 
+// Returns the number of variable tensors associated with the model.
+TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetVariableTensorCount(
+    const TfLiteInterpreter* interpreter);
+
+// Returns the tensor associated with the variable tensor index.
+// REQUIRES: 0 <= input_index <
+// TfLiteInterpreterGetVariableTensorCount(interpreter)
+TFL_CAPI_EXPORT extern TfLiteTensor* TfLiteInterpreterGetVariableTensor(
+    const TfLiteInterpreter* interpreter, int32_t variable_index);
+
 /// Adds an op registration for a builtin operator.
 ///
 /// Op registrations are used to map ops referenced in the flatbuffer model

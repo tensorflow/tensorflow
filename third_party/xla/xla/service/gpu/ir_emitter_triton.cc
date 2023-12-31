@@ -84,6 +84,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -111,6 +112,7 @@ limitations under the License.
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
@@ -124,6 +126,7 @@ limitations under the License.
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
+#include "triton/Target/PTX/TmaMetadata.h"
 
 namespace xla {
 namespace gpu {
@@ -716,12 +719,15 @@ StatusOr<Value> EmitScope(
   return values[instructions.back()];
 }
 
-void CreateTritonPipeline(mlir::OpPassManager& pm,
-                          const se::CudaComputeCapability& cc, int num_warps,
-                          int num_stages) {
+Status CreateTritonPipeline(mlir::OpPassManager& pm,
+                            const se::CudaComputeCapability& cc,
+                            const TritonGemmConfig& config) {
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
-  const int numCTAs = 1;
+  mlir::triton::nvidia_gpu::ClusterInfo clusterInfo;
+  clusterInfo.clusterDimX = config.cluster_dims.x;
+  clusterInfo.clusterDimY = config.cluster_dims.y;
+  clusterInfo.clusterDimZ = config.cluster_dims.z;
   // Based on make_ttir() in
   // @triton//:python/triton/compiler/backends/cuda.py
   pm.addPass(mt::createRewriteTensorPointerPass(ccAsInt));
@@ -732,25 +738,49 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  // Based on make_ttgir() under "# TTIR -> TTGIR" in
+  // Based on make_ttgir() in
   // @triton//:python/triton/compiler/backends/cuda.py
-  pm.addPass(mt::createConvertTritonToTritonGPUPass(num_warps, threadsPerWarp,
-                                                    numCTAs, ccAsInt));
-  // Based on make_ttgir() under "# optimize TTGIR" in
-  // @triton//:python/triton/compiler/backends/cuda.py
+  pm.addPass(mt::createConvertTritonToTritonGPUPass(
+      config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
   pm.addPass(mlir::createTritonGPUCoalescePass());
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(/*clusterInfo=*/));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
   pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
-  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(/*clusterInfo=*/));
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
+  pm.addPass(mlir::createTritonGPUOptimizeThreadLocalityPass());
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createTritonGPUPipelinePass(num_stages, num_warps, numCTAs,
-                                               ccAsInt));
-  pm.addPass(
-      mlir::createTritonNvidiaGPUMaterializeLoadStorePass(num_warps, ccAsInt));
+
+  if (cc.IsAtLeastHopper() && config.enable_warp_specialization) {
+    // Triton currently doesn't support warp specialization for num_warps != 4.
+    // TODO from Triton to add support here:
+    // https://github.com/openai/triton/blob/1bc9c0ea67e4cbec2c77d4acde3173aa7d51c8f9/python/triton/compiler/backends/cuda.py#L119
+    if (config.num_warps != 4) {
+      return absl::UnimplementedError(
+          "Triton currently doesn't support warp specialization for "
+          "num_warps != 4.");
+    }
+    // Ideally, we should run
+    // 'mlir::createTritonNvidiaGPUWSFeasibilityCheckingPass(ccAsInt)' at this
+    // point on the IR to check if warp specialization is feasible. Instead, we
+    // are relying on failures as indication of infeasibility during
+    // auto-tuning.
+    pm.addPass(mlir::createTritonNvidiaGPUWSDecomposingPass(ccAsInt));
+    pm.addPass(mlir::createTritonNvidiaGPUWSPipelinePass(
+        config.num_stages, config.num_warps, ccAsInt));
+    pm.addPass(mlir::createTritonNvidiaGPUWSMutexPass(ccAsInt));
+    pm.addPass(mlir::createTritonNvidiaGPUWSMaterializationPass(ccAsInt));
+    pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm.addPass(mlir::createCSEPass());
+  } else {
+    pm.addPass(mlir::createTritonGPUPipelinePass(
+        config.num_stages, config.num_warps, config.num_ctas, ccAsInt));
+  }
+
+  pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass(
+      config.num_warps, ccAsInt));
   if (ccAsInt <= 80) {
     pm.addPass(mlir::createTritonGPUPrefetchPass());
   }
@@ -761,25 +791,29 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createTritonGPUReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  if (ccAsInt >= 90) {
+  if (cc.IsAtLeastHopper()) {
     pm.addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
   }
   pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
-  pm.addPass(mlir::createTritonGPUOptimizeThreadLocalityPass());
   pm.addPass(mlir::createCanonicalizerPass());
   // Based on translateTritonGPUToLLVMIR() in
   // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
+
+  // TODO(b/316566238): Use TMA info collected here in XLA runtime.
+  mlir::triton::gpu::TMAMetadataTy tma_infos;
   pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt,
                                                   /*target=*/mt::Default,
-                                                  /*tmaMetadata=*/nullptr));
+                                                  &tma_infos));
   pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
   // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
+
+  return absl::OkStatus();
 }
 
 // Extract additional attributes from an LLVM function that are not passed
@@ -1031,14 +1065,15 @@ MatMulLaunchConfig::MatMulLaunchConfig(const TritonGemmConfig& config,
   if (large_batch) {
     batch_program_id_dim = mt::ProgramIDDim::X;
     noncontracting_program_id_dim = mt::ProgramIDDim::Y;
-    launch_dims = {{batch_size, grid_m * grid_n, config.split_k},
-                   {config.num_warps * WarpSize(), 1, 1}};
+    launch_dims = LaunchDimensions(
+        se::BlockDim(batch_size, grid_m * grid_n, config.split_k),
+        se::ThreadDim(config.num_warps * WarpSize(), 1, 1));
   } else {
     batch_program_id_dim = mt::ProgramIDDim::Y;
     noncontracting_program_id_dim = mt::ProgramIDDim::X;
-    launch_dims =
-        LaunchDimensions{{grid_m * grid_n, batch_size, config.split_k},
-                         {config.num_warps * WarpSize(), 1, 1}};
+    launch_dims = LaunchDimensions(
+        se::BlockDim(grid_m * grid_n, batch_size, config.split_k),
+        se::ThreadDim(config.num_warps * WarpSize(), 1, 1));
   }
 }
 
@@ -1323,41 +1358,68 @@ class MatMulEmitterHelper {
       add_dim(dim);
     }
 
-    int64_t stride_batch = 0;
     int64_t offset_batch = 0;
-    if (side.scope != TritonFusionAnalysis::Scope::RHS &&
-        dims_.lhs_noncontracting_split) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis_.IterSpec(side.scope, hlo, side.tiled_dims[0].index);
-      if (spec != nullptr) {
-        if (spec->size() > 1) {
-          // Support one specific kind of output transpose that splits the
-          // dimension originating from the split LHS non-contracting one.
-          stride_batch = spec->at(1).stride;
-        } else {
-          // Because the major part of the split is implemented using the
-          // batch logic stride_batch is populated here as the stride of
-          // the minor part times its size.
-          stride_batch = spec->at(0).stride *
-                         (spec->at(0).count / *dims_.lhs_noncontracting_split);
+    bool has_batch_offset = false;
+    Value batch_stride;
+
+    // Return the batch stride of the HLO passed as a parameter. If the
+    // parameter HLO has no batch dimension, a zero stride is returned.
+    // Also sets offset_batch and updates has_batch_offset as a side effect.
+    auto get_batch_stride = [this, &side, &offset_batch, &has_batch_offset](
+                                const HloInstruction* hlo_param) -> Value {
+      int64_t stride_batch = 0;
+      if (side.scope != TritonFusionAnalysis::Scope::RHS &&
+          dims_.lhs_noncontracting_split) {
+        const TensorIterationSpec::DimIterationSpec* spec =
+            analysis_.IterSpec(side.scope, hlo_param, side.tiled_dims[0].index);
+        if (spec != nullptr) {
+          if (spec->size() > 1) {
+            // Support one specific kind of output transpose that splits the
+            // dimension originating from the split LHS non-contracting one.
+            stride_batch = spec->at(1).stride;
+          } else {
+            // Because the major part of the split is implemented using the
+            // batch logic stride_batch is populated here as the stride of
+            // the minor part times its size.
+            stride_batch =
+                spec->at(0).stride *
+                (spec->at(0).count / *dims_.lhs_noncontracting_split);
+          }
+          CHECK_NE(stride_batch, 0);
         }
-        CHECK_NE(stride_batch, 0);
+      } else if (side.batch_dim_idx.has_value()) {
+        const TensorIterationSpec::DimIterationSpec* spec =
+            analysis_.IterSpec(side.scope, hlo_param, *side.batch_dim_idx);
+        if (spec != nullptr) {
+          stride_batch = spec->at(0).stride;
+          offset_batch = spec->at(0).slice_start;
+          CHECK_NE(stride_batch, 0);
+        }
       }
-    } else if (side.batch_dim_idx.has_value()) {
-      const TensorIterationSpec::DimIterationSpec* spec =
-          analysis_.IterSpec(side.scope, hlo, *side.batch_dim_idx);
-      if (spec != nullptr) {
-        stride_batch = spec->at(0).stride;
-        offset_batch = spec->at(0).slice_start;
-        CHECK_NE(stride_batch, 0);
+
+      has_batch_offset |= stride_batch != 0;
+      return Cst(stride_batch);
+    };
+
+    if (hlo->opcode() == HloOpcode::kConcatenate) {
+      std::vector<Value> batch_strides;
+      batch_strides.reserve(hlo->operands().size());
+      for (const HloInstruction* operand : hlo->operands()) {
+        batch_strides.push_back(get_batch_stride(operand));
       }
+      batch_stride = EmitMultiSelect(b_, concat_dim_pid_offset,
+                                     concat_boundaries, batch_strides);
+    } else {
+      batch_stride = get_batch_stride(hlo);
     }
-    if (stride_batch != 0) {
+
+    // Avoid generating logic to compute batch offset if unnecessary.
+    if (has_batch_offset) {
       Value pid_batch =
           b_.create<mt::GetProgramIdOp>(launch_config_.batch_program_id_dim);
       Value pid_offset_batch = b_.create<ma::MulIOp>(
           b_.create<ma::AddIOp>(Cst(offset_batch), ConvertScalar(pid_batch)),
-          Cst(stride_batch));
+          batch_stride);
       base = AddPtr(b_, base, pid_offset_batch);
     }
 
@@ -1734,22 +1796,6 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   return OkStatus();
 }
 
-LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
-                                            const TritonGemmConfig& config) {
-  auto reduce = HloFindIf(fusion.GetRoots(), fusion, [](auto node) {
-    return node.opcode() == HloOpcode::kReduce;
-  });
-  CHECK(reduce != std::nullopt);
-  const Shape& reduce_input_shape = reduce->instruction().operand(0)->shape();
-  int num_rows = 1;
-  for (int minor_axis = 1; minor_axis < reduce_input_shape.rank();
-       ++minor_axis) {
-    num_rows *= reduce_input_shape.dimensions_minor(minor_axis);
-  }
-
-  return {{num_rows, 1, 1}, {config.num_warps * WarpSize(), 1, 1}};
-}
-
 Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
                    const TritonFusionAnalysis& analysis,
                    const HloComputation* computation, mlir::triton::FuncOp fn,
@@ -1994,6 +2040,13 @@ StatusOr<TritonWrapperResult> TritonWrapper(
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,
     llvm::Module* llvm_module, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
+  auto debug_options = GetDebugOptionsFromFlags();
+  if (debug_options.xla_gpu_enable_triton_hopper()) {
+    // Set environment variables for consumption by Triton.
+    tsl::setenv("ENABLE_MMA_V3", "true", true /*overwrite*/);
+    tsl::setenv("ENABLE_PIPELINING", "true", true /*overwrite*/);
+  }
+
   if (fusion_kind == kTritonGemmFusionKind) {
     // This is a heuristic that serves as a proxy for register usage and code
     // size.
@@ -2083,7 +2136,9 @@ StatusOr<TritonWrapperResult> TritonWrapper(
     }
   }
 
-  CreateTritonPipeline(pm, cc, config.num_warps, config.num_stages);
+  if (!CreateTritonPipeline(pm, cc, config).ok()) {
+    return InternalError("Failed to create Triton pipeline.");
+  }
   if (log_stream.has_value()) {
     pm.printAsTextualPipeline(log_stream.value());
     log_stream->write("\n\n", 2);

@@ -279,8 +279,8 @@ class StableHloQuantizationPattern : public RewritePattern {
       if (!preceding_op) continue;
 
       // Check whether the preceding op is a quantized composite function.
-      if (llvm::isa<TF::XlaCallModuleOp>(preceding_op)) {
-        auto call_op = llvm::cast<TF::XlaCallModuleOp>(preceding_op);
+      if (llvm::isa<func::CallOp>(preceding_op)) {
+        auto call_op = llvm::cast<func::CallOp>(preceding_op);
         if (!IsQuantizedCompositeFunction(call_op)) continue;
         return true;
       }
@@ -307,8 +307,8 @@ class StableHloQuantizationPattern : public RewritePattern {
       auto q_op = llvm::cast<quantfork::QuantizeCastOp>(*result.user_begin());
       for (auto following_op : q_op->getUsers()) {
         // Check whether the following op is a quantized composite function.
-        if (llvm::isa<TF::XlaCallModuleOp>(following_op)) {
-          auto call_op = llvm::cast<TF::XlaCallModuleOp>(following_op);
+        if (llvm::isa<func::CallOp>(following_op)) {
+          auto call_op = llvm::cast<func::CallOp>(following_op);
           if (!IsQuantizedCompositeFunction(call_op)) continue;
           return true;
         }
@@ -331,20 +331,14 @@ class StableHloQuantizationPattern : public RewritePattern {
 
   // Checks if op calls a composite function and all the inputs and outputs are
   // quantized.
-  bool IsQuantizedCompositeFunction(TF::XlaCallModuleOp call_op) const {
-    if (!call_op->hasAttr(kQuantTraitAttrName)) {
-      return false;
-    }
-
-    const auto function_name = call_op->getAttrOfType<FlatSymbolRefAttr>(
-        TF::kStablehloEntryFunctionAttrName);
-    if (!function_name || !function_name.getValue().startswith("composite_")) {
+  bool IsQuantizedCompositeFunction(func::CallOp call_op) const {
+    if (!call_op.getCallee().startswith("quantized_")) {
       return false;
     }
 
     bool has_quantized_types = false;
-    for (Value input : call_op.getArgs()) {
-      if (auto type = input.getType().dyn_cast<TensorType>()) {
+    for (Value operand : call_op.getOperands()) {
+      if (auto type = operand.getType().dyn_cast<TensorType>()) {
         if (type.getElementType().isa<FloatType>()) {
           return false;
         }
@@ -353,8 +347,8 @@ class StableHloQuantizationPattern : public RewritePattern {
         }
       }
     }
-    for (Value output : call_op.getOutput()) {
-      if (auto type = output.getType().dyn_cast<TensorType>()) {
+    for (Value result : call_op.getResults()) {
+      if (auto type = result.getType().dyn_cast<TensorType>()) {
         if (type.getElementType().isa<FloatType>()) {
           return false;
         }

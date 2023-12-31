@@ -390,7 +390,9 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ] + tf_protos_all(),
 )
 
@@ -908,6 +910,7 @@ cc_library(
         "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/log",
     ] + tf_protos_all(),
     alwayslink = 1,
 )

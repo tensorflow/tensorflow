@@ -128,6 +128,7 @@ limitations under the License.
 #include "xla/service/gpu/copy_fusion.h"
 #include "xla/service/gpu/custom_fusion_rewriter.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
+#include "xla/service/gpu/dot_operand_converter.h"
 #include "xla/service/gpu/fusion_merger_triton.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/fusion_wrapper.h"
@@ -229,14 +230,10 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
-#elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
-#endif
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "xla/util.h"
@@ -252,6 +249,16 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
+
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
+#elif TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#endif
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#endif
 
 #ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
@@ -542,11 +549,19 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
                                       se::StreamExecutor* stream_exec,
                                       const CompileOptions& options,
                                       const TargetConfig& gpu_target_config) {
+  CHECK(!hlo_module->has_schedule())
+      << "\nThe current HLO module " << hlo_module->name()
+      << " is scheduled and optimized. \n"
+      << "It is not expected to run optimization passes again.\nPlease use "
+      << "RunAndCompareNoHloPasses() or RunAndCompareTwoModules() instead of "
+      << "RunAndCompare()\nif running unit tests as they set"
+      << " run_hlo_passes=false.";
+
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   // LOG_LINES is used instead of LOG since the message can exceed the
   // maximum line length, which results in the message being truncated.
-  XLA_LOG_LINES(
+  XLA_VLOG_LINES(
       1, absl::StrFormat("GpuCompilationEnvironment of hlo_module %s:\n%s",
                          hlo_module->name(), debug_options.DebugString()));
 
@@ -708,6 +723,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
     pipeline.AddPass<OperandUpcaster>(upcaster_filter);
     pipeline.AddPass<ResultCaster>(upcaster_filter);
+
+    // Add the DotOperandConverter after any potential upcasts done as part of
+    // the OperandUpcaster, so that the DotOperandConverter becomes a no-op.
+    pipeline.AddPass<DotOperandConverter>();
 
     pipeline.AddPass<SubByteNormalization>(
         SubByteNormalization::SET_ELEMENT_SIZE);
@@ -975,8 +994,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddPass<FlattenCallGraph>();
     ChannelLayoutConstraints layout_constraints;
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout(), stream_exec,
-        &layout_constraints);
+        hlo_module->mutable_entry_computation_layout(), gpu_version,
+        dnn_version, &layout_constraints);
     // Run SubByteNormalization because GpuLayoutAssignment may modify a
     // Layout's element_size_in_bits field.
     pipeline.AddPass<SubByteNormalization>(
@@ -2059,7 +2078,9 @@ Status GpuCompiler::RunPostSchedulingPipelines(
   // can decide how to wrap them into command buffers.
   if (!IsXlaRuntimeExecutableEnabled(module->config())) {
     HloPassPipeline pipeline("command-buffer-scheduling");
-    pipeline.AddPass<CommandBufferScheduling>();
+    auto driver_version = se::gpu::GpuDriver::GetDriverVersion();
+    pipeline.AddPass<CommandBufferScheduling>(
+        CUDA_VERSION, driver_version.value_or(CUDA_VERSION));
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 

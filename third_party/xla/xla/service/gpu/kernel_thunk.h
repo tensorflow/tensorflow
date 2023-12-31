@@ -80,8 +80,7 @@ class KernelThunk : public Thunk {
 
   std::string ToStringExtra(int indent) const override;
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
+  Status Initialize(const InitializeParams& params) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ClearCompileTimeInfo() override {
@@ -143,10 +142,14 @@ class CustomKernelThunk : public Thunk {
 
   std::string ToStringExtra(int indent) const override;
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
+  Status Initialize(const InitializeParams& params) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  const CustomKernel& custom_kernel() const { return custom_kernel_; }
+
+  const std::vector<BufferAllocation::Slice>& arguments() const {
+    return args_;
+  }
   // TODO(ezhulenev): All of the APIs below needed only for LMHLO lowering and
   // should be removed after we migrate to Thunks runtime.
 
@@ -156,15 +159,8 @@ class CustomKernelThunk : public Thunk {
   absl::Span<const mlir::Value> values() const { return values_; }
 
   LaunchDimensions launch_dimensions() const {
-    LaunchDimensions::Dim3D threads;
-    threads.x = custom_kernel_.thread_dims().x;
-    threads.y = custom_kernel_.thread_dims().y;
-    threads.z = custom_kernel_.thread_dims().z;
-    LaunchDimensions::Dim3D blocks;
-    blocks.x = custom_kernel_.block_dims().x;
-    blocks.y = custom_kernel_.block_dims().y;
-    blocks.z = custom_kernel_.block_dims().z;
-    return LaunchDimensions(blocks, threads);
+    return LaunchDimensions(custom_kernel_.block_dims(),
+                            custom_kernel_.thread_dims());
   }
 
   int64_t shmem_bytes() const { return custom_kernel_.shared_memory_bytes(); }

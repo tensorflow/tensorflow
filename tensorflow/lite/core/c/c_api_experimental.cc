@@ -37,6 +37,16 @@ TfLiteStatus TfLiteInterpreterResetVariableTensors(
   return interpreter->impl->ResetVariableTensors();
 }
 
+int32_t TfLiteInterpreterGetVariableTensorCount(
+    const TfLiteInterpreter* interpreter) {
+  return static_cast<int32_t>(interpreter->impl->variables().size());
+}
+
+TfLiteTensor* TfLiteInterpreterGetVariableTensor(
+    const TfLiteInterpreter* interpreter, int32_t input_index) {
+  return interpreter->impl->tensor(interpreter->impl->variables()[input_index]);
+}
+
 void TfLiteInterpreterOptionsAddBuiltinOp(
     TfLiteInterpreterOptions* options, TfLiteBuiltinOperator op,
     const TfLiteRegistration* registration, int32_t min_version,

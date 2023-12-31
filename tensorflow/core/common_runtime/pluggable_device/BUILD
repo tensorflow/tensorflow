@@ -96,7 +96,6 @@ cc_library(
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_factory",
-        "//tensorflow/core/common_runtime/next_pluggable_device:pjrt_compile_on_demand_op",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",

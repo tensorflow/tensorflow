@@ -286,8 +286,9 @@ XLA_TEST_P(RandomEighTest, Random) {
   GetAverageAbsoluteError(ComputeMatmulVWVt(result, &builder), a, &builder);
 
   // TODO(phawkins): this would be better expressed as <= 6e-3.
-  ComputeAndCompareR0<float>(&builder, 3e-3, {a_data.get()},
-                             ErrorSpec(3e-3, 0));
+  double kExpected = 0.00300000003;
+  ComputeAndCompareR0<float>(&builder, kExpected, {a_data.get()},
+                             ErrorSpec(kExpected, 0));
 }
 
 #ifndef XLA_TEST_BACKEND_CPU

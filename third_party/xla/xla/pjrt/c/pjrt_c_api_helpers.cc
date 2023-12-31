@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -683,11 +685,11 @@ int GetId(const PJRT_Api* api, PJRT_DeviceDescription* device_desc) {
 static void PjRtValueDeleterCallback(char* value) { delete[] value; }
 
 static PJRT_KeyValueGetCFunc ToKVGetCFunc(
-    const xla::PjRtClient::KeyValueGetCallback& cpp_kv_get) {
-  return [&cpp_kv_get](PJRT_KeyValueGetCallback_Args* args) -> PJRT_Error* {
+    xla::KeyValueStoreInterface* kv_store) {
+  return [kv_store](PJRT_KeyValueGetCallback_Args* args) -> PJRT_Error* {
     xla::StatusOr<std::string> output =
-        cpp_kv_get(std::string(args->key, args->key_size),
-                   absl::Milliseconds(args->timeout_in_ms));
+        kv_store->Get(std::string_view(args->key, args->key_size),
+                      absl::Milliseconds(args->timeout_in_ms));
     if (!output.ok()) {
       absl::string_view message = output.status().message();
       return (*args->callback_error)(
@@ -703,10 +705,11 @@ static PJRT_KeyValueGetCFunc ToKVGetCFunc(
 }
 
 static PJRT_KeyValuePutCFunc ToKVPutCFunc(
-    const xla::PjRtClient::KeyValuePutCallback& cpp_kv_put) {
-  return [&cpp_kv_put](PJRT_KeyValuePutCallback_Args* args) -> PJRT_Error* {
-    xla::Status status = cpp_kv_put(std::string(args->key, args->key_size),
-                                    std::string(args->value, args->value_size));
+    xla::KeyValueStoreInterface* kv_store) {
+  return [kv_store](PJRT_KeyValuePutCallback_Args* args) -> PJRT_Error* {
+    xla::Status status =
+        kv_store->Set(std::string_view(args->key, args->key_size),
+                      std::string_view(args->value, args->value_size));
     if (!status.ok()) {
       absl::string_view message = status.message();
       return (*args->callback_error)(StatusCodeToPjrtErrorCode(status.code()),
@@ -749,17 +752,15 @@ static PJRT_KeyValuePutCallback ToCKVPutCallback(
 }
 
 std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
-    xla::PjRtClient::KeyValueGetCallback kv_get,
-    xla::PjRtClient::KeyValuePutCallback kv_put) {
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store) {
   auto kv_callback_data = std::make_unique<PJRT_KeyValueCallbackData>();
-  kv_callback_data->kv_get = std::move(kv_get);
-  kv_callback_data->kv_put = std::move(kv_put);
-  kv_callback_data->kv_get_c_func = ToKVGetCFunc(kv_callback_data->kv_get);
-  kv_callback_data->kv_put_c_func = ToKVPutCFunc(kv_callback_data->kv_put);
+  kv_callback_data->kv_get_c_func = ToKVGetCFunc(kv_store.get());
+  kv_callback_data->kv_put_c_func = ToKVPutCFunc(kv_store.get());
   kv_callback_data->c_kv_get =
       ToCKVGetCallback(&kv_callback_data->kv_get_c_func);
   kv_callback_data->c_kv_put =
       ToCKVPutCallback(&kv_callback_data->kv_put_c_func);
+  kv_callback_data->kv_store = std::move(kv_store);
   return kv_callback_data;
 }
 

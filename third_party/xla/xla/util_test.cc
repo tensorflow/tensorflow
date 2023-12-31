@@ -25,8 +25,8 @@ limitations under the License.
 
 #include "xla/test.h"
 #include "xla/types.h"
-#include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace {

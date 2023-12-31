@@ -216,20 +216,116 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
           window.DebugString());
     }
 
-    const int64_t dilated_base = window_util::DilatedBound(
-        ShapeUtil::GetDimension(base_shape, i), dim.base_dilation());
-    const int64_t padded_dilated_base =
-        dim.padding_low() + dilated_base + dim.padding_high();
-    const int64_t dilated_window =
-        window_util::DilatedBound(dim.size(), dim.window_dilation());
+    if (IsUnboundedDynamicSize(ShapeUtil::GetDimension(base_shape, i))) {
+      output_dimensions[i] = Shape::kUnboundedSize;
+    } else {
+      const int64_t dilated_base = window_util::DilatedBound(
+          ShapeUtil::GetDimension(base_shape, i), dim.base_dilation());
+      const int64_t padded_dilated_base =
+          dim.padding_low() + dilated_base + dim.padding_high();
+      const int64_t dilated_window =
+          window_util::DilatedBound(dim.size(), dim.window_dilation());
 
-    output_dimensions[i] = window_util::StridedBound(
-        padded_dilated_base, dilated_window, dim.stride());
+      output_dimensions[i] = window_util::StridedBound(
+          padded_dilated_base, dilated_window, dim.stride());
+    }
     output_is_dynamic[i] = base_shape.is_dynamic_dimension(i);
   }
 
   return ShapeUtil::MakeValidatedShape(element_type, output_dimensions,
                                        output_is_dynamic);
+}
+
+// Encapsulates inferred dimension size and bound size.
+struct DimAndBound {
+  int64_t dimension, bound;
+};
+
+// Inference rules to concat dimensions with bounds (lhs/rhs are commutative):
+//       Dim of lhs     Dim of rhs      Infer
+//  c0:  X              Y               X+Y
+//  c1:  X              ?               ?
+//  c2:  X              <=B             <=X+B
+//  c3:  ?              ?               ?
+//. c4:  ?              <=B             ?
+//  c5:  <=B            <=C             <=B+C
+// Note:
+// A HLO static dimension size `X` is expressed as size=X, and bound=?
+// A bounded dynamic dimension size `<=X` is be expressed as size=X, and bound=?
+// A unbounded dynamic dimension size, `?`, is expressed as size=?, and bound=?
+DimAndBound InferConcatenatedDimAndBound(int64_t left_size, int64_t right_size,
+                                         int64_t left_bound,
+                                         int64_t right_bound) {
+  bool is_left_static_dim = !IsUnboundedDynamicSize(left_size);
+  bool is_right_static_dim = !IsUnboundedDynamicSize(right_size);
+  bool is_left_static_bound = !IsUnboundedDynamicSize(left_bound);
+  bool is_right_static_bound = !IsUnboundedDynamicSize(right_bound);
+  int64_t inferred_size = Shape::kUnboundedSize;
+  int64_t inferred_bound = Shape::kUnboundedSize;
+
+  if (is_left_static_dim && is_right_static_dim) {
+    inferred_size = left_size + right_size;
+  }
+  if (is_left_static_bound || is_right_static_bound) {
+    int64_t leftBoundOrSize = is_left_static_bound ? left_bound : left_size;
+    int64_t rightBoundOrSize = is_right_static_bound ? right_bound : right_size;
+    if (!IsUnboundedDynamicSize(leftBoundOrSize) &&
+        !IsUnboundedDynamicSize(rightBoundOrSize)) {
+      inferred_bound = leftBoundOrSize + rightBoundOrSize;
+    }
+  }
+  return {inferred_size, inferred_bound};
+}
+
+// Inference rules to merge dimensions with bounds (lhs/rhs are commutative):
+//       Dim of lhs     Dim of rhs      Infer
+//  c0:  X              X               X
+//  c1:  X              ?               X
+//  c2:  X              <=X             <=X
+//  c3:  ?              ?               ?
+//  c4:  ?              <=B             <=B
+//  c5:  <=B            <=C             Error, mismatched bound sizes
+//  c6:  X              Y               Error, mismatched dimension sizes
+// Note:
+// A HLO static dimension size `X` is expressed as size=X, and bound=?
+// A bounded dynamic dimension size `<=X` is be expressed as size=X, and bound=?
+// A unbounded dynamic dimension size, `?`, is expressed as size=?, and bound=?
+StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
+                                                   int64_t left_size,
+                                                   int64_t right_size,
+                                                   int64_t left_bound,
+                                                   int64_t right_bound) {
+  bool is_left_static_dim = !IsUnboundedDynamicSize(left_size);
+  bool is_right_static_dim = !IsUnboundedDynamicSize(right_size);
+  bool is_left_static_bound = !IsUnboundedDynamicSize(left_bound);
+  bool is_right_static_bound = !IsUnboundedDynamicSize(right_bound);
+  int64_t inferred_size = Shape::kUnboundedSize;
+  int64_t inferred_bound = Shape::kUnboundedSize;
+
+  if (is_left_static_bound || is_right_static_bound) {
+    if (is_left_static_bound && is_right_static_bound &&
+        left_bound != right_bound) {
+      return InvalidArgument("Mismatched bound sizes %d and %d in dimension %d",
+                             left_bound, right_bound, dim);
+    }
+    inferred_bound = is_left_static_bound ? left_bound : right_bound;
+  }
+  if (is_left_static_dim || is_right_static_dim) {
+    if (is_left_static_dim && is_right_static_dim && left_size != right_size) {
+      return InvalidArgument(
+          "Mismatched dimension sizes %d and %d in dimension %d", left_size,
+          right_size, dim);
+    }
+    inferred_size = is_left_static_dim ? left_size : right_size;
+    if (!IsUnboundedDynamicSize(inferred_bound) &&
+        inferred_size != inferred_bound) {
+      return InvalidArgument(
+          "Mismatched dimension size %d and bound %d in dimension %d",
+          inferred_size, inferred_bound, dim);
+    }
+  }
+  DimAndBound dim_and_bound = {inferred_size, inferred_bound};
+  return dim_and_bound;
 }
 
 }  // namespace
@@ -423,8 +519,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     }
     for (int64_t dimension_number = 0; dimension_number < arg_shape->rank();
          ++dimension_number) {
-      if (arg_shape->dimensions(dimension_number) !=
-          shape->dimensions(dimension_number)) {
+      if (!CompatibleDimensionSizes(arg_shape->dimensions(dimension_number),
+                                    shape->dimensions(dimension_number))) {
         if (dimension_number == dimension) {
           continue;  // It's okay to differ in the dimension we're
                      // concatenating.
@@ -432,7 +528,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
         return InvalidArgument(
             "Cannot concatenate arrays that differ in dimensions other than "
             "the one being concatenated. Dimension %d in both shapes must be "
-            "equal: %s vs %s.",
+            "equal (or compatible): %s vs %s.",
             dimension_number, ShapeUtil::HumanString(*arg_shape),
             ShapeUtil::HumanString(*shape));
       }
@@ -440,20 +536,44 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     element_type = ShapeUtil::HigherPrecisionElementType(*shape, *arg_shape);
   }
 
-  std::vector<int64_t> new_dimensions(arg_shape->dimensions().begin(),
-                                      arg_shape->dimensions().end());
-  for (size_t i = 1; i < arg_shapes.size(); ++i) {
-    new_dimensions[dimension] += arg_shapes[i]->dimensions(dimension);
+  // Infer the most specific (size, bound) of all dimensions of the return type
+  int64_t rank = arg_shape->rank();
+  std::vector<int64_t> inferred_sizes(rank, Shape::kUnboundedSize);
+  std::vector<int64_t> inferred_bounds(rank, Shape::kUnboundedSize);
+  // Note: for the concatenate dimension, 0 should be the identity element:
+  // Any dim size can keep unchanged when concatenated with 0
+  inferred_sizes[dimension] = 0;
+
+  for (const Shape* shape : arg_shapes) {
+    for (int dim = 0; dim < rank; ++dim) {
+      DimAndBound inferred_dim_and_bound;
+
+      int64_t dimension_size = shape->dimensions(dim);
+      int64_t leftSize = inferred_sizes[dim];
+      int64_t rightSize = dimension_size;
+      int64_t leftBound = inferred_bounds[dim];
+      int64_t rightBound = shape->is_dynamic_dimension(dim)
+                               ? dimension_size
+                               : Shape::kUnboundedSize;
+      if (dim == dimension) {
+        inferred_dim_and_bound = InferConcatenatedDimAndBound(
+            leftSize, rightSize, leftBound, rightBound);
+      } else {
+        TF_ASSIGN_OR_RETURN(
+            inferred_dim_and_bound,
+            InferMostSpecificDimAndBound(dim, leftSize, rightSize, leftBound,
+                                         rightBound));
+      }
+      inferred_sizes[dim] = inferred_dim_and_bound.dimension;
+      inferred_bounds[dim] = inferred_dim_and_bound.bound;
+    }
   }
 
-  Shape result = ShapeUtil::MakeShape(element_type, new_dimensions);
-
-  // Set dynamic dimensions if any input has dynamic dimension.
-  for (const Shape* shape : arg_shapes) {
-    for (int64_t i = 0; i < shape->dimensions_size(); ++i) {
-      if (shape->is_dynamic_dimension(i)) {
-        result.set_dynamic_dimension(i, true);
-      }
+  Shape result = ShapeUtil::MakeShape(element_type, inferred_sizes);
+  for (int64_t i = 0; i < inferred_bounds.size(); ++i) {
+    if (!IsUnboundedDynamicSize(inferred_bounds[i]) ||
+        IsUnboundedDynamicSize(inferred_sizes[i])) {
+      result.set_dynamic_dimension(i, true);
     }
   }
   return result;
@@ -636,13 +756,17 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   std::vector<bool> is_dynamic(operand_shape.rank());
   for (int64_t i = 0; i < operand_shape.dimensions_size(); ++i) {
     const auto& p = padding_config.dimensions(i);
-    dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
-                    p.edge_padding_high() +
-                    std::max<int64_t>(operand_shape.dimensions(i) - 1, 0LL) *
-                        p.interior_padding();
-    if (dimensions[i] < 0) {
-      return InvalidArgument("Padding result in negative size for dimension %d",
-                             i);
+    if (operand_shape.is_unbounded_dynamic_dimension(i)) {
+      dimensions[i] = Shape::kUnboundedSize;
+    } else {
+      dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
+                      p.edge_padding_high() +
+                      std::max<int64_t>(operand_shape.dimensions(i) - 1, 0LL) *
+                          p.interior_padding();
+      if (dimensions[i] < 0) {
+        return InvalidArgument(
+            "Padding result in negative size for dimension %d", i);
+      }
     }
     is_dynamic[i] = operand_shape.is_dynamic_dimension(i);
   }
@@ -1400,17 +1524,19 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   Shape output_shape_for_mean_and_var = ShapeUtil::MakeShape(
       operand_shape.element_type(), {feature_count}, {dynamic_feature});
 
-  if (ShapeUtil::GetDimension(offset_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(offset_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of offset factor should be the same as feature count,"
+        "The size of offset factor should be compatible with feature count, "
         "but the size of offset factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(offset_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(scale_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(scale_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of scale factor should be the same as feature count,"
+        "The size of scale factor should be compatible with feature count, "
         "but the size of scale factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
@@ -1527,36 +1653,38 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   const int64_t feature_count = operand_shape.dimensions(feature_index);
-  Shape output_shape_for_mean_and_var =
-      ShapeUtil::MakeShape(operand_shape.element_type(), {feature_count});
 
-  if (ShapeUtil::GetDimension(offset_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(offset_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of offset factor should be the same as feature count,"
+        "The size of offset factor should be compatible with feature count, "
         "but the size of offset factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(offset_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(scale_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(scale_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of scale factor should be the same as feature count,"
+        "The size of scale factor should be compatible with feature count, "
         "but the size of scale factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(mean_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(mean_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of mean should be the same as feature count,"
+        "The size of mean should be compatible with feature count, "
         "but the size of mean is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(mean_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(variance_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(variance_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of variance should be the same as feature count,"
+        "The size of variance should be compatible with feature count, "
         "but the size of variance is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(variance_shape, 0), feature_count);
@@ -1676,29 +1804,32 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   const int64_t feature_count = operand_shape.dimensions(feature_index);
+  bool dynamic_feature = operand_shape.is_dynamic_dimension(feature_index);
+  Shape feature_shape = ShapeUtil::MakeShape(
+      operand_shape.element_type(), {feature_count}, {dynamic_feature});
 
-  Shape feature_shape =
-      ShapeUtil::MakeShape(operand_shape.element_type(), {feature_count});
-
-  if (ShapeUtil::GetDimension(mean_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(mean_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of mean should be the same as feature count,"
+        "The size of mean should be compatible with feature count, "
         "but the size of offset factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(mean_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(scale_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(scale_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of scale factor should be the same as feature count,"
+        "The size of scale factor should be compatible with feature count, "
         "but the size of scale factor is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(scale_shape, 0), feature_count);
   }
 
-  if (ShapeUtil::GetDimension(var_shape, 0) != feature_count) {
+  if (!CompatibleDimensionSizes(ShapeUtil::GetDimension(var_shape, 0),
+                                feature_count)) {
     return InvalidArgument(
-        "The size of variance should be the same as feature count,"
+        "The size of variance should be compatible with feature count, "
         "but the size of variance is %d "
         "and the feature count is %d.",
         ShapeUtil::GetDimension(var_shape, 0), feature_count);
@@ -1706,11 +1837,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   // Verify operand_shape and output_grad_shape have same bounds.
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (ShapeUtil::GetDimension(operand_shape, i) !=
-        ShapeUtil::GetDimension(output_grad_shape, i)) {
+    if (!CompatibleDimensionSizes(
+            ShapeUtil::GetDimension(operand_shape, i),
+            ShapeUtil::GetDimension(output_grad_shape, i))) {
       return InvalidArgument(
-          "The bounds of operand shape should be the same as output_grad's,"
-          "but the bound of operand_shape at dimension %d is %d "
+          "The bounds of operand shape should be compatible with "
+          "output_grad's, but the bound of operand_shape at dimension %d is %d "
           "and the bound of output_grad_shape is %d.",
           i, ShapeUtil::GetDimension(operand_shape, i),
           ShapeUtil::GetDimension(output_grad_shape, i));
@@ -1922,8 +2054,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         dnums.ShortDebugString());
   }
 
-  Shape base_shape =
-      ShapeUtil::MakeShape(lhs.element_type(), input_spatial_dims);
+  std::vector<bool> dynamic_dimensions(input_spatial_dims.size());
+  for (auto it = input_spatial_dims.begin(); it != input_spatial_dims.end();
+       ++it) {
+    dynamic_dimensions[it - input_spatial_dims.begin()] =
+        IsUnboundedDynamicSize(*it);
+  }
+  Shape base_shape = ShapeUtil::MakeShape(
+      lhs.element_type(), input_spatial_dims, dynamic_dimensions);
   TF_ASSIGN_OR_RETURN(
       Shape window_output_shape,
       InferWindowOutputShape(base_shape, window, lhs.element_type()));
@@ -3209,6 +3347,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64_t> new_sizes, int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "reshape"));
 
+  if (operand.is_unbounded_dynamic() ||
+      absl::c_any_of(new_sizes, [](int64_t size) {
+        return size == Shape::kUnboundedSize;
+      })) {
+    return InvalidArgument(
+        "Reshaping with unbounded dimensions is not supported.");
+  }
+
   Shape inferred_shape =
       ShapeUtil::MakeShape(operand.element_type(), new_sizes);
   VLOG(3) << "Reshape inferred shape: "
@@ -3380,10 +3526,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(ExpectArray(max, "clamp max"));
 
   if (!ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
-      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand)) {
-    return InvalidArgument(
-        "Clamp with different shapes: %s, %s, %s.", ShapeUtil::HumanString(min),
-        ShapeUtil::HumanString(operand), ShapeUtil::HumanString(max));
+      !ShapeUtil::CompatibleIgnoringFpPrecision(max, operand) ||
+      !ShapeUtil::CompatibleIgnoringFpPrecision(min, max)) {
+    return InvalidArgument("Clamp with incompatible shapes: %s, %s, %s.",
+                           ShapeUtil::HumanString(min),
+                           ShapeUtil::HumanString(operand),
+                           ShapeUtil::HumanString(max));
   }
   return operand;
 }

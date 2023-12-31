@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -36,7 +37,9 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
@@ -45,6 +48,8 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+using ::tensorflow::test::TensorEq;
+using ::testing::ElementsAre;
 
 TEST(IfrtServingExecutableTest, Basic) {
   // Create test input module
@@ -72,21 +77,19 @@ TEST(IfrtServingExecutableTest, Basic) {
                                    client,
                                    tensorflow::IdentityShapeRepresentationFn());
 
-  tensorflow::Tensor x(tensorflow::DT_INT32, tensorflow::TensorShape({1, 3}));
-  tensorflow::Tensor y(tensorflow::DT_INT32, tensorflow::TensorShape({3, 1}));
-  for (int i = 0; i < 3; ++i) {
-    x.flat<int32_t>()(i) = i + 1;
-    y.flat<int32_t>()(i) = i + 1;
-  }
-
+  auto x = tensorflow::test::AsTensor<int32_t>({1, 2, 3},
+                                               tensorflow::TensorShape({1, 3}));
+  auto y = tensorflow::test::AsTensor<int32_t>({1, 2, 3},
+                                               tensorflow::TensorShape({3, 1}));
   std::vector<tensorflow::Tensor> inputs{x, y};
+
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           executable.Execute(absl::MakeSpan(inputs)));
 
-  ASSERT_EQ(result.size(), 1);
-  ASSERT_EQ(result[0].dtype(), tensorflow::DT_INT32);
-  ASSERT_EQ(result[0].shape(), tensorflow::TensorShape({1, 1}));
-  ASSERT_EQ(result[0].flat<int32_t>()(0), 14);
+  const auto expected_out = tensorflow::test::AsTensor<int32_t>(
+      {14}, tensorflow::TensorShape({1, 1}));
+
+  EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
 }
 
 TEST(IfrtServingExecutableTest, MultipleShapes) {
@@ -115,26 +118,21 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
                                    client,
                                    tensorflow::IdentityShapeRepresentationFn());
 
-  constexpr int kDim1 = 3;
-  tensorflow::Tensor x1(tensorflow::DT_INT32,
-                        tensorflow::TensorShape({1, kDim1}));
-  tensorflow::Tensor y1(tensorflow::DT_INT32,
-                        tensorflow::TensorShape({kDim1, 1}));
-  for (int i = 0; i < kDim1; ++i) {
-    x1.flat<int32_t>()(i) = i + 1;
-    y1.flat<int32_t>()(i) = i + 1;
-  }
+  auto x1 = tensorflow::test::AsTensor<int32_t>(
+      {1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto y1 = tensorflow::test::AsTensor<int32_t>(
+      {1, 2, 3}, tensorflow::TensorShape({3, 1}));
+  const auto expected_out1 = tensorflow::test::AsTensor<int32_t>(
+      {14}, tensorflow::TensorShape({1, 1}));
   std::vector<tensorflow::Tensor> inputs1{x1, y1};
 
-  constexpr int kDim2 = 4;
-  tensorflow::Tensor x2(tensorflow::DT_INT32,
-                        tensorflow::TensorShape({1, kDim2}));
-  tensorflow::Tensor y2(tensorflow::DT_INT32,
-                        tensorflow::TensorShape({kDim2, 1}));
-  for (int i = 0; i < kDim2; ++i) {
-    x2.flat<int32_t>()(i) = i + 1;
-    y2.flat<int32_t>()(i) = i + 1;
-  }
+  auto x2 = tensorflow::test::AsTensor<int32_t>(
+      {1, 2, 3, 4}, tensorflow::TensorShape({1, 4}));
+  auto y2 = tensorflow::test::AsTensor<int32_t>(
+      {1, 2, 3, 4}, tensorflow::TensorShape({4, 1}));
+  const auto expected_out2 = tensorflow::test::AsTensor<int32_t>(
+      {30}, tensorflow::TensorShape({1, 1}));
+
   std::vector<tensorflow::Tensor> inputs2{x2, y2};
 
   std::vector<tensorflow::Tensor> outputs1, outputs2;
@@ -144,17 +142,141 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
     TF_ASSERT_OK_AND_ASSIGN(outputs2,
                             executable.Execute(absl::MakeSpan(inputs2)));
   }
-  ASSERT_EQ(outputs1.size(), 1);
-  ASSERT_EQ(outputs1[0].dtype(), tensorflow::DT_INT32);
-  ASSERT_EQ(outputs1[0].shape(), tensorflow::TensorShape({1, 1}));
-  ASSERT_EQ(outputs1[0].flat<int32_t>()(0), 14);
-
-  ASSERT_EQ(outputs2.size(), 1);
-  ASSERT_EQ(outputs2[0].dtype(), tensorflow::DT_INT32);
-  ASSERT_EQ(outputs2[0].shape(), tensorflow::TensorShape({1, 1}));
-  ASSERT_EQ(outputs2[0].flat<int32_t>()(0), 30);
 
   ASSERT_EQ(executable.num_executables(), 2);
+
+  EXPECT_THAT(outputs1, ElementsAre(TensorEq(expected_out1)));
+
+  EXPECT_THAT(outputs2, ElementsAre(TensorEq(expected_out2)));
+}
+
+TEST(IfrtServingExecutableTest, Spmd) {
+  // Create test input module
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/core/tfrt/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/spmd_executable.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+
+  ASSERT_TRUE(mlir_module);
+
+  // Create contexts required for the compiler execution.
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
+                                   client,
+                                   tensorflow::IdentityShapeRepresentationFn());
+
+  auto x = tensorflow::test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
+                                               tensorflow::TensorShape({4, 2}));
+  auto y = tensorflow::test::AsTensor<int32_t>({11, 12, 13, 14, 15, 16, 17, 18},
+                                               tensorflow::TensorShape({4, 2}));
+
+  auto z = tensorflow::test::AsTensor<int32_t>({21, 22, 23, 24, 25, 26, 27, 28},
+                                               tensorflow::TensorShape({4, 2}));
+
+  const auto expected_out = tensorflow::test::AsTensor<int32_t>(
+      {33, 36, 39, 42, 45, 48, 51, 54}, tensorflow::TensorShape({4, 2}));
+
+  std::vector<tensorflow::Tensor> inputs{x, y, z};
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          executable.Execute(absl::MakeSpan(inputs)));
+
+  EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
+}
+
+TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
+  // Create test input module
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/core/tfrt/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/spmd_executable_two_returns.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+
+  ASSERT_TRUE(mlir_module);
+
+  // Create contexts required for the compiler execution.
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
+                                   client,
+                                   tensorflow::IdentityShapeRepresentationFn());
+
+  auto x = tensorflow::test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
+                                               tensorflow::TensorShape({4, 2}));
+  auto y = tensorflow::test::AsTensor<int32_t>({11, 12, 13, 14, 15, 16, 17, 18},
+                                               tensorflow::TensorShape({4, 2}));
+
+  auto z = tensorflow::test::AsTensor<int32_t>({21, 22, 23, 24, 25, 26, 27, 28},
+                                               tensorflow::TensorShape({4, 2}));
+
+  const auto expected_out0 = tensorflow::test::AsTensor<int32_t>(
+      {33, 36, 39, 42, 45, 48, 51, 54}, tensorflow::TensorShape({4, 2}));
+  const auto expected_out1 = tensorflow::test::AsTensor<int32_t>(
+      {20, 20, 20, 20, 20, 20, 20, 20}, tensorflow::TensorShape({4, 2}));
+
+  std::vector<tensorflow::Tensor> inputs{x, y, z};
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          executable.Execute(absl::MakeSpan(inputs)));
+
+  EXPECT_THAT(result,
+              ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
+}
+
+TEST(IfrtServingExecutableTest, NoReturn) {
+  // Create test input module
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/core/tfrt/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/executable_no_return.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context);
+
+  ASSERT_TRUE(mlir_module);
+
+  // Create contexts required for the compiler execution.
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  IfrtServingExecutable executable("test", "main", std::move(mlir_module),
+                                   client,
+                                   tensorflow::IdentityShapeRepresentationFn());
+
+  auto x = tensorflow::test::AsTensor<int32_t>({1, 2, 3},
+                                               tensorflow::TensorShape({1, 3}));
+  auto y = tensorflow::test::AsTensor<int32_t>({1, 2, 3},
+                                               tensorflow::TensorShape({3, 1}));
+  std::vector<tensorflow::Tensor> inputs{x, y};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          executable.Execute(absl::MakeSpan(inputs)));
+
+  ASSERT_EQ(result.size(), 0);
 }
 
 }  // namespace

@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -49,6 +51,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
 
   tsl::Status Trace(Stream* stream,
                     absl::AnyInvocable<tsl::Status()> function) override;
+
+  tsl::Status Barrier(StreamExecutor* executor) override;
 
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                      const Kernel& kernel, const KernelArgs& args) override;
@@ -124,6 +128,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
 
  private:
   using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
+
+  using NoOpKernel = TypedKernel<>;
 
   // A signature of a device kernels updating conditional handle(s).
   using SetIfConditionKernel =
@@ -205,21 +211,30 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
       absl::Span<const ConditionBuilder> builders);
 
   tsl::Status CreateConditionalCommand(
-      ConditionType type, SetConditionFn set_condition,
+      StreamExecutor* executor, ConditionType type,
+      SetConditionFn set_condition,
       absl::Span<const ConditionBuilder> builders);
 
-  // TODO(ezhulenev): Currently we serialize all Gpu nodes by adding a
-  // dependency between all nodes added to a command buffer. We need a
-  // concept of a barrier at a command buffer level.
-  Dependencies GetDependencies();
+  Dependencies GetBarrier();
+
+  // Returns loaded no-op kernel used as a barrier, or loads it on a given
+  // stream executor. Loaded kernel owned by a current command buffer.
+  tsl::StatusOr<NoOpKernel*> GetNoOpKernel(StreamExecutor* executor);
+
+  // Recursively disable all nodes corresponding to barriers (including nested
+  // conditional command buffers). This is work around the fact that we can't
+  // use empty nodes inside conditional CUDA graphs and instead we add no-op
+  // kernel nodes, however large number of no-op kernels impacts performance.
+  tsl::Status DisableBarriersExecution(GpuGraphExecHandle exec);
+
+  // Launches CUDA kernels with packed arguments.
+  tsl::Status LaunchWithPackedArgs(
+      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
+      const KernelArgsPackedArrayBase& packed_args);
 
   // Returns OK status if command buffer is not finalized and it is still
   // possible to add new commands to it, otherwise returns internal error.
   tsl::Status CheckNotFinalized();
-
-  // Returns OK status if command buffer is primary, otherwise returns internal
-  // error.
-  tsl::Status CheckPrimary();
 
   // Returns OK status if the number of command buffers is equal to the expected
   // one, otherwise returns internal error.
@@ -244,9 +259,18 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   GpuGraphExecHandle exec_ = nullptr;  // owned if `is_owned_graph_exec_`
   bool is_owned_graph_exec_ = true;    // ownership of `is_owned_graph_exec_`
 
-  // Handles to graph nodes corresponding to command buffer commands. Owned by
-  // the `graph_` instance.
+  // Handle of a graph node that acts as a barrier for all newly added commands.
+  GpuGraphNodeHandle barrier_ = nullptr;
+
+  // Handles to load bearing graph nodes (kernel, memcpy, etc.) corresponding to
+  // command buffer commands and also to no-op nodes corresponding to barriers
+  // (nodes defining DAG structure). Owned by the `graph_` instance.
   std::vector<GpuGraphNodeHandle> nodes_;
+
+  // Handles to no-op graph nodes corresponding to barriers that define nodes
+  // execution order. Can be nullptr if regular node acts as a barrier. Owned by
+  // the `graph_` instance.
+  std::vector<GpuGraphNodeHandle> barriers_;
 
   // Command buffers for conditional nodes in the Gpu graph. Underlying Gpu
   // graphs owned by the `graph_` instance.
@@ -260,12 +284,19 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
     // Index points to the graph node inside `nodes_` that will be updated next.
     int64_t node_idx = 0;
 
+    // Index points to the barrier node inside `barriers_` that will be updated
+    // on a next call to `Barrier()`.
+    int64_t barrier_idx = 0;
+
     // Index points to the conditional command buffers that will be updated next
     // when we'll be updating next conditional command (If, Case, While).
     int64_t conditional_idx = 0;
   };
 
   UpdateState update_state_;
+
+  // Loaded instance of a no-op kernel used as command buffer barrier.
+  std::unique_ptr<NoOpKernel> noop_kernel_;
 };
 
 template <typename... Params, typename... Args>
@@ -280,6 +311,10 @@ inline tsl::Status GpuCommandBuffer::Launch(
 //===----------------------------------------------------------------------===//
 // Implementation details device kernels required by GpuCommandBuffer.
 //===----------------------------------------------------------------------===//
+
+// A no-op kernel required for creating barriers inside command buffers because
+// empty nodes are not supported within conditional CUDA graphs (in CUDA 12.3).
+void* GetNoOpKernel();
 
 // See `cuda_conditional_kernels.cu.cc` for CUDA implementations. These are
 // various kernels that update Gpu conditionals based on the device memory

@@ -141,6 +141,9 @@ class DataServiceDispatcherImpl {
   // journal to restore the dispatcher's state.
   Status Start();
 
+  // Stops the dispatcher. After stopping, RPCs should return without blocking.
+  void Stop();
+
   // Returns the number of active iterations.
   size_t NumActiveIterations() TF_LOCKS_EXCLUDED(mu_);
 
@@ -307,7 +310,7 @@ class DataServiceDispatcherImpl {
   // Records that a split was produced by a call to `GetSplit`.
   Status RecordSplitProduced(int64_t iteration_id, int64_t repetition,
                              int64_t split_provider_index, bool finished)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
   Status Apply(const Update& update) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, but doesn't update the journal. Only meant to be
@@ -346,6 +349,9 @@ class DataServiceDispatcherImpl {
   Env* env_;
 
   mutable mutex mu_;
+  // Uses a separate mutex for `GetSplit` requests. `GetSplit` may be blocking.
+  // Locking `mu_` in `GetSplit` could block all other RPCs.
+  mutable mutex get_split_mu_;
   bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
 

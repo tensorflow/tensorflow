@@ -104,9 +104,12 @@ class MemorySpaceAssignmentRepacker {
   // times, size, and the initial offset. After repacking, if the repacking was
   // successful and the allocations were modified, the offset field holds the
   // new offset. To support aliased allocations, AllocationBlock also includes a
-  // vector of AllocationBlock pointers, called colocations. All AllocationBlock
-  // objects within the colocations must get the same offset. The id should be
-  // unique and is used to ensure determinism for comparison tie-breaker.
+  // pointer to the next colocated AllocationBlock called next_colocated. The
+  // colocations form a circular singly-linked list. Therefore, next_colocated
+  // should never be a nullptr (it should point to itself for AllocationBlocks
+  // without any other colocations). All AllocationBlock objects within the
+  // colocations must get the same offset. The id should be unique and is used
+  // to ensure determinism for comparison tie-breaker.
   //
   // Each AllocationBlock can be treated as an allocation that requires size
   // space from start_time to end_time. However, some allocations are really
@@ -120,30 +123,22 @@ class MemorySpaceAssignmentRepacker {
     int64_t offset;
     int64_t initial_offset;
     int64_t id;
-    std::vector<AllocationBlock*> colocations;
+    AllocationBlock* next_colocated;
 
     // Optional data structures that are used to improve repacking, when an
     // allocation is sliced, e.g., from a sliced prefetch.
     std::optional<SlicedAllocationData> original_slice_data;
     std::optional<SlicedAllocationData> repacked_slice_data;
 
-    std::string ToString() const {
-      std::string original_slicing_str;
-      if (original_slice_data.has_value()) {
-        original_slicing_str = absl::StrCat("; original_slice_data: ",
-                                            original_slice_data->ToString());
-      }
-      std::string repacked_slicing_str;
-      if (repacked_slice_data.has_value()) {
-        repacked_slicing_str = absl::StrCat("; repacked_slice_data: ",
-                                            repacked_slice_data->ToString());
-      }
-      return absl::StrCat("[", inclusive_start_time, ", ", end_time,
-                          "]; size: ", size, "; offset: ", offset,
-                          "; initial offset: ", initial_offset,
-                          "; # colocations: ", colocations.size(),
-                          original_slicing_str, repacked_slicing_str);
-    }
+    std::string ToString() const;
+
+    // Returns the number of AllocationBlocks colocated with this (including
+    // this AllocationBlock).
+    int GetColocationsCount() const;
+
+    // Returns the AllocationBlocks colocated with this (including this
+    // AllocationBlock).
+    std::vector<AllocationBlock*> GetColocations();
 
     // This is required by BufferIntervalCompare as a tie breaker. Use a unique
     // and deterministic id.

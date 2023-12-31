@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/command_buffer_scheduling.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -34,18 +35,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
-
-// TODO(ezhulenev): We should use debug options to get this flag.
-static constexpr int kMinNumCommands = 2;
 
 using CommandBuffer = CommandBufferScheduling::CommandBuffer;
 using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
@@ -58,24 +60,29 @@ static bool IsConstant(const HloInstruction* hlo) {
   return hlo->opcode() == HloOpcode::kConstant;
 }
 
+static bool IsParameter(const HloInstruction* hlo) {
+  return hlo->opcode() == HloOpcode::kParameter;
+}
+
 // Returns true if instruction is no-op at run time and doesn't have a
 // corresponding Thunk or Command (metadata only operation).
 static bool IsNoOp(const HloInstruction* hlo) {
-  return HloPredicateIsOp<HloOpcode::kParameter, HloOpcode::kBitcast,
-                          HloOpcode::kTuple, HloOpcode::kGetTupleElement>(hlo);
+  return HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kTuple,
+                          HloOpcode::kGetTupleElement>(hlo);
 };
 
 // Returns true if HLO instruction has a corresponding command buffer command.
 static bool IsCommand(const HloInstruction* hlo,
                       const CommandBufferConfig& config);
 
-// Returns true if HLO computation can executed as a command buffer.
+// Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
                       const CommandBufferConfig& config) {
-  return absl::c_all_of(
-      computation->instructions(), [&](const HloInstruction* inst) {
-        return IsNoOp(inst) || IsConstant(inst) || IsCommand(inst, config);
-      });
+  return absl::c_all_of(computation->instructions(),
+                        [&](const HloInstruction* inst) {
+                          return IsNoOp(inst) || IsConstant(inst) ||
+                                 IsParameter(inst) || IsCommand(inst, config);
+                        });
 }
 
 // This is a template to define pattern matching functions for HLO instructions
@@ -83,45 +90,31 @@ static bool IsCommand(const HloComputation* computation,
 template <HloOpcode op>
 static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 
-// Fusions compiled to device kernels (or lowered to custom kernels) which
-// always have a corresponding command buffer command.
-static bool IsCommand(const HloFusionInstruction* fusion,
-                      const CommandBufferConfig& config) {
-  // Certain kinds of fusions have special emitters that we do not support when
-  // emitting from HLO.
-  auto unsupported = [](const HloInstruction* inst) {
-    return inst->opcode() == HloOpcode::kDynamicUpdateSlice;
-  };
-
-  return config.contains(DebugOptions::FUSION) &&
-         !absl::c_any_of(fusion->called_computation()->instructions(),
-                         unsupported);
-}
-
-// Sort operations lowered to memcpy and device kernels and we have a
-// corresponding command buffer commands for them.
-static bool IsCommand(const HloSortInstruction* sort,
-                      const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::FUSION);
-}
-
 // While loops can be executed inside command buffers only if condition and body
 // regions can be executed as command buffers.
 template <>
 bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
                                   const CommandBufferConfig& config) {
   return config.contains(DebugOptions::WHILE) &&
-         IsCommand(hlo->while_condition(), config) &&
-         IsCommand(hlo->while_body(), config);
+         IsCommand(hlo->while_body(), config) &&
+         IsCommand(hlo->while_condition(), config);
+}
+
+static bool IsCommand(const HloCustomCallInstruction* hlo,
+                      const CommandBufferConfig& config) {
+  return config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo);
 }
 
 static bool IsCommand(const HloInstruction* hlo,
                       const CommandBufferConfig& config) {
   if (auto* fusion = DynCast<HloFusionInstruction>(hlo))
-    return IsCommand(fusion, config);
+    return config.contains(DebugOptions::FUSION);
 
   if (auto* sort = DynCast<HloSortInstruction>(hlo))
-    return IsCommand(sort, config);
+    return config.contains(DebugOptions::FUSION);
+
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(hlo))
+    return IsCommand(custom_call, config);
 
   if (hlo->opcode() == HloOpcode::kWhile)
     return IsCommand<HloOpcode::kWhile>(hlo, config);
@@ -159,9 +152,9 @@ struct Accumulator {
 std::vector<HloInstructionSequence>
 CommandBufferScheduling::CollectCommandBufferSequences(
     const HloInstructionSequence inst_sequence,
-    const CommandBufferConfig& config) {
-  auto start_new_sequence = [](Accumulator* acc) {
-    if (acc->num_commands_in_current_seq >= kMinNumCommands) {
+    const CommandBufferConfig& config, int32_t min_num_commands) {
+  auto start_new_sequence = [&](Accumulator* acc) {
+    if (acc->num_commands_in_current_seq >= std::max(1, min_num_commands)) {
       RemoveTrailingNoOps(acc->current_seq);
       acc->sequences.push_back(acc->current_seq);
     }
@@ -190,27 +183,41 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   return start_new_sequence(&acc)->sequences;
 }
 
-// This function moves kParameter instructions in a computation to the beginning
-// of the computation. This simplifies the construction of command buffer
-// computations because we don't need to consider kParameter's as intermediates.
-void CommandBufferScheduling::MoveParametersToFront(
+// This function moves kParameter and kConstant instructions in a computation to
+// the beginning of the computation. This simplifies the construction of command
+// buffer computations because we don't need to deal with parameters and
+// constants that have users outside of a command buffer.
+Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
     HloComputation* computation) {
+  HloInstructionSequence new_sequence;
   HloSchedule& schedule = computation->parent()->schedule();
   HloInstructionSequence& sequence = schedule.GetOrCreateSequence(computation);
-  std::vector<HloInstruction*> new_sequence;
+
   for (HloInstruction* inst : sequence.instructions()) {
-    if (inst->opcode() == HloOpcode::kParameter) {
+    if (IsParameter(inst) || IsConstant(inst)) {
       new_sequence.push_back(inst);
+
+      // Because we move instruction to the front of the computation we can't
+      // have any control predecessors, however silently dropping them is unsafe
+      // as we can have transitive dependencies that define schedule order, so
+      // we forward control predecessors to all users.
+      for (HloInstruction* control_predecessor : inst->control_predecessors()) {
+        for (HloInstruction* user : inst->users()) {
+          TF_RETURN_IF_ERROR(control_predecessor->AddControlDependencyTo(user));
+        }
+      }
+      TF_RETURN_IF_ERROR(inst->DropAllControlDeps());
     }
   }
 
   for (HloInstruction* inst : sequence.instructions()) {
-    if (inst->opcode() != HloOpcode::kParameter) {
+    if (!IsParameter(inst) && !IsConstant(inst)) {
       new_sequence.push_back(inst);
     }
   }
 
   schedule.set_sequence(computation, new_sequence);
+  return OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -318,7 +325,7 @@ StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 // Rewrites original computation into command buffer call
 //===----------------------------------------------------------------------===//
 
-Status CommandBufferScheduling::RewriteCommandBuffer(
+StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     HloComputation* parent, const HloInstructionSequence& seq,
     CommandBuffer command_buffer) {
   if (command_buffer.results.empty())
@@ -393,8 +400,15 @@ Status CommandBufferScheduling::RewriteCommandBuffer(
     // buffer, forward the dependency to the command buffer call instead.
     for (HloInstruction* predecessor : inst->control_predecessors()) {
       if (auto it = inst_mapping.find(predecessor); it != inst_mapping.end()) {
+        // If predecessor mapped to a parameter instruction it means that we
+        // need to forward control dependency to a call operation, otherwise
+        // we add control dependency between commands in the command buffer.
         HloInstruction* cmd_predecessor = it->second;
-        TF_RETURN_IF_ERROR(cmd_predecessor->AddControlDependencyTo(cmd_inst));
+        if (IsParameter(cmd_predecessor)) {
+          TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call));
+        } else {
+          TF_RETURN_IF_ERROR(cmd_predecessor->AddControlDependencyTo(cmd_inst));
+        }
       } else {
         TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(call));
       }
@@ -418,10 +432,15 @@ Status CommandBufferScheduling::RewriteCommandBuffer(
     TF_RETURN_IF_ERROR(parent->RemoveInstruction(seq.instructions()[i]));
   }
 
-  return OkStatus();
+  return computation;
 }
 
 //===----------------------------------------------------------------------===//
+
+CommandBufferScheduling::CommandBufferScheduling(int32_t gpu_toolkit_version,
+                                                 int32_t gpu_driver_version)
+    : gpu_toolkit_version_(gpu_toolkit_version),
+      gpu_driver_version_(gpu_driver_version) {}
 
 StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
@@ -433,27 +452,73 @@ StatusOr<bool> CommandBufferScheduling::Run(
   // buffers too early can impact async operations scheduling.
   if (!module->has_schedule()) return InternalError("module is not scheduled");
 
+  const DebugOptions& debug_options = module->config().debug_options();
+
   CommandBufferConfig config;
-  for (auto cmd_type :
-       module->config().debug_options().xla_gpu_enable_command_buffer()) {
+  for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     config.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
 
-  // TODO(b/315874495): We should traverse all computations in topological order
-  // to discover command buffers inside nested control flow computations.
-  HloComputation* entry = module->entry_computation();
-  MoveParametersToFront(entry);
+  // Erase command buffer cmd types that are not supported by the gpu runtime.
+  static constexpr auto kRequireConditionals = {DebugOptions::WHILE};
+  static constexpr auto kRequireTracing = {DebugOptions::CUBLAS,
+                                           DebugOptions::CUDNN};
 
-  std::vector<HloInstructionSequence> sequences =
-      CollectCommandBufferSequences(module->schedule().sequence(entry), config);
+  auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
+    for (auto cmd : cmds) {
+      if (config.erase(cmd)) {
+        LOG(WARNING) << "Removed command buffer support for "
+                     << DebugOptions::CommandBufferCmdType_Name(cmd)
+                     << " as it's not supported with gpu toolkit version "
+                     << gpu_toolkit_version_ << " and driver version "
+                     << gpu_driver_version_
+                     << ". This might negatively impact peformance. To enable "
+                     << DebugOptions::CommandBufferCmdType_Name(cmd)
+                     << " support in command buffers use cuda-compat package: "
+#if defined(PLATFORM_GOOGLE)
+                     << "set CUDA_COMPAT_LOAD=1 env variable.";
+#else
+                     << "https://docs.nvidia.com/deploy/cuda-compatibility/.";
+#endif
+      }
+    }
+  };
 
-  for (const HloInstructionSequence& seq : sequences) {
-    TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
-                        PrepareCommandBuffer(seq));
-    TF_RETURN_IF_ERROR(
-        RewriteCommandBuffer(entry, seq, std::move(command_buffer)));
+  if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
+    erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
+    erase(kRequireConditionals);  // on-device control flow
   }
 
+  auto order = module->MakeComputationPostOrder();
+  std::reverse(order.begin(), order.end());
+  absl::flat_hash_set<HloComputation*> processed_command_buffers;
+
+  for (HloComputation* comp : order) {
+    if (comp->IsFusionComputation() || processed_command_buffers.contains(comp))
+      continue;
+
+    TF_RETURN_IF_ERROR(MoveParametersAndConstantsToFront(comp));
+
+    std::vector<HloInstructionSequence> sequences =
+        CollectCommandBufferSequences(
+            module->schedule().sequence(comp), config,
+            debug_options.xla_gpu_graph_min_graph_size());
+
+    for (const HloInstructionSequence& seq : sequences) {
+      TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
+                          PrepareCommandBuffer(seq));
+      TF_ASSIGN_OR_RETURN(
+          HloComputation * command_buffer_computation,
+          RewriteCommandBuffer(comp, seq, std::move(command_buffer)));
+
+      // All computations reachable from a command buffer computation are nested
+      // command buffers (i.e. body computations attached to a while operation).
+      for (HloComputation* called :
+           command_buffer_computation->MakeEmbeddedComputationsList()) {
+        processed_command_buffers.insert(called);
+      }
+    }
+  }
   TF_RETURN_IF_ERROR(module->schedule().Update());
 
   return true;

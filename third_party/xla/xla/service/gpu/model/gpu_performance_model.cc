@@ -335,6 +335,7 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 GpuPerformanceModel::EstimateRunTimeForInstruction(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
     const GpuPerformanceModelOptions& config) {
+  VLOG(8) << "EstimateRunTimeForInstruction: " << instr->name();
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   int64_t flops = cost_analysis->flop_count(*instr);
@@ -367,7 +368,7 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
     LOG(INFO) << "FLOPs: " << flops;
     LOG(INFO) << "Bytes read: " << bytes_read;
     LOG(INFO) << "Bytes written: " << bytes_written;
-    LOG(INFO) << "Num threads:" << num_threads;
+    LOG(INFO) << "Num threads: " << num_threads;
     LOG(INFO) << "Compute time: " << compute_time;
     LOG(INFO) << "Input read time: " << read_time;
     LOG(INFO) << "Output write time: " << write_time;
@@ -494,7 +495,7 @@ float GetSharedUtilization(const GpuHloCostAnalysis* cost_analysis,
   // TODO(jreiffers): We should be checking each operand.
   bool coalesced =
       config.consider_coalescing
-          ? IsReadCoalesced(fusion_analysis, producer, fused_consumer)
+          ? IsReadCoalescedHeuristic(fusion_analysis, producer, fused_consumer)
           : true;
   for (int i = 0; i < producer->operand_count(); ++i) {
     // Information about data read taking into account utilization.
@@ -584,10 +585,10 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     int64_t n_bytes_net =
         std::min(producer_runtime.bytes_written, n_bytes_total);
 
-    bool coalesced =
-        config.consider_coalescing
-            ? IsReadCoalesced(analysis_unfused, /*producer=*/fused_consumer)
-            : true;
+    bool coalesced = config.consider_coalescing
+                         ? IsReadCoalescedHeuristic(analysis_unfused,
+                                                    /*producer=*/fused_consumer)
+                         : true;
     auto read_time_unfused = ReadTime(
         *device_info, launch_dimensions_unfused.num_blocks(), n_bytes_net,
         n_bytes_total, fused_consumer->shape().element_type(), coalesced,
@@ -608,13 +609,16 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     float utilization_by_this_consumer, const GpuHloCostAnalysis* cost_analysis,
     const std::optional<HloFusionAnalysis>& fusion_analysis,
     const GpuPerformanceModelOptions& config) {
+  VLOG(8) << "EstimateRunTimeForFusion, producer: " << producer->name()
+          << " consumer: " << consumer->name();
   const se::DeviceDescription* device_info = cost_analysis->device_info_;
 
   int64_t fused_flops = producer_runtime.flops * utilization_by_this_consumer +
                         consumer_runtime.flops;
 
+  int64_t num_threads = launch_dimensions.launch_bound();
   absl::Duration compute_time =
-      ComputeTime(*device_info, fused_flops, launch_dimensions.launch_bound());
+      ComputeTime(*device_info, fused_flops, num_threads);
 
   absl::flat_hash_set<const HloInstruction*> fusion_operands;
   for (auto* operand : producer->operands()) {
@@ -636,14 +640,23 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     int64_t n_bytes_total = std::llround(operand_size * operand_utilization);
     int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
 
-    bool coalesced = config.consider_coalescing
-                         ? IsReadCoalesced(fusion_analysis, producer, consumer)
-                         : true;
+    bool coalesced =
+        config.consider_coalescing
+            ? IsReadCoalescedHeuristic(fusion_analysis, producer, consumer)
+            : true;
 
     read_time +=
         ReadTime(*device_info, launch_dimensions.num_blocks(), n_bytes_net,
                  n_bytes_total, operand->shape().element_type(), coalesced,
                  config.first_read_from_dram);
+  }
+
+  if (VLOG_IS_ON(8)) {
+    LOG(INFO) << "Fused FLOPs: " << fused_flops;
+    LOG(INFO) << "Num threads: " << num_threads;
+    LOG(INFO) << "Compute time: " << compute_time;
+    LOG(INFO) << "Input read time: " << read_time;
+    LOG(INFO) << "Output write time: " << consumer_runtime.write_time;
   }
 
   return std::max(compute_time, read_time + consumer_runtime.write_time);

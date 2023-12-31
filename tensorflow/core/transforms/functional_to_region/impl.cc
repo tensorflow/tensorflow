@@ -197,7 +197,7 @@ static DictionaryAttr PreserveFunctionAttributes(GraphFuncOp func) {
   // Propagate tf.* attributes.
   // TODO(jeffniu): `tf` dialect is not loaded.
   for (const NamedAttribute &attr : func->getAttrs())
-    if (attr.getName().getValue().startswith("tf."))
+    if (attr.getName().getValue().starts_with("tf."))
       preserved_attrs.append(attr);
 
   // Certain pipelines (Brella) will split a graph into subgraphs before merging

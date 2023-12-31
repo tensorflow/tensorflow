@@ -222,6 +222,7 @@ StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
 StatusOr<bool> WhileLoopFusibleSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  call_counts_.clear();
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {

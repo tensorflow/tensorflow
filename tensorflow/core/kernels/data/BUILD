@@ -1517,8 +1517,6 @@ filegroup(
         "//tensorflow/core/data:captured_function.h",
         "//tensorflow/core/data:compression_utils.h",
         "//tensorflow/core/data:dataset_utils.h",
-        "//tensorflow/core/data:file_logger_client_interface.h",
-        "//tensorflow/core/data:file_logger_client_no_op.h",
         "//tensorflow/core/data:finalization_utils.h",
         "//tensorflow/core/data:metric_utils.h",
         "//tensorflow/core/data:name_utils.h",

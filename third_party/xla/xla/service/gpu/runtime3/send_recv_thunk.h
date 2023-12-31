@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
@@ -84,7 +86,8 @@ class SendThunk : public Thunk {
  public:
   SendThunk(ThunkInfo thunk_info, Shape shape, BufferAllocation::Slice buffer,
             int64_t channel_id, std::shared_ptr<SendRecvAsyncEvents> events,
-            absl::flat_hash_map<std::string, std::string> frontend_attrs);
+            absl::flat_hash_map<std::string, std::string> frontend_attrs,
+            std::optional<GlobalDeviceId> device_constraint);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -96,6 +99,7 @@ class SendThunk : public Thunk {
 
   std::shared_ptr<SendRecvAsyncEvents> events_;
   absl::flat_hash_map<std::string, std::string> frontend_attrs_;
+  std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -105,7 +109,8 @@ class SendThunk : public Thunk {
 class SendDoneThunk : public Thunk {
  public:
   SendDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
-                std::shared_ptr<SendRecvAsyncEvents> events);
+                std::shared_ptr<SendRecvAsyncEvents> events,
+                std::optional<GlobalDeviceId> device_constraint);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -113,6 +118,7 @@ class SendDoneThunk : public Thunk {
   int64_t channel_id_;
 
   std::shared_ptr<SendRecvAsyncEvents> events_;
+  std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -123,7 +129,8 @@ class RecvThunk : public Thunk {
  public:
   RecvThunk(ThunkInfo thunk_info, Shape shape, BufferAllocation::Slice buffer,
             int64_t channel_id, std::shared_ptr<SendRecvAsyncEvents> events,
-            absl::flat_hash_map<std::string, std::string> frontend_attrs);
+            absl::flat_hash_map<std::string, std::string> frontend_attrs,
+            std::optional<GlobalDeviceId> device_constraint);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -135,6 +142,7 @@ class RecvThunk : public Thunk {
 
   std::shared_ptr<SendRecvAsyncEvents> events_;
   absl::flat_hash_map<std::string, std::string> frontend_attrs_;
+  std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -144,7 +152,8 @@ class RecvThunk : public Thunk {
 class RecvDoneThunk : public Thunk {
  public:
   RecvDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
-                std::shared_ptr<SendRecvAsyncEvents> events);
+                std::shared_ptr<SendRecvAsyncEvents> events,
+                std::optional<GlobalDeviceId> device_constraint);
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -152,6 +161,7 @@ class RecvDoneThunk : public Thunk {
   int64_t channel_id_;
 
   std::shared_ptr<SendRecvAsyncEvents> events_;
+  std::optional<GlobalDeviceId> device_constraint_;
 };
 
 }  // namespace xla::gpu

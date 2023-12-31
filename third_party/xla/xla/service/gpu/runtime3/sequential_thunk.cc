@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 
+#include "xla/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -32,10 +33,9 @@ std::string SequentialThunk::ToStringExtra(int indent) const {
   return result;
 }
 
-Status SequentialThunk::Initialize(se::StreamExecutor* executor,
-                                   ExecutableSource src) {
+Status SequentialThunk::Initialize(const InitializeParams& params) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(executor, src));
+    TF_RETURN_IF_ERROR(thunk->Initialize(params));
   }
   return OkStatus();
 }

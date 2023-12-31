@@ -63,7 +63,7 @@ class DummyAutoSharding : public HloModulePass {
 enum class AutoShardingResult {
   kModuleUnchanged,
   kModuleChangedShardingPerformed,
-  kModuleUnchangedNoShardingPerfomed
+  kModuleUnchangedNoShardingPerformed
 };
 
 class AutoShardingImplementation {
@@ -194,9 +194,10 @@ AliasMap BuildAliasMap(const HloModule* module);
 AliasSet BuildAliasSet(const HloModule* module,
                        const StrategyMap& strategy_map);
 
-void CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                const StrategyGroups& strategy_groups,
-                                const HloInstructionSequence& sequence);
+Status CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                  const StrategyGroups& strategy_groups,
+                                  const HloInstructionSequence& sequence,
+                                  bool crash_on_error);
 
 void GenerateReduceScatter(
     const HloInstructionSequence& sequence, const AliasMap& alias_map,
@@ -216,7 +217,8 @@ HloSharding GetReduceScatterOutput(const HloInstruction* ins,
 // The high-level "recipe" for solving an Auto Sharding problem.
 AutoShardingSolverResult Solve(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
-    const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
+    const LivenessNodeSet& liveness_node_set,
+    const LivenessEdgeSet& liveness_edge_set, const StrategyMap& strategy_map,
     const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const AutoShardingOption& option,
     const absl::flat_hash_map<std::string, const HloInstruction*>&

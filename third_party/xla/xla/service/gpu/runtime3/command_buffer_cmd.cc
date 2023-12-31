@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
@@ -28,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -35,13 +41,15 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
+
+using MemoryAccess = CommandBufferCmd::MemoryAccess;
 
 // Creates condition command buffer builder from a cmd sequence.
 static se::CommandBuffer::Builder ConditionBuilder(
@@ -68,52 +76,149 @@ static std::vector<se::CommandBuffer::Builder> ConditionBuilders(
 // CommandBufferCmdSequence
 //===----------------------------------------------------------------------===//
 
+CommandBufferCmdSequence::CommandBufferCmdSequence(bool force_barriers)
+    : force_barriers_(force_barriers) {}
+
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
-  for (BufferAllocation::Slice& slice : cmd->slices()) {
-    slices_.insert(slice);
-    allocs_indices_.insert(slice.index());
+  for (const CommandBufferCmd::BufferUsage& buffer : cmd->buffers()) {
+    buffers_.insert(buffer);
+    allocs_indices_.insert(buffer.slice.index());
   }
-  commands_.push_back(std::move(cmd));
+
+  CommandBufferCmd::BufferUsageVector buffers = cmd->buffers();
+  bool requires_barrier = HasConflicts(buffers);
+
+  // Always add barriers between commands if we want to linearize execution.
+  if (force_barriers_ && !commands_.empty()) {
+    requires_barrier = true;
+  }
+
+  // If the first recorded command is implemented as a nested command buffer we
+  // force a barrier before recording the next command as a workaround for CUDA
+  // graph bug, where child CUDA graph must be a single CUDA graph root node.
+  if (commands_.size() == 1 && commands_.front().cmd->IsNestedCommandBuffer()) {
+    requires_barrier = true;
+  }
+
+  if (requires_barrier) ClearTrackedBuffers();
+
+  commands_.emplace_back(std::move(cmd), requires_barrier);
+  TrackBuffers(buffers);
 }
 
 Status CommandBufferCmdSequence::Initialize(
     se::StreamExecutor* executor, CommandBufferCmd::ExecutableSource source) {
-  for (auto& cmd : commands_) {
-    TF_RETURN_IF_ERROR(cmd->Initialize(executor, source));
+  for (auto& command : commands_) {
+    TF_RETURN_IF_ERROR(command.cmd->Initialize(executor, source));
   }
   return OkStatus();
+}
+
+bool CommandBufferCmdSequence::HasConflicts(
+    const CommandBufferCmd::BufferUsageVector& buffers) {
+  // Returns true if slice overlaps with any of the slices in read set.
+  auto read_overlap = [&](const BufferAllocation::Slice& slice) {
+    if (read_set_.contains(slice)) return true;
+    for (auto& read : read_set_)
+      if (read.OverlapsWith(slice)) return true;
+    return false;
+  };
+
+  // Returns true if slice overlaps with any of the slices in write set.
+  auto write_overlap = [&](const BufferAllocation::Slice& slice) {
+    if (write_set_.contains(slice)) return true;
+    for (auto& write : write_set_)
+      if (write.OverlapsWith(slice)) return true;
+    return false;
+  };
+
+  return absl::c_any_of(buffers, [&](const auto& buffer) {
+    return buffer.access == MemoryAccess::kWrite
+               ? write_overlap(buffer.slice) || read_overlap(buffer.slice)
+               : write_overlap(buffer.slice);
+  });
+}
+
+void CommandBufferCmdSequence::TrackBuffers(
+    const CommandBufferCmd::BufferUsageVector& buffers) {
+  for (auto& buffer : buffers) {
+    if (buffer.access == MemoryAccess::kWrite) write_set_.insert(buffer.slice);
+    if (buffer.access == MemoryAccess::kRead) read_set_.insert(buffer.slice);
+  }
+}
+
+void CommandBufferCmdSequence::ClearTrackedBuffers() {
+  read_set_.clear();
+  write_set_.clear();
+}
+
+static std::string_view RecordModeString(
+    CommandBufferCmdSequence::RecordMode mode) {
+  switch (mode) {
+    case CommandBufferCmdSequence::RecordMode::kExclusive:
+      return "exclusive";
+    case CommandBufferCmdSequence::RecordMode::kConditional:
+      return "conditional";
+  }
 }
 
 Status CommandBufferCmdSequence::Record(
     const CommandBufferCmd::RecordParams& params,
     se::CommandBuffer* command_buffer, RecordMode mode) {
+  VLOG(3) << "Record " << commands_.size() << " commands into command buffer"
+          << "; mode=" << RecordModeString(mode);
+  uint64_t start_micros = tsl::Env::Default()->NowMicros();
+
   if (mode == RecordMode::kExclusive) {
     if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
       TF_RETURN_IF_ERROR(command_buffer->Update());
     }
   }
 
-  for (auto& cmd : commands_) {
-    TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
+  // Track the number of commands recorded between barriers.
+  int64_t num_recorded_commands = 0;
+
+  for (auto& command : commands_) {
+    CommandBufferCmd::BufferUsageVector buffers = command.cmd->buffers();
+
+    if (command.requires_barrier) {
+      VLOG(3) << "Add command buffer barrier after " << num_recorded_commands
+              << " recorded commands";
+      TF_RETURN_IF_ERROR(command_buffer->Barrier(params.executor));
+      num_recorded_commands = 0;
+    }
+
+    TF_RETURN_IF_ERROR(command.cmd->Record(params, command_buffer));
+    ++num_recorded_commands;
   }
 
   if (mode == RecordMode::kExclusive) {
     TF_RETURN_IF_ERROR(command_buffer->Finalize());
   }
 
+  uint64_t end_micros = tsl::Env::Default()->NowMicros();
+  VLOG(3) << "Recorded " << commands_.size()
+          << " commands into command buffer in " << (end_micros - start_micros)
+          << " μs; mode=" << RecordModeString(mode);
+
   return OkStatus();
 }
 
-// Returns buffer allocation slices referenced by commands in this sequence.
-const absl::flat_hash_set<BufferAllocation::Slice>&
-CommandBufferCmdSequence::slices() const {
-  return slices_;
+const absl::flat_hash_set<CommandBufferCmd::BufferUsage>&
+CommandBufferCmdSequence::buffers() const {
+  return buffers_;
 }
 
-// Returns buffer allocations indices referenced by commands in this sequence.
 const absl::flat_hash_set<BufferAllocation::Index>&
 CommandBufferCmdSequence::allocs_indices() const {
   return allocs_indices_;
+}
+
+std::vector<bool> CommandBufferCmdSequence::barriers() const {
+  std::vector<bool> barriers;
+  absl::c_transform(commands_, std::back_inserter(barriers),
+                    [](auto& command) { return command.requires_barrier; });
+  return barriers;
 }
 
 //===----------------------------------------------------------------------===//
@@ -122,9 +227,11 @@ CommandBufferCmdSequence::allocs_indices() const {
 
 LaunchCmd::LaunchCmd(std::string kernel_name,
                      absl::Span<const BufferAllocation::Slice> args,
+                     absl::Span<const MemoryAccess> args_access,
                      LaunchDimensions dims, int64_t shmem_bytes)
     : kernel_name_(std::move(kernel_name)),
       args_(args.begin(), args.end()),
+      args_access_(args_access.begin(), args_access.end()),
       dims_(dims),
       shmem_bytes_(shmem_bytes) {}
 
@@ -161,17 +268,74 @@ Status LaunchCmd::Record(const RecordParams& params,
   TF_ASSIGN_OR_RETURN(auto kernel_args,
                       se::PackKernelArgs(buffers, shmem_bytes_));
 
-  LaunchDimensions::Dim3D thread_counts = dims_.thread_counts_per_block();
-  LaunchDimensions::Dim3D block_counts = dims_.block_counts();
-
-  return command_buffer->Launch(
-      se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
-      se::BlockDim(block_counts.x, block_counts.y, block_counts.z), *kernel,
-      *kernel_args);
+  return command_buffer->Launch(dims_.thread_counts_per_block(),
+                                dims_.block_counts(), *kernel, *kernel_args);
 }
 
-CommandBufferCmd::Slices LaunchCmd::slices() {
-  return CommandBufferCmd::Slices(args_.begin(), args_.end());
+CommandBufferCmd::BufferUsageVector LaunchCmd::buffers() {
+  BufferUsageVector buffers;
+  for (int32_t i = 0; i < args_.size(); ++i) {
+    buffers.emplace_back(args_[i], args_access_[i]);
+  }
+  return buffers;
+}
+
+//===----------------------------------------------------------------------===//
+// CustomKernelLaunchCmd
+//===----------------------------------------------------------------------===//
+
+CustomKernelLaunchCmd::CustomKernelLaunchCmd(
+    absl::Span<const BufferAllocation::Slice> args,
+    absl::Span<const MemoryAccess> args_access, CustomKernel custom_kernel)
+    : args_(args.begin(), args.end()),
+      args_access_(args_access.begin(), args_access.end()),
+      custom_kernel_(std::move(custom_kernel)) {}
+
+Status CustomKernelLaunchCmd::Initialize(se::StreamExecutor* executor,
+                                         ExecutableSource source) {
+  if (kernels_.contains(executor)) {
+    return OkStatus();
+  }
+
+  auto kernel = std::make_unique<se::Kernel>(executor);
+  TF_RETURN_IF_ERROR(
+      executor->GetKernel(custom_kernel_.kernel_spec(), kernel.get()));
+
+  kernels_.emplace(executor, std::move(kernel));
+  return OkStatus();
+}
+
+Status CustomKernelLaunchCmd::Record(const RecordParams& params,
+                                     se::CommandBuffer* command_buffer) {
+  VLOG(5) << "CustomKernelLaunchCmd: custom_kernel=" << custom_kernel_.name();
+
+  se::Kernel* kernel = kernels_[params.executor].get();
+  if (kernel == nullptr) {
+    return absl::InternalError(
+        "Kernel not loaded on a command buffer executor");
+  }
+
+  absl::InlinedVector<se::DeviceMemoryBase, 4> buffers;
+  for (const BufferAllocation::Slice& arg : args_) {
+    se::DeviceMemoryBase buf = params.buffer_allocations->GetDeviceAddress(arg);
+    VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
+    buffers.push_back(buf);
+  }
+
+  se::KernelArgsDeviceMemoryArray kernel_args(
+      buffers, custom_kernel_.shared_memory_bytes());
+
+  return command_buffer->Launch(custom_kernel_.thread_dims(),
+                                custom_kernel_.block_dims(), *kernel,
+                                kernel_args);
+}
+
+CommandBufferCmd::BufferUsageVector CustomKernelLaunchCmd::buffers() {
+  BufferUsageVector buffers;
+  for (int32_t i = 0; i < args_.size(); ++i) {
+    buffers.emplace_back(args_[i], args_access_[i]);
+  }
+  return buffers;
 }
 
 //===----------------------------------------------------------------------===//
@@ -188,9 +352,9 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
   se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
   se::DeviceMemoryBase src = params.buffer_allocations->GetDeviceAddress(src_);
 
-  VLOG(5) << "MemcpyDeviceToDeviceCmd: dst=" << dst_ << " (" << dst.opaque()
-          << "), src=" << src_ << " (" << src.opaque()
-          << "), num_bytes=" << num_bytes_;
+  VLOG(5) << "MemcpyDeviceToDeviceCmd: num_bytes = " << num_bytes_;
+  VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
+  VLOG(5) << "  Src: " << src_ << " (" << src.opaque() << ")";
 
   if (num_bytes_ == 0) {
     VLOG(5) << "Skip recording MemcpyDeviceToDeviceCmd command of 0 bytes";
@@ -200,8 +364,60 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
   return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_);
 }
 
-CommandBufferCmd::Slices MemcpyDeviceToDeviceCmd::slices() {
-  return {dst_, src_};
+CommandBufferCmd::BufferUsageVector MemcpyDeviceToDeviceCmd::buffers() {
+  return {{dst_, MemoryAccess::kWrite}, {src_, MemoryAccess::kRead}};
+}
+
+//===----------------------------------------------------------------------===//
+// MemzeroCmd
+//===----------------------------------------------------------------------===//
+
+MemzeroCmd::MemzeroCmd(BufferAllocation::Slice dst) : dst_(dst) {}
+
+Status MemzeroCmd::Record(const RecordParams& params,
+                          se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
+
+  VLOG(5) << "MemzeroCmd:";
+  VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
+
+  if (dst_.size() == 0) {
+    VLOG(5) << "Skip recording MemzeroCmd command of 0 bytes";
+    return OkStatus();
+  }
+
+  return command_buffer->Memset(&dst, uint8_t{0}, /*num_elements=*/dst_.size());
+}
+
+CommandBufferCmd::BufferUsageVector MemzeroCmd::buffers() {
+  return {{dst_, MemoryAccess::kWrite}};
+}
+
+//===----------------------------------------------------------------------===//
+// Memset32Cmd
+//===----------------------------------------------------------------------===//
+
+Memset32Cmd::Memset32Cmd(BufferAllocation::Slice dst, uint32_t bit_pattern)
+    : dst_(dst), bit_pattern_(bit_pattern) {}
+
+Status Memset32Cmd::Record(const RecordParams& params,
+                           se::CommandBuffer* command_buffer) {
+  se::DeviceMemoryBase dst = params.buffer_allocations->GetDeviceAddress(dst_);
+
+  VLOG(5) << "Memset32Cmd: bit_pattern=" << bit_pattern_;
+  VLOG(5) << "  Dst: " << dst_ << " (" << dst.opaque() << ")";
+
+  if (dst_.size() == 0) {
+    VLOG(5) << "Skip recording Memset32Cmd command of 0 bytes";
+    return OkStatus();
+  }
+
+  size_t num_elements = dst_.size() / sizeof(uint32_t);
+  return command_buffer->Memset(&dst, bit_pattern_, num_elements);
+}
+
+CommandBufferCmd::BufferUsageVector Memset32Cmd::buffers() {
+  return {{dst_, MemoryAccess::kWrite}};
 }
 
 //===----------------------------------------------------------------------===//
@@ -226,10 +442,12 @@ Status IfCmd::Record(const RecordParams& params,
                             ConditionBuilder(&then_commands_, &params));
 }
 
-CommandBufferCmd::Slices IfCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
-  slices.insert(then_commands_.slices().begin(), then_commands_.slices().end());
-  return {slices.begin(), slices.end()};
+CommandBufferCmd::BufferUsageVector IfCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(pred_, MemoryAccess::kRead);
+  buffers.insert(then_commands_.buffers().begin(),
+                 then_commands_.buffers().end());
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -260,11 +478,14 @@ Status IfElseCmd::Record(const RecordParams& params,
                                 ConditionBuilder(&else_commands_, &params));
 }
 
-CommandBufferCmd::Slices IfElseCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
-  slices.insert(then_commands_.slices().begin(), then_commands_.slices().end());
-  slices.insert(else_commands_.slices().begin(), else_commands_.slices().end());
-  return {slices.begin(), slices.end()};
+CommandBufferCmd::BufferUsageVector IfElseCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(pred_, MemoryAccess::kRead);
+  buffers.insert(then_commands_.buffers().begin(),
+                 then_commands_.buffers().end());
+  buffers.insert(else_commands_.buffers().begin(),
+                 else_commands_.buffers().end());
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -293,12 +514,13 @@ Status CaseCmd::Record(const RecordParams& params,
       ConditionBuilders(absl::MakeSpan(branches_commands_), &params));
 }
 
-CommandBufferCmd::Slices CaseCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {index_};
+CommandBufferCmd::BufferUsageVector CaseCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(index_, MemoryAccess::kRead);
   for (auto& branch : branches_commands_) {
-    slices.insert(branch.slices().begin(), branch.slices().end());
+    buffers.insert(branch.buffers().begin(), branch.buffers().end());
   }
-  return {slices.begin(), slices.end()};
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -326,10 +548,12 @@ Status ForCmd::Record(const RecordParams& params,
                              ConditionBuilder(&body_commands_, &params));
 }
 
-CommandBufferCmd::Slices ForCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {loop_counter_};
-  slices.insert(body_commands_.slices().begin(), body_commands_.slices().end());
-  return {slices.begin(), slices.end()};
+CommandBufferCmd::BufferUsageVector ForCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(loop_counter_, MemoryAccess::kWrite);
+  buffers.insert(body_commands_.buffers().begin(),
+                 body_commands_.buffers().end());
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -359,11 +583,14 @@ Status WhileCmd::Record(const RecordParams& params,
                                ConditionBuilder(&body_commands_, &params));
 }
 
-CommandBufferCmd::Slices WhileCmd::slices() {
-  absl::flat_hash_set<BufferAllocation::Slice> slices = {pred_};
-  slices.insert(cond_commands_.slices().begin(), cond_commands_.slices().end());
-  slices.insert(body_commands_.slices().begin(), body_commands_.slices().end());
-  return {slices.begin(), slices.end()};
+CommandBufferCmd::BufferUsageVector WhileCmd::buffers() {
+  absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers;
+  buffers.emplace(pred_, MemoryAccess::kWrite);
+  buffers.insert(cond_commands_.buffers().begin(),
+                 cond_commands_.buffers().end());
+  buffers.insert(body_commands_.buffers().begin(),
+                 body_commands_.buffers().end());
+  return {buffers.begin(), buffers.end()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -385,7 +612,7 @@ Status AllocateCmd::Record(const RecordParams& params,
                                                           buffer);
 }
 
-CommandBufferCmd::Slices AllocateCmd::slices() { return {}; }
+CommandBufferCmd::BufferUsageVector AllocateCmd::buffers() { return {}; }
 
 //===----------------------------------------------------------------------===//
 // FreeCmd
@@ -408,7 +635,7 @@ Status FreeCmd::Record(const RecordParams& params,
       allocation_.index());
 }
 
-CommandBufferCmd::Slices FreeCmd::slices() { return {}; }
+CommandBufferCmd::BufferUsageVector FreeCmd::buffers() { return {}; }
 
 //===----------------------------------------------------------------------===//
 // GemmCmd
@@ -417,11 +644,12 @@ CommandBufferCmd::Slices FreeCmd::slices() { return {}; }
 GemmCmd::GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
                  const BufferAllocation::Slice& rhs_buffer,
                  const BufferAllocation::Slice& output_buffer,
-                 bool deterministic)
+                 const BufferAllocation::Slice& workspace, bool deterministic)
     : config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
+      workspace_(workspace),
       deterministic_(deterministic) {}
 
 Status GemmCmd::Initialize(se::StreamExecutor* executor,
@@ -434,33 +662,37 @@ Status GemmCmd::Initialize(se::StreamExecutor* executor,
 
 Status GemmCmd::Record(const RecordParams& params,
                        se::CommandBuffer* command_buffer) {
-  VLOG(5) << "GemmCmd: lhs=" << lhs_buffer_ << ", rhs=" << rhs_buffer_
-          << ", output=" << output_buffer_
-          << ", deterministic=" << deterministic_;
-
-  se::DeviceMemoryBase workspace(nullptr, 0);
-
   se::DeviceMemoryBase lhs =
       params.buffer_allocations->GetDeviceAddress(lhs_buffer_);
-
   se::DeviceMemoryBase rhs =
       params.buffer_allocations->GetDeviceAddress(rhs_buffer_);
-
   se::DeviceMemoryBase out =
       params.buffer_allocations->GetDeviceAddress(output_buffer_);
+  se::DeviceMemoryBase workspace =
+      params.buffer_allocations->GetDeviceAddress(workspace_);
+
+  VLOG(5) << "GemmCmd: deterministic=" << deterministic_;
+  VLOG(5) << "  Lhs: " << lhs_buffer_ << " (" << lhs.opaque() << ")";
+  VLOG(5) << "  Lhs: " << rhs_buffer_ << " (" << rhs.opaque() << ")";
+  VLOG(5) << "  Out: " << output_buffer_ << " (" << out.opaque() << ")";
+  VLOG(5) << "  Workspace: " << workspace_ << " (" << workspace.opaque() << ")";
 
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,
-      se::CommandBuffer::Trace(params.executor, [&](se::Stream* stream) {
-        return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
-                       stream);
-      }));
+      se::CommandBuffer::Trace(
+          params.executor, params.trace_stream, [&](se::Stream* stream) {
+            return RunGemm(config_, lhs, rhs, out, workspace, deterministic_,
+                           stream);
+          }));
 
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
 }
 
-CommandBufferCmd::Slices GemmCmd::slices() {
-  return {lhs_buffer_, rhs_buffer_, output_buffer_};
+CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
+  return {{lhs_buffer_, MemoryAccess::kRead},
+          {rhs_buffer_, MemoryAccess::kRead},
+          {output_buffer_, MemoryAccess::kWrite},
+          {workspace_, MemoryAccess::kWrite}};
 }
 
 }  // namespace xla::gpu

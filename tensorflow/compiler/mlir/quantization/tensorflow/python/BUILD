@@ -5,10 +5,6 @@ load(
     "tf_py_strict_test",
     "tf_python_pybind_extension",
 )
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -37,8 +33,11 @@ cc_library(
         ":unfreeze_constants",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:context",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:export",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pass_pipeline",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:post_calibration",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:precalibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
@@ -69,12 +68,9 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
@@ -90,7 +86,7 @@ cc_library(
     name = "quantize_model_cc",
     hdrs = ["quantize_model.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = if_static([":quantize_model_cc_impl"]) + [
+    deps = [
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/core:protos_all_cc",
@@ -225,11 +221,11 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "pywrap_quantize_model",
     srcs = ["pywrap_quantize_model.cc"],
-    hdrs = ["quantize_model.h"],
     pytype_srcs = ["pywrap_quantize_model.pyi"],
     # All deps must be header-only.
     deps = [
         ":py_function_lib",
+        ":quantize_model_cc",
         ":type_casters",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:debugger",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",

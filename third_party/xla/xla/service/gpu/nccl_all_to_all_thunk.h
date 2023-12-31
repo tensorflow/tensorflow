@@ -43,8 +43,6 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
                                    int64_t partition_count);
 
   static const char* GetHloOpName() { return "all-to-all-start"; }
-  static bool IsDegenerate(mlir::lmhlo_gpu::AllToAllStartOp op,
-                           int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllToAllStartOp op);
 

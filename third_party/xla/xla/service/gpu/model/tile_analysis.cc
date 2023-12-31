@@ -37,7 +37,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/permutation_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/indexing_map_simplifier.h"
 #include "xla/shape.h"
@@ -638,19 +638,10 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputSliceOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
-AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
-                                      bool invert, MLIRContext* mlir_context) {
-  auto forward_permutation = AffineMap::getPermutationMap(
-      std::vector<unsigned>(permutation.begin(), permutation.end()),
-      mlir_context);
-  return invert ? mlir::inversePermutation(forward_permutation)
-                : forward_permutation;
-}
-
 StatusOr<HloInstructionIndexing> ComputeOutputToInputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
   AffineMap inverse_permutation = ComputeTransposeIndexingMap(
-      transpose->dimensions(), /*invert=*/true, mlir_context);
+      InversePermutation(transpose->dimensions()), mlir_context);
   return HloInstructionIndexing::FromIndexingMaps({IndexingMap{
       .affine_map = inverse_permutation,
       .domain = Domain::FromUpperBounds(transpose->shape().dimensions(), {})}});
@@ -658,8 +649,8 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputTransposeOpIndexing(
 
 StatusOr<HloInstructionIndexing> ComputeInputToOutputTransposeOpIndexing(
     const HloTransposeInstruction* transpose, MLIRContext* mlir_context) {
-  AffineMap forward_permutation = ComputeTransposeIndexingMap(
-      transpose->dimensions(), /*invert=*/false, mlir_context);
+  AffineMap forward_permutation =
+      ComputeTransposeIndexingMap(transpose->dimensions(), mlir_context);
   return HloInstructionIndexing::FromIndexingMaps(
       {IndexingMap{.affine_map = forward_permutation,
                    .domain = Domain::FromUpperBounds(
@@ -679,7 +670,7 @@ StatusOr<AffineMap> ComputeOutputToInputBitcastOpIndexingImpl(
     CHECK(permutation.has_value())
         << "Failed to deduce permutation for a bitcast.";
 
-    return ComputeTransposeIndexingMap(permutation.value(), /*invert=*/true,
+    return ComputeTransposeIndexingMap(InversePermutation(permutation.value()),
                                        mlir_context);
   }
   if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
@@ -690,12 +681,12 @@ StatusOr<AffineMap> ComputeOutputToInputBitcastOpIndexingImpl(
   // `trt` stands for transpose-reshape-transpose decomposition of bitcast.
   auto trt = std::get<ShapeUtil::BitcastDecompositionTrt>(decomposed_bitcast);
   AffineMap transpose_map_1 = ComputeTransposeIndexingMap(
-      trt.transpose1_dims, /*invert=*/true, mlir_context);
+      InversePermutation(trt.transpose1_dims), mlir_context);
   AffineMap reshape_map =
       ComputeReshapeIndexingMap(trt.transpose1_shape.dimensions(),
                                 trt.reshape_shape.dimensions(), mlir_context);
   AffineMap transpose_map_2 = ComputeTransposeIndexingMap(
-      trt.transpose2_dims, /*invert=*/true, mlir_context);
+      InversePermutation(trt.transpose2_dims), mlir_context);
   return transpose_map_1.compose(reshape_map).compose(transpose_map_2);
 }
 
@@ -904,6 +895,13 @@ Status FuseProducerConsumerOutputToInputIndexing(
   return OkStatus();
 }
 
+AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
+                                      MLIRContext* mlir_context) {
+  return AffineMap::getPermutationMap(
+      std::vector<unsigned>(permutation.begin(), permutation.end()),
+      mlir_context);
+}
+
 StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
     const HloInstruction* instr, int output_id, MLIRContext* ctx) {
   if (HloInstruction::IsOpElementwise(instr->opcode())) {
@@ -946,27 +944,27 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
 }
 
 StatusOr<HloInstructionIndexing> ComputeInputToOutputIndexing(
-    const HloInstruction* instr, int input_id, MLIRContext* mlir_context) {
+    const HloInstruction* instr, int input_id, MLIRContext* ctx) {
   if (HloInstruction::IsOpElementwise(instr->opcode())) {
-    return ComputeInputToOutputCwiseOpIndexing(instr, mlir_context);
+    return ComputeInputToOutputCwiseOpIndexing(instr, ctx);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
-    return ComputeInputToOutputBitcastOpIndexing(instr, mlir_context);
+    return ComputeInputToOutputBitcastOpIndexing(instr, ctx);
   }
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
-    return ComputeInputToOutputBroadcastOpIndexing(broadcast, mlir_context);
+    return ComputeInputToOutputBroadcastOpIndexing(broadcast, ctx);
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
-    return ComputeInputToOutputReduceOpIndexing(reduce, input_id, mlir_context);
+    return ComputeInputToOutputReduceOpIndexing(reduce, input_id, ctx);
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
-    return ComputeInputToOutputReshapeOpIndexing(reshape, mlir_context);
+    return ComputeInputToOutputReshapeOpIndexing(reshape, ctx);
   }
   if (auto reverse = DynCast<HloReverseInstruction>(instr)) {
-    return ComputeReverseOpIndexing(reverse, mlir_context);
+    return ComputeReverseOpIndexing(reverse, ctx);
   }
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
-    return ComputeInputToOutputTransposeOpIndexing(transpose, mlir_context);
+    return ComputeInputToOutputTransposeOpIndexing(transpose, ctx);
   }
   return InvalidArgument("Unsupported instruction type");
 }

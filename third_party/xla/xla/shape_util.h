@@ -973,7 +973,7 @@ class ShapeUtil {
   static int64_t ArrayDataSize(const Shape& shape);
 
  private:
-  // Fills *shape. Returns true on success.
+  // Fills *shape ignoring dynamic dimensions. Returns true on success.
   // REQUIRES: *shape is empty.
   static bool FillNewShape(PrimitiveType element_type,
                            absl::Span<const int64_t> dimensions, Shape* shape);

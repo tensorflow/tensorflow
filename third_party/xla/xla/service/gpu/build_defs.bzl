@@ -7,7 +7,7 @@ load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configu
 
 # buildifier: disable=out-of-order-load
 # Internally this loads a macro, but in OSS this is a function
-def register_extension_info(**kwargs):
+def register_extension_info(**_kwargs):
     pass
 
 def get_cub_sort_kernel_types(name = ""):

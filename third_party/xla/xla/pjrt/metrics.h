@@ -29,20 +29,12 @@ inline constexpr absl::string_view kPjrtCompilerCompileComputationMetricName =
     "/pjrt/compiler/is_compiling_computation";
 inline constexpr absl::string_view kPjrtCompilerCompileModuleMetricName =
     "/pjrt/compiler/is_compiling_module";
-inline constexpr absl::string_view kPjrtCompilerFreeGpuSystemMemoryMetricName =
-    "/pjrt/compiler/free_gpu_system_memory";
 
 void ReportExecutableEnqueueTime(uint64_t running_time_usecs);
 
 void RecordPjrtCompilerCompileComputationStatus(bool is_compiling);
 
 void RecordPjrtCompilerCompileModuleStatus(bool is_compiling);
-
-// TODO(xiangll): Refactor to a more appropriate location.
-void RecordFreeGpuSystemMemory(int device_ordinal, int64_t free_memory);
-
-// TODO(xiangll): Refactor to a more appropriate location.
-int64_t GetFreeGpuSystemMemory(int gpu_id);
 
 }  // namespace metrics
 }  // namespace xla

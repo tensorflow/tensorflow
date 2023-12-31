@@ -1,5 +1,5 @@
-load("//xla:xla.bzl", "xla_cc_binary")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla:xla.bzl", "xla_cc_binary")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -21,7 +21,6 @@ xla_cc_binary(
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_transfer_manager",
         "//xla/stream_executor/host:host_platform",
-        "//xla/stream_executor/platform",
         "//xla/translate/hlo_to_mhlo:translate_registration",
         "//xla/translate/mhlo_to_hlo:translate_registration",
         "//xla/translate/mhlo_to_lhlo_with_xla:translate_registration",

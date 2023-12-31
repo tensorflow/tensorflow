@@ -724,11 +724,13 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
       {
         absl::InlinedVector<int64_t, 4> permutation(dims.size());
         absl::c_iota(permutation, 0);
+        TransposePlan::Options options;
+        options.elem_size_in_bytes = primitive_util::ByteWidth(type);
+        options.dims = dims;
+        options.permutation = permutation;
+        options.input_layout = TransposePlan::Striding{*byte_strides};
         absl::MutexLock lock(transpose_mu);
-        TF_ASSIGN_OR_RETURN(
-            transpose, transpose_cache->GetOrCreate(
-                           primitive_util::ByteWidth(type), dims, permutation,
-                           TransposePlan::Striding{*byte_strides}));
+        TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
       }
       if (!is_int4) {
         transpose->Execute(data, dst_data_ptr);

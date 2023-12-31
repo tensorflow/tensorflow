@@ -220,9 +220,9 @@ bool CouldNeedDeviceBitcode(const llvm::Module& module) {
     // The list of prefixes should be in sync with library functions used in
     // target_util.cc.
     if (!function.isIntrinsic() && function.isDeclaration() &&
-        (function.getName().startswith("__nv_") ||
-         function.getName().startswith("__ocml_") ||
-         function.getName().startswith("__ockl_"))) {
+        (function.getName().starts_with("__nv_") ||
+         function.getName().starts_with("__ocml_") ||
+         function.getName().starts_with("__ockl_"))) {
       return true;
     }
   }

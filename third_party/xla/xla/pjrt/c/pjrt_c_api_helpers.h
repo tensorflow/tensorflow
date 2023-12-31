@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/status.h"
@@ -193,9 +194,9 @@ struct PJRT_KeyValueCallbackData {
   PJRT_KeyValueCallbackData() = default;
   PJRT_KeyValueCallbackData(const PJRT_KeyValueCallbackData&) = delete;
 
-  xla::PjRtClient::KeyValueGetCallback kv_get;
-  xla::PjRtClient::KeyValuePutCallback kv_put;
-  // kv_get_c_func and kv_put_c_func are holding pointers to kv_get and kv_put.
+  std::shared_ptr<xla::KeyValueStoreInterface> kv_store;
+
+  // kv_get_c_func and kv_put_c_func are holding pointers to kv_store.
   pjrt::PJRT_KeyValueGetCFunc kv_get_c_func;
   pjrt::PJRT_KeyValuePutCFunc kv_put_c_func;
   // c_kv_get and c_kv_put are holding pointers to kv_get_c_func and
@@ -210,8 +211,7 @@ struct PJRT_KeyValueCallbackData {
 // PJRT_KeyValueCallbackData must be kept alive as long as c_kv_get and c_kv_put
 // may be called.
 std::unique_ptr<PJRT_KeyValueCallbackData> ConvertToCKeyValueCallbacks(
-    xla::PjRtClient::KeyValueGetCallback kv_get,
-    xla::PjRtClient::KeyValuePutCallback kv_put);
+    std::shared_ptr<xla::KeyValueStoreInterface> kv_store);
 
 // std::function version of PJRT_SendCallback
 using PJRT_SendCallbackFunction =

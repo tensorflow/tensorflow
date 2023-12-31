@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/nccl_id_store.h"
 
 #include <string>
+#include <string_view>
 #include <utility>
 
 #ifdef NCCL_ENABLED
@@ -31,7 +32,10 @@ limitations under the License.
 #endif
 #endif  // NCCL_ENABLED
 
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -53,13 +57,14 @@ StatusOr<std::string> NcclIdStore::GetNcclUniqueId(
     ncclUniqueId id;
     ncclResult_t r = ncclGetUniqueId(&id);
     TF_RET_CHECK(r == ncclSuccess);
-    id_string = std::string(id.internal, NCCL_UNIQUE_ID_BYTES);
-    TF_RETURN_IF_ERROR(kv_put_(key.ToString(), id_string));
+    id_string = std::string_view(id.internal, NCCL_UNIQUE_ID_BYTES);
+    TF_RETURN_IF_ERROR(kv_store_->Set(key.ToString(), id_string));
 #else
     return FailedPrecondition("NCCL support was not built into XLA binary.");
 #endif
   } else {
-    TF_ASSIGN_OR_RETURN(id_string, kv_get_(key.ToString(), absl::Minutes(10)));
+    TF_ASSIGN_OR_RETURN(id_string,
+                        kv_store_->Get(key.ToString(), absl::Minutes(10)));
   }
   absl::MutexLock lock(&mu_);
   auto result = cache_.emplace(key, std::move(id_string));

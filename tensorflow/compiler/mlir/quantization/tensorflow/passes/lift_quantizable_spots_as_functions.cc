@@ -174,7 +174,7 @@ class CheckQuantizableOps
                                 PatternRewriter& rewriter) const override {
     StringRef function_name =
         call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
-    if (!function_name.startswith("composite_") ||
+    if (!function_name.starts_with("composite_") ||
         !call_op->hasAttr(kQuantTraitAttrName)) {
       return failure();
     }

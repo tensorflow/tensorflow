@@ -3,8 +3,8 @@
 #   https://developer.mlplatform.org/w/tosa/
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 # TODO: Tighten visibility once targets are at the right granularity.
 package(
@@ -103,6 +103,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/framework/fixedpoint",
     ],
 )
 

@@ -75,6 +75,9 @@ class CommandBufferScheduling : public HloModulePass {
   using CommandBufferConfig =
       absl::flat_hash_set<DebugOptions::CommandBufferCmdType>;
 
+  CommandBufferScheduling(int32_t gpu_toolkit_version,
+                          int32_t gpu_driver_version);
+
   absl::string_view name() const override {
     return "command-buffer-scheduling";
   }
@@ -85,9 +88,14 @@ class CommandBufferScheduling : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
-      HloInstructionSequence inst_sequence, const CommandBufferConfig& config);
+      HloInstructionSequence inst_sequence, const CommandBufferConfig& config,
+      int32_t min_num_commands = 1);
 
-  static void MoveParametersToFront(HloComputation* computation);
+  // Moves kParameter and kConstant instructions in a computation to
+  // the beginning of the computation. This simplifies the construction of
+  // command buffer computations because we don't need to deal with parameters
+  // and constants that have users outside of a command buffer.
+  static Status MoveParametersAndConstantsToFront(HloComputation* computation);
 
   struct CommandBuffer {
     // Command buffer arguments (call instruction arguments).
@@ -112,9 +120,17 @@ class CommandBufferScheduling : public HloModulePass {
 
   // Rewrites prepared command buffer computation into Hlo operations in the
   // parent computation (calls command buffer and replaced all users).
-  static Status RewriteCommandBuffer(HloComputation* parent,
-                                     const HloInstructionSequence& seq,
-                                     CommandBuffer command_buffer);
+  static StatusOr<HloComputation*> RewriteCommandBuffer(
+      HloComputation* parent, const HloInstructionSequence& seq,
+      CommandBuffer command_buffer);
+
+ private:
+  // For NVIDIA gpus XLA can be compiled with a CUDA version that is larger than
+  // the version supported by the driver, e.g. we can compile for CUDA 12.3 but
+  // have 12.1 driver installed. When deciding what command buffer features we
+  // can use we have to consider both versions.
+  int32_t gpu_toolkit_version_;
+  int32_t gpu_driver_version_;
 };
 
 }  // namespace xla::gpu

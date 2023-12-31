@@ -2518,17 +2518,46 @@ Status IrEmitter::HandleTopK(HloInstruction* hlo) {
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
-  auto lhs = custom_call->operand(0);
-  llvm_ir::IrArray lhs_array(GetIrArrayFor(lhs));
-  auto lhs_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, lhs_array);
+  // We would like to emit LLVM IR for the following function call
+  //      custom_call_target(void* result, void** args)
+  // args can be thought of an array of pointers allocated on the stack,
+  // i.e., alloca [nargs x ptr], as such
+  //      args[0]: ptr to nargs
+  //      args[1]: ptr to ExecutableRunOptions
+  //      args[2]: ptr to OneDnnMatMulConfig
+  //      args[3...]: ptrs to operands
+  //  This allows us to pass variable number of operands to the
+  //  custom_call_target function.
+  //
+  //  Currently, we assume that neither operands nor results are packed into
+  //  tuple(s).
 
-  auto rhs = custom_call->operand(1);
-  llvm_ir::IrArray rhs_array(GetIrArrayFor(rhs));
-  auto rhs_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, rhs_array);
+  // First three arguments: nargs, ExecutableRunOptions, and
+  // OneDnnMatMulConfig.
+  const int nargs_offset = 3;
+  const int num_operands = custom_call->operand_count();
+  const int nargs = nargs_offset + num_operands;
+  int arg_indx = 0;
 
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
-  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
-  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
+  llvm::Type* i64_type = b_.getInt64Ty();
+  llvm::Type* ptr_type = b_.getPtrTy();
+  llvm::ArrayType* ptr_array_type = llvm::ArrayType::get(ptr_type, nargs);
+  llvm::Value* args_val = llvm::UndefValue::get(ptr_array_type);
+
+  // Insert nargs.
+  llvm::Value* nargs_val = b_.getInt64(nargs);
+  llvm::Value* nargs_ptr =
+      llvm_ir::EmitAllocaAtFunctionEntry(i64_type, "nargs", &b_);
+  llvm::Value* nargs_life_start =
+      b_.CreateLifetimeStart(nargs_ptr, b_.getInt64(-1));
+  llvm::Value* nargs_store = b_.CreateStore(nargs_val, nargs_ptr);
+  args_val = b_.CreateInsertValue(args_val, nargs_ptr, arg_indx++);
+
+  // Insert ExecutableRunOptions.
+  llvm::Value* run_opts_val = GetExecutableRunOptionsArgument();
+  args_val = b_.CreateInsertValue(args_val, run_opts_val, arg_indx++);
+
+  // Insert OneDnnMatMulConfig.
 
   auto typed_custom_call = Cast<HloCustomCallInstruction>(custom_call);
   auto backend_config = typed_custom_call->backend_config<BackendConfig>();
@@ -2536,19 +2565,44 @@ Status IrEmitter::HandleOneDnnMatMul(HloInstruction* custom_call) {
   matmul_config.CopyFrom(backend_config->onednn_matmul_config());
   std::string str_config;
   matmul_config.SerializeToString(&str_config);
+  llvm::Value* matmul_config_val =
+      b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config));
+  args_val = b_.CreateInsertValue(args_val, matmul_config_val, arg_indx++);
+
+  // Insert operands.
+  std::vector<StackAlloca> operands_stack_alloca;
+  operands_stack_alloca.reserve(num_operands);
+  absl::c_transform(custom_call->operands(), operands_stack_alloca.begin(),
+                    [this](HloInstruction* instr) {
+                      llvm_ir::IrArray ir_array(GetIrArrayFor(instr));
+                      return GetAllocaAndEmitMemrefInfo(b_, ir_array);
+                    });
+  for (int i = 0; i < num_operands; ++i) {
+    args_val = b_.CreateInsertValue(args_val, operands_stack_alloca[i].value,
+                                    arg_indx++);
+  }
+  TF_RET_CHECK(nargs == arg_indx)
+      << "Number of arguments don't equal the last argument index.";
+
+  llvm::Value* args_ptr =
+      llvm_ir::EmitAllocaAtFunctionEntry(ptr_array_type, "matmul.args", &b_);
+  llvm::Value* args_life_start =
+      b_.CreateLifetimeStart(args_ptr, b_.getInt64(-1));
+  llvm::Value* args_store = b_.CreateStore(args_val, args_ptr);
+
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(custom_call));
+  llvm_ir::IrArray result_array = GetIrArrayFor(custom_call);
+  auto result_stack_alloca = GetAllocaAndEmitMemrefInfo(b_, result_array);
 
   EmitCallToFunc(runtime::kOneDnnMatMulSymbolName,
-                 {
-                     GetExecutableRunOptionsArgument(),
-                     lhs_stack_alloca.value,
-                     rhs_stack_alloca.value,
-                     result_stack_alloca.value,
-                     b_.CreateGlobalStringPtr(llvm_ir::AsStringRef(str_config)),
-                 },
-                 b_.getVoidTy());
+                 {result_stack_alloca.value, args_ptr}, b_.getVoidTy());
 
-  lhs_stack_alloca.EmitLifetimeEnd();
-  rhs_stack_alloca.EmitLifetimeEnd();
+  // Lifetime ends for all stack allocations.
+  b_.CreateLifetimeEnd(nargs_ptr, b_.getInt64(-1));
+  for (int i = 0; i < num_operands; ++i) {
+    operands_stack_alloca[i].EmitLifetimeEnd();
+  }
+  b_.CreateLifetimeEnd(args_ptr, b_.getInt64(-1));
   result_stack_alloca.EmitLifetimeEnd();
 
   return OkStatus();

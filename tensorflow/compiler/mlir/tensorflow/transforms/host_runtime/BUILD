@@ -1,4 +1,6 @@
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -10,6 +12,7 @@ package(
         "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/compiler/tf2xla:__pkg__",
+        "//tensorflow/dtensor/mlir:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -21,6 +24,7 @@ cc_library(
         "lower_cluster_to_runtime_ops.h",
     ],
     deps = [
+        ":runtime_passes",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
@@ -130,5 +134,94 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+gentbl_cc_library(
+    name = "runtime_passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=RuntimeLowering",
+            ],
+            "runtime_passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "runtime_passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "runtime_passes",
+    hdrs = [
+        "runtime_passes.h",
+    ],
+    textual_hdrs = [
+        "runtime_passes.h.inc",
+    ],
+    deps = [
+        ":runtime_passes_inc_gen",
+        ":tpu_rewrite_pass",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "tpu_rewrite_pass",
+    srcs = ["tpu_rewrite_pass.cc"],
+    hdrs = [
+        "runtime_passes.h",
+    ],
+    deps = [
+        ":runtime_passes_inc_gen",
+        ":tpu_metadata_utils",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:attribute_utils",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
+        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "//tensorflow/compiler/mlir/tensorflow:convert_type",
+        "//tensorflow/compiler/mlir/tensorflow:device_util",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:parallel_execute_util",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
+        "//tensorflow/compiler/mlir/tensorflow:xla_rewrite_util",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu:tpu_defs",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:error_logging",
+        "@local_tsl//tsl/platform:errors",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla:xla_proto_cc",
+        "@local_xla//xla/mlir_hlo",
     ],
 )
