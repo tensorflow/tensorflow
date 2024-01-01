@@ -236,10 +236,6 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // possible to add new commands to it, otherwise returns internal error.
   tsl::Status CheckNotFinalized();
 
-  // Returns OK status if command buffer is primary, otherwise returns internal
-  // error.
-  tsl::Status CheckPrimary();
-
   // Returns OK status if the number of command buffers is equal to the expected
   // one, otherwise returns internal error.
   tsl::Status CheckNumCommandBuffers(

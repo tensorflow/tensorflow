@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -136,13 +137,12 @@ std::string ToString(const mlir::AffineMap& affine_map);
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
 StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
-    const HloInstruction* instr, int output_id,
-    mlir::MLIRContext* mlir_context);
+    const HloInstruction* instr, int output_id, mlir::MLIRContext* ctx);
 
 // Computes indexing maps for all output operands that the element of the
 // `input_id` instruction input will participate in.
 StatusOr<HloInstructionIndexing> ComputeInputToOutputIndexing(
-    const HloInstruction* instr, int input_id, mlir::MLIRContext* mlir_context);
+    const HloInstruction* instr, int input_id, mlir::MLIRContext* ctx);
 
 // Groups indexing maps by instructions.
 using IndexingMapSet = absl::flat_hash_set<IndexingMap>;

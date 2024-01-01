@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/snapshot_chunk_provider.h"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -21,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/btree_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -69,16 +70,16 @@ void Backoff(int num_retries, tsl::Env* env) {
   }
 }
 
-std::string SetToString(const absl::flat_hash_set<std::string>& s) {
+std::string SetToString(const absl::btree_set<std::string>& s) {
   return absl::StrJoin(s, kSetElementDelimiter);
 }
 
-absl::flat_hash_set<std::string> SetFromString(absl::string_view s) {
+absl::btree_set<std::string> SetFromString(absl::string_view s) {
   if (s.empty()) {
     return {};
   }
   std::vector<std::string> split = absl::StrSplit(s, kSetElementDelimiter);
-  return absl::flat_hash_set<std::string>(split.begin(), split.end());
+  return absl::btree_set<std::string>(split.begin(), split.end());
 }
 
 }  // namespace
@@ -179,6 +180,10 @@ absl::Status SnapshotChunkProvider::Restore(
   TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kChunksRead), &chunks_read));
   chunks_read_ = SetFromString(chunks_read);
   return UpdateSnapshot();
+}
+
+int64_t SnapshotChunkProvider::Cardinality() const {
+  return SnapshotChunksCardinality(snapshot_path_, env_);
 }
 
 void SnapshotChunkProvider::Cancel() {

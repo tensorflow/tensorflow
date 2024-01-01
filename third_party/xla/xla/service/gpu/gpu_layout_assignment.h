@@ -16,11 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_LAYOUT_ASSIGNMENT_H_
 #define XLA_SERVICE_GPU_GPU_LAYOUT_ASSIGNMENT_H_
 
+#include <cstdint>
+#include <initializer_list>
+
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/status.h"
+#include "xla/status.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -31,10 +37,12 @@ class GpuLayoutAssignment : public LayoutAssignment {
  public:
   explicit GpuLayoutAssignment(
       ComputationLayout* entry_computation_layout,
-      se::StreamExecutor* stream_executor,
+      const se::GpuComputeCapability& gpu_version,
+      const se::dnn::VersionInfo& dnn_version,
       ChannelLayoutConstraints* channel_constraints = nullptr)
       : LayoutAssignment(entry_computation_layout, channel_constraints),
-        stream_executor_(stream_executor) {}
+        gpu_version_(gpu_version),
+        dnn_version_(dnn_version) {}
   ~GpuLayoutAssignment() override = default;
 
  protected:
@@ -59,7 +67,8 @@ class GpuLayoutAssignment : public LayoutAssignment {
 
   bool PropagateReductionLayoutToOperand(const HloInstruction* user) override;
 
-  se::StreamExecutor* stream_executor_;
+  const se::GpuComputeCapability gpu_version_;
+  const se::dnn::VersionInfo dnn_version_;
 };
 
 }  // namespace gpu

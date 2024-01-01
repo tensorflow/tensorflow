@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -populate-shape --mlir-print-ir-after-all | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -populate-shape | FileCheck %s
 
 // CHECK-LABEL: @populate_shape_for_custom_aggregator
 func.func @populate_shape_for_custom_aggregator(%input: tensor<?x56x56x64xf32>) {

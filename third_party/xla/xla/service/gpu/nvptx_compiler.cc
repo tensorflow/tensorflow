@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_compiler.h"
 
 #include <array>
+#include <cstdint>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,11 +26,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/raw_ostream.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
@@ -40,7 +51,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/conv_algorithm_picker.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/cudnn_fused_conv_rewriter.h"
@@ -53,10 +63,10 @@ limitations under the License.
 #include "xla/service/gpu/cusolver_rewriter.h"
 #include "xla/service/gpu/gemm_algorithm_picker.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
+#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 #include "xla/service/gpu/gpu_sort_rewriter.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/move_copy_to_users.h"
@@ -65,7 +75,9 @@ limitations under the License.
 #include "xla/service/gpu/triton_autotuner.h"
 #include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_cse.h"
+#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
@@ -74,18 +86,24 @@ limitations under the License.
 #include "xla/service/reshape_decomposer.h"
 #include "xla/service/reshape_mover.h"
 #include "xla/service/tuple_simplifier.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/util/env_var.h"
 
@@ -687,10 +705,8 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
   } else {
     int ptxas_version = std::get<0>(ptxas_version_tuple) * 1000 +
                         std::get<1>(ptxas_version_tuple) * 10;
-    int driver_version;
-    if (!se::gpu::GpuDriver::GetDriverVersion(&driver_version)) {
-      return FailedPrecondition("Unable to get CUDA driver version");
-    }
+    TF_ASSIGN_OR_RETURN(int driver_version,
+                        se::gpu::GpuDriver::GetDriverVersion());
 
     if (driver_version >= ptxas_version) {
       linking_method = LinkingMethod::kDriver;

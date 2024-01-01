@@ -315,10 +315,10 @@ StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
   }
 
   GlobalTopologyProto global_topology;
-  TF_RETURN_IF_ERROR(
-      ExchangeTopologies("cpu", options.node_id, options.num_nodes,
-                         absl::Minutes(2), absl::Minutes(5), options.kv_get,
-                         options.kv_put, local_topology, &global_topology));
+  TF_RETURN_IF_ERROR(ExchangeTopologies(
+      "cpu", options.node_id, options.num_nodes, absl::Minutes(2),
+      absl::Minutes(5), options.kv_store.get(), local_topology,
+      &global_topology));
 
   std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
   for (const LocalTopologyProto& node : global_topology.nodes()) {

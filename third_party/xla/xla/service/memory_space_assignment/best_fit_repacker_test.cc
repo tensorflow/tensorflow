@@ -39,15 +39,10 @@ class MemorySpaceAssignmentBestFitRepackerTest : public ::testing::Test {
                                        int64_t size,
                                        int64_t initial_offset = -1) {
     allocation_blocks_.push_back(
-        {start_time,
-         end_time,
-         size,
-         -1,
-         initial_offset,
-         static_cast<int64_t>(allocation_blocks_.size()),
-         {}});
+        {start_time, end_time, size, -1, initial_offset,
+         static_cast<int64_t>(allocation_blocks_.size())});
     AllocationBlock* block = &allocation_blocks_.back();
-    block->colocations.push_back(block);
+    block->next_colocated = block;
     return block;
   }
 
@@ -73,8 +68,8 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, Colocation) {
   allocation_blocks.push_back(MakeAllocationBlock(0, 2, 10));
   allocation_blocks.push_back(MakeAllocationBlock(10, 20, 10));
   // Allocation blocks 0 and 1 are colocated.
-  allocation_blocks[0]->colocations.push_back(allocation_blocks[1]);
-  allocation_blocks[1]->colocations.push_back(allocation_blocks[0]);
+  allocation_blocks[0]->next_colocated = allocation_blocks[1];
+  allocation_blocks[1]->next_colocated = allocation_blocks[0];
   allocation_blocks.push_back(MakeAllocationBlock(5, 25, 15));
   EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
 
@@ -106,8 +101,8 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, ColocationDifferentSizes) {
   allocation_blocks.push_back(MakeAllocationBlock(0, 2, 5));
   allocation_blocks.push_back(MakeAllocationBlock(10, 20, 10));
   // Allocation blocks 0 and 1 are colocated.
-  allocation_blocks[0]->colocations.push_back(allocation_blocks[1]);
-  allocation_blocks[1]->colocations.push_back(allocation_blocks[0]);
+  allocation_blocks[0]->next_colocated = allocation_blocks[1];
+  allocation_blocks[1]->next_colocated = allocation_blocks[0];
   allocation_blocks.push_back(MakeAllocationBlock(9, 11, 2));
   allocation_blocks.push_back(MakeAllocationBlock(1, 2, 2));
   EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
@@ -240,7 +235,8 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, SlicedColocationsFit) {
   allocation_blocks.back()->original_slice_data =
       SlicedAllocationData({{Slice{2, -1, 9}, Slice{2, -1, 12}}});
   // Colocate E with D.
-  allocation_blocks.back()->colocations.push_back(allocation_blocks[3]);
+  allocation_blocks.back()->next_colocated = allocation_blocks[3];
+  allocation_blocks[3]->next_colocated = allocation_blocks.back();
   // Block F
   allocation_blocks.push_back(MakeAllocationBlock(15, 17, 5));
 

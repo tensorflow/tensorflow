@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,28 +16,20 @@ limitations under the License.
 #include "tsl/platform/resource_loader.h"
 
 #include <cstdlib>
+#include <string>
 
-#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
-#include "tools/cpp/runfiles/runfiles.h"
-
-using bazel::tools::cpp::runfiles::Runfiles;
 
 namespace tsl {
 
 std::string GetDataDependencyFilepath(const std::string& relative_path) {
-  std::string error;
-  std::unique_ptr<Runfiles> runfiles(Runfiles::CreateForTest(&error));
-
-  if (runfiles == nullptr) {
-    LOG(FATAL) << "Unable to access the data dependencies of this test.\n"
-                  "Make sure you are running this test using bazel.";
-  }
-
-  const char* workspace_cstr = std::getenv("TEST_WORKSPACE");
-  EXPECT_THAT(workspace_cstr, ::testing::NotNull());
-  return runfiles->Rlocation(io::JoinPath(workspace_cstr, relative_path));
+  // TODO(ddunleavy): replace this with `TensorFlowSrcRoot()` from `test.h`.
+  const char* srcdir = std::getenv("TEST_SRCDIR");
+  const char* workspace = std::getenv("TEST_WORKSPACE");
+  return testing::kIsOpenSource
+             ? io::JoinPath(srcdir, workspace, relative_path)
+             : io::JoinPath(srcdir, workspace, "third_party", relative_path);
 }
 
 }  // namespace tsl

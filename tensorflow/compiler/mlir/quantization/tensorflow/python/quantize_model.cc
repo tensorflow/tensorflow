@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -51,12 +50,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -72,77 +67,12 @@ namespace {
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
 using ::mlir::quant::stablehlo::PostCalibrationComponent;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
-using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::stablehlo::quantization::AddExportPasses;
-using ::stablehlo::quantization::CreateExportedModel;
-using ::stablehlo::quantization::CreateSaverDef;
+using ::stablehlo::quantization::ConvertMlirModuleToExportedModel;
 using ::stablehlo::quantization::ExportOptions;
 using ::stablehlo::quantization::kExportStepSuffix;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
-
-// TODO: b/307619371 - Deduplicate from the one in `export.cc`.
-// Finds and returns the name of the node from a set of control output nodes.
-// The name should contain the string `contains`. Returns an empty string if no
-// node whose name contains `contains` is found. Assumes there is at most one
-// such a node.
-std::string GetNodeName(const std::vector<std::string> &control_ret_node_names,
-                        const absl::string_view contains) {
-  for (const std::string &node_name : control_ret_node_names) {
-    if (absl::StrContains(node_name, contains)) {
-      VLOG(1) << "Node found: " << node_name << ", contains: " << contains;
-      return node_name;
-    }
-  }
-  VLOG(1) << "Could not find node whose name conatins: " << contains;
-  return "";
-}
-
-// Converts MLIR ModuleOp to `ExportedModel`. Returns InternalError status
-// when the conversion fails.
-//
-// * `checkpoint_dir` is the directory where checkpoints where variable values
-// are stored. This value will be fed to the "file_prefix" tensor to restore the
-// variables.
-// * `function_aliases` maps the actual function name to the function alias.
-// This associates the quantized functions to the original functions' aliases.
-// If there were no function aliases in the input model, this should be empty.
-// * `asset_file_defs` include information about the assets, if any, that are
-// used directly to initialize resources (like hash tables). If no assets are
-// used in the model, this should be empty.
-absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
-    const mlir::ModuleOp module_op, const absl::string_view checkpoint_dir,
-    const absl::flat_hash_map<std::string, std::string> &function_aliases,
-    const std::vector<AssetFileDef> &asset_file_defs) {
-  const GraphExportConfig config{};
-  FunctionLibraryDefinition flib_def{OpRegistry::Global(),
-                                     FunctionDefLibrary()};
-  std::unique_ptr<Graph> graph;
-  absl::flat_hash_set<Node *> control_ret_nodes{};
-  if (const auto status = ConvertMlirToGraph(module_op, config, &graph,
-                                             &flib_def, &control_ret_nodes);
-      !status.ok()) {
-    return absl::InternalError(
-        absl::StrCat("Failed to convert MLIR to GraphDef. ", status.message()));
-  }
-
-  GraphDef graph_def{};
-  graph->ToGraphDef(&graph_def);
-
-  std::vector<std::string> control_ret_node_names{};
-  for (Node *node : control_ret_nodes) {
-    control_ret_node_names.push_back(node->name());
-  }
-  const std::string init_node_name =
-      GetNodeName(control_ret_node_names, kTfSavedModelInitializerInitType);
-
-  TF_ASSIGN_OR_RETURN(std::optional<SaverDef> saver_def,
-                      CreateSaverDef(control_ret_node_names, graph_def));
-
-  return CreateExportedModel(std::move(graph_def), init_node_name,
-                             checkpoint_dir, std::move(saver_def),
-                             function_aliases, asset_file_defs);
-}
 
 // Returns the updated function aliases. `module_op` may have different function
 // names from the original model, so it re-associates the aliases with the new

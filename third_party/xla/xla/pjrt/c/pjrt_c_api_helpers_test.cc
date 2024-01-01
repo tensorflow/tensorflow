@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -26,12 +26,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/status.h"
@@ -133,44 +132,17 @@ TEST(PjRtCApiHelperTest, InvalidOptionTypeIndex) {
 }
 
 TEST(PjRtCApiHelperTest, Callback) {
-  absl::flat_hash_map<std::string, std::string> kv_store;
-  absl::Mutex mu;
-  xla::PjRtClient::KeyValueGetCallback kv_get =
-      [&kv_store, &mu](std::string_view k,
-                       absl::Duration timeout) -> xla::StatusOr<std::string> {
-    absl::Duration wait_interval = absl::Milliseconds(10);
-    int num_retry = timeout / wait_interval;
-    for (int i = 0; i < num_retry; i++) {
-      {
-        absl::MutexLock lock(&mu);
-        auto iter = kv_store.find(k);
-        if (iter != kv_store.end()) {
-          return iter->second;
-        }
-      }
-      absl::SleepFor(wait_interval);
-    }
-    return absl::NotFoundError(
-        absl::StrCat(k, " is not found in the kv store."));
-  };
-  xla::PjRtClient::KeyValuePutCallback kv_put =
-      [&kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
-    {
-      absl::MutexLock lock(&mu);
-      kv_store[k] = v;
-    }
-    return tsl::OkStatus();
-  };
-  auto kv_callback_data = ConvertToCKeyValueCallbacks(kv_get, kv_put);
-  auto converted_back_kv_get = ToCppKeyValueGetCallback(
-      kv_callback_data->c_kv_get, &kv_callback_data->kv_get_c_func);
-  auto converted_back_kv_put = ToCppKeyValuePutCallback(
+  auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
+
+  auto kv_callback_data = ConvertToCKeyValueCallbacks(kv_store);
+  auto converted_kv_store = ToCppKeyValueStore(
+      kv_callback_data->c_kv_get, &kv_callback_data->kv_get_c_func,
       kv_callback_data->c_kv_put, &kv_callback_data->kv_put_c_func);
 
-  auto s = converted_back_kv_put("key", "value");
+  auto s = converted_kv_store->Set("key", "value");
   TF_EXPECT_OK(s);
 
-  auto v = converted_back_kv_get("key", absl::Seconds(1));
+  auto v = converted_kv_store->Get("key", absl::Seconds(1));
   TF_EXPECT_OK(v.status());
   EXPECT_EQ(*v, "value");
 }

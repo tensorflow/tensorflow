@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -239,11 +240,8 @@ struct GpuClientOptions {
 
   bool should_stage_host_to_device_transfers = true;
 
-  // `kv_get` and `kv_put` are callbacks provided by the caller to access a
-  // key-value store shared between nodes. `kv_get` and `kv_put` must be
-  // non-null if `num_nodes` > 1.
-  PjRtClient::KeyValueGetCallback kv_get = nullptr;
-  PjRtClient::KeyValuePutCallback kv_put = nullptr;
+  // kv_store must be non-null if num_nodes > 1.
+  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
 
   bool enable_mock_nccl = false;
 };

@@ -76,6 +76,19 @@ inline bool AllOperandsConvertedFromBF16ToF32(const HloInstruction* instr) {
   });
 }
 
+template <typename Pattern>
+auto ElementwiseSafeIntermediate(HloInstruction** instr, Pattern pattern) {
+  return m::AnyOf<HloInstruction>(m::Broadcast(instr, pattern.WithOneUser()),
+                                  m::Slice(instr, pattern.WithOneUser()),
+                                  m::Bitcast(instr, pattern.WithOneUser()),
+                                  m::Reshape(instr, pattern.WithOneUser()),
+                                  pattern);
+}
+
+inline auto OneDnnMatmulInstr(HloInstruction** instr) {
+  return m::CustomCall(instr, {"__onednn$matmul"});
+}
+
 inline auto ConvertBF16ToF32(HloInstruction** instr) {
   return m::Convert(m::Op(instr).WithElementType(PrimitiveType::BF16))
       .WithElementType(PrimitiveType::F32);
@@ -89,6 +102,80 @@ inline void GetBF16Bias(HloInstruction* dot, HloInstruction** old_bias,
        Match(*old_bias, ConvertBF16ToF32(new_bias)))) {
     *old_bias = *new_bias;
   }
+}
+
+inline auto BcastConstScalar(HloInstruction** instr, double value) {
+  return m::Broadcast(instr, m::ConstantScalar(value));
+}
+
+inline auto BcastConstScalar(double value) {
+  return BcastConstScalar(nullptr, value);
+}
+
+auto ConstScalarNear(double value) {
+  return m::ConstantScalar().WithPredicate(
+      [expected = value](const HloInstruction* instr) {
+        // Not a very robust floating-point comparison, but good enough for our
+        // purposes.
+        std::optional<double> actual =
+            static_cast<const HloConstantInstruction*>(instr)
+                ->literal()
+                .GetAsDouble({});
+        if (!actual.has_value()) return false;
+        double epsilon;
+        switch (instr->shape().element_type()) {
+          case F16:
+            epsilon = 128 * std::numeric_limits<Eigen::half>::epsilon();
+            break;
+          case BF16:
+            epsilon = 128 * std::numeric_limits<bfloat16>::epsilon();
+            break;
+          case F32:
+            epsilon = 128 * std::numeric_limits<float>::epsilon();
+            break;
+          case F64:
+            epsilon = 128 * std::numeric_limits<double>::epsilon();
+            break;
+          default:
+            return false;
+        }
+        return abs(*actual - expected) < (abs(*actual + expected) * epsilon);
+      });
+}
+
+inline auto BcastConstScalarNear(double value) {
+  return m::Broadcast(ConstScalarNear(value));
+}
+
+auto GELUActivation(HloInstruction* instr, HloInstruction** src) {
+  // Attempt to match GELU_TANH activation
+  // (https://arxiv.org/abs/1606.08415), where:
+  // gelu_tanh(x) = x * cdf(x)
+  // cdf(x) = 0.5 * (1 + tanh(sqrt(2 / pi) * (x + 0.044715 * x**3))
+  HloInstruction* errf;
+  return Match(instr, m::MultiplyAnyOrder(
+                          m::Op(src),
+                          m::MultiplyAnyOrder(
+                              BcastConstScalar(0.5),
+                              m::AddAnyOrder(BcastConstScalar(1.0),
+                                             m::Op(&errf).WithOneUser())))) &&
+         Match(errf,
+               m::Tanh(m::MultiplyAnyOrder(
+                           BcastConstScalarNear(sqrt(M_2_PI)),
+                           m::AddAnyOrder(
+                               m::Op().Is(*src),
+                               m::MultiplyAnyOrder(
+                                   BcastConstScalarNear(0.044715),
+                                   m::MultiplyAnyOrder(
+                                       m::Op().Is(*src),
+                                       m::MultiplyAnyOrder(m::Op().Is(*src),
+                                                           m::Op().Is(*src))
+                                           .WithOneUser())
+                                       .WithOneUser())
+                                   .WithOneUser())
+                               .WithOneUser())
+                           .WithOneUser())
+                   .WithOneUser());
 }
 
 StatusOr<Shape> AdjustBiasShape(const HloInstruction* instr,
@@ -377,6 +464,57 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
     }
 
     return OkStatus();
+  }
+
+  Status HandleMaximum(HloInstruction* instr) override {
+    HloInstruction* matmul_call;
+    HloInstruction* intermediate_instr = nullptr;
+    // Attempt to elide maximum and fuse ReLU activation into GEMM, including
+    // when slicing or bitcasting is applied to the result.
+    if (Match(instr, m::MaximumAnyOrder(ElementwiseSafeIntermediate(
+                                            &intermediate_instr,
+                                            OneDnnMatmulInstr(&matmul_call))
+                                            .WithOneUser(),
+                                        BcastConstScalar(0)))) {
+      return FuseActivation(OneDnnMatMulConfig::RELU, instr, matmul_call,
+                            intermediate_instr);
+    }
+    return OkStatus();
+  }
+
+  Status HandleMultiply(HloInstruction* instr) override {
+    HloInstruction* matmul_call;
+    HloInstruction* intermediate_instr = nullptr;
+    HloInstruction* src;
+    if (GELUActivation(instr, &src)) {
+      if (Match(src,
+                ElementwiseSafeIntermediate(&intermediate_instr,
+                                            OneDnnMatmulInstr(&matmul_call)))) {
+        return FuseActivation(OneDnnMatMulConfig::GELU_TANH, instr, matmul_call,
+                              intermediate_instr);
+      }
+    }
+    return OkStatus();
+  }
+
+  Status FuseActivation(OneDnnMatMulConfig_FusionKind kind,
+                        HloInstruction* activation, HloInstruction* matmul,
+                        HloInstruction* intermediate_instr = nullptr) {
+    TF_ASSIGN_OR_RETURN(auto backend_config,
+                        matmul->backend_config<BackendConfig>());
+    auto* matmul_config = backend_config.mutable_onednn_matmul_config();
+    matmul_config->add_fused_ops(kind);
+
+    std::unique_ptr<HloInstruction> output = matmul->Clone();
+    TF_RETURN_IF_ERROR(output->set_backend_config(backend_config));
+
+    if (intermediate_instr) {
+      output = intermediate_instr->CloneWithNewOperands(
+          intermediate_instr->shape(),
+          {matmul->parent()->AddInstruction(std::move(output))});
+    }
+
+    return ReplaceWithNewInstruction(activation, std::move(output));
   }
 };
 

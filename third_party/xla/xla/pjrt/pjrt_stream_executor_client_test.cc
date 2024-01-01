@@ -141,7 +141,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto result_literal = std::make_shared<Literal>(
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
-  blocked_buffer->ToLiteral(result_literal.get(), [&](absl::Status s) {
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;

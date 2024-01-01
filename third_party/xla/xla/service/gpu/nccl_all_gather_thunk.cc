@@ -71,13 +71,6 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
       impl::CheckImplementable(op), op, replica_count, partition_count);
 }
 
-/*static*/ bool NcclAllGatherStartThunk::IsDegenerate(AllGatherStartOp op,
-                                                      int64_t replica_count,
-                                                      int64_t partition_count) {
-  return impl::GetNcclAllGatherConfig(op).config.IsDegenerate(replica_count,
-                                                              partition_count);
-}
-
 /*static*/ CollectiveOpGroupMode NcclAllGatherStartThunk::GetGroupMode(
     AllGatherStartOp op) {
   return impl::GetNcclAllGatherConfig(op).config.group_mode;

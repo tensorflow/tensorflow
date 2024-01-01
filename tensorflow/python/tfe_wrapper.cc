@@ -424,6 +424,29 @@ static py::object TFE_ClearScalarCache() {
   return py::none();
 }
 
+static Device* GetDevice(EagerContext* context, const char* device_name,
+                         const char* platform_name,
+                         const std::vector<Device*>& devices) {
+  auto device_name_str = platform_name != nullptr
+                             ? absl::StrCat("/device:", platform_name, ":0")
+                             : std::string(device_name);
+  DeviceNameUtils::ParsedName input_device_name;
+  if (!DeviceNameUtils::ParseFullOrLocalName(device_name_str,
+                                             &input_device_name)) {
+    ThrowValueError(absl::StrFormat("Failed parsing derived device name: '%s'",
+                                    device_name_str)
+                        .c_str());
+  }
+  auto selected_device = absl::c_find_if(devices, [&](const Device* d) {
+    return DeviceNameUtils::AreCompatibleDevNames(input_device_name,
+                                                  d->parsed_name());
+  });
+  if (selected_device == devices.end()) {
+    return nullptr;
+  }
+  return *selected_device;
+}
+
 // Returns compiler IR for a given function.
 static py::bytes TFE_GetCompilerIr(py::handle& ctx,
                                    const char* concrete_function_name,
@@ -514,34 +537,23 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
         TensorHandleFromInterface(abstract_tensor_handle));
   }
 
-  DeviceNameUtils::ParsedName input_device_name;
-  if (!DeviceNameUtils::ParseFullOrLocalName(device_name, &input_device_name)) {
-    ThrowValueError(
-        absl::StrFormat("Failed parsing device name: '%s'", device_name)
-            .c_str());
-  }
-
   StatusOr<std::string> hlo_str;
-  if (platform_name != nullptr) {
+  std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
+  Device* selected_device =
+      GetDevice(context, device_name, platform_name, devices);
+  if (selected_device != nullptr) {
+    hlo_str =
+        GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
+                      selected_device, context, flat_args,
+                      captured_input_handles, compiler_arg_source);
+  } else if (platform_name != nullptr) {
     hlo_str = GetCompilerIr(
         selected_stage, context->pflr(), concrete_function_name, platform_name,
         context, flat_args, captured_input_handles, compiler_arg_source);
   } else {
-    std::vector<Device*> devices = context->local_device_mgr()->ListDevices();
-    auto selected_device = absl::c_find_if(devices, [&](const Device* d) {
-      return DeviceNameUtils::AreCompatibleDevNames(input_device_name,
-                                                    d->parsed_name());
-    });
-    if (selected_device == devices.end()) {
-      ThrowValueError(
-          absl::StrFormat("No matching device found for '%s'", device_name)
-              .c_str());
-    }
-
-    hlo_str =
-        GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
-                      *selected_device, context, flat_args,
-                      captured_input_handles, compiler_arg_source);
+    ThrowValueError(
+        absl::StrFormat("No matching device found for '%s'", device_name)
+            .c_str());
   }
 
   if (!hlo_str.ok()) {

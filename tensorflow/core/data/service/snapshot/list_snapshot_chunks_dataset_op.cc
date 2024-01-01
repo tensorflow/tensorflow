@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_chunk_provider.h"
 #include "tensorflow/core/data/split_utils.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -79,8 +80,7 @@ class ListSnapshotChunksDatasetOp::Dataset : public DatasetBase {
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
-    // TODO(b/297930782): Implement this.
-    return kUnknownCardinality;
+    return SnapshotChunksCardinality(snapshot_path(), env_);
   }
 
   absl::Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*

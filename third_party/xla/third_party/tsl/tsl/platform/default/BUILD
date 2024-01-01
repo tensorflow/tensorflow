@@ -402,25 +402,6 @@ cc_library(
 )
 
 cc_library(
-    name = "resource_loader",
-    testonly = 1,
-    srcs = ["resource_loader.cc"],
-    hdrs = ["//tsl/platform:resource_loader.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:path",
-        "//tsl/platform:test",
-        "@bazel_tools//tools/cpp/runfiles",
-    ],
-)
-
-cc_library(
     name = "rocm_rocdl_path",
     srcs = ["rocm_rocdl_path.cc"],
     hdrs = ["//tsl/platform:rocm_rocdl_path.h"],

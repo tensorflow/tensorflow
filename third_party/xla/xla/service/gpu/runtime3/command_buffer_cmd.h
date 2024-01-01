@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME3_COMMAND_BUFFER_CMD_H_
 #define XLA_SERVICE_GPU_RUNTIME3_COMMAND_BUFFER_CMD_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -30,7 +32,6 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/runtime3/command_buffer_allocations.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -85,6 +86,7 @@ class CommandBufferCmd {
   // the target address as se::DeviceMemoryBase{nullptr, size}.
   struct RecordParams {
     se::StreamExecutor* executor;
+    se::Stream* trace_stream;
     const BufferAllocations* buffer_allocations;
   };
 
@@ -104,6 +106,9 @@ class CommandBufferCmd {
   // updates, thus they need to be consistent across calls to the function.
   virtual BufferUsageVector buffers() = 0;
 
+  // Returns true if command implemented as a nested command buffer.
+  virtual bool IsNestedCommandBuffer() const { return false; }
+
   virtual ~CommandBufferCmd() = default;
 };
 
@@ -116,7 +121,7 @@ class CommandBufferCmd {
 // purpose is to manipulate command buffers at run time.
 class CommandBufferCmdSequence {
  public:
-  CommandBufferCmdSequence() = default;
+  explicit CommandBufferCmdSequence(bool force_barriers = false);
 
   enum class RecordMode {
     // In exclusive mode no one else is recording commands into the command
@@ -155,14 +160,42 @@ class CommandBufferCmdSequence {
   // Returns buffer allocations indices referenced by commands in this sequence.
   const absl::flat_hash_set<BufferAllocation::Index>& allocs_indices() const;
 
+  // Returns a vector that tells if command at the given index requires a
+  // barrier.
+  std::vector<bool> barriers() const;
+
+  bool empty() const { return commands_.empty(); }
+  size_t size() const { return commands_.size(); }
+
  private:
-  std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
+  struct Command {
+    Command(std::unique_ptr<CommandBufferCmd> cmd, bool requires_barrier)
+        : cmd(std::move(cmd)), requires_barrier(requires_barrier) {}
+
+    std::unique_ptr<CommandBufferCmd> cmd;
+    bool requires_barrier;
+  };
+
+  // Functions for tracking buffer usage of recorded commands and figuring out
+  // when the next command requires a barrier for correctness.
+  bool HasConflicts(const CommandBufferCmd::BufferUsageVector& buffers);
+  void TrackBuffers(const CommandBufferCmd::BufferUsageVector& buffers);
+  void ClearTrackedBuffers();
+
+  bool force_barriers_;
+  std::vector<Command> commands_;
 
   // Buffers referenced by commands in this sequence.
   absl::flat_hash_set<CommandBufferCmd::BufferUsage> buffers_;
 
   // Buffer allocations indices referenced by commands in this sequence.
   absl::flat_hash_set<BufferAllocation::Index> allocs_indices_;
+
+  // We track read and write sets of commands recorded into the command
+  // sequence to detect conflicts and insert explicit barriers. These are the
+  // buffer allocation slices used by commands appended since the last barrier.
+  absl::flat_hash_set<BufferAllocation::Slice> read_set_;
+  absl::flat_hash_set<BufferAllocation::Slice> write_set_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -219,6 +252,7 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
 
   absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_;
 };
+
 //===----------------------------------------------------------------------===//
 // MemcpyDeviceToDeviceCmd
 //===----------------------------------------------------------------------===//
@@ -237,6 +271,41 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
   BufferAllocation::Slice dst_;
   BufferAllocation::Slice src_;
   int64_t num_bytes_;
+};
+
+//===----------------------------------------------------------------------===//
+// MemzeroCmd
+//===----------------------------------------------------------------------===//
+
+class MemzeroCmd : public CommandBufferCmd {
+ public:
+  explicit MemzeroCmd(BufferAllocation::Slice dst);
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  BufferAllocation::Slice dst_;
+};
+
+//===----------------------------------------------------------------------===//
+// Memset32Cmd
+//===----------------------------------------------------------------------===//
+
+class Memset32Cmd : public CommandBufferCmd {
+ public:
+  explicit Memset32Cmd(BufferAllocation::Slice dst, uint32_t bit_pattern);
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+ private:
+  BufferAllocation::Slice dst_;
+  uint32_t bit_pattern_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -408,6 +477,8 @@ class GemmCmd : public CommandBufferCmd {
                 se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
 
  private:
   const GemmConfig config_;

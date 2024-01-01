@@ -19,10 +19,10 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/base/prefetch.h"
 #include "absl/numeric/int128.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/prefetch.h"
 
 namespace tensorflow {
 
@@ -109,13 +109,11 @@ class PresizedCuckooMap {
            FindInBucket(k, fast_map_to_buckets(h2(tk)), out);
   }
 
-  // Prefetch memory associated with the key k into cache levels specified by
-  // hint.
-  template <port::PrefetchHint hint = port::PREFETCH_HINT_T0>
+  // Prefetch memory associated with the key k into cache.
   void PrefetchKey(const key_type k) const {
     const uint64 tk = key_transform(k);
-    port::prefetch<hint>(&buckets_[fast_map_to_buckets(tk)].keys);
-    port::prefetch<hint>(&buckets_[fast_map_to_buckets(h2(tk))].keys);
+    absl::PrefetchToLocalCache(&buckets_[fast_map_to_buckets(tk)].keys);
+    absl::PrefetchToLocalCache(&buckets_[fast_map_to_buckets(h2(tk))].keys);
   }
 
   int64_t MemoryUsed() const {

@@ -340,8 +340,12 @@ tensorflow::Status PreprocessSignature(
 
 bool AotPackageExists(absl::string_view saved_model_dir) {
   Env* env = Env::Default();
-  const std::string aot_package_directory = GetAotPackagePath(saved_model_dir);
-  return env->FileExists(aot_package_directory).ok();
+  const std::string aot_package_path = GetAotPackagePath(saved_model_dir);
+  const std::string aot_mlir_path = GetMlirFilePath(aot_package_path);
+  const std::string aot_bef_path = GetBefFilePath(aot_package_path);
+  return env->FileExists(aot_package_path).ok() &&
+         env->FileExists(aot_mlir_path).ok() &&
+         env->FileExists(aot_bef_path).ok();
 }
 
 }  // namespace
@@ -453,7 +457,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   // Register TFRT dialects
   mlir::DialectRegistry registry;
   if (aot_exist) {
-    LOG(INFO) << "Found AoT package. Register required dialects.";
+    LOG(INFO) << "Found AOT package. Register required dialects.";
     RegisterTfrtDialectsForAot(registry);
   }
   RegisterMlirDialect(registry);
@@ -492,7 +496,7 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
   if (aot_exist) {
-    LOG(INFO) << "Found AoT package. Load and deserialize MLIR module.";
+    LOG(INFO) << "Found AOT package. Load and deserialize MLIR module.";
 
     TF_RETURN_IF_ERROR(
         DeserializeAotMlirModule(saved_model_dir, &context, &mlir_module));
@@ -556,7 +560,7 @@ SavedModelImpl::LoadSavedModel(Options options,
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;
   if (aot_exist) {
-    LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
+    LOG(INFO) << "Found AOT package. Load and deserialize BEF.";
     if (options.graph_execution_options.enable_mlrt) {
       // TODO(b/303504882): Add deserialization for mlrt path
       return absl::InternalError("AOT is not supported in MLRT");

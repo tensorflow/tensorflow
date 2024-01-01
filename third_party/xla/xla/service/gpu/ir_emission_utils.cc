@@ -1041,14 +1041,6 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
     idx = *arg;
   }
 
-  // The reduction emitter can't handle multiple users.
-  if (idx.opcode() == HloOpcode::kReduce &&
-      absl::c_count_if(idx.GetUsers(), [&](auto user) {
-        return fusion.ContainsInstruction(user);
-      }) > 1) {
-    return instr;
-  }
-
   // Try a bit harder to find a transpose hero. The shared memory transpose
   // emitter also works if there are ops with more than 1 operand on the path
   // between root and the transpose op, we still want the restriction though

@@ -175,8 +175,13 @@ enum ExternalStatePolicy {
 // Message stored with Dataset objects to control how datasets are processed and
 // optimized.
 //
-// next: 10
+// next: 11
 message Options {
+  // Optional name for the dataset.
+  oneof optional_dataset_name {
+    string dataset_name = 10;
+  }
+
   // Whether the outputs need to be produced in deterministic order.
   oneof optional_deterministic {
     bool deterministic = 1;

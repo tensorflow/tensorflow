@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
@@ -26,9 +28,11 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -42,6 +46,25 @@ namespace xla::gpu {
 using tsl::AsyncValueRef;
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
+
+// For sharded buffers we should execute Send/Recv operations only on devices
+// with maximal sharding, and do nothing on every other device.
+static StatusOr<bool> ShouldSkip(
+    std::string_view operation, const Thunk::ExecuteParams& params,
+    const std::optional<GlobalDeviceId>& device_constraint) {
+  if (!device_constraint.has_value()) return false;
+
+  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
+                      params.nccl_params.GetGlobalDeviceId());
+
+  bool skip = global_device_id != *device_constraint;
+  if (skip) {
+    VLOG(3) << "Skip " << operation << " as device id " << global_device_id
+            << " doesn't match device id constraint " << *device_constraint;
+  }
+
+  return skip;
+}
 
 //===----------------------------------------------------------------------===//
 // SendRecvAsyncEvents
@@ -78,17 +101,23 @@ absl::StatusOr<AsyncValueRef<se::Event>> SendRecvAsyncEvents::Extract(
 SendThunk::SendThunk(
     ThunkInfo thunk_info, Shape shape, BufferAllocation::Slice buffer,
     int64_t channel_id, std::shared_ptr<SendRecvAsyncEvents> events,
-    absl::flat_hash_map<std::string, std::string> frontend_attrs)
+    absl::flat_hash_map<std::string, std::string> frontend_attrs,
+    std::optional<GlobalDeviceId> device_constraint)
     : Thunk(Thunk::kSend, thunk_info),
       shape_(shape),
       buffer_(buffer),
       channel_id_(channel_id),
       events_(std::move(events)),
-      frontend_attrs_(std::move(frontend_attrs)) {}
+      frontend_attrs_(std::move(frontend_attrs)),
+      device_constraint_(device_constraint) {}
 
 Status SendThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Send buffer: channel_id=" << channel_id_
           << "; shape=" << shape_.ToString();
+
+  TF_ASSIGN_OR_RETURN(bool skip,
+                      ShouldSkip("sending buffer", params, device_constraint_));
+  if (skip) return OkStatus();
 
   TraceMe trace([&] {
     return TraceMeEncode("Send", {{"channel_id", channel_id_}});
@@ -122,15 +151,19 @@ Status SendThunk::ExecuteOnStream(const ExecuteParams& params) {
 //===----------------------------------------------------------------------===//
 
 SendDoneThunk::SendDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
-
-                             std::shared_ptr<SendRecvAsyncEvents> events)
+                             std::shared_ptr<SendRecvAsyncEvents> events,
+                             std::optional<GlobalDeviceId> device_constraint)
     : Thunk(Thunk::kSend, thunk_info),
       channel_id_(channel_id),
-      events_(std::move(events)) {}
+      events_(std::move(events)),
+      device_constraint_(device_constraint) {}
 
 Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
-  VLOG(3) << "Wait for Host Send completion:"
-          << " channel_id=" << channel_id_;
+  VLOG(3) << "Wait for send completion: channel_id=" << channel_id_;
+
+  TF_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for send completion",
+                                            params, device_constraint_));
+  if (skip) return OkStatus();
 
   TraceMe trace([&] {
     return TraceMeEncode("SendDone", {{"channel_id", channel_id_}});
@@ -143,8 +176,7 @@ Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   BlockUntilReady(done_event.GetAsyncValue());
   if (done_event.IsError()) return done_event.GetError();
 
-  VLOG(5) << "Completed Host Send operation: "
-          << " channel_id=" << channel_id_;
+  VLOG(5) << "Completed Send operation: channel_id=" << channel_id_;
 
   // Once event is recorded we can add a stream dependency.
   params.stream->ThenWaitFor(&done_event.get());
@@ -158,17 +190,23 @@ Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 RecvThunk::RecvThunk(
     ThunkInfo thunk_info, Shape shape, BufferAllocation::Slice buffer,
     int64_t channel_id, std::shared_ptr<SendRecvAsyncEvents> events,
-    absl::flat_hash_map<std::string, std::string> frontend_attrs)
+    absl::flat_hash_map<std::string, std::string> frontend_attrs,
+    std::optional<GlobalDeviceId> device_constraint)
     : Thunk(Thunk::kSend, thunk_info),
       shape_(shape),
       buffer_(buffer),
       channel_id_(channel_id),
       events_(std::move(events)),
-      frontend_attrs_(std::move(frontend_attrs)) {}
+      frontend_attrs_(std::move(frontend_attrs)),
+      device_constraint_(device_constraint) {}
 
 Status RecvThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Recv buffer: channel_id=" << channel_id_
           << "; shape=" << shape_.ToString();
+
+  TF_ASSIGN_OR_RETURN(
+      bool skip, ShouldSkip("receiving buffer", params, device_constraint_));
+  if (skip) return OkStatus();
 
   TraceMe trace([&] {
     return TraceMeEncode("Recv", {{"channel_id", channel_id_}});
@@ -202,15 +240,18 @@ Status RecvThunk::ExecuteOnStream(const ExecuteParams& params) {
 //===----------------------------------------------------------------------===//
 
 RecvDoneThunk::RecvDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
-
-                             std::shared_ptr<SendRecvAsyncEvents> events)
+                             std::shared_ptr<SendRecvAsyncEvents> events,
+                             std::optional<GlobalDeviceId> device_constraint)
     : Thunk(Thunk::kSend, thunk_info),
       channel_id_(channel_id),
       events_(std::move(events)) {}
 
 Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
-  VLOG(3) << "Wait for Recv completion:"
-          << " channel_id=" << channel_id_;
+  VLOG(3) << "Wait for recv completion: channel_id=" << channel_id_;
+
+  TF_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for recv completion",
+                                            params, device_constraint_));
+  if (skip) return OkStatus();
 
   TraceMe trace([&] {
     return TraceMeEncode("RecvDone", {{"channel_d", channel_id_}});
@@ -223,8 +264,7 @@ Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   BlockUntilReady(done_event.GetAsyncValue());
   if (done_event.IsError()) return done_event.GetError();
 
-  VLOG(5) << "Completed Host Recv operation: "
-          << " channel=" << channel_id_;
+  VLOG(5) << "Completed Recv operation: channel=" << channel_id_;
 
   // Once event is recorded we can add a stream dependency.
   params.stream->ThenWaitFor(&done_event.get());

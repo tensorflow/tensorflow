@@ -537,11 +537,6 @@ CreateTPUResourceReadsWritesPartitioningPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUAnnotateDynamicShapeInputsPass();
 
-// Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
-// ops.
-std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass(
-    llvm::StringRef module_name = llvm::StringRef());
-
 // Creates a pass that identifies XLASharding ops in launch op for TPU
 // computation.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass();
@@ -691,7 +686,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
 #define GEN_PASS_DECL_TPURESOURCEREADFORWRITEPASS
 #define GEN_PASS_DECL_TPURESOURCEREADSWRITESPARTITIONINGPASS
-#define GEN_PASS_DECL_TPUREWRITEPASS
 #define GEN_PASS_DECL_TPUSHARDINGIDENTIFICATIONPASS
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS

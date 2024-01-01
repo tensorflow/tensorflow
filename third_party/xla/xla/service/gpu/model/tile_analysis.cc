@@ -944,27 +944,27 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
 }
 
 StatusOr<HloInstructionIndexing> ComputeInputToOutputIndexing(
-    const HloInstruction* instr, int input_id, MLIRContext* mlir_context) {
+    const HloInstruction* instr, int input_id, MLIRContext* ctx) {
   if (HloInstruction::IsOpElementwise(instr->opcode())) {
-    return ComputeInputToOutputCwiseOpIndexing(instr, mlir_context);
+    return ComputeInputToOutputCwiseOpIndexing(instr, ctx);
   }
   if (instr->opcode() == HloOpcode::kBitcast) {
-    return ComputeInputToOutputBitcastOpIndexing(instr, mlir_context);
+    return ComputeInputToOutputBitcastOpIndexing(instr, ctx);
   }
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
-    return ComputeInputToOutputBroadcastOpIndexing(broadcast, mlir_context);
+    return ComputeInputToOutputBroadcastOpIndexing(broadcast, ctx);
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
-    return ComputeInputToOutputReduceOpIndexing(reduce, input_id, mlir_context);
+    return ComputeInputToOutputReduceOpIndexing(reduce, input_id, ctx);
   }
   if (auto reshape = DynCast<HloReshapeInstruction>(instr)) {
-    return ComputeInputToOutputReshapeOpIndexing(reshape, mlir_context);
+    return ComputeInputToOutputReshapeOpIndexing(reshape, ctx);
   }
   if (auto reverse = DynCast<HloReverseInstruction>(instr)) {
-    return ComputeReverseOpIndexing(reverse, mlir_context);
+    return ComputeReverseOpIndexing(reverse, ctx);
   }
   if (auto transpose = DynCast<HloTransposeInstruction>(instr)) {
-    return ComputeInputToOutputTransposeOpIndexing(transpose, mlir_context);
+    return ComputeInputToOutputTransposeOpIndexing(transpose, ctx);
   }
   return InvalidArgument("Unsupported instruction type");
 }

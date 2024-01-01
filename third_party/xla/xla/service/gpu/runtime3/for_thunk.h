@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/status.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -35,8 +36,7 @@ class ForThunk : public Thunk {
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
+  Status Initialize(const InitializeParams& params) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
   SequentialThunk* body_thunk_sequence() { return body_thunk_sequence_.get(); }

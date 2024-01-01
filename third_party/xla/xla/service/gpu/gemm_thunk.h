@@ -43,8 +43,7 @@ class GemmThunk : public Thunk {
   GemmThunk& operator=(const GemmThunk&) = delete;
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
+  Status Initialize(const InitializeParams& params) override;
 
   GemmConfig config() const { return config_; }
   BufferAllocation::Slice lhs_buffer() const { return lhs_buffer_; }

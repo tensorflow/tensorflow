@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -166,6 +168,19 @@ absl::StatusOr<std::string> ParseTemporaryFile(absl::string_view filename) {
                                             ". This is likely a program bug."));
   }
   return parts[0];
+}
+
+int64_t SnapshotChunksCardinality(absl::string_view snapshot_path,
+                                  tsl::Env* env) {
+  if (!env->FileExists(SnapshotDoneFilePath(snapshot_path)).ok()) {
+    return kUnknownCardinality;
+  }
+  absl::StatusOr<std::vector<std::string>> chunks =
+      GetChildren(CommittedChunksDirectory(snapshot_path), env);
+  if (!chunks.ok()) {
+    return kUnknownCardinality;
+  }
+  return chunks->size();
 }
 
 }  // namespace data

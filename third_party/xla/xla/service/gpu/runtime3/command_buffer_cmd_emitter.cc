@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/kernel_thunk.h"
+#include "xla/service/gpu/memset_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
@@ -66,12 +67,24 @@ static StatusOr<Command> ConvertCopyThunk(
       thunk.destination(), thunk.source(), thunk.size_bytes());
 }
 
-static StatusOr<Command> ConvertWhileThunk(const WhileThunk& thunk) {
+static StatusOr<Command> ConvertMemzeroThunk(const MemzeroThunk& thunk) {
+  return std::make_unique<MemzeroCmd>(thunk.destination());
+}
+
+static StatusOr<Command> ConvertMemset32Thunk(
+    const Memset32BitValueThunk& thunk) {
+  return std::make_unique<Memset32Cmd>(thunk.destination(), thunk.value());
+}
+
+static StatusOr<Command> ConvertWhileThunk(const WhileThunk& thunk,
+                                           bool force_barriers) {
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdSequence cond_cmds,
-      ConvertToCommands(thunk.condition_thunk_sequence()->thunks()));
-  TF_ASSIGN_OR_RETURN(CommandBufferCmdSequence body_cmds,
-                      ConvertToCommands(thunk.body_thunk_sequence()->thunks()));
+      ConvertToCommands(thunk.condition_thunk_sequence()->thunks(),
+                        force_barriers));
+  TF_ASSIGN_OR_RETURN(
+      CommandBufferCmdSequence body_cmds,
+      ConvertToCommands(thunk.body_thunk_sequence()->thunks(), force_barriers));
   return std::make_unique<WhileCmd>(thunk.condition_result_buffer(),
                                     std::move(cond_cmds), std::move(body_cmds));
 }
@@ -86,7 +99,7 @@ static StatusOr<Command> ConvertGemmThunk(const GemmThunk& thunk) {
                                    workspace.value(), thunk.deterministic());
 }
 
-static StatusOr<Command> ConvertThunk(const Thunk& thunk) {
+static StatusOr<Command> ConvertThunk(const Thunk& thunk, bool force_barriers) {
   switch (thunk.kind()) {
     case Thunk::Kind::kKernel:
       return ConvertKernelThunk(static_cast<const KernelThunk&>(thunk));
@@ -96,8 +109,14 @@ static StatusOr<Command> ConvertThunk(const Thunk& thunk) {
     case Thunk::Kind::kCopy:
       return ConvertCopyThunk(
           static_cast<const DeviceToDeviceCopyThunk&>(thunk));
+    case Thunk::Kind::kMemzero:
+      return ConvertMemzeroThunk(static_cast<const MemzeroThunk&>(thunk));
+    case Thunk::Kind::kMemset32BitValue:
+      return ConvertMemset32Thunk(
+          static_cast<const Memset32BitValueThunk&>(thunk));
     case Thunk::Kind::kWhile:
-      return ConvertWhileThunk(static_cast<const WhileThunk&>(thunk));
+      return ConvertWhileThunk(static_cast<const WhileThunk&>(thunk),
+                               force_barriers);
     case Thunk::Kind::kGemm: {
       return ConvertGemmThunk(static_cast<const GemmThunk&>(thunk));
     }
@@ -108,10 +127,10 @@ static StatusOr<Command> ConvertThunk(const Thunk& thunk) {
 }
 
 StatusOr<CommandBufferCmdSequence> ConvertToCommands(
-    const ThunkSequence& sequence) {
-  CommandBufferCmdSequence cmd_sequence;
+    const ThunkSequence& sequence, bool force_barriers) {
+  CommandBufferCmdSequence cmd_sequence(force_barriers);
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
-    TF_ASSIGN_OR_RETURN(Command cmd, ConvertThunk(*thunk));
+    TF_ASSIGN_OR_RETURN(Command cmd, ConvertThunk(*thunk, force_barriers));
     cmd_sequence.Append(std::move(cmd));
   }
   return cmd_sequence;

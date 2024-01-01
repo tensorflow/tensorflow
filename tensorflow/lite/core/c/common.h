@@ -1393,6 +1393,7 @@ typedef struct TfLiteOpaqueDelegateBuilder {
   int64_t flags;
 } TfLiteOpaqueDelegateBuilder;
 
+// LINT.IfChange
 #ifndef TF_LITE_STATIC_MEMORY
 /// Creates an opaque delegate and returns its address.  The opaque delegate
 /// will behave according to the provided `opaque_delegate_builder`.  The
@@ -1426,6 +1427,7 @@ void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
 ///  The data_ field of `delegate` will be returned if the
 ///  `opaque_delegate_builder` field is null.
 void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
+// LINT.ThenChange(Google-internal path)
 
 /// Returns a tensor data allocation strategy.
 TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(

@@ -39,13 +39,15 @@ namespace spmd {
 // combinatorial optimization problem & solves it.
 AutoShardingSolverResult CallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
-    const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
+    const LivenessNodeSet& liveness_node_set,
+    const LivenessEdgeSet& liveness_edge_set, const StrategyMap& strategy_map,
     const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
     bool compute_iis, int64_t solver_timeout_in_seconds,
     const AutoShardingOption& option, std::optional<double> max_cost,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
-        sharding_propagation_solution = {});
+        sharding_propagation_solution = {},
+    bool deterministic_mode = false);
 
 // Computes the penalty to be used for fully replicated sharding strategies for
 // dots and convs.

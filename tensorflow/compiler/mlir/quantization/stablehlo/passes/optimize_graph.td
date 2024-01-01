@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,10 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_PLATFORM_FLOAT8_H_
-#define TENSORFLOW_TSL_PLATFORM_FLOAT8_H_
 
-// Deprecated, here only for backward-compatibility.  Please use ml_dtypes.h.
-#include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
+include "stablehlo/dialect/StablehloOps.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
 
-#endif  // TENSORFLOW_TSL_PLATFORM_FLOAT8_H_
+// Merge requantization followed by dequantization.
+def MergeRequantizationFollowedByDequantization : Pat<
+  (StableHLO_UniformDequantizeOp:$res
+    (StableHLO_UniformQuantizeOp $input)),
+  (StableHLO_UniformDequantizeOp $input),
+  [(IsUniformQuantizedType $input)]>;

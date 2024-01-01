@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -89,6 +90,24 @@ absl::StatusOr<std::optional<tensorflow::SaverDef>> CreateSaverDef(
 // constants to be known at XLA compilation time.
 void AddExportPasses(mlir::PassManager& pm,
                      bool duplicate_shape_determining_constants);
+
+// Converts MLIR ModuleOp to `ExportedModel`. Returns `InternalError` status
+// when the conversion fails.
+//
+// * `checkpoint_dir` is the directory where checkpoints where variable values
+// are stored. This value will be fed to the "file_prefix" tensor to restore the
+// variables.
+// * `function_aliases` maps the actual function name to the function alias.
+// This associates the quantized functions to the original functions' aliases.
+// If there were no function aliases in the input model, this should be empty.
+// * `asset_file_defs` include information about the assets, if any, that are
+// used directly to initialize resources (like hash tables). If no assets are
+// used in the model, this should be empty.
+absl::StatusOr<tensorflow::quantization::ExportedModel>
+ConvertMlirModuleToExportedModel(
+    mlir::ModuleOp module_op, absl::string_view checkpoint_dir,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases,
+    const std::vector<tensorflow::AssetFileDef>& asset_file_defs);
 
 }  // namespace stablehlo::quantization
 

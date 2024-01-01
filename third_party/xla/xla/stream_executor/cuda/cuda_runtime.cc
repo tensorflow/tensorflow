@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "absl/base/optimization.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -45,6 +47,14 @@ tsl::StatusOr<GpuFunctionHandle> GpuRuntime::GetFuncBySymbol(void* symbol) {
   RETURN_IF_CUDA_RES_ERROR(cudaGetFuncBySymbol(&func, symbol),
                            "Failed call to cudaGetFuncBySymbol");
   return reinterpret_cast<CUfunction>(func);
+}
+
+tsl::StatusOr<int32_t> GpuRuntime::GetRuntimeVersion() {
+  VLOG(2) << "Get CUDA runtime version";
+  int32_t version;
+  RETURN_IF_CUDA_RES_ERROR(cudaRuntimeGetVersion(&version),
+                           "Failed call to cudaGetRuntimeVersion");
+  return version;
 }
 
 }  // namespace stream_executor::gpu

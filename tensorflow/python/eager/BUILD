@@ -301,6 +301,24 @@ cuda_py_strict_test(
     ],
 )
 
+tpu_py_strict_test(
+    name = "context_platform_test",
+    size = "small",
+    srcs = ["context_platform_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 cuda_py_strict_test(
     name = "context_cross_platform_test",
     size = "small",

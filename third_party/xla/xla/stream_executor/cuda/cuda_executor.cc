@@ -1025,8 +1025,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
   {
-    int driver_version = 0;
-    (void)GpuDriver::GetDriverVersion(&driver_version);
+    int driver_version = GpuDriver::GetDriverVersion().value_or(0);
     std::string augmented_driver_version = absl::StrFormat(
         "%d (%s)", driver_version,
         cuda::DriverVersionStatusToString(Diagnostician::FindDsoVersion()));

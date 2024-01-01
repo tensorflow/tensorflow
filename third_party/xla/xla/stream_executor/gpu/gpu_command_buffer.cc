@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -45,6 +46,8 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -98,12 +101,25 @@ static int64_t NotifyExecDestroyed() {
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
+static std::string_view ModeToString(CommandBuffer::Mode mode) {
+  switch (mode) {
+    case CommandBuffer::Mode::kPrimary:
+      return "primary";
+    case CommandBuffer::Mode::kNested:
+      return "nested";
+  }
+}
+
 GpuCommandBuffer::GpuCommandBuffer(Mode mode, GpuExecutor* parent,
                                    GpuGraphHandle graph, bool is_owned_graph)
     : mode_(mode),
       parent_(parent),
       graph_(graph),
-      is_owned_graph_(is_owned_graph) {}
+      is_owned_graph_(is_owned_graph) {
+  VLOG(5) << "Created command buffer for graph " << graph_
+          << "; mode=" << ModeToString(mode)
+          << "; is_owned_graph=" << is_owned_graph_;
+}
 
 GpuCommandBuffer::~GpuCommandBuffer() {
   if (exec_ != nullptr && is_owned_graph_exec_) {
@@ -211,13 +227,6 @@ tsl::Status GpuCommandBuffer::CheckNotFinalized() {
   return tsl::OkStatus();
 }
 
-tsl::Status GpuCommandBuffer::CheckPrimary() {
-  if (mode_ != Mode::kPrimary)
-    return absl::InternalError(
-        "Command can't be added to a non-primary command buffer");
-  return tsl::OkStatus();
-}
-
 tsl::Status GpuCommandBuffer::CheckNumCommandBuffers(
     const ConditionalCommandBuffers& cmd_buffers, size_t num_cmd_buffers) {
   if (cmd_buffers.handles.size() != num_cmd_buffers) {
@@ -229,6 +238,11 @@ tsl::Status GpuCommandBuffer::CheckNumCommandBuffers(
 }
 
 tsl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
+  // We don't support adding barriers as root nodes and simply skip them.
+  if ((state_ == State::kCreate && nodes_.empty()) ||
+      (state_ == State::kUpdate && update_state_.node_idx == 0))
+    return tsl::OkStatus();
+
   if (state_ == State::kCreate) {
     // Collect nodes that will become a new barrier dependencies.
     Dependencies dependencies;
@@ -259,9 +273,14 @@ tsl::Status GpuCommandBuffer::Barrier(StreamExecutor* executor) {
   }
 
   if (state_ == State::kUpdate) {
-    barrier_ = nodes_[update_state_.node_idx];
-    // Increment update node index only if we added an no-op node earlier.
-    if (barriers_[update_state_.barrier_idx++]) update_state_.node_idx++;
+    // Increment update node index only if we added a no-op node earlier and it
+    // means that we just updated a "real" barrier node, otherwise barrier is
+    // the last updated node.
+    if (barriers_[update_state_.barrier_idx++]) {
+      barrier_ = nodes_[update_state_.node_idx++];
+    } else if (update_state_.node_idx) {
+      barrier_ = nodes_[update_state_.node_idx - 1];
+    }
     return tsl::OkStatus();
   }
 
@@ -332,7 +351,6 @@ tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
 tsl::Status GpuCommandBuffer::AddNestedCommandBuffer(
     const CommandBuffer& nested) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
-  TF_RETURN_IF_ERROR(CheckPrimary());
 
   GpuGraphHandle child_graph = GpuCommandBuffer::Cast(&nested)->graph();
 
@@ -795,13 +813,37 @@ tsl::Status GpuCommandBuffer::While(StreamExecutor* executor,
 tsl::Status GpuCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
+  // Maybe dump created CUDA graph to a dot file for debugging.
+  if (state_ == State::kCreate && VLOG_IS_ON(10)) {
+    std::string path = tsl::io::GetTempFilename(/*extension=*/"dot");
+    auto printed = GpuDriver::GraphDebugDotPrint(
+        graph_, path.c_str(), /*return_printed_graph=*/VLOG_IS_ON(100));
+    if (VLOG_IS_ON(100) && printed.ok()) {
+      VLOG(100) << "Printed Gpu graph " << graph_ << " to: " << path << "\n"
+                << *printed;
+    }
+  }
+
   if (mode_ == Mode::kPrimary && state_ == State::kCreate) {
     // If this is the first time we finalize command buffer after construction,
     // we need to instantiate it to an executable graph.
     GpuDriver::GraphInstantiateFlags flags;
 
     uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-    TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
+
+    // If we get a "resource exhausted error" we retry instantiating Gpu graph
+    // one more time after releasing unused device memory allocated for graphs.
+    auto instantiated = GpuDriver::GraphInstantiate(&exec_, graph_, flags);
+    if (instantiated.code() == absl::StatusCode::kResourceExhausted) {
+      LOG(WARNING) << "Retry CUDA graph instantiation after OOM error"
+                   << "; nodes=" << nodes_.size()
+                   << "; conditionals=" << conditional_command_buffers_.size()
+                   << "; alive executable graphs: " << AliveExecs();
+
+      TF_RETURN_IF_ERROR(GpuDriver::DeviceGraphMemTrim(parent_->device()));
+      TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
+    }
+
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
     VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated() << " "

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -21,6 +22,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -28,17 +30,23 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace stablehlo::quantization {
 namespace {
@@ -46,11 +54,17 @@ namespace {
 using ::mlir::quant::kTfFilePrefix;
 using ::mlir::quant::kTfQuantSaveOpName;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::tensorflow::AssetFileDef;
+using ::tensorflow::ConvertMlirToGraph;
+using ::tensorflow::FunctionDefLibrary;
 using ::tensorflow::FunctionLibraryDefinition;
+using ::tensorflow::Graph;
 using ::tensorflow::GraphDef;
+using ::tensorflow::Node;
 using ::tensorflow::NodeDef;
+using ::tensorflow::OpRegistry;
 using ::tensorflow::SaverDef;
 using ::tensorflow::quantization::ExportedModel;
 
@@ -181,6 +195,36 @@ absl::StatusOr<std::optional<SaverDef>> CreateSaverDef(
                      "empty strings or all non-empty strings. Got fields: ",
                      absl::StrJoin(fields, ",")));
   }
+}
+
+absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
+    const mlir::ModuleOp module_op, const absl::string_view checkpoint_dir,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases,
+    const std::vector<AssetFileDef>& asset_file_defs) {
+  const tensorflow::GraphExportConfig config{};
+  FunctionLibraryDefinition flib_def{OpRegistry::Global(),
+                                     FunctionDefLibrary()};
+  std::unique_ptr<Graph> graph;
+  absl::flat_hash_set<Node*> control_ret_nodes{};
+  TF_RETURN_IF_ERROR(ConvertMlirToGraph(module_op, config, &graph, &flib_def,
+                                        &control_ret_nodes));
+
+  GraphDef graph_def{};
+  graph->ToGraphDef(&graph_def);
+
+  std::vector<std::string> control_ret_node_names{};
+  for (Node* node : control_ret_nodes) {
+    control_ret_node_names.push_back(node->name());
+  }
+  const std::string init_node_name =
+      GetNodeName(control_ret_node_names, kTfSavedModelInitializerInitType);
+
+  TF_ASSIGN_OR_RETURN(const std::optional<SaverDef> saver_def,
+                      CreateSaverDef(control_ret_node_names, graph_def));
+
+  return CreateExportedModel(std::move(graph_def), init_node_name,
+                             checkpoint_dir, std::move(saver_def),
+                             function_aliases, asset_file_defs);
 }
 
 }  // namespace stablehlo::quantization

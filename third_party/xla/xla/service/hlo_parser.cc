@@ -1810,6 +1810,27 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return shape.IsTuple() && shape.tuple_shapes_size() >= 2 &&
                shape.tuple_shapes(0).IsTuple();
       };
+      // Verify operand/resulting shapes
+      if (opcode == HloOpcode::kAsyncUpdate ||
+          opcode == HloOpcode::kAsyncDone) {
+        if (operands.size() != 1 ||
+            !is_async_shape_correct(operands[0]->shape())) {
+          TokenError(
+              "AsyncUpdate and AsyncDone expect a single operand in the form "
+              "of ((async-operands), async-outputs, state).");
+          return nullptr;
+        }
+      }
+      if (opcode == HloOpcode::kAsyncStart ||
+          opcode == HloOpcode::kAsyncUpdate) {
+        if (!is_async_shape_correct(*shape)) {
+          TokenError(
+              "AsyncStart and AsyncUpdate expect the op shape to be in the "
+              "form of "
+              "((async-operands), async-outputs, state).");
+          return nullptr;
+        }
+      }
       optional<int64_t> async_group_id;
       attrs["async_group_id"] = {/*required=*/false, AttrTy::kInt64,
                                  &async_group_id};
@@ -1826,13 +1847,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
             async_wrapped_operand_shapes.push_back(operand->shape());
           }
         } else {
-          if (operands.size() != 1 ||
-              !is_async_shape_correct(operands[0]->shape())) {
-            TokenError(
-                "AsyncUpdate and AsyncDone expect a single operand in the form "
-                "of ((async-operands), async-outputs, state).");
-            return nullptr;
-          }
           async_wrapped_operand_shapes =
               operands[0]->shape().tuple_shapes(0).tuple_shapes();
         }
@@ -1840,13 +1854,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         if (opcode == HloOpcode::kAsyncDone) {
           async_wrapped_root_shape = *shape;
         } else {
-          if (!is_async_shape_correct(*shape)) {
-            TokenError(
-                "AsyncStart and AsyncUpdate expect the op shape to be in the "
-                "form of "
-                "((async-operands), async-outputs, state).");
-            return nullptr;
-          }
           async_wrapped_root_shape = shape->tuple_shapes(1);
         }
         HloComputation::Builder async_wrapped_builder("async_wrapped");

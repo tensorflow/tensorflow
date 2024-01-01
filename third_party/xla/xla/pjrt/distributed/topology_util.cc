@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/utils.h"
@@ -74,8 +75,8 @@ static std::string GetGlobalTopologyKey(std::string_view platform) {
 }
 
 static StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
-    std::string_view platform, int num_nodes,
-    const PjRtClient::KeyValueGetCallback& kv_get, absl::Duration timeout) {
+    std::string_view platform, int num_nodes, KeyValueStoreInterface* kv_store,
+    absl::Duration timeout) {
   std::vector<StatusOr<std::string>> local_topology_strs(num_nodes);
 
   // TODO(ezhulenev): Should a thread pool become a function argument?
@@ -87,7 +88,7 @@ static StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
   for (int i = 0; i < num_nodes; i++) {
     thread_pool.Schedule([&, i] {
       StatusOr<std::string> local_topology_str =
-          kv_get(GetLocalTopologyKey(platform, i), timeout);
+          kv_store->Get(GetLocalTopologyKey(platform, i), timeout);
       {
         absl::MutexLock lock(&mu);
         local_topology_strs[i] = local_topology_str;
@@ -157,8 +158,7 @@ GlobalTopologyProto BuildGlobalTopology(
 Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
                           absl::Duration get_local_topology_timeout,
                           absl::Duration get_global_topology_timeout,
-                          const PjRtClient::KeyValueGetCallback& kv_get,
-                          const PjRtClient::KeyValuePutCallback& kv_put,
+                          KeyValueStoreInterface* kv_store,
                           const LocalTopologyProto& local_topology,
                           GlobalTopologyProto* global_topology) {
   VLOG(3) << "Local Topology for platform" << platform << ":\n"
@@ -171,25 +171,25 @@ Status ExchangeTopologies(std::string_view platform, int node_id, int num_nodes,
     }
     return absl::OkStatus();
   }
-
-  TF_RETURN_IF_ERROR(kv_put(GetLocalTopologyKey(platform, node_id),
-                            local_topology.SerializeAsString()));
+  CHECK(kv_store != nullptr);
+  TF_RETURN_IF_ERROR(kv_store->Set(GetLocalTopologyKey(platform, node_id),
+                                   local_topology.SerializeAsString()));
 
   // The lead node gets all local topologies, builds the global topology and
   // puts it to the key-value store.
   std::string global_topology_key = GetGlobalTopologyKey(platform);
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(std::vector<LocalTopologyProto> local_topologies,
-                        GetAllLocalTopologies(platform, num_nodes, kv_get,
+                        GetAllLocalTopologies(platform, num_nodes, kv_store,
                                               get_local_topology_timeout));
     *global_topology =
         BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies));
-    TF_RETURN_IF_ERROR(
-        kv_put(global_topology_key, global_topology->SerializeAsString()));
+    TF_RETURN_IF_ERROR(kv_store->Set(global_topology_key,
+                                     global_topology->SerializeAsString()));
   } else {
     TF_ASSIGN_OR_RETURN(
         std::string global_topology_str,
-        kv_get(global_topology_key, get_global_topology_timeout));
+        kv_store->Get(global_topology_key, get_global_topology_timeout));
     global_topology->ParseFromString(global_topology_str);
   }
   VLOG(3) << "Global topology for platform " << platform << ":\n"

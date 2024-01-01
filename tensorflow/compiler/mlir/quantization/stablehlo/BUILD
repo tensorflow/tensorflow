@@ -49,6 +49,7 @@ cc_library(
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
+        "passes/optimize_graph.cc",
         "passes/populate_shape.cc",
         "passes/post_quantize.cc",
         "passes/prepare_quantize.cc",
@@ -69,6 +70,7 @@ cc_library(
         ":fill_quantization_options",
         ":lift_quantizable_spots_as_functions_fusion_inc_gen",
         ":lift_quantizable_spots_as_functions_simple_inc_gen",
+        ":optimize_graph_inc_gen",
         ":quantization_options_proto_cc",
         ":quantization_patterns",
         ":stablehlo_passes_inc_gen",
@@ -168,6 +170,7 @@ td_library(
     srcs = [
         "passes/lift_quantizable_spots_as_functions_fusion.td",
         "passes/lift_quantizable_spots_as_functions_simple.td",
+        "passes/optimize_graph.td",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -216,6 +219,23 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
+    name = "optimize_graph_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/optimize_graph.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/optimize_graph.td",
+    deps = [
+        ":quant_td_files",
+        "//tensorflow/compiler/mlir/quantization/common:quant_td_files",
+    ],
+)
+
+gentbl_cc_library(
     name = "bridge_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
     tbl_outs = [
@@ -240,6 +260,7 @@ cc_library(
         "passes/bridge/convert_mhlo_quant_to_int.cc",
         "passes/bridge/convert_tf_quant_ops_to_mhlo.cc",
         "passes/bridge/convert_tf_quant_types.cc",
+        "passes/bridge/optimize.cc",
         "passes/bridge/passes.cc",
         "passes/bridge/verify_quant_legalization.cc",
     ],
@@ -253,6 +274,7 @@ cc_library(
     ],
     deps = [
         ":bridge_passes_inc_gen",
+        ":optimize_inc_gen",
         ":tf_type_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
@@ -286,6 +308,34 @@ cc_library(
         "@local_xla//xla/translate/hlo_to_mhlo:attribute_importer",
         "@stablehlo//:chlo_ops",
     ],
+)
+
+td_library(
+    name = "optimize_td_files",
+    srcs = [
+        "passes/bridge/optimize.td",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "@llvm-project//mlir:ArithOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
+        "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
+    ],
+)
+
+gentbl_cc_library(
+    name = "optimize_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "passes/bridge/optimize.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes/bridge/optimize.td",
+    deps = [":optimize_td_files"],
 )
 
 tf_cc_test(

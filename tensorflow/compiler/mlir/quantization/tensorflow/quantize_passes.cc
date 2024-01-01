@@ -45,6 +45,8 @@ void AddStablehloQuantToIntPasses(mlir::OpPassManager &pm) {
       mlir::quant::stablehlo::createConvertMHLOQuantToIntPass(
           /*legalize_chlo=*/true));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::stablehlo::CreateOptimizeIntGraphPass());
   pm.addPass(mlir::createSymbolDCEPass());
   // MHLO -> StableHLO legalization.
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
@@ -266,6 +268,7 @@ void AddQuantizePtqPostCalibrationStablehloPasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   AddStaticRangeQuantizationPass(pm, mlir_dump_file_prefix);
+  pm.addPass(mlir::quant::stablehlo::createOptimizeGraphPass());
   AddStablehloQuantToIntPasses(pm);
   AddCallModuleSerializationPasses(pm);
 }

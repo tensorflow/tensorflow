@@ -79,12 +79,12 @@ cc_library(
     deps = [
         ":next_pluggable_device",
         ":next_pluggable_device_api",
-        ":pjrt_compile_on_demand_op",
         ":utils",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:framework",
+        "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/framework:device_id_utils",
@@ -104,34 +104,6 @@ cc_library(
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
     ],
-)
-
-cc_library(
-    name = "pjrt_compile_on_demand_op",
-    srcs = [
-        "pjrt_compile_on_demand_op.cc",
-    ],
-    hdrs = [
-        "pjrt_compile_on_demand_op.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/jit:device_compiler_client",
-        "//tensorflow/compiler/jit:variable_info",
-        "//tensorflow/compiler/jit:variable_info_util",
-        "//tensorflow/compiler/jit:xla_device",
-        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
-        "//tensorflow/compiler/jit:xla_launch_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/tfrt/common:create_pjrt_client_util",
-        "//tensorflow/core/util:determinism",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/pjrt:pjrt_client",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -338,13 +310,15 @@ cc_library(
 tf_cc_test(
     name = "c_plugin_coordination_service_agent_test",
     srcs = ["c_plugin_coordination_service_agent_test.cc"],
-    tags = ["no_windows"],  # TODO(b/317086445): Re-enable windows test.
+    tags = [
+        # TODO(b/317086445): Re-enable windows and mac test.
+        "no_mac",
+        "no_windows",
+    ],
     deps = [
         ":c_plugin_coordination_service_agent",
         "//tensorflow/c:tf_buffer",
-        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_tensor",
-        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/next_pluggable_device:c_api",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/log",
@@ -361,8 +335,8 @@ tf_cc_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/protobuf:coordination_config_proto_cc_impl",
-        "@local_tsl//tsl/protobuf:coordination_service_proto_cc_impl",
+        "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
+        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 

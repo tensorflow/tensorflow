@@ -951,9 +951,9 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // before (and sometime after) copy insertion, to avoid dead code from
   // interfering with the rewrites.
   pipeline.AddPass<HloDCE>();
+  pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
   pipeline.AddPass<CopyInsertion>();
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
   return pipeline.Run(module).status();
 }
 
