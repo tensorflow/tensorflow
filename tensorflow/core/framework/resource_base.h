@@ -41,7 +41,7 @@ class ResourceBase : public core::WeakRefCounted {
 
   // Returns a name for ref-counting handles.
   virtual std::string MakeRefCountingHandleName(int64_t resource_id) const {
-    return absl::StrFormat("Resource-%d-at-%p", resource_id, this);
+    return absl::StrFormat("Resource-%d-at-%p", resource_id, (void*)this);
   }
 
   // Returns memory used by this resource.
