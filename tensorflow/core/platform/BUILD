@@ -425,20 +425,6 @@ cc_library(
 )
 
 cc_library(
-    name = "logger",
-    hdrs = ["logger.h"],
-    deps = [
-        ":env",
-        ":logging",
-        ":protobuf",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:logger",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "logging",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
@@ -1405,7 +1391,6 @@ filegroup(
         "fingerprint.h",
         "float8.h",
         "init_main.h",
-        "logger.h",
         "mem.h",
         "mutex.h",
         "net.h",
