@@ -267,7 +267,8 @@ struct XLA_FFI_Handler_Register_Args {
   size_t struct_size;
   void* priv;
 
-  const char* name;  // null terminated
+  const char* name;      // null terminated
+  const char* platform;  // null terminated
   XLA_FFI_Handler* handler;
 };
 

@@ -34,9 +34,9 @@ TEST(FfiTest, StaticRegistration) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
 
   XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
-  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op", NoOp);
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op", "Host", NoOp);
 
-  auto handler = FindHandler("no-op");
+  auto handler = FindHandler("no-op", "Host");
   TF_ASSERT_OK(handler.status());
 }
 

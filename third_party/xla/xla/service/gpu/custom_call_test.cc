@@ -440,9 +440,9 @@ XLA_GPU_REGISTER_RUNTIME_CUSTOM_CALL(RegisterCustomCalls);
 // (5) Register XLA FFI handlers with XLA runtime.
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__gpu$xla.gpu.ext.always_fail",
-                         kAlwaysFail);
+                         PLATFORM, kAlwaysFail);
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__gpu$xla.gpu.ext.memcpy",
-                         kMemcpy);
+                         PLATFORM, kMemcpy);
 
 TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
   XlaBuilder b(TestName());
@@ -499,7 +499,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          "__gpu$xla.gpu.ext.memcpy_with_called_compuation",
-                         kMemcpyWithCalledComputation);
+                         PLATFORM, kMemcpyWithCalledComputation);
 
 TEST_F(CustomCallTest, WithCalledComputation) {
   // FFI handlers with called computations supported only with Thunks runtime.
