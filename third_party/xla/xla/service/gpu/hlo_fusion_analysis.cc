@@ -485,13 +485,8 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() const {
       return CalculateLaunchDimensions(shape, *device_info_, {kUnrollFactor});
     }
     case EmitterFusionKind::kScatter: {
-      const auto& root_shape = fusion_roots().front()->shape();
-      int64_t num_elements = ShapeUtil::ElementsIn(root_shape);
-      int unroll_factor = num_elements % 4 == 0   ? 4
-                          : num_elements % 2 == 0 ? 2
-                                                  : 1;
-      return CalculateLaunchDimensions(root_shape, *device_info_,
-                                       {unroll_factor, /*few_waves=*/false});
+      const auto& updates_shape = fusion_roots().front()->operand(2)->shape();
+      return CalculateLaunchDimensions(updates_shape, *device_info_);
     }
     case EmitterFusionKind::kCustomFusion:
       return absl::UnimplementedError(

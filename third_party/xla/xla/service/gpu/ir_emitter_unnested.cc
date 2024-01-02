@@ -2259,6 +2259,7 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
+    case HloFusionAnalysis::EmitterFusionKind::kScatter:
     case HloFusionAnalysis::EmitterFusionKind::kReduction: {
       TF_ASSIGN_OR_RETURN(
           std::optional<std::unique_ptr<FusionInterface>> emitter,
@@ -2280,11 +2281,6 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
       break;
 #endif
       LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      TF_ASSIGN_OR_RETURN(emission_result,
-                          EmitScatter(instr, nullptr, fusion_analysis));
-      break;
     }
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       TF_ASSIGN_OR_RETURN(auto backend_config,
@@ -2340,6 +2336,7 @@ Status IrEmitterUnnested::EmitFusion(
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
     case HloFusionAnalysis::EmitterFusionKind::kLoop:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
+    case HloFusionAnalysis::EmitterFusionKind::kScatter:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
       TF_ASSIGN_OR_RETURN(
           std::optional<std::unique_ptr<FusionInterface>> emitter,
@@ -2363,11 +2360,6 @@ Status IrEmitterUnnested::EmitFusion(
       break;
 #endif
       LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kScatter: {
-      TF_ASSIGN_OR_RETURN(emission_result,
-                          EmitScatter(fusion, fusion_op, fusion_analysis));
-      break;
     }
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       TF_ASSIGN_OR_RETURN(
@@ -2734,151 +2726,6 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(
       &b_, "rng_state_address");
   Store(old_state, output_address);
   return OkStatus();
-}
-
-Status IrEmitterUnnested::EmitScatter(
-    const ScatterDescriptor& desc, const LaunchDimensions& launch_dimensions) {
-  auto loop_body_emitter = [&](const llvm_ir::IrArray::Index& index) -> Status {
-    std::vector<llvm::Value*> raw_window_multidim;
-    std::vector<llvm::Value*> input_scatter_multidim;
-    std::vector<int64_t> raw_window_bounds;
-
-    auto get_i64_array = [](absl::Span<const int64_t> container) {
-      return llvm::ArrayRef<int64_t>{container.data(),
-                                     static_cast<size_t>(container.size())};
-    };
-
-    llvm::ArrayRef<int64_t> update_window_dims =
-        get_i64_array(desc.dim_numbers.update_window_dims());
-    // Partition the index into window indices and scatter indices.
-    for (int64_t i = 0, e = index.size(); i != e; ++i) {
-      // For window indices also remember the window size, this comes in handy
-      // later.
-      if (llvm::is_contained(update_window_dims, i)) {
-        raw_window_multidim.push_back(index[i]);
-        raw_window_bounds.push_back(desc.updates_shape.dimensions(i));
-      } else {
-        input_scatter_multidim.push_back(index[i]);
-      }
-    }
-    DCHECK_EQ(raw_window_multidim.size(),
-              desc.dim_numbers.update_window_dims_size());
-
-    // Apply inserted_window_dims to the window dimensions.
-    int64_t raw_window_multidim_idx = 0;
-    llvm::SmallVector<llvm::Value*> input_window_multidim;
-    llvm::SmallVector<int64_t> input_window_bounds;
-    const int64_t rank = desc.operand_shape.rank();
-    input_window_bounds.reserve(rank);
-    input_window_multidim.reserve(rank);
-
-    llvm::ArrayRef<int64_t> inserted_window_dims =
-        get_i64_array(desc.dim_numbers.inserted_window_dims());
-    for (int64_t i = 0; i != rank; ++i) {
-      if (llvm::is_contained(inserted_window_dims, i)) {
-        input_window_bounds.push_back(1);  // Trivial dimension.
-        input_window_multidim.push_back(index.GetConstantWithIndexType(0));
-      } else {
-        input_window_bounds.push_back(
-            raw_window_bounds[raw_window_multidim_idx]);
-        input_window_multidim.push_back(
-            raw_window_multidim[raw_window_multidim_idx]);
-        ++raw_window_multidim_idx;
-      }
-    }
-    DCHECK_EQ(input_window_multidim.size(), desc.operand_shape.rank());
-
-    // Insert a 1 dimension at the end if index_vector_dim requests one.
-    Shape scatter_indices_shape_fixed = desc.scatter_indices_shape;
-    if (desc.dim_numbers.index_vector_dim() ==
-        desc.scatter_indices_shape.rank()) {
-      scatter_indices_shape_fixed.add_dimensions(1);
-      scatter_indices_shape_fixed.mutable_layout()->add_minor_to_major(
-          desc.dim_numbers.index_vector_dim());
-    }
-
-    // Now load the indices corresponding to the current window from
-    // scatter_indices.
-    std::vector<llvm::Value*> raw_scatter_index_multidim =
-        input_scatter_multidim;
-    raw_scatter_index_multidim.insert(raw_scatter_index_multidim.begin() +
-                                          desc.dim_numbers.index_vector_dim(),
-                                      nullptr);
-
-    llvm::ArrayRef<int64_t> scatter_dims_to_operand_dims =
-        get_i64_array(desc.dim_numbers.scatter_dims_to_operand_dims());
-    llvm::Value* is_in_bounds = b_.getTrue();
-    for (int64_t i = 0, e = scatter_dims_to_operand_dims.size(); i != e; ++i) {
-      // Our index is stored along index_vector_dim, insert that into the lookup
-      // index into scatter_indices.
-      raw_scatter_index_multidim[desc.dim_numbers.index_vector_dim()] =
-          index.GetConstantWithIndexType(i);
-      llvm_ir::IrArray::Index raw_scatter_index_index(
-          raw_scatter_index_multidim, scatter_indices_shape_fixed,
-          index.GetType());
-
-      int64_t operand_dim = scatter_dims_to_operand_dims[i];
-      if (operand_dim > rank) {
-        return absl::OutOfRangeError(
-            "The provided scatter_dims_to_operand_dims was out of range.");
-      }
-      TF_ASSIGN_OR_RETURN(
-          llvm::Value* const loaded_scatter_index,
-          desc.scatter_indices_gen(raw_scatter_index_index.SourceIndexOfReshape(
-              scatter_indices_shape_fixed, desc.scatter_indices_shape, &b_)));
-      // And add the index to our window index. This yields the output index.
-      llvm::Value* casted_scatter_index = IntCast(
-          loaded_scatter_index, index.GetType(),
-          /*isSigned=*/ShapeUtil::ElementIsSigned(desc.scatter_indices_shape));
-      llvm::Value* dim_offset =
-          Add(input_window_multidim[operand_dim], casted_scatter_index);
-      input_window_multidim[operand_dim] = dim_offset;
-
-      // Also do the bounds check now.
-      int64_t max_index = desc.operand_shape.dimensions(operand_dim) -
-                          input_window_bounds[operand_dim] + 1;
-      // is_in_bounds = index >= 0 && index < dim_size-window_size+1
-      //   --> index u< dim_size-window_size+1
-      is_in_bounds =
-          And(is_in_bounds, ICmpULT(casted_scatter_index,
-                                    index.GetConstantWithIndexType(max_index)));
-    }
-
-    llvm_ir::LlvmIfData if_window_in_bounds_data = llvm_ir::EmitIfThenElse(
-        is_in_bounds, "scatter.in_bounds", &b_, /*emit_else=*/false);
-    llvm_ir::SetToFirstInsertPoint(if_window_in_bounds_data.true_block, &b_);
-    // All done, now just read from the calculated input from the window, and do
-    // an atomic store to the calculated location in the output.
-    llvm_ir::IrArray::Index input_window_index(
-        input_window_multidim, desc.output.GetShape(), index.GetType());
-    llvm::Value* output_address =
-        desc.output.EmitArrayElementAddress(input_window_index, &b_);
-    llvm::Value* input_address = llvm_ir::EmitAllocaAtFunctionEntry(
-        llvm_ir::PrimitiveTypeToIrType(desc.updates_shape.element_type(),
-                                       module_),
-        "input_address", &b_);
-    TF_ASSIGN_OR_RETURN(llvm::Value* const input_ir_value,
-                        desc.updates_gen(index));
-    Store(input_ir_value, input_address);
-
-    if (!desc.unique_indices) {
-      return EmitAtomicOperationForNestedComputation(
-          &b_, *ir_emitter_context_, *desc.update_computation, output_address,
-          input_address, desc.output.GetElementLlvmType());
-    } else {
-      return CallNestedComputation(
-          &b_, *ir_emitter_context_, *desc.update_computation,
-          {output_address, input_address}, output_address);
-    }
-  };
-
-  // Launch a kernel that reads every element in the updates tensor. We could
-  // also do one kernel per window instead if bounds checks turn out to be a
-  // bottleneck.
-  return ParallelLoopEmitter(loop_body_emitter, desc.updates_shape,
-                             launch_dimensions, &b_)
-      .EmitLoop(desc.name,
-                desc.get_index_type(launch_dimensions.launch_bound()));
 }
 
 Status IrEmitterUnnested::EmitSort(mlir::Operation* op,
@@ -3442,69 +3289,6 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
   return InternalError("This should be unreachable");
 }
 
-StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitScatter(
-    const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
-    HloFusionAnalysis& fusion_analysis) {
-  auto* fused_computation = fusion->fused_instructions_computation();
-  auto* root = fused_computation->root_instruction();
-
-  // Nothing should have been fused into the first operand of scatter.
-  CHECK_EQ(root->operand(0)->opcode(), HloOpcode::kParameter);
-
-  const Shape& updates_shape = root->operand(2)->shape();
-
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      CalculateLaunchDimensions(updates_shape,
-                                ir_emitter_context_->gpu_device_info()));
-
-  auto builder_fn = [&, this](std::vector<llvm_ir::IrArray> inputs,
-                              std::vector<llvm_ir::IrArray> outputs) -> Status {
-    // Spin up a new fused emitter for the scatter kernel and emit it.
-    FusedIrEmitter scatter_fused_emitter = FusedIrEmitter(elemental_emitter_);
-    for (int i = 0; i < fused_computation->num_parameters(); i++) {
-      auto fused_operand = fused_computation->parameter_instruction(i);
-      scatter_fused_emitter.BindGenerator(
-          *fused_operand, [this, &input = inputs[i],
-                           fused_operand](llvm_ir::IrArray::Index index) {
-            return input.EmitReadArrayElement(index, &b_,
-                                              fused_operand->name());
-          });
-    }
-
-    auto* scatter = Cast<HloScatterInstruction>(root);
-    const xla::ScatterDimensionNumbers& xla_scatter_dim =
-        scatter->scatter_dimension_numbers();
-
-    ScatterDescriptor desc;
-    desc.name = llvm_ir::IrName(root);
-    desc.operand_shape = root->operand(0)->shape();
-    desc.scatter_indices_shape = root->operand(1)->shape();
-    desc.updates_shape = updates_shape;
-    desc.dim_numbers = xla_scatter_dim;
-    desc.unique_indices = root->unique_indices();
-    desc.update_computation = root->called_computations()[0];
-    desc.output = outputs.back();
-    TF_ASSIGN_OR_RETURN(desc.scatter_indices_gen,
-                        scatter_fused_emitter.GetGenerator(*root->operand(1)));
-    TF_ASSIGN_OR_RETURN(desc.updates_gen,
-                        scatter_fused_emitter.GetGenerator(*root->operand(2)));
-    desc.get_index_type = [&](int64_t launch_size) {
-      return GetIndexTypeForKernel(root, launch_size, &b_);
-    };
-    return EmitScatter(desc, launch_dimensions);
-  };
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> kernel_thunk,
-                      BuildKernelThunkForFusion(
-                          *ir_emitter_context_, kernel_reuse_cache_, fusion,
-                          fusion_op, fused_computation, launch_dimensions,
-                          /*discriminator=*/"scatter", builder_fn, &b_));
-
-  FusionEmissionResult result;
-  result.thunks.push_back(std::move(kernel_thunk));
-  return result;
-}
 
 static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
     const FrontendAttributes& attrs) {
