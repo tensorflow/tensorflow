@@ -2368,7 +2368,7 @@ xla_test(
 
 xla_cc_test(
     name = "llvm_compiler_test",
-    srcs = if_gpu_is_configured(["llvm_compiler_test.cc"]),
+    srcs = ["llvm_compiler_test.cc"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM",
     ]),
