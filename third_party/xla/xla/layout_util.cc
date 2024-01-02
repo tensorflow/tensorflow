@@ -272,13 +272,17 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     dimensions_in_layout[dim] = true;
   }
 
-  if (!layout.dim_level_types().empty()) {
-    if (layout.dim_level_types().size() != shape.rank()) {
+  if (layout.dim_level_types_size() > 0) {
+    if (layout.dim_level_types_size() != shape.rank()) {
+      std::vector<DimLevelType> dim_level_types(layout.dim_level_types_size());
+      for (int i = 0; i < dim_level_types.size(); i++) {
+        dim_level_types[i] = layout.dim_level_type(i);
+      }
       return InvalidArgument(
           "layout dim_level_types field contains %d elements, but shape is "
           "rank %d: {%s}; shape: %s",
           layout.dim_level_types_size(), shape.rank(),
-          absl::StrJoin(layout.dim_level_types(), ", ",
+          absl::StrJoin(dim_level_types, ", ",
                         [](std::string* out, DimLevelType dim_level_type) {
                           absl::StrAppend(out,
                                           DimLevelType_Name(dim_level_type));
@@ -287,13 +291,17 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     }
   }
 
-  if (!layout.dim_unique().empty()) {
-    if (layout.dim_unique().size() != shape.rank()) {
+  if (layout.dim_unique_size() > 0) {
+    if (layout.dim_unique_size() != shape.rank()) {
+      std::vector<bool> dim_unique(layout.dim_unique_size());
+      for (int i = 0; i < dim_unique.size(); i++) {
+        dim_unique[i] = layout.dim_unique(i);
+      }
       return InvalidArgument(
           "layout dim_unique field contains %d elements, but shape is "
           "rank %d: {%s}; shape: %s",
           layout.dim_unique_size(), shape.rank(),
-          absl::StrJoin(layout.dim_unique(), ", ",
+          absl::StrJoin(dim_unique, ", ",
                         [](std::string* out, bool dim_unique) {
                           absl::StrAppend(out, BoolToString(dim_unique));
                         }),
@@ -301,15 +309,19 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     }
   }
 
-  if (!layout.dim_ordered().empty()) {
-    if (layout.dim_ordered().size() != shape.rank()) {
+  if (layout.dim_ordered_size() > 0) {
+    if (layout.dim_ordered_size() != shape.rank()) {
+      std::vector<bool> dim_ordered(layout.dim_ordered_size());
+      for (int i = 0; i < dim_ordered.size(); i++) {
+        dim_ordered[i] = layout.dim_ordered(i);
+      }
       return InvalidArgument(
-          "layout dim_unique field contains %d elements, but shape is "
+          "layout dim_ordered field contains %d elements, but shape is "
           "rank %d: {%s}; shape: %s",
           layout.dim_ordered_size(), shape.rank(),
-          absl::StrJoin(layout.dim_unique(), ", ",
-                        [](std::string* out, bool dim_unique) {
-                          absl::StrAppend(out, BoolToString(dim_unique));
+          absl::StrJoin(dim_ordered, ", ",
+                        [](std::string* out, bool dim_ordered) {
+                          absl::StrAppend(out, BoolToString(dim_ordered));
                         }),
           shape.ShortDebugString());
     }
@@ -440,9 +452,10 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 }
 
 /* static */ bool LayoutUtil::IsDense(const Layout& layout) {
-  return absl::c_all_of(
-      layout.dim_level_types(),
-      [](DimLevelType dim_level_type) { return dim_level_type == DIM_DENSE; });
+  for (int i = 0; i < layout.dim_level_types_size(); i++) {
+    if (layout.dim_level_type(i) != DIM_DENSE) return false;
+  }
+  return true;
 }
 
 /* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
@@ -450,24 +463,28 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
 }
 
 /* static */ bool LayoutUtil::IsCOO(const Layout& layout) {
-  return !layout.dim_level_types().empty() &&
-         layout.dim_level_type(0) == DIM_COMPRESSED &&
-         absl::c_all_of(layout.dim_level_types().subspan(1),
-                        [](DimLevelType dim_level_type) {
-                          return dim_level_type == DIM_SINGLETON;
-                        });
+  if ((layout.dim_level_types_size() == 0) ||
+      (layout.dim_level_type(0) != DIM_COMPRESSED)) {
+    return false;
+  }
+  for (int i = 1; i < layout.dim_level_types_size(); i++) {
+    if (layout.dim_level_type(i) != DIM_SINGLETON) return false;
+  }
+  return true;
 }
 
 /* static */ bool LayoutUtil::IsCSR(const Layout& layout) {
   return IsMonotonicWithDim0Major(layout) &&
-         layout.dim_level_types() ==
-             absl::Span<const DimLevelType>{DIM_DENSE, DIM_COMPRESSED};
+         (layout.dim_level_types_size() == 2) &&
+         (layout.dim_level_type(0) == DIM_DENSE) &&
+         (layout.dim_level_type(1) == DIM_COMPRESSED);
 }
 
 /* static */ bool LayoutUtil::IsCSC(const Layout& layout) {
   return IsMonotonicWithDim0Minor(layout) &&
-         layout.dim_level_types() ==
-             absl::Span<const DimLevelType>{DIM_DENSE, DIM_COMPRESSED};
+         (layout.dim_level_types_size() == 2) &&
+         (layout.dim_level_type(0) == DIM_DENSE) &&
+         (layout.dim_level_type(1) == DIM_COMPRESSED);
 }
 
 /* static */ bool LayoutUtil::IsMonotonicWithDim0Minor(const Layout& layout) {

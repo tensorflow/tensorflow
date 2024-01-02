@@ -915,9 +915,11 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   nonroot_computations.reserve(computations_.size() - 1);
   for (auto& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
-      for (HloComputation* called_computation :
-           instruction->called_computations()) {
-        nonroot_computations.insert(called_computation);
+      if (instruction->has_called_computations()) {
+        for (HloComputation* called_computation :
+             instruction->called_computations()) {
+          nonroot_computations.insert(called_computation);
+        }
       }
     }
   }
