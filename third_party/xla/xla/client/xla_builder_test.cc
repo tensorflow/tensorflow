@@ -1723,7 +1723,7 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedScalarMinMax) {
       HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
 }
 
-TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast) {
+TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast1) {
   XlaBuilder b(TestName());
   StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
   StatusOr<Shape> rhs = ParseShape("f32[1]");
@@ -1738,6 +1738,57 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast) {
   ASSERT_THAT(build_status.status().message(),
               HasSubstr("ShapeUtil::SameDimensions(non_scalar_shape.value(), "
                         "*shape) Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast2) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> rhs = ParseShape("f32[]");
+  StatusOr<Shape> ehs = ParseShape("f32[]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
+        Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs.value(), "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  ASSERT_THAT(
+      build_status.status().message(),
+      HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast3) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[]");
+  StatusOr<Shape> rhs = ParseShape("f32[?, 10]");
+  StatusOr<Shape> ehs = ParseShape("f32[]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
+        Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs.value(), "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  ASSERT_THAT(
+      build_status.status().message(),
+      HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast4) {
+  XlaBuilder b(TestName());
+  StatusOr<Shape> lhs = ParseShape("f32[]");
+  StatusOr<Shape> rhs = ParseShape("f32[]");
+  StatusOr<Shape> ehs = ParseShape("f32[?, 10]");
+  ASSERT_IS_OK(lhs.status());
+  ASSERT_IS_OK(rhs.status());
+  ASSERT_IS_OK(ehs.status());
+  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
+        Parameter(&b, 1, rhs.value(), "rhs"),
+        Parameter(&b, 2, ehs.value(), "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  ASSERT_THAT(
+      build_status.status().message(),
+      HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
 }
 
 TEST_F(XlaBuilderTest, UnboundedConcatenate) {
