@@ -289,12 +289,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
     };
   };
 
-  auto float_setter_for = [](void (DebugOptions::*member_setter)(float)) {
-    return [member_setter](float value) {
-      (flag_values->*member_setter)(value);
-      return true;
-    };
-  };
+  auto float_setter_for =
+      [debug_options](void (DebugOptions::*member_setter)(float)) {
+        return [debug_options, member_setter](float value) {
+          (debug_options->*member_setter)(value);
+          return true;
+        };
+      };
 
   // Custom "sub-parser" lambda for xla_gpu_shape_checks.
   auto setter_for_xla_gpu_shape_checks =
