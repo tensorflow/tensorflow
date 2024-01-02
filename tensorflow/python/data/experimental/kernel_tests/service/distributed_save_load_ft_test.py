@@ -15,9 +15,6 @@
 """Fault tolerance tests for distributed save/load."""
 
 import multiprocessing
-import os
-import shutil
-import tempfile
 import time
 
 from absl.testing import parameterized
@@ -29,20 +26,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import load_op
 from tensorflow.python.framework import combinations
-from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
-
-
-class TestSnapshot:
-  """Test data for snapshots."""
-
-  def __init__(self):
-    temp_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
-    self.path = os.path.join(
-        tempfile.mkdtemp(dir=temp_dir), "distributed_save_load_test")
-
-  def __del__(self):
-    shutil.rmtree(self.path)
 
 
 class DistributedSaveLoadFtTest(
@@ -65,14 +49,14 @@ class DistributedSaveLoadFtTest(
       num_elements: int,
       load_repetitions: int,
       sharding_policy: data_service_ops.ShardingPolicy):
-    test_snapshot = TestSnapshot()
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(num_elements)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, test_snapshot.path, cluster.dispatcher_address()))
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(test_snapshot.path)
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
@@ -109,14 +93,14 @@ class DistributedSaveLoadFtTest(
       num_elements: int,
       load_repetitions: int,
       sharding_policy: data_service_ops.ShardingPolicy):
-    test_snapshot = TestSnapshot()
     cluster = data_service_test_base.TestCluster(num_workers=1)
+    snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(num_elements)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, test_snapshot.path, cluster.dispatcher_address()))
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(test_snapshot.path)
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
@@ -163,15 +147,15 @@ class DistributedSaveLoadFtTest(
       self,
       load_repetitions: int,
       sharding_policy: data_service_ops.ShardingPolicy):
-    test_snapshot = TestSnapshot()
     num_elements = 2 * multiprocessing.cpu_count() + 100
     cluster = data_service_test_base.TestCluster(num_workers=1)
+    snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(num_elements)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, test_snapshot.path, cluster.dispatcher_address()))
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(test_snapshot.path)
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
@@ -210,14 +194,14 @@ class DistributedSaveLoadFtTest(
       num_elements: int,
       load_repetitions: int,
       sharding_policy: data_service_ops.ShardingPolicy):
-    test_snapshot = TestSnapshot()
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(num_elements)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, test_snapshot.path, cluster.dispatcher_address()))
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    dataset = load_op._load_with_retry(test_snapshot.path)
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
     dataset = dataset.repeat(load_repetitions)
     dataset = dataset.apply(
         data_service_ops.distribute(
