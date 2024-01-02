@@ -229,6 +229,14 @@ class IrEmitterUnnested : public IrEmitter {
     thunk_sequence_.emplace_back(std::move(thunk));
   }
 
+  Status AddThunksToThunkSequence(StatusOr<FusionEmissionResult> result) {
+    TF_RETURN_IF_ERROR(result.status());
+    for (auto& thunk : result->thunks) {
+      AddThunkToThunkSequence(std::move(thunk));
+    }
+    return OkStatus();
+  }
+
   // Load data from potentially unaligned address. If address is offset by
   // `alignment_bytes`, data is read in the unit of `alignment_bytes` to avoid
   // memory read misalignment in CUDA; otherwise, the entire data are loaded

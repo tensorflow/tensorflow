@@ -2254,53 +2254,36 @@ StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
 
 Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                      HloFusionAnalysis& fusion_analysis) {
-  FusionEmissionResult emission_result;
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::unique_ptr<FusionInterface>> emitter,
+      GetFusionEmitter(
+          fusion_analysis,
+          HloFusionInfo(instr, &ir_emitter_context_->buffer_assignment())));
+  if (emitter) {
+    return AddThunksToThunkSequence(
+        (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
+                         *instr, kernel_reuse_cache_, &b_));
+  }
   switch (fusion_analysis.GetEmitterFusionKind()) {
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-    case HloFusionAnalysis::EmitterFusionKind::kLoop:
-    case HloFusionAnalysis::EmitterFusionKind::kTranspose:
-    case HloFusionAnalysis::EmitterFusionKind::kScatter:
-    case HloFusionAnalysis::EmitterFusionKind::kReduction: {
-      TF_ASSIGN_OR_RETURN(
-          std::optional<std::unique_ptr<FusionInterface>> emitter,
-          GetFusionEmitter(
-              fusion_analysis,
-              HloFusionInfo(instr, &ir_emitter_context_->buffer_assignment())));
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                           *instr, kernel_reuse_cache_, &b_));
-      break;
-    }
+#if GOOGLE_CUDA
     case HloFusionAnalysis::EmitterFusionKind::kTriton: {
       TF_ASSIGN_OR_RETURN(auto backend_config,
                           instr->backend_config<FusionBackendConfig>());
-#if GOOGLE_CUDA
-      TF_ASSIGN_OR_RETURN(emission_result,
-                          EmitTritonFusion(fusion_analysis, instr, nullptr));
-      break;
-#endif
-      LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
+      return AddThunksToThunkSequence(
+          EmitTritonFusion(fusion_analysis, instr, nullptr));
     }
+#endif
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       TF_ASSIGN_OR_RETURN(auto backend_config,
                           instr->backend_config<FusionBackendConfig>());
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          EmitCustomFusion(instr, nullptr,
-                           backend_config.custom_fusion_config()));
-      break;
+      return AddThunksToThunkSequence(EmitCustomFusion(
+          instr, nullptr, backend_config.custom_fusion_config()));
     }
     default:
       return FailedPrecondition(
           "Fusion type not supported by the HLO emitter.");
       break;
   }
-
-  for (auto& thunk : emission_result.thunks) {
-    AddThunkToThunkSequence(std::move(thunk));
-  }
-  return OkStatus();
 }
 
 Status IrEmitterUnnested::EmitFusion(
@@ -2330,50 +2313,29 @@ Status IrEmitterUnnested::EmitFusion(
   TF_ASSIGN_OR_RETURN(auto fusion_analysis,
                       HloFusionAnalysis::Create(fusion, &device_info));
 
-  FusionEmissionResult emission_result;
-  auto emitter_fusion_kind = fusion_analysis.GetEmitterFusionKind();
-  switch (emitter_fusion_kind) {
-    case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
-    case HloFusionAnalysis::EmitterFusionKind::kLoop:
-    case HloFusionAnalysis::EmitterFusionKind::kReduction:
-    case HloFusionAnalysis::EmitterFusionKind::kScatter:
-    case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      TF_ASSIGN_OR_RETURN(
-          std::optional<std::unique_ptr<FusionInterface>> emitter,
-          GetFusionEmitter(
-              fusion_analysis,
-              LmhloFusionInfo(fusion_op, ir_emitter_context_->allocations())));
-      if (emitter == std::nullopt) {
-        return FailedPrecondition(
-            "Fusion should have been handled by GetFusionEmitter.");
-      }
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, fusion_op,
-                           *fusion, kernel_reuse_cache_, &b_));
-      break;
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kTriton: {
-#if GOOGLE_CUDA
-      TF_ASSIGN_OR_RETURN(emission_result,
-                          EmitTritonFusion(fusion_analysis, fusion, fusion_op));
-      break;
-#endif
-      LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
-    }
-    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
-      TF_ASSIGN_OR_RETURN(
-          emission_result,
-          EmitCustomFusion(fusion, fusion_op,
-                           backend_config.custom_fusion_config()));
-      break;
-    }
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::unique_ptr<FusionInterface>> emitter,
+      GetFusionEmitter(
+          fusion_analysis,
+          LmhloFusionInfo(fusion_op, ir_emitter_context_->allocations())));
+  if (emitter) {
+    return AddThunksToThunkSequence(
+        (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, fusion_op,
+                         *fusion, kernel_reuse_cache_, &b_));
   }
 
-  for (auto& thunk : emission_result.thunks) {
-    AddThunkToThunkSequence(std::move(thunk));
+  switch (fusion_analysis.GetEmitterFusionKind()) {
+#if GOOGLE_CUDA
+    case HloFusionAnalysis::EmitterFusionKind::kTriton:
+      return AddThunksToThunkSequence(
+          EmitTritonFusion(fusion_analysis, fusion, fusion_op));
+#endif
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
+      return AddThunksToThunkSequence(EmitCustomFusion(
+          fusion, fusion_op, backend_config.custom_fusion_config()));
+    default:
+      LOG(FATAL) << "Unsupported fusion kind: " << backend_config.kind();
   }
-  return OkStatus();
 }
 
 Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
@@ -3288,7 +3250,6 @@ Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter) {
   return InternalError("This should be unreachable");
 }
-
 
 static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
     const FrontendAttributes& attrs) {
