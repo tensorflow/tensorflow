@@ -190,6 +190,9 @@ cc_library(
         ":pjrt_c_api_gpu_internal",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_macros",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log:initialize",
+        "@local_tsl//tsl/platform",
     ],
     alwayslink = 1,
 )
