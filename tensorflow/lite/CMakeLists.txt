@@ -73,7 +73,7 @@ option(TFLITE_ENABLE_GPU "Enable GPU" OFF)
 option(TFLITE_ENABLE_METAL "Enable Metal delegate (iOS only)" OFF)
 option(TFLITE_ENABLE_XNNPACK "Enable XNNPACK backend" ON)
 option(TFLITE_ENABLE_EXTERNAL_DELEGATE "Enable External Delegate backend" ON)
-option(TFLITE_ENABLE_GLES3 "Enable OpenGL ES 3 delegate" OFF)
+cmake_dependent_option(TFLITE_ENABLE_GLES3 "Enable OpenGL ES 3 delegate" ON "TFLITE_ENABLE_GPU;ANDROID" OFF)
 
 option(TFLITE_KERNEL_TEST "Enable tflite kernel unit test" OFF)
 if(TFLITE_KERNEL_TEST AND ${CMAKE_CROSSCOMPILING})
