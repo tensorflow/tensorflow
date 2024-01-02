@@ -144,6 +144,11 @@ class HloFusionAnalysis {
 std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
     const HloInstruction& producer, const HloInstruction& consumer,
     const se::DeviceDescription& device_info);
+
+std::optional<HloFusionAnalysis> AnalyzeProducerConsumerfusion(
+    const HloFusionAnalysis& producer_analysis,
+    const HloFusionAnalysis& consumer_analysis);
+
 // Creates a HloFusionAnalysis that analyzes just consumer as a standalone
 // fusion.
 std::optional<HloFusionAnalysis> AnalyzeFusion(

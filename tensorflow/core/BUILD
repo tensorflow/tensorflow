@@ -1407,7 +1407,6 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:load_library",
-        "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:net",
         "//tensorflow/core/platform:notification",

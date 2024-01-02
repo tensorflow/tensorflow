@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -83,27 +84,36 @@ Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
 // XLA FFI registry
 //===----------------------------------------------------------------------===//
 
-// TODO(ezhulenev): We have to support platform-specific handler registration.
-using HandlerRegistry = absl::flat_hash_map<std::string, XLA_FFI_Handler*>;
+using HandlerKey = std::pair<std::string, std::string>;
+using HandlerRegistry = absl::flat_hash_map<HandlerKey, XLA_FFI_Handler*>;
+
+static HandlerKey MakeHandlerKey(std::string_view name,
+                                 std::string_view platform) {
+  return std::make_pair(std::string(name), absl::AsciiStrToLower(platform));
+}
 
 static HandlerRegistry& GetHandlerRegistry() {
   static auto* registry = new HandlerRegistry();
   return *registry;
 }
 
-static Status RegisterHandler(std::string_view name, XLA_FFI_Handler* handler) {
-  auto emplaced = GetHandlerRegistry().try_emplace(std::string(name), handler);
+static Status RegisterHandler(std::string_view name, std::string_view platform,
+                              XLA_FFI_Handler* handler) {
+  auto emplaced =
+      GetHandlerRegistry().try_emplace(MakeHandlerKey(name, platform), handler);
   if (!emplaced.second)
     return absl::InvalidArgumentError(
-        absl::StrCat("Duplicate FFI handler registration for ", name));
+        absl::StrCat("Duplicate FFI handler registration for ", name,
+                     " on a platform ", platform));
   return OkStatus();
 }
 
-StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name) {
-  auto it = GetHandlerRegistry().find(name);
+StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
+                                       std::string_view platform) {
+  auto it = GetHandlerRegistry().find(MakeHandlerKey(name, platform));
   if (it == GetHandlerRegistry().end())
-    return absl::NotFoundError(
-        absl::StrCat("No FFI handler registered for ", name));
+    return absl::NotFoundError(absl::StrCat("No FFI handler registered for ",
+                                            name, " on a platform ", platform));
   return it->second;
 }
 
@@ -215,7 +225,8 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
       "XLA_FFI_Handler_Register", XLA_FFI_Handler_Register_Args_STRUCT_SIZE,
       args->struct_size));
 
-  if (auto status = RegisterHandler(args->name, args->handler); !status.ok()) {
+  if (auto status = RegisterHandler(args->name, args->platform, args->handler);
+      !status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
   }
   return nullptr;

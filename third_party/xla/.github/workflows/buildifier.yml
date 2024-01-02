@@ -34,6 +34,6 @@ jobs:
       - name: "Checking out repository"
         uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0
       - name: "Install buildifier"
-        run: go install github.com/bazelbuild/buildtools/buildifier@7d855c5
+        run: go install github.com/bazelbuild/buildtools/buildifier@433ea85 # 6.4.0
       - name: "Run buildifier"
         run: buildifier --lint=warn --warnings=-out-of-order-load -r xla/

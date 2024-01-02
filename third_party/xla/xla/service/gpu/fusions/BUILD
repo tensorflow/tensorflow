@@ -1,3 +1,11 @@
+load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+
+package(
+    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
+
 cc_library(
     name = "in_place_dynamic_update_slice",
     srcs = ["in_place_dynamic_update_slice.cc"],
@@ -88,7 +96,9 @@ cc_library(
         ":input_slices",
         ":loop",
         ":reduction",
+        ":scatter",
         ":transpose",
+        ":triton",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
@@ -131,6 +141,35 @@ cc_library(
 )
 
 cc_library(
+    name = "scatter",
+    srcs = ["scatter.cc"],
+    hdrs = ["scatter.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":fusion_emitter",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:elemental_ir_emitter",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:ir_emitter",
+        "//xla/service/gpu:ir_emitter_context",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:parallel_loop_emitter",
+        "//xla/service/llvm_ir:fused_ir_emitter",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "tiling_util",
     srcs = ["tiling_util.cc"],
     hdrs = ["tiling_util.h"],
@@ -150,6 +189,40 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "triton",
+    srcs = ["triton.cc"],
+    hdrs = ["triton.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":fusion_emitter",
+        "//xla:statusor",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo:lhlo",
+        "//xla/service:elemental_ir_emitter",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:ir_emitter_context",
+        "//xla/service/gpu:ir_emitter_triton",
+        "//xla/service/gpu:kernel_arguments",
+        "//xla/service/gpu:kernel_reuse_cache",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu:triton_fusion_analysis",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

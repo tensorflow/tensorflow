@@ -1317,6 +1317,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/config:flag_defs",
     ],
 )
 
@@ -3174,6 +3175,7 @@ tf_cc_test(
     name = "lower_while_op_test",
     size = "small",
     srcs = ["lower_while_op_test.cc"],
+    env = {"TF_FLAG_ENABLE_COLOCATION_KEY_PROPAGATION_IN_WHILE_OP_LOWERING": "1"},
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -3191,8 +3193,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
