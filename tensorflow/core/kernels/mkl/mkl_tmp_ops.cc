@@ -33,7 +33,7 @@ class RaiseError : public OpKernel {
  public:
   explicit RaiseError(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES(context, false,
-                errors::InvalidArgument(absl::StrCat(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Op does not support ", typeid(T).name(), " inputs")));
   }
 
