@@ -32,7 +32,7 @@ ABSL_FLAG(bool, next_pluggable_device_use_pjrt_allocator, true,
           "Use PjRtAllocator in next pluggable device.");
 
 ABSL_FLAG(bool, next_pluggable_device_use_pjrt_tensor_buffer, true,
-          "Use PjRtAllocator in next pluggable device.");
+          "Use PjRtTensorBuffer in next pluggable device.");
 
 namespace tensorflow {
 
@@ -68,13 +68,13 @@ NextPluggableDevice::NextPluggableDevice(const SessionOptions& session_options,
     device_context_ = core::RefCountPtr<DeviceContext>(new PjRtDeviceContext(
         options.shape_determination_fns[0],
         /*use_pjrt_tensor_buffer=*/absl::GetFlag(
-            FLAGS_next_pluggable_device_use_pjrt_allocator)));
+            FLAGS_next_pluggable_device_use_pjrt_tensor_buffer)));
   } else {
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns{
         UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
     device_context_ = core::RefCountPtr<DeviceContext>(new PjRtDeviceContext(
         shape_determination_fns, /*use_pjrt_tensor_buffer=*/absl::GetFlag(
-            FLAGS_next_pluggable_device_use_pjrt_allocator)));
+            FLAGS_next_pluggable_device_use_pjrt_tensor_buffer)));
   }
 
   // Must set accelerator_device_info, otherwise TF will treat this device as
