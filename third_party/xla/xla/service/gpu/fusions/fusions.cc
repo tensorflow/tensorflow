@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/reduction.h"
 #include "xla/service/gpu/fusions/scatter.h"
 #include "xla/service/gpu/fusions/transpose.h"
+#include "xla/service/gpu/fusions/triton.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
@@ -215,6 +216,8 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
       return std::make_unique<ScatterFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
       return std::make_unique<TransposeFusion>(analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kTriton:
+      return std::make_unique<TritonFusion>(analysis);
     default:
       break;
   }

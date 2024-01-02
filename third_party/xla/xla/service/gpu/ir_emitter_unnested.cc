@@ -2114,144 +2114,6 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   return OkStatus();
 }
 
-#if GOOGLE_CUDA
-StatusOr<FusionEmissionResult> IrEmitterUnnested::EmitTritonFusion(
-    const HloFusionAnalysis& hlo_fusion_analysis,
-    const HloFusionInstruction* fusion, mlir::Operation* op) {
-  // Note: In this method we can't use `BuildKernelThunk` as usual,
-  // because we only get the launch dimensions after code generation. So we
-  // implement kernel reuse using lower level APIs, such as
-  // `BuildKernelThunkImpl`.
-  CHECK_NE(fusion, nullptr);
-  if (!ir_emitter_context_->emit_ir_from_hlo()) {
-    CHECK_NE(op, nullptr);
-  }
-  if (ir_emitter_context_->emit_ir_from_hlo()) {
-    VLOG(3) << fusion->ToString();
-  } else {
-    VLOG(3) << llvm_ir::DumpToString(op);
-  }
-  std::string suggested_kernel_name = std::string(fusion->name());
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      ir_emitter_context_->emit_ir_from_hlo()
-          ? KernelArguments::Create(ir_emitter_context_->buffer_assignment(),
-                                    fusion)
-          : KernelArguments::Create(ir_emitter_context_->allocations(),
-                                    mlir::cast<mlir::lmhlo::FusionOp>(op)));
-
-  const HloComputation* hlo_computation =
-      fusion->fused_instructions_computation();
-
-  auto generate = [&]() -> StatusOr<KernelReuseCache::Entry> {
-    VLOG(3) << "Generating: " << suggested_kernel_name;
-
-    const std::string impl_fn_name =
-        ir_emitter_context_->name_uniquer()->GetUniqueName(
-            llvm_ir::SanitizeFunctionName(
-                absl::StrCat(suggested_kernel_name, "_impl")));
-
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        fusion->backend_config<FusionBackendConfig>());
-    absl::string_view fusion_kind = backend_config.kind();
-
-    TritonWrapperResult triton_wrapper_result;
-    LaunchDimensions launch_dimensions;
-    if (fusion_kind == kTritonSoftmaxFusionKind) {
-      TF_ASSIGN_OR_RETURN(launch_dimensions,
-                          hlo_fusion_analysis.GetLaunchDimensions());
-
-      auto& triton_config = *backend_config.mutable_triton_gemm_config();
-      triton_config.set_num_stages(1);
-      // Thread count per block is always a multiple of WarpSize.
-      triton_config.set_num_warps(launch_dimensions.num_threads_per_block() /
-                                  WarpSize());
-      TritonGemmConfig config = TritonGemmConfig::FromProto(triton_config);
-
-      TF_ASSIGN_OR_RETURN(auto analysis,
-                          TritonFusionAnalysis::Execute(*hlo_computation));
-      TF_ASSIGN_OR_RETURN(
-          triton_wrapper_result,
-          TritonWrapper(analysis, impl_fn_name, hlo_computation,
-                        kTritonSoftmaxFusionKind,
-                        ir_emitter_context_->cuda_compute_capability(),
-                        ir_emitter_context_->gpu_device_info(), config, module_,
-                        &EmitSoftMax, *ir_emitter_context_->mlir_context()));
-    } else {  // Must be a MatMul
-      CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
-      if (!backend_config.has_triton_gemm_config()) {
-        if (ir_emitter_context_->emit_ir_from_hlo()) {
-          LOG(WARNING) << "Using fallback triton GEMM config for op "
-                       << fusion->name();
-        } else {
-          LOG(WARNING) << "Using fallback triton GEMM config for op "
-                       << GetIrNameFromLoc(op->getLoc());
-        }
-        auto& triton_config = *backend_config.mutable_triton_gemm_config();
-        triton_config.set_block_m(64);
-        triton_config.set_block_k(64);
-        triton_config.set_block_n(64);
-        triton_config.set_split_k(1);
-        triton_config.set_num_stages(1);
-        triton_config.set_num_warps(2);
-      }
-      TritonGemmConfig config =
-          TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
-
-      TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
-                                             *hlo_computation, config.split_k));
-      TF_ASSIGN_OR_RETURN(
-          triton_wrapper_result,
-          TritonWrapper(analysis, impl_fn_name, hlo_computation,
-                        kTritonGemmFusionKind,
-                        ir_emitter_context_->cuda_compute_capability(),
-                        ir_emitter_context_->gpu_device_info(), config, module_,
-                        &EmitMatMul, *ir_emitter_context_->mlir_context()));
-      launch_dimensions = GetMatMulLaunchDimensions(
-          analysis, hlo_fusion_analysis.fusion(), config);
-    }
-
-    llvm::Function* impl_fn = module_->getFunction(impl_fn_name);
-    TF_RET_CHECK(impl_fn);
-
-    auto [kernel, inputs, outputs] = BuildKernelPrototype(
-        *ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
-        impl_fn->arg_size(), launch_dimensions, &b_);
-
-    // Move function body into kernel prototype.
-    llvm::Function* prototype_func = b_.GetInsertBlock()->getParent();
-    prototype_func->splice(prototype_func->begin(), impl_fn);
-    for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), inputs)) {
-      arg.replaceAllUsesWith(ir_array.GetBasePointer());
-    }
-    impl_fn->eraseFromParent();
-
-    return {{kernel->getName().str(), launch_dimensions,
-             triton_wrapper_result.shmem_bytes}};
-  };
-
-  auto [kernel, was_cached] = kernel_reuse_cache_.GetWithStatus(
-      hlo_computation, kernel_arguments.args(),
-      /*discriminator=*/"", generate);
-  TF_RETURN_IF_ERROR(kernel.status());
-
-  std::variant<mlir::Operation*, const HloInstruction*> fusion_op;
-  if (ir_emitter_context_->emit_ir_from_hlo()) {
-    fusion_op = fusion;
-  } else {
-    fusion_op = op;
-  }
-
-  FusionEmissionResult result;
-  result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      fusion_op, kernel->kernel_name, kernel_arguments.args(),
-      kernel->launch_dimensions, kernel->shmem_bytes));
-
-  return result;
-}
-
-#endif  // GOOGLE_CUDA
-
 Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                      HloFusionAnalysis& fusion_analysis) {
   TF_ASSIGN_OR_RETURN(
@@ -2265,14 +2127,6 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                          *instr, kernel_reuse_cache_, &b_));
   }
   switch (fusion_analysis.GetEmitterFusionKind()) {
-#if GOOGLE_CUDA
-    case HloFusionAnalysis::EmitterFusionKind::kTriton: {
-      TF_ASSIGN_OR_RETURN(auto backend_config,
-                          instr->backend_config<FusionBackendConfig>());
-      return AddThunksToThunkSequence(
-          EmitTritonFusion(fusion_analysis, instr, nullptr));
-    }
-#endif
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {
       TF_ASSIGN_OR_RETURN(auto backend_config,
                           instr->backend_config<FusionBackendConfig>());
@@ -2325,11 +2179,6 @@ Status IrEmitterUnnested::EmitFusion(
   }
 
   switch (fusion_analysis.GetEmitterFusionKind()) {
-#if GOOGLE_CUDA
-    case HloFusionAnalysis::EmitterFusionKind::kTriton:
-      return AddThunksToThunkSequence(
-          EmitTritonFusion(fusion_analysis, fusion, fusion_op));
-#endif
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
       return AddThunksToThunkSequence(EmitCustomFusion(
           fusion, fusion_op, backend_config.custom_fusion_config()));
