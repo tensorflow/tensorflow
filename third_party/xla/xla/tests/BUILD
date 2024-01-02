@@ -58,6 +58,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla:debug_options_flags",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
