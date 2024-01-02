@@ -1,14 +1,14 @@
 # Platform-specific build configurations.
 
-load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tsl/platform:build_config_root.bzl", "if_static")
+load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load(
     "//tsl:tsl.bzl",
     "clean_dep",
     "if_not_windows",
     "if_tsl_link_protobuf",
 )
-load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
+load("//tsl/platform:build_config_root.bzl", "if_static")
+load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.
@@ -660,7 +660,6 @@ def tf_additional_lib_hdrs():
         clean_dep("//tsl/platform/default:logging.h"),
         clean_dep("//tsl/platform/default:mutex.h"),
         clean_dep("//tsl/platform/default:mutex_data.h"),
-        clean_dep("//tsl/platform/default:notification.h"),
         clean_dep("//tsl/platform/default:stacktrace.h"),
         clean_dep("//tsl/platform/default:status.h"),
         clean_dep("//tsl/platform/default:statusor.h"),

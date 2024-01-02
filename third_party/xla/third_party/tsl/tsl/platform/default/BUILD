@@ -324,21 +324,6 @@ cc_library(
 )
 
 cc_library(
-    name = "notification",
-    hdrs = ["notification.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:mutex",
-        "//tsl/platform:types",
-    ],
-)
-
-cc_library(
     name = "platform_port",
     srcs = [
         "port.cc",
@@ -615,7 +600,6 @@ filegroup(
         "error_logging.cc",
         "mutex.h",
         "mutex_data.h",
-        "notification.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
     ] + if_not_fuchsia([
