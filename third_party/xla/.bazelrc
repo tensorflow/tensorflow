@@ -134,7 +134,7 @@ build --experimental_link_static_libraries_once=false
 # Prevent regressions on those two incompatible changes
 # TODO: remove those flags when they are flipped in the default Bazel version TF uses.
 build --incompatible_enforce_config_setting_visibility
-# TODO: also enable this flag after fixing the visbility violations
+# TODO: also enable this flag after fixing the visibility violations
 # build --incompatible_config_setting_private_default_visibility
 
 # Default options should come above this line.
@@ -307,7 +307,7 @@ build:macos --copt=-w
 build:windows --copt=/W0
 build:windows --host_copt=/W0
 
-# Suppress most C++ complier warnings to reduce log size but allow
+# Suppress most C++ compiler warnings to reduce log size but allow
 # for specific warnings to still be present.
 build:linux --copt="-Wno-all"
 build:linux --copt="-Wno-extra"
@@ -588,7 +588,7 @@ test:release_base --test_size_filters=small,medium
 # Target the AVX instruction set
 build:release_linux_base --config=avx_linux
 
-# Disable clang extention that rejects type definitions within offsetof.
+# Disable clang extension that rejects type definitions within offsetof.
 # This was added in clang-16 by https://reviews.llvm.org/D133574.
 # Can be removed once upb is updated, since a type definition is used within
 # offset of in the current version of ubp.
@@ -842,7 +842,7 @@ build:cross_compile_macos_x86 --action_env  MACOSX_DEPLOYMENT_TARGET=10.15
 build:cross_compile_macos_x86 --platforms=//tensorflow/tools/toolchains/cross_compile/config:darwin_x86_64
 build:cross_compile_macos_x86 --cpu=darwin
 build:cross_compile_macos_x86 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-# When RBE cross-compiling for macOS, we need to explictly register the
+# When RBE cross-compiling for macOS, we need to explicitly register the
 # toolchain. Otherwise, oddly, RBE complains that a "docker container must be
 # specified".
 build:cross_compile_macos_x86 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/config:macos-x86-cross-compile-cc-toolchain
