@@ -484,15 +484,17 @@ void TransposePlan::Execute(
       execute_by_type(nodes);
     }
   } else {
-    absl::BlockingCounter counter(nodes_.size());
-    for (absl::Span<Node const> nodes : nodes_) {
+    absl::BlockingCounter counter(nodes_.size() - 1);
+    for (size_t i = 1; i < nodes_.size(); ++i) {
+      absl::Span<Node const> nodes = nodes_[i];
       schedule_work([&, nodes]() {
-        tsl::profiler::TraceMe traceme("Transpose::Execute",
-                                       /*level=*/2);
+        tsl::profiler::TraceMe traceme("Transpose::Execute", /*level=*/2);
         execute_by_type(nodes);
         counter.DecrementCount();
       });
     }
+    // Run the first chunk inline in this thread.
+    execute_by_type(nodes_[0]);
     counter.Wait();
   }
 }
@@ -662,13 +664,18 @@ static Status ParseTilingSpecification(
   tiling.resize(ndim, 1);
   if (tiling_spec.size() > ndim) {
     return InvalidArgument(
-        "Tiling (%s) must have at as many dimensions as the array (%d)",
+        "Tiling (%s) must have at most as many dimensions as the array (%d)",
         absl::StrJoin(tiling_spec, ","), ndim);
   }
   if (absl::c_find_if(tiling_spec, [](int64_t d) { return d < 1; }) !=
       tiling_spec.end()) {
     return InvalidArgument("Tiling sizes (%s) must be >= 1",
                            absl::StrJoin(tiling_spec, ","));
+  }
+  if (ndim == 1) {
+    // Tiling doesn't do anything for a rank-1 array, except add padding. Since
+    // we're not going to touch any padding elements, we can ignore it.
+    return OkStatus();
   }
   int offset = ndim;
   offset -= tiling_spec.size();
