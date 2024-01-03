@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -554,14 +555,14 @@ StatusOr<bool> CommandBufferScheduling::Run(
   };
 
   bool do_erase = std::visit(
-      se::VariantVisitor{
-          [this](const se::CudaComputeCapability&) {
-            return std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030;
-          },
-          [](const se::RocmComputeCapability&) {  // TODO: check for ROCM
-                                                  // support
-            return true;
-          }},
+      VariantVisitor{[this](const se::CudaComputeCapability&) {
+                       return std::min(gpu_toolkit_version_,
+                                       gpu_driver_version_) < 12030;
+                     },
+                     [](const se::RocmComputeCapability&) {  // TODO: check for
+                                                             // ROCM support
+                       return true;
+                     }},
       gpu_compute_comp_);
   if (do_erase) {
     erase(kRequireTracing);       // cuStreamBeginCaptureToGraph

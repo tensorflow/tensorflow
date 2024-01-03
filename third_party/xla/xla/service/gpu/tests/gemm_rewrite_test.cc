@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
@@ -56,8 +57,9 @@ class GemmRewriteTest : public GpuCodegenTest {
     return device_desc().gpu_compute_capability();
   }
   se::GpuComputeCapability CudaHopperOrRocm() {
-    return std::visit(
-        se::VariantVisitor{[](const se::CudaComputeCapability&) {
+    return std::
+        visit(
+            VariantVisitor{[](const se::CudaComputeCapability&) {
                              return se::GpuComputeCapability{
                                  se::CudaComputeCapability{
                                      se::CudaComputeCapability::HOPPER, 0}};
@@ -65,7 +67,7 @@ class GemmRewriteTest : public GpuCodegenTest {
                            [](const se::RocmComputeCapability& rocm) {
                              return se::GpuComputeCapability{rocm};
                            }},
-        GpuComputeComp());
+            GpuComputeComp());
   }
 
   enum class Switch : uint32_t {
@@ -75,12 +77,12 @@ class GemmRewriteTest : public GpuCodegenTest {
   // switch based on architecture only
   bool CudaOrRocmCheck(Switch cuda_set, Switch rocm_set) {
     return std::visit(
-        se::VariantVisitor{[cuda_set](const se::CudaComputeCapability&) {
-                             return cuda_set == Switch::True;
-                           },
-                           [rocm_set](const se::RocmComputeCapability&) {
-                             return rocm_set == Switch::True;
-                           }},
+        VariantVisitor{[cuda_set](const se::CudaComputeCapability&) {
+                         return cuda_set == Switch::True;
+                       },
+                       [rocm_set](const se::RocmComputeCapability&) {
+                         return rocm_set == Switch::True;
+                       }},
         GpuComputeComp());
   }
   // major version check for CUDA and true/false for rocm
@@ -90,7 +92,7 @@ class GemmRewriteTest : public GpuCodegenTest {
   // full version check for CUDA and true/false for rocm
   bool CudaOrRocmCheck(int cuda_major, int cuda_minor, Switch rocm_set) {
     return std::visit(
-        se::VariantVisitor{
+        VariantVisitor{
             [cuda_major, cuda_minor](const se::CudaComputeCapability& cc) {
               return cc.IsAtLeast(cuda_major, cuda_minor);
             },
@@ -105,12 +107,12 @@ class GemmRewriteTest : public GpuCodegenTest {
       absl::AnyInvocable<bool(const se::CudaComputeCapability&)> cuda_fun,
       absl::AnyInvocable<bool(const se::RocmComputeCapability&)> rocm_fun) {
     return std::visit(
-        se::VariantVisitor{[&cuda_fun](const se::CudaComputeCapability& cc) {
-                             return (cuda_fun ? cuda_fun(cc) : true);
-                           },
-                           [&rocm_fun](const se::RocmComputeCapability& cc) {
-                             return (rocm_fun ? rocm_fun(cc) : true);
-                           }},
+        VariantVisitor{[&cuda_fun](const se::CudaComputeCapability& cc) {
+                         return (cuda_fun ? cuda_fun(cc) : true);
+                       },
+                       [&rocm_fun](const se::RocmComputeCapability& cc) {
+                         return (rocm_fun ? rocm_fun(cc) : true);
+                       }},
         GpuComputeComp());
   }
 
