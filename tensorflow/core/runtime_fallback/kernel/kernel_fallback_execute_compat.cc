@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -349,7 +350,7 @@ std::string GetTracingMetadata(llvm::ArrayRef<tfrt::AsyncValue*> args,
   llvm::raw_string_ostream attr_string_stream(attr_string);
 
   for (const auto& entry : kernel_runner.op_kernel()->def().attr()) {
-    attr_string_stream << entry.first << ": {" << entry.second.DebugString();
+    attr_string_stream << entry.first << ": {" << absl::StrCat(entry.second);
     if (!attr_string.empty() && attr_string[attr_string.size() - 1] == '\n') {
       attr_string[attr_string.size() - 1] = '}';
     }
