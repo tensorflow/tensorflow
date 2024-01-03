@@ -5616,6 +5616,8 @@ void AlternateMemoryBestFitHeap::ImportRepackedSlicedAllocation(
   using SlicedCopyAllocation = MemorySpaceAssignment::SlicedCopyAllocation;
   using SliceDetail = SlicedCopyAllocation::SliceDetail;
 
+  CHECK_OK(AreRepackedSlicesValid(block));
+
   SlicedCopyAllocation* allocation =
       dynamic_cast<SlicedCopyAllocation*>(block.allocation);
   CHECK(block.allocation->is_sliced_copy_allocation());
@@ -5627,9 +5629,6 @@ void AlternateMemoryBestFitHeap::ImportRepackedSlicedAllocation(
   // Update the Allocation, AllocationBlock, and interval_tree_.
   allocation->set_offset(repacked_offset);
   if (block.repacked_slice_data.has_value()) {
-    CHECK(block.original_slice_data.has_value());
-    CHECK_EQ(allocation->slice_details_sorted_by_start_time().size(),
-             block.repacked_slice_data->slices_sorted_by_offset.size());
     allocation->ImportRepackedSliceData(*block.repacked_slice_data);
   } else {
     allocation->AddDiffToAllSliceOffsets(repacked_offset - original_offset);
@@ -5666,6 +5665,53 @@ void AlternateMemoryBestFitHeap::ImportRepackedSlicedAllocation(
                             absl::StrJoin(offset_moves, ", "), "]");
       }()
           << "; Allocation: " << allocation->ToString();
+}
+
+Status AlternateMemoryBestFitHeap::AreRepackedSlicesValid(
+    const RepackAllocationBlock& block) {
+  if (!block.repacked_slice_data.has_value()) {
+    return OkStatus();
+  }
+  if (!block.original_slice_data.has_value()) {
+    return InvalidArgumentStrCat(
+        "Repacked sliced allocation has repacked slice data but not original "
+        "slice data.");
+  }
+  int64_t num_slices =
+      block.original_slice_data->slices_sorted_by_offset.size();
+  if (num_slices != block.repacked_slice_data->slices_sorted_by_offset.size()) {
+    return InvalidArgumentStrCat(
+        "Repacked sliced allocation has ", num_slices,
+        " slices but repacking has data for ",
+        block.repacked_slice_data->slices_sorted_by_offset.size(), " slices.");
+  }
+
+  // Ensure that the slice size to start time mapping has not changed. If it
+  // changes, its invalidates MSA's internal state, e.g., the peak_memory_usage_
+  // data structure.
+  std::vector<std::pair<int64_t, int64_t>> original_size_to_time_mapping;
+  original_size_to_time_mapping.reserve(num_slices);
+  for (const MemorySpaceAssignmentRepacker::Slice& slice :
+       block.original_slice_data->slices_sorted_by_offset) {
+    original_size_to_time_mapping.push_back(
+        std::make_pair(slice.size, slice.inclusive_start_time));
+  };
+  absl::c_sort(original_size_to_time_mapping);
+  std::vector<std::pair<int64_t, int64_t>> repacked_size_to_time_mapping;
+  repacked_size_to_time_mapping.reserve(num_slices);
+  for (const MemorySpaceAssignmentRepacker::Slice& slice :
+       block.repacked_slice_data->slices_sorted_by_offset) {
+    repacked_size_to_time_mapping.push_back(
+        std::make_pair(slice.size, slice.inclusive_start_time));
+  };
+  absl::c_sort(repacked_size_to_time_mapping);
+  if (original_size_to_time_mapping != repacked_size_to_time_mapping) {
+    return InvalidArgumentStrCat(
+        "Repacked slices do not preserve the initial slice size-start time "
+        "mappings.");
+  }
+
+  return OkStatus();
 }
 
 void AlternateMemoryBestFitHeap::UncommitPendingChunks(
