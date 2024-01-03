@@ -88,7 +88,7 @@ class CommandBufferScheduling : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
-      HloInstructionSequence inst_sequence, const CommandBufferConfig& config,
+      HloInstructionSequence schedule, const CommandBufferConfig& config,
       int32_t min_num_commands = 1);
 
   // Moves kParameter and kConstant instructions in a computation to
