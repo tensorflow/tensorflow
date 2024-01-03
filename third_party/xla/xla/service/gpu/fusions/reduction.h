@@ -93,10 +93,9 @@ class ReductionFusion : public FusionInterface {
       : analysis_(analysis) {}
 
   StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache,
-      llvm::IRBuilder<>* builder) const override;
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion,
+      KernelReuseCache& kernel_cache) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

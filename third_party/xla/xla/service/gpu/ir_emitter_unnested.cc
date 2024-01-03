@@ -2103,9 +2103,8 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
   if (!emitter) {
     return FailedPrecondition("Fusion type not supported by the HLO emitter.");
   }
-  return AddThunksToThunkSequence(
-      (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, nullptr,
-                       *instr, kernel_reuse_cache_, &b_));
+  return AddThunksToThunkSequence((*emitter)->Emit(
+      *ir_emitter_context_, nullptr, *instr, kernel_reuse_cache_));
 }
 
 Status IrEmitterUnnested::EmitFusion(
@@ -2129,9 +2128,8 @@ Status IrEmitterUnnested::EmitFusion(
     LOG(FATAL) << "Unsupported fusion kind in fusion: " << fusion->name()
                << ".";
   }
-  return AddThunksToThunkSequence(
-      (*emitter)->Emit(*ir_emitter_context_, elemental_emitter_, fusion_op,
-                       *fusion, kernel_reuse_cache_, &b_));
+  return AddThunksToThunkSequence((*emitter)->Emit(
+      *ir_emitter_context_, fusion_op, *fusion, kernel_reuse_cache_));
 }
 
 Status IrEmitterUnnested::AssertNonDeterminismIsOkay(

@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -33,11 +33,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-Status LoopFusion::EmitKernel(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    const HloFusionInstruction& fusion, const LaunchDimensions& launch_dims,
-    std::vector<llvm_ir::IrArray> inputs, std::vector<llvm_ir::IrArray> outputs,
-    llvm::IRBuilder<>* builder, int kernel_index) const {
+Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                              const HloFusionInstruction& fusion,
+                              const LaunchDimensions& launch_dims,
+                              std::vector<llvm_ir::IrArray> inputs,
+                              std::vector<llvm_ir::IrArray> outputs,
+                              llvm::IRBuilder<>* builder,
+                              int kernel_index) const {
+  GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fusion.fused_parameters().size(); i++) {
     fused_emitter.BindGenerator(

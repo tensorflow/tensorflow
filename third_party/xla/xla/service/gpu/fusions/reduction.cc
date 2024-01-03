@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/thunk_util.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
@@ -1237,11 +1238,12 @@ StatusOr<FusionEmissionResult> ReductionEmitter::Emit() {
 }  // namespace
 
 StatusOr<FusionEmissionResult> ReductionFusion::Emit(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
+    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache) const {
+  llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
+  GpuElementalIrEmitter elemental_emitter(ir_emitter_context, &builder);
   return ReductionEmitter(analysis_, ir_emitter_context, elemental_emitter,
-                          fusion_op, fusion, kernel_cache, builder)
+                          fusion_op, fusion, kernel_cache, &builder)
       .Emit();
 }
 

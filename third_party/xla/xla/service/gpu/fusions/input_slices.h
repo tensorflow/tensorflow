@@ -17,8 +17,13 @@ limitations under the License.
 
 #include <vector>
 
+#include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/llvm_ir/ir_array.h"
 
 namespace xla {
 namespace gpu {
@@ -38,7 +43,6 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    ElementalIrEmitter& elemental_emitter,
                     const HloFusionInstruction& fusion,
                     const LaunchDimensions& launch_dims,
                     std::vector<llvm_ir::IrArray> inputs,

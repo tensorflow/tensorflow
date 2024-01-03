@@ -15,10 +15,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_H_
 #define XLA_SERVICE_GPU_FUSIONS_TRITON_H_
 
-#include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -33,12 +31,10 @@ class TritonFusion : public FusionInterface {
   explicit TritonFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
 
-  StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
-                                      ElementalIrEmitter& elemental_emitter,
-                                      mlir::lmhlo::FusionOp fusion_op,
-                                      const HloFusionInstruction& fusion,
-                                      KernelReuseCache& kernel_cache,
-                                      llvm::IRBuilder<>* builder) const final;
+  StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion,
+      KernelReuseCache& kernel_cache) const final;
 
  private:
   const HloFusionAnalysis& analysis_;

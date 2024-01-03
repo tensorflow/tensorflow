@@ -18,8 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -61,7 +59,6 @@ class TransposeFusion : public KernelFusionEmitterBase {
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    ElementalIrEmitter& elemental_emitter,
                     const HloFusionInstruction& fusion,
                     const LaunchDimensions& launch_dims,
                     std::vector<llvm_ir::IrArray> inputs,

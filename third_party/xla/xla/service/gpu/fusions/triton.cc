@@ -52,9 +52,9 @@ namespace xla {
 namespace gpu {
 
 StatusOr<FusionEmissionResult> TritonFusion::Emit(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
+    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache) const {
+  llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
 #if GOOGLE_CUDA
   if (!ir_emitter_context.emit_ir_from_hlo()) {
     CHECK_NE(fusion_op, nullptr);
@@ -151,10 +151,10 @@ StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
     auto [kernel, inputs, outputs] = BuildKernelPrototype(
         ir_emitter_context, suggested_kernel_name, kernel_arguments.args(),
-        impl_fn->arg_size(), launch_dimensions, builder);
+        impl_fn->arg_size(), launch_dimensions, &builder);
 
     // Move function body into kernel prototype.
-    llvm::Function* prototype_func = builder->GetInsertBlock()->getParent();
+    llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
     prototype_func->splice(prototype_func->begin(), impl_fn);
     for (const auto& [arg, ir_array] : llvm::zip(impl_fn->args(), inputs)) {
       arg.replaceAllUsesWith(ir_array.GetBasePointer());

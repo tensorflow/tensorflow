@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
@@ -52,11 +52,14 @@ StatusOr<LaunchDimensions> ScatterFusion::launch_dimensions(
   return analysis_.GetLaunchDimensions();
 }
 
-Status ScatterFusion::EmitKernel(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    const HloFusionInstruction& fusion, const LaunchDimensions& launch_dims,
-    std::vector<llvm_ir::IrArray> inputs, std::vector<llvm_ir::IrArray> outputs,
-    llvm::IRBuilder<>* builder, int kernel_index) const {
+Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                 const HloFusionInstruction& fusion,
+                                 const LaunchDimensions& launch_dims,
+                                 std::vector<llvm_ir::IrArray> inputs,
+                                 std::vector<llvm_ir::IrArray> outputs,
+                                 llvm::IRBuilder<>* builder,
+                                 int kernel_index) const {
+  GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   // Spin up a new fused emitter for the scatter kernel and emit it.
   FusedIrEmitter scatter_fused_emitter(elemental_emitter);
   auto* fused_computation = fusion.fused_instructions_computation();

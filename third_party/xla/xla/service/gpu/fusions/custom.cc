@@ -22,12 +22,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/IR/IRBuilder.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -68,9 +66,8 @@ StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
 }  // namespace
 
 StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter&,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    KernelReuseCache&, llvm::IRBuilder<>*) const {
+    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    const HloFusionInstruction& fusion, KernelReuseCache&) const {
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       fusion.backend_config<FusionBackendConfig>());
   const auto& config = backend_config.custom_fusion_config();

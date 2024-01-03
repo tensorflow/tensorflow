@@ -37,12 +37,10 @@ class MemcpyFusion : public FusionInterface {
         srcs_(std::move(srcs)),
         dsts_(std::move(dsts)) {}
 
-  StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
-                                      ElementalIrEmitter& elemental_emitter,
-                                      mlir::lmhlo::FusionOp fusion_op,
-                                      const HloFusionInstruction& fusion,
-                                      KernelReuseCache& kernel_cache,
-                                      llvm::IRBuilder<>*) const final;
+  StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion,
+      KernelReuseCache& kernel_cache) const final;
 
  private:
   std::vector<BufferAllocation::Slice> src_buffers_;

@@ -40,7 +40,6 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -193,9 +192,9 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 }
 
 StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
+    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache) const {
+  llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
   std::string suggested_kernel_name = std::string(fusion.name());
 
   TF_ASSIGN_OR_RETURN(KernelArguments kernel_arguments,
@@ -218,11 +217,11 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
           std::tie(kernel, inputs, outputs) = BuildKernelPrototype(
               ir_emitter_context, suggested_kernel_name,
               kernel_arguments.args(), fusion.operand_count(), launch_dims,
-              builder);
+              &builder);
           if (ir_emitter_context.emit_kernels()) {
-            TF_RETURN_IF_ERROR(EmitKernel(
-                ir_emitter_context, elemental_emitter, fusion, launch_dims,
-                std::move(inputs), std::move(outputs), builder, i));
+            TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion,
+                                          launch_dims, std::move(inputs),
+                                          std::move(outputs), &builder, i));
           } else {
             VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
           }

@@ -16,27 +16,21 @@ limitations under the License.
 
 #include <memory>
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/shape_util.h"
 #include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter&,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    KernelReuseCache&, llvm::IRBuilder<>*) const {
+    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    const HloFusionInstruction& fusion, KernelReuseCache&) const {
   FusionEmissionResult result;
   for (int i = 0; i < src_buffers_.size(); ++i) {
     if (src_buffers_[i] != dst_buffers_[i]) {

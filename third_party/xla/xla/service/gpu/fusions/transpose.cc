@@ -34,7 +34,7 @@ limitations under the License.
 #include "llvm/Support/AtomicOrdering.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/permutation_util.h"
-#include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -93,13 +93,16 @@ llvm_ir::IrArray::Index PermuteIndex(const llvm_ir::IrArray::Index& index,
 
 }  // namespace
 
-Status TransposeFusion::EmitKernel(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    const HloFusionInstruction& fusion, const LaunchDimensions& launch_dims,
-    std::vector<llvm_ir::IrArray> inputs, std::vector<llvm_ir::IrArray> outputs,
-    llvm::IRBuilder<>* builder, int kernel_index) const {
+Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                   const HloFusionInstruction& fusion,
+                                   const LaunchDimensions& launch_dims,
+                                   std::vector<llvm_ir::IrArray> inputs,
+                                   std::vector<llvm_ir::IrArray> outputs,
+                                   llvm::IRBuilder<>* builder,
+                                   int kernel_index) const {
   const auto& tiling_scheme = *analysis_.GetTransposeTilingScheme();
   const auto& hlo_roots = analysis_.fusion_roots();
+  GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (auto [i, input] : llvm::enumerate(inputs)) {
     HloInstruction* fused_operand = fusion.fused_parameter(i);

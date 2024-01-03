@@ -44,7 +44,6 @@ class ScatterFusion : public KernelFusionEmitterBase {
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    ElementalIrEmitter& elemental_emitter,
                     const HloFusionInstruction& fusion,
                     const LaunchDimensions& launch_dims,
                     std::vector<llvm_ir::IrArray> inputs,
