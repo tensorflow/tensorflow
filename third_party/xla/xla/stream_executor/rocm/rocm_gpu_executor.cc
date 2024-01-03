@@ -851,10 +851,9 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
   {
-    int driver_version = 0;
-    (void)GpuDriver::GetDriverVersion(&driver_version);
+    int version = GpuDriver::GetDriverVersion().value_or(-1);
     string augmented_driver_version = absl::StrFormat(
-        "%d (%s)", driver_version,
+        "%d (%s)", version,
         rocm::DriverVersionStatusToString(Diagnostician::FindDsoVersion())
             .c_str());
     builder.set_driver_version(augmented_driver_version);

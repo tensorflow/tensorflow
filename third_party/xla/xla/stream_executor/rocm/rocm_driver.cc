@@ -1906,14 +1906,11 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return tsl::OkStatus();
 }
 
-/* static */ bool GpuDriver::GetDriverVersion(int* driver_version) {
-  hipError_t res = wrap::hipDriverGetVersion(driver_version);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to query driver version: " << ToString(res);
-    return false;
-  }
-
-  return true;
+/* static */ tsl::StatusOr<int32_t> GpuDriver::GetDriverVersion() {
+  int32_t version;
+  RETURN_IF_ROCM_ERROR(wrap::hipDriverGetVersion(&version),
+                       "Could not get driver version");
+  return version;
 }
 
 /* static */ bool GpuDriver::GetDeviceProperties(

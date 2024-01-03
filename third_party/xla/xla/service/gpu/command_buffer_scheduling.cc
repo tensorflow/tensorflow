@@ -504,9 +504,11 @@ StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
 
 //===----------------------------------------------------------------------===//
 
-CommandBufferScheduling::CommandBufferScheduling(int32_t gpu_toolkit_version,
-                                                 int32_t gpu_driver_version)
-    : gpu_toolkit_version_(gpu_toolkit_version),
+CommandBufferScheduling::CommandBufferScheduling(
+    const se::GpuComputeCapability& gpu_compute_comp,
+    int32_t gpu_toolkit_version, int32_t gpu_driver_version)
+    : gpu_compute_comp_(gpu_compute_comp),
+      gpu_toolkit_version_(gpu_toolkit_version),
       gpu_driver_version_(gpu_driver_version) {}
 
 StatusOr<bool> CommandBufferScheduling::Run(
@@ -551,7 +553,17 @@ StatusOr<bool> CommandBufferScheduling::Run(
     }
   };
 
-  if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
+  bool do_erase = std::visit(
+      se::VariantVisitor{
+          [this](const se::CudaComputeCapability&) {
+            return std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030;
+          },
+          [](const se::RocmComputeCapability&) {  // TODO: check for ROCM
+                                                  // support
+            return true;
+          }},
+      gpu_compute_comp_);
+  if (do_erase) {
     erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
     erase(kRequireConditionals);  // on-device control flow
   }
