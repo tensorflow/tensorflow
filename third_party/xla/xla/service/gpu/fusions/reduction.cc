@@ -112,7 +112,7 @@ llvm::Type* GetIndexType(const HloFusionInstruction& fusion,
 
 class ReductionEmitter {
  public:
-  ReductionEmitter(HloFusionAnalysis& analysis,
+  ReductionEmitter(const HloFusionAnalysis& analysis,
                    IrEmitterContext& ir_emitter_context,
                    ElementalIrEmitter& elemental_emitter,
                    mlir::lmhlo::FusionOp fusion_op,
@@ -170,7 +170,7 @@ class ReductionEmitter {
         .GetDimsInElems()[2];
   }
 
-  HloFusionAnalysis& analysis_;
+  const HloFusionAnalysis& analysis_;
   IrEmitterContext& ir_emitter_context_;
   ElementalIrEmitter& elemental_emitter_;
   mlir::lmhlo::FusionOp fusion_op_;

@@ -32,7 +32,7 @@ namespace gpu {
 // in the future.
 class InputSlicesFusion : public KernelFusionEmitterBase {
  public:
-  explicit InputSlicesFusion(HloFusionAnalysis& analysis)
+  explicit InputSlicesFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
   StatusOr<LaunchDimensions> launch_dimensions(
       IrEmitterContext& ir_emitter_context, int kernel_index) const override;
@@ -48,7 +48,7 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
                     int kernel_index) const override;
 
  private:
-  HloFusionAnalysis& analysis_;
+  const HloFusionAnalysis& analysis_;
 };
 
 }  // namespace gpu

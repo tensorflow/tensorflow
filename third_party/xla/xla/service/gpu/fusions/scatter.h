@@ -34,7 +34,8 @@ namespace gpu {
 // A scatter, implemented as a loop over the updates. All scatters are in-place.
 class ScatterFusion : public KernelFusionEmitterBase {
  public:
-  explicit ScatterFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {
+  explicit ScatterFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {
     CHECK_EQ(analysis.fusion_roots().size(), 1);
     CHECK_EQ(analysis.fusion_roots()[0]->opcode(), HloOpcode::kScatter);
   }
@@ -53,7 +54,7 @@ class ScatterFusion : public KernelFusionEmitterBase {
                     int kernel_index) const override;
 
  private:
-  HloFusionAnalysis& analysis_;
+  const HloFusionAnalysis& analysis_;
 };
 
 }  // namespace gpu

@@ -52,7 +52,8 @@ namespace gpu {
 // efficient to launch fewer blocks so each transposes many tiles.
 class TransposeFusion : public KernelFusionEmitterBase {
  public:
-  explicit TransposeFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
+  explicit TransposeFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {}
   StatusOr<LaunchDimensions> launch_dimensions(
       IrEmitterContext& ir_emitter_context, int kernel_index) const override {
     return analysis_.GetLaunchDimensions();
@@ -69,7 +70,7 @@ class TransposeFusion : public KernelFusionEmitterBase {
                     int kernel_index) const override;
 
  private:
-  HloFusionAnalysis& analysis_;
+  const HloFusionAnalysis& analysis_;
 };
 
 }  // namespace gpu

@@ -30,7 +30,8 @@ namespace gpu {
 
 class TritonFusion : public FusionInterface {
  public:
-  explicit TritonFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
+  explicit TritonFusion(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {}
 
   StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
                                       ElementalIrEmitter& elemental_emitter,

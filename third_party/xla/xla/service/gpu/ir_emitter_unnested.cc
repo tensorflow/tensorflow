@@ -2098,9 +2098,8 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                      HloFusionAnalysis& fusion_analysis) {
   TF_ASSIGN_OR_RETURN(
       std::optional<std::unique_ptr<FusionInterface>> emitter,
-      GetFusionEmitter(
-          fusion_analysis,
-          HloFusionInfo(instr, &ir_emitter_context_->buffer_assignment())));
+      GetFusionEmitter(HloFusionInfo(
+          fusion_analysis, instr, &ir_emitter_context_->buffer_assignment())));
   if (!emitter) {
     return FailedPrecondition("Fusion type not supported by the HLO emitter.");
   }
@@ -2124,9 +2123,8 @@ Status IrEmitterUnnested::EmitFusion(
 
   TF_ASSIGN_OR_RETURN(
       std::optional<std::unique_ptr<FusionInterface>> emitter,
-      GetFusionEmitter(
-          fusion_analysis,
-          LmhloFusionInfo(fusion_op, ir_emitter_context_->allocations())));
+      GetFusionEmitter(LmhloFusionInfo(fusion_analysis, fusion_op,
+                                       ir_emitter_context_->allocations())));
   if (!emitter) {
     LOG(FATAL) << "Unsupported fusion kind in fusion: " << fusion->name()
                << ".";
