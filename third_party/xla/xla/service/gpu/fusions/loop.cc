@@ -58,7 +58,7 @@ Status LoopFusion::EmitKernel(
 }
 
 StatusOr<LaunchDimensions> LoopFusion::launch_dimensions(
-    IrEmitterContext& ir_emitter_context, int kernel_index) const {
+    int kernel_index) const {
   return analysis_.GetLaunchDimensions();
 }
 

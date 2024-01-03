@@ -48,7 +48,7 @@ namespace xla {
 namespace gpu {
 
 StatusOr<LaunchDimensions> ScatterFusion::launch_dimensions(
-    IrEmitterContext& ir_emitter_context, int kernel_index) const {
+    int kernel_index) const {
   return analysis_.GetLaunchDimensions();
 }
 

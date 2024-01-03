@@ -40,8 +40,7 @@ class ScatterFusion : public KernelFusionEmitterBase {
     CHECK_EQ(analysis.fusion_roots()[0]->opcode(), HloOpcode::kScatter);
   }
 
-  StatusOr<LaunchDimensions> launch_dimensions(
-      IrEmitterContext& ir_emitter_context, int kernel_index) const override;
+  StatusOr<LaunchDimensions> launch_dimensions(int kernel_index) const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,

@@ -209,8 +209,7 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
 
   FusionEmissionResult result;
   for (int i = 0, n = num_kernels(); i < n; ++i) {
-    TF_ASSIGN_OR_RETURN(auto launch_dims,
-                        launch_dimensions(ir_emitter_context, i));
+    TF_ASSIGN_OR_RETURN(auto launch_dims, launch_dimensions(i));
     std::vector<llvm_ir::IrArray> inputs, outputs;
     auto [entry, cached] = kernel_cache.GetWithStatus(
         fused_computation, kernel_arguments.args(), absl::StrCat(i),

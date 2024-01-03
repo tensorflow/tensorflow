@@ -34,8 +34,7 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
  public:
   explicit InputSlicesFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
-  StatusOr<LaunchDimensions> launch_dimensions(
-      IrEmitterContext& ir_emitter_context, int kernel_index) const override;
+  StatusOr<LaunchDimensions> launch_dimensions(int kernel_index) const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,

@@ -55,7 +55,7 @@ class TransposeFusion : public KernelFusionEmitterBase {
   explicit TransposeFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
   StatusOr<LaunchDimensions> launch_dimensions(
-      IrEmitterContext& ir_emitter_context, int kernel_index) const override {
+      int kernel_index) const override {
     return analysis_.GetLaunchDimensions();
   }
 

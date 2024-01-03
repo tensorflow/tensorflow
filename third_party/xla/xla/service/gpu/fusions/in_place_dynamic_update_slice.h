@@ -52,10 +52,10 @@ namespace gpu {
 class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
  public:
   explicit InPlaceDynamicUpdateSliceEmitter(const HloFusionAnalysis& analysis)
-      : dus_ops_(
+      : analysis_(analysis),
+        dus_ops_(
             GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
-  StatusOr<LaunchDimensions> launch_dimensions(
-      IrEmitterContext& ir_emitter_context, int kernel_index) const override;
+  StatusOr<LaunchDimensions> launch_dimensions(int kernel_index) const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,
@@ -67,6 +67,7 @@ class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
                     llvm::IRBuilder<>* builder,
                     int kernel_index) const override;
 
+  const HloFusionAnalysis& analysis_;
   std::vector<const HloInstruction*> dus_ops_;
 };
 
