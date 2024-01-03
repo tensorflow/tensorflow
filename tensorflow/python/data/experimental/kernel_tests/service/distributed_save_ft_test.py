@@ -27,7 +27,6 @@ from tensorflow.python.data.experimental.ops import distributed_save_op
 from tensorflow.python.data.experimental.service import _pywrap_snapshot_utils
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import test_mode
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -97,11 +96,6 @@ def wait_for_snapshot(paths, f=lambda: None):
 class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
   maxDiff = None
-
-  def setUp(self):
-    super().setUp()
-    # TODO(b/268586560): Enable `warm_start` for `snapshot_ft_test`.
-    test_mode.toggle_test_mode(False)
 
   @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoverySucceeds(self):
@@ -360,9 +354,12 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertValuesEqual(list(max_assignments.values()),
                            [worker_max_concurrent_snapshots] * num_workers)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testDatasetRecoversAndCompletes(self):
-    cluster = data_service_test_base.TestCluster(num_workers=3)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3])))
+  def testDatasetRecoversAndCompletes(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.range(1000)
     self.evaluate(
@@ -372,39 +369,51 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
             cluster.dispatcher_address(),
             compression=None))
 
-    # Blocks until all workers have streams.
-    get_stream_assignments(cluster, 3, [snapshot_dir.full_path])
-    cluster.stop_worker(0)
-    cluster.restart_dispatcher()
-    cluster.restart_worker(0)
+    for i in range(num_workers):
+      cluster.stop_worker(i)
+      cluster.restart_dispatcher()
+      cluster.restart_worker(i)
     wait_for_snapshot(snapshot_dir.full_path)
     self.assertTrue(snapshot_is_done(snapshot_dir.full_path))
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path)
     self.assertDatasetProduces(dataset, range(1000), assert_items_equal=True)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
-    n = 5
-    cluster = data_service_test_base.TestCluster(num_workers=n)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3], num_sources=[1, 3])))
+  def testLargeMultiSourceSnapshotRecoversAndCompletes(
+      self, num_workers, num_sources):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
-    dataset = self._get_dataset(dataset_range=1000, num_sources=3)
+    dataset = self._get_dataset(dataset_range=1000, num_sources=num_sources)
     self.evaluate(distributed_save_op.distributed_save(
         dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    # Blocks until all workers have streams.
-    get_stream_assignments(cluster, n, [snapshot_dir.full_path])
-    cluster.stop_worker(0)
-    self.assertTrue(
-        os.path.exists(
-            os.path.join(
-                snapshot_dir.full_path, "streams", "stream_0", "checkpoints")))
-
-    cluster.restart_dispatcher()
-    cluster.restart_worker(0)
+    for i in range(num_workers):
+      cluster.stop_worker(i)
+      cluster.restart_dispatcher()
+      cluster.restart_worker(i)
     wait_for_snapshot(snapshot_dir.full_path)
     self.assertTrue(snapshot_is_done(snapshot_dir.full_path))
-    # TODO(b/250921378): Verify the number of elements.
+
+    if num_workers > 1:
+      # Can't verify the elements with more than 1 worker since the splits
+      # receive by each worker for each source is non-deterministic.
+      # For example, with dynamic sharding, worker 1 may receive 999 splits for
+      # source 0 and 0 splis for source 1; worker 2 may receive 0 splits for
+      # source 0 and 999 splits for source 1. In this case, the snapshot will
+      # contain no elements since `zip` drops the elements when the zipped
+      # datasets have different cardinalities.
+      return
+
+    dataset = dataset_ops.Dataset.load(snapshot_dir.full_path)
+    expected = (
+        list(range(1000))
+        if num_sources == 1
+        else list(zip(*([range(1000)] * num_sources))))
+    self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -419,12 +428,10 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.evaluate(distributed_save_op.distributed_save(
         ds, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    # Blocks until all workers have streams.
-    get_stream_assignments(cluster, num_workers, [snapshot_dir.full_path])
-    cluster.stop_worker(0)
-    cluster.restart_dispatcher()
-    for worker_idx in range(num_workers):
-      cluster.restart_worker(worker_idx)
+    for i in range(num_workers):
+      cluster.stop_worker(i)
+      cluster.restart_dispatcher()
+      cluster.restart_worker(i)
     wait_for_snapshot(snapshot_dir.full_path)
     self.assertTrue(snapshot_is_done(snapshot_dir.full_path))
 
@@ -432,20 +439,22 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset, list(range(1000)) * num_repetitions, assert_items_equal=True)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testNonrepeatedDatasetDoesntProduceSecondRepetitionDir(self):
-    num_workers = 5
-    num_sources = 3
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 5], num_sources=[1, 3])))
+  def testNonrepeatedDatasetDoesntProduceSecondRepetitionDir(
+      self, num_workers, num_sources):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
     dataset = self._get_dataset(dataset_range=1000, num_sources=num_sources)
     self.evaluate(distributed_save_op.distributed_save(
         dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
-    # Blocks until all workers have streams.
-    get_stream_assignments(cluster, num_workers, [snapshot_dir.full_path])
-    cluster.stop_worker(0)
-    cluster.restart_worker(0)
+    for i in range(num_workers):
+      cluster.stop_worker(i)
+      cluster.restart_dispatcher()
+      cluster.restart_worker(i)
     wait_for_snapshot(snapshot_dir.full_path)
     self.assertTrue(snapshot_is_done(snapshot_dir.full_path))
     for stream_idx in range(num_workers):
@@ -460,9 +469,12 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
                     f"source_{source_idx}",
                     "repetition_1")))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testMultipleDatasetRecoversAndCompletes(self):
-    cluster = data_service_test_base.TestCluster(num_workers=3)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3])))
+  def testMultipleDatasetRecoversAndCompletes(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
     dataset1 = dataset_ops.Dataset.range(1000)
     datasets = [
@@ -482,20 +494,23 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         distributed_save_op.distributed_save(
             dataset2, snapshot_path2, cluster.dispatcher_address()))
 
-    # Blocks until all workers have streams.
-    get_stream_assignments(cluster, 3, [snapshot_path1, snapshot_path2])
-    cluster.stop_worker(0)
-    cluster.restart_dispatcher()
-    cluster.restart_worker(0)
-    while not os.path.exists(os.path.join(snapshot_path1, "DONE")):
-      time.sleep(0.1)
-    while not os.path.exists(os.path.join(snapshot_path2, "DONE")):
-      time.sleep(0.1)
-    # TODO(b/250921378): Verify the number of elements.
+    for i in range(num_workers):
+      cluster.stop_worker(i)
+      cluster.restart_dispatcher()
+      cluster.restart_worker(i)
+    wait_for_snapshot(snapshot_path1)
+    wait_for_snapshot(snapshot_path2)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testNestedDataset(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.load(snapshot_path1)
+    self.assertDatasetProduces(
+        dataset, list(range(1000)), assert_items_equal=(num_workers > 1))
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3])))
+  def testNestedDataset(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
     dataset = dataset_ops.Dataset.from_tensor_slices(range(100))
     def interleave_fn(x):
@@ -505,16 +520,14 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       return ds.flat_map(flat_map_fn)
     dataset = dataset.interleave(
         interleave_fn, cycle_length=2, num_parallel_calls=2)
-
     self.evaluate(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
-    # Blocks until all workers have streams.
-    get_stream_assignments(cluster, 1, [snapshot_dir.full_path])
-    time.sleep(1)
-    cluster.stop_worker(0)
-    cluster.restart_dispatcher()
-    cluster.restart_worker(0)
+
+    for i in range(num_workers):
+      cluster.stop_worker(i)
+      cluster.restart_dispatcher()
+      cluster.restart_worker(i)
     wait_for_snapshot(snapshot_dir.full_path)
     self.assertTrue(snapshot_is_done(snapshot_dir.full_path))
 
