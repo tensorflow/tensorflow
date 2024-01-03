@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/memset_thunk.h"
+#include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
@@ -99,6 +100,12 @@ static StatusOr<Command> ConvertGemmThunk(const GemmThunk& thunk) {
                                    workspace.value(), thunk.deterministic());
 }
 
+static StatusOr<Command> ConvertAllReduceStartThunk(
+    const NcclAllReduceStartThunk& thunk) {
+  return std::make_unique<AllReduceCmd>(thunk.config(), thunk.reduction_kind(),
+                                        thunk.buffers());
+}
+
 static StatusOr<Command> ConvertThunk(const Thunk& thunk, bool force_barriers) {
   switch (thunk.kind()) {
     case Thunk::Kind::kKernel:
@@ -117,9 +124,13 @@ static StatusOr<Command> ConvertThunk(const Thunk& thunk, bool force_barriers) {
     case Thunk::Kind::kWhile:
       return ConvertWhileThunk(static_cast<const WhileThunk&>(thunk),
                                force_barriers);
-    case Thunk::Kind::kGemm: {
+    case Thunk::Kind::kGemm:
       return ConvertGemmThunk(static_cast<const GemmThunk&>(thunk));
-    }
+    case Thunk::Kind::kNcclAllReduceStart:
+      return ConvertAllReduceStartThunk(
+          static_cast<const NcclAllReduceStartThunk&>(thunk));
+    case Thunk::Kind::kNcclAllReduceDone:
+      return Command{};
     default:
       return InternalError("Unsupported thunk kind: %s",
                            Thunk::KindToString(thunk.kind()));
@@ -131,7 +142,7 @@ StatusOr<CommandBufferCmdSequence> ConvertToCommands(
   CommandBufferCmdSequence cmd_sequence(force_barriers);
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
     TF_ASSIGN_OR_RETURN(Command cmd, ConvertThunk(*thunk, force_barriers));
-    cmd_sequence.Append(std::move(cmd));
+    if (cmd) cmd_sequence.Append(std::move(cmd));
   }
   return cmd_sequence;
 }
