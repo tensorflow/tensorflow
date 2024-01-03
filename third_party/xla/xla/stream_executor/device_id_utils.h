@@ -28,17 +28,13 @@ namespace stream_executor {
 // or PlatformDeviceId.
 class DeviceIdUtil {
  public:
-  static tsl::StatusOr<StreamExecutor*> ExecutorForPlatformDeviceId(
-      Platform* device_manager, tsl::PlatformDeviceId platform_device_id) {
-    return device_manager->ExecutorForDevice(platform_device_id.value());
-  }
   static tsl::StatusOr<StreamExecutor*> ExecutorForTfDeviceId(
       const tsl::DeviceType& type, Platform* device_manager,
       tsl::TfDeviceId tf_device_id) {
     tsl::PlatformDeviceId platform_device_id;
     TF_RETURN_IF_ERROR(tsl::DeviceIdManager::TfToPlatformDeviceId(
         type, tf_device_id, &platform_device_id));
-    return ExecutorForPlatformDeviceId(device_manager, platform_device_id);
+    return device_manager->ExecutorForDevice(platform_device_id.value());
   }
 };
 

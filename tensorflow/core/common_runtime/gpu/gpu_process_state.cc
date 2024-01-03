@@ -112,8 +112,8 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
     const GPUOptions& options, tsl::PlatformDeviceId platform_device_id,
     const std::vector<SubAllocator::Visitor>& alloc_visitors,
     size_t total_bytes, const std::vector<tsl::TfDeviceId>& peer_gpu_ids) {
-  auto executor = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                      se::GPUMachineManager(), platform_device_id)
+  auto executor = se::GPUMachineManager()
+                      ->ExecutorForDevice(platform_device_id.value())
                       .value();
 
   // FIXME(imintz): Observed OOM issues when using the virtual memory
