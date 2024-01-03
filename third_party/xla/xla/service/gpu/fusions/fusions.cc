@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/copy.h"
+#include "xla/service/gpu/fusions/custom.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice.h"
 #include "xla/service/gpu/fusions/input_slices.h"
@@ -175,6 +176,8 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
     HloFusionAnalysis& analysis,
     std::variant<HloFusionInfo, LmhloFusionInfo> fusion_info) {
   switch (analysis.GetEmitterFusionKind()) {
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
+      return std::make_unique<CustomFusionEmitter>();
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
@@ -218,10 +221,7 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
       return std::make_unique<TransposeFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);
-    default:
-      break;
   }
-  return std::nullopt;
 }
 
 }  // namespace gpu
