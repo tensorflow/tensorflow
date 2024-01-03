@@ -58,10 +58,13 @@ fi
 
 # "TFCI_MACOS_UPGRADE_PYENV_ENABLE" is used to decide if we need to upgrade the
 # Pyenv version. We enable this for macOS x86 builds as the default Pyenv on
-# those VMs does not support installing Python 3.10 and above which we need
+# those VMs does not support installing Python 3.12 and above which we need
 # for running smoke tests in nightly/release wheel builds.
 if [[ "${TFCI_MACOS_UPGRADE_PYENV_ENABLE}" == 1 ]]; then
-  brew upgrade pyenv
+  # The TFCI Mac VM image seems to have uncommitted local changes to the Pyenv
+  # repository so we have to discard them and reset the working directory before
+  # we can pull in the latest changes.
+  cd /Users/kbuilder/.pyenv/ && git reset --hard HEAD && git pull && cd -
 fi
 
 # "TFCI_MACOS_PYENV_INSTALL_ENABLE" controls whether to use Pyenv to install
