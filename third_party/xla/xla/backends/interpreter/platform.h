@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/backends/interpreter/platform_id.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/trace_listener.h"
 
 namespace stream_executor {
 namespace interpreter {

@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -429,22 +428,6 @@ class StreamExecutorInterface {
   // caller.
   virtual tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription() const = 0;
-
-  // Attempts to register the provided TraceListener with the device-specific
-  // Executor implementation. When this is called, the PIMPL interface has
-  // already taken ownership of the object and is managing the generic tracing
-  // events. The device-specific implementation must determine if the passed
-  // listener is of a type appropriate for it to trace during registration (and
-  // before dispatching events to it).
-  // Returns true if the listener was successfully registered, false otherwise.
-  // Does not take ownership of listener.
-  virtual bool RegisterTraceListener(TraceListener* listener) { return false; }
-
-  // Unregisters the specified listener from the device-specific Executor.
-  // Returns true if the listener was successfully registered, false otherwise.
-  virtual bool UnregisterTraceListener(TraceListener* listener) {
-    return false;
-  }
 
   // Creates a new BlasSupport object, ownership is transferred to the caller.
   //

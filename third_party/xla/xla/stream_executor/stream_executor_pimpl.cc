@@ -19,10 +19,8 @@ limitations under the License.
 
 #include "xla/stream_executor/stream_executor_pimpl.h"
 
-#include <atomic>
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 #include "absl/base/const_init.h"
 #include "absl/functional/any_invocable.h"
@@ -63,66 +61,7 @@ void BlockOnThreadExecutor(tsl::thread::ThreadPool* executor) {
   n.WaitForNotification();
 }
 
-std::atomic_int_fast64_t correlation_id_generator(0);
-
 }  // namespace
-
-template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
-          typename... BeginArgsT>
-class ScopedTracer {
- public:
-  ScopedTracer(StreamExecutor* stream_exec, BeginCallT begin_call,
-               CompleteCallT complete_call, const ReturnT* result,
-               BeginArgsT... begin_args)
-      : stream_exec_(stream_exec),
-        complete_call_(complete_call),
-        result_(result) {
-    if (stream_exec_->tracing_enabled_) {
-      correlation_id_ =
-          correlation_id_generator.fetch_add(1, std::memory_order_relaxed) - 1;
-      Trace(begin_call, begin_args...);
-    }
-  }
-
-  ~ScopedTracer() {
-    if (stream_exec_->tracing_enabled_) {
-      Trace(complete_call_, result_);
-    }
-  }
-
- private:
-  template <typename CallbackT, typename... TraceArgsT>
-  void Trace(CallbackT callback, TraceArgsT... args) {
-    {
-      // Instance tracers held in a block to limit the lock lifetime.
-      absl::ReaderMutexLock lock{&stream_exec_->mu_};
-      for (TraceListener* listener : stream_exec_->listeners_) {
-        (listener->*callback)(correlation_id_,
-                              std::forward<TraceArgsT>(args)...);
-      }
-    }
-  }
-
-  StreamExecutor* stream_exec_;
-  CompleteCallT complete_call_;
-  const ReturnT* result_;
-  int64_t correlation_id_;
-};
-
-template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
-          typename... BeginArgsT>
-ScopedTracer<BeginCallT, CompleteCallT, ReturnT, BeginArgsT...>
-MakeScopedTracer(StreamExecutor* stream_exec, BeginCallT begin_call,
-                 CompleteCallT complete_call, ReturnT* result,
-                 BeginArgsT... begin_args) {
-  return ScopedTracer<BeginCallT, CompleteCallT, ReturnT, BeginArgsT...>(
-      stream_exec, begin_call, complete_call, result,
-      std::forward<BeginArgsT>(begin_args)...);
-}
-
-#define SCOPED_TRACE(LOC, ...) \
-  auto tracer =                \
-      MakeScopedTracer(this, &LOC##Begin, &LOC##Complete, ##__VA_ARGS__);
 
 // Get per-device memory limit in bytes. Returns 0 if
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
@@ -143,7 +82,6 @@ StreamExecutor::StreamExecutor(
       background_threads_(new tsl::thread::ThreadPool(
           tsl::Env::Default(), "stream_executor", kNumBackgroundThreads)),
       live_stream_count_(0),
-      tracing_enabled_(false),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {}
 
@@ -441,9 +379,6 @@ tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                    const BlockDim& block_dims,
                                    const Kernel& kernel,
                                    const KernelArgs& args) {
-  SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
-              kernel, args);
-
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
@@ -452,9 +387,6 @@ tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                    const ClusterDim& cluster_dims,
                                    const Kernel& kernel,
                                    const KernelArgs& args) {
-  SubmitTrace(&TraceListener::LaunchSubmit, stream, thread_dims, block_dims,
-              kernel, args);
-
   return implementation_->Launch(stream, thread_dims, block_dims, cluster_dims,
                                  kernel, args);
 }
@@ -466,8 +398,6 @@ tsl::Status StreamExecutor::Submit(Stream* stream,
 
 tsl::Status StreamExecutor::BlockHostUntilDone(Stream* stream) {
   tsl::Status result;
-  SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
-
   result = implementation_->BlockHostUntilDone(stream);
   return result;
 }
@@ -586,9 +516,6 @@ tsl::Status StreamExecutor::SynchronousMemcpyD2H(
           << ", host_dst=" << host_dst << ")" << StackTraceIfVLOG10();
 
   tsl::Status result;
-  SCOPED_TRACE(TraceListener::SynchronousMemcpyD2H, &result, device_src, size,
-               host_dst);
-
   result = implementation_->SynchronousMemcpy(host_dst, device_src, size);
   if (!result.ok()) {
     result = tsl::Status(
@@ -610,9 +537,6 @@ tsl::Status StreamExecutor::SynchronousMemcpyH2D(const void* host_src,
           << StackTraceIfVLOG10();
 
   tsl::Status result;
-  SCOPED_TRACE(TraceListener::SynchronousMemcpyH2D, &result, host_src, size,
-               device_dst);
-
   result = implementation_->SynchronousMemcpy(device_dst, host_src, size);
   if (!result.ok()) {
     result = tsl::Status(
@@ -729,34 +653,6 @@ void StreamExecutor::EnqueueOnBackgroundThread(std::function<void()> task) {
   background_threads_->Schedule(std::move(task));
 }
 
-void StreamExecutor::RegisterTraceListener(TraceListener* listener) {
-  {
-    absl::MutexLock lock(&mu_);
-    if (listeners_.find(listener) != listeners_.end()) {
-      LOG(INFO) << "Attempt to register already-registered listener, "
-                << listener;
-    } else {
-      listeners_.insert(listener);
-    }
-  }
-
-  implementation_->RegisterTraceListener(listener);
-}
-
-bool StreamExecutor::UnregisterTraceListener(TraceListener* listener) {
-  {
-    absl::MutexLock lock(&mu_);
-    if (listeners_.find(listener) == listeners_.end()) {
-      LOG(INFO) << "Attempt to unregister unknown listener, " << listener;
-      return false;
-    }
-    listeners_.erase(listener);
-  }
-
-  implementation_->UnregisterTraceListener(listener);
-  return true;
-}
-
 std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
@@ -767,19 +663,6 @@ bool StreamExecutor::ClearAllocatorStats() {
 
 Stream* StreamExecutor::FindAllocatedStream(void* gpu_stream) {
   return implementation_->FindAllocatedStream(gpu_stream);
-}
-
-template <typename TraceCallT, typename... ArgsT>
-void StreamExecutor::SubmitTrace(TraceCallT trace_call, ArgsT&&... args) {
-  if (tracing_enabled_) {
-    {
-      // instance tracers held in a block to limit the lock lifetime.
-      absl::ReaderMutexLock lock(&mu_);
-      for (TraceListener* listener : listeners_) {
-        (listener->*trace_call)(std::forward<ArgsT>(args)...);
-      }
-    }
-  }
 }
 
 internal::StreamExecutorInterface* StreamExecutor::implementation() {
