@@ -38,8 +38,7 @@ Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                               const LaunchDimensions& launch_dims,
                               std::vector<llvm_ir::IrArray> inputs,
                               std::vector<llvm_ir::IrArray> outputs,
-                              llvm::IRBuilder<>* builder,
-                              int kernel_index) const {
+                              llvm::IRBuilder<>* builder) const {
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fusion.fused_parameters().size(); i++) {
@@ -60,8 +59,7 @@ Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
       .EmitLoop(fusion.name(), index_type);
 }
 
-StatusOr<LaunchDimensions> LoopFusion::launch_dimensions(
-    int kernel_index) const {
+StatusOr<LaunchDimensions> LoopFusion::launch_dimensions() const {
   return analysis_.GetLaunchDimensions();
 }
 

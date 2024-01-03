@@ -31,7 +31,7 @@ class LoopFusion : public KernelFusionEmitterBase {
  public:
   explicit LoopFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
-  StatusOr<LaunchDimensions> launch_dimensions(int kernel_index) const override;
+  StatusOr<LaunchDimensions> launch_dimensions() const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,
@@ -39,8 +39,7 @@ class LoopFusion : public KernelFusionEmitterBase {
                     const LaunchDimensions& launch_dims,
                     std::vector<llvm_ir::IrArray> inputs,
                     std::vector<llvm_ir::IrArray> outputs,
-                    llvm::IRBuilder<>* builder,
-                    int kernel_index) const override;
+                    llvm::IRBuilder<>* builder) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

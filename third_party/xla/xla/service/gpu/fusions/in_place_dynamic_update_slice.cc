@@ -33,8 +33,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions(
-    int kernel_index) const {
+StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions()
+    const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }
@@ -42,8 +42,7 @@ StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions(
 Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
-    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder,
-    int kernel_index) const {
+    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder) const {
   // In case a dynamic slice update's output is bitcasted, we need to ensure we
   // write to the output array using the shape and layout of the dynamic slice
   // update. This cast is known to be safe to do iff, in the case the output of

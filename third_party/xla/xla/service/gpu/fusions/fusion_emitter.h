@@ -44,17 +44,15 @@ class FusionInterface {
       KernelReuseCache& kernel_cache) const = 0;
 };
 
+// Base class for fusions that are implemented using a single kernel, which is
+// generated using LLVM.
 class KernelFusionEmitterBase : public FusionInterface {
  public:
-  // The downstream code that is used by this emitter operates on a mix of MLIR
-  // and HLO classes. Ideally this would not be the case, but it's hard to
-  // change.
   StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion,
       KernelReuseCache& kernel_cache) const final;
-  virtual StatusOr<LaunchDimensions> launch_dimensions(
-      int kernel_index) const = 0;
+  virtual StatusOr<LaunchDimensions> launch_dimensions() const = 0;
 
  protected:
   virtual Status EmitKernel(IrEmitterContext& ir_emitter_context,
@@ -62,9 +60,7 @@ class KernelFusionEmitterBase : public FusionInterface {
                             const LaunchDimensions& launch_dims,
                             std::vector<llvm_ir::IrArray> inputs,
                             std::vector<llvm_ir::IrArray> outputs,
-                            llvm::IRBuilder<>* builder,
-                            int kernel_index) const = 0;
-  virtual int num_kernels() const { return 1; }
+                            llvm::IRBuilder<>* builder) const = 0;
 };
 
 std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,

@@ -47,8 +47,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<LaunchDimensions> ScatterFusion::launch_dimensions(
-    int kernel_index) const {
+StatusOr<LaunchDimensions> ScatterFusion::launch_dimensions() const {
   return analysis_.GetLaunchDimensions();
 }
 
@@ -57,8 +56,7 @@ Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                                  const LaunchDimensions& launch_dims,
                                  std::vector<llvm_ir::IrArray> inputs,
                                  std::vector<llvm_ir::IrArray> outputs,
-                                 llvm::IRBuilder<>* builder,
-                                 int kernel_index) const {
+                                 llvm::IRBuilder<>* builder) const {
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   // Spin up a new fused emitter for the scatter kernel and emit it.
   FusedIrEmitter scatter_fused_emitter(elemental_emitter);

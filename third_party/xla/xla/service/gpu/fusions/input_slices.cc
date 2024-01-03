@@ -172,8 +172,7 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 }  // namespace
 
-StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions(
-    int kernel_index) const {
+StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions() const {
   return analysis_.GetLaunchDimensions();
 }
 
@@ -182,8 +181,7 @@ Status InputSlicesFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                                      const LaunchDimensions& launch_dims,
                                      std::vector<llvm_ir::IrArray> inputs,
                                      std::vector<llvm_ir::IrArray> outputs,
-                                     llvm::IRBuilder<>* builder,
-                                     int kernel_index) const {
+                                     llvm::IRBuilder<>* builder) const {
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(
                           fusion.fused_instructions_computation()));
