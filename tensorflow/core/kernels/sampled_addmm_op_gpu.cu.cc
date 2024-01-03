@@ -11,14 +11,13 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-__global__ void SampledADDMMCustomKernel(const int32_t* __restrict__ ind,
-    const T* __restrict__ vals,
+__global__ void SampledADDMMCustomKernel(
+    const int32_t* __restrict__ ind, const T* __restrict__ vals,
     const T* __restrict__ mat1, const T* __restrict__ mat2,
     const int32_t batch_size, const T beta_, const T alpha_,
     const int32_t mat1_num_rows, const int32_t mat1_num_cols,
     const int32_t mat2_num_rows, const int32_t mat2_num_cols,
-    const int32_t mat_num_batches,
-    T* __restrict__ out) {
+    const int32_t mat_num_batches, T* __restrict__ out) {
   GPU_1D_KERNEL_LOOP(batch_idx, mat_num_batches) {
     const int32_t sparse_batch_offset = batch_idx * batch_size;
     const int32_t indices_batch_offset = sparse_batch_offset * 2;
@@ -48,26 +47,23 @@ namespace functor {
 
 template <typename T>
 struct SampledADDMMFunctor<GPUDevice, T> {
-  static Status Compute(OpKernelContext* ctx, const Tensor& indices_t,
-                     const Tensor& values_t,
+  static Status Compute(OpKernelContext* ctx,
+                     const Tensor& indices_t, const Tensor& values_t,
                      const Tensor& mat1, const Tensor& mat2,
                      const int32_t batch_size, const T beta_, const T alpha_,
                      const int32_t mat1_num_rows, const int32_t mat1_num_cols,
                      const int32_t mat2_num_rows, const int32_t mat2_num_cols,
-                     const int32_t mat_num_batches,
-                     Tensor* out) {
+                     const int32_t mat_num_batches, Tensor* out) {
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
     GpuLaunchConfig config = GetGpuLaunchConfig(mat_num_batches, d);
     
-    TF_CHECK_OK(GpuLaunchKernel(SampledADDMMCustomKernel<T>,
-                                config.block_count, config.thread_per_block,
-                                0, d.stream(), indices_t.flat<int32_t>().data(),
-                                values_t.flat<T>().data(),
+    TF_CHECK_OK(GpuLaunchKernel(SampledADDMMCustomKernel<T>, config.block_count,
+                                config.thread_per_block, 0, d.stream(),
+                                indices_t.flat<int32_t>().data(), values_t.flat<T>().data(),
                                 mat1.flat<T>().data(), mat2.flat<T>().data(),
                                 batch_size, beta_, alpha_, mat1_num_rows,
                                 mat1_num_cols, mat2_num_rows, mat2_num_cols,
-                                mat_num_batches, 
-                                out->flat<T>().data()));
+                                mat_num_batches, out->flat<T>().data())); 
 
     return OkStatus();
   }

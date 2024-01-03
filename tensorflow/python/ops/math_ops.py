@@ -4870,12 +4870,33 @@ def sampled_addmm(indices,
   sparse_num_batches = dense_shape[0] if sparse_rank == 3 else 1
   sparse_num_rows = dense_shape[0 if sparse_rank == 2 else 1]
   sparse_num_cols = dense_shape[1 if sparse_rank == 2 else 2]
+
+  values_shape = values.get_shape()
+  values_shape_list = values_shape.as_list()
+  indices_shape = indices.get_shape()
+  indices_shape_list = indices_shape.as_list()
+
   mat1_shape = mat1.get_shape()
+  mat1_shape_list = mat1_shape.as_list()
   mat2_shape = mat2.get_shape()
   mat_rank = mat1_shape.ndims
-  mat_num_batches = mat1_shape.as_list()[0] if mat_rank == 3 else 1
-  mat1_num_rows = mat1_shape.as_list()[0 if mat_rank == 2 else 1]
-  mat2_num_cols = mat2_shape.as_list()[1 if mat_rank == 2 else 2] 
+
+  mat_num_batches = mat1_shape_list[0] if mat_rank == 3 else 1
+  mat1_num_rows = mat1_shape_list[0 if mat_rank == 2 else 1]
+  mat2_num_cols = mat2_shape.as_list()[1 if mat_rank == 2 else 2]
+
+  if values_shape.ndims != sparse_rank - 1:
+    raise ValueError(
+        f"Invalid SparseTensor: values shape: {values_shape}, "
+        f"dense shape: {dense_shape}")
+
+  if (values_shape.ndims != indices_shape.ndims - 1
+      or values_shape_list[0] != indices_shape_list[0]
+      or values_shape_list[-1] != indices_shape_list[-2]
+      or indices_shape_list[-1] != 2):
+    raise ValueError(
+        f"Invalid SparseTensor: values shape: {values_shape}, "
+        f"indices shape: {indices_shape}") 
 
   if sparse_num_batches != mat_num_batches or sparse_num_rows != mat1_num_rows:
     raise ValueError(

@@ -13,14 +13,13 @@ namespace functor {
 
 template <typename T>
 struct SampledADDMMFunctor<CPUDevice, T> {
-  static Status Compute(OpKernelContext* ctx, const Tensor& indices_t,
-                     const Tensor& values_t, 
+  static Status Compute(OpKernelContext* ctx,
+                     const Tensor& indices_t, const Tensor& values_t, 
                      const Tensor& mat1, const Tensor& mat2, 
                      const int32_t batch_size, const T beta_, const T alpha_,
                      const int32_t mat1_num_rows, const int32_t mat1_num_cols,
                      const int32_t mat2_num_rows, const int32_t mat2_num_cols,
-                     const int32_t mat_num_batches,
-                     Tensor* out) {
+                     const int32_t mat_num_batches, Tensor* out) {
     auto mat1_ptr = mat1.flat<T>().data();
     auto mat2_ptr = mat2.flat<T>().data();
     auto values_ptr = values_t.flat<T>().data();
@@ -82,6 +81,7 @@ class SampledADDMMOp : public OpKernel {
       const Tensor& mat2 = ctx->input(4);
 
       const int sparse_rank = dense_shape_t.NumElements();
+
       OP_REQUIRES(ctx, sparse_rank == 2 || sparse_rank == 3,
                   errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
                                           "but indices has rank: ", sparse_rank));
@@ -121,10 +121,13 @@ class SampledADDMMOp : public OpKernel {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, values_shape, &output));
 
-      OP_REQUIRES_OK(ctx, functor::SampledADDMMFunctor<Device, T>::Compute(ctx, indices_t, values_t,
-          mat1, mat2, batch_size, beta_, alpha_, 
-          mat1_num_rows, mat1_num_cols, mat2_num_rows, mat2_num_cols,
-          mat1_num_batches, output));  
+      OP_REQUIRES_OK(ctx, functor::SampledADDMMFunctor<Device, T>::Compute(ctx,
+                                     indices_t, values_t, 
+                                     mat1, mat2, batch_size, 
+                                     beta_, alpha_, 
+                                     mat1_num_rows, mat1_num_cols, 
+                                     mat2_num_rows, mat2_num_cols,
+                                     mat1_num_batches, output));  
     }
 
   private:
