@@ -1294,36 +1294,23 @@ TEST_F(SymbolicTileTest,
 
   SymbolicTile output_tile(/*target_shape=*/{11, 17, 23}, &mlir_context_);
 
-  const IndexingMap& operand_0_indexing_map =
-      *input_indexing.indexing_maps[0].begin();
-  const IndexingMap& operand_1_indexing_map =
-      *input_indexing.indexing_maps[1].begin();
+  EXPECT_THAT(
+      output_tile.TryPropagateTileThroughIndexingMap(
+          *input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile(
+          "(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> "
+          "(d0 * s1 + d1, d2 * s2 + d3, s0)",
+          ElementsAre(19, std::nullopt, std::nullopt, std::nullopt),
+          ElementsAre(19, 11, 17, 23), ElementsAre(11, 11, 17, 17, 23, 23))));
 
-  std::optional<SymbolicTile> operand_0_tile =
-      output_tile.TryPropagateTileThroughIndexingMap(operand_0_indexing_map);
-  std::optional<SymbolicTile> operand_1_tile =
-      output_tile.TryPropagateTileThroughIndexingMap(operand_1_indexing_map);
-
-  std::vector<std::optional<int64_t>> expected_sizes(
-      {19, std::nullopt, std::nullopt, std::nullopt});
-  std::vector<int64_t> expected_max_sizes({19, 11, 17, 23});
-  std::vector<int64_t> expected_strides_and_offsets({11, 11, 17, 17, 23, 23});
-
-  EXPECT_THAT(operand_0_tile,
-              Optional(MatchSymbolicTile(
-                  "(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> "
-                  "(d0 * s1 + d1, d2 * s2 + d3, s0)",
-                  ElementsAreArray(expected_sizes),
-                  ElementsAreArray(expected_max_sizes),
-                  ElementsAreArray(expected_strides_and_offsets))));
-
-  EXPECT_THAT(operand_1_tile,
-              Optional(MatchSymbolicTile(
-                  "(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> "
-                  "(d0 * s1 + d1, s0, d4 * s3 + d5)",
-                  ElementsAreArray(expected_sizes),
-                  ElementsAreArray(expected_max_sizes),
-                  ElementsAreArray(expected_strides_and_offsets))));
+  EXPECT_THAT(
+      output_tile.TryPropagateTileThroughIndexingMap(
+          *input_indexing.indexing_maps[1].begin()),
+      Optional(MatchSymbolicTile(
+          "(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3] -> "
+          "(d0 * s1 + d1, s0, d4 * s3 + d5)",
+          ElementsAre(19, std::nullopt, std::nullopt, std::nullopt),
+          ElementsAre(19, 11, 17, 23), ElementsAre(11, 11, 17, 17, 23, 23))));
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {

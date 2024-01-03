@@ -163,9 +163,9 @@ Status FuseProducerConsumerOutputToInputIndexing(
 mlir::AffineMap ComputeTransposeIndexingMap(
     absl::Span<const int64_t> permutation, mlir::MLIRContext* mlir_context);
 
-// A tile describes a structured subset of indices inside a N-dimensional array,
-// where the set of indices captured along each dimension can be expressed as a
-// strided expression
+// A tile describes a structured subset of indices inside an N-dimensional
+// array, where the set of indices captured along each dimension can be
+// expressed as a strided expression
 //     offset + stride * iota(size)
 // with offset, stride, and size three non-negative integers, and iota the usual
 // range function.
@@ -174,7 +174,7 @@ mlir::AffineMap ComputeTransposeIndexingMap(
 // to a N-dimensional tile. It is encoded as an affine map
 //     (stride0, offset0, ..., stride{M-1}, offset{M-1})[size0, ... size{P-1}]
 //  -> (expr0, ..., expr{N-1})
-// where expr0, ... expr{N-1} are strided expressions as described above.
+// where expr0, ..., expr{N-1} are strided expressions as described above.
 //
 // Symbolic tiles also store, for each one of their parameters, what its
 // upper bound is (accessible through `max_sizes()` for size parameters and
