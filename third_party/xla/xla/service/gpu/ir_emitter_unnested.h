@@ -179,6 +179,7 @@ class IrEmitterUnnested : public IrEmitter {
           hlo_for_lmhlo);
   Status EmitWhile(const HloInstruction* instr);
   Status EmitInfeed(mlir::Operation* op);
+  Status EmitInfeed(const HloInfeedInstruction* instr);
   Status EmitOutfeed(mlir::Operation* op);
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
   Status EmitRngGetAndUpdateState(

@@ -2915,6 +2915,30 @@ Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
   return OkStatus();
 }
 
+Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
+  // Infeed instruction returns a tuple containing the result data and a token.
+  // We only need the result data to construct the infeed thunk.
+  std::vector<ShapedSlice> shaped_slices;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      instr->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsTuple() || subshape.IsToken()) return OkStatus();
+        if (subshape.IsArray()) {
+          TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
+                              GetAllocationSliceForHlo(instr, index));
+          ShapedSlice shaped_slice = {data, subshape};
+          shaped_slices.push_back(shaped_slice);
+          return OkStatus();
+        }
+        return InternalError("Unexpected shape kind for %s and shape index %s",
+                             instr->ToString(), index.ToString());
+      }));
+
+  auto thunk = std::make_unique<InfeedThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(shaped_slices));
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
 Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   mlir::Operation::operand_range operands =
       mlir::cast<mlir::lmhlo::OutfeedOp>(op).getInputs();
@@ -3424,6 +3448,9 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::InfeedOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitInfeed(Cast<HloInfeedInstruction>(hlo_for_lmhlo.at(op)));
+    }
     return EmitInfeed(op);
   }
 
@@ -3522,12 +3549,17 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateState(
           Cast<HloRngGetAndUpdateStateInstruction>(instr));
+    case HloOpcode::kInfeed:
+      return EmitInfeed(Cast<HloInfeedInstruction>(instr));
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
+      return OkStatus();
+    // HLO module is already ordered, so kAfterAll is a noop.
+    case HloOpcode::kAfterAll:
       return OkStatus();
     default:
       return InternalError("Unsupported instruction opcode: %s",
