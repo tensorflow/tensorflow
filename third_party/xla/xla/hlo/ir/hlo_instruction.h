@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/iterator_util.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -1271,16 +1272,16 @@ class HloInstruction {
   int64_t user_count() const { return users_.size(); }
 
   // Returns the users of this instruction.
-  const std::vector<HloInstruction*>& users() const { return users_; }
+  const PtrVec<HloInstruction*>& users() const { return users_.vec(); }
 
   // Returns the index of the user in the users() vector.
   //
   // Precondition: `user` is a user of the instruction.
-  int64_t UserId(HloInstruction* user);
+  int64_t UserId(HloInstruction* user) { return users_.UserId(user); }
 
   // Returns true if this instruction is a user of 'instruction'.
   bool IsUserOf(const HloInstruction* instruction) const {
-    return instruction->user_map_.contains(this);
+    return instruction->users_.Contains(this);
   }
 
   // Adds a control dependency from this instruction to the given
@@ -1321,10 +1322,10 @@ class HloInstruction {
   // Returns the set of control predecessors (successors) of this
   // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
-  const std::vector<HloInstruction*>& control_predecessors() const {
+  const PtrVec<HloInstruction*>& control_predecessors() const {
     return rare()->control_predecessors;
   }
-  const std::vector<HloInstruction*>& control_successors() const {
+  const PtrVec<HloInstruction*>& control_successors() const {
     return rare()->control_successors;
   }
 
@@ -1557,7 +1558,7 @@ class HloInstruction {
   // Gets the branch HloComputations for Conditional.
   //
   // Precondition: The instruction is a Conditional instruction.
-  const std::vector<HloComputation*>& branch_computations() const;
+  const PtrVec<HloComputation*>& branch_computations() const;
   int branch_count() const;
   HloComputation* branch_computation(int b) const;
   // Sets a branch HloComputation for Conditional.
@@ -1729,7 +1730,7 @@ class HloInstruction {
       const std::string& suffix, HloCloneContext* context = nullptr) const;
 
   // Returns the computations this instruction directly calls (if any).
-  const std::vector<HloComputation*>& called_computations() const {
+  const PtrVec<HloComputation*>& called_computations() const {
     return rare()->called_computations;
   }
   bool has_called_computations() const {
@@ -2357,9 +2358,7 @@ class HloInstruction {
   void RemoveOperandsAtAscendingIndices(
       absl::Span<const int> ascending_indices);
 
-  void AppendComputation(HloComputation* computation) {
-    mutable_rare()->called_computations.push_back(computation);
-  }
+  void AppendComputation(HloComputation* computation);
 
   void DetachFrom(HloInstruction* usee) { usee->RemoveUser(this); }
 
@@ -2465,10 +2464,10 @@ class HloInstruction {
       absl::Span<HloInstruction* const> operands);
 
   // Adds a user for this instruction.
-  void AddUser(HloInstruction* user);
+  void AddUser(HloInstruction* user) { users_.AddUser(user); }
 
   // Removes a user for this instruction.
-  void RemoveUser(HloInstruction* user);
+  void RemoveUser(HloInstruction* user) { users_.RemoveUser(user); }
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
@@ -2489,13 +2488,13 @@ class HloInstruction {
     // order computed in HloComputation::ComputeInstructionPostOrder, which may
     // influence the result of the compilation by changing the scheduling. We
     // are not sure if it matters.
-    std::vector<HloInstruction*> control_predecessors;
+    PtrVec<HloInstruction*> control_predecessors;
 
     // The set of control successors of this instruction.
-    std::vector<HloInstruction*> control_successors;
+    PtrVec<HloInstruction*> control_successors;
 
     // Computations called by this instruction.
-    std::vector<HloComputation*> called_computations;
+    PtrVec<HloComputation*> called_computations;
 
     // Attributes passed from the frontend to give hints to the backend about
     // how to compile this HLO.
@@ -2532,6 +2531,46 @@ class HloInstruction {
     return rare_.get();
   }
 
+  // Users holds the list of users of an HloInstruction, plus it provides a fast
+  // way for checking for presence of a potential user.
+  class Users {
+   public:
+    Users() = default;
+    ~Users();
+
+    // No copying allowed
+    Users(const Users&) = delete;
+    Users& operator=(const Users&) = delete;
+
+    bool empty() const { return users_.empty(); }
+    int64_t size() const { return users_.size(); }
+    const PtrVec<HloInstruction*>& vec() const { return users_; }
+
+    void Clear();
+    bool Contains(const HloInstruction* instruction) const;
+    void AddUser(HloInstruction* user);
+    void MaybeRemoveUser(HloInstruction* user);  // Remove user if present
+    void RemoveUser(HloInstruction* user);       // REQUIRES: Contains(user)
+    int64_t UserId(HloInstruction* user);
+    void SortInstructionUsers(
+        const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
+        const Users& sorted_instruction_users);
+    bool CheckInvariants();
+
+   private:
+    void RebuildMap();
+
+    PtrVec<HloInstruction*> users_;
+
+    // If users_ is big, we also maintain a copy of the elements of users_
+    // in a hash map to enable fast membership tests. The value in the map
+    // contains the index of the instruction in the vector what enables fast
+    // removal.
+    static constexpr size_t kMapThreshold = 16;
+    std::unique_ptr<absl::flat_hash_map<const HloInstruction*, int64_t>>
+        user_map_;
+  };
+
   int unique_id_;  // Unique to this HloInstruction within a HloModule
 
   // Opcode for this instruction.
@@ -2545,12 +2584,8 @@ class HloInstruction {
   std::unique_ptr<Rare> rare_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
-  // operand. The vector users_ and the map user_map_ contain identical members.
-  // The map enables fast membership testing and the vector enables fast, stable
-  // iteration. The value in the map contains the index of the instruction in
-  // the vector what enables fast removal.
-  std::vector<HloInstruction*> users_;
-  absl::flat_hash_map<const HloInstruction*, int64_t> user_map_;
+  // operand.
+  Users users_;
 
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;

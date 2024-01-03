@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/iterator_util.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -93,6 +94,138 @@ using absl::StrJoin;
 // Empty static object
 const HloInstruction::Rare* HloInstruction::kEmptyRare =
     new HloInstruction::Rare;
+
+namespace {
+// Specialization for erasing from PtrVec<T>.
+template <typename T>
+Status EraseElementFromVector(PtrVec<T>* container, T value) {
+  // absl::c_find returns a const_iterator which does not seem to work on
+  // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
+  auto it = std::find(container->begin(), container->end(), value);
+  TF_RET_CHECK(it != container->end());
+  container->erase(it);
+  return OkStatus();
+}
+}  // namespace
+
+HloInstruction::Users::~Users() = default;
+
+void HloInstruction::Users::Clear() {
+  users_.clear();
+  user_map_.reset(nullptr);
+  DCHECK(CheckInvariants());
+}
+
+bool HloInstruction::Users::Contains(const HloInstruction* instruction) const {
+  if (user_map_ == nullptr) {
+    return std::find(users_.begin(), users_.end(), instruction) != users_.end();
+  } else {
+    return user_map_->contains(instruction);
+  }
+}
+
+void HloInstruction::Users::AddUser(HloInstruction* user) {
+  if (!Contains(user)) {
+    // Create hash table if user list is large.
+    if (user_map_ == nullptr && users_.size() >= kMapThreshold) {
+      user_map_ =
+          std::make_unique<absl::flat_hash_map<const HloInstruction*, int64_t>>(
+              users_.size());
+      RebuildMap();
+      DCHECK(CheckInvariants());
+    }
+
+    if (user_map_ != nullptr) {
+      user_map_->emplace(user, users_.size());
+    }
+    users_.push_back(user);
+    DCHECK(CheckInvariants());
+  }
+}
+
+int64_t HloInstruction::Users::UserId(HloInstruction* user) {
+  if (user_map_ == nullptr) {
+    auto it = std::find(users_.begin(), users_.end(), user);
+    CHECK(it != users_.end());
+    return it - users_.begin();
+  } else {
+    auto result = user_map_->find(user);
+    CHECK(result != user_map_->end());
+    return result->second;
+  }
+}
+
+void HloInstruction::Users::MaybeRemoveUser(HloInstruction* user) {
+  if (Contains(user)) {
+    RemoveUser(user);
+    DCHECK(CheckInvariants());
+  }
+}
+
+void HloInstruction::Users::RemoveUser(HloInstruction* user) {
+  const int64_t index = UserId(user);
+  CHECK_EQ(users_[index], user);
+
+  // Move the last user into the position of the removed user.
+  HloInstruction* last = users_.back();
+
+  // Update map if allocated.
+  if (user_map_ != nullptr) {
+    (*user_map_)[last] = index;
+    user_map_->erase(user);
+  }
+
+  // Replace found user with last slot from the vector.
+  users_[index] = last;
+  users_.pop_back();
+
+  DCHECK(CheckInvariants());
+}
+
+void HloInstruction::Users::SortInstructionUsers(
+    const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
+    const Users& sorted_instruction_users) {
+  using Sorter = MappedPtrContainerSorter<HloInstruction>;
+  auto status = Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
+                             sorted_instruction_users.users_, users_);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed to sort instruction users: " << status;
+  }
+  if (user_map_ != nullptr) {
+    user_map_->clear();
+    RebuildMap();
+  }
+  DCHECK(CheckInvariants());
+}
+
+void HloInstruction::Users::RebuildMap() {
+  for (uint64_t i = 0; i < users_.size(); ++i) {
+    (*user_map_)[users_[i]] = i;
+  }
+}
+
+bool HloInstruction::Users::CheckInvariants() {
+  if (user_map_ != nullptr) {
+    int64_t index = 0;
+    for (const HloInstruction* u : users_) {
+      CHECK(user_map_->contains(u));
+      CHECK_EQ((*user_map_)[u], index);
+      index++;
+    }
+    for (auto [u, index] : *user_map_) {
+      CHECK_GE(index, 0);
+      CHECK_LT(index, users_.size());
+      CHECK_EQ(users_[index], u);
+    }
+  }
+  return true;
+}
+
+void HloInstruction::AppendComputation(HloComputation* computation) {
+  // In .cc file since PtrVec<T*>::push_back() wants to check the alignment
+  // of T and hlo_instruction.h does not include hlo_computation.h.
+  mutable_rare()->called_computations.push_back(computation);
+}
 
 HloInstruction* HloInstruction::AddInstruction(
     std::unique_ptr<HloInstruction> derived_instruction) {
@@ -2350,9 +2483,7 @@ void HloInstruction::DetachFromOperandsAndUsers() {
     if (operand == nullptr) {
       continue;
     }
-    if (operand->user_map_.find(this) != operand->user_map_.end()) {
-      operand->RemoveUser(this);
-    }
+    operand->users_.MaybeRemoveUser(this);
     operands_[operand_num] = nullptr;
   }
 
@@ -2607,19 +2738,6 @@ void HloInstruction::RemoveOperandsAtAscendingIndices(
   operands_.resize(operands_.size() - removed_count);
 }
 
-void HloInstruction::AddUser(HloInstruction* user) {
-  if (!ContainsKey(user_map_, user)) {
-    user_map_.emplace(user, users_.size());
-    users_.push_back(user);
-  }
-}
-
-int64_t HloInstruction::UserId(HloInstruction* user) {
-  auto result = user_map_.find(user);
-  CHECK(result != user_map_.end());
-  return result->second;
-}
-
 bool HloInstruction::HasConstantOperand() const {
   for (const HloInstruction* operand : operands_) {
     if (operand->IsConstant()) {
@@ -2781,23 +2899,6 @@ bool HloInstruction::IdenticalSlowPath(
   return false;
 }
 
-void HloInstruction::RemoveUser(HloInstruction* user) {
-  auto map_it = user_map_.find(user);
-  CHECK(map_it != user_map_.end());
-
-  const int64_t index = map_it->second;
-  CHECK_EQ(users_[index], user);
-
-  // Move the last user into the position of the removed user.
-  users_[index] = users_.back();
-  user_map_[users_.back()] = index;
-
-  // Remove the user from the map and drop the last slot from the vector what
-  // have been moved to the position of the original user.
-  user_map_.erase(map_it);
-  users_.pop_back();
-}
-
 Status HloInstruction::ReplaceUseWith(HloInstruction* user,
                                       HloInstruction* new_producer) {
   TF_RET_CHECK(
@@ -2943,7 +3044,9 @@ Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
 
 Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
-  for (HloInstruction* user : users) {
+  // Make a copy since users span might get mutated during the loop
+  std::vector<HloInstruction*> users_vector(users.begin(), users.end());
+  for (HloInstruction* user : users_vector) {
     TF_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
   }
 
@@ -2971,7 +3074,9 @@ Status HloInstruction::ReplaceAllUsesWith(HloInstruction* new_producer,
 Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     HloInstruction* new_producer) {
   bool new_producer_is_user = false;
-  for (HloInstruction* user : users()) {
+  // Make a copy since users span might get mutated during the loop
+  std::vector<HloInstruction*> users_vector(users().begin(), users().end());
+  for (HloInstruction* user : users_vector) {
     if (user == new_producer) {
       // It's possible that new_producer is a user of this instruction as might
       // be the case when replacing an instruction with a kCopy of itself. In
@@ -2988,8 +3093,7 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
       }
     }
   }
-  users_.clear();
-  user_map_.clear();
+  users_.Clear();
   if (new_producer_is_user) {
     AddUser(new_producer);
   }
@@ -3086,8 +3190,7 @@ HloComputation* HloInstruction::false_computation() const {
   return called_computations()[kFalseComputationIndex];
 }
 
-const std::vector<HloComputation*>& HloInstruction::branch_computations()
-    const {
+const PtrVec<HloComputation*>& HloInstruction::branch_computations() const {
   CHECK(HloOpcode::kConditional == opcode_);
   return called_computations();
 }
@@ -4830,16 +4933,9 @@ void HloInstruction::SortInstructionUsersAndControlLists(
     const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
     const HloInstruction& sorted_instruction) {
   using Sorter = MappedPtrContainerSorter<HloInstruction>;
-  auto status = Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
-                             sorted_instruction.users_, users_);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to sort instruction users for " << name() << "; "
-               << status;
-  }
-  user_map_.clear();
-  for (uint64_t i = 0; i < users_.size(); ++i) {
-    user_map_[users_[i]] = i;
-  }
+  users_.SortInstructionUsers(map_fn, sorted_instruction.users_);
+
+  absl::Status status;
   if (has_rare()) {
     status = Sorter::Sort(map_fn, Sorter::IndexAfterMappedElementsFn(),
                           sorted_instruction.control_predecessors(),
