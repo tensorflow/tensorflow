@@ -1269,18 +1269,16 @@ class MatMulEmitterHelper {
       CHECK_EQ(bases.size(), hlo->operand_count());
 
       concat_boundaries.reserve(hlo->operand_count() - 1);
-      int64_t accumulated_size = 0;
       for (int i = 0; i < hlo->operand_count() - 1; ++i) {
-        const int64_t operand_size =
+        const TensorIterationSpec::IterationSpecFragment& fragment =
             analysis_.IterSpec(side.scope, hlo->operand(i), concat_dim_idx)
-                ->at(0)
-                .count;
-        if (operand_size % properties.block_size != 0) {
+                ->at(0);
+        if (fragment.sliced_count % properties.block_size != 0) {
           return UncompilableMatmul(
               "Operand is not divisible by the block size.");
         }
-        accumulated_size += operand_size;
-        concat_boundaries.push_back(Cst32(accumulated_size));
+        concat_boundaries.push_back(
+            Cst32(-fragment.slice_start + fragment.sliced_count));
       }
 
       concat_dim_pid_offset =
@@ -1320,10 +1318,8 @@ class MatMulEmitterHelper {
         specs.push_back(
             analysis_.IterSpec(side.scope, input, properties.index));
         input_strides.push_back(Cst64(specs.back()->at(0).stride));
-        input_offsets.push_back(b_.create<ma::SubIOp>(
-            pid_offset, input_offsets.empty()
-                            ? Cst32(0)
-                            : concat_boundaries[input_offsets.size() - 1]));
+        input_offsets.push_back(b_.create<ma::AddIOp>(
+            pid_offset, Cst32(specs.back()->at(0).slice_start)));
         input_bounds.push_back(Cst64(specs.back()->at(0).count));
       }
       strides.push_back(EmitMultiSelect(b_, concat_dim_pid_offset,
@@ -1335,10 +1331,10 @@ class MatMulEmitterHelper {
             EmitMultiSelect(b_, pid_offset, concat_boundaries, input_bounds));
       } else {
         block_offsets.push_back(pid_offset);
-        int64_t count = specs.back()->at(0).count;
+        int64_t count = specs.front()->at(0).count;
         if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
             properties.index == dims_.out_lhs_noncontracting_dim_idx &&
-            specs.back()->size() == 1 &&
+            specs.front()->size() == 1 &&
             dims_.lhs_noncontracting_split.has_value()) {
           // Dimension of the output produced by the non-contracting LHS one
           // is logically split, major part is addressed using pid_batch.
@@ -1349,7 +1345,7 @@ class MatMulEmitterHelper {
           boundary_checks.push_back(bounds.size() - 1);
         }
       }
-      tensor_offsets.push_back(Cst32(specs.back()->at(0).slice_start));
+      tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
       block_dims.push_back(properties.block_size);
       dim_order.emplace(dim_order.begin(), dim_order.size());
     };
@@ -1458,7 +1454,7 @@ class MatMulEmitterHelper {
   }
 
   Value Cst(int64_t v) { return CreateConst(b_, index_ty_, v); }
-  Value Cst32(int64_t v) { return CreateConst(b_, i32_ty_, v); }
+  Value Cst32(int32_t v) { return CreateConst(b_, i32_ty_, v); }
   Value Cst64(int64_t v) { return CreateConst(b_, i64_ty_, v); }
 
   ImplicitLocOpBuilder& b_;

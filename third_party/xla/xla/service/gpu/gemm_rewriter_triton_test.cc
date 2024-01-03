@@ -902,7 +902,7 @@ e {
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(2), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/128,
-                                    /*slice_start=*/0, /*sliced_count=*/128,
+                                    /*slice_start=*/-1536, /*sliced_count=*/128,
                                     /*subfragments=*/ElementsAre(128))));
 
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
@@ -913,7 +913,7 @@ e {
   EXPECT_THAT(*analysis.IterSpec(TritonFusionAnalysis::Scope::RHS,
                                  computation->parameter_instruction(3), 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/256,
-                                    /*slice_start=*/0,
+                                    /*slice_start=*/-1536 - 128,
                                     /*sliced_count=*/256,
                                     /*subfragments=*/ElementsAre(256))));
 }
@@ -1003,9 +1003,10 @@ e {
                                      se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch((m::Fusion(m::Parameter(), m::Concatenate(),
-                                    m::Concatenate()))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter(),
+                            m::Parameter(), m::Parameter()))));
 }
 
 }  // namespace
