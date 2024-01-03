@@ -14,34 +14,13 @@ namespace functor {
 template <typename T>
 struct SampledADDMMFunctor<CPUDevice, T> {
   static Status Compute(OpKernelContext* ctx, const Tensor& indices_t,
-                     const Tensor& values_t, const Tensor& dense_shape_t,
+                     const Tensor& values_t, 
                      const Tensor& mat1, const Tensor& mat2, 
                      const int32_t batch_size, const T beta_, const T alpha_,
                      const int32_t mat1_num_rows, const int32_t mat1_num_cols,
                      const int32_t mat2_num_rows, const int32_t mat2_num_cols,
-                     const int32_t mat_num_batches, const int32_t sparse_rank,
+                     const int32_t mat_num_batches,
                      Tensor* out) {
-    auto dense_shape = dense_shape_t.vec<int32_t>();
-    const int32_t sparse_num_batches = sparse_rank == 3 ? dense_shape(0) : 1;
-    const int32_t sparse_num_rows = dense_shape(sparse_rank == 2 ? 0 : 1);
-    const int32_t sparse_num_cols = dense_shape(sparse_rank == 2 ? 1 : 2);
-
-    if (sparse_num_batches != mat_num_batches || sparse_num_rows != mat1_num_rows) {
-      return errors::InvalidArgument(
-                              "Matrix size incompatible: mat1: ",
-                              mat1.shape().DebugString(),
-                              ", SparseTensor: (", sparse_num_batches, ",", sparse_num_rows, ",",
-                              sparse_num_cols, ")");
-    } 
-
-    if (sparse_num_cols != mat2_num_cols) {
-      return errors::InvalidArgument(
-                    "Matrix size incompatible: mat2: ",
-                    mat2.shape().DebugString(),
-                    ", SparseTensor: (", sparse_num_batches, ",", sparse_num_rows, ",",
-                    sparse_num_cols, ")");
-    }
-
     auto mat1_ptr = mat1.flat<T>().data();
     auto mat2_ptr = mat2.flat<T>().data();
     auto values_ptr = values_t.flat<T>().data();
@@ -77,7 +56,7 @@ struct SampledADDMMFunctor<CPUDevice, T> {
     };
 
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    Shard(worker_threads.num_threads, worker_threads.workers, sparse_num_batches,
+    Shard(worker_threads.num_threads, worker_threads.workers, mat_num_batches,
           batch_size, shard);
 
     return OkStatus();
@@ -143,9 +122,9 @@ class SampledADDMMOp : public OpKernel {
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, values_shape, &output));
 
       OP_REQUIRES_OK(ctx, functor::SampledADDMMFunctor<Device, T>::Compute(ctx, indices_t, values_t,
-          dense_shape_t, mat1, mat2, batch_size, beta_, alpha_, 
+          mat1, mat2, batch_size, beta_, alpha_, 
           mat1_num_rows, mat1_num_cols, mat2_num_rows, mat2_num_cols,
-          mat1_num_batches, sparse_rank, output));  
+          mat1_num_batches, output));  
     }
 
   private:

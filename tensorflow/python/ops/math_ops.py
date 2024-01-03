@@ -4866,6 +4866,27 @@ def sampled_addmm(indices,
     beta=1.0,
     alpha=1.0
 ):
+  sparse_rank = len(dense_shape)
+  sparse_num_batches = dense_shape[0] if sparse_rank == 3 else 1
+  sparse_num_rows = dense_shape[0 if sparse_rank == 2 else 1]
+  sparse_num_cols = dense_shape[1 if sparse_rank == 2 else 2]
+  mat1_shape = mat1.get_shape()
+  mat2_shape = mat2.get_shape()
+  mat_rank = mat1_shape.ndims
+  mat_num_batches = mat1_shape.as_list()[0] if mat_rank == 3 else 1
+  mat1_num_rows = mat1_shape.as_list()[0 if mat_rank == 2 else 1]
+  mat2_num_cols = mat2_shape.as_list()[1 if mat_rank == 2 else 2] 
+
+  if sparse_num_batches != mat_num_batches or sparse_num_rows != mat1_num_rows:
+    raise ValueError(
+        f"Matrix size incompatible: mat1: {mat1_shape}, "
+        f"SparseTensor: ({sparse_num_batches},{sparse_num_rows},{sparse_num_cols})")
+
+  if sparse_num_cols != mat2_num_cols:
+    raise ValueError(
+        f"Matrix size incompatible: mat2: {mat2_shape}, "
+        f"SparseTensor: ({sparse_num_batches},{sparse_num_rows},{sparse_num_cols})") 
+  
   res = gen_math_ops.sampled_addmm(
       indices,
       values,
@@ -4874,7 +4895,8 @@ def sampled_addmm(indices,
       mat2,
       beta=beta,
       alpha=alpha
-    )
+  )
+
   return (indices, res, dense_shape)
 
 @tf_export("sparse.segment_sum", v1=[])
