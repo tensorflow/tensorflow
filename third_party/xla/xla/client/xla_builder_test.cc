@@ -1562,45 +1562,41 @@ TEST_F(XlaBuilderTest, TopKDimensions) {
 
 TEST_F(XlaBuilderTest, UnboundedAbs) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  ASSERT_IS_OK(operand.status());
-  ASSERT_IS_OK(expected.status());
-  Abs(Parameter(&b, 0, operand.value(), "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand,
+                          ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  Abs(Parameter(&b, 0, operand, "operand"));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedAdd) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
-  Add(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Add(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[1]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  Add(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  Add(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
@@ -1609,30 +1605,23 @@ TEST_F(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
 
 TEST_F(XlaBuilderTest, UnboundedBatchNormGrad) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand, grad_operand;
-  operand = grad_operand = ParseShape("f32[?, ?, 7]");
-  StatusOr<Shape> scale = ParseShape("f32[5]");
-  StatusOr<Shape> mean, variance, grad_scale, grad_offset;
-  mean = variance = grad_scale = grad_offset = ParseShape("f32[?]");
-  ASSERT_IS_OK(operand.status());
-  ASSERT_IS_OK(grad_operand.status());
-  ASSERT_IS_OK(scale.status());
-  ASSERT_IS_OK(mean.status());
-  ASSERT_IS_OK(variance.status());
-  ASSERT_IS_OK(grad_scale.status());
-  ASSERT_IS_OK(grad_offset.status());
-  StatusOr<Shape> grad_output = ParseShape("f32[5, ?, 7]");
-  ASSERT_IS_OK(grad_output.status());
-  BatchNormGrad(Parameter(&b, 0, operand.value(), "operand"),
-                Parameter(&b, 1, scale.value(), "scale"),
-                Parameter(&b, 2, mean.value(), "mean"),
-                Parameter(&b, 3, variance.value(), "variance"),
-                Parameter(&b, 4, grad_output.value(), "grad_output"), 1.0, 1);
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape grad_operand, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scale, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape mean, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape variance, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape grad_scale, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape grad_offset, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape grad_output, ParseShape("f32[5, ?, 7]"));
+  BatchNormGrad(
+      Parameter(&b, 0, operand, "operand"), Parameter(&b, 1, scale, "scale"),
+      Parameter(&b, 2, mean, "mean"), Parameter(&b, 3, variance, "variance"),
+      Parameter(&b, 4, grad_output, "grad_output"), 1.0, 1);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  Shape expected_tuple_shape = ShapeUtil::MakeTupleShape(
-      {grad_operand.value(), grad_scale.value(), grad_offset.value()});
+  Shape expected_tuple_shape =
+      ShapeUtil::MakeTupleShape({grad_operand, grad_scale, grad_offset});
   EXPECT_TRUE(ShapeUtil::Equal(result, expected_tuple_shape))
       << "result: " << ShapeUtil::HumanString(result)
       << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
@@ -1640,50 +1629,40 @@ TEST_F(XlaBuilderTest, UnboundedBatchNormGrad) {
 
 TEST_F(XlaBuilderTest, UnboundedBatchNormInference) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand, expected, scale, offset, mean, variance;
-  operand = expected = ParseShape("f32[?, ?, 7]");
-  scale = offset = mean = variance = ParseShape("f32[5]");
-  ASSERT_IS_OK(operand.status());
-  ASSERT_IS_OK(expected.status());
-  ASSERT_IS_OK(scale.status());
-  ASSERT_IS_OK(offset.status());
-  ASSERT_IS_OK(mean.status());
-  ASSERT_IS_OK(variance.status());
-  BatchNormInference(Parameter(&b, 0, operand.value(), "operand"),
-                     Parameter(&b, 1, scale.value(), "scale"),
-                     Parameter(&b, 2, offset.value(), "offset"),
-                     Parameter(&b, 3, mean.value(), "mean"),
-                     Parameter(&b, 4, variance.value(), "variance"), 1.0, 1);
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scale, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape offset, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape mean, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape variance, ParseShape("f32[5]"));
+  BatchNormInference(
+      Parameter(&b, 0, operand, "operand"), Parameter(&b, 1, scale, "scale"),
+      Parameter(&b, 2, offset, "offset"), Parameter(&b, 3, mean, "mean"),
+      Parameter(&b, 4, variance, "variance"), 1.0, 1);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedBatchNormTraining) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand, output;
-  operand = output = ParseShape("f32[?, ?, 7]");
-  StatusOr<Shape> scale, offset;
-  scale = offset = ParseShape("f32[5]");
-  StatusOr<Shape> batch_mean, batch_var;
-  batch_mean = batch_var = ParseShape("f32[?]");
-  ASSERT_IS_OK(operand.status());
-  ASSERT_IS_OK(output.status());
-  ASSERT_IS_OK(scale.status());
-  ASSERT_IS_OK(offset.status());
-  ASSERT_IS_OK(batch_mean.status());
-  ASSERT_IS_OK(batch_var.status());
-  BatchNormTraining(Parameter(&b, 0, operand.value(), "operand"),
-                    Parameter(&b, 1, scale.value(), "scale"),
-                    Parameter(&b, 2, offset.value(), "offset"), 1.0, 1);
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape output, ParseShape("f32[?, ?, 7]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape scale, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape offset, ParseShape("f32[5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape batch_mean, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape batch_var, ParseShape("f32[?]"));
+  BatchNormTraining(Parameter(&b, 0, operand, "operand"),
+                    Parameter(&b, 1, scale, "scale"),
+                    Parameter(&b, 2, offset, "offset"), 1.0, 1);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  Shape expected_tuple_shape = ShapeUtil::MakeTupleShape(
-      {output.value(), batch_mean.value(), batch_var.value()});
+  Shape expected_tuple_shape =
+      ShapeUtil::MakeTupleShape({output, batch_mean, batch_var});
   EXPECT_TRUE(ShapeUtil::Equal(result, expected_tuple_shape))
       << "result: " << ShapeUtil::HumanString(result)
       << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
@@ -1691,31 +1670,26 @@ TEST_F(XlaBuilderTest, UnboundedBatchNormTraining) {
 
 TEST_F(XlaBuilderTest, UnboundedClamp) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
-  StatusOr<Shape> ehs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(ehs.status());
-  ASSERT_IS_OK(expected.status());
-  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
-        Parameter(&b, 1, rhs.value(), "rhs"),
-        Parameter(&b, 2, ehs.value(), "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto result = module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedClampUnsupportedScalarMinMax) {
   XlaBuilder b(TestName());
   Shape lhs = ShapeUtil::MakeScalarShape(F32);
-  StatusOr<Shape> rhs = ParseShape("f32[?, 2, <=2]");
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 2, <=2]"));
   Shape ehs = ShapeUtil::MakeScalarShape(F32);
-  ASSERT_IS_OK(rhs.status());
-  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs.value(), "rhs"),
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   ASSERT_THAT(
@@ -1725,15 +1699,11 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedScalarMinMax) {
 
 TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast1) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[1]");
-  StatusOr<Shape> ehs = ParseShape("f32[?, 10]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(ehs.status());
-  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
-        Parameter(&b, 1, rhs.value(), "rhs"),
-        Parameter(&b, 2, ehs.value(), "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[?, 10]"));
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   ASSERT_THAT(build_status.status().message(),
               HasSubstr("ShapeUtil::SameDimensions(non_scalar_shape.value(), "
@@ -1742,15 +1712,11 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast1) {
 
 TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast2) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[]");
-  StatusOr<Shape> ehs = ParseShape("f32[]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(ehs.status());
-  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
-        Parameter(&b, 1, rhs.value(), "rhs"),
-        Parameter(&b, 2, ehs.value(), "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[]"));
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   ASSERT_THAT(
       build_status.status().message(),
@@ -1759,15 +1725,11 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast2) {
 
 TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast3) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> ehs = ParseShape("f32[]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(ehs.status());
-  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
-        Parameter(&b, 1, rhs.value(), "rhs"),
-        Parameter(&b, 2, ehs.value(), "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[]"));
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   ASSERT_THAT(
       build_status.status().message(),
@@ -1776,15 +1738,11 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast3) {
 
 TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast4) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[]");
-  StatusOr<Shape> rhs = ParseShape("f32[]");
-  StatusOr<Shape> ehs = ParseShape("f32[?, 10]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(ehs.status());
-  Clamp(Parameter(&b, 0, lhs.value(), "lhs"),
-        Parameter(&b, 1, rhs.value(), "rhs"),
-        Parameter(&b, 2, ehs.value(), "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[?, 10]"));
+  Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+        Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   ASSERT_THAT(
       build_status.status().message(),
@@ -1793,35 +1751,32 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast4) {
 
 TEST_F(XlaBuilderTest, UnboundedConcatenate) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand1 = ParseShape("f32[3, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> operand2 = ParseShape("f32[?, 4, ?, 2, ?, <=2, ?]");
-  StatusOr<Shape> operand3 = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[3, 4, ?, 2, <=2, <=2, ?]");
-  ASSERT_IS_OK(operand1.status());
-  ASSERT_IS_OK(operand2.status());
-  ASSERT_IS_OK(operand3.status());
-  ASSERT_IS_OK(expected.status());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand1,
+                          ParseShape("f32[3, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand2,
+                          ParseShape("f32[?, 4, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand3,
+                          ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[3, 4, ?, 2, <=2, <=2, ?]"));
   ConcatInDim(&b,
-              {Parameter(&b, 0, operand1.value(), "operand1"),
-               Parameter(&b, 1, operand2.value(), "operand2"),
-               Parameter(&b, 2, operand3.value(), "operand3")},
+              {Parameter(&b, 0, operand1, "operand1"),
+               Parameter(&b, 1, operand2, "operand2"),
+               Parameter(&b, 2, operand3, "operand3")},
               2);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanStringWithLayout(result)
-      << " expected: " << ShapeUtil::HumanStringWithLayout(expected.value());
+      << " expected: " << ShapeUtil::HumanStringWithLayout(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedConvolution) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 2, ?, 128]");
-  StatusOr<Shape> rhs = ParseShape("f32[2, 2, <=128, 8]");
-  StatusOr<Shape> expected = ParseShape("f32[?, 1, ?, 8]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 2, ?, 128]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[2, 2, <=128, 8]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 1, ?, 8]"));
 
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
@@ -1836,41 +1791,37 @@ TEST_F(XlaBuilderTest, UnboundedConvolution) {
   dnums.add_kernel_spatial_dimensions(1);
   dnums.set_kernel_input_feature_dimension(2);
   dnums.set_kernel_output_feature_dimension(3);
-  ConvWithGeneralDimensions(Parameter(&b, 0, lhs.value(), "lhs"),
-                            Parameter(&b, 1, rhs.value(), "rhs"),
+  ConvWithGeneralDimensions(Parameter(&b, 0, lhs, "lhs"),
+                            Parameter(&b, 1, rhs, "rhs"),
                             /*window_strides=*/{1, 1}, Padding::kValid, dnums);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected));
 }
 
 TEST_F(XlaBuilderTest, UnboundedDiv) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
-  Div(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Div(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedDivUnsupportedImplicitBroadcast) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[1]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  Div(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  Div(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
@@ -1879,31 +1830,23 @@ TEST_F(XlaBuilderTest, UnboundedDivUnsupportedImplicitBroadcast) {
 
 TEST_F(XlaBuilderTest, UnboundedDot) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> expected = ParseShape("f32[?, 10]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
-
-  Dot(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 10]"));
+  Dot(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  ASSERT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  ASSERT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedDotGeneral) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, <=3, ?]");
-  StatusOr<Shape> rhs = ParseShape("f32[2, 4, 5]");
-  StatusOr<Shape> expected = ParseShape("f32[?, <=3, 5]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, <=3, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[2, 4, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, <=3, 5]"));
 
   DotDimensionNumbers dnums;
   dnums.add_lhs_contracting_dimensions(2);
@@ -1911,57 +1854,52 @@ TEST_F(XlaBuilderTest, UnboundedDotGeneral) {
   dnums.add_lhs_batch_dimensions(0);
   dnums.add_rhs_batch_dimensions(0);
 
-  DotGeneral(Parameter(&b, 0, lhs.value(), "lhs"),
-             Parameter(&b, 1, rhs.value(), "rhs"), dnums);
+  DotGeneral(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"), dnums);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  ASSERT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  ASSERT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedExp) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  ASSERT_IS_OK(operand.status());
-  ASSERT_IS_OK(expected.status());
-  Exp(Parameter(&b, 0, operand.value(), "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand,
+                          ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  Exp(Parameter(&b, 0, operand, "operand"));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedMax) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
-  Max(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Max(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedMaxUnsupportedImplicitBroadcast) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[1]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  Max(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  Max(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
@@ -1970,30 +1908,26 @@ TEST_F(XlaBuilderTest, UnboundedMaxUnsupportedImplicitBroadcast) {
 
 TEST_F(XlaBuilderTest, UnboundedMul) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
-  Mul(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Mul(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedMulUnsupportedImplicitBroadcast) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[1]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  Mul(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  Mul(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
@@ -2002,10 +1936,8 @@ TEST_F(XlaBuilderTest, UnboundedMulUnsupportedImplicitBroadcast) {
 
 TEST_F(XlaBuilderTest, UnboundedPad) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand = ParseShape("f32[?, 10]");
-  StatusOr<Shape> expected = ParseShape("f32[?, 21]");
-  ASSERT_IS_OK(operand.status());
-  ASSERT_IS_OK(expected.status());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 21]"));
   PaddingConfig padding_config;
   for (int i = 0; i < 2; i++) {
     auto dimension = padding_config.add_dimensions();
@@ -2013,40 +1945,36 @@ TEST_F(XlaBuilderTest, UnboundedPad) {
     dimension->set_edge_padding_high(1);
     dimension->set_interior_padding(1);
   }
-  Pad(Parameter(&b, 0, operand.value(), "operand"),
+  Pad(Parameter(&b, 0, operand, "operand"),
       /*padding_value=*/ConstantR0<float>(&b, 0), padding_config);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()));
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected));
 }
 
 TEST_F(XlaBuilderTest, UnboundedPow) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
-  Pow(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Pow(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedPowUnsupportedImplicitBroadcast) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[1]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  Pow(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  Pow(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
@@ -2084,9 +2012,8 @@ TEST_F(XlaBuilderTest, UnboundedReduce) {
 
 TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported1) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand = ParseShape("f32[?]");
-  ASSERT_IS_OK(operand.status());
-  Reshape(Parameter(&b, 0, operand.value(), "operand"), /*dimensions=*/{0},
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
+  Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0},
           /*new_sizes=*/{2, 3});
   auto statusor = BuildHloModule(&b);
   ASSERT_THAT(
@@ -2096,9 +2023,8 @@ TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported1) {
 
 TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported2) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand = ParseShape("f32[6]");
-  ASSERT_IS_OK(operand.status());
-  Reshape(Parameter(&b, 0, operand.value(), "operand"), /*dimensions=*/{0},
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[6]"));
+  Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0},
           /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize});
   auto statusor = BuildHloModule(&b);
   ASSERT_THAT(
@@ -2108,9 +2034,8 @@ TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported2) {
 
 TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported3) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand = ParseShape("f32[?]");
-  ASSERT_IS_OK(operand.status());
-  Reshape(operand.value(), Parameter(&b, 0, operand.value(), "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
+  Reshape(operand, Parameter(&b, 0, operand, "operand"));
   auto statusor = BuildHloModule(&b);
   ASSERT_THAT(
       statusor.status().message(),
@@ -2119,47 +2044,41 @@ TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported3) {
 
 TEST_F(XlaBuilderTest, UnboundedSlice) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand = ParseShape("f32[1, <=3, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[1, <=2, 3]");
-  ASSERT_IS_OK(operand.status());
-  ASSERT_IS_OK(expected.status());
-  Slice(Parameter(&b, 0, operand.value(), "operand"),
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, <=3, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, <=2, 3]"));
+  Slice(Parameter(&b, 0, operand, "operand"),
         /*start_indices=*/{0, 1, 2},
         /*limit_indices=*/{1, 3, 5},
         /*strides=*/{1, 1, 1});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto result = module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedSub) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]");
-  StatusOr<Shape> rhs = ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]");
-  StatusOr<Shape> expected = ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  ASSERT_IS_OK(expected.status());
-  Sub(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[?, ?, 2, 2, <=2, <=2, ?]"));
+  Sub(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
-      << " expected: " << ShapeUtil::HumanString(expected.value());
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedSubUnsupportedImplicitBroadcast) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> lhs = ParseShape("f32[?, 10]");
-  StatusOr<Shape> rhs = ParseShape("f32[1]");
-  ASSERT_IS_OK(lhs.status());
-  ASSERT_IS_OK(rhs.status());
-  Sub(Parameter(&b, 0, lhs.value(), "lhs"),
-      Parameter(&b, 1, rhs.value(), "rhs"), /*broadcast_dimensions=*/{1});
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  Sub(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
   EXPECT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
@@ -2168,18 +2087,18 @@ TEST_F(XlaBuilderTest, UnboundedSubUnsupportedImplicitBroadcast) {
 
 TEST_F(XlaBuilderTest, UnboundedTranspose) {
   XlaBuilder b(TestName());
-  StatusOr<Shape> operand = ParseShape("f32[1, ?, 2, ?, <=2]{4,3,2,1,0}");
-  StatusOr<Shape> expected = ParseShape("f32[<=2, 1, ?, 2, ?]{0,2,3,4,1}");
-  ASSERT_IS_OK(operand.status());
-  ASSERT_IS_OK(expected.status());
-  Transpose(Parameter(&b, 0, operand.value(), "operand"),
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand,
+                          ParseShape("f32[1, ?, 2, ?, <=2]{4,3,2,1,0}"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[<=2, 1, ?, 2, ?]{0,2,3,4,1}"));
+  Transpose(Parameter(&b, 0, operand, "operand"),
             /*permutation=*/{4, 0, 3, 2, 1});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  EXPECT_TRUE(ShapeUtil::Equal(result, expected.value()))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanStringWithLayout(result)
-      << " expected: " << ShapeUtil::HumanStringWithLayout(expected.value());
+      << " expected: " << ShapeUtil::HumanStringWithLayout(expected);
 }
 
 }  // namespace
