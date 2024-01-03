@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNEL_THUNK_H_
-#define XLA_SERVICE_GPU_KERNEL_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_KERNEL_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_KERNEL_THUNK_H_
 
 #include <cstdint>
 #include <memory>
@@ -31,7 +31,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -186,4 +185,4 @@ class CustomKernelThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_KERNEL_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_KERNEL_THUNK_H_

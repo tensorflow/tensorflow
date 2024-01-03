@@ -73,6 +73,7 @@ cc_library(
     deps = [
         ":command_buffer_cmd",
         ":copy_thunk",
+        ":kernel_thunk",
         ":sequential_thunk",
         ":while_thunk",
         "//xla:statusor",
@@ -340,6 +341,35 @@ cc_library(
         "//xla/service/gpu:io_feed_manager",
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
+    ],
+)
+
+cc_library(
+    name = "kernel_thunk",
+    srcs = ["kernel_thunk.cc"],
+    hdrs = ["kernel_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status",
+        "//xla:types",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:kernel_arguments",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/service/gpu:thunk",
+        "//xla/service/gpu/kernels:custom_kernel",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
