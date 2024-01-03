@@ -124,8 +124,6 @@ MakeScopedTracer(StreamExecutor* stream_exec, BeginCallT begin_call,
   auto tracer =                \
       MakeScopedTracer(this, &LOC##Begin, &LOC##Complete, ##__VA_ARGS__);
 
-/* static */ absl::Mutex StreamExecutor::static_mu_{absl::kConstInit};
-
 // Get per-device memory limit in bytes. Returns 0 if
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
 static int64_t GetMemoryLimitBytes() {

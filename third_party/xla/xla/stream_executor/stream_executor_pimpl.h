@@ -569,9 +569,6 @@ class StreamExecutor {
   template <typename TraceCallT, typename... ArgsT>
   void SubmitTrace(TraceCallT trace_call, ArgsT&&... args);
 
-  // Reader/writer lock for class-static StreamExecutor members.
-  static absl::Mutex static_mu_;
-
   // Reader/writer lock for mutable data structures on this StreamExecutor.
   //
   // Mutable so that caching functions (like DeviceDescription, AsBlas, etc.)
