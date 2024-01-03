@@ -4111,6 +4111,34 @@ TEST_F(ShapeInferenceTest, UnboundedReduceInvalidReduceDimension) {
               HasSubstr("All reduced tensors must have compatible dimension"));
 }
 
+TEST_F(ShapeInferenceTest, UnboundedReduceWindow) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape input, ParseShape("f32[?, 4, 8]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 3, 5]"));
+
+  Window window;
+  WindowDimension dim0, dim1, dim2;
+  dim0.set_stride(1);
+  dim0.set_padding_low(0);
+  dim0.set_padding_high(0);
+  dim0.set_window_dilation(1);
+  dim0.set_base_dilation(1);
+  dim1 = dim2 = dim0;
+  dim0.set_size(1);
+  dim1.set_size(2);
+  dim2.set_size(4);
+  *window.add_dimensions() = dim0;
+  *window.add_dimensions() = dim1;
+  *window.add_dimensions() = dim2;
+
+  ProgramShape body = ShapeUtil::MakeProgramShape({f32_, f32_}, f32_);
+  TF_ASSERT_OK_AND_ASSIGN(Shape infered_shape,
+                          ShapeInference::InferReduceWindowShape(
+                              input, /*init_value=*/f32_, window, body));
+  EXPECT_TRUE(ShapeUtil::Equal(infered_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(infered_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupported1) {
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
   StatusOr<Shape> inferred_status =

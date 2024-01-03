@@ -2010,6 +2010,26 @@ TEST_F(XlaBuilderTest, UnboundedReduce) {
   EXPECT_TRUE(ShapeUtil::Equal(result, expected));
 }
 
+TEST_F(XlaBuilderTest, UnboundedReduceWindow) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape input, ParseShape("f32[?, 4, 8]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, 3, 5]"));
+
+  XlaBuilder bsum(TestName());
+  Add(Parameter(&bsum, 0, ShapeUtil::MakeShape(F32, {}), "x"),
+      Parameter(&bsum, 1, ShapeUtil::MakeShape(F32, {}), "y"));
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation sum, bsum.Build());
+
+  ReduceWindow(Parameter(&b, 0, input, "input"), ConstantR0<float>(&b, 0.f),
+               sum,
+               /*window_dimensions=*/{1, 2, 4},
+               /*window_strides=*/{1, 1, 1}, Padding::kValid);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result_shape =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected));
+}
+
 TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported1) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
