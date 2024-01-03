@@ -97,17 +97,6 @@ cc_library(
 )
 
 cc_library(
-    name = "dynamic_annotations",
-    hdrs = ["dynamic_annotations.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "env",
     srcs = [
         "posix_file_system.cc",
@@ -275,7 +264,6 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
-        "dynamic_annotations.h",
         "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
     visibility = ["//visibility:public"],
@@ -576,7 +564,6 @@ filegroup(
     srcs = [
         "casts.h",
         "context.h",
-        "dynamic_annotations.h",
         "env.cc",
         "integral_types.h",
         "load_library.cc",

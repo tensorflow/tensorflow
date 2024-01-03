@@ -655,7 +655,6 @@ def tf_additional_lib_hdrs():
         clean_dep("//tsl/platform/default:casts.h"),
         clean_dep("//tsl/platform/default:context.h"),
         clean_dep("//tsl/platform/default:criticality.h"),
-        clean_dep("//tsl/platform/default:dynamic_annotations.h"),
         clean_dep("//tsl/platform/default:integral_types.h"),
         clean_dep("//tsl/platform/default:logging.h"),
         clean_dep("//tsl/platform/default:mutex.h"),
