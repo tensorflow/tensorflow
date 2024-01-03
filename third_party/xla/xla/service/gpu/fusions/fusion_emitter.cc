@@ -207,7 +207,10 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   auto* fused_computation = fusion.fused_instructions_computation();
 
   FusionEmissionResult result;
-  TF_ASSIGN_OR_RETURN(auto launch_dims, launch_dimensions());
+  auto maybe_launch_dims = launch_dimensions();
+  TF_RET_CHECK(maybe_launch_dims.has_value());
+  TF_RETURN_IF_ERROR(maybe_launch_dims->status());
+  const auto& launch_dims = maybe_launch_dims->value();
   std::vector<llvm_ir::IrArray> inputs, outputs;
   auto [entry, cached] = kernel_cache.GetWithStatus(
       fused_computation, kernel_arguments.args(), /*discriminator=*/"",

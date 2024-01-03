@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,13 +42,15 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/status.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<LaunchDimensions> ScatterFusion::launch_dimensions() const {
+std::optional<StatusOr<LaunchDimensions>> ScatterFusion::launch_dimensions()
+    const {
   return analysis_.GetLaunchDimensions();
 }
 

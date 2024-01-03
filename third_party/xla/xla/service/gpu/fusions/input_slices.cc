@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -172,7 +174,8 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 }  // namespace
 
-StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions() const {
+std::optional<StatusOr<LaunchDimensions>> InputSlicesFusion::launch_dimensions()
+    const {
   return analysis_.GetLaunchDimensions();
 }
 

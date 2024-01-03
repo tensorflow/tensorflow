@@ -1247,5 +1247,10 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
       .Emit();
 }
 
+std::optional<StatusOr<LaunchDimensions>> ReductionFusion::launch_dimensions()
+    const {
+  return analysis_.GetLaunchDimensions();
+}
+
 }  // namespace gpu
 }  // namespace xla

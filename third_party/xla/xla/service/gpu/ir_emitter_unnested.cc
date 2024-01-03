@@ -2097,14 +2097,11 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
                                      HloFusionAnalysis& fusion_analysis) {
   TF_ASSIGN_OR_RETURN(
-      std::optional<std::unique_ptr<FusionInterface>> emitter,
+      std::unique_ptr<FusionInterface> emitter,
       GetFusionEmitter(HloFusionInfo(
           fusion_analysis, instr, &ir_emitter_context_->buffer_assignment())));
-  if (!emitter) {
-    return FailedPrecondition("Fusion type not supported by the HLO emitter.");
-  }
-  return AddThunksToThunkSequence((*emitter)->Emit(
-      *ir_emitter_context_, nullptr, *instr, kernel_reuse_cache_));
+  return AddThunksToThunkSequence(emitter->Emit(*ir_emitter_context_, nullptr,
+                                                *instr, kernel_reuse_cache_));
 }
 
 Status IrEmitterUnnested::EmitFusion(
@@ -2121,15 +2118,11 @@ Status IrEmitterUnnested::EmitFusion(
                       HloFusionAnalysis::Create(fusion, &device_info));
 
   TF_ASSIGN_OR_RETURN(
-      std::optional<std::unique_ptr<FusionInterface>> emitter,
+      std::unique_ptr<FusionInterface> emitter,
       GetFusionEmitter(LmhloFusionInfo(fusion_analysis, fusion_op,
                                        ir_emitter_context_->allocations())));
-  if (!emitter) {
-    LOG(FATAL) << "Unsupported fusion kind in fusion: " << fusion->name()
-               << ".";
-  }
-  return AddThunksToThunkSequence((*emitter)->Emit(
-      *ir_emitter_context_, fusion_op, *fusion, kernel_reuse_cache_));
+  return AddThunksToThunkSequence(emitter->Emit(*ir_emitter_context_, fusion_op,
+                                                *fusion, kernel_reuse_cache_));
 }
 
 Status IrEmitterUnnested::AssertNonDeterminismIsOkay(

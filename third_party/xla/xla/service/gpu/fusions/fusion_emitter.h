@@ -26,6 +26,8 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -42,6 +44,12 @@ class FusionInterface {
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion,
       KernelReuseCache& kernel_cache) const = 0;
+
+  // Returns the fusion's launch dimensions, if applicable.
+  // Note: Triton fusions are currently unsupported.
+  virtual std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const {
+    return std::nullopt;
+  }
 };
 
 // Base class for fusions that are implemented using a single kernel, which is
@@ -52,7 +60,6 @@ class KernelFusionEmitterBase : public FusionInterface {
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion,
       KernelReuseCache& kernel_cache) const final;
-  virtual StatusOr<LaunchDimensions> launch_dimensions() const = 0;
 
  protected:
   virtual Status EmitKernel(IrEmitterContext& ir_emitter_context,

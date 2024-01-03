@@ -59,7 +59,8 @@ Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
       .EmitLoop(fusion.name(), index_type);
 }
 
-StatusOr<LaunchDimensions> LoopFusion::launch_dimensions() const {
+std::optional<StatusOr<LaunchDimensions>> LoopFusion::launch_dimensions()
+    const {
   return analysis_.GetLaunchDimensions();
 }
 

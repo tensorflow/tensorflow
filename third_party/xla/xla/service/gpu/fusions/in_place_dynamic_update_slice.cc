@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice.h"
 
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -33,8 +34,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<LaunchDimensions> InPlaceDynamicUpdateSliceEmitter::launch_dimensions()
-    const {
+std::optional<StatusOr<LaunchDimensions>>
+InPlaceDynamicUpdateSliceEmitter::launch_dimensions() const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }

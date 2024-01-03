@@ -15,8 +15,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 #define XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 
+#include <optional>
+
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -96,6 +104,10 @@ class ReductionFusion : public FusionInterface {
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion,
       KernelReuseCache& kernel_cache) const override;
+
+  // The launch dimensions of the main reduction kernel (not any initializer
+  // kernels).
+  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
 
  private:
   const HloFusionAnalysis& analysis_;

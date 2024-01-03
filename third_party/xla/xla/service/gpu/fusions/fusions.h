@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <variant>
 
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -42,9 +41,11 @@ class FusionInfo {
   // Undefined if the fusion is not a DUS fusion.
   virtual bool CanEmitDynamicUpdateSliceInPlace() const = 0;
 
-  // Attempts to create a memcpy fusion, if possible.
+  // Attempts to create a memcpy fusion, if possible. Returns nullopt if the
+  // fusion failed to pattern match. Returns an error if the fusion successfully
+  // pattern matched, but buffer assignment failed.
   // TODO(b/204548848): Find a proper abstraction for this once LMHLO is gone.
-  virtual StatusOr<std::optional<std::unique_ptr<FusionInterface>>>
+  virtual std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
   GetCopyFusion() const = 0;
 
  private:
@@ -61,7 +62,7 @@ class LmhloFusionInfo : public FusionInfo {
         allocations_(allocations) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override;
-  StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusion()
+  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
       const override;
 
  private:
@@ -79,7 +80,7 @@ class HloFusionInfo : public FusionInfo {
         buffer_assignment_(buffer_assignment) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override;
-  StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusion()
+  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
       const override;
 
  private:
@@ -97,7 +98,7 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
     return true;
   }
 
-  StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusion()
+  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
       const override {
     // Copy fusions can't be created without buffer assignment. Note:
     // technically, this is only needed to generate the chunk, the validation
@@ -109,7 +110,7 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
 
 // Returns the emitter for the given fusion. Returns nullopt if the fusion
 // type is not yet supported.
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
+StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     const FusionInfo& fusion_info);
 
 }  // namespace gpu

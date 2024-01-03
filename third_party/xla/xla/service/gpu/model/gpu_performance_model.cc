@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -238,30 +239,14 @@ LaunchDimensions EstimateFusionLaunchDimensions(
     const std::optional<HloFusionAnalysis>& fusion_analysis,
     const se::DeviceDescription& device_info) {
   if (fusion_analysis) {
-    // TODO(jreiffers): This is the wrong place for this DUS analysis.
-    const HloInstruction* dus = nullptr;
-    for (const auto* root : fusion_analysis->fusion_roots()) {
-      if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-        dus = root;
-      } else if (root->opcode() == HloOpcode::kBitcast &&
-                 root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice) {
-        dus = root->operand(0);
-      } else {
-        dus = nullptr;
-        break;
+    auto emitter =
+        GetFusionEmitter(PreBufferAssignmentFusionInfo{*fusion_analysis});
+    if (emitter.ok()) {
+      auto launch_dimensions = (*emitter)->launch_dimensions();
+      if (launch_dimensions && launch_dimensions->ok()) {
+        return **launch_dimensions;
       }
     }
-
-    if (dus) {
-      if (auto dims =
-              CalculateLaunchDimensions(dus->operand(1)->shape(), device_info);
-          dims.ok()) {
-        return dims.value();
-      }
-    }
-
-    auto launch_dimensions = fusion_analysis->GetLaunchDimensions();
-    if (launch_dimensions.ok()) return *launch_dimensions;
   }
   int64_t block_size = 128;  // Result for default LaunchDimensionsConfig.
   int64_t num_blocks = CeilOfRatio(estimated_num_threads, block_size);

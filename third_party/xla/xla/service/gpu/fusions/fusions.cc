@@ -74,7 +74,7 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 
 }  // namespace
 
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>>
+std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
 LmhloFusionInfo::GetCopyFusion() const {
   auto params = GetHloOperands(fusion_op_);
   auto outputs = GetHloOutputs(fusion_op_);
@@ -113,7 +113,7 @@ LmhloFusionInfo::GetCopyFusion() const {
                                         std::move(dsts));
 }
 
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>>
+std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
 HloFusionInfo::GetCopyFusion() const {
   std::vector<BufferAllocation::Slice> src_buffers;
   for (auto* root : analysis().fusion_roots()) {
@@ -162,7 +162,7 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   return ret.ok() && *ret;
 }
 
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
+StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     const FusionInfo& fusion_info) {
   const auto& analysis = fusion_info.analysis();
   switch (analysis.GetEmitterFusionKind()) {
@@ -177,9 +177,8 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
             fusion_info.analysis());
       }
 
-      TF_ASSIGN_OR_RETURN(auto copy_fusion, fusion_info.GetCopyFusion());
-      if (copy_fusion.has_value()) {
-        return copy_fusion;
+      if (auto copy_fusion = fusion_info.GetCopyFusion()) {
+        return *std::move(copy_fusion);
       }
       return std::make_unique<LoopFusion>(analysis);
     }
