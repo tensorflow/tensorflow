@@ -156,6 +156,7 @@ py_strict_library(
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
+        "@absl_py//absl/logging",
     ],
 )
 
