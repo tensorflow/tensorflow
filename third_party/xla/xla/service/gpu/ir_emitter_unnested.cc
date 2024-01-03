@@ -2381,7 +2381,7 @@ Status IrEmitterUnnested::EmitSelectAndScatter(
 }
 
 Status IrEmitterUnnested::EmitWhile(
-    mlir::Operation* op, const HloInstruction* instr,
+    mlir::Operation* op,
     const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
         hlo_for_lmhlo) {
   auto while_op = mlir::cast<mlir::lmhlo::WhileOp>(op);
@@ -2413,6 +2413,7 @@ Status IrEmitterUnnested::EmitWhile(
     // special fusions, so we can't yet enable while thunk emission here.
     static constexpr bool kWhileThunkNotSupported = false;
     if (ir_emitter_context_->emit_ir_from_hlo() && kWhileThunkNotSupported) {
+      const HloInstruction* instr = hlo_for_lmhlo.at(op);
       TF_ASSIGN_OR_RETURN(
           auto thunk,
           BuildWhileThunk(instr,
@@ -3469,7 +3470,7 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::WhileOp>(op)) {
-    return EmitWhile(op, hlo_for_lmhlo.at(op), hlo_for_lmhlo);
+    return EmitWhile(op, hlo_for_lmhlo);
   }
 
   // Remaining arith.constant ops are the gpu.launch_func dimensions as a result
