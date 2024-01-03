@@ -1598,7 +1598,7 @@ TEST_F(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
   Add(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
       /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  EXPECT_FALSE(build_status.ok());
+  ASSERT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
@@ -1692,7 +1692,7 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedScalarMinMax) {
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  ASSERT_THAT(
+  EXPECT_THAT(
       build_status.status().message(),
       HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
 }
@@ -1705,7 +1705,7 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast1) {
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  ASSERT_THAT(build_status.status().message(),
+  EXPECT_THAT(build_status.status().message(),
               HasSubstr("ShapeUtil::SameDimensions(non_scalar_shape.value(), "
                         "*shape) Unimplemented implicit broadcast."));
 }
@@ -1718,7 +1718,7 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast2) {
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  ASSERT_THAT(
+  EXPECT_THAT(
       build_status.status().message(),
       HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
 }
@@ -1731,7 +1731,7 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast3) {
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  ASSERT_THAT(
+  EXPECT_THAT(
       build_status.status().message(),
       HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
 }
@@ -1744,7 +1744,7 @@ TEST_F(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast4) {
   Clamp(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
         Parameter(&b, 2, ehs, "ehs"));
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  ASSERT_THAT(
+  EXPECT_THAT(
       build_status.status().message(),
       HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
 }
@@ -1823,7 +1823,7 @@ TEST_F(XlaBuilderTest, UnboundedDivUnsupportedImplicitBroadcast) {
   Div(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
       /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  EXPECT_FALSE(build_status.ok());
+  ASSERT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
@@ -1837,7 +1837,7 @@ TEST_F(XlaBuilderTest, UnboundedDot) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  ASSERT_TRUE(ShapeUtil::Equal(result, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -1858,7 +1858,7 @@ TEST_F(XlaBuilderTest, UnboundedDotGeneral) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
-  ASSERT_TRUE(ShapeUtil::Equal(result, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
       << "result: " << ShapeUtil::HumanString(result)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -1901,7 +1901,7 @@ TEST_F(XlaBuilderTest, UnboundedMaxUnsupportedImplicitBroadcast) {
   Max(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
       /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  EXPECT_FALSE(build_status.ok());
+  ASSERT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
@@ -1929,7 +1929,7 @@ TEST_F(XlaBuilderTest, UnboundedMulUnsupportedImplicitBroadcast) {
   Mul(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
       /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  EXPECT_FALSE(build_status.ok());
+  ASSERT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
@@ -1976,7 +1976,7 @@ TEST_F(XlaBuilderTest, UnboundedPowUnsupportedImplicitBroadcast) {
   Pow(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
       /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  EXPECT_FALSE(build_status.ok());
+  ASSERT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
 }
@@ -2016,7 +2016,7 @@ TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported1) {
   Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0},
           /*new_sizes=*/{2, 3});
   auto statusor = BuildHloModule(&b);
-  ASSERT_THAT(
+  EXPECT_THAT(
       statusor.status().message(),
       HasSubstr("Reshaping with unbounded dimensions is not supported."));
 }
@@ -2027,7 +2027,7 @@ TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported2) {
   Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0},
           /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize});
   auto statusor = BuildHloModule(&b);
-  ASSERT_THAT(
+  EXPECT_THAT(
       statusor.status().message(),
       HasSubstr("Reshaping with unbounded dimensions is not supported."));
 }
@@ -2037,7 +2037,7 @@ TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported3) {
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
   Reshape(operand, Parameter(&b, 0, operand, "operand"));
   auto statusor = BuildHloModule(&b);
-  ASSERT_THAT(
+  EXPECT_THAT(
       statusor.status().message(),
       HasSubstr("Reshaping with unbounded dimensions is not supported."));
 }
@@ -2080,7 +2080,7 @@ TEST_F(XlaBuilderTest, UnboundedSubUnsupportedImplicitBroadcast) {
   Sub(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
       /*broadcast_dimensions=*/{1});
   StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
-  EXPECT_FALSE(build_status.ok());
+  ASSERT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
 }

@@ -3762,7 +3762,7 @@ TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedAbs) {
   TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
   TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferUnaryOpShape(
                                                   HloOpcode::kExp, operand));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -3775,7 +3775,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedAdd) {
                                          /*broadcast_dimensions=*/{});
   if (inferred_status.ok()) {
     TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[2]));
-    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+    EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
         << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
@@ -3798,7 +3798,7 @@ TEST_F(ShapeInferenceTest, UnboundedBatchNormGrad) {
                               operand, scale, mean, variance, grad_output, 1));
   Shape expected_tuple_shape =
       ShapeUtil::MakeTupleShape({grad_operand, grad_scale, grad_offset});
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected_tuple_shape))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected_tuple_shape))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
 }
@@ -3813,7 +3813,7 @@ TEST_F(ShapeInferenceTest, UnboundedBatchNormInference) {
                           ShapeInference::InferBatchNormInferenceShape(
                               operand, scale, offset, mean, variance, 1));
   TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, 7]"));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -3830,7 +3830,7 @@ TEST_F(ShapeInferenceTest, UnboundedBatchNormTraining) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape result_shape,
       ShapeInference::InferBatchNormTrainingShape(operand, scale, offset, 1));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected_tuple_shape))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected_tuple_shape))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected_tuple_shape);
 }
@@ -3843,7 +3843,7 @@ TEST_P(UnboundedClampOpShapeInferenceTest, UnboundedClamp) {
       ShapeInference::InferTernaryOpShape(HloOpcode::kClamp, lhs, rhs, ehs);
   if (inferred_status.ok()) {
     TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[3]));
-    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+    EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
         << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
@@ -3872,7 +3872,7 @@ TEST_P(UnboundedConcatenateOpShapeInferenceTest, UnboundedConcatenate) {
                                          /*dimension=*/0);
   if (inferred_status.ok()) {
     TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[2]));
-    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+    EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
         << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
@@ -3888,7 +3888,7 @@ TEST_F(UnboundedConcatenateOpShapeInferenceTest,
   StatusOr<Shape> inferred_status =
       ShapeInference::InferConcatOpShape({&operand1, &operand2, &operand3},
                                          /*dimension=*/0);
-  ASSERT_THAT(inferred_status.status().message(),
+  EXPECT_THAT(inferred_status.status().message(),
               HasSubstr("Mismatched dimension sizes 3 and 4 in dimension 1"));
 }
 
@@ -3900,7 +3900,7 @@ TEST_F(UnboundedConcatenateOpShapeInferenceTest,
   StatusOr<Shape> inferred_status =
       ShapeInference::InferConcatOpShape({&operand1, &operand2, &operand3},
                                          /*dimension=*/0);
-  ASSERT_THAT(inferred_status.status().message(),
+  EXPECT_THAT(inferred_status.status().message(),
               HasSubstr("Mismatched bound sizes 3 and 4 in dimension 1"));
 }
 
@@ -3949,7 +3949,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
                                          /*broadcast_dimensions=*/{});
   if (inferred_status.ok()) {
     TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[2]));
-    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+    EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
         << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
@@ -3971,7 +3971,7 @@ TEST_F(ShapeInferenceTest, UnboundedDot) {
       Shape result_shape,
       ShapeInference::InferDotOpShape(lhs, rhs, dnums,
                                       /*preferred_element_type=*/std::nullopt));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -3991,7 +3991,7 @@ TEST_F(ShapeInferenceTest, UnboundedDotGeneral) {
       Shape result_shape,
       ShapeInference::InferDotOpShape(lhs, rhs, dnums,
                                       /*preferred_element_type=*/std::nullopt));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -4001,7 +4001,7 @@ TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedExp) {
   TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
   TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferUnaryOpShape(
                                                   HloOpcode::kExp, operand));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -4014,7 +4014,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMax) {
                                          /*broadcast_dimensions=*/{});
   if (inferred_status.ok()) {
     TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[2]));
-    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+    EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
         << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
@@ -4031,7 +4031,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMul) {
                                          /*broadcast_dimensions=*/{});
   if (inferred_status.ok()) {
     TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[2]));
-    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+    EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
         << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
@@ -4056,7 +4056,7 @@ TEST_F(ShapeInferenceTest, UnboundedPad) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape result_shape,
       ShapeInference::InferPadShape(operand, padding_value, padding_config));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -4069,7 +4069,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedPow) {
                                          /*broadcast_dimensions=*/{});
   if (inferred_status.ok()) {
     TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[2]));
-    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+    EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
         << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
@@ -4092,7 +4092,7 @@ TEST_F(ShapeInferenceTest, UnboundedReduce) {
           {&input0, &input1, &input2, &f32_, &f32_, &f32_}, {1}, to_apply));
   Shape shape = ShapeUtil::MakeShape(F32, {7});
   Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -4116,7 +4116,7 @@ TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupported1) {
   StatusOr<Shape> inferred_status =
       ShapeInference::InferReshapeShape(operand, /*dimensions=*/{0},
                                         /*new_sizes=*/{2, 3}, -1);
-  ASSERT_THAT(
+  EXPECT_THAT(
       inferred_status.status().message(),
       HasSubstr("Reshaping with unbounded dimensions is not supported."));
 }
@@ -4126,7 +4126,7 @@ TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupported2) {
   StatusOr<Shape> inferred_status = ShapeInference::InferReshapeShape(
       operand, /*dimensions=*/{0},
       /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize}, -1);
-  ASSERT_THAT(
+  EXPECT_THAT(
       inferred_status.status().message(),
       HasSubstr("Reshaping with unbounded dimensions is not supported."));
 }
@@ -4138,7 +4138,7 @@ TEST_F(ShapeInferenceTest, UnboundedSlice) {
                                                   operand, /*starts=*/{0, 1, 2},
                                                   /*limits=*/{1, 3, 5},
                                                   /*strides=*/{1, 1, 1}));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -4151,7 +4151,7 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedSub) {
                                          /*broadcast_dimensions=*/{});
   if (inferred_status.ok()) {
     TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[2]));
-    ASSERT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
+    EXPECT_TRUE(ShapeUtil::Equal(inferred_status.value(), expected))
         << "inferred: " << ShapeUtil::HumanString(inferred_status.value())
         << " expected: " << ShapeUtil::HumanString(expected);
   } else {
@@ -4168,7 +4168,7 @@ TEST_F(ShapeInferenceTest, UnboundedTranspose) {
   TF_ASSERT_OK_AND_ASSIGN(Shape result_shape,
                           ShapeInference::InferTransposeShape(
                               operand, /*dimensions=*/{4, 0, 3, 2, 1}));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
@@ -4179,7 +4179,7 @@ TEST_F(ShapeInferenceTest, UnboundedTransposeRank1) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape result_shape,
       ShapeInference::InferTransposeShape(operand, /*dimensions=*/{0}));
-  ASSERT_TRUE(ShapeUtil::Equal(result_shape, expected))
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
