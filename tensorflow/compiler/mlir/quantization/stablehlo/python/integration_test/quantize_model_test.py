@@ -135,8 +135,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     # Tests that the quantized graph outputs similar values. The rtol value is
     # arbitrary.
-    # TODO: b/309674337 - Fix the large numerical errors.
-    self.assertAllClose(new_outputs, expected_outputs, atol=0.3)
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
   @parameterized.parameters(
       parameter_combinations([{
@@ -222,8 +221,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     # Tests that the quantized graph outputs similar values. The rtol value is
     # arbitrary.
-    # TODO: b/309674337 - Fix the large numerical errors.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.3)
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
   @parameterized.named_parameters(
       {
@@ -319,7 +317,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     # Tests that the quantized graph outputs similar values. The rtol value is
     # arbitrary.
-    self.assertAllClose(new_outputs, expected_outputs, rtol=0.04)
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.05)
 
   def test_when_preset_not_srq_raise_error(self):
     self._create_matmul_model(
