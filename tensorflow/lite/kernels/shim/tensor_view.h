@@ -47,12 +47,11 @@ struct TensorViewSubType {};
 class TensorView {
  protected:
   // Union over all data types
-  using DataVariantType =
-      std::variant<absl::Span<bool>, absl::Span<int8_t>, absl::Span<uint8_t>,
-                   absl::Span<int16_t>, absl::Span<uint16_t>,
-                   absl::Span<int32_t>, absl::Span<uint32_t>,
-                   absl::Span<int64_t>, absl::Span<uint64_t>, absl::Span<float>,
-                   absl::Span<double>, absl::Span<::tensorflow::tstring>>;
+  using DataVariantType = absl::variant<
+      absl::Span<bool>, absl::Span<int8_t>, absl::Span<uint8_t>,
+      absl::Span<int16_t>, absl::Span<uint16_t>, absl::Span<int32_t>,
+      absl::Span<uint32_t>, absl::Span<int64_t>, absl::Span<uint64_t>,
+      absl::Span<float>, absl::Span<double>, absl::Span<::tensorflow::tstring>>;
 
   // An interface while provides convenient row-major indexing over the
   // underlying tensor.
