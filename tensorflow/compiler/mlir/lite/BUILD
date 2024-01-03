@@ -1197,7 +1197,7 @@ cc_library(
 )
 
 cc_library(
-    name = "flatbuffer_translate_registeration",
+    name = "flatbuffer_translate_registration",
     srcs = [
         "flatbuffer_translate.cc",
     ],
@@ -1223,7 +1223,7 @@ cc_library(
 tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
-        ":flatbuffer_translate_registeration",
+        ":flatbuffer_translate_registration",
     ],
 )
 
@@ -1268,7 +1268,7 @@ tf_cc_binary(
     deps = [
         ":common",
         ":flatbuffer_translate_lib",
-        ":flatbuffer_translate_registeration",
+        ":flatbuffer_translate_registration",
         ":tensorflow_lite",
         ":tf_tfl_passes",
         ":tf_tfl_translate_cl_options",
@@ -1305,7 +1305,7 @@ tf_cc_binary(
     ],
     deps = [
         ":flatbuffer_translate_lib",
-        ":flatbuffer_translate_registeration",
+        ":flatbuffer_translate_registration",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
