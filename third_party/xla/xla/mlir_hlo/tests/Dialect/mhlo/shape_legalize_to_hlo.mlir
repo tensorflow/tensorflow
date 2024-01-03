@@ -157,6 +157,20 @@ func.func @shape_broadcast(%arg0: tensor<4xindex>, %arg1: tensor<4xindex>) -> te
 
 // -----
 
+func.func @shape_broadcast_different_dims(%arg0: tensor<4xindex>, %arg1: tensor<6xindex>) -> tensor<6xindex> {
+  %0 = shape.broadcast %arg0, %arg1 : tensor<4xindex>, tensor<6xindex> -> tensor<6xindex>
+  func.return %0 : tensor<6xindex>
+  //      CHECK: %[[LHS:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<4xindex> to tensor<4xi32>
+  // CHECK-NEXT: %[[RHS:.*]] = builtin.unrealized_conversion_cast %arg1 : tensor<6xindex> to tensor<6xi32>
+  // CHECK-NEXT: %[[PAD:.*]] = mhlo.constant dense<1> : tensor<2xi32>
+  // CHECK-NEXT: %[[LHS_PAD:.*]] = "mhlo.concatenate"(%[[PAD]], %[[LHS]]) {dimension = 0 : i64} : (tensor<2xi32>, tensor<4xi32>) -> tensor<6xi32>
+  // CHECK-NEXT: %[[BROADCAST:.*]] = mhlo.maximum %[[LHS_PAD]], %[[RHS]] : tensor<6xi32>
+  // CHECK-NEXT: %[[BROADCAST_INDEX:.*]] = builtin.unrealized_conversion_cast %[[BROADCAST]] : tensor<6xi32> to tensor<6xindex>
+  // CHECK-NEXT: return %[[BROADCAST_INDEX]] : tensor<6xindex>
+}
+
+// -----
+
 func.func @shape_broadcast_result_shape(%arg0: tensor<4xindex>, %arg1: tensor<4xindex>) -> !shape.shape {
   // expected-error@+1 {{failed to legalize operation 'shape.broadcast' that was explicitly marked illegal}}
   %0 = shape.broadcast %arg0, %arg1 : tensor<4xindex>, tensor<4xindex> -> !shape.shape
@@ -169,14 +183,6 @@ func.func @shape_broadcast_input_shape(%arg0: !shape.shape, %arg1: !shape.shape)
   // expected-error@+1 {{failed to legalize operation 'shape.broadcast' that was explicitly marked illegal}}
   %0 = shape.broadcast %arg0, %arg1 : !shape.shape, !shape.shape -> !shape.shape
   func.return %0 : !shape.shape
-}
-
-// -----
-
-func.func @shape_broadcast_different_dims(%arg0: tensor<4xindex>, %arg1: tensor<6xindex>) -> tensor<6xindex> {
-  // expected-error@+1 {{failed to legalize operation 'shape.broadcast' that was explicitly marked illegal}}
-  %0 = shape.broadcast %arg0, %arg1 : tensor<4xindex>, tensor<6xindex> -> tensor<6xindex>
-  func.return %0 : tensor<6xindex>
 }
 
 // -----
@@ -205,4 +211,68 @@ func.func @mhlo_cstr_reshapable(%arg0: index, %arg1: tensor<2xindex>, %arg2: ten
     shape.assuming_yield %2 : tensor<?x4xf32>
   }
   func.return %1 : tensor<?x4xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @const_shape
+func.func @const_shape() -> tensor<2xindex> {
+  %0 = shape.const_shape [6, 4] : tensor<2xindex>
+  return %0 : tensor<2xindex>
+  //      CHECK: %[[CST:.*]] = mhlo.constant dense<[6, 4]> : tensor<2xi32>
+  // CHECK-NEXT: %[[CST_INDEX:.*]] = builtin.unrealized_conversion_cast %[[CST]] : tensor<2xi32> to tensor<2xindex>
+  // CHECK-NEXT: return %[[CST_INDEX]] : tensor<2xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @index_cast_index_to_i32
+func.func @index_cast_index_to_i32(%arg0: tensor<2xindex>) -> tensor<2xi32> {
+  %0 = arith.index_cast %arg0 : tensor<2xindex> to tensor<2xi32>
+  return %0 : tensor<2xi32>
+  // CHECK-NEXT: %[[CST_I32:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2xindex> to tensor<2xi32>
+  // CHECK-NEXT: return %[[CST_I32]] : tensor<2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @index_cast_i32_to_index
+func.func @index_cast_i32_to_index(%arg0: tensor<2xi32>) -> tensor<2xindex> {
+  %0 = arith.index_cast %arg0 : tensor<2xi32> to tensor<2xindex>
+  return %0 : tensor<2xindex>
+  // CHECK-NEXT: %[[CST_INDEX:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<2xi32> to tensor<2xindex>
+  // CHECK-NEXT: return %[[CST_INDEX]] : tensor<2xindex>
+}
+
+// -----
+
+func.func @index_cast_index_to_i8(%arg0: tensor<2xindex>) -> tensor<2xi8> {
+  // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
+  %0 = arith.index_cast %arg0 : tensor<2xindex> to tensor<2xi8>
+  return %0 : tensor<2xi8>
+}
+
+// -----
+
+func.func @index_cast_i8_to_index(%arg0: tensor<2xi8>) -> tensor<2xindex> {
+  // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
+  %0 = arith.index_cast %arg0 : tensor<2xi8> to tensor<2xindex>
+  return %0 : tensor<2xindex>
+}
+
+
+// -----
+
+func.func @index_cast_scalar_index_to_i32(%arg0: index) -> i32 {
+  // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
+  %0 = arith.index_cast %arg0 : index to i32
+  return %0 : i32
+}
+
+// -----
+
+func.func @index_cast_scalar_i32_to_index(%arg0: i32) -> index {
+  // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
+  %0 = arith.index_cast %arg0 : i32 to index
+  return %0 : index
 }
