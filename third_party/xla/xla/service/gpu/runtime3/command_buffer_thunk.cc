@@ -111,7 +111,7 @@ Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   absl::MutexLock lock(&cmd_buffer->mutex);
 
   CommandBufferCmd::RecordParams record_params = {
-      params.executor, params.command_buffer_trace_stream,
+      params.executor, params.stream, params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
       params.nccl_params};
 
@@ -160,7 +160,7 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::MutexLock lock(&cmd_buffer->mutex);
 
   CommandBufferCmd::RecordParams record_params = {
-      executor, params.command_buffer_trace_stream,
+      executor, params.stream, params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
       &params.nccl_params};
 

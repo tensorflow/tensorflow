@@ -146,6 +146,13 @@ class Thunk {
 
     const BufferAllocations* buffer_allocations = nullptr;
 
+    // Main compute stream that will be used, passed via `ExecuteParams` to
+    // `ExecuteOnStream`. It can be used to initialize on-device "state" (i.e.
+    // various control structures) at command buffer recording time (we use it
+    // to initialize NCCL execution plans on device when we trace NCCL
+    // operations into command buffers);
+    se::Stream* stream = nullptr;
+
     // Auxiliary stream for tracing command buffers. We use a separate stream to
     // avoid accidental tracing of unrelated activities on a main stream.
     se::Stream* command_buffer_trace_stream = nullptr;

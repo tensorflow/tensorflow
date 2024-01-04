@@ -250,8 +250,8 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
 
   // Initialize thunks to prepare them for execution.
   Thunk::InitializeParams initialize_params{
-      executor, executable_source, &buffer_allocations,
-      command_buffer_trace_stream, &execute_params.nccl_params};
+      executor,    executable_source,           &buffer_allocations,
+      main_stream, command_buffer_trace_stream, &execute_params.nccl_params};
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
