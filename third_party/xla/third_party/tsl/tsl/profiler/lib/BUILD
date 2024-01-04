@@ -1,4 +1,4 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load("//tsl:tsl.default.bzl", "filegroup")
 load("//tsl:tsl.bzl", "if_not_android", "set_external_visibility")
