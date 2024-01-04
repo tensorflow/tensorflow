@@ -1,22 +1,48 @@
-diff --ruN a/stablehlo/.bazelversion b/stablehlo/.bazelversion
---- stablehlo/.bazelversion
-+++ stablehlo/.bazelversion
-@@ -1 +1,15 @@
-+# Copyright 2023 The StableHLO Authors. All Rights Reserved.
-+#
-+# Licensed under the Apache License, Version 2.0 (the "License");
-+# you may not use this file except in compliance with the License.
-+# You may obtain a copy of the License at
-+#
-+#      https://www.apache.org/licenses/LICENSE-2.0
-+#
-+# Unless required by applicable law or agreed to in writing, software
-+# distributed under the License is distributed on an "AS IS" BASIS,
-+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+# See the License for the specific language governing permissions and
-+# limitations under the License.
-+
- 6.1.0
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -331,7 +331,6 @@
+     ],
+ )
+ 
+-
+ gentbl_cc_library(
+     name = "linalg_pass_inc_gen",
+     strip_include_prefix = ".",
+@@ -372,9 +371,9 @@
+     ],
+     strip_include_prefix = ".",
+     deps = [
++        ":chlo_ops",
+         ":linalg_pass_inc_gen",
+         ":stablehlo_ops",
+-        ":chlo_ops",
+         "@llvm-project//llvm:Support",
+         "@llvm-project//mlir:ArithDialect",
+         "@llvm-project//mlir:BufferizationDialect",
+@@ -396,7 +395,6 @@
+         "@llvm-project//mlir:VectorDialect",
+     ],
+ )
+-
+ 
+ cc_library(
+     name = "reference_api",
+@@ -1462,10 +1460,9 @@
+ test_suite(
+     name = "stablehlo_ci_tests",
+     tests = [
++        "//stablehlo/conversions/linalg/tests:stablehlo_linalg_tests",
++        "//stablehlo/conversions/tosa/tests:stablehlo_tosa_tests",
+         "//stablehlo/testdata:stablehlo_testdata_tests",
+         "//stablehlo/tests:stablehlo_tests",
+-        "//stablehlo/conversions/tosa/tests:stablehlo_tosa_tests",
+-        "//stablehlo/conversions/linalg/tests:stablehlo_linalg_tests",
+-    ],
+-)
+-
++    ],
++)
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -175,18 +201,37 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/PortableApi.h
---- stablehlo/stablehlo/api/PortableApi.h
-+++ stablehlo/stablehlo/api/PortableApi.h
-@@ -27,7 +27,7 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel b/stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
+--- stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
++++ stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
+@@ -37,6 +37,7 @@
+ [
+     lit_test(
+         name = "%s.test" % src,
++        size = "small",
+         srcs = [src],
+         data = [
+             "lit.cfg.py",
+@@ -44,7 +45,6 @@
+             "//:stablehlo-opt",
+             "@llvm-project//llvm:FileCheck",
+         ],
+-        size = "small",
+         tags = ["stablehlo_linalg_tests"],
+     )
+     for src in glob(["**/*.mlir"])
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
+--- stablehlo/stablehlo/dialect/StablehloAttrs.td
++++ stablehlo/stablehlo/dialect/StablehloAttrs.td
+@@ -105,7 +105,7 @@
+ }
  
- /// Return the current version for portable API.
- /// Increments on all meaningful changes to this file.
--inline int64_t getApiVersion() { return 4; }
-+inline int64_t getApiVersion() { return 5; }
- 
- // Get the current StableHLO version.
- //
+ // Represents a unique identifier for each Send/Recv instruction pair or
+-// optionally for collective instructions (AllToAll, AllReduce, 
++// optionally for collective instructions (AllToAll, AllReduce,
+ // CollectiveBroadcast, and CollectivePermute). Non-positive channel_id
+ // handle is equivalent to no channel id.
+ def StableHLO_ChannelHandle : AttrDef<StableHLO_Dialect, "ChannelHandle"> {
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
