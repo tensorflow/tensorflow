@@ -307,6 +307,10 @@ def embedding_lookup(
       element must be appropriately sized for the given `partition_strategy`.
     ids: A `Tensor` or a 'RaggedTensor' with type `int32` or `int64` containing
       the ids to be looked up in `params`.
+      
+      Caution: On CPU, if an out of bound id is found, an error is raised.
+      On GPU, if an out of bound id is found, a 0 is stored in the
+      corresponding output value.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
