@@ -61,29 +61,6 @@ cc_library(
     ],
 )
 
-cuda_library(
-    name = "sleep_kernel_cuda",
-    srcs = if_cuda_is_configured(["sleep_kernel.cu.cc"]),
-    hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
-    compatible_with = [],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        ":gpu_kernel_helper",
-    ]),
-)
-
-rocm_library(
-    name = "sleep_kernel_rocm",
-    srcs = if_rocm_is_configured(["sleep_kernel.cu.cc"]),
-    hdrs = if_rocm_is_configured(["sleep_kernel.h"]),
-    compatible_with = [],
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    deps = if_rocm_is_configured([
-        ":gpu_kernel_helper",
-    ]),
-)
-
 cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],
@@ -105,7 +82,6 @@ cc_library(
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -113,13 +89,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ] + if_gpu_is_configured([
-        ":gpu_kernel_helper",
-        "//xla/stream_executor/gpu:gpu_types_header",
-        "//xla/stream_executor/gpu:gpu_stream_header",
-    ]) + if_cuda_is_configured([
-        ":sleep_kernel_cuda",
-    ]) + if_rocm_is_configured([
-        ":sleep_kernel_rocm",
+        "//xla/service/gpu:mock_nccl_utils",
     ]),
 )
 
