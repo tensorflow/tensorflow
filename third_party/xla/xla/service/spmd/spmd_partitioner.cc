@@ -2227,6 +2227,27 @@ SpmdPartitioningVisitor::SpmdPartitioningVisitor(
       partitioner_(partitioner),
       call_graph_(call_graph) {}
 
+SpmdPartitioningVisitor::SpmdPartitioningVisitor(
+    const SpmdPartitioningVisitor& src)
+    : changed_(src.changed_),
+      module_(src.module_),
+      num_partitions_(src.num_partitions_),
+      num_replicas_(src.num_replicas_),
+      collective_ops_creator_(src.collective_ops_creator_),
+      next_channel_id_(src.next_channel_id_),
+      b_(absl::StrCat(module_->entry_computation()->name(), "_spmd"),
+         /*hlo=*/nullptr),
+      partition_id_(collective_ops_creator_.create_partition_id(&b_)),
+      logger_(src.logger_),
+      options_(src.options_),
+      partitioner_(src.partitioner_),
+      call_graph_(src.call_graph_) {}
+
+std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioningVisitor::Clone()
+    const {
+  return std::make_unique<SpmdPartitioningVisitor>(*this);
+}
+
 PartitionedHlo::PartitioningState
 SpmdPartitioningVisitor::MakePartitioningState() {
   PartitionedHlo::PartitioningState state;

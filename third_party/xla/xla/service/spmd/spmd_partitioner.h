@@ -523,6 +523,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       SpmdPartitionerOptions options, SpmdPartitioner* partitioner,
       const CallGraph& call_graph);
 
+  SpmdPartitioningVisitor(const SpmdPartitioningVisitor& src);
+
   Status DefaultAction(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
   Status HandleBroadcast(HloInstruction* hlo) override;
@@ -575,6 +577,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleCustomCallTopK(HloInstruction* hlo);
   // Convenient custom ops defined by the partitioner itself.
   Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+
+  virtual std::unique_ptr<SpmdPartitioningVisitor> Clone() const;
 
   // Returns the PartitionedHlo that corresponds to the original hlo.
   PartitionedHlo& GetPartitionedHlo(const HloInstruction* hlo) {
@@ -642,6 +646,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   const SPMDCollectiveOpsCreator& collective_ops_creator() const {
     return collective_ops_creator_;
   }
+  HloModule* module() { return module_; }
+  const HloModule* module() const { return module_; }
+  void set_module(HloModule* module) { module_ = module; }
 
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
