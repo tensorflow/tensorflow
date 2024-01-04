@@ -128,7 +128,7 @@ StatusOr<NcclComm::Lock> GetNcclComm(
                       stream_id, enable_clique_optimization);
 }
 
-StatusOr<MockNcclCommReference> GetMockNcclComm(
+StatusOr<NcclComm::Lock> GetMockNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, int64_t stream_id,
@@ -147,9 +147,9 @@ StatusOr<MockNcclCommReference> GetMockNcclComm(
     replica_groups.push_back(replica_group);
   }
 
-  return InitializeMockNcclComm(params, replica_groups,
-                                static_cast<CollectiveOpGroupMode>(group_mode),
-                                op_id, stream_id, enable_clique_optimization);
+  return LockMockNcclComm(params, replica_groups,
+                          static_cast<CollectiveOpGroupMode>(group_mode), op_id,
+                          stream_id, enable_clique_optimization);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -208,7 +208,6 @@ absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
-// TODO: shall we use GpuDriver::LaunchKernel() to avoid macros here ?
 #if XLA_ENABLE_XCCL
 Status MockNcclImplCommon(const ServiceExecutableRunOptions* run_options,
                           const DebugOptions* debug_options, se::Stream* stream,
@@ -227,7 +226,7 @@ Status MockNcclImplCommon(const ServiceExecutableRunOptions* run_options,
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
-  return RunMockNcclCollectives(device_buffers, *stream, comm.get(), reduce_op);
+  return RunMockNcclCollectives(device_buffers, *stream, *comm, reduce_op);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -239,10 +238,6 @@ Status MockNcclImplCommon(const ServiceExecutableRunOptions* run_options,
 using NcclP2PRunner = absl::FunctionRef<absl::Status(
     NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
     se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
-    int64_t current_id)>;
-using MockNcclP2PRunner = absl::FunctionRef<absl::Status(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, MockNcclComm* comm, absl::string_view device_string,
     int64_t current_id)>;
 
 using DeviceBuffersGetter =
@@ -256,7 +251,7 @@ absl::Status MockNcclP2PImplCommon(
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values,
     absl::Span<const int64_t> source_peers,
-    absl::Span<const int64_t> target_peers, MockNcclP2PRunner runner,
+    absl::Span<const int64_t> target_peers, NcclP2PRunner runner,
     DeviceBuffersGetter device_buffers_getter, uint64_t stream_id) {
   NcclExecuteParams params(*run_options, stream->parent());
 
@@ -294,7 +289,8 @@ absl::Status MockNcclP2PImplCommon(
   }
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
-  return runner(source_target, (*device_buffers)[0], *stream, comm.get(),
+
+  return runner(source_target, (*device_buffers)[0], *stream, *comm,
                 device_string, current_id);
 }
 
@@ -699,7 +695,7 @@ absl::Status MockAllToAllImplCommon(
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
   return RunMockNcclAllToAll(has_split_dimension, device_buffers, *stream,
-                             comm.get());
+                             *comm);
 }
 
 absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
