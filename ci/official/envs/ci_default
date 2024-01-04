@@ -51,3 +51,10 @@ TFCI_MACOS_TWINE_INSTALL_ENABLE=
 TFCI_MACOS_CROSS_COMPILE_ENABLE=
 TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE=
 TFCI_MACOS_CROSS_COMPILE_SDK_DEST=
+TFCI_VER_MAJOR=$(sed -n 's/#define TF_MAJOR_VERSION \([0-9]\+\)/\1/p' core/public/version.h)
+TFCI_VER_MINOR=$(sed -n 's/#define TF_MINOR_VERSION \([0-9]\+\)/\1/p' core/public/version.h)
+TFCI_VER_PATCH=$(sed -n 's/#define TF_PATCH_VERSION \([0-9]\+\)/\1/p' core/public/version.h)
+TFCI_VER_SUFFIX=$(sed -n 's/#define TF_VERSION_SUFFIX "\(.\+\)"/\1/p' core/public/version.h)
+TFCI_VER_FULL="${TFCI_VER_MAJOR}.${TFCI_VER_MINOR}.${TFCI_VER_PATCH}${TFCI_VER_SUFFIX}"
+TFCI_VER_SHORT="${TFCI_VER_MAJOR}.${TFCI_VER_MINOR}"
+TFCI_VER_PYTHON=$(sed -n "s/_VERSION = '\(.\+\)'/\1/p" tools/pip_package/setup.py)

@@ -1,0 +1,13 @@
+# Convert a release job to a nightly job. Release and Nightly jobs are the same, except that:
+# 1. Uploads go to a different place
+source ci/official/envs/ci_nightly_uploads
+# 2. They push to a public build cache (unique cache for MacOS)
+if [[ $(uname -s) == "Darwin" ]]; then
+  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache_push"
+else
+  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache_push"
+fi
+# 3. build_pip_package gets --nightly_flag in addition to its other flags
+TFCI_BUILD_PIP_PACKAGE_ARGS="$TFCI_BUILD_PIP_PACKAGE_ARGS --nightly_flag"
+# 4. The internal version numbers get changed
+TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
