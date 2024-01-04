@@ -85,12 +85,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
+#include "xla/ef57.h"
 #include "xla/permutation_util.h"
 #include "xla/pjrt/transpose_kernels.h"
 #include "xla/status.h"
@@ -135,15 +137,6 @@ struct TransposePlan::Node {
   bool is_inner_dim_in_b = false;
 };
 
-void ConvertF64ToEf57(const double* input, float* output, int n) {
-  // TODO(phawkins): vectorize this transformation.
-  for (int i = 0; i < n; ++i) {
-    std::tie(output[0], output[1]) = SplitF64ToF32(*input);
-    ++input;
-    output += 2;
-  }
-}
-
 template <typename T, int inner_bs,
           TransposePlan::Transformation transformation>
 void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
@@ -158,10 +151,23 @@ void MacroKernel(const char* __restrict a, int64_t lda, int outer_bs_a,
   if constexpr (transformation == TransposePlan::Transformation::kF64ToEf57) {
     DCHECK_EQ(outer_bs_a * inner_bs % 2, 0);
     float* p = reinterpret_cast<float*>(scratch);
-    for (int i = 0; i < outer_bs_b * inner_bs; ++i) {
-      ConvertF64ToEf57(reinterpret_cast<const double*>(a + lda * i),
-                       p + outer_bs_a * inner_bs * i,
-                       outer_bs_a * inner_bs / 2);
+    if (ABSL_PREDICT_TRUE(lda == sizeof(double) &&
+                          outer_bs_a * inner_bs == 2)) {
+      absl::Span<const double> input = absl::MakeConstSpan(
+          reinterpret_cast<const double*>(a), outer_bs_b * inner_bs);
+      absl::Span<float> output =
+          absl::MakeSpan(reinterpret_cast<float*>(p), input.size() * 2);
+      ConvertF64ToEf57(input, output);
+    } else {
+      for (int i = 0; i < outer_bs_b * inner_bs; ++i) {
+        absl::Span<const double> input =
+            absl::MakeConstSpan(reinterpret_cast<const double*>(a + lda * i),
+                                outer_bs_a * inner_bs / 2);
+        absl::Span<float> output = absl::MakeSpan(
+            reinterpret_cast<float*>(p + outer_bs_a * inner_bs * i),
+            input.size() * 2);
+        ConvertF64ToEf57(input, output);
+      }
     }
     a = reinterpret_cast<const char*>(scratch);
     lda = outer_bs_a * inner_bs * sizeof(float);
