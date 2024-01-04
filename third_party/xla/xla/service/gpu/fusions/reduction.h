@@ -97,8 +97,7 @@ namespace gpu {
 // different groups can be run in parallel.
 class ReductionFusion : public FusionInterface {
  public:
-  explicit ReductionFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis) {}
+  explicit ReductionFusion(const HloFusionAnalysis& analysis);
 
   StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
@@ -111,6 +110,7 @@ class ReductionFusion : public FusionInterface {
 
  private:
   const HloFusionAnalysis& analysis_;
+  ReductionCodegenInfo reduction_codegen_info_;
 };
 
 }  // namespace gpu

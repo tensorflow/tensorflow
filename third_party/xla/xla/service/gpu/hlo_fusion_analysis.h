@@ -17,11 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_HLO_FUSION_ANALYSIS_H_
 
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -29,7 +27,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/reduction_utils.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -49,6 +46,14 @@ class HloFusionAnalysis {
     kScatter,
   };
 
+  // Precomputed information about inputs (arguments) and outputs (roots) of the
+  // fusion.
+  struct InputOutputInfo {
+    bool has_4_bit_input;
+    bool has_4_bit_output;
+    int smallest_input_dtype_bits;
+  };
+
   static StatusOr<HloFusionAnalysis> Create(
       FusionBackendConfig backend_config,
       std::unique_ptr<HloFusionAdaptor> fusion,
@@ -60,6 +65,9 @@ class HloFusionAnalysis {
   const std::vector<const HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
   }
+  const std::vector<const HloInstruction*>& fusion_heroes() const {
+    return fusion_heroes_;
+  }
   const HloFusionAdaptor& fusion() const { return *fusion_; }
 
   // Determines the fusion type for the emitter.
@@ -69,13 +77,6 @@ class HloFusionAnalysis {
   // Determines the launch dimensions for the fusion. The fusion kind must not
   // be `kTriton`.
   StatusOr<LaunchDimensions> GetLaunchDimensions() const;
-
-  // Calculates the reduction information. Returns `nullptr` if the fusion is
-  // not a reduction.
-  const ReductionCodegenInfo* GetReductionCodegenInfo() const {
-    return reduction_codegen_info_.has_value() ? &*reduction_codegen_info_
-                                               : nullptr;
-  }
 
   // Calculates the transpose tiling information. Returns `nullptr` if the
   // fusion is not a transpose.
@@ -99,15 +100,11 @@ class HloFusionAnalysis {
     return fusion_backend_config_;
   }
 
- private:
-  // Precomputed information about inputs (arguments) and outputs (roots) of the
-  // fusion.
-  struct InputOutputInfo {
-    bool has_4_bit_input;
-    bool has_4_bit_output;
-    int smallest_input_dtype_bits;
-  };
+  const InputOutputInfo& input_output_info() const {
+    return input_output_info_;
+  }
 
+ private:
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
                     std::vector<const HloInstruction*> fusion_roots,
                     std::unique_ptr<HloFusionAdaptor> fusion,
@@ -117,20 +114,6 @@ class HloFusionAnalysis {
                     InputOutputInfo input_output_info);
 
   const Shape& GetElementShape() const;
-  int64_t MaxBeneficialColumnReductionUnrollBasedOnBlockSize() const;
-  std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions()
-      const;
-  bool IsUnrollingColumnReductionBeneficial(const Shape& input_shape,
-                                            int64_t num_kept_minor,
-                                            bool reduction_is_race_free) const;
-  bool CanVectorizeReduction(const ReductionDimensions& reduction_dimensions,
-                             int num_threads_x, Vector3 reduction_tiling,
-                             const Shape& input_shape,
-                             bool reduction_is_race_free) const;
-  int CalculateVirtualThreadScalingFactorForReduction(
-      const ReductionDimensions& reduction_dimensions) const;
-  std::optional<ReductionCodegenInfo> ComputeReductionCodegenInfo(
-      const HloInstruction* hero_reduction) const;
   std::optional<LaunchDimensionsConfig> ComputeLoopFusionConfig() const;
   bool HasConsistentTransposeHeros() const;
 
@@ -142,7 +125,6 @@ class HloFusionAnalysis {
   std::optional<TransposeDescription> tiled_transpose_;
   InputOutputInfo input_output_info_;
 
-  std::optional<ReductionCodegenInfo> reduction_codegen_info_;
   std::optional<TilingScheme> transpose_tiling_scheme_;
   std::optional<LaunchDimensionsConfig> loop_fusion_config_;
 };

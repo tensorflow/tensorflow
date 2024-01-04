@@ -957,5 +957,31 @@ bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
              kTritonSoftmaxFusionKind;
 }
 
+bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
+  // An empirically chosen constant: unrolling concat with a large amount of
+  // arguments causes excessive register spilling.
+  static constexpr int kMaxConcatArgumentsForUnrolling = 10;
+  return HloAnyOf(fusion.GetRoots(), fusion, [&](auto node) {
+    switch (node.opcode()) {
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kSort:
+      case HloOpcode::kDot:
+      case HloOpcode::kSin:
+      case HloOpcode::kCos:
+      case HloOpcode::kTan:
+      case HloOpcode::kPower:
+      case HloOpcode::kAtan2:
+        return true;
+      case HloOpcode::kConcatenate:
+        return node.instruction().operand_count() >
+               kMaxConcatArgumentsForUnrolling;
+      case HloOpcode::kReduce:
+        return node.instruction().shape().tuple_shapes_size() > 1;
+      default:
+        return false;
+    }
+  });
+}
+
 }  // namespace gpu
 }  // namespace xla
