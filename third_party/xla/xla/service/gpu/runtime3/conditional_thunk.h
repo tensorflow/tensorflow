@@ -58,13 +58,17 @@ class ConditionalThunk : public Thunk {
   Status Initialize(const InitializeParams& params) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() {
+  absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() const {
     return config_.branch_thunks;
+  }
+
+  const BufferAllocation::Slice& branch_index_buffer() const {
+    return branch_index_buffer_index_;
   }
 
  private:
   const ConditionalThunkConfig config_;
-  BufferAllocation::Slice branch_index_buffer_index_;
+  const BufferAllocation::Slice branch_index_buffer_index_;
 };
 
 }  // namespace gpu

@@ -246,7 +246,9 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["c_plugin_op_kernel.h"],
-    visibility = [":__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 cc_library(

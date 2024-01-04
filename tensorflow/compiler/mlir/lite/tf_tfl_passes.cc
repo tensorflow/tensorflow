@@ -139,7 +139,6 @@ void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
 void AddConvertHloToTfPass(std::string entry_function_name,
                            const mlir::TFL::PassConfig& pass_config,
                            mlir::OpPassManager* pass_manager) {
-  pass_manager->addPass(mlir::odml::CreateRenameEntrypointToMainPass());
   pass_manager->addPass(
       mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
 

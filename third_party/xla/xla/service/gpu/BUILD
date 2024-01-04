@@ -350,6 +350,7 @@ cc_library(
         "//xla/service/gpu/runtime3:for_thunk",
         "//xla/service/gpu/runtime3:fused_mha_thunk",
         "//xla/service/gpu/runtime3:infeed_thunk",
+        "//xla/service/gpu/runtime3:kernel_thunk",
         "//xla/service/gpu/runtime3:send_recv_thunk",
         "//xla/service/gpu/runtime3:sequential_thunk",
         "//xla/service/gpu/runtime3:while_thunk",
@@ -839,13 +840,18 @@ tsl_gpu_library(
         ":nccl_utils",
         ":thunk",
         "//xla:shape_util",
+        "//xla:status",
+        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:lhlo_gpu",
         "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
         "//xla/service:hlo_parser",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:buffer_allocations",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor/gpu:gpu_activation_header",
         "//xla/stream_executor/gpu:gpu_stream",
@@ -857,7 +863,9 @@ tsl_gpu_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -909,6 +917,114 @@ tsl_gpu_library(
     ]),
 )
 
+cuda_library(
+    name = "mock_nccl_sleep_kernel_cuda",
+    srcs = if_cuda_is_configured(
+        [
+            "mock_nccl_sleep_kernel.cu.cc",
+        ],
+    ),
+    hdrs = if_cuda_is_configured(["mock_nccl_sleep_kernel.h"]),
+    compatible_with = [],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
+tf_proto_library(
+    name = "mock_nccl_config_proto",
+    srcs = ["mock_nccl_config.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "mock_nccl_config",
+    srcs = ["mock_nccl_config.cc"],
+    hdrs = ["mock_nccl_config.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":mock_nccl_config_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+alias(
+    name = "mock_nccl_utils",
+    actual = if_google(
+        google_value = if_nccl(":_mock_nccl_utils_google", ":empty"),
+        oss_value = if_nccl(":_mock_nccl_utils_default", ":empty"),
+    ),
+    visibility = ["//visibility:public"],
+)
+
+# Do not build mock_nccl_utils.cc in OSS. It uses the nccl internal cost model to estimate the
+# communication time of nccl collective calls. Only build it in Google builds.
+# TODO(b/306073484): Stub out the cost model api used in mock nccl functions.
+cc_library(
+    name = "_mock_nccl_utils_google",
+    srcs = if_cuda_is_configured(["mock_nccl_utils.cc"]),
+    hdrs = if_cuda_is_configured(["mock_nccl_utils.h"]),
+    # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
+    compatible_with = [],
+    defines = if_cuda_is_configured(["XLA_ENABLE_XCCL"]),
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        ":gpu_executable_run_options",
+        ":mock_nccl_config",
+        ":mock_nccl_config_proto_cc",
+        ":mock_nccl_sleep_kernel_cuda",
+        ":nccl_collective_thunks",
+        ":nccl_utils",
+        ":thunk",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_nccl//:nccl",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:status_macros",
+        "//xla:statusor",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:global_device_id",
+        "//xla/stream_executor",
+        "//xla/stream_executor/gpu:gpu_activation",
+        "//xla/stream_executor/gpu:gpu_stream",
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ]),
+)
+
+cc_library(
+    name = "_mock_nccl_utils_default",
+    srcs = if_gpu_is_configured(["mock_nccl_utils_default.cc"]),
+    hdrs = if_gpu_is_configured(["mock_nccl_utils.h"]),
+    # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
+    compatible_with = [],
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+    deps = if_gpu_is_configured([
+        ":gpu_executable_run_options",
+        ":nccl_collective_thunks",
+        ":thunk",
+        "@com_google_absl//absl/strings:string_view",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/service:collective_ops_utils",
+        "//xla/stream_executor",
+    ]),
+)
+
 # TODO(b/244780257): Remove this config.
 bool_flag(
     name = "enable_xlir",
@@ -941,7 +1057,6 @@ cc_library(
     name = "gpu_executable",
     srcs = [
         "gpu_executable.cc",
-        "kernel_thunk.cc",
         "memset_thunk.cc",
         "norm_thunk.cc",
         "outfeed_thunk.cc",
@@ -949,7 +1064,6 @@ cc_library(
     ],
     hdrs = [
         "gpu_executable.h",
-        "kernel_thunk.h",
         "memset_thunk.h",
         "norm_thunk.h",
         "outfeed_thunk.h",
@@ -1193,6 +1307,12 @@ cuda_library(
 )
 
 cc_library(
+    name = "variant_visitor",
+    hdrs = ["variant_visitor.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "gpu_prim_rocm",
     hdrs = ["gpu_prim_rocm.h"],
     local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
@@ -1292,6 +1412,7 @@ cc_library(
     hdrs = ["triton_support.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":variant_visitor",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
@@ -1616,6 +1737,7 @@ cc_library(
         ":ir_emission_utils",
         ":matmul_utils",
         ":stream_executor_util",
+        ":variant_visitor",
         ":autotuner_util",
         "@com_google_absl//absl/strings",
         "//xla:autotune_results_proto_cc",
@@ -2742,6 +2864,7 @@ cc_library(
     hdrs = ["cublas_padding_requirements.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":variant_visitor",
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -2935,6 +3058,7 @@ cc_library(
         ":backend_configs_cc",
         ":cublas_cudnn",
         ":ir_emission_utils",
+        ":variant_visitor",
         "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
@@ -3898,18 +4022,15 @@ cc_library(
         ":hlo_traversal",
         ":ir_emission_utils",
         ":launch_dimensions",
-        ":reduction_utils",
         "//xla:shape_util",
         "//xla:statusor",
-        "//xla:union_find",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_query",
         "//xla/service/llvm_ir:loop_emitter",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/status",
@@ -4029,6 +4150,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":backend_configs_cc",
+        ":hlo_traversal",
         ":ir_emission_utils",
         ":reduction_utils",
         "//xla:shape_util",
@@ -4295,6 +4417,7 @@ xla_test(
         "gpu",
     ],
     deps = [
+        ":variant_visitor",
         "//xla:error_spec",
         "//xla:xla_proto_cc",
         "//xla/stream_executor:device_description",

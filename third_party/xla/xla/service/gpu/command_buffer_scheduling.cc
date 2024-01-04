@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/command_buffer_scheduling.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -37,7 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -52,9 +53,17 @@ namespace xla::gpu {
 using CommandBuffer = CommandBufferScheduling::CommandBuffer;
 using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
 
+// Returns true if HLO computation can be executed as a command buffer.
+static bool IsCommand(const HloComputation* computation,
+                      const CommandBufferConfig& config);
+
 //===----------------------------------------------------------------------===//
-// Pattern matching HLO instructions to commands
+// No-op HLO operations.
 //===----------------------------------------------------------------------===//
+
+// Some of the HLO operations do not have corresponding operations at run time
+// and they can be safely wrapped into command buffers together with load
+// bearing commands.
 
 static bool IsConstant(const HloInstruction* hlo) {
   return hlo->opcode() == HloOpcode::kConstant;
@@ -71,19 +80,12 @@ static bool IsNoOp(const HloInstruction* hlo) {
                           HloOpcode::kGetTupleElement>(hlo);
 };
 
-// Returns true if HLO instruction has a corresponding command buffer command.
-static bool IsCommand(const HloInstruction* hlo,
-                      const CommandBufferConfig& config);
+//===----------------------------------------------------------------------===//
+// Synchronous HLO operations mapped to commands.
+//===----------------------------------------------------------------------===//
 
-// Returns true if HLO computation can be executed as a command buffer.
-static bool IsCommand(const HloComputation* computation,
-                      const CommandBufferConfig& config) {
-  return absl::c_all_of(computation->instructions(),
-                        [&](const HloInstruction* inst) {
-                          return IsNoOp(inst) || IsConstant(inst) ||
-                                 IsParameter(inst) || IsCommand(inst, config);
-                        });
-}
+// Synchronous HLO operations can be wrapped into command buffers when they have
+// a corresponding commands.
 
 // This is a template to define pattern matching functions for HLO instructions
 // that do not have a corresponding class for them.
@@ -123,6 +125,50 @@ static bool IsCommand(const HloInstruction* hlo,
 }
 
 //===----------------------------------------------------------------------===//
+// Asynchronous HLO operations mapped to commands.
+//===----------------------------------------------------------------------===//
+
+// Asynchronous HLO operations can be wrapped into command buffers only when
+// both start and done operations can be put into the same command buffer.
+// Command buffer semantics implies that when command buffer execution
+// completes, all recorded commands are also completed, which means that if
+// done operation is not part of the same command buffer, we would change the
+// execution semantics and create additional synchronization point.
+
+static bool IsAsyncStartCommand(const HloInstruction* hlo,
+                                const CommandBufferConfig& config) {
+  if (hlo->opcode() == HloOpcode::kAllReduceStart) {
+    return config.contains(DebugOptions::NCCL);
+  }
+
+  return false;
+}
+
+// Finds an async-done HLO operation corresponding on an async-start one.
+static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
+  if (start->opcode() == HloOpcode::kAllReduceStart) {
+    CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
+    return start->users().front();
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// HLO computations mapped to command buffers.
+//===----------------------------------------------------------------------===//
+
+// Returns true if HLO computation can be executed as a command buffer.
+static bool IsCommand(const HloComputation* computation,
+                      const CommandBufferConfig& config) {
+  return absl::c_all_of(computation->instructions(),
+                        [&](const HloInstruction* inst) {
+                          return IsNoOp(inst) || IsConstant(inst) ||
+                                 IsParameter(inst) || IsCommand(inst, config);
+                        });
+}
+
+//===----------------------------------------------------------------------===//
 
 static void RemoveTrailingNoOps(HloInstructionSequence& seq) {
   std::vector<HloInstruction*> instructions = seq.instructions();
@@ -139,48 +185,70 @@ static void RemoveTrailingNoOps(HloInstructionSequence& seq) {
 // Discovering sequences of compatible Hlo instructions
 //===----------------------------------------------------------------------===//
 
-namespace {
-struct Accumulator {
-  std::vector<HloInstructionSequence> sequences;
-  HloInstructionSequence current_seq;
-  int num_commands_in_current_seq = 0;
-};
-}  // namespace
-
 // The input is a scheduled sequence of instructions. This function collects
 // subsequences that will be extracted as command buffers.
 std::vector<HloInstructionSequence>
 CommandBufferScheduling::CollectCommandBufferSequences(
-    const HloInstructionSequence inst_sequence,
-    const CommandBufferConfig& config, int32_t min_num_commands) {
-  auto start_new_sequence = [&](Accumulator* acc) {
-    if (acc->num_commands_in_current_seq >= std::max(1, min_num_commands)) {
-      RemoveTrailingNoOps(acc->current_seq);
-      acc->sequences.push_back(acc->current_seq);
+    const HloInstructionSequence schedule, const CommandBufferConfig& config,
+    int32_t min_num_commands) {
+  std::vector<HloInstructionSequence> sequences;
+
+  HloInstructionSequence current_seq;
+  int64_t num_commands_in_current_seq = 0;
+
+  // Adds `current_seq` to `sequences` if it has enough commands in it.
+  auto collect_current_seq = [&]() {
+    if (num_commands_in_current_seq >= std::max(1, min_num_commands)) {
+      RemoveTrailingNoOps(current_seq);
+      sequences.push_back(std::move(current_seq));
     }
-    acc->current_seq = HloInstructionSequence();
-    acc->num_commands_in_current_seq = 0;
-    return acc;
+    current_seq = HloInstructionSequence();
+    num_commands_in_current_seq = 0;
   };
 
-  auto process_instruction = [&](Accumulator* acc, HloInstruction* inst) {
+  auto& instructions = schedule.instructions();
+  for (size_t i = 0; i < instructions.size(); ++i) {
+    HloInstruction* inst = instructions.at(i);
+
+    // We add no-op instructions to current sequence only if they act as a glue
+    // between commands. We do not create command sequences consisting only from
+    // no-op instruction. First and last instruction in the command buffer is
+    // always a load-bearing command.
+    if (IsNoOp(inst) && num_commands_in_current_seq) {
+      current_seq.push_back(inst);
+      continue;
+    }
+
+    // Synchronous commands always can be added to instruction sequence.
     if (IsCommand(inst, config)) {
-      acc->current_seq.push_back(inst);
-      acc->num_commands_in_current_seq++;
-      return acc;
-    } else if (IsNoOp(inst)) {
-      if (acc->current_seq.size() > 0) {
-        acc->current_seq.push_back(inst);
-      }
-      return acc;
+      num_commands_in_current_seq++;
+      current_seq.push_back(inst);
+      continue;
     }
-    return start_new_sequence(acc);
-  };
 
-  std::vector<HloInstruction*> instructions = inst_sequence.instructions();
-  Accumulator acc;
-  absl::c_accumulate(instructions, &acc, process_instruction);
-  return start_new_sequence(&acc)->sequences;
+    // We currently support only async start commands that are immediately
+    // followed by a corresponding done command. We should fully support
+    // capturing async commands if all instruction between start and done can
+    // be outlined into a command buffer.
+    if (IsAsyncStartCommand(inst, config)) {
+      HloInstruction* done = FindAsyncDoneCommand(inst);
+      if (instructions.at(i + 1) == done) {
+        num_commands_in_current_seq += 2;
+        current_seq.push_back(inst);
+        current_seq.push_back(done);
+        ++i;
+        continue;
+      }
+    }
+
+    // If we didn't find the next command, collect the current sequence and
+    // start a new one.
+    collect_current_seq();
+  }
+
+  // Don't forget to collect the final command sequence.
+  collect_current_seq();
+  return sequences;
 }
 
 // This function moves kParameter and kConstant instructions in a computation to
@@ -437,9 +505,11 @@ StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
 
 //===----------------------------------------------------------------------===//
 
-CommandBufferScheduling::CommandBufferScheduling(int32_t gpu_toolkit_version,
-                                                 int32_t gpu_driver_version)
-    : gpu_toolkit_version_(gpu_toolkit_version),
+CommandBufferScheduling::CommandBufferScheduling(
+    const se::GpuComputeCapability& gpu_compute_comp,
+    int32_t gpu_toolkit_version, int32_t gpu_driver_version)
+    : gpu_compute_comp_(gpu_compute_comp),
+      gpu_toolkit_version_(gpu_toolkit_version),
       gpu_driver_version_(gpu_driver_version) {}
 
 StatusOr<bool> CommandBufferScheduling::Run(
@@ -467,24 +537,35 @@ StatusOr<bool> CommandBufferScheduling::Run(
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {
       if (config.erase(cmd)) {
-        LOG(WARNING) << "Removed command buffer support for "
-                     << DebugOptions::CommandBufferCmdType_Name(cmd)
-                     << " as it's not supported with gpu toolkit version "
-                     << gpu_toolkit_version_ << " and driver version "
-                     << gpu_driver_version_
-                     << ". This might negatively impact peformance. To enable "
-                     << DebugOptions::CommandBufferCmdType_Name(cmd)
-                     << " support in command buffers use cuda-compat package: "
+        LOG_FIRST_N(WARNING, 10)
+            << "Removed command buffer support for "
+            << DebugOptions::CommandBufferCmdType_Name(cmd)
+            << " as it's not supported with gpu toolkit version "
+            << gpu_toolkit_version_ << " and driver version "
+            << gpu_driver_version_
+            << ". This might negatively impact peformance. To enable "
+            << DebugOptions::CommandBufferCmdType_Name(cmd)
+            << " support in command buffers use cuda-compat package: "
 #if defined(PLATFORM_GOOGLE)
-                     << "set CUDA_COMPAT_LOAD=1 env variable.";
+            << "set CUDA_COMPAT_LOAD=1 env variable.";
 #else
-                     << "https://docs.nvidia.com/deploy/cuda-compatibility/.";
+            << "https://docs.nvidia.com/deploy/cuda-compatibility/.";
 #endif
       }
     }
   };
 
-  if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
+  bool do_erase = std::visit(
+      VariantVisitor{[this](const se::CudaComputeCapability&) {
+                       return std::min(gpu_toolkit_version_,
+                                       gpu_driver_version_) < 12030;
+                     },
+                     [](const se::RocmComputeCapability&) {  // TODO: check for
+                                                             // ROCM support
+                       return true;
+                     }},
+      gpu_compute_comp_);
+  if (do_erase) {
     erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
     erase(kRequireConditionals);  // on-device control flow
   }

@@ -112,7 +112,8 @@ Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
   CommandBufferCmd::RecordParams record_params = {
       params.executor, params.command_buffer_trace_stream,
-      const_cast<BufferAllocations*>(params.buffer_allocations)};
+      const_cast<BufferAllocations*>(params.buffer_allocations),
+      params.nccl_params};
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -160,7 +161,8 @@ Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   CommandBufferCmd::RecordParams record_params = {
       executor, params.command_buffer_trace_stream,
-      const_cast<BufferAllocations*>(params.buffer_allocations)};
+      const_cast<BufferAllocations*>(params.buffer_allocations),
+      &params.nccl_params};
 
   if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()

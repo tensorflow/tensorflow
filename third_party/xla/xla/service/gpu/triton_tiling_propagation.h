@@ -35,6 +35,33 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Illustration explaining why slice_start for concatenations is negative:
+
+// Slice
+// =====
+//            input
+// [--------------------------]
+// .      .        .
+// . offset        .
+// |------> output .
+//        [--------]
+//
+// output[x] = input[x + offset]
+
+// Concatenation
+// =============
+//
+//          input_n
+// [......][--------][........]
+//         .        .
+//  offset .        .
+// <-------|        .
+// .       .        .
+// .       . output .
+// [--------------------------]
+//
+// output[x] = input_n[x - offset]
+
 class TensorIterationSpec {
  public:
   // Description of basic iteration: `count` elements separated by `stride`

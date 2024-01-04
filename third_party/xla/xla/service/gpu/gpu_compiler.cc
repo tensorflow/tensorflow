@@ -251,13 +251,10 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 #if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
-#endif
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
 #endif
 
 #ifdef PLATFORM_GOOGLE
@@ -1279,7 +1276,11 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
-    pipeline.AddPass<HloPassFix<ReductionSplitter>>();
+    // Do not split small reduction dimensions unless priority fusion is
+    // enabled, which handles such cases well.
+    bool ignore_small_reduce_dims =
+        !debug_options.xla_gpu_enable_priority_fusion();
+    pipeline.AddPass<HloPassFix<ReductionSplitter>>(ignore_small_reduce_dims);
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(gpu_version);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
@@ -1742,7 +1743,8 @@ GpuCompiler::CompileToBackendResult(
   TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size_,
                                        scheduler_mem_limit, gpu_device_info));
 
-  TF_RETURN_IF_ERROR(RunPostSchedulingPipelines(module, scheduler_mem_limit));
+  TF_RETURN_IF_ERROR(
+      RunPostSchedulingPipelines(module, scheduler_mem_limit, gpu_device_info));
 
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::MultiPlatformManager::PlatformWithId(PlatformId()));
@@ -2026,7 +2028,8 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
 }
 
 Status GpuCompiler::RunPostSchedulingPipelines(
-    HloModule* module, int64_t scheduler_mem_limit) const {
+    HloModule* module, int64_t scheduler_mem_limit,
+    const se::DeviceDescription& gpu_device_info) const {
   TF_RETURN_IF_ERROR(
       RunPostSchedulingCopyInsertion(module, GetCanShareBuffer()));
   {
@@ -2079,8 +2082,14 @@ Status GpuCompiler::RunPostSchedulingPipelines(
   if (!IsXlaRuntimeExecutableEnabled(module->config())) {
     HloPassPipeline pipeline("command-buffer-scheduling");
     auto driver_version = se::gpu::GpuDriver::GetDriverVersion();
+#if GOOGLE_CUDA
+    constexpr int toolkit_version = CUDA_VERSION;
+#else
+    constexpr int toolkit_version = TF_ROCM_VERSION;
+#endif
     pipeline.AddPass<CommandBufferScheduling>(
-        CUDA_VERSION, driver_version.value_or(CUDA_VERSION));
+        gpu_device_info.gpu_compute_capability(), toolkit_version,
+        driver_version.value_or(toolkit_version));
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 

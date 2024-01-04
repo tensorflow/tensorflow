@@ -1,4 +1,5 @@
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
@@ -40,6 +41,7 @@ cc_library(
         "xla_compiler.h",
         "xla_sharding.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":xla_compiler_proto_cc",
@@ -78,6 +80,7 @@ tf_proto_library(
 cc_library(
     name = "xla_program_serdes",
     srcs = ["xla_program_serdes.cc"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":xla_ifrt",
@@ -218,6 +221,7 @@ cc_library(
         "pjrt_host_callback.h",
         "pjrt_tuple.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":xla_ifrt",

@@ -29,7 +29,7 @@ load(
 )
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
@@ -189,8 +189,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":platform",
-    ] + tf_platform_deps("dynamic_annotations"),
+        "@com_google_absl//absl/base:dynamic_annotations",
+    ],
 )
 
 cc_library(
@@ -1458,8 +1458,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":platform",
-    ] + tf_platform_deps("notification"),
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
 )
 
 cc_library(
@@ -1849,8 +1850,10 @@ cc_library(
     deps = [
         ":env",
         ":errors",
+        ":logging",
         ":random",
         ":status",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -1899,5 +1902,6 @@ tsl_cc_test(
         ":test",
         ":test_main",
         "//tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/time",
     ],
 )

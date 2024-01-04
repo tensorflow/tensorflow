@@ -1,4 +1,4 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")

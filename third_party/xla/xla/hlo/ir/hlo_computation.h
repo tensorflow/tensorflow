@@ -148,6 +148,49 @@ class HloComputation {
     OpMetadata metadata_;
   };
 
+  // Helper class for returning the instruction post order for a computation,
+  // but maintaining a cache to avoid repeated calls to
+  // computation->MakeInstructionPostorder().  The cache is invalidated if
+  // RecordChange(<something evaluating to true>)  is called.
+  //
+  // This class can be handy to avoid recomputing the instruction post order
+  // when an optimization pass wants to make multiple passes over the
+  // instructions.
+  //
+  // Example usage:
+  //   for (auto* computation : module->computations(execution_threads)) {
+  //     HloComputation::CachingPostOrder cpo(computation);
+  //     for (auto instruction : cpo.PostOrder()) {  // Pass 1
+  //       bool did_change = ... maybe do something to instruction ...;
+  //       cpo.RecordChange(did_change);
+  //     }
+  //     for (auto instruction : cpo.PostOrder()) {  // Pass 2
+  //       bool did_change = ... maybe do something else to instruction ...;
+  //       cpo.RecordChange(did_change);
+  //     }
+  //   }
+  class CachingPostOrder {
+   public:
+    explicit CachingPostOrder(const HloComputation* computation)
+        : computation_(computation), recompute_(true) {}
+
+    // Returns the instruction post-order for "computation"
+    const std::vector<HloInstruction*>& PostOrder() {
+      if (recompute_) {
+        cached_post_order_ = computation_->MakeInstructionPostOrder();
+        recompute_ = false;
+      }
+      return cached_post_order_;
+    }
+
+    void RecordChange(bool changed) { recompute_ |= changed; }
+
+   private:
+    const HloComputation* computation_;
+    bool recompute_;
+    std::vector<HloInstruction*> cached_post_order_;
+  };
+
   ~HloComputation();
 
   // Add an instruction to the computation. The computation takes ownership of

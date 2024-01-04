@@ -75,6 +75,7 @@ cc_library(
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu/runtime3:conditional_thunk",
         "//xla/service/gpu/runtime3:copy_thunk",
+        "//xla/service/gpu/runtime3:kernel_thunk",
         "//xla/service/gpu/runtime3:sequential_thunk",
         "//xla/service/gpu/runtime3:while_thunk",
         "//xla/stream_executor:blas",

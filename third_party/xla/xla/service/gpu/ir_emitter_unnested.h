@@ -20,8 +20,10 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -174,12 +176,14 @@ class IrEmitterUnnested : public IrEmitter {
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
   Status EmitWhile(
-      mlir::Operation* op, const HloInstruction* instr,
+      mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
   Status EmitWhile(const HloInstruction* instr);
   Status EmitInfeed(mlir::Operation* op);
+  Status EmitInfeed(const HloInfeedInstruction* instr);
   Status EmitOutfeed(mlir::Operation* op);
+  Status EmitOutfeed(const HloOutfeedInstruction* instr);
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
   Status EmitRngGetAndUpdateState(
       const HloRngGetAndUpdateStateInstruction* instr);
@@ -202,6 +206,12 @@ class IrEmitterUnnested : public IrEmitter {
 
   Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op,
                            mlir::Value token);
+
+  template <typename NcclThunkType, typename HloInstType>
+  Status EmitNcclThunk(Thunk::Kind kind, const HloInstType* inst,
+                       std::optional<bool> use_global_device_ids);
+
+  Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* inst);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);
@@ -431,7 +441,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Maps async start ops to their executors so done can access the thunk.
   // Executor may be null if the start op is degenerate (so not emitted).
-  absl::flat_hash_map<mlir::Operation*, NcclCollectiveThunk::AsyncExecutor*>
+  absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*>,
+                      NcclCollectiveThunk::AsyncExecutor*>
       async_executors_;
 
   // Container for async send/recv events shared by send/recv thunks.

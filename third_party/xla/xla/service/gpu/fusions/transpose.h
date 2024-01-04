@@ -15,14 +15,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_TRANSPOSE_H_
 #define XLA_SERVICE_GPU_FUSIONS_TRANSPOSE_H_
 
+#include <optional>
 #include <vector>
 
+#include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_mapping_scheme.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -52,24 +56,20 @@ namespace gpu {
 // efficient to launch fewer blocks so each transposes many tiles.
 class TransposeFusion : public KernelFusionEmitterBase {
  public:
-  explicit TransposeFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
-  StatusOr<LaunchDimensions> launch_dimensions(
-      IrEmitterContext& ir_emitter_context, int kernel_index) const override {
-    return analysis_.GetLaunchDimensions();
-  }
+  explicit TransposeFusion(const HloFusionAnalysis& analysis);
+  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    ElementalIrEmitter& elemental_emitter,
                     const HloFusionInstruction& fusion,
                     const LaunchDimensions& launch_dims,
                     std::vector<llvm_ir::IrArray> inputs,
                     std::vector<llvm_ir::IrArray> outputs,
-                    llvm::IRBuilder<>* builder,
-                    int kernel_index) const override;
+                    llvm::IRBuilder<>* builder) const override;
 
  private:
-  HloFusionAnalysis& analysis_;
+  const HloFusionAnalysis& analysis_;
+  TilingScheme tiling_scheme_;
 };
 
 }  // namespace gpu

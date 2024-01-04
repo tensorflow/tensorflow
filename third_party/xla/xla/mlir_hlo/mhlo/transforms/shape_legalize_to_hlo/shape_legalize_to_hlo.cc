@@ -269,21 +269,91 @@ struct ConvertShapeOfOpPattern : public OpRewritePattern<shape::ShapeOfOp> {
   }
 };
 
+struct ConvertConstShapeOpPattern
+    : public OpRewritePattern<shape::ConstShapeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(shape::ConstShapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto operandType = op.getResult().getType().dyn_cast<RankedTensorType>();
+    if (!operandType)
+      return rewriter.notifyMatchFailure(op, "expected ranked operand");
+
+    llvm::SmallVector<int32_t> shape;
+    for (int i : op.getShape().getValues<int64_t>()) {
+      shape.push_back(i);
+    }
+    auto newConst = rewriter.create<mhlo::ConstantOp>(
+        op.getLoc(), DenseElementsAttr::get(
+                         RankedTensorType::get({operandType.getDimSize(0)},
+                                               rewriter.getI32Type()),
+                         ArrayRef(shape)));
+    auto newConstIndex = castToIndex(rewriter, op.getLoc(), newConst);
+    rewriter.replaceOp(op, newConstIndex);
+    return success();
+  }
+};
+
+struct ConvertIndexCastOpPattern : public OpRewritePattern<arith::IndexCastOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(arith::IndexCastOp op,
+                                PatternRewriter& rewriter) const override {
+    Value result = op.getIn();
+    if (hasIndexStyle(result)) {
+      result = castToI32(rewriter, op.getLoc(), result);
+    } else if (!hasI32Style(result)) {
+      return rewriter.notifyMatchFailure(op,
+                                         "expected input with index/i32 style");
+    }
+
+    if (hasIndexStyle(op.getOut())) {
+      result = castToIndex(rewriter, op.getLoc(), result);
+    } else if (!hasI32Style(op.getOut())) {
+      return rewriter.notifyMatchFailure(
+          op, "expected output with index/i32 style");
+    }
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
+// Pads input tensor<N x i32> by X ones from the left. The number X is
+// determined by input pad. Result is tensor<(X+N) x i32>, where the first X
+// elements are ones.
+Value padFromLeft(PatternRewriter& rewriter, Location loc, Value input,
+                  int64_t pad) {
+  Value padI32 = rewriter.create<ConstantOp>(
+      loc, DenseIntElementsAttr::get<int32_t>(
+               RankedTensorType::get({pad}, rewriter.getI32Type()), 1));
+  return rewriter.create<mhlo::ConcatenateOp>(loc, ValueRange{padI32, input},
+                                              /*dimension=*/0);
+}
+
 struct ConvertShapeBroadcastOpPattern
     : public OpRewritePattern<shape::BroadcastOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(shape::BroadcastOp op,
                                 PatternRewriter& rewriter) const override {
-    // Only support broadcasting for two 1D tensors with same size.
+    // As defined, op inputs must be 1D tensor or !shape.shape.
+    // We only support inputs of two input 1D tensors.
     if (op.getShapes().size() != 2) return failure();
     auto shape1 = castToI32(rewriter, op.getLoc(), op.getShapes().front());
     auto shape2 = castToI32(rewriter, op.getLoc(), op.getShapes().back());
     if (!shape1 || !shape2) return failure();
     auto tensorType1 = shape1.getType().dyn_cast<RankedTensorType>();
     auto tensorType2 = shape2.getType().dyn_cast<RankedTensorType>();
-    if (!tensorType1 || !tensorType2 ||
-        tensorType1.getDimSize(0) != tensorType2.getDimSize(0))
-      return failure();
+    if (!tensorType1 || !tensorType2) return failure();
+
+    // If the two operand shapes are of different sizes, the smaller one is
+    // padded with 1's from the left.
+    if (tensorType1.getDimSize(0) < tensorType2.getDimSize(0)) {
+      shape1 =
+          padFromLeft(rewriter, op.getLoc(), shape1,
+                      tensorType2.getDimSize(0) - tensorType1.getDimSize(0));
+    } else if (tensorType1.getDimSize(0) > tensorType2.getDimSize(0)) {
+      shape2 =
+          padFromLeft(rewriter, op.getLoc(), shape2,
+                      tensorType1.getDimSize(0) - tensorType2.getDimSize(0));
+    }
 
     // By definition, broadcasted dims are:
     //   result[i] = lhs[i] if lhs[i] == rhs[i]
@@ -373,16 +443,27 @@ struct ConvertCstrBroadcastableOp
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(shape::CstrBroadcastableOp op,
                                 PatternRewriter& rewriter) const override {
-    // Only support broadcasting for two 1D tensors with same size.
+    // As defined, op inputs must be 1D tensor or !shape.shape.
+    // We only support inputs of two 1D tensors.
     if (op.getShapes().size() != 2) return failure();
     auto shape1 = castToI32(rewriter, op.getLoc(), op.getShapes().front());
     auto shape2 = castToI32(rewriter, op.getLoc(), op.getShapes().back());
     if (!shape1 || !shape2) return failure();
     auto tensorType1 = shape1.getType().dyn_cast<RankedTensorType>();
     auto tensorType2 = shape2.getType().dyn_cast<RankedTensorType>();
-    if (!tensorType1 || !tensorType2 ||
-        tensorType1.getDimSize(0) != tensorType2.getDimSize(0))
-      return failure();
+    if (!tensorType1 || !tensorType2) return failure();
+
+    // If the two operand shapes are of different sizes, the smaller one is
+    // padded with 1's from the left.
+    if (tensorType1.getDimSize(0) < tensorType2.getDimSize(0)) {
+      shape1 =
+          padFromLeft(rewriter, op.getLoc(), shape1,
+                      tensorType2.getDimSize(0) - tensorType1.getDimSize(0));
+    } else if (tensorType1.getDimSize(0) > tensorType2.getDimSize(0)) {
+      shape2 =
+          padFromLeft(rewriter, op.getLoc(), shape2,
+                      tensorType1.getDimSize(0) - tensorType2.getDimSize(0));
+    }
 
     // Compute if each dim is broadcastable. A dim is broadcastable iff
     // dimSize1 == dimSize2 or dimSize1 == 1 or dimSize2 == 1
@@ -575,6 +656,7 @@ struct ShapeLegalizeToHloPass
     target.addIllegalDialect<tensor::TensorDialect>();
     target.addIllegalOp<mhlo::ComputeReshapeShapeOp>();
     target.addIllegalOp<mhlo::CstrReshapableOp>();
+    target.addIllegalOp<arith::IndexCastOp>();
     target.addDynamicallyLegalDialect<mhlo::MhloDialect>([](Operation* op) {
       return !llvm::any_of(op->getOperands(), hasIndexStyle);
     });
@@ -595,6 +677,8 @@ struct ShapeLegalizeToHloPass
     // everything went right.
     RewritePatternSet patterns(&getContext());
     patterns.add<ConvertComputeReshapeShapeOpPattern>(&getContext());
+    patterns.add<ConvertConstShapeOpPattern>(&getContext());
+    patterns.add<ConvertIndexCastOpPattern>(&getContext());
     patterns.add<ConvertNumElementsOpPattern>(&getContext());
     patterns.add<ConvertShapeOfOpPattern>(&getContext());
     patterns.add<ConvertShapeBroadcastOpPattern>(&getContext());

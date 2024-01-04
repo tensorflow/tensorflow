@@ -6,8 +6,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "rocm_gpu_architectures")
 def rocm_embedded_test_modules(name, srcs, testonly = True, **kwargs):
     """Compile srcs into hsaco files and create a header only cc_library.
 
-    Compile srcs into hsaco files and create a header only cc_library with embeded
-    files as constant data.
+    Binary files are embedded as constant data.
 
     Args:
         name: name for the generated cc_library target, and the base name for

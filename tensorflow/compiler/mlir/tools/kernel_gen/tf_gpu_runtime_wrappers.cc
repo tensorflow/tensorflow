@@ -15,14 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/tf_gpu_runtime_wrappers.h"
 
+#include <cassert>
+#include <cstdint>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 
 static void ReportInternalError(tensorflow::OpKernelContext *ctx,
                                 const std::string msg) {

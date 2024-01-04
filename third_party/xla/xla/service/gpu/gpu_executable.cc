@@ -244,18 +244,18 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
 
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
+  Thunk::ExecuteParams execute_params{*run_options, buffer_allocations,
+                                      main_stream, command_buffer_trace_stream,
+                                      async_comms_streams};
+
   // Initialize thunks to prepare them for execution.
-  Thunk::InitializeParams initialize_params{executor, executable_source,
-                                            &buffer_allocations,
-                                            command_buffer_trace_stream};
+  Thunk::InitializeParams initialize_params{
+      executor, executable_source, &buffer_allocations,
+      command_buffer_trace_stream, &execute_params.nccl_params};
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
   }
-
-  Thunk::ExecuteParams execute_params{*run_options, buffer_allocations,
-                                      main_stream, command_buffer_trace_stream,
-                                      async_comms_streams};
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started

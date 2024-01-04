@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -212,6 +213,10 @@ bool IsRealReductionHero(const HloInstruction& root,
 
 // Whether the instruction is a Triton Softmax fusion.
 bool IsTritonSoftmaxFusion(const HloInstruction& instr);
+
+// Whether the fusion will likely behave poorly with vectorization due to the
+// instructions it contains.
+bool MayPreventVectorization(const HloFusionAdaptor& fusion);
 
 }  // namespace gpu
 }  // namespace xla

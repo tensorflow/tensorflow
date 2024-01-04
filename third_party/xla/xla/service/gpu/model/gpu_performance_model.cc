@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -65,6 +66,14 @@ static constexpr float kL1CacheSpeedup = 8;
 // much smaller than the cache size will likely stay in it.
 // For reference, it can be up to 256 kB per SM on RTX A6000.
 static constexpr float kL1CacheSizePerSM = 2 * 1024;
+
+absl::Duration CombineComputeAndMemoryAccessTime(
+    absl::Duration compute_time, absl::Duration memory_access_time,
+    const GpuPerformanceModelOptions& config) {
+  return compute_time + memory_access_time -
+         std::min(compute_time, memory_access_time) *
+             config.memory_compute_parallelism;
+}
 
 // Returns whether a fusion uses the parameter at the given index elementwise
 // from its root.
@@ -238,30 +247,14 @@ LaunchDimensions EstimateFusionLaunchDimensions(
     const std::optional<HloFusionAnalysis>& fusion_analysis,
     const se::DeviceDescription& device_info) {
   if (fusion_analysis) {
-    // TODO(jreiffers): This is the wrong place for this DUS analysis.
-    const HloInstruction* dus = nullptr;
-    for (const auto* root : fusion_analysis->fusion_roots()) {
-      if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
-        dus = root;
-      } else if (root->opcode() == HloOpcode::kBitcast &&
-                 root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice) {
-        dus = root->operand(0);
-      } else {
-        dus = nullptr;
-        break;
+    auto emitter =
+        GetFusionEmitter(PreBufferAssignmentFusionInfo{*fusion_analysis});
+    if (emitter.ok()) {
+      auto launch_dimensions = (*emitter)->launch_dimensions();
+      if (launch_dimensions && launch_dimensions->ok()) {
+        return **launch_dimensions;
       }
     }
-
-    if (dus) {
-      if (auto dims =
-              CalculateLaunchDimensions(dus->operand(1)->shape(), device_info);
-          dims.ok()) {
-        return dims.value();
-      }
-    }
-
-    auto launch_dimensions = fusion_analysis->GetLaunchDimensions();
-    if (launch_dimensions.ok()) return *launch_dimensions;
   }
   int64_t block_size = 128;  // Result for default LaunchDimensionsConfig.
   int64_t num_blocks = CeilOfRatio(estimated_num_threads, block_size);
@@ -362,7 +355,8 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
       /*producer=*/instr, fusion_analysis, config);
   absl::Duration write_time =
       absl::Seconds(1.0f * bytes_written / device_info->memory_bandwidth());
-  absl::Duration exec_time = std::max(compute_time, read_time + write_time);
+  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
+      compute_time, read_time + write_time, config);
 
   if (VLOG_IS_ON(8)) {
     LOG(INFO) << "FLOPs: " << flops;
@@ -659,7 +653,8 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     LOG(INFO) << "Output write time: " << consumer_runtime.write_time;
   }
 
-  return std::max(compute_time, read_time + consumer_runtime.write_time);
+  return CombineComputeAndMemoryAccessTime(
+      compute_time, read_time + consumer_runtime.write_time, config);
 }
 
 absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
@@ -737,8 +732,9 @@ absl::Duration GpuPerformanceModel::EstimateFusedExecTime(
     VLOG(10) << "  Input access time by consumer: "
              << input_access_time_by_this_consumer;
 
-    exec_time_fused += std::max(compute_time_by_this_consumer,
-                                input_access_time_by_this_consumer);
+    exec_time_fused += CombineComputeAndMemoryAccessTime(
+        compute_time_by_this_consumer, input_access_time_by_this_consumer,
+        config);
   }
 
   // Multi-output fusion still writes the initial output of the producer.

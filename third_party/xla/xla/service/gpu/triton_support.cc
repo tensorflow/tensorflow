@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -59,14 +60,13 @@ bool IsTritonSupportedDataType(PrimitiveType type,
       return true;
     case BF16:
       return std::visit(
-          se::VariantVisitor{
-              [](const se::CudaComputeCapability& cc) {
-                return cc.IsAtLeast(
-                    stream_executor::CudaComputeCapability::AMPERE);
-              },
-              [](const se::RocmComputeCapability& cc) {
-                return cc.has_bf16_dtype_support();
-              }},
+          VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                           return cc.IsAtLeast(
+                               stream_executor::CudaComputeCapability::AMPERE);
+                         },
+                         [](const se::RocmComputeCapability& cc) {
+                           return cc.has_bf16_dtype_support();
+                         }},
           gpu_version);
     default:
       return false;

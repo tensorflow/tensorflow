@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -1323,8 +1324,8 @@ std::vector<ComputationToEmit> SubcomputationEmissionOrder(
             instruction->opcode() == HloOpcode::kAllReduce ||
             instruction->opcode() == HloOpcode::kReduce ||
             instruction->opcode() == HloOpcode::kReduceWindow;
-        for (auto it = instruction->called_computations().rbegin();
-             it != instruction->called_computations().rend(); ++it) {
+        auto cc = absl::MakeSpan(instruction->called_computations());
+        for (auto it = cc.rbegin(); it != cc.rend(); ++it) {
           HloComputation* called_computation = *it;
           ComputationToEmit callee{
               called_computation, c.allow_reassociation || allow_reassociation};

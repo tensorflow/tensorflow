@@ -45,7 +45,10 @@ pytype_strict_library(
 )
 
 exports_files(
-    ["xla_client.pyi"],
+    [
+        "xla_client.py",
+        "xla_client.pyi",
+    ],
     visibility = ["//visibility:public"],
 )
 

@@ -1200,8 +1200,8 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
                                       int64_t* memory_limit) {
   int64_t total_memory = 0;
   int64_t available_memory = 0;
-  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                               se::GPUMachineManager(), platform_device_id)
+  se::StreamExecutor* se = se::GPUMachineManager()
+                               ->ExecutorForDevice(platform_device_id.value())
                                .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return errors::Unknown("Failed to query available memory for GPU ",
@@ -1953,12 +1953,10 @@ GetPeerAccessMap(se::Platform* platform,
                        bool>);
   for (tsl::PlatformDeviceId platform_gpu_i : visible_gpu_order) {
     for (tsl::PlatformDeviceId platform_gpu_j : visible_gpu_order) {
-      se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                     platform, platform_gpu_i)
-                                     .value();
-      se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                   platform, platform_gpu_j)
-                                   .value();
+      se::StreamExecutor* from =
+          platform->ExecutorForDevice(platform_gpu_i.value()).value();
+      se::StreamExecutor* to =
+          platform->ExecutorForDevice(platform_gpu_j.value()).value();
       (*map)[{platform_gpu_i, platform_gpu_j}] =
           from->CanEnablePeerAccessTo(to);
     }
@@ -2174,12 +2172,10 @@ Status BaseGPUDeviceFactory::EnablePeerAccess(
     for (int j = 0; j < visible_gpu_order.size(); ++j) {
       const tsl::PlatformDeviceId platform_gpu_j = visible_gpu_order[j];
       // We have already validated that ExecutorForDevice() calls return OK.
-      se::StreamExecutor* from = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                     gpu_manager, platform_gpu_i)
-                                     .value();
-      se::StreamExecutor* to = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                   gpu_manager, platform_gpu_j)
-                                   .value();
+      se::StreamExecutor* from =
+          gpu_manager->ExecutorForDevice(platform_gpu_i.value()).value();
+      se::StreamExecutor* to =
+          gpu_manager->ExecutorForDevice(platform_gpu_j.value()).value();
 
       if (from->CanEnablePeerAccessTo(to)) {
         ++possible_peer_count;

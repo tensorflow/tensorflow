@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -172,19 +174,25 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 }  // namespace
 
-StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions(
-    IrEmitterContext& ir_emitter_context, int kernel_index) const {
-  return analysis_.GetLaunchDimensions();
+std::optional<StatusOr<LaunchDimensions>> InputSlicesFusion::launch_dimensions()
+    const {
+  auto* root = analysis_.fusion_roots().front();
+  const auto& shape = root->operands()[0]->shape();
+  constexpr int kUnrollFactor = 1;
+  return CalculateLaunchDimensions(shape, analysis_.device_info(),
+                                   {kUnrollFactor});
 }
 
-Status InputSlicesFusion::EmitKernel(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    const HloFusionInstruction& fusion, const LaunchDimensions& launch_dims,
-    std::vector<llvm_ir::IrArray> inputs, std::vector<llvm_ir::IrArray> outputs,
-    llvm::IRBuilder<>* builder, int kernel_index) const {
+Status InputSlicesFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                     const HloFusionInstruction& fusion,
+                                     const LaunchDimensions& launch_dims,
+                                     std::vector<llvm_ir::IrArray> inputs,
+                                     std::vector<llvm_ir::IrArray> outputs,
+                                     llvm::IRBuilder<>* builder) const {
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(
                           fusion.fused_instructions_computation()));
+  GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   return ParallelLoopEmitter(
              [&](const llvm_ir::IrArray::Index index) -> Status {
                return EmitElementForInputFusibleSlices(

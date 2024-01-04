@@ -656,6 +656,7 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
   }
 
   DimOrderMap dst_dim_orders;
+  int64_t concat_accumulated_size = 0;
   for (const HloInstruction* dst : GetDestHlos(hlo, direction)) {
     DimensionOrder& dst_dim_order =
         dst_dim_orders.insert({dst, DimensionOrder()}).first->second;
@@ -708,13 +709,19 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
     } else if (hlo.opcode() == HloOpcode::kConcatenate) {
       dst_logical.resize(src_logical.size());
       for (int i = 0; i < src_logical.size(); ++i) {
-        dst_logical[i] = src_logical[i];
         if (i == hlo.concatenate_dimension()) {
           if (src_logical[i].size() != 1 || src_logical[i][0]->is_sliced()) {
             return FusionDecision("Unsupported concatenation.");
           }
-          dst_logical[i][0]->set_count(dst->shape().dimensions(i));
-          dst_logical[i][0]->set_slice(0, dst->shape().dimensions(i));
+          const Fragment& src_fragment = *src_logical[i][0];
+          Fragment& dst_fragment = new_fragments.emplace_back(
+              src_fragment.dst_dim_number(), dst->shape().dimensions(i));
+          dst_fragment.set_slice(-concat_accumulated_size,
+                                 dst->shape().dimensions(i));
+          concat_accumulated_size += dst->shape().dimensions(i);
+          dst_logical[i].push_back(&dst_fragment);
+        } else {
+          dst_logical[i] = src_logical[i];
         }
       }
     } else if (hlo.opcode() == HloOpcode::kCopy) {
@@ -889,12 +896,6 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
         std::get<DotProperties>(properties).noncontracting_dimension);
     if (!dim.has_value() || dim.value() != hlo.concatenate_dimension()) {
       return "Unsupported concatenation.";
-    }
-    if (absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
-          return operand->user_count() > 1;
-        })) {
-      return FusionDecision(
-          "Concatenation has to be the only user of its inputs.");
     }
     if (absl::c_any_of(hlo.operands(), [&hlo](const HloInstruction* operand) {
           // In the current simple implementation of concatenation the size of

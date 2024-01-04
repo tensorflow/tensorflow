@@ -18,6 +18,8 @@ import os
 import time
 from typing import Any, Callable, Optional, Union
 
+from absl import logging
+
 from google.protobuf import message
 from google.protobuf import text_format
 from tensorflow.core.protobuf import snapshot_pb2
@@ -79,9 +81,13 @@ def _load_with_retry(  # pylint: disable=unused-private-name
   error = None
   while time.time() < deadline:
     try:
-      return dataset_ops.Dataset.load(
+      dataset = dataset_ops.Dataset.load(
           path, element_spec, compression, reader_func)
+      logging.info("Load tf.data snapshot at %s.", path)
+      return dataset
     except errors.NotFoundError as e:
+      logging.info(
+          "Could not find tf.data snapshot at %s. Will wait and retry.", path)
       error = e
       time.sleep(10)
   raise error

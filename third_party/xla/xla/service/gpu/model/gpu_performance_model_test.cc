@@ -553,6 +553,65 @@ ENTRY fusion {
   EXPECT_LT(t.time_unfused, t.time_fused);
 }
 
+TEST_F(GpuPerformanceModelTest, PreferFusingExpensiveInstructionsIntoProducer) {
+  // All things being equal, prefer fusing instructions into their producer,
+  // since this avoids potentially expensive recomputations when memory and
+  // compute aren't perfectly overlapping.
+  constexpr absl::string_view kHlo = R"(
+HloModule testmodule
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation.0 {
+  p0 = f32[4,8,8] parameter(0)
+  bc = f32[1,4,1424,8,8] broadcast(p0), dimensions={1,3,4}
+  p1 = f32[1,4,1424,8,8] parameter(1)
+  ROOT sub = f32[1,4,1424,8,8] subtract(bc, p1)
+}
+
+fused_computation.1 {
+  p0 = f32[1,4,1424,8,8] parameter(0)
+  bc = f32[4,1424,8,8] bitcast(p0)
+  c0 = f32[] constant(0)
+  ROOT reduce = f32[4,8,8] reduce(bc, c0), to_apply=add, dimensions={1}
+}
+
+ENTRY fusion {
+  p0 = f32[4,8,8] parameter(0)
+  p1 = f32[1,4,1424,8,8] parameter(1)
+  fusion.0 = f32[1,4,1424,8,8] fusion(p0, p1), kind=kLoop, calls=fused_computation.0
+  exp = f32[1,4,1424,8,8] exponential(fusion.0)
+  ROOT fusion.1 = f32[4,8,8] fusion(exp), kind=kInput, calls=fused_computation.1
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* fusion_0 =
+      module->entry_computation()->GetInstructionWithName("fusion.0");
+  auto* exp = module->entry_computation()->GetInstructionWithName("exp");
+  GpuPerformanceModel::RunTimes exp_consumer_runtimes =
+      GpuPerformanceModel::EstimateRunTimes(
+          fusion_0, &analysis_,
+          GpuPerformanceModelOptions::PriorityFusion(nullptr, nullptr), {exp});
+  GpuPerformanceModel::RunTimes exp_producer_runtimes =
+      GpuPerformanceModel::EstimateRunTimes(
+          exp, &analysis_,
+          GpuPerformanceModelOptions::PriorityFusion(nullptr, nullptr),
+          exp->users());
+
+  auto exp_consumer_priority =
+      exp_consumer_runtimes.time_unfused - exp_consumer_runtimes.time_fused;
+  auto exp_producer_priority =
+      exp_producer_runtimes.time_unfused - exp_producer_runtimes.time_fused;
+
+  EXPECT_LT(exp_producer_priority, exp_consumer_priority);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

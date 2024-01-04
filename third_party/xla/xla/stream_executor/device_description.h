@@ -220,15 +220,6 @@ class RocmComputeCapability {
   };
 };
 
-// structure supporting C++17 overload pattern:
-// https://en.cppreference.com/w/cpp/utility/variant/visit
-template <class... Ts>
-struct VariantVisitor : Ts... {
-  using Ts::operator()...;
-};
-template <class... Ts>
-VariantVisitor(Ts...) -> VariantVisitor<Ts...>;
-
 using GpuComputeCapability =
     std::variant<CudaComputeCapability, RocmComputeCapability>;
 

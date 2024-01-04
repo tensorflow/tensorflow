@@ -83,7 +83,7 @@ def quantize_saved_model(
       config.tags
   ).meta_info_def.function_aliases
 
-  representative_dataset = rd.RepresentativeDatasetLoader(
+  representative_dataset = rd.TfRecordRepresentativeDatasetLoader(
       config.representative_datasets
   ).load()
 

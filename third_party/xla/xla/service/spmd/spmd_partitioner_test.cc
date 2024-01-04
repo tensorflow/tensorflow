@@ -10756,11 +10756,10 @@ ENTRY %module {
   auto operand = AllOf(op::Shape("s32[8,4,1,2]"), op::AllReduce());
   auto indices = AllOf(op::Shape("s32[2,4,2]"), op::Parameter());
   auto gather = AllOf(op::Shape("s32[4,2,1,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root, op::AllReduce(op::DynamicUpdateSlice(
-                        _,
-                        op::AllReduce(op::AllReduce(
-                            op::DynamicUpdateSlice(_, gather, _, _, _, _))),
-                        _, _, _, _)));
+  EXPECT_THAT(
+      root, op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
+                _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
+                _, _, _, _))));
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -11677,12 +11676,8 @@ ENTRY %module {
   auto update = AllOf(op::Shape("s32[4,2,1,2]"), op::DynamicSlice());
   auto scatter =
       AllOf(op::Shape("s32[8,4,1,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(
-      root,
-      op::AllReduce(op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
-          _,
-          op::DynamicSlice(op::AllReduce(op::AllReduce(scatter)), _, _, _, _),
-          _, _, _, _)))));
+  EXPECT_THAT(root, op::AllReduce(op::DynamicUpdateSlice(
+                        _, op::AllReduce(op::AllReduce(scatter)), _, _, _, _)));
 }
 
 TEST_P(SpmdPartitioningTest,

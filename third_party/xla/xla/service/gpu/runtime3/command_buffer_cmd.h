@@ -23,15 +23,21 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -49,6 +55,10 @@ using OwnedKernel = std::unique_ptr<se::Kernel>;
 
 // CommandBufferCmd is an abstract command that creates or updates command
 // buffer by recording commands into it.
+//
+// Command initialization and recording must be thread safe as commands can be
+// recorded concurrently for multiple command buffers on different stream
+// executors.
 class CommandBufferCmd {
  public:
   enum class MemoryAccess { kRead, kWrite };
@@ -85,9 +95,10 @@ class CommandBufferCmd {
   // that consumes buffers allocated inside command buffer, user should specify
   // the target address as se::DeviceMemoryBase{nullptr, size}.
   struct RecordParams {
-    se::StreamExecutor* executor;
-    se::Stream* trace_stream;
-    const BufferAllocations* buffer_allocations;
+    se::StreamExecutor* executor = nullptr;
+    se::Stream* trace_stream = nullptr;
+    const BufferAllocations* buffer_allocations = nullptr;
+    const NcclExecuteParams* nccl_params = nullptr;
   };
 
   // Prepares a command for recording on a given executor. We split it into a
@@ -224,7 +235,11 @@ class LaunchCmd : public CommandBufferCmd {
   LaunchDimensions dims_;
   int64_t shmem_bytes_;
 
-  absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_;
+  // Command sequence can be recorded concurrently for multiple command buffers
+  // on different stream executors and we need to synchronize mutable state.
+  absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 //===----------------------------------------------------------------------===//
@@ -250,7 +265,11 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
   std::vector<MemoryAccess> args_access_;
   CustomKernel custom_kernel_;
 
-  absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_;
+  // Command sequence can be recorded concurrently for multiple command buffers
+  // on different stream executors and we need to synchronize mutable state.
+  absl::Mutex mutex_;
+  absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 //===----------------------------------------------------------------------===//
@@ -427,7 +446,7 @@ class WhileCmd : public CommandBufferCmd {
 
 class AllocateCmd : public CommandBufferCmd {
  public:
-  AllocateCmd(BufferAllocation allocation);
+  explicit AllocateCmd(BufferAllocation allocation);
 
   // After calling this function, the allocated memory is tracked in
   // CommandBuffer object.
@@ -488,6 +507,28 @@ class GemmCmd : public CommandBufferCmd {
   const BufferAllocation::Slice workspace_;
   // Whether to run deterministically.
   const bool deterministic_;
+};
+
+//===----------------------------------------------------------------------===//
+// AllReduceCmd
+//===----------------------------------------------------------------------===//
+
+class AllReduceCmd : public CommandBufferCmd {
+ public:
+  AllReduceCmd(NcclCollectiveConfig config, ReductionKind reduction_kind,
+               absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  NcclCollectiveConfig config_;
+  ReductionKind reduction_kind_;
+  std::vector<NcclCollectiveThunk::Buffer> buffers_;
 };
 
 }  // namespace xla::gpu

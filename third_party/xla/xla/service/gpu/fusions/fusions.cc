@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/fusions/copy.h"
+#include "xla/service/gpu/fusions/custom.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/fusions/in_place_dynamic_update_slice.h"
 #include "xla/service/gpu/fusions/input_slices.h"
@@ -50,7 +51,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
 namespace {
 
 bool IsParameterOrGteOfParameter(const HloInstruction* instr) {
@@ -74,18 +74,14 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 
 }  // namespace
 
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusionImpl(
-    HloFusionAnalysis& analysis, LmhloFusionInfo fusion_info) {
-  mlir::lmhlo::FusionOp fusion_op = fusion_info.fusion_op;
-  absl::Span<const BufferAllocation* const> allocations =
-      fusion_info.allocations;
-
-  auto params = GetHloOperands(fusion_op);
-  auto outputs = GetHloOutputs(fusion_op);
+std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
+LmhloFusionInfo::GetCopyFusion() const {
+  auto params = GetHloOperands(fusion_op_);
+  auto outputs = GetHloOutputs(fusion_op_);
   std::vector<mlir::Value> srcs;
   srcs.reserve(outputs.size());
 
-  for (auto* root : analysis.fusion_roots()) {
+  for (auto* root : analysis().fusion_roots()) {
     if (root->opcode() != HloOpcode::kCopy ||
         root->operand(0)->opcode() != HloOpcode::kParameter ||
         !LayoutUtil::Equal(root->operand(0)->shape().layout(),
@@ -94,7 +90,7 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusionImpl(
     }
 
     mlir::Value src = params[root->operand(0)->parameter_number()];
-    if (!GetAllocationSlice(src, allocations).ok()) return std::nullopt;
+    if (!GetAllocationSlice(src, allocations_).ok()) return std::nullopt;
 
     srcs.emplace_back(src);
   }
@@ -105,10 +101,10 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusionImpl(
   std::vector<BufferAllocation::Slice> dst_buffers;
   for (int i = 0; i < srcs.size(); ++i) {
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_buffer,
-                        GetAllocationSlice(srcs[i], allocations));
+                        GetAllocationSlice(srcs[i], allocations_));
     src_buffers.push_back(src_buffer);
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dst_buffer,
-                        GetAllocationSlice(dsts[i], allocations));
+                        GetAllocationSlice(dsts[i], allocations_));
     dst_buffers.push_back(dst_buffer);
   }
 
@@ -117,13 +113,10 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusionImpl(
                                         std::move(dsts));
 }
 
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusionImpl(
-    HloFusionAnalysis& analysis, HloFusionInfo fusion_info) {
-  const HloFusionInstruction* fusion = fusion_info.instr;
-  const BufferAssignment* buffer_assignment = fusion_info.buffer_assignment;
-
+std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
+HloFusionInfo::GetCopyFusion() const {
   std::vector<BufferAllocation::Slice> src_buffers;
-  for (auto* root : analysis.fusion_roots()) {
+  for (auto* root : analysis().fusion_roots()) {
     if (root->opcode() != HloOpcode::kCopy ||
         root->operand(0)->opcode() != HloOpcode::kParameter ||
         !LayoutUtil::Equal(root->operand(0)->shape().layout(),
@@ -132,20 +125,20 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusionImpl(
     }
 
     const HloInstruction* src_instr =
-        fusion->operands()[root->operand(0)->parameter_number()];
+        instr_->operands()[root->operand(0)->parameter_number()];
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                        buffer_assignment->GetUniqueSlice(src_instr, {}));
+                        buffer_assignment_->GetUniqueSlice(src_instr, {}));
     src_buffers.push_back(slice);
   }
 
   std::vector<BufferAllocation::Slice> dst_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      fusion->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+      instr_->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
           return OkStatus();
         }
         TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                            buffer_assignment->GetUniqueSlice(fusion, index));
+                            buffer_assignment_->GetUniqueSlice(instr_, index));
         dst_buffers.push_back(slice);
         return OkStatus();
       }));
@@ -159,54 +152,33 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusionImpl(
                                         /*dsts=*/std::vector<mlir::Value>());
 }
 
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetCopyFusion(
-    HloFusionAnalysis& analysis,
-    std::variant<HloFusionInfo, LmhloFusionInfo> fusion_info) {
-  if (std::holds_alternative<HloFusionInfo>(fusion_info)) {
-    return GetCopyFusionImpl(analysis, std::get<HloFusionInfo>(fusion_info));
-  } else {
-    return GetCopyFusionImpl(analysis, std::get<LmhloFusionInfo>(fusion_info));
-  }
+bool LmhloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
+  return CanEmitFusedDynamicUpdateSliceInPlaceForGpu(fusion_op_, allocations_);
 }
 
-}  // namespace
+bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
+  auto ret = CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+      instr_, buffer_assignment_, analysis().fusion_roots());
+  return ret.ok() && *ret;
+}
 
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
-    HloFusionAnalysis& analysis,
-    std::variant<HloFusionInfo, LmhloFusionInfo> fusion_info) {
+StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
+    const FusionInfo& fusion_info) {
+  const auto& analysis = fusion_info.analysis();
   switch (analysis.GetEmitterFusionKind()) {
+    case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
+      return std::make_unique<CustomFusionEmitter>();
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
       return std::make_unique<InputSlicesFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kLoop: {
-      if (IsDynamicUpdateSliceFusion(analysis)) {
-        if (std::holds_alternative<LmhloFusionInfo>(fusion_info)) {
-          auto lmhlo_fusion_info = std::get<LmhloFusionInfo>(fusion_info);
-          absl::Span<const BufferAllocation* const> allocations =
-              lmhlo_fusion_info.allocations;
-          mlir::lmhlo::FusionOp fusion_op = lmhlo_fusion_info.fusion_op;
-          if (CanEmitFusedDynamicUpdateSliceInPlaceForGpu(fusion_op,
-                                                          allocations)) {
-            return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
-          }
-        } else {
-          auto hlo_fusion_info = std::get<HloFusionInfo>(fusion_info);
-          const HloFusionInstruction* fusion = hlo_fusion_info.instr;
-          const BufferAssignment* buffer_assignment =
-              hlo_fusion_info.buffer_assignment;
-          TF_ASSIGN_OR_RETURN(
-              bool can_emit_dynamic_update_slice_in_place,
-              CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-                  fusion, buffer_assignment, analysis.fusion_roots()));
-          if (can_emit_dynamic_update_slice_in_place) {
-            return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(analysis);
-          }
-        }
+      if (IsDynamicUpdateSliceFusion(analysis) &&
+          fusion_info.CanEmitDynamicUpdateSliceInPlace()) {
+        return std::make_unique<InPlaceDynamicUpdateSliceEmitter>(
+            fusion_info.analysis());
       }
-      TF_ASSIGN_OR_RETURN(
-          std::optional<std::unique_ptr<FusionInterface>> copy_fusion,
-          GetCopyFusion(analysis, fusion_info));
-      if (copy_fusion.has_value()) {
-        return copy_fusion;
+
+      if (auto copy_fusion = fusion_info.GetCopyFusion()) {
+        return *std::move(copy_fusion);
       }
       return std::make_unique<LoopFusion>(analysis);
     }
@@ -218,10 +190,7 @@ StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
       return std::make_unique<TransposeFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);
-    default:
-      break;
   }
-  return std::nullopt;
 }
 
 }  // namespace gpu

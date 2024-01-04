@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,22 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/scratch_allocator.h"
+#include "xla/service/gpu/mock_nccl_sleep_kernel.h"
 
-#include <cstdint>
+namespace xla::gpu {
+namespace {
 
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/stream.h"
-#include "tsl/platform/statusor.h"
-
-namespace stream_executor {
-
-tsl::StatusOr<DeviceMemory<uint8_t>> OneTimeScratchAllocator::AllocateBytes(
-    int64_t byte_size) {
-  CHECK(temporary_ == nullptr);
-  TF_ASSIGN_OR_RETURN(temporary_,
-                      stream_->AllocateTemporaryArray<uint8_t>(byte_size));
-  return temporary_->device_memory();
+// Use busy waiting instead of __nanosleep() to make the code more portable
+// (__nanosleep requires __CUDA_ARCH__ >= 700)
+__global__ void mock_nccl_call(int64_t num_clocks) {
+  int64_t start = clock64();
+  while (clock64() - start < num_clocks) continue;
 }
 
-}  // namespace stream_executor
+}  // namespace
+
+void* GetSleepKernel() { return reinterpret_cast<void*>(&mock_nccl_call); }
+
+}  // namespace xla::gpu

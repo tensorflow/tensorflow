@@ -246,63 +246,12 @@ bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,
                         GpuMemory(x), incx, GpuMemoryMutable(y), incy);
 }
 
-bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64_t elem_count, double alpha,
-                          const DeviceMemory<double> &x, int incx,
-                          DeviceMemory<double> *y, int incy) {
-  blas_log("DoBlasAxpy");
-  return DoBlasInternal(wrap::rocblas_daxpy, stream,
-                        /* pointer_mode_host = */ true, elem_count, &alpha,
-                        GpuMemory(x), incx, GpuMemoryMutable(y), incy);
-}
-
-bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64_t elem_count,
-                          std::complex<float> alpha,
-                          const DeviceMemory<std::complex<float>> &x, int incx,
-                          DeviceMemory<std::complex<float>> *y, int incy) {
-  return DoBlasInternal(
-      wrap::rocblas_caxpy, stream, /* pointer_mode_host = */ true, elem_count,
-      complex_cast(alpha), complex_cast(x), incx, complex_cast(y), incy);
-}
-
-bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64_t elem_count,
-                          std::complex<double> alpha,
-                          const DeviceMemory<std::complex<double>> &x, int incx,
-                          DeviceMemory<std::complex<double>> *y, int incy) {
-  return DoBlasInternal(
-      wrap::rocblas_zaxpy, stream, /* pointer_mode_host = */ true, elem_count,
-      complex_cast(alpha), complex_cast(x), incx, complex_cast(y), incy);
-}
-
 bool ROCMBlas::DoBlasCopy(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_scopy, stream,
                         /* pointer_mode_host = */ true, elem_count,
                         GpuMemory(x), incx, GpuMemoryMutable(y), incy);
-}
-
-bool ROCMBlas::DoBlasCopy(Stream *stream, uint64_t elem_count,
-                          const DeviceMemory<double> &x, int incx,
-                          DeviceMemory<double> *y, int incy) {
-  return DoBlasInternal(wrap::rocblas_dcopy, stream,
-                        /* pointer_mode_host = */ true, elem_count,
-                        GpuMemory(x), incx, GpuMemoryMutable(y), incy);
-}
-
-bool ROCMBlas::DoBlasCopy(Stream *stream, uint64_t elem_count,
-                          const DeviceMemory<std::complex<float>> &x, int incx,
-                          DeviceMemory<std::complex<float>> *y, int incy) {
-  return DoBlasInternal(wrap::rocblas_ccopy, stream,
-                        /* pointer_mode_host = */ true, elem_count,
-                        complex_cast(x), incx, complex_cast(y), incy);
-}
-
-bool ROCMBlas::DoBlasCopy(Stream *stream, uint64_t elem_count,
-                          const DeviceMemory<std::complex<double>> &x, int incx,
-                          DeviceMemory<std::complex<double>> *y, int incy) {
-  return DoBlasInternal(wrap::rocblas_zcopy, stream,
-                        /* pointer_mode_host = */ true, elem_count,
-                        complex_cast(x), incx, complex_cast(y), incy);
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,
@@ -405,17 +354,6 @@ bool ROCMBlas::DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
                           float beta, DeviceMemory<float> *y, int incy) {
   return DoBlasInternal(
       wrap::rocblas_ssbmv, stream, /* pointer_mode_host = */ true,
-      ROCMBlasUpperLower(uplo), n, k, &alpha, GpuMemory(a), lda, GpuMemory(x),
-      incx, &beta, GpuMemoryMutable(y), incy);
-}
-
-bool ROCMBlas::DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
-                          uint64_t k, double alpha,
-                          const DeviceMemory<double> &a, int lda,
-                          const DeviceMemory<double> &x, int incx, double beta,
-                          DeviceMemory<double> *y, int incy) {
-  return DoBlasInternal(
-      wrap::rocblas_dsbmv, stream, /* pointer_mode_host = */ true,
       ROCMBlasUpperLower(uplo), n, k, &alpha, GpuMemory(a), lda, GpuMemory(x),
       incx, &beta, GpuMemoryMutable(y), incy);
 }

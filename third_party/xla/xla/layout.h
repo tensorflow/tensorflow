@@ -201,66 +201,67 @@ class Layout {
   // interface.
 
   // Methods for accessing the DimLevelType array.
-  int dim_level_types_size() const { return dim_level_types_.size(); }
+  int dim_level_types_size() const { return n_dim_level_types_; }
   DimLevelType dim_level_type(int index) const {
-    return dim_level_types_[index];
+    return dim_attributes_[index].dim_level_type;
   }
   Layout& set_dim_level_type(int index, DimLevelType dim_level_type) {
-    dim_level_types_[index] = dim_level_type;
+    dim_attributes_[index].dim_level_type = dim_level_type;
     return *this;
   }
   Layout& add_dim_level_type(DimLevelType dim_level_type) {
-    dim_level_types_.push_back(dim_level_type);
+    while (n_dim_level_types_ >= dim_attributes_.size()) {
+      dim_attributes_.push_back(DimInfo());
+    }
+    dim_attributes_[n_dim_level_types_].dim_level_type = dim_level_type;
+    n_dim_level_types_++;
     return *this;
   }
   Layout& clear_dim_level_types() {
-    dim_level_types_.clear();
+    n_dim_level_types_ = 0;
     return *this;
   }
-  absl::Span<const DimLevelType> dim_level_types() const {
-    return dim_level_types_;
-  }
-  DimLevelTypeVector* mutable_dim_level_types() { return &dim_level_types_; }
+  //  absl::Span<const DimLevelType> dim_level_types() const {
+  //    return dim_level_types_;
+  //  }
+  //  DimLevelTypeVector* mutable_dim_level_types() { return &dim_level_types_;
+  //  }
 
   // Methods for accessing the dim_unique array.
-  int dim_unique_size() const { return dim_unique_.size(); }
-  bool dim_unique(int index) const { return dim_unique_[index]; }
+  int dim_unique_size() const { return n_dim_unique_; }
+  bool dim_unique(int index) const { return dim_attributes_[index].dim_unique; }
   Layout& set_dim_unique(int index, bool unique) {
-    dim_unique_[index] = unique;
+    dim_attributes_[index].dim_unique = unique;
     return *this;
   }
   Layout& add_dim_unique(bool unique) {
-    dim_unique_.push_back(unique);
+    while (n_dim_unique_ >= dim_attributes_.size()) {
+      dim_attributes_.push_back(DimInfo());
+    }
+    dim_attributes_[n_dim_unique_].dim_unique = unique;
+    n_dim_unique_++;
     return *this;
   }
-  Layout& clear_dim_unique() {
-    dim_unique_.clear();
-    return *this;
-  }
-  absl::Span<const bool> dim_unique() const { return dim_unique_; }
-  absl::InlinedVector<bool, InlineRank()>* mutable_dim_unique() {
-    return &dim_unique_;
-  }
+  //  absl::Span<const bool> dim_unique() const { return dim_unique_; }
 
   // Methods for accessing the dim_ordered array.
-  int dim_ordered_size() const { return dim_ordered_.size(); }
-  bool dim_ordered(int index) const { return dim_ordered_[index]; }
+  int dim_ordered_size() const { return n_dim_ordered_; }
+  bool dim_ordered(int index) const {
+    return dim_attributes_[index].dim_ordered;
+  }
   Layout& set_dim_ordered(int index, bool ordered) {
-    dim_ordered_[index] = ordered;
+    dim_attributes_[index].dim_ordered = ordered;
     return *this;
   }
   Layout& add_dim_ordered(bool ordered) {
-    dim_ordered_.push_back(ordered);
+    while (n_dim_ordered_ >= dim_attributes_.size()) {
+      dim_attributes_.push_back(DimInfo());
+    }
+    dim_attributes_[n_dim_ordered_].dim_ordered = ordered;
+    n_dim_ordered_++;
     return *this;
   }
-  Layout& clear_dim_ordered() {
-    dim_ordered_.clear();
-    return *this;
-  }
-  absl::Span<const bool> dim_ordered() const { return dim_ordered_; }
-  absl::InlinedVector<bool, InlineRank()>* mutable_dim_ordered() {
-    return &dim_ordered_;
-  }
+  //  absl::Span<const bool> dim_ordered() const { return dim_ordered_; }
 
   // Methods for accessing the minor-to-major array.
   int minor_to_major_size() const { return minor_to_major_.size(); }
@@ -358,13 +359,32 @@ class Layout {
   }
 
  private:
-  // The list of dimension level types, indicating the method that will be used
-  // to represent each dimension of the array.
-  DimLevelTypeVector dim_level_types_;
+  // We store a single inlined vector to hold
+  struct DimInfo {
+    DimInfo()
+        : dim_level_type(DIM_DENSE), dim_unique(false), dim_ordered(false) {}
 
-  // Whether each DimLevelType is unique and ordered.
-  absl::InlinedVector<bool, InlineRank()> dim_unique_;
-  absl::InlinedVector<bool, InlineRank()> dim_ordered_;
+    DimLevelType dim_level_type : 6;
+    bool dim_unique : 1;
+    bool dim_ordered : 1;
+  };
+  absl::InlinedVector<DimInfo, InlineRank()> dim_attributes_;
+
+  uint8_t n_dim_level_types_ = 0;
+  uint8_t n_dim_unique_ = 0;
+  uint8_t n_dim_ordered_ = 0;
+
+  // The primitive type to use for sparse array indices and pointers.  Each of
+  // these must either be INVALID, or an unsigned integer type.
+  PrimitiveType index_primitive_type_ : 8;
+  PrimitiveType pointer_primitive_type_ : 8;
+
+  // The number of bits used to store an individual array element.
+  // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
+  uint16_t element_size_in_bits_ = 0;
+
+  // The assigned memory space.
+  int8_t memory_space_ = 0;
 
   // A map from physical dimension numbers to logical dimension numbers.
   // The first element is the most minor physical dimension (fastest varying
@@ -381,18 +401,6 @@ class Layout {
 
   // The tiles used in tiling-based layout.
   TileVector tiles_;
-
-  // The primitive type to use for sparse array indices and pointers.  Each of
-  // these must either be INVALID, or an unsigned integer type.
-  PrimitiveType index_primitive_type_ = PRIMITIVE_TYPE_INVALID;
-  PrimitiveType pointer_primitive_type_ = PRIMITIVE_TYPE_INVALID;
-
-  // The number of bits used to store an individual array element.
-  // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
-  int64_t element_size_in_bits_ = 0;
-
-  // The assigned memory space.
-  int64_t memory_space_ = 0;
 
   // The physical on-device shape used to represent a sparse array.
   std::unique_ptr<Shape> physical_shape_;

@@ -18,15 +18,24 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "xla/layout_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/shape.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -79,12 +88,6 @@ bool IsTypeSupportedByNccl(PrimitiveType element_type,
 //    containing those GPUs.
 //  - We perform the NCCL operation using the clique.
 
-NcclCollectiveConfig::NcclCollectiveConfig() = default;
-NcclCollectiveConfig::NcclCollectiveConfig(NcclCollectiveConfig&&) = default;
-NcclCollectiveConfig::~NcclCollectiveConfig() = default;
-NcclCollectiveConfig& NcclCollectiveConfig::operator=(NcclCollectiveConfig&&) =
-    default;
-
 // Returns if the collective communication operation is degenerate because all
 // the groups formed by the operation are singleton. A given op can be
 // degenerate under several conditions, corresponding to the modes supported
@@ -131,6 +134,32 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
       CHECK(0) << "Invalid collective op mode";
       return false;
   }
+}
+
+NcclCollectiveConfig GetNcclCollectiveConfig(
+    const HloInstruction* hlo, std::optional<bool> use_global_device_ids) {
+  NcclCollectiveConfig config;
+  config.operand_count = hlo->operands().size();
+  config.operand_element_type.reserve(config.operand_count);
+  for (int i = 0; i < config.operand_count; i++) {
+    config.operand_element_type.push_back(
+        hlo->operand(i)->shape().element_type());
+  }
+  config.replica_groups = hlo->replica_groups();
+
+  if (hlo->channel_id().has_value()) {
+    config.collective_op_kind = RendezvousKey::kCrossModule;
+    config.op_id = *hlo->channel_id();
+  } else {
+    config.collective_op_kind = RendezvousKey::kCrossReplica;
+    config.op_id = static_cast<int64_t>(hlo->GetModule()->unique_id());
+  }
+
+  config.group_mode = GetCollectiveOpGroupMode(hlo->channel_id().has_value(),
+                                               use_global_device_ids)
+                          .value();
+
+  return config;
 }
 
 NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
@@ -208,6 +237,14 @@ StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const Thunk::ExecuteParams& params,
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types) {
+  return ConvertToDeviceBuffers(params.buffer_allocations, buffers,
+                                element_types);
+}
+
+StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const BufferAllocations* buffer_allocations,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types) {
   if (buffers.size() != element_types.size())
     return FailedPrecondition("Mismatch in operand buffer counts.");
 
@@ -216,10 +253,8 @@ StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   for (int i = 0; i < buffers.size(); ++i) {
     device_buffers.emplace_back(DeviceBufferPair{
         element_types[i], buffers[i].element_count,
-
-        params.buffer_allocations->GetDeviceAddress(buffers[i].source_buffer),
-        params.buffer_allocations->GetDeviceAddress(
-            buffers[i].destination_buffer)});
+        buffer_allocations->GetDeviceAddress(buffers[i].source_buffer),
+        buffer_allocations->GetDeviceAddress(buffers[i].destination_buffer)});
   }
   return device_buffers;
 }
@@ -323,6 +358,10 @@ Status NcclCollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
   Shape shape = GetShape(operand);
+  return IsValidOperand(shape, reduction_op);
+}
+
+Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
   if (!LayoutUtil::IsDenseArray(shape)) {
     return tsl::errors::Unimplemented(
         absl::StrFormat("input is not a dense array: %s",

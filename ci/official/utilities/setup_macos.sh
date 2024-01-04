@@ -58,10 +58,13 @@ fi
 
 # "TFCI_MACOS_UPGRADE_PYENV_ENABLE" is used to decide if we need to upgrade the
 # Pyenv version. We enable this for macOS x86 builds as the default Pyenv on
-# those VMs does not support installing Python 3.10 and above which we need
+# those VMs does not support installing Python 3.12 and above which we need
 # for running smoke tests in nightly/release wheel builds.
 if [[ "${TFCI_MACOS_UPGRADE_PYENV_ENABLE}" == 1 ]]; then
-  brew upgrade pyenv
+  # The TFCI Mac VM image seems to have uncommitted local changes to the Pyenv
+  # repository so we have to discard them and reset the working directory before
+  # we can pull in the latest changes.
+  cd /Users/kbuilder/.pyenv/ && git reset --hard HEAD && git pull && cd -
 fi
 
 # "TFCI_MACOS_PYENV_INSTALL_ENABLE" controls whether to use Pyenv to install
@@ -96,6 +99,10 @@ fi
 # a service account that has the right permissions to be able to do so.
 set +x
 if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  # Python 3.12 removed the module `imp` which is needed by gcloud CLI so we set
+  # `CLOUDSDK_PYTHON` to Python 3.11 which is the system Python on TFCI Mac
+  # VMs.
+  export CLOUDSDK_PYTHON=$(which python3.11)
   gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
 fi
 set -x

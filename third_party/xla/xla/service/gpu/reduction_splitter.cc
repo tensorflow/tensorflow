@@ -30,12 +30,15 @@ namespace gpu {
 
 class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit ReductionSplitterVisitor(bool ignore_small_dims)
+      : ignore_small_dims_(ignore_small_dims) {}
   Status HandleReduce(HloInstruction *reduce) override {
     VLOG(4) << "Input: " << reduce->ToString();
 
     // Reductions with contiguous dimensions are lowered to efficient code. No
     // need to split such ops.
     if (IsReductionFromOrToContiguousDimensions(*reduce)) {
+      VLOG(4) << "Reduction with contiguous dimensions. Return.";
       return OkStatus();
     }
     if (reduce->dimensions().size() < 2) {
@@ -71,8 +74,7 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
         max_shape_dim = input_shape.dimensions(max_reduce_dim);
       }
     }
-    // TODO(tjoerg): Run microbenchmarks to tune this threshold.
-    if (max_shape_dim < 128) {
+    if (ignore_small_dims_ && max_shape_dim <= 8) {
       return OkStatus();
     }
 
@@ -108,13 +110,17 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
         reduce->mutable_operand(1), final_reduce_dims, reduce->to_apply());
     return ReplaceWithNewInstruction(reduce, std::move(final_reduce));
   }
+
+ private:
+  bool ignore_small_dims_;
 };
 
 StatusOr<bool> ReductionSplitter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
-  TF_ASSIGN_OR_RETURN(bool changed, ReductionSplitterVisitor().RunOnModule(
-                                        module, execution_threads));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ReductionSplitterVisitor(ignore_small_dims_)
+                          .RunOnModule(module, execution_threads));
   return changed;
 }
 

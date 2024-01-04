@@ -27,7 +27,7 @@ load(
     "onednn_v3_define",
 )
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
     "cc_shared_library",

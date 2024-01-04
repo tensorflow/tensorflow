@@ -202,6 +202,22 @@ class RepresentativeDatasetLoader:
   Exposes the `load` method that loads the representative dataset from files.
   """
 
+  def load(self) -> RepresentativeDatasetMapping:
+    """Loads the representative datasets.
+
+    Returns:
+      representative dataset mapping: A loaded signature def key ->
+      representative mapping.
+    """
+    raise NotImplementedError('Method "load" is not implemented.')
+
+
+class TfRecordRepresentativeDatasetLoader(RepresentativeDatasetLoader):
+  """TFRecord representative dataset loader.
+
+  Loads representative dataset stored in TFRecord files.
+  """
+
   def __init__(
       self,
       dataset_file_map: Mapping[str, _RepresentativeDatasetFile],

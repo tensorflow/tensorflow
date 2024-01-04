@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
@@ -256,16 +257,16 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
       AutotunerUtil::CreateBuffer(buffer_allocator, output_shape,
                                   autotune_config, rng_state));
 
-  int64_t workspace_size = std::visit(
-      se::VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                           return cc.IsAtLeastHopper()
-                                      ? GemmConfig::kHopperWorkspace
-                                      : GemmConfig::kDefaultWorkspace;
-                         },
-                         [](const se::RocmComputeCapability&) {
-                           return GemmConfig::kDefaultWorkspace;
-                         }},
-      autotune_config.GetGpuComputeCapability());
+  int64_t workspace_size =
+      std::visit(VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                                  return cc.IsAtLeastHopper()
+                                             ? GemmConfig::kHopperWorkspace
+                                             : GemmConfig::kDefaultWorkspace;
+                                },
+                                [](const se::RocmComputeCapability&) {
+                                  return GemmConfig::kDefaultWorkspace;
+                                }},
+                 autotune_config.GetGpuComputeCapability());
 
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase workspace_buffer,
@@ -399,18 +400,17 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
 
   GemmBackendConfig updated_config = gemm_config;
 
-  bool update_algorithm =
-      std::visit(se::VariantVisitor{[](const se::CudaComputeCapability& cc) {
-                                      // We only set the 'algorithm' field on
-                                      // non-Ampere architectures, as for Ampere
-                                      // it's ignored in any case.
-                                      return !cc.IsAtLeast(
-                                          se::CudaComputeCapability::AMPERE);
-                                    },
-                                    [](const se::RocmComputeCapability&) {
-                                      return true;  // TODO: not decided yet
-                                    }},
-                 config.GetGpuComputeCapability());
+  bool update_algorithm = std::visit(
+      VariantVisitor{[](const se::CudaComputeCapability& cc) {
+                       // We only set the 'algorithm' field on
+                       // non-Ampere architectures, as for Ampere
+                       // it's ignored in any case.
+                       return !cc.IsAtLeast(se::CudaComputeCapability::AMPERE);
+                     },
+                     [](const se::RocmComputeCapability&) {
+                       return true;  // TODO: not decided yet
+                     }},
+      config.GetGpuComputeCapability());
 
   if (update_algorithm) {
     if (algorithm.has_gemm()) {

@@ -40,12 +40,11 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
-#include "xla/service/gpu/kernel_thunk.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/runtime3/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -193,9 +192,9 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 }
 
 StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
+    IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+    const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache) const {
+  llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
   std::string suggested_kernel_name = std::string(fusion.name());
 
   TF_ASSIGN_OR_RETURN(KernelArguments kernel_arguments,
@@ -208,46 +207,45 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   auto* fused_computation = fusion.fused_instructions_computation();
 
   FusionEmissionResult result;
-  for (int i = 0, n = num_kernels(); i < n; ++i) {
-    TF_ASSIGN_OR_RETURN(auto launch_dims,
-                        launch_dimensions(ir_emitter_context, i));
-    std::vector<llvm_ir::IrArray> inputs, outputs;
-    auto [entry, cached] = kernel_cache.GetWithStatus(
-        fused_computation, kernel_arguments.args(), absl::StrCat(i),
-        [&]() -> StatusOr<KernelReuseCache::Entry> {
-          llvm::Function* kernel;
-          std::tie(kernel, inputs, outputs) = BuildKernelPrototype(
-              ir_emitter_context, suggested_kernel_name,
-              kernel_arguments.args(), fusion.operand_count(), launch_dims,
-              builder);
-          if (ir_emitter_context.emit_kernels()) {
-            TF_RETURN_IF_ERROR(EmitKernel(
-                ir_emitter_context, elemental_emitter, fusion, launch_dims,
-                std::move(inputs), std::move(outputs), builder, i));
-          } else {
-            VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
-          }
-          // TODO(jreiffers): Return shmem_bytes from EmitKernel when
-          // converting the Triton emitters to this infrastructure.
-          return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
-                                         /*shmem_bytes=*/0};
-        });
-    TF_RETURN_IF_ERROR(entry.status());
+  auto maybe_launch_dims = launch_dimensions();
+  TF_RET_CHECK(maybe_launch_dims.has_value());
+  TF_RETURN_IF_ERROR(maybe_launch_dims->status());
+  const auto& launch_dims = maybe_launch_dims->value();
+  std::vector<llvm_ir::IrArray> inputs, outputs;
+  auto [entry, cached] = kernel_cache.GetWithStatus(
+      fused_computation, kernel_arguments.args(), /*discriminator=*/"",
+      [&]() -> StatusOr<KernelReuseCache::Entry> {
+        llvm::Function* kernel;
+        std::tie(kernel, inputs, outputs) = BuildKernelPrototype(
+            ir_emitter_context, suggested_kernel_name, kernel_arguments.args(),
+            fusion.operand_count(), launch_dims, &builder);
+        if (ir_emitter_context.emit_kernels()) {
+          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion, launch_dims,
+                                        std::move(inputs), std::move(outputs),
+                                        &builder));
+        } else {
+          VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
+        }
+        // TODO(jreiffers): Return shmem_bytes from EmitKernel when
+        // converting the Triton emitters to this infrastructure.
+        return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
+                                       /*shmem_bytes=*/0};
+      });
+  TF_RETURN_IF_ERROR(entry.status());
 
-    if (cached) {
-      VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
-              << entry->kernel_name;
-    }
+  if (cached) {
+    VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
+            << entry->kernel_name;
+  }
 
-    if (ir_emitter_context.emit_ir_from_hlo()) {
-      result.thunks.emplace_back(std::make_unique<KernelThunk>(
-          &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
-          entry->shmem_bytes));
-    } else {
-      result.thunks.emplace_back(std::make_unique<KernelThunk>(
-          fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
-          entry->shmem_bytes));
-    }
+  if (ir_emitter_context.emit_ir_from_hlo()) {
+    result.thunks.emplace_back(std::make_unique<KernelThunk>(
+        &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
+        entry->shmem_bytes));
+  } else {
+    result.thunks.emplace_back(std::make_unique<KernelThunk>(
+        fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
+        entry->shmem_bytes));
   }
 
   return result;

@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_cse.h"
@@ -4901,9 +4902,62 @@ std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioner::CreateVisitor(
       next_channel_id, logger, std::move(options), this, call_graph);
 }
 
+int64_t SpmdPartitioner::MemoryCostInBytes(HloInstruction* hlo) {
+  auto memory_cost_for_operands = [](HloInstruction* hlo) {
+    int64_t memory = 0;
+    for (const HloInstruction* operand : hlo->operands()) {
+      memory += ShapeSizeInBytes(operand->shape());
+    }
+    return memory;
+  };
+  switch (hlo->opcode()) {
+    // Calculate memory cost for operands only for ops that re-use input buffers
+    // for their output buffers.
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kScatter:
+    case HloOpcode::kWhile:
+    case HloOpcode::kTuple:
+      return memory_cost_for_operands(hlo);
+    default:
+      // TODO(b/311194120): Consider fusion of element-wise ops and other ops
+      // which doesn't need the full buffer for all operands.
+      return memory_cost_for_operands(hlo) + ShapeSizeInBytes(hlo->shape());
+  }
+}
+
+int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
+  CHECK(IsCollective(hlo));
+  switch (hlo->opcode()) {
+    case HloOpcode::kAllReduce:
+      return ShapeSizeInBytes(hlo->shape()) * 2;
+    case HloOpcode::kCollectivePermute:
+      return ShapeSizeInBytes(hlo->shape());
+    case HloOpcode::kAllGather: {
+      HloAllGatherInstruction* ag = Cast<HloAllGatherInstruction>(hlo);
+      int64_t group_size =
+          ag->shape().dimensions(ag->all_gather_dimension()) /
+          ag->operand(0)->shape().dimensions(ag->all_gather_dimension());
+      return ShapeSizeInBytes(hlo->shape()) * (group_size - 1) / group_size;
+    }
+    case HloOpcode::kAllToAll: {
+      int64_t group_size;
+      if (!hlo->replica_groups().empty()) {
+        group_size = hlo->replica_groups()[0].replica_ids_size();
+      } else {
+        group_size = hlo->channel_id() ? num_partitions_ : num_replicas_;
+      }
+      return ShapeSizeInBytes(hlo->shape()) * (group_size - 1) / group_size;
+    }
+    default:
+      return 0;
+  }
+}
+
 StatusOr<bool> SpmdPartitioner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  set_execution_threads(execution_threads);
   TF_RETURN_IF_ERROR(PreprocessSharding(module, execution_threads));
   TF_RETURN_IF_ERROR(PreprocessHlos(module, execution_threads));
 

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -30,7 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/elemental_ir_emitter.h"
+#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
@@ -41,22 +42,27 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/status.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<LaunchDimensions> ScatterFusion::launch_dimensions(
-    IrEmitterContext& ir_emitter_context, int kernel_index) const {
-  return analysis_.GetLaunchDimensions();
+std::optional<StatusOr<LaunchDimensions>> ScatterFusion::launch_dimensions()
+    const {
+  const auto& updates_shape =
+      analysis_.fusion_roots().front()->operand(2)->shape();
+  return CalculateLaunchDimensions(updates_shape, analysis_.device_info());
 }
 
-Status ScatterFusion::EmitKernel(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    const HloFusionInstruction& fusion, const LaunchDimensions& launch_dims,
-    std::vector<llvm_ir::IrArray> inputs, std::vector<llvm_ir::IrArray> outputs,
-    llvm::IRBuilder<>* builder, int kernel_index) const {
+Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                 const HloFusionInstruction& fusion,
+                                 const LaunchDimensions& launch_dims,
+                                 std::vector<llvm_ir::IrArray> inputs,
+                                 std::vector<llvm_ir::IrArray> outputs,
+                                 llvm::IRBuilder<>* builder) const {
+  GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   // Spin up a new fused emitter for the scatter kernel and emit it.
   FusedIrEmitter scatter_fused_emitter(elemental_emitter);
   auto* fused_computation = fusion.fused_instructions_computation();

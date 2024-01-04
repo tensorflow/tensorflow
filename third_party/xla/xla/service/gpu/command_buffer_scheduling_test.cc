@@ -39,10 +39,18 @@ class CommandBufferSchedulingTest : public HloTestBase {
   // Use CUDA 12.3 version for testing as it has all the features we rely on.
   static constexpr int32_t kCudaVersion = 12030;
 
+  const auto& gpu_comp() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::NCCL);
     debug_options.set_xla_gpu_graph_min_graph_size(2);
     return debug_options;
   }
@@ -92,12 +100,12 @@ TEST_F(CommandBufferSchedulingTest, SingleCommandBuffer) {
 // CHECK:   ROOT %custom-call = s32[] custom-call(%get-tuple-element, %get-tuple-element.1), custom_call_target="some target"
 // CHECK: })";
 
-  RunAndFilecheckHloRewrite(hlo,
-                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
 }
 
 TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
@@ -170,12 +178,51 @@ TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
 // CHECK:    ROOT {{.*}} = s32[] custom-call(%[[CMD1]]), custom_call_target="some target"
 // CHECK:  })";
 
-  RunAndFilecheckHloRewrite(hlo,
-                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, AsyncStartFollowedByDone) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    %add (p0: s32[4], p1: s32[4]) -> s32[4] {
+      %p0 = s32[4] parameter(0)
+      %p1 = s32[4] parameter(1)
+      ROOT %add = s32[4] add(s32[4] %p0, s32[4] %p1)
+    }
+
+    ENTRY %main (a: s32[4]) -> s32[4] {
+      %a = s32[4] parameter(0)
+      %start = s32[4]{0} all-reduce-start(s32[4]{0} %a),
+        replica_groups={{0,1}}, to_apply=%add,
+        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+      ROOT %done = s32[4]{0} all-reduce-done(s32[4]{0} %start)
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s32[4]) -> s32[4] {
+    CHECK:   %[[P0]] = s32[4]{0} parameter(0)
+    CHECK:   %[[START:.+]] = s32[4]{0} all-reduce-start(%[[P0]])
+    CHECK:   ROOT %[[DONE:.+]] = s32[4]{0} all-reduce-done(%[[START]])
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[4]) -> s32[4] {
+    CHECK:   %[[A:.+]] = s32[4]{0} parameter(0)
+    CHECK:   ROOT %[[CALL:.+]] = s32[4]{0} call(%[[A]]),
+    CHECL:     to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
 }
 
 TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
@@ -417,12 +464,12 @@ TEST_F(CommandBufferSchedulingTest, ForwardControlDependencies) {
     CHECK:   ROOT %custom-call.2 = s32[] custom-call(%call, %[[F3]]), custom_call_target="some target"
     CHECK: })";
 
-  RunAndFilecheckHloRewrite(hlo,
-                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
 }
 
 TEST_F(CommandBufferSchedulingTest, ForwardControlDependenciesToParams) {
@@ -457,12 +504,12 @@ TEST_F(CommandBufferSchedulingTest, ForwardControlDependenciesToParams) {
     CHECK:   ROOT {{.*}} call(%[[CUSTOM_CALL]], %a, %b), to_apply=%command_buffer, control-predecessors={%[[CUSTOM_CALL]]}
     CHECK: })";
 
-  RunAndFilecheckHloRewrite(hlo,
-                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
 }
 
 TEST_F(CommandBufferSchedulingTest, WhileNotCommand) {
@@ -536,12 +583,12 @@ TEST_F(CommandBufferSchedulingTest, WhileNotCommand) {
     CHECK:   ROOT %[[BC:.+]] = f32[] bitcast(%[[WHILE]])
     CHECK: })";
 
-  RunAndFilecheckHloRewrite(hlo,
-                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
 }
 
 TEST_F(CommandBufferSchedulingTest, While) {
@@ -598,12 +645,12 @@ TEST_F(CommandBufferSchedulingTest, While) {
     CHECK:   ROOT %[[BC:.+]] = f32[] bitcast(%call)
     CHECK: })";
 
-  RunAndFilecheckHloRewrite(hlo,
-                            CommandBufferScheduling(kCudaVersion, kCudaVersion),
-                            expected, [](HloModule* module) {
-                              EXPECT_TRUE(module->has_schedule());
-                              TF_CHECK_OK(module->schedule().Verify());
-                            });
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
 }
 
 }  // namespace

@@ -3,7 +3,7 @@
 
 load("//tsl/cuda:stub.bzl", "cuda_stub")
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(

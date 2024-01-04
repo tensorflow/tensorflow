@@ -283,9 +283,9 @@ void HandlerBase::MaybeAppend(
         communication_cost_fn) {
   HloSharding lhs_spec = CreateInputSpec(lhs_, lhs_dim_map, device_mesh);
   HloSharding rhs_spec = CreateInputSpec(rhs_, rhs_dim_map, device_mesh);
-  if (std::optional<HloSharding> output_spec =
-          GetShardingFromUser(lhs_spec, rhs_spec);
-      output_spec.has_value()) {
+  std::optional<HloSharding> output_spec =
+      GetShardingFromUser(lhs_spec, rhs_spec);
+  if (output_spec.has_value()) {
     if (expected_output_dim_map.has_value()) {
       HloSharding expected_output_spec =
           CreateInputSpec(ins_, *expected_output_dim_map, device_mesh);
@@ -306,15 +306,21 @@ void HandlerBase::MaybeAppend(
                "mismatch, we continue with the expected sharding";
       }
     }
-    double communication_cost = 0;
-    if (communication_cost_fn.has_value()) {
-      communication_cost = communication_cost_fn.value()(*output_spec);
-    }
-    AppendNewStrategy(name, *output_spec, {lhs_spec, rhs_spec}, compute_cost,
-                      communication_cost);
   } else {
-    LOG(FATAL) << "Sharding propagation could not infer output sharding";
+    CHECK(expected_output_dim_map.has_value());
+    output_spec = CreateInputSpec(ins_, *expected_output_dim_map, device_mesh);
+    LOG(WARNING)
+        << "Sharding propagation could not infer output sharding for:\n  "
+        << ins_->ToString() << "\n  LHS Spec: " << lhs_spec
+        << "\n  RHS Spec: " << rhs_spec << "\n  Output sharding name: " << name;
   }
+
+  double communication_cost = 0;
+  if (communication_cost_fn.has_value()) {
+    communication_cost = communication_cost_fn.value()(*output_spec);
+  }
+  AppendNewStrategy(name, *output_spec, {lhs_spec, rhs_spec}, compute_cost,
+                    communication_cost);
 }
 
 std::optional<HloSharding> HandlerBase::GetShardingFromUser(

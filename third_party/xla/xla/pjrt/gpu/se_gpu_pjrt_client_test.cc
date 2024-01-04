@@ -472,9 +472,9 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
     src_literals.emplace_back(LiteralUtil::CreateR1<float>(data));
     src_shapes.push_back(src_literals.back().shape());
   }
-  ASSERT_OK_AND_ASSIGN(auto transfer_manager,
-                       client->CreateBuffersForAsyncHostToDevice(
-                           src_shapes, client->addressable_devices()[0]));
+  TF_ASSERT_OK_AND_ASSIGN(auto transfer_manager,
+                          client->CreateBuffersForAsyncHostToDevice(
+                              src_shapes, client->addressable_devices()[0]));
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   for (int i = 0; i < src_shapes.size(); ++i) {
     buffers.emplace_back(transfer_manager->RetrieveBuffer(i));
@@ -485,11 +485,11 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
   for (int i = 0; i < 4; ++i) {
     auto& buffer = buffers[i];
     if (i == 0 || i == 3) {
-      ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
-                                                          [&]() {}));
+      TF_ASSERT_OK(transfer_manager->TransferLiteralToBuffer(i, src_literals[i],
+                                                             [&]() {}));
       buffer->GetReadyFuture().OnReady([&](absl::Status s) {
         absl::MutexLock l(&mu);
-        ASSERT_OK(s);
+        TF_ASSERT_OK(s);
         ++got_callback_count;
       });
     } else {

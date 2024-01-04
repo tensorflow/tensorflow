@@ -55,30 +55,6 @@ class ScratchAllocator {
       int64_t byte_size) = 0;
 };
 
-// Allocates a single temporary memory allocation -- this memory is deallocated
-// at the next stream synchronization point after this object has gone out of
-// scope. This satisfies the lifetime and deallocation properties given in the
-// class comment above.
-//
-// Thread-compatible, but not thread-safe (use in scenarios where only one
-// thread will request the scratch allocation).
-class OneTimeScratchAllocator : public ScratchAllocator {
- public:
-  explicit OneTimeScratchAllocator(Stream* stream) : stream_(stream) {}
-
-  int64_t GetMemoryLimitInBytes() override { return -1; }
-
-  tsl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
-      int64_t byte_size) override;
-
- private:
-  std::unique_ptr<TemporaryDeviceMemory<uint8_t>> temporary_;
-  Stream* stream_;
-
-  OneTimeScratchAllocator(const OneTimeScratchAllocator&) = delete;
-  void operator=(const OneTimeScratchAllocator&) = delete;
-};
-
 // Can allocate several times -- this memory is deallocated when the scratch
 // allocator is destroyed.
 //

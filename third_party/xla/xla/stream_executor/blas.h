@@ -222,31 +222,11 @@ class BlasSupport {
   virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count, double alpha,
-                          const DeviceMemory<double> &x, int incx,
-                          DeviceMemory<double> *y, int incy) = 0;
-  virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count,
-                          std::complex<float> alpha,
-                          const DeviceMemory<std::complex<float>> &x, int incx,
-                          DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count,
-                          std::complex<double> alpha,
-                          const DeviceMemory<std::complex<double>> &x, int incx,
-                          DeviceMemory<std::complex<double>> *y, int incy) = 0;
 
   // Copies vector to another vector: y <- x.
   virtual bool DoBlasCopy(Stream *stream, uint64_t elem_count,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasCopy(Stream *stream, uint64_t elem_count,
-                          const DeviceMemory<double> &x, int incx,
-                          DeviceMemory<double> *y, int incy) = 0;
-  virtual bool DoBlasCopy(Stream *stream, uint64_t elem_count,
-                          const DeviceMemory<std::complex<float>> &x, int incx,
-                          DeviceMemory<std::complex<float>> *y, int incy) = 0;
-  virtual bool DoBlasCopy(Stream *stream, uint64_t elem_count,
-                          const DeviceMemory<std::complex<double>> &x, int incx,
-                          DeviceMemory<std::complex<double>> *y, int incy) = 0;
 
   // Computes the product of a vector by a scalar: x <- a*x.
   virtual bool DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,
@@ -307,11 +287,6 @@ class BlasSupport {
                           uint64_t k, float alpha, const DeviceMemory<float> &a,
                           int lda, const DeviceMemory<float> &x, int incx,
                           float beta, DeviceMemory<float> *y, int incy) = 0;
-  virtual bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n,
-                          uint64_t k, double alpha,
-                          const DeviceMemory<double> &a, int lda,
-                          const DeviceMemory<double> &x, int incx, double beta,
-                          DeviceMemory<double> *y, int incy) = 0;
 
   // Computes a matrix-matrix product with general matrices:
   //
@@ -542,29 +517,9 @@ class BlasSupport {
   bool DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,            \
                   const DeviceMemory<float> &x, int incx,                      \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasAxpy(Stream *stream, uint64_t elem_count, double alpha,           \
-                  const DeviceMemory<double> &x, int incx,                     \
-                  DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasAxpy(Stream *stream, uint64_t elem_count,                         \
-                  std::complex<float> alpha,                                   \
-                  const DeviceMemory<std::complex<float>> &x, int incx,        \
-                  DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasAxpy(Stream *stream, uint64_t elem_count,                         \
-                  std::complex<double> alpha,                                  \
-                  const DeviceMemory<std::complex<double>> &x, int incx,       \
-                  DeviceMemory<std::complex<double>> *y, int incy) override;   \
   bool DoBlasCopy(Stream *stream, uint64_t elem_count,                         \
                   const DeviceMemory<float> &x, int incx,                      \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasCopy(Stream *stream, uint64_t elem_count,                         \
-                  const DeviceMemory<double> &x, int incx,                     \
-                  DeviceMemory<double> *y, int incy) override;                 \
-  bool DoBlasCopy(Stream *stream, uint64_t elem_count,                         \
-                  const DeviceMemory<std::complex<float>> &x, int incx,        \
-                  DeviceMemory<std::complex<float>> *y, int incy) override;    \
-  bool DoBlasCopy(Stream *stream, uint64_t elem_count,                         \
-                  const DeviceMemory<std::complex<double>> &x, int incx,       \
-                  DeviceMemory<std::complex<double>> *y, int incy) override;   \
   bool DoBlasScal(Stream *stream, uint64_t elem_count, float alpha,            \
                   DeviceMemory<float> *x, int incx) override;                  \
   bool DoBlasScal(Stream *stream, uint64_t elem_count, double alpha,           \
@@ -603,10 +558,6 @@ class BlasSupport {
                   float alpha, const DeviceMemory<float> &a, int lda,          \
                   const DeviceMemory<float> &x, int incx, float beta,          \
                   DeviceMemory<float> *y, int incy) override;                  \
-  bool DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64_t n, uint64 k, \
-                  double alpha, const DeviceMemory<double> &a, int lda,        \
-                  const DeviceMemory<double> &x, int incx, double beta,        \
-                  DeviceMemory<double> *y, int incy) override;                 \
   tsl::Status DoBlasGemm(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
       uint64_t m, uint64 n, uint64 k, blas::DataType dtype, const void *alpha, \

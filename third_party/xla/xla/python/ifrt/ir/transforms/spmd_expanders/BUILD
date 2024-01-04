@@ -1,3 +1,5 @@
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+
 package(
     default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,6 +14,7 @@ cc_library(
     hdrs = glob([
         "*spmd_expander.h",
     ]),
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "//xla/python/ifrt/ir",

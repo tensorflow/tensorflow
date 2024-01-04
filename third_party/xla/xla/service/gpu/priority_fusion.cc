@@ -26,10 +26,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/synchronization/mutex.h"
@@ -644,7 +642,8 @@ StatusOr<bool> GpuPriorityFusion::Run(
   // are not used in the pipeline, but it makes debugging much easier.
   for (auto* computation : GetFusionComputations(module, execution_threads)) {
     for (auto* instruction : computation->instructions()) {
-      instruction->SetAndSanitizeName(absl::StrCat(instruction->name(), ".0"));
+      module->SetAndUniquifyInstrName(instruction,
+                                      absl::StrCat(instruction->name(), ".0"));
     }
   }
 
@@ -672,8 +671,8 @@ StatusOr<bool> GpuPriorityFusion::Run(
         auto users = constant->users();
         for (auto* user : users) {
           if (IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) {
-            result.value() = true;
             InstructionFusion::Fuse(constant, user, computation);
+            result = true;
           }
         }
       }

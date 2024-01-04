@@ -687,8 +687,16 @@ class ConvertNonTrivialConvOp
     int num_spatial_dims = input_spatial_dims.size();
 
     std::string padding;
-    if (conv_op.getPadding().value().isSplat() &&
-        conv_op.getPadding()->getSplatValue<int64_t>() == 0) {
+    SmallVector<int64_t, 8> padding_array{0, 0};
+    SmallVector<int64_t, 4> padding_attr_value(
+        conv_op.getPadding().value().getValues<int64_t>().begin(),
+        conv_op.getPadding().value().getValues<int64_t>().end());
+    padding_array.append(padding_attr_value);
+    padding_array.push_back(0);
+    padding_array.push_back(0);
+
+    if (IsValidPaddingForTransposedConv(conv_op, num_spatial_dims, strides,
+                                        padding_array)) {
       padding = "VALID";
     } else {
       if (!IsSamePadding(conv_op, num_spatial_dims, strides)) {
@@ -802,6 +810,52 @@ class ConvertNonTrivialConvOp
   };
 
  private:
+  // Utility function to check if the padding on the mhlo.convolution op
+  // equals to the padding needed on a transpose_conv for the same
+  // inputs/outputs, to achieve the effect of VALID padding.
+  bool IsValidPaddingForTransposedConv(mhlo::ConvolutionOp conv_op,
+                                       size_t num_spatial_dims,
+                                       ArrayRef<int64_t> strides,
+                                       ArrayRef<int64_t> padding) const {
+    auto dnums = conv_op.getDimensionNumbers();
+    // The newly added spatial dimension requires zero left and right padding.
+    ArrayRef<int64_t> input_spatial_dims = dnums.getInputSpatialDimensions();
+    ArrayRef<int64_t> kernel_spatial_dims = dnums.getKernelSpatialDimensions();
+    ArrayRef<int64_t> output_spatial_dims = dnums.getOutputSpatialDimensions();
+
+    for (size_t i = 1; i <= num_spatial_dims; ++i) {
+      int64_t stride = strides[i];
+      int64_t input_size =
+          conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
+              input_spatial_dims[i - 1]);
+      int64_t kernel_size =
+          conv_op.getRhs().getType().cast<ShapedType>().getDimSize(
+              kernel_spatial_dims[i - 1]);
+      int64_t output_size = conv_op.getType().cast<ShapedType>().getDimSize(
+          output_spatial_dims[i - 1]);
+
+      // stablehlo.convolution op needs explicit padding to be set to model any
+      // Transposed-Convolution in JAX/PT. Checking to see if-
+      // 1. Pre set padding matches to the desired padding
+      // 2. Output size respects the `VALID` padding scenario
+      if ((padding[2 * i] == padding[2 * i + 1]) &&
+          (((kernel_size - 1) != padding[2 * i]) ||
+           (output_size != (stride * (input_size - 1)) + kernel_size))) {
+        // padding[2 * i] == padding[2 * i + 1] means equal padding is applied
+        // on both sides of a spatial dimension.
+        // This happens when kernel_dim >= stride
+        return false;
+      } else if ((padding[2 * i] != padding[2 * i + 1]) &&
+                 (((kernel_size - 1) != padding[2 * i]) ||
+                  ((stride - 1) != padding[2 * i + 1]) ||
+                  (output_size != (stride * input_size)))) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   bool IsSamePadding(mhlo::ConvolutionOp conv_op, size_t num_spatial_dims,
                      ArrayRef<int64_t> strides) const {
     auto dnums = conv_op.getDimensionNumbers();

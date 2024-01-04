@@ -84,7 +84,7 @@ struct MatchBwdResult {
 
   HloInstruction* matched_bmm_2_grad_1 = nullptr;
   HloInstruction* matched_bmm_2_grad_2 = nullptr;
-  HloInstruction* matched_d_intermediate = nullptr;
+  HloInstruction* matched_dbias = nullptr;
   // We use this to keep track of all gradient bmms that need
   // canonicalization.
   bool bmm_1_grad_1_need_canonicalization = false;
@@ -735,17 +735,12 @@ MatchBwdResult MatchBmm1GradGemm2(MatchBwdResult previous_result,
   auto bmm_1_grad_2_it = std::find_if(
       d_s->users().begin(), d_s->users().end(), [&](HloInstruction* instr) {
         return instr != match_result.matched_bmm_1_grad_1 &&
-               instr->opcode() != HloOpcode::kReduce;
+               instr->opcode() == HloOpcode::kDot;
       });
   if (bmm_1_grad_2_it != d_s->users().end()) {
     bmm_1_grad_2 = *bmm_1_grad_2_it;
   } else {
     return match_result;
-  }
-  if (bmm_1_grad_2->opcode() == HloOpcode::kBitcast &&
-      bmm_1_grad_2->user_count() == 1) {
-    d_s = bmm_1_grad_2;
-    bmm_1_grad_2 = bmm_1_grad_2->users()[0];
   }
 
   match_result.matched_bmm_1_grad_2 = bmm_1_grad_2;
@@ -809,6 +804,33 @@ MatchBwdResult MatchBmm2GradGemm2(MatchBwdResult previous_result,
   return match_result;
 }
 
+MatchBwdResult MatchDbias(MatchBwdResult previous_result,
+                          HloInstruction* d_intermediate,
+                          const absl::flat_hash_set<HloInstruction*> users) {
+  MatchBwdResult match_result = previous_result;
+  auto user_count = d_intermediate->user_count();
+  HloInstruction* dbias_user = nullptr;
+  HloInstruction* dbias = nullptr;
+  for (auto user : d_intermediate->users()) {
+    if (users.contains(user)) {
+      user_count -= 1;
+    } else {
+      dbias_user = user;
+    }
+  }
+  auto ConsumeExtraConvert = [](HloInstruction* instr) {
+    Match(instr->users()[0], m::Convert(&instr, m::Op()).WithOneUse());
+    return true;
+  };
+  // user_count == 1 && (reduce-> {convert} ->bitcast)
+  match_result.has_match =
+      user_count == 1 &&
+      Match(dbias_user, m::Reduce(&dbias, m::Op(), m::Op()).WithOneUse()) &&
+      dbias->shape().rank() == 3 && ConsumeExtraConvert(dbias);
+  match_result.matched_dbias = dbias;
+  return match_result;
+}
+
 MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
                                             HloInstruction* fwd_fmha_call,
                                             HloInstruction* mask) {
@@ -816,6 +838,7 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
   bool is_bmm1_grad1_canonicalized =
       match_result.bmm_1_grad_1_need_canonicalization;
   match_result.has_match = false;
+  bool has_scale = false;
   bool has_dropout = false;
   bool has_mask = false;
   // Backward dropout pattern
@@ -890,14 +913,17 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
 
   auto bwd_scale_pattern =
       m::MultiplyAnyOrder(m::Op(&bwd_scale_input),
-                          m::Broadcast(m::Constant().WithPredicate(IsScalar)));
+                          m::Broadcast(m::Constant().WithPredicate(IsScalar)))
+          .WithNumUser(2);
   int intermediate_input_pos = is_bmm1_grad1_canonicalized ? 1 : 0;
 
   HloInstruction* intermediate_input =
       match_result.matched_bmm_1_grad_1->mutable_operand(
           intermediate_input_pos);
 
-  if (Match(intermediate_input, bwd_scale_pattern)) {
+  has_scale = Match(intermediate_input, bwd_scale_pattern);
+
+  if (has_scale) {
     intermediate_input = bwd_scale_input;
   }
 
@@ -965,22 +991,32 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
       match_result.matched_custom_call_name =
           kCudnnfMHASoftmaxBackwardCallTarget;
   }
-
-  // If d_softmax tensor has 3 consumers, then we need to output the
-  // intermediate tensor.
-  bool need_d_intermediate = d_softmax->user_count() == 3;
-  if ((match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasMaskSoftmaxDropoutBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasMaskSoftmaxBackwardCallTarget) &&
-      need_d_intermediate) {
-    match_result.matched_d_intermediate = d_softmax;
+  // try to pattern match dbias
+  if (has_scale || has_mask) {
+    // bmm1-(scale)-(bias)-(mask)-softmax pattern
+    // users could be dbias besides mask bwd or scale bwd
+    if (d_softmax->user_count() == 1) {
+      // no dbias
+      match_result.has_match = true;
+    } else if (d_softmax->user_count() == 2) {
+      match_result = MatchDbias(match_result, d_softmax,
+                                {bwd_scale_input, bwd_mask_input});
+    } else {
+      match_result.has_match = false;
+    }
+  } else {
+    // bmm1-(bias)-softmax pattern
+    // users could be dbias besides bmm1grad1 bmm1grad2
+    if (d_softmax->user_count() == 2) {
+      match_result.has_match = true;
+    } else if (d_softmax->user_count() == 3) {
+      match_result = MatchDbias(match_result, d_softmax,
+                                {match_result.matched_bmm_1_grad_1,
+                                 match_result.matched_bmm_1_grad_2});
+    } else {
+      match_result.has_match = false;
+    }
   }
-  match_result.has_match = true;
   return match_result;
 }
 // First, we look for the bmm2 gradient gemm 1 which takes the activation
@@ -1357,36 +1393,11 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   return fmha_call;
 }
 
-bool IsDbiasOnlyUserBesidesGradGemm(HloInstruction* d_intermediate,
-                                    HloInstruction* bmm_1_grad_1,
-                                    HloInstruction* bmm_1_grad_2,
-                                    HloInstruction** dbias) {
-  auto user_count = d_intermediate->user_count();
-  HloInstruction* dbias_user = nullptr;
-  for (auto user : d_intermediate->users()) {
-    if (user == bmm_1_grad_1) {
-      user_count -= 1;
-    } else if (user == bmm_1_grad_2) {
-      user_count -= 1;
-    } else {
-      dbias_user = user;
-    }
-  }
-  auto ConsumeExtraConvert = [](HloInstruction** instr) {
-    Match((*instr)->users()[0], m::Convert(instr, m::Op()).WithOneUse());
-    return true;
-  };
-  // user_count == 1 && (reduce-> {convert} ->bitcast)
-  return user_count == 1 &&
-         Match(dbias_user, m::Reduce(dbias, m::Op(), m::Op()).WithOneUse()) &&
-         (*dbias)->shape().rank() == 3 && ConsumeExtraConvert(dbias);
-}
-
 StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
     HloComputation* comp, HloInstruction* bmm_1_grad_1,
     HloInstruction* bmm_1_grad_2, HloInstruction* bmm_2_grad_1,
     HloInstruction* bmm_2_grad_2, HloInstruction* fwd_fmha_call,
-    HloInstruction* d_intermediate, HloInstruction* mask,
+    HloInstruction* dbias, HloInstruction* mask,
     std::string& bwd_custom_call_name, bool fwd_bmm_2_canonicalized,
     bool is_bmm2_grad1_canonicalized) {
   HloInstruction* rhs_bmm1_grad_gemm1;
@@ -1528,24 +1539,15 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   // Reserved placeholder for workspace
   output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
 
-  HloInstruction* dbias = nullptr;
-  if (d_intermediate) {
-    if (IsDbiasOnlyUserBesidesGradGemm(d_intermediate, bmm_1_grad_1,
-                                       bmm_1_grad_2, &dbias)) {
-      // Cudnn kernel only outputs dbias in this shape [1, num_heads, seq, seq],
-      // so we add a dimension of 1 to existing dbias' shape.
-      std::vector<int64_t> dbias_shape_vector =
-          SpanToVector(dbias->shape().dimensions());
-      dbias_shape_vector.insert(dbias_shape_vector.begin(), 1);
-      Shape cudnn_dbias_shape = ShapeUtil::MakeShape(
-          dbias->shape().element_type(), dbias_shape_vector);
-      output_shapes.push_back(cudnn_dbias_shape);
-    } else {
-      VLOG(2) << "Intermediate gradient has other users outside of gradient "
-                 "gemms and dbias"
-              << " which is not supported by CUDNN for now. Skipping.";
-      return false;
-    }
+  if (dbias) {
+    // Cudnn kernel only outputs dbias in this shape [1, num_heads, seq, seq],
+    // so we add a dimension of 1 to existing dbias' shape.
+    std::vector<int64_t> dbias_shape_vector =
+        SpanToVector(dbias->shape().dimensions());
+    dbias_shape_vector.insert(dbias_shape_vector.begin(), 1);
+    Shape cudnn_dbias_shape =
+        ShapeUtil::MakeShape(dbias->shape().element_type(), dbias_shape_vector);
+    output_shapes.push_back(cudnn_dbias_shape);
   }
   Shape call_shape = ShapeUtil::MakeTupleShape(output_shapes);
   HloInstruction* fmha_bwd_call =
@@ -1704,16 +1706,10 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
               comp->ReplaceInstruction(activation_gte, cloned_activation));
           continue;
         }
-        // check if dbias is the only user of d_intermediate besides
-        // bmm_1_grad_1 and bmm_1_grad_2 and the cudnn version is > 8.9.1. We
+        // check if dbias exist and the cudnn version is > 8.9.1. We
         // won't lower bwd if this condition is not met as we won't deal with
         // unswizzling now
-        HloInstruction* dbias = nullptr;
-        if (matched_bwd_result.matched_d_intermediate &&
-            !IsDbiasOnlyUserBesidesGradGemm(
-                matched_bwd_result.matched_d_intermediate,
-                matched_bwd_result.matched_bmm_1_grad_1,
-                matched_bwd_result.matched_bmm_1_grad_2, &dbias) &&
+        if (matched_bwd_result.matched_dbias &&
             !IsComputeCapabilityAndCudnnSupported(
                 compute_capability_, cudnn_version_, stream_executor_,
                 stream_executor::dnn::VersionInfo(8, 9, 1))) {
@@ -1753,8 +1749,7 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
                 matched_bwd_result.matched_bmm_1_grad_2,
                 matched_bwd_result.matched_bmm_2_grad_1,
                 matched_bwd_result.matched_bmm_2_grad_2, fwd_fmha_call,
-                matched_bwd_result.matched_d_intermediate,
-                matched_result.matched_mask,
+                matched_bwd_result.matched_dbias, matched_result.matched_mask,
                 matched_bwd_result.matched_custom_call_name,
                 matched_result.need_canonicalization,
                 matched_bwd_result.bmm_2_grad_1_need_canonicalization));

@@ -150,6 +150,7 @@ xla_cc_test(
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu:gemm_rewriter",
         "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu:variant_visitor",
         "//xla/tests:filecheck",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",

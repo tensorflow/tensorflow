@@ -141,14 +141,16 @@ class Thunk {
   // launch any "work" on device and only prepare thunks for execution, i.e.
   // we pre-load kernels on device and instantiate all command buffers.
   struct InitializeParams {
-    se::StreamExecutor* executor;
+    se::StreamExecutor* executor = nullptr;
     ExecutableSource src;
 
-    const BufferAllocations* buffer_allocations;
+    const BufferAllocations* buffer_allocations = nullptr;
 
     // Auxiliary stream for tracing command buffers. We use a separate stream to
     // avoid accidental tracing of unrelated activities on a main stream.
-    se::Stream* command_buffer_trace_stream;
+    se::Stream* command_buffer_trace_stream = nullptr;
+
+    const NcclExecuteParams* nccl_params = nullptr;
   };
 
   // Parameters passed to ExecuteOnStream. ExecuteOnStream is responsible for

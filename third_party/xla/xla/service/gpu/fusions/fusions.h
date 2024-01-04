@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
-#include <variant>
 
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -30,30 +29,89 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct LmhloFusionInfo {
-  mlir::lmhlo::FusionOp fusion_op;
-  absl::Span<const BufferAllocation* const> allocations;
+class FusionInfo {
+ public:
+  explicit FusionInfo(const HloFusionAnalysis& analysis)
+      : analysis_(analysis) {}
+  virtual ~FusionInfo() = default;
 
-  explicit LmhloFusionInfo(
-      mlir::lmhlo::FusionOp fusion_op,
-      absl::Span<const BufferAllocation* const> allocations)
-      : fusion_op(fusion_op), allocations(allocations) {}
+  const HloFusionAnalysis& analysis() const { return analysis_; }
+
+  // If the fusion is a DUS fusion, returns whether it can be emitted in place.
+  // Undefined if the fusion is not a DUS fusion.
+  virtual bool CanEmitDynamicUpdateSliceInPlace() const = 0;
+
+  // Attempts to create a memcpy fusion, if possible. Returns nullopt if the
+  // fusion failed to pattern match. Returns an error if the fusion successfully
+  // pattern matched, but buffer assignment failed.
+  // TODO(b/204548848): Find a proper abstraction for this once LMHLO is gone.
+  virtual std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
+  GetCopyFusion() const = 0;
+
+ private:
+  const HloFusionAnalysis& analysis_;
 };
 
-struct HloFusionInfo {
-  const HloFusionInstruction* instr;
-  const BufferAssignment* buffer_assignment;
+class LmhloFusionInfo : public FusionInfo {
+ public:
+  LmhloFusionInfo(const HloFusionAnalysis& analysis,
+                  mlir::lmhlo::FusionOp fusion_op,
+                  absl::Span<const BufferAllocation* const> allocations)
+      : FusionInfo(analysis),
+        fusion_op_(fusion_op),
+        allocations_(allocations) {}
 
-  explicit HloFusionInfo(const HloFusionInstruction* instr,
-                         const BufferAssignment* buffer_assignment)
-      : instr(instr), buffer_assignment(buffer_assignment) {}
+  bool CanEmitDynamicUpdateSliceInPlace() const override;
+  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
+      const override;
+
+ private:
+  mlir::lmhlo::FusionOp fusion_op_;
+  absl::Span<const BufferAllocation* const> allocations_;
+};
+
+class HloFusionInfo : public FusionInfo {
+ public:
+  HloFusionInfo(const HloFusionAnalysis& analysis,
+                const HloFusionInstruction* instr,
+                const BufferAssignment* buffer_assignment)
+      : FusionInfo(analysis),
+        instr_(instr),
+        buffer_assignment_(buffer_assignment) {}
+
+  bool CanEmitDynamicUpdateSliceInPlace() const override;
+  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
+      const override;
+
+ private:
+  const HloFusionInstruction* instr_;
+  const BufferAssignment* buffer_assignment_;
+};
+
+class PreBufferAssignmentFusionInfo : public FusionInfo {
+ public:
+  explicit PreBufferAssignmentFusionInfo(const HloFusionAnalysis& analysis)
+      : FusionInfo(analysis) {}
+
+  bool CanEmitDynamicUpdateSliceInPlace() const override {
+    // Optimistically assume all DUS fusions are in-place.
+    return true;
+  }
+
+  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
+      const override {
+    // Copy fusions can't be created without buffer assignment. Note:
+    // technically, this is only needed to generate the chunk, the validation
+    // itself could be done without a buffer assignment. However, we currently
+    // have no use for this, so it's OK to always fall back to the loop fusion.
+    return std::nullopt;
+  }
 };
 
 // Returns the emitter for the given fusion. Returns nullopt if the fusion
 // type is not yet supported.
-StatusOr<std::optional<std::unique_ptr<FusionInterface>>> GetFusionEmitter(
-    HloFusionAnalysis& analysis,
-    std::variant<HloFusionInfo, LmhloFusionInfo> fusion_info);
+StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
+    const FusionInfo& fusion_info);
 
 }  // namespace gpu
 }  // namespace xla
