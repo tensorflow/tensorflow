@@ -79,11 +79,13 @@ MATCHER_P2(MatchInstrIndexing, operand_id, indexing_map_matchers, "") {
 MATCHER_P4(
     MatchSymbolicTile, affine_map_string, sizes, max_sizes,
     max_strides_and_offsets,
-    absl::StrCat(negation ? "equals " : "doesn't equal ", "symbolic tile ",
-                 affine_map_string, " where sizes_ ",
-                 DescribeMatcher<std::vector<std::optional<int64_t>>>(sizes),
-                 " and max_sizes_ ",
-                 DescribeMatcher<std::vector<int64_t>>(max_sizes))) {
+    absl::StrCat(
+        negation ? "equals " : "doesn't equal ", "symbolic tile ",
+        affine_map_string, " where sizes_ ",
+        DescribeMatcher<std::vector<std::optional<int64_t>>>(sizes),
+        ", max_sizes_ ", DescribeMatcher<std::vector<int64_t>>(max_sizes),
+        " and ", "max_strides_and_offsets_ ",
+        DescribeMatcher<std::vector<int64_t>>(max_strides_and_offsets))) {
   return ExplainMatchResult(StrEq(affine_map_string),
                             ToString(arg.affine_map()), result_listener) &&
          ExplainMatchResult(sizes, arg.sizes(), result_listener) &&
@@ -1363,6 +1365,140 @@ TEST_F(SymbolicTileTest,
   EXPECT_EQ(output_tile.TryPropagateTileThroughIndexingMap(
                 *input_indexing.indexing_maps[0].begin()),
             std::nullopt);
+}
+
+TEST_F(SymbolicTileTest,
+       CanPropagateTileThroughElementwiseOpWithoutSpecializedTileSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[150] parameter(0)
+      p1 = f32[150] parameter(1)
+      ROOT add = f32[150] add(p0, p1)
+    }
+  )"));
+
+  SymbolicTile output_tile(/*target_shape=*/{150}, &mlir_context_);
+
+  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
+                  *input_indexing.indexing_maps[0].begin()),
+              Optional(MatchSymbolicTile(
+                  "(d0, d1)[s0] -> (d0 * s0 + d1)", ElementsAre(std::nullopt),
+                  ElementsAre(150), ElementsAre(150, 150))));
+}
+
+TEST_F(SymbolicTileTest,
+       CanPropagateTileFromBroadcastOutputToInputWithoutSpecializedTileSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[150] parameter(0)
+      ROOT broadcast = f32[157,150] broadcast(p0), dimensions={1}
+    }
+  )"));
+
+  SymbolicTile output_tile(/*target_shape=*/{157, 150}, &mlir_context_);
+
+  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
+                  *input_indexing.indexing_maps[0].begin()),
+              Optional(MatchSymbolicTile(
+                  "(d0, d1, d2, d3)[s0, s1] -> (d2 * s1 + d3)",
+                  ElementsAre(std::nullopt, std::nullopt),
+                  ElementsAre(157, 150), ElementsAre(157, 157, 150, 150))));
+}
+
+TEST_F(SymbolicTileTest,
+       CanPropagateTileFromReduceOutputToInputWithoutSpecializedTileSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    max {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT max = f32[] maximum(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = f32[125,150] parameter(0)
+      c0 = f32[] constant(-inf)
+      ROOT reduce = f32[150] reduce(p0, c0), dimensions={0}, to_apply=max
+    }
+  )"));
+
+  SymbolicTile output_tile(/*target_shape=*/{150}, &mlir_context_);
+
+  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
+                  *input_indexing.indexing_maps[0].begin()),
+              Optional(MatchSymbolicTile(
+                  "(d0, d1)[s0, s1] -> (s0, d0 * s1 + d1)",
+                  ElementsAre(125, std::nullopt), ElementsAre(125, 150),
+                  ElementsAre(150, 150))));
+}
+
+TEST_F(SymbolicTileTest,
+       CanPropagateTileThroughReverseWithoutSpecializedTileSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[179] parameter(0)
+      ROOT reverse = f32[179] reverse(p0), dimensions={0}
+    }
+  )"));
+
+  SymbolicTile output_tile(/*target_shape=*/{179}, &mlir_context_);
+
+  EXPECT_THAT(
+      output_tile.TryPropagateTileThroughIndexingMap(
+          *input_indexing.indexing_maps[0].begin()),
+      Optional(MatchSymbolicTile("(d0, d1)[s0] -> (-(d0 * s0 + d1) + 178)",
+                                 ElementsAre(std::nullopt), ElementsAre(179),
+                                 ElementsAre(179, 179))));
+}
+
+TEST_F(SymbolicTileTest,
+       CanPropagateTileFromSliceOutputToInputWithoutSpecializedTileSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[120,142] parameter(0)
+      ROOT slice = f32[10,21] slice(p0), slice={[40:60:2], [20:104:4]}
+    }
+  )"));
+
+  SymbolicTile output_tile(/*target_shape=*/{10, 21}, &mlir_context_);
+
+  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
+                  *input_indexing.indexing_maps[0].begin()),
+              Optional(MatchSymbolicTile(
+                  "(d0, d1, d2, d3)[s0, s1] -> "
+                  "((d0 * s0 + d1) * 2 + 40, (d2 * s1 + d3) * 4 + 20)",
+                  ElementsAre(std::nullopt, std::nullopt), ElementsAre(10, 21),
+                  ElementsAre(10, 10, 21, 21))));
+}
+
+TEST_F(SymbolicTileTest,
+       CanPropagateTileThroughTransposeWithoutSpecializedTileSizes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto input_indexing,
+                          GetOutputToInputIndexingForEntryComputation(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[21,10] parameter(0)
+      ROOT transpose = f32[10,21] transpose(p0), dimensions={1,0}
+    }
+  )"));
+
+  SymbolicTile output_tile(/*target_shape=*/{10, 21}, &mlir_context_);
+
+  EXPECT_THAT(output_tile.TryPropagateTileThroughIndexingMap(
+                  *input_indexing.indexing_maps[0].begin()),
+              Optional(MatchSymbolicTile(
+                  "(d0, d1, d2, d3)[s0, s1] -> (d2 * s1 + d3, d0 * s0 + d1)",
+                  ElementsAre(std::nullopt, std::nullopt), ElementsAre(10, 21),
+                  ElementsAre(10, 10, 21, 21))));
 }
 
 }  // namespace
