@@ -88,13 +88,13 @@ class TrackedTfrtCpuDeviceBuffer {
       absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
       absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4>
           definition_events,
-      std::function<void()> on_delete_callback = nullptr);
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   TrackedTfrtCpuDeviceBuffer(
       bool is_tuple,
       absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
       tsl::AsyncValueRef<runtime::CpuEvent> definition_event,
-      std::function<void()> on_delete_callback = nullptr);
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   // Move-only.
   TrackedTfrtCpuDeviceBuffer(TrackedTfrtCpuDeviceBuffer&&) = default;
@@ -144,7 +144,7 @@ class TrackedTfrtCpuDeviceBuffer {
   absl::InlinedVector<tsl::AsyncValueRef<runtime::CpuEvent>, 4> usage_events_;
   // A callback to call when the TrackedTfrtCpuDeviceBuffer is about to be
   // destroyed.
-  std::function<void()> on_delete_callback_;
+  absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 }  // namespace xla
 

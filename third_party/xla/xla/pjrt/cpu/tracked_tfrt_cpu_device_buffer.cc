@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/runtime/cpu_event.h"
@@ -79,7 +80,7 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
     bool is_tuple,
     absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
     absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
-    std::function<void()> on_delete_callback)
+    absl::AnyInvocable<void() &&> on_delete_callback)
     : TrackedTfrtCpuDeviceBuffer(is_tuple, std::move(buffers),
                                  AfterAll(definition_events),
                                  std::move(on_delete_callback)) {}
@@ -88,7 +89,7 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
     bool is_tuple,
     absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
     tsl::AsyncValueRef<CpuEvent> definition_event,
-    std::function<void()> on_delete_callback)
+    absl::AnyInvocable<void() &&> on_delete_callback)
     : is_tuple_(is_tuple),
       buffers_(std::move(buffers)),
       definition_event_(std::move(definition_event)),
@@ -110,7 +111,7 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
 TrackedTfrtCpuDeviceBuffer::~TrackedTfrtCpuDeviceBuffer() {
   ReleaseDeviceMemory();
   if (on_delete_callback_) {
-    on_delete_callback_();
+    std::move(on_delete_callback_)();
   }
 }
 

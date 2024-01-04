@@ -85,6 +85,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -755,7 +756,7 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(
   auto new_device_buffer = std::make_shared<TrackedDeviceBuffer>(
       tracked_buffer->allocator(), device()->local_device_id().value(),
       std::move(buffers), std::move(definition_events),
-      /*on_delete_callback=*/std::function<void()>());
+      /*on_delete_callback=*/nullptr);
 
   // Make the new buffer which is identical to the old, except for the new
   // definition event.
@@ -788,7 +789,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer, PjRtDevice* device,
     const Layout* device_layout) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
@@ -840,7 +841,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         (host_buffer_semantics ==
              HostBufferSemantics::kImmutableOnlyDuringCall ||
          can_use_zero_copy)) {
-      std::function<void()> on_delete_callback;
+      absl::AnyInvocable<void() &&> on_delete_callback;
       se::DeviceMemoryBase buffer;
       // If we are on the host platform and the input buffer is sufficiently
       // aligned, we can simply point to the input array's data without any
@@ -856,7 +857,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         buffer = se::DeviceMemoryBase(staging_buffer, size);
         std::memcpy(staging_buffer, data, size);
         if (on_done_with_host_buffer) {
-          on_done_with_host_buffer();
+          std::move(on_done_with_host_buffer)();
         }
         on_delete_callback = [staging_buffer, host_memory_allocator =
                                                   host_memory_allocator()]() {
@@ -924,7 +925,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       std::memcpy(staging_buffer.get(), data, size);
     }
     if (on_done_with_host_buffer) {
-      on_done_with_host_buffer();
+      std::move(on_done_with_host_buffer)();
       on_done_with_host_buffer = nullptr;
     }
   }
@@ -941,7 +942,11 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
        py_buffer{py_buffer.get()},
        on_device_shape{py_buffer->on_device_shape()},
        staging_buffer{std::move(staging_buffer)},
-       on_done_with_host_buffer{std::move(on_done_with_host_buffer)},
+       on_done_with_host_buffer =
+           on_done_with_host_buffer
+               ? std::make_shared<absl::AnyInvocable<void() &&>>(
+                     std::move(on_done_with_host_buffer))
+               : nullptr,
        host_buffer_semantics, transpose{std::move(transpose)}]() {
         PjRtStreamExecutorBuffer::ScopedHold device_buffer(
             movable_device_buffer);
@@ -991,9 +996,10 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         local_device->ThenExecuteCallback(
             local_device->host_to_device_stream(),
             [staging_buffer{std::move(staging_buffer)},
-             on_done_with_host_buffer{std::move(on_done_with_host_buffer)}]() {
+             on_done_with_host_buffer{
+                 std::move(on_done_with_host_buffer)}]() mutable {
               if (on_done_with_host_buffer) {
-                on_done_with_host_buffer();
+                std::move (*on_done_with_host_buffer)();
               }
             });
       };
@@ -1012,10 +1018,11 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
-  return BufferFromHostBuffer(data, type, dims, byte_strides,
-                              host_buffer_semantics, on_done_with_host_buffer,
-                              device, /*device_layout=*/nullptr);
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+    PjRtDevice* device) {
+  return BufferFromHostBuffer(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      std::move(on_done_with_host_buffer), device, /*device_layout=*/nullptr);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>

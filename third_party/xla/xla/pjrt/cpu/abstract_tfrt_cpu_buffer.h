@@ -269,9 +269,9 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       PjRtClient::HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer, const Shape& shape,
-      AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
-      TransposePlanCache* transpose_cache);
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      const Shape& shape, AsyncWorkRunner* async_work_runner,
+      absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache);
 
  protected:
   virtual absl::string_view buffer_name() const = 0;

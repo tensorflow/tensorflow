@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/utils.h"
@@ -220,7 +221,7 @@ TrackedDeviceBuffer::TrackedDeviceBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal,
     absl::Span<se::DeviceMemoryBase const> device_memory,
     absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
-    std::function<void()> on_delete_callback)
+    absl::AnyInvocable<void() &&> on_delete_callback)
     : allocator_(allocator),
       device_ordinal_(device_ordinal),
       device_memory_(device_memory.begin(), device_memory.end()),
@@ -239,7 +240,7 @@ TrackedDeviceBuffer::~TrackedDeviceBuffer() {
     }
   }
   if (on_delete_callback_) {
-    on_delete_callback_();
+    std::move(on_delete_callback_)();
   }
 }
 

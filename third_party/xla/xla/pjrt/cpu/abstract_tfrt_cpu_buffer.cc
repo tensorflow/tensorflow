@@ -682,7 +682,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     PjRtClient::HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, const Shape& shape,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer, const Shape& shape,
     AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
     TransposePlanCache* transpose_cache) {
   bool has_default_layout =
@@ -700,7 +700,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         (cpu_function_runtime::MinAlign() - 1)) == 0);
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
-  std::function<void()> on_delete_callback;
+  absl::AnyInvocable<void() &&> on_delete_callback;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
   if (can_use_zero_copy) {
     auto device_buffer = std::make_shared<MaybeOwningCpuMemory>(
@@ -747,7 +747,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         PackInt4(src_data_span, dst_data_span);
       }
       if (on_done_with_host_buffer) {
-        on_done_with_host_buffer();
+        std::move(on_done_with_host_buffer)();
         on_done_with_host_buffer = nullptr;
       }
     } else {
@@ -758,7 +758,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
       if (should_sync_copy) {
         std::memcpy(dst_data_ptr, data, byte_size);
         if (on_done_with_host_buffer) {
-          on_done_with_host_buffer();
+          std::move(on_done_with_host_buffer)();
           on_done_with_host_buffer = nullptr;
         }
       } else {
@@ -773,7 +773,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
               tsl::profiler::TraceMe traceme("H2D Dispatch");
               std::memcpy(dst_data_ptr, data, byte_size);
               if (on_done_with_host_buffer) {
-                on_done_with_host_buffer();
+                std::move(on_done_with_host_buffer)();
                 on_done_with_host_buffer = nullptr;
               }
               // Signal copy is complete.
