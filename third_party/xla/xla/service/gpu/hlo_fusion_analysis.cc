@@ -50,39 +50,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-const auto kDimX = TilingScheme::DimX;
-const auto kLinearIndexingX = TilingScheme::LinearIndexingX;
-const auto kStridedIndexingX = TilingScheme::StridedIndexingX;
-
-std::optional<TilingScheme> ComputeTransposeTilingScheme(
-    const std::optional<TransposeDescription>& tiled_transpose) {
-  if (!tiled_transpose) {
-    return std::nullopt;
-  }
-
-  constexpr int kNumRows = 4;
-  static_assert(WarpSize() % kNumRows == 0);
-
-  // 3D view over the input shape.
-  Vector3 dims = tiled_transpose->dimensions;
-  Vector3 order = tiled_transpose->permutation;
-
-  Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
-  Vector3 tile_sizes{1, 1, 1};
-  tile_sizes[order[2]] = WarpSize() / kNumRows;
-  Vector3 num_threads{1, 1, WarpSize()};
-  num_threads[order[2]] = kNumRows;
-
-  return TilingScheme(
-      /*permuted_dims*/ permuted_dims,
-      /*tile_sizes=*/tile_sizes,
-      /*num_threads=*/num_threads,
-      /*indexing_order=*/kLinearIndexingX,
-      /*vector_size=*/1,
-      /*scaling_factor=*/1,
-      /*tiling_dimensions=*/{order[2], 2});
-}
-
 // Returns true if `instr` is a non-strided slice.
 bool IsSliceWithUnitStrides(const HloInstruction* instr) {
   auto slice = DynCast<HloSliceInstruction>(instr);
@@ -261,7 +228,6 @@ HloFusionAnalysis::HloFusionAnalysis(
       device_info_(device_info),
       tiled_transpose_(tiled_transpose),
       input_output_info_(std::move(input_output_info)),
-      transpose_tiling_scheme_(ComputeTransposeTilingScheme(tiled_transpose_)),
       loop_fusion_config_(ComputeLoopFusionConfig()) {}
 
 // static
@@ -371,15 +337,12 @@ StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() const {
       return CalculateLaunchDimensions(GetElementShape(), *device_info_,
                                        *loop_fusion_config);
     }
-    case EmitterFusionKind::kReduction: {
+    case EmitterFusionKind::kReduction:
       return absl::UnimplementedError(
           "GetLaunchDimensions is not implemented for reduction fusions");
-    }
-    case EmitterFusionKind::kTranspose: {
-      auto* tiling_scheme = GetTransposeTilingScheme();
-      return LaunchDimensions(tiling_scheme->GetNumberOfBlocksPhysical(),
-                              tiling_scheme->GetNumThreadsPerBlockPhysical());
-    }
+    case EmitterFusionKind::kTranspose:
+      return absl::UnimplementedError(
+          "GetLaunchDimensions is not implemented for transpose fusions");
     case EmitterFusionKind::kInputSlices: {
       auto* root = fusion_roots().front();
       const auto& shape = root->operands()[0]->shape();
