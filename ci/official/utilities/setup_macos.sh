@@ -99,6 +99,10 @@ fi
 # a service account that has the right permissions to be able to do so.
 set +x
 if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  # Python 3.12 removed the module `imp` which is needed by gcloud CLI so we set
+  # `CLOUDSDK_PYTHON` to Python 3.11 which is the system Python on TFCI Mac
+  # VMs.
+  export CLOUDSDK_PYTHON=$(which python3.11)
   gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
 fi
 set -x
