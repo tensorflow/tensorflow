@@ -18,11 +18,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
@@ -95,20 +97,29 @@ class CostGraph {
       NodeIdx src_idx = pair.first->node_idx;
       NodeIdx dst_idx = pair.second->node_idx;
 
-      if (node_lens_[src_idx] != node_lens_[dst_idx]) {
-        continue;
-      }
-
       Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
+      absl::flat_hash_map<std::string, NodeStrategyIdx>
+          src_strategy_name_to_idx_map;
       for (NodeStrategyIdx i = 0; i < node_lens_[src_idx]; ++i) {
-        if (strategy_groups[src_idx]->strategies[i].communication_cost > 0) {
-          CHECK_LE(
-              std::abs(
-                  strategy_groups[src_idx]->strategies[i].communication_cost -
-                  strategy_groups[dst_idx]->strategies[i].communication_cost),
-              1e-6);
-          edge_cost(i, i) =
-              -strategy_groups[src_idx]->strategies[i].communication_cost;
+        const ShardingStrategy& strategy =
+            strategy_groups[src_idx]->strategies[i];
+        if (strategy.communication_cost > 0) {
+          src_strategy_name_to_idx_map[strategy.name] = i;
+        }
+      }
+      for (NodeStrategyIdx i = 0; i < node_lens_[dst_idx]; ++i) {
+        const ShardingStrategy& dst_strategy =
+            strategy_groups[dst_idx]->strategies[i];
+        if (dst_strategy.communication_cost > 0) {
+          auto it = src_strategy_name_to_idx_map.find(dst_strategy.name);
+          if (it != src_strategy_name_to_idx_map.end()) {
+            const ShardingStrategy& src_strategy =
+                strategy_groups[src_idx]->strategies[it->second];
+            CHECK_LE(std::abs(src_strategy.communication_cost -
+                              dst_strategy.communication_cost),
+                     1e-6);
+            edge_cost(it->second, i) = -src_strategy.communication_cost;
+          }
         }
       }
       AddEdgeCost(src_idx, dst_idx, edge_cost);
