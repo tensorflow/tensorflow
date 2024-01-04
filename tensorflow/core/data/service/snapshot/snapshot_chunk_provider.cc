@@ -31,16 +31,17 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tsl/distributed_runtime/rpc/grpc_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
@@ -66,7 +67,8 @@ std::string AbsPath(absl::string_view snapshot_path, absl::string_view chunk) {
 // Waits for a short period of time before retrying.
 void Backoff(int num_retries, tsl::Env* env) {
   if (num_retries >= 1) {  // Does not backoff for the first try.
-    env->SleepForMicroseconds(tsl::ComputeBackoffMicroseconds(num_retries - 1));
+    absl::Duration retry_backoff = tsl::ComputeRetryBackoff(num_retries - 1);
+    env->SleepForMicroseconds(absl::ToInt64Microseconds(retry_backoff));
   }
 }
 

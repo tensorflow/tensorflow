@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/distributed_runtime/rpc/grpc_util.h"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "grpcpp/grpcpp.h"
@@ -156,6 +157,27 @@ TEST(GrpcProto, ParseFromString) {
         << c.length << " " << c.slices;
     ASSERT_TRUE(parsed.ParseFromString(parsed_str));
     ASSERT_EQ(proto.DebugString(), parsed.DebugString());
+  }
+}
+
+TEST(GrpcUtilTest, ComputeBackoffMicroseconds) {
+  for (int i = 0; i < 30; ++i) {
+    EXPECT_LE(0.4 * 1000 + 0.6 * 1000 * std::pow(1.3, i),
+              ComputeBackoffMicroseconds(/*current_retry_attempt=*/i));
+    EXPECT_LE(ComputeBackoffMicroseconds(/*current_retry_attempt=*/i),
+              0.4 * 1000 + 1000 * std::pow(1.3, i));
+  }
+}
+
+TEST(GrpcUtilTest, ComputeBackoffMicroseconds_MinMaxDelays) {
+  for (int i = 0; i < 30; ++i) {
+    EXPECT_EQ(ComputeBackoffMicroseconds(/*current_retry_attempt=*/i,
+                                         /*min_delay=*/10000000),
+              10000000);
+    EXPECT_EQ(ComputeBackoffMicroseconds(/*current_retry_attempt=*/i,
+                                         /*min_delay=*/1,
+                                         /*max_delay=*/1),
+              1);
   }
 }
 
