@@ -101,11 +101,6 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatisticsNoLock() {
 #endif
 }
 
-void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
-  tsl::mutex_lock lock(lock_);
-  PrintAllocatorStatisticsNoLock();
-}
-
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
