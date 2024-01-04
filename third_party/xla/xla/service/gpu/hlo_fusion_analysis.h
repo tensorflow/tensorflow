@@ -79,12 +79,6 @@ class HloFusionAnalysis {
   // be `kTriton`.
   StatusOr<LaunchDimensions> GetLaunchDimensions() const;
 
-  // Calculates the loop fusion config. Returns `nullptr` if the fusion is not a
-  // loop.
-  const LaunchDimensionsConfig* GetLoopFusionConfig() const {
-    return loop_fusion_config_.has_value() ? &*loop_fusion_config_ : nullptr;
-  }
-
   // Returns the hero reduction of the computation.
   const HloInstruction* FindHeroReduction() const;
 
@@ -114,8 +108,6 @@ class HloFusionAnalysis {
                     std::optional<TransposeDescription> tiled_transpose,
                     InputOutputInfo input_output_info);
 
-  const Shape& GetElementShape() const;
-  std::optional<LaunchDimensionsConfig> ComputeLoopFusionConfig() const;
   bool HasConsistentTransposeHeros() const;
 
   FusionBackendConfig fusion_backend_config_;
@@ -125,8 +117,6 @@ class HloFusionAnalysis {
   const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;
   InputOutputInfo input_output_info_;
-
-  std::optional<LaunchDimensionsConfig> loop_fusion_config_;
 };
 
 // Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer

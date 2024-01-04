@@ -34,8 +34,7 @@ namespace gpu {
 // Generic loop fusion.
 class LoopFusion : public KernelFusionEmitterBase {
  public:
-  explicit LoopFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis) {}
+  explicit LoopFusion(const HloFusionAnalysis& analysis);
   std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
 
  protected:
@@ -48,6 +47,7 @@ class LoopFusion : public KernelFusionEmitterBase {
 
  private:
   const HloFusionAnalysis& analysis_;
+  LaunchDimensionsConfig config_;
 };
 
 }  // namespace gpu
