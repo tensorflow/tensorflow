@@ -3659,6 +3659,92 @@ ENTRY main.82 {
               GmockMatch(m::Tuple(m::Dot(), m::Dot(), m::Dot(), m::Dot())));
 }
 
+TEST_F(CudnnFusedMhaRewriterTestHloTest, F16TrainingBmm2Grad1IncorrectPattern) {
+  const char* module_str = R"(
+HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,64,128]{3,2,1,0},f16[2,6,64,128]{3,2,1,0},f16[2,6,128,64]{3,2,1,0},f16[2,6,128,64]{3,2,1,0})->(f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,128]{3,2,1,0})}, allow_spmd_sharding_propagation_to_output={true,true,true,true}
+
+region_0.21 {
+  Arg_0.22 = f16[] parameter(0)
+  Arg_1.23 = f16[] parameter(1)
+  ROOT maximum = f16[] maximum(Arg_0.22, Arg_1.23)
+}
+
+region_1.33 {
+  Arg_0.34 = f32[] parameter(0)
+  Arg_1.35 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0.34, Arg_1.35)
+}
+
+region_2.55 {
+  Arg_0.56 = f16[] parameter(0)
+  Arg_1.57 = f16[] parameter(1)
+  ROOT add.1 = f16[] add(Arg_0.56, Arg_1.57)
+}
+
+ENTRY main.82 {
+  Arg_0.1 = f16[2,6,64,128]{3,2,1,0} parameter(0), sharding={replicated}
+  Arg_1.2 = f16[2,6,64,128]{3,2,1,0} parameter(1), sharding={replicated}
+  dot.17 = f16[2,6,128,128]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  constant.22 = f16[] constant(2)
+  broadcast.24 = f16[2,6,128,128]{3,2,1,0} broadcast(constant.22), dimensions={}
+  multiply.2 = f16[2,6,128,128]{3,2,1,0} multiply(dot.17, broadcast.24)
+  constant.19 = f16[] constant(1)
+  broadcast.13 = f16[2,6,128,128]{3,2,1,0} broadcast(constant.19), dimensions={}
+  add.3 = f16[2,6,128,128]{3,2,1,0} add(multiply.2, broadcast.13)
+  constant.21 = f16[] constant(0)
+  constant.15 = f16[] constant(-inf)
+  reduce.25 = f16[2,6,128]{2,1,0} reduce(add.3, constant.15), dimensions={3}, to_apply=region_0.21
+  broadcast.17 = f16[2,6,128,128]{3,2,1,0} broadcast(reduce.25), dimensions={0,1,2}
+  subtract.1 = f16[2,6,128,128]{3,2,1,0} subtract(add.3, broadcast.17)
+  exponential.1 = f16[2,6,128,128]{3,2,1,0} exponential(subtract.1)
+  convert.5 = f32[2,6,128,128]{3,2,1,0} convert(exponential.1)
+  constant.17 = f32[] constant(0)
+  reduce.37 = f32[2,6,128]{2,1,0} reduce(convert.5, constant.17), dimensions={3}, to_apply=region_1.33
+  convert.9 = f16[2,6,128]{2,1,0} convert(reduce.37)
+  broadcast.26 = f16[2,6,128,128]{3,2,1,0} broadcast(convert.9), dimensions={0,1,2}
+  divide.5 = f16[2,6,128,128]{3,2,1,0} divide(exponential.1, broadcast.26)
+  Arg_2.3 = f16[2,6,128,64]{3,2,1,0} parameter(2), sharding={replicated}
+  dot.46 = f16[2,6,128,64]{3,2,1,0} dot(divide.5, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  Arg_3.4 = f16[2,6,128,64]{3,2,1,0} parameter(3), sharding={replicated}
+  dot.49 = f16[2,6,128,128]{3,2,1,0} dot(Arg_3.4, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  divide.4 = f16[2,6,128,128]{3,2,1,0} divide(dot.49, broadcast.26)
+  broadcast.20 = f16[2,6,128]{2,1,0} broadcast(constant.19), dimensions={}
+  multiply.3 = f16[2,6,128]{2,1,0} multiply(convert.9, convert.9)
+  divide.3 = f16[2,6,128]{2,1,0} divide(broadcast.20, multiply.3)
+  broadcast.21 = f16[2,6,128,128]{3,2,1,0} broadcast(divide.3), dimensions={0,1,2}
+  multiply.4 = f16[2,6,128,128]{3,2,1,0} multiply(dot.49, broadcast.21)
+  multiply.5 = f16[2,6,128,128]{3,2,1,0} multiply(multiply.4, exponential.1)
+  reduce.59 = f16[2,6,128]{2,1,0} reduce(multiply.5, constant.21), dimensions={3}, to_apply=region_2.55
+  negate.2 = f16[2,6,128]{2,1,0} negate(reduce.59)
+  broadcast.25 = f16[2,6,128,128]{3,2,1,0} broadcast(negate.2), dimensions={0,1,2}
+  add.5 = f16[2,6,128,128]{3,2,1,0} add(divide.4, broadcast.25)
+  multiply.8 = f16[2,6,128,128]{3,2,1,0} multiply(add.5, exponential.1)
+  multiply.9 = f16[2,6,128,128]{3,2,1,0} multiply(multiply.8, broadcast.24)
+  dot.80 = f16[2,6,128,64]{3,2,1,0} dot(multiply.9, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  dot = f16[2,6,64,128]{3,2,1,0} dot(Arg_0.1, multiply.9), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  // add another user of ds multiply.9 here, neg.1 should not be pattern matched as bmm2grad1
+  neg.1 = f16[2,6,128,128]{3,2,1,0} negate(multiply.9)
+  dot.1 = f16[2,6,128,64]{3,2,1,0} dot(divide.5, Arg_3.4), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  ROOT tuple.81 = (f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,64,128]{3,2,1,0}, f16[2,6,128,64]{3,2,1,0}, f16[2,6,128,128]{3,2,1,0}) tuple(dot.46, dot.80, dot, dot.1, neg.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{
+      GetCudaComputeCapability(),
+      GetCudnnVersionWithDbiasAndMaskBwdInputSupport()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  HloDCE dce;
+  TF_ASSERT_OK(RunHloPass(&dce, m.get()).status());
+
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Dot(), m::Dot(), m::Dot(), m::Dot(),
+                                  m::Negate())));
+}
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla
