@@ -845,7 +845,7 @@ def quantize(
     )
 
   if quantization_options.representative_datasets:
-    representative_dataset = repr_dataset.RepresentativeDatasetLoader(
+    representative_dataset = repr_dataset.TfRecordRepresentativeDatasetLoader(
         quantization_options.representative_datasets
     ).load()
 
