@@ -1210,7 +1210,7 @@ ENTRY e {
 
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: ENTRY
-; CHECK: f32[5,3,4]{2,1,0} bitcast(%p1)
+; CHECK: f32[5,3,4]{2,1,0} bitcast
 ; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: "block_m":
@@ -1233,7 +1233,7 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(kHloText, R"(
-; CHECK: ENTRY
+; CHECK: ROOT
 ; CHECK: transpose(
 ; CHECK: bitcast(
 ; CHECK: kCustom
@@ -1533,7 +1533,9 @@ ENTRY e {
 
   // The fusion has separate parameters for each scope.
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p0, %p0), kind=kCustom
+; CHECK: ENTRY
+; CHECK: %[[p0:.*]] = pred[5,5]{1,0} parameter(0)
+; CHECK: fusion(%[[p0]], %[[p0]]), kind=kCustom
 ; CHECK-SAME: "block_m":
 )");
 
@@ -2368,7 +2370,7 @@ ENTRY e {
 
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: %triton_gemm_r_computation (
-; CHECK: %triton_gemm_r =
+; CHECK: ROOT %triton_gemm_r
 ; CHECK-SAME: fusion
 )");
 }

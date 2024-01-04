@@ -333,7 +333,7 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -371,7 +371,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -411,7 +411,7 @@ ENTRY AddDotsFunc {
                     R"(
 ; CHECK-NOT:     copy
 ;
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,4,2], y: f32[3,4,5]) -> f32[2,5] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[3,4,2], {{.*}}: f32[3,4,5]) -> f32[2,5] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,4,2]{2,1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4,5]{2,1,0} parameter(1)
 ; CHECK-DAG:     [[BITCAST0:%[^ ]+]] = f32[2,12]{0,1} bitcast([[P0]])
@@ -452,7 +452,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,2], y: f32[3,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[3,2], {{.*}}: f32[3,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -491,7 +491,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,3,2], y: f32[5,3,4]) -> f32[5,2,4] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[5,3,2], {{.*}}: f32[5,3,4]) -> f32[5,2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,3,2]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -530,7 +530,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2.5e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,5,3], y: f32[5,3,4]) -> f32[5,2,4] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,5,3], {{.*}}: f32[5,3,4]) -> f32[5,2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,5,3]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -569,7 +569,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2.5e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[3,2,5], y: f32[5,3,4]) -> f32[5,2,4] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[3,2,5], {{.*}}: f32[5,3,4]) -> f32[5,2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[3,2,5]{2,1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-DAG:     [[FUSION:%[^ ]+]] = f32[5,2,3]{2,1,0} transpose([[P0]])
@@ -610,7 +610,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[20000,4,3,2], y: f32[20000,4,3,4]) -> f32[20000,4,2,4] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[20000,4,3,2], {{.*}}: f32[20000,4,3,4]) -> f32[20000,4,2,4] {
 ; CHECK:    [[P0:%[^ ]+]] = f32[20000,4,3,2]{3,2,1,0} parameter(0)
 ; CHECK:    [[BC0:%[^ ]+]] = f32[80000,3,2]{2,1,0} bitcast([[P0]])
 ; CHECK:    [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
@@ -652,7 +652,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,3], y: f32[3,4]) -> f32[4,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[4,2] {
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P1]], [[P0]]),
@@ -691,7 +691,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2.5e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,2,3], y: f32[5,3,4]) -> f32[2,5,4] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[5,2,3], {{.*}}: f32[5,3,4]) -> f32[2,5,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,2,3]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -731,7 +731,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2.5e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[5,2,3], y: f32[5,3,4]) -> f32[2,4,5] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[5,2,3], {{.*}}: f32[5,3,4]) -> f32[2,4,5] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[5,2,3]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[5,3,4]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -773,7 +773,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -821,7 +821,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-4, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: c64[2,2], y: c64[2,2]) -> c64[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: c64[2,2], {{.*}}: c64[2,2]) -> c64[2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = c64[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = c64[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -900,7 +900,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2]) -> f32[2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = {{.*}} custom-call([[P0]], [[P1]]),
@@ -1490,7 +1490,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], param_2: f32[2,2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2], {{.*}}: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[X:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[Y:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK:         [[O:%[^ ]+]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[X]], [[Y]], {{[^,)]+}}),
@@ -1537,7 +1537,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2], {{.*}}: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
@@ -1576,7 +1576,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2], {{.*}}: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = (f32[2,2]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
@@ -1616,7 +1616,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], param_2: (f32[2,2], f32[3,3])) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2], {{.*}}: (f32[2,2], f32[3,3])) -> f32[2,2] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = (f32[2,2]{1,0}, f32[3,3]{1,0}) parameter(2)
@@ -1665,7 +1665,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2], {{.*}}: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[X:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[Y:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-DAG:     [[BIAS:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
@@ -1710,7 +1710,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[1024,1024], y: f32[1024,1024], bias: f32[1024,1024]) -> f32[1024,1024] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024]) -> f32[1024,1024] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[1024,1024]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
 ; CHECK-NEXT:    [[GEMM:%[^ ]+]] = (f32[1024,1024]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
@@ -1755,7 +1755,7 @@ ENTRY BF16GemmWithBias {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{2e-3, 2e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %BF16GemmWithBias (x: bf16[8,8], y: bf16[8,8], param_2: bf16[8,8]) -> bf16[8,8] {
+; CHECK-LABEL: ENTRY %BF16GemmWithBias ({{.*}}: bf16[8,8], {{.*}}: bf16[8,8], {{.*}}: bf16[8,8]) -> bf16[8,8] {
 ; CHECK-DAG:    [[X:%[^ ]+]] = bf16[8,8]{1,0} parameter(0)
 ; CHECK-DAG:    [[Y:%[^ ]+]] = bf16[8,8]{1,0} parameter(1)
 ; CHECK:        [[GEMM:%[^ ]+]] = (bf16[8,8]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[X]], [[Y]], {{[^,)]+}}),
@@ -1804,7 +1804,7 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], param_2: f32[2,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[2,4]) -> f32[2,4] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK:         [[GEMM:%[^ ]+]] = (f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]], {{[^,)]+}}),
@@ -1849,7 +1849,7 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (w: f32[2,3], x: f32[3,4], y: f32[2,3], z: f32[3,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,4] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = f32[2,3]{1,0} parameter(2)
@@ -2163,7 +2163,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2], {{.*}}: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[X:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[Y:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-DAG:     [[BIAS:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
@@ -2207,7 +2207,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[2,2], y: f32[2,2], bias: f32[2,2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[2,2], {{.*}}: f32[2,2], {{.*}}: f32[2,2]) -> f32[2,2] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,2]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[2,2]{1,0} parameter(1)
 ; CHECK-DAG:     [[BIAS:%[^ ]+]] = f32[2,2]{1,0} parameter(2)
@@ -2250,7 +2250,7 @@ ENTRY AddDotsFunc {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[1024,1024], y: f32[1024,1024], bias: f32[1024,1024]) -> f32[1024,1024] {
+; CHECK-LABEL: ENTRY %AddDotsFunc ({{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024]) -> f32[1024,1024] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[1024,1024]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
 ; CHECK-DAG:     [[BIAS:%[^ ]+]] = f32[1024,1024]{1,0} parameter(2)
@@ -2291,7 +2291,7 @@ ENTRY BF16GemmWithBias {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %BF16GemmWithBias (x: bf16[8,8], y: bf16[8,8], bias: bf16[8,8]) -> bf16[8,8] {
+; CHECK-LABEL: ENTRY %BF16GemmWithBias ({{.*}}: bf16[8,8], {{.*}}: bf16[8,8], {{.*}}: bf16[8,8]) -> bf16[8,8] {
 ; CHECK-DAG:    [[X:%[^ ]+]] = bf16[8,8]{1,0} parameter(0)
 ; CHECK-DAG:    [[Y:%[^ ]+]] = bf16[8,8]{1,0} parameter(1)
 ; CHECK-DAG:    [[BIAS:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
@@ -2332,7 +2332,7 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[2,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,4]{1,0} parameter(2)
@@ -2375,7 +2375,7 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (w: f32[2,3], x: f32[3,4], y: f32[2,3], z: f32[3,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,4] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = f32[2,3]{1,0} parameter(2)
@@ -2436,7 +2436,7 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
@@ -2491,7 +2491,7 @@ ENTRY test {
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[4,4]{1,0} add([[P0]], [[P2]])
 }
 
-; CHECK-LABEL: ENTRY %test (x: f32[4,4], y: f32[4,4], z: f32[4]) -> f32[4,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[4,4], {{.*}}: f32[4,4], {{.*}}: f32[4]) -> f32[4,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[4,4]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[MATMUL0:%[^ ]+]] = f32[4,4]{1,0} custom-call([[P0]], [[P1]]),
@@ -2571,7 +2571,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[3,5,6]) -> f32[2,3,5,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3,4], {{.*}}: f32[4,5,6], {{.*}}: f32[3,5,6]) -> f32[2,3,5,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
@@ -2620,7 +2620,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[6]) -> f32[2,3,5,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3,4], {{.*}}: f32[4,5,6], {{.*}}: f32[6]) -> f32[2,3,5,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
@@ -2669,7 +2669,7 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[4,2] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[2]) -> f32[4,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
@@ -2714,7 +2714,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[4,3], y: f32[3,4], z: f32[3]) -> f32[2,3] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[4,3], {{.*}}: f32[3,4], {{.*}}: f32[3]) -> f32[2,3] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[4,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3]{0} parameter(2)
@@ -2772,7 +2772,7 @@ ENTRY test {
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} add([[SLICE]], [[P0_BCAST]])
 }
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[2]) -> f32[2,2] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
@@ -2895,7 +2895,7 @@ ENTRY test {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4], z2: f32[2,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[4], {{.*}}: f32[2,4]) -> f32[2,4] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-DAG:     [[VECTOR_BIAS:%[^ ]+]] = f32[4]{0} parameter(2)
@@ -2939,7 +2939,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[16,24], y: bf16[24,32], z: bf16[32]) -> bf16[16,32] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[16,24], {{.*}}: bf16[24,32], {{.*}}: bf16[32]) -> bf16[16,32] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[16,24]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[24,32]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[32]{0} parameter(2)
@@ -2985,7 +2985,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[2,3], y: bf16[3,4], z: bf16[4]) -> bf16[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[2,3], {{.*}}: bf16[3,4], {{.*}}: bf16[4]) -> bf16[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
 ; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = bf16[8,8]{1,0} pad([[P0]], [[C0]]), padding=0_6x0_5
@@ -3031,7 +3031,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
@@ -3073,7 +3073,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6]) -> f32[2,3,5,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3,4], {{.*}}: f32[4,5,6]) -> f32[2,3,5,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
@@ -3119,7 +3119,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,2] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
@@ -3164,7 +3164,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[2,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2,4]{1,0} parameter(2)
@@ -3209,7 +3209,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[4,4], y: f32[4,4], z: f32[4,4]) -> f32[4,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[4,4], {{.*}}: f32[4,4], {{.*}}: f32[4,4]) -> f32[4,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[4,4]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4,4]{1,0} parameter(2)
@@ -3255,7 +3255,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
@@ -3301,7 +3301,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6], z: f32[3,5,6]) -> f32[2,3,5,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3,4], {{.*}}: f32[4,5,6], {{.*}}: f32[3,5,6]) -> f32[2,3,5,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
@@ -3353,7 +3353,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[2]) -> f32[4,2] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[2]) -> f32[4,2] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[2]{0} parameter(2)
@@ -3402,7 +3402,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z_vec: f32[4], z_matrix: f32[2,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[4], {{.*}}: f32[2,4]) -> f32[2,4] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
@@ -3460,7 +3460,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,4]{1,0} custom-call([[P0]], [[P1]]),
@@ -3559,7 +3559,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
@@ -3620,7 +3620,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4]) -> (f32[2,4], f32[2,4]) {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> (f32[2,4], f32[2,4]) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2,4]{1,0}) custom-call([[P0]], [[P1]]),
@@ -3683,7 +3683,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> (f32[2,4], f32[2,4]) {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[4]) -> (f32[2,4], f32[2,4]) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
@@ -3744,7 +3744,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[2,3], y: bf16[3,4]) -> bf16[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[2,3], {{.*}}: bf16[3,4]) -> bf16[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
 ; CHECK-NEXT:    [[P0_PAD:%[^ ]+]] = bf16[8,8]{1,0} pad([[P0]], [[C0]]), padding=0_6x0_5
@@ -3835,7 +3835,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8], z: f16[8,8]) -> f16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[8,16], {{.*}}: f16[16,8], {{.*}}: f16[8,8]) -> f16[8,8] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8,8]{1,0} parameter(2)
@@ -3910,7 +3910,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8], z: f16[8]) -> f16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[8,16], {{.*}}: f16[16,8], {{.*}}: f16[8]) -> f16[8,8] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
@@ -3956,7 +3956,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f16[6,12], y: f16[12,6], z: f16[6]) -> f16[6,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6], {{.*}}: f16[6]) -> f16[6,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
 ; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
@@ -4004,7 +4004,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8]) -> f16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[8,16], {{.*}}: f16[16,8]) -> f16[8,8] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]]),
@@ -4049,7 +4049,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f16[6,12], y: f16[12,6]) -> f16[6,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6]) -> f16[6,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
 ; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
@@ -4097,7 +4097,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8], z: f16[8,8]) -> f16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[8,16], {{.*}}: f16[16,8], {{.*}}: f16[8,8]) -> f16[8,8] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8,8]{1,0} parameter(2)
@@ -4144,7 +4144,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f16[8,16], y: f16[16,8], z: f16[8]) -> f16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[8,16], {{.*}}: f16[16,8], {{.*}}: f16[8]) -> f16[8,8] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
@@ -4193,7 +4193,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f16[6,12], y: f16[12,6], z: f16[6]) -> f16[6,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6], {{.*}}: f16[6]) -> f16[6,6] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
 ; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
@@ -4240,7 +4240,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8,8]) -> bf16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[8,16], {{.*}}: bf16[16,8], {{.*}}: bf16[8,8]) -> bf16[8,8] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8,8]{1,0} parameter(2)
@@ -4316,7 +4316,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8]) -> bf16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[8,16], {{.*}}: bf16[16,8], {{.*}}: bf16[8]) -> bf16[8,8] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
@@ -4362,7 +4362,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6], z: bf16[6]) -> bf16[6,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6], {{.*}}: bf16[6]) -> bf16[6,6] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
 ; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
 ; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
@@ -4410,7 +4410,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8]) -> bf16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[8,16], {{.*}}: bf16[16,8]) -> bf16[8,8] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
 ; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]]),
@@ -4455,7 +4455,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6]) -> bf16[6,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6]) -> bf16[6,6] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
 ; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
 ; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
@@ -4505,7 +4505,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[8,16], y: bf16[16,8], z: bf16[8]) -> bf16[8,8] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[8,16], {{.*}}: bf16[16,8], {{.*}}: bf16[8]) -> bf16[8,8] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
 ; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
@@ -4554,7 +4554,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: bf16[6,12], y: bf16[12,6], z: bf16[6]) -> bf16[6,6] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6], {{.*}}: bf16[6]) -> bf16[6,6] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
 ; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
 ; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
@@ -4607,7 +4607,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f64[2,3], y: f64[3,4], z: f64[4]) -> f64[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f64[2,3], {{.*}}: f64[3,4], {{.*}}: f64[4]) -> f64[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f64[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f64[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f64[4]{0} parameter(2)
@@ -4656,7 +4656,7 @@ ENTRY test {
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test (x: f32[2,3], y: f32[3,4], z: f32[4]) -> f32[2,4] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f32[2,3], {{.*}}: f32[3,4], {{.*}}: f32[4]) -> f32[2,4] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[4]{0} parameter(2)
@@ -4946,7 +4946,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-; CHECK-LABEL: ENTRY %PreAdaTest (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
+; CHECK-LABEL: ENTRY %PreAdaTest ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
 ; CHECK:    {{.*}} = {{.*}} custom-call({{.*}}, {{.*}})
 ; CHECK-DAG:  custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
           )");
@@ -4971,7 +4971,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(GpuComputeComp()),
                             absl::StrReplaceAll(R"(
-; CHECK-LABEL: ENTRY %unsupported_types (x: f8e5m2[16,16], y: f8e5m2[16,16]) -> f8e5m2[16,16] {
+; CHECK-LABEL: ENTRY %unsupported_types ({{.*}}: f8e5m2[16,16], {{.*}}: f8e5m2[16,16]) -> f8e5m2[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e5m2[16,16]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_CONVERT:%[^ ]+]] = f16[16,16]{1,0} convert([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e5m2[16,16]{1,0} parameter(1)
@@ -5017,7 +5017,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
   // auto comp = se::DeviceCom
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5068,7 +5068,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5121,7 +5121,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[13,17], y: f8e4m3fn[17,31], x_scale: f32[], y_scale: f32[]) -> f32[13,31] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[13,17], {{.*}}: f8e4m3fn[17,31], {{.*}}: f32[], {{.*}}: f32[]) -> f32[13,31] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[13,17]{1,0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f8e4m3fn[] constant(0)
 ; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f8e4m3fn[16,32]{1,0} pad([[P0]], [[C0]]), padding=0_3x0_15
@@ -5220,7 +5220,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
 
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[3], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[3], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[3]{0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
 ; CHECK-NEXT:    [[C0_CONVERT:%[^ ]+]] = f8e4m3fn[] convert([[C0]])
@@ -5285,7 +5285,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDDynamicSliceF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[32,32], y: f8e4m3fn[16,32], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[32,32], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[32,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = s32[] constant(0)
 ; CHECK-NEXT:    [[DYN_SLICE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} dynamic-slice([[P0]], [[C0]], [[C0]]), dynamic_slice_sizes={16,32}
@@ -5347,7 +5347,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDSelectF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[16,32], x_scale: f32[], y_scale: f32[], k: pred[16,32]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: pred[16,32]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = pred[16,32]{1,0} parameter(4)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
@@ -5412,7 +5412,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[16,32], x_scale: f32[], y_scale: f32[], k: pred[16,32]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: pred[16,32]) -> f32[16,16] {
 ; CHECK-NOT:           custom_call_target="__cublas$lt$matmul$f8"
       )");
 }
@@ -5443,7 +5443,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[10,16,32], y: f8e4m3fn[10,32,16], x_scale: f32[], y_scale: f32[]) -> f32[10,16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[10,16,32], {{.*}}: f8e4m3fn[10,32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[10,16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[10,32,16]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} transpose([[P1]]), dimensions={0,2,1}
@@ -5500,7 +5500,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
 
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5557,7 +5557,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
 
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5629,7 +5629,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: bf16[], y_scale: bf16[], bias: bf16[16]) -> bf16[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: bf16[], {{.*}}: bf16[], {{.*}}: bf16[16]) -> bf16[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5701,7 +5701,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: bf16[], y_scale: bf16[]) -> bf16[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: bf16[], {{.*}}: bf16[]) -> bf16[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5789,7 +5789,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
 
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f32[16,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[16,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -5846,7 +5846,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasPaddedF8) {
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
 
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[14,31], y: f8e4m3fn[31,14], b: f32[14,14], x_scale: f32[], y_scale: f32[]) -> f32[14,14] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[14,31], {{.*}}: f8e4m3fn[31,14], {{.*}}: f32[14,14], {{.*}}: f32[], {{.*}}: f32[]) -> f32[14,14] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[14,31]{1,0} parameter(0)
 ; CHECK-NEXT:    [[C0:%[^ ]+]] = f8e4m3fn[] constant(0)
 ; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f8e4m3fn[16,32]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_1
@@ -5916,7 +5916,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> f8e4m3fn[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> f8e4m3fn[16,16] {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6025,7 +6025,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> f8e4m3fn[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> f8e4m3fn[16,16] {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6093,7 +6093,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
 
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16,16], x_scale: f16[], y_scale: f16[], z_scale: f16[]) -> f8e4m3fn[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f16[16,16], {{.*}}: f16[], {{.*}}: f16[], {{.*}}: f16[]) -> f8e4m3fn[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6161,7 +6161,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
 
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16], x_scale: f16[], y_scale: f16[], z_scale: f16[]) -> f8e4m3fn[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f16[16], {{.*}}: f16[], {{.*}}: f16[], {{.*}}: f16[]) -> f8e4m3fn[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6226,7 +6226,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f32[16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6287,7 +6287,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text, ErrorSpec{2e-3, 0.});
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16], x_scale: f16[], y_scale: f16[]) -> f16[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f16[16], {{.*}}: f16[], {{.*}}: f16[]) -> f16[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6357,7 +6357,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDVectorBiasF8) {
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[4,16,16], y: f8e4m3fn[16,32], b: f32[32], x_scale: f16[], y_scale: f16[]) -> f16[4,16,32] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[4,16,16], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[32], {{.*}}: f16[], {{.*}}: f16[]) -> f16[4,16,32] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[4,16,16]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f8e4m3fn[64,16]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
@@ -6433,7 +6433,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[4,15,15], y: f8e4m3fn[15,31], b: f32[31], x_scale: f16[], y_scale: f16[]) -> f16[4,15,31] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[4,15,15], {{.*}}: f8e4m3fn[15,31], {{.*}}: f32[31], {{.*}}: f16[], {{.*}}: f16[]) -> f16[4,15,31] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[4,15,15]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f8e4m3fn[60,15]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f8e4m3fn[] constant(0)
@@ -6511,7 +6511,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, Rank3ScaledABUnscaledDMatrixBiasF8) {
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[4,16,16], y: f8e4m3fn[16,32], b: f32[4,16,32], x_scale: f32[], y_scale: f32[]) -> f32[4,16,32] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[4,16,16], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[4,16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[4,16,32] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[4,16,16]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f8e4m3fn[64,16]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
@@ -6583,7 +6583,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[3,15,15], y: f8e4m3fn[15,31], b: f32[3,15,31], x_scale: f32[], y_scale: f32[]) -> f32[3,15,31] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[3,15,15], {{.*}}: f8e4m3fn[15,31], {{.*}}: f32[3,15,31], {{.*}}: f32[], {{.*}}: f32[]) -> f32[3,15,31] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[3,15,15]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f8e4m3fn[45,15]{1,0} bitcast([[P0]])
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f8e4m3fn[] constant(0)
@@ -6656,7 +6656,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[48,16], y: f8e4m3fn[16,32], b: f32[32,16], x_scale: f32[], y_scale: f32[]) -> f32[32,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[48,16], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[32,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[48,16]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[32,16]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6716,7 +6716,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDWithAllGatherF8) {
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[16,32], x_scale: f32[], y_scale: f32[]) -> f32[16,32] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,32] {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK:         [[AG:%[^ ]+]] = f8e4m3fn[16,64]{1,0} all-gather([[P0]]), {{[^ ]+}}
 ; CHECK:         [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
@@ -6775,7 +6775,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDWithAllToAllF8) {
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[16,32], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK:         [[AA:%[^ ]+]] = f8e4m3fn[16,32]{1,0} all-to-all([[P0]]), {{[^ ]+}}
 ; CHECK:         [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
@@ -6833,7 +6833,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[16,32], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[16,32], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK:         [[AA:%[^ ]+]] = f8e4m3fn[16,32]{1,0} collective-permute([[P0]]), {{[^ ]+}}
 ; CHECK:         [[P1:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(1)
@@ -6892,7 +6892,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text, ErrorSpec{2e-3, 0.});
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL:   ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f16[16], b2: f16[16,16], x_scale: f16[], y_scale: f16[]) -> f16[16,16] {
+; CHECK-LABEL:   ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f16[16], {{.*}}: f16[16,16], {{.*}}: f16[], {{.*}}: f16[]) -> f16[16,16] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
@@ -6970,7 +6970,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> (f8e4m3fn[16,16], f32[]) {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> (f8e4m3fn[16,16], f32[]) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
@@ -7048,7 +7048,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f16[], y_scale: f16[], z_scale: f16[]) -> (f8e4m3fn[16,16], f16[]) {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f16[], {{.*}}: f16[], {{.*}}: f16[]) -> (f8e4m3fn[16,16], f16[]) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
@@ -7129,7 +7129,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
   CheckFp8IfSupported(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> (f8e4m3fn[16,16], f32[]) {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16], {{.*}}: f32[], {{.*}}: f32[], {{.*}}: f32[]) -> (f8e4m3fn[16,16], f32[]) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
@@ -7380,7 +7380,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
   RunAndFilecheckHloRewrite(hlo_text, GemmRewriter(CudaHopperOrRocm()),
                             absl::StrReplaceAll(R"(
-; CHECK-LABEL: ENTRY %test (x: f8e4m3fnuz[16,32], y: f8e4m3fnuz[32,16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK-LABEL: ENTRY %test ({{.*}}: f8e4m3fnuz[16,32], {{.*}}: f8e4m3fnuz[32,16], {{.*}}: f32[], {{.*}}: f32[]) -> f32[16,16] {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fnuz[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P0_CV:%[^ ]+]] = f32[16,32]{1,0} convert([[P0]])
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
