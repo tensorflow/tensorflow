@@ -102,6 +102,12 @@ struct GpuPerformanceModelOptions {
   // case for producer and consumer.
   bool calculate_full_priority = false;
 
+  // Factor for how much parallelism between compute and memory accesses should
+  // be assumed. If 1.0, assume perfect parallelism (the run time is the maximum
+  // of both times). If 0.0, assume no parallelism (the run time is the sum of
+  // both times).
+  double memory_compute_parallelism = 1.0;
+
   // If present, use this to retrieve fusion analyses.
   HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
 
@@ -120,6 +126,12 @@ struct GpuPerformanceModelOptions {
     config.calculate_full_priority = true;
     config.fusion_analysis_cache = fusion_analysis_cache;
     config.gpu_performance_model_cache = gpu_performance_model_cache;
+    // This constant was chosen empirically in early 2024, based on runtime
+    // performance on a set of benchmarks internal to Google. Intuitively, we
+    // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
+    // or memory accesses will be stalled waiting for the other, but usually
+    // they won't).
+    config.memory_compute_parallelism = 0.95;
     return config;
   }
 
