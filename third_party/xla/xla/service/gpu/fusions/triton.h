@@ -36,6 +36,8 @@ class TritonFusion : public FusionInterface {
       const HloFusionInstruction& fusion,
       KernelReuseCache& kernel_cache) const final;
 
+  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
+
  private:
   const HloFusionAnalysis& analysis_;
 };

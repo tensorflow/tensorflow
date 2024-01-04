@@ -272,62 +272,6 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
-TEST_F(HloFusionAnalysisTest, TritonSoftmaxFusion) {
-#ifndef GOOGLE_CUDA
-  GTEST_SKIP() << "Triton fusion only enable for CUDA devices.";
-#endif
-
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule t
-
-    add {
-      Arg_0 = f32[] parameter(0)
-      Arg_1 = f32[] parameter(1)
-      ROOT add = f32[] add(Arg_0, Arg_1)
-    }
-
-    auxiliary_computation {
-      parameter_0 = f32[125]{0} parameter(0)
-      ROOT broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
-    }
-
-    triton_softmax_computation {
-      parameter_0 = f32[125,127]{1,0} parameter(0)
-      multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
-      constant_0 = f32[] constant(0)
-      reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
-      broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
-      ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
-    }
-
-    ENTRY main {
-      param_0 = f32[125]{0} parameter(0)
-      auxiliary_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=auxiliary_computation
-      ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
-      })")
-                    .value();
-
-  stream_executor::GpuDeviceInfoProto device_info_proto;
-  stream_executor::DeviceDescription device_info(device_info_proto);
-
-  auto* root = module->entry_computation()->root_instruction();
-  auto analysis_fused =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
-  ASSERT_NE(analysis_fused, std::nullopt);
-  EXPECT_EQ(analysis_fused->GetEmitterFusionKind(),
-            HloFusionAnalysis::EmitterFusionKind::kTriton);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto launch_dimensions,
-                          analysis_fused->GetLaunchDimensions());
-  EXPECT_EQ(launch_dimensions.num_blocks(), 125);
-  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 32);
-
-  auto analysis_consumer = AnalyzeFusion(*root, device_info);
-  ASSERT_NE(analysis_consumer, std::nullopt);
-  EXPECT_EQ(analysis_consumer->GetEmitterFusionKind(),
-            HloFusionAnalysis::EmitterFusionKind::kTriton);
-}
-
 TEST_F(HloFusionAnalysisTest, ScatterFusion) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule module

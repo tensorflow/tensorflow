@@ -1,3 +1,4 @@
+load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
@@ -243,6 +244,22 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_test",
+    srcs = ["triton_test.cc"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    deps = [
+        ":fusions",
+        ":triton",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

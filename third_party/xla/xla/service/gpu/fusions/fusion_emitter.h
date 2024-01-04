@@ -46,7 +46,6 @@ class FusionInterface {
       KernelReuseCache& kernel_cache) const = 0;
 
   // Returns the fusion's launch dimensions, if applicable.
-  // Note: Triton fusions are currently unsupported.
   virtual std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const {
     return std::nullopt;
   }
