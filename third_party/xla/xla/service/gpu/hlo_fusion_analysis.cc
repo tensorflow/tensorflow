@@ -235,79 +235,47 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
   return EmitterFusionKind::kLoop;
 }
 
-StatusOr<LaunchDimensions> HloFusionAnalysis::GetLaunchDimensions() const {
-  auto emitter_fusion_kind = GetEmitterFusionKind();
-  switch (emitter_fusion_kind) {
-    case EmitterFusionKind::kLoop:
-      return absl::UnimplementedError(
-          "GetLaunchDimensions is not implemented for loop fusions");
-    case EmitterFusionKind::kReduction:
-      return absl::UnimplementedError(
-          "GetLaunchDimensions is not implemented for reduction fusions");
-    case EmitterFusionKind::kTranspose:
-      return absl::UnimplementedError(
-          "GetLaunchDimensions is not implemented for transpose fusions");
-    case EmitterFusionKind::kInputSlices: {
-      auto* root = fusion_roots().front();
-      const auto& shape = root->operands()[0]->shape();
-      constexpr int kUnrollFactor = 1;
-      return CalculateLaunchDimensions(shape, *device_info_, {kUnrollFactor});
-    }
-    case EmitterFusionKind::kScatter: {
-      const auto& updates_shape = fusion_roots().front()->operand(2)->shape();
-      return CalculateLaunchDimensions(updates_shape, *device_info_);
-    }
-    case EmitterFusionKind::kCustomFusion:
-      return absl::UnimplementedError(
-          "GetLaunchDimensions is not implemented for custom fusions");
-    case EmitterFusionKind::kTriton:
-      return absl::UnimplementedError(
-          "GetLaunchDimensions is not implemented for Triton fusions");
+const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
+  if (GetEmitterFusionKind() != EmitterFusionKind::kReduction) {
+    return nullptr;
+  }
+  auto roots = fusion_roots();
+  CHECK(!roots.empty());
+  // We always use the first reduce root that triggers unnested reduction
+  // emitter as the hero reduction, since all the reductions are required to
+  // have the same shape and layout as verified by
+  // `IsFusedReductionOutputConsistent()`.
+  for (auto [root, hero] : llvm::zip(roots, fusion_heroes_)) {
+    if (IsRealReductionHero(*root, *hero)) {
+      return hero;
     }
   }
+  LOG(FATAL) << "Did not find a hero reduction";
+}
 
-  const HloInstruction* HloFusionAnalysis::FindHeroReduction() const {
-    if (GetEmitterFusionKind() != EmitterFusionKind::kReduction) {
-      return nullptr;
-    }
-    auto roots = fusion_roots();
-    CHECK(!roots.empty());
-    // We always use the first reduce root that triggers unnested reduction
-    // emitter as the hero reduction, since all the reductions are required to
-    // have the same shape and layout as verified by
-    // `IsFusedReductionOutputConsistent()`.
-    for (auto [root, hero] : llvm::zip(roots, fusion_heroes_)) {
-      if (IsRealReductionHero(*root, *hero)) {
-        return hero;
-      }
-    }
-    LOG(FATAL) << "Did not find a hero reduction";
-  }
+std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const se::DeviceDescription& device_info) {
+  auto ret = HloFusionAnalysis::Create(
+      consumer.has_backend_config()
+          ? *consumer.backend_config<FusionBackendConfig>()
+          : *producer.backend_config<FusionBackendConfig>(),
+      std::make_unique<ProducerConsumerFusion>(
+          HloFusionAdaptor::ForInstruction(&producer),
+          HloFusionAdaptor::ForInstruction(&consumer)),
+      &device_info);
+  if (!ret.ok()) return std::nullopt;
+  return {std::move(*ret)};
+}
 
-  std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
-      const HloInstruction& producer, const HloInstruction& consumer,
-      const se::DeviceDescription& device_info) {
-    auto ret = HloFusionAnalysis::Create(
-        consumer.has_backend_config()
-            ? *consumer.backend_config<FusionBackendConfig>()
-            : *producer.backend_config<FusionBackendConfig>(),
-        std::make_unique<ProducerConsumerFusion>(
-            HloFusionAdaptor::ForInstruction(&producer),
-            HloFusionAdaptor::ForInstruction(&consumer)),
-        &device_info);
-    if (!ret.ok()) return std::nullopt;
-    return {std::move(*ret)};
-  }
-
-  std::optional<HloFusionAnalysis> AnalyzeFusion(
-      const HloInstruction& consumer,
-      const se::DeviceDescription& device_info) {
-    auto ret = HloFusionAnalysis::Create(
-        *consumer.backend_config<FusionBackendConfig>(),
-        HloFusionAdaptor::ForInstruction(&consumer), &device_info);
-    if (!ret.ok()) return std::nullopt;
-    return {std::move(*ret)};
-  }
+std::optional<HloFusionAnalysis> AnalyzeFusion(
+    const HloInstruction& consumer, const se::DeviceDescription& device_info) {
+  auto ret = HloFusionAnalysis::Create(
+      *consumer.backend_config<FusionBackendConfig>(),
+      HloFusionAdaptor::ForInstruction(&consumer), &device_info);
+  if (!ret.ok()) return std::nullopt;
+  return {std::move(*ret)};
+}
 
 }  // namespace gpu
 }  // namespace xla

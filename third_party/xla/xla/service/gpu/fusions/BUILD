@@ -194,6 +194,22 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "scatter_test",
+    srcs = ["scatter_test.cc"],
+    deps = [
+        ":fusions",
+        ":scatter",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "tiling_util",
     srcs = ["tiling_util.cc"],

@@ -176,7 +176,11 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 std::optional<StatusOr<LaunchDimensions>> InputSlicesFusion::launch_dimensions()
     const {
-  return analysis_.GetLaunchDimensions();
+  auto* root = analysis_.fusion_roots().front();
+  const auto& shape = root->operands()[0]->shape();
+  constexpr int kUnrollFactor = 1;
+  return CalculateLaunchDimensions(shape, analysis_.device_info(),
+                                   {kUnrollFactor});
 }
 
 Status InputSlicesFusion::EmitKernel(IrEmitterContext& ir_emitter_context,

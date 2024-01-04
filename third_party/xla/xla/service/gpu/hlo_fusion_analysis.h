@@ -74,11 +74,6 @@ class HloFusionAnalysis {
   // Determines the fusion type for the emitter.
   EmitterFusionKind GetEmitterFusionKind() const;
 
-  ABSL_DEPRECATED("Use GetFusionEmitter().launch_dimensions() instead")
-  // Determines the launch dimensions for the fusion. The fusion kind must not
-  // be `kTriton`.
-  StatusOr<LaunchDimensions> GetLaunchDimensions() const;
-
   // Returns the hero reduction of the computation.
   const HloInstruction* FindHeroReduction() const;
 

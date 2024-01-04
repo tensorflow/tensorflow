@@ -51,7 +51,9 @@ namespace gpu {
 
 std::optional<StatusOr<LaunchDimensions>> ScatterFusion::launch_dimensions()
     const {
-  return analysis_.GetLaunchDimensions();
+  const auto& updates_shape =
+      analysis_.fusion_roots().front()->operand(2)->shape();
+  return CalculateLaunchDimensions(updates_shape, analysis_.device_info());
 }
 
 Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,

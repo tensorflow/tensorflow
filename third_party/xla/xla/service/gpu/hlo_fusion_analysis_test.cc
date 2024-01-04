@@ -272,47 +272,5 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
-TEST_F(HloFusionAnalysisTest, ScatterFusion) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule module
-
-    add (lhs: f32[], rhs: f32[]) -> f32[] {
-      lhs = f32[] parameter(0)
-      rhs = f32[] parameter(1)
-      ROOT sum = f32[] add(lhs, rhs)
-    }
-
-    fused_computation {
-      %input = f32[2,9] parameter(0)
-      %indices = s32[3] parameter(1)
-      %updates = f32[3,9] parameter(2)
-      ROOT %scatter = f32[2,9] scatter(%input, %indices, %updates),
-          to_apply=add,
-          update_window_dims={1},
-          inserted_window_dims={0},
-          scatter_dims_to_operand_dims={0},
-          index_vector_dim=1
-    }
-
-    ENTRY entry {
-      %input = f32[2,9] parameter(0)
-      %indices = s32[3] parameter(1)
-      %updates = f32[3,9] parameter(2)
-      ROOT %fusion = f32[2,9] fusion(%input, %indices, %updates), kind=kLoop, calls=fused_computation
-    }
-  )")
-                    .value();
-
-  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  auto analysis = AnalyzeFusion(
-      *module->entry_computation()->root_instruction(), device_info);
-  ASSERT_NE(analysis, std::nullopt);
-  EXPECT_EQ(analysis->GetEmitterFusionKind(),
-            HloFusionAnalysis::EmitterFusionKind::kScatter);
-  TF_ASSERT_OK_AND_ASSIGN(auto launch_dimensions,
-                          analysis->GetLaunchDimensions());
-  EXPECT_EQ(launch_dimensions.launch_bound(), 3 * 9 /* updates size */);
-}
-
 }  // namespace
 }  // namespace xla::gpu
