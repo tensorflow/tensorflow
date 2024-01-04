@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/memset_thunk.h"
+#include "xla/service/gpu/runtime3/memset_thunk.h"
 
 #include "xla/stream_executor/stream_executor.h"
 

@@ -1057,14 +1057,12 @@ cc_library(
     name = "gpu_executable",
     srcs = [
         "gpu_executable.cc",
-        "memset_thunk.cc",
         "norm_thunk.cc",
         "outfeed_thunk.cc",
         "replica_id_thunk.cc",
     ],
     hdrs = [
         "gpu_executable.h",
-        "memset_thunk.h",
         "norm_thunk.h",
         "outfeed_thunk.h",
         "replica_id_thunk.h",

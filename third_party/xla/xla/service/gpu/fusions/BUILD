@@ -298,6 +298,7 @@ cc_library(
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:thunk",
+        "//xla/service/gpu/runtime3:memset_thunk",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",

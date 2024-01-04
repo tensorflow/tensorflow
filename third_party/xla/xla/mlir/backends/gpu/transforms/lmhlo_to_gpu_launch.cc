@@ -41,10 +41,10 @@ limitations under the License.
 #include "xla/mlir/runtime/ir/rt_ops.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/memset_thunk.h"
 #include "xla/service/gpu/runtime3/conditional_thunk.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
+#include "xla/service/gpu/runtime3/memset_thunk.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 
