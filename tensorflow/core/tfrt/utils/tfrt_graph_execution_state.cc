@@ -175,7 +175,7 @@ tensorflow::GraphDef CreateGraphDefFromGraphAndFlibDef(
 StatusOr<std::unique_ptr<tensorflow::Graph>> CreatePrunedGraph(
     tensorflow::GraphDef graph_def, const CallableOptions& callable_options) {
   // clang-tidy off
-  VLOG(1) << "Creating pruned graph: " << callable_options;
+  VLOG(1) << "Creating pruned graph: " << callable_options.DebugString();
   // clang-tidy on
 
   // Prune the graph with `callable_options`. Although
