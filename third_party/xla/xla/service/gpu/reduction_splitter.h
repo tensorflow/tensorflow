@@ -21,29 +21,33 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Splits a reduce op into two consecutive reduce ops if
-// * the reduce dimensions are not contiguous and
-// * at least one reduce dimension is large (i.e. corresponds to a large input
-//   shape dimension).
+// Splits a reduce op into two consecutive reduce ops if the reduce dimensions
+// are not contiguous. Ignores small reduce dimensions if `ignore_small_dims` is
+// set.
 //
 // Reductions with non-contiguous dimensions are emitted as simple element-wise
 // loops. This is inefficient when reducing large input shape dimensions.
 // Splitting such reductions allows using more efficient reduction emitters.
 //
 // This pass splits reduce ops into two consecutive reduce ops. Run it to a
-// fixpoint to split reduce ops along multiple large dimensions.
+// fixpoint to split reduce ops along multiple dimensions.
 //
 // Precondition: ReductionDimensionGrouper has been run and adjacent reduce
 // dimentsions have been grouped. Reduction layouts have been normalized.
 
 class ReductionSplitter : public HloModulePass {
  public:
+  explicit ReductionSplitter(bool ignore_small_dims)
+      : ignore_small_dims_(ignore_small_dims) {}
   absl::string_view name() const override { return "reduction-splitter"; }
 
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  bool ignore_small_dims_;
 };
 
 }  // namespace gpu

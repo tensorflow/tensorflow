@@ -1276,7 +1276,11 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();
-    pipeline.AddPass<HloPassFix<ReductionSplitter>>();
+    // Do not split small reduction dimensions unless priority fusion is
+    // enabled, which handles such cases well.
+    bool ignore_small_reduce_dims =
+        !debug_options.xla_gpu_enable_priority_fusion();
+    pipeline.AddPass<HloPassFix<ReductionSplitter>>(ignore_small_reduce_dims);
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(gpu_version);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }

@@ -51,7 +51,8 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionTwo) {
   }
   )")
                     .value();
-  ASSERT_TRUE(ReductionSplitter().Run(module.get()).value());
+  ASSERT_TRUE(
+      ReductionSplitter(/*ignore_small_dims=*/true).Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
@@ -82,7 +83,8 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionZero) {
   }
   )")
                     .value();
-  ASSERT_TRUE(ReductionSplitter().Run(module.get()).value());
+  ASSERT_TRUE(
+      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
   SCOPED_TRACE(module->ToString());
   const HloInstruction* root_reduction =
       module->entry_computation()->root_instruction();
@@ -114,7 +116,10 @@ TEST_F(ReductionSplitterTest, DontSplitReductionWithSmallDimensions) {
   }
   )")
                     .value();
-  EXPECT_FALSE(ReductionSplitter().Run(module.get()).value());
+  EXPECT_FALSE(
+      ReductionSplitter(/*ignore_small_dims=*/true).Run(module.get()).value());
+  EXPECT_TRUE(
+      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
 }
 
 TEST_F(ReductionSplitterTest, DontSplitReductionsWithContiguousDimensions) {
@@ -135,7 +140,8 @@ TEST_F(ReductionSplitterTest, DontSplitReductionsWithContiguousDimensions) {
   }
   )")
                     .value();
-  EXPECT_FALSE(ReductionSplitter().Run(module.get()).value());
+  EXPECT_FALSE(
+      ReductionSplitter(/*ignore_small_dims=*/false).Run(module.get()).value());
 }
 
 }  // namespace
