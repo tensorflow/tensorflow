@@ -981,13 +981,76 @@ REGISTER_OP("SparseMatMul")
 REGISTER_OP("SampledADDMM")
     .Input("indices: int32")
     .Input("values: T")
-    .Input("dense_shape: int32")
+    .Input("dense_shape: int32") 
     .Input("mat1: T")
     .Input("mat2: T")
     .Attr("T: type")
     .Attr("beta: float = 1.0")
     .Attr("alpha: float = 1.0")
-    .Output("output: T");
+    .Output("output: T")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle indices_shape;
+      ShapeHandle values_shape;
+      ShapeHandle ds_shape; 
+      ShapeHandle mat1_shape;
+      ShapeHandle mat2_shape;
+
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &indices_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &values_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 1, &ds_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 2, &mat1_shape));
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(4), 2, &mat2_shape));
+
+      // Validate sparse tensor component shapes.
+      DimensionHandle sparse_merged;
+      DimensionHandle ds_merged;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(indices_shape, -2),
+                                  c->Dim(values_shape, -1), &sparse_merged));
+
+      DimensionHandle coord_dim = c->Dim(indices_shape, -1);
+      int64_t coord_dim_val = c->Value(coord_dim);
+
+      if (coord_dim_val != 2) {
+        return errors::InvalidArgument(
+          "Indices must have final dimension of size 2, but has ", coord_dim_val);
+      }
+
+      // Make sure the final dimension of dense_shape also has size 2.
+      TF_RETURN_IF_ERROR(c->Merge(coord_dim, c->Dim(ds_shape, -1), &ds_merged));
+
+      // Inner dimensions should be compatible.
+      DimensionHandle inner_merged;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(mat1_shape, -1),
+                                  c->Dim(mat2_shape, -2), &inner_merged));
+
+      // Batch dimensions should broadcast with each other.
+      ShapeHandle indices_batch_shape;
+      ShapeHandle values_batch_shape;
+      ShapeHandle ds_batch_shape;
+      ShapeHandle mat1_batch_shape;
+      ShapeHandle mat2_batch_shape;
+      ShapeHandle sparse_batch_shape;
+      ShapeHandle ds_bcast_batch_shape;
+      ShapeHandle product_batch_shape;
+      ShapeHandle output_batch_shape;
+
+      TF_RETURN_IF_ERROR(c->Subshape(indices_shape, 0, -2, &indices_batch_shape));
+      TF_RETURN_IF_ERROR(c->Subshape(values_shape, 0, -1, &values_batch_shape));
+      TF_RETURN_IF_ERROR(c->Subshape(ds_shape, 0, -1, &ds_batch_shape));
+      TF_RETURN_IF_ERROR(c->Subshape(mat1_shape, 0, -2, &mat1_batch_shape));
+      TF_RETURN_IF_ERROR(c->Subshape(mat2_shape, 0, -2, &mat2_batch_shape));
+
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+          c, indices_batch_shape, values_batch_shape, true, &sparse_batch_shape));
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+          c, ds_batch_shape, indices_batch_shape, true, &ds_bcast_batch_shape));
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+          c, mat1_batch_shape, mat2_batch_shape, true, &product_batch_shape));
+      TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+          c, sparse_batch_shape, product_batch_shape, true, &output_batch_shape));
+
+      return OkStatus();
+    });
 
 REGISTER_OP("_FusedMatMul")
     .Input("a: T")

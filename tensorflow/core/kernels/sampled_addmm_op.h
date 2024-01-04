@@ -8,8 +8,8 @@ namespace functor {
 
 template <typename Device, typename T>
 struct SampledADDMMFunctor {
-  static Status Compute(OpKernelContext* ctx,
-                     const Tensor& indices_t, const Tensor& values_t,
+  static Status Compute(OpKernelContext* ctx, const Tensor& indices_t,
+                     const Tensor& values_t, const Tensor& dense_shape_t,
                      const Tensor& mat1, const Tensor& mat2,
                      const int32_t batch_size, const T beta_, const T alpha_,
                      const int32_t mat1_num_rows, const int32_t mat1_num_cols,

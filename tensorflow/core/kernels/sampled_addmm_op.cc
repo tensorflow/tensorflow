@@ -13,17 +13,27 @@ namespace functor {
 
 template <typename T>
 struct SampledADDMMFunctor<CPUDevice, T> {
-  static Status Compute(OpKernelContext* ctx,
-                     const Tensor& indices_t, const Tensor& values_t, 
+  static Status Compute(OpKernelContext* ctx, const Tensor& indices_t,
+                     const Tensor& values_t, const Tensor& dense_shape_t,
                      const Tensor& mat1, const Tensor& mat2, 
                      const int32_t batch_size, const T beta_, const T alpha_,
                      const int32_t mat1_num_rows, const int32_t mat1_num_cols,
                      const int32_t mat2_num_rows, const int32_t mat2_num_cols,
                      const int32_t mat_num_batches, Tensor* out) {
-    auto mat1_ptr = mat1.flat<T>().data();
-    auto mat2_ptr = mat2.flat<T>().data();
-    auto values_ptr = values_t.flat<T>().data();
-    auto indices_ptr = indices_t.flat<int32_t>().data();
+    const T* mat1_ptr = mat1.flat<T>().data();
+    const T* mat2_ptr = mat2.flat<T>().data();
+    const T* values_ptr = values_t.flat<T>().data();
+    const int32_t* indices_ptr = indices_t.flat<int32_t>().data();
+    const int32_t* ds_ptr = dense_shape_t.flat<int32_t>().data();
+
+    int32_t ds_num_rows = ds_ptr[0];
+    int32_t ds_num_cols = ds_ptr[1];
+
+    if (ds_num_rows != mat1_num_rows || ds_num_cols != mat2_num_cols) {
+      return errors::InvalidArgument("Incorrect dense shape provided: dense_shape: (",
+                                     ds_num_rows, ", ", ds_num_cols, "), expected: (",
+                                     mat1_num_rows, ", ", mat2_num_cols, ")");
+    } 
 
     auto output_flat = out->flat<T>();
 
@@ -37,14 +47,14 @@ struct SampledADDMMFunctor<CPUDevice, T> {
 
         for (int32_t i = 0; i < batch_size; ++i) {
           T val = values_ptr[sparse_batch_offset + i];
-          auto row_idx = indices_ptr[indices_batch_offset + 2 * i];
-          auto col_idx = indices_ptr[indices_batch_offset + 2 * i + 1];
+          int32_t row_idx = indices_ptr[indices_batch_offset + 2 * i];
+          int32_t col_idx = indices_ptr[indices_batch_offset + 2 * i + 1];
           T dot = 0;
 
           if (alpha_ != 0) {
             for (int32_t j = 0; j < mat1_num_cols; ++j) {
-              auto mat1_idx = mat1_batch_offset + row_idx * mat1_num_cols + j;
-              auto mat2_idx = mat2_batch_offset + j * mat2_num_cols + col_idx;
+              int32_t mat1_idx = mat1_batch_offset + row_idx * mat1_num_cols + j;
+              int32_t mat2_idx = mat2_batch_offset + j * mat2_num_cols + col_idx;
               dot += mat1_ptr[mat1_idx] * mat2_ptr[mat2_idx];
             }
           }
@@ -80,49 +90,26 @@ class SampledADDMMOp : public OpKernel {
       const Tensor& mat1 = ctx->input(3);
       const Tensor& mat2 = ctx->input(4);
 
-      const int sparse_rank = dense_shape_t.NumElements();
-
-      OP_REQUIRES(ctx, sparse_rank == 2 || sparse_rank == 3,
-                  errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
-                                          "but indices has rank: ", sparse_rank));
-
       const TensorShape& values_shape = values_t.shape();
-      const int32_t batch_size = values_shape.dim_size(sparse_rank == 2 ? 0 : 1);
+      const int32_t batch_size = values_shape.dim_size(values_t.dims() - 1);
 
       const int32_t mat1_rank = mat1.dims();
       const int32_t mat2_rank = mat2.dims();
 
-      OP_REQUIRES(ctx, sparse_rank == mat1_rank,
-                  errors::InvalidArgument("SparseTensor and mat1 must have the ",
-                      "same rank, but SparseTensor has rank: ", sparse_rank,
-                      ", and mat1 has rank: ", mat1_rank));
-      OP_REQUIRES(ctx, sparse_rank == mat2_rank,
-                  errors::InvalidArgument("SparseTensor and mat2 must have the ",
-                      "same rank, but SparseTensor has rank: ", sparse_rank,
-                      ", and mat2 has rank: ", mat2_rank));
-
       const TensorShape& mat1_shape = mat1.shape();
       const TensorShape& mat2_shape = mat2.shape();
-                   
-      const int32_t mat1_num_batches = mat1_rank == 3 ? mat1_shape.dim_size(0) : 1;
-      const int32_t mat1_num_rows = mat1_shape.dim_size(mat1_rank == 2 ? 0 : 1);
-      const int32_t mat1_num_cols = mat1_shape.dim_size(mat1_rank == 2 ? 1 : 2);
-      const int32_t mat2_num_batches = mat2_rank == 3 ? mat2_shape.dim_size(0) : 1;
-      const int32_t mat2_num_rows = mat2_shape.dim_size(mat2_rank == 2 ? 0 : 1);
-      const int32_t mat2_num_cols = mat2_shape.dim_size(mat2_rank == 2 ? 1 : 2);
-
-      OP_REQUIRES(ctx, mat1_num_batches == mat2_num_batches &&
-                       mat1_num_cols == mat2_num_rows,
-                            errors::InvalidArgument(
-                                "Matrix size incompatible: mat1: ",
-                                mat1_shape.DebugString(),
-                                ", mat2: ", mat2_shape.DebugString()));
+      
+      const int32_t mat1_num_rows = mat1_shape.dim_size(mat1_rank - 2);
+      const int32_t mat1_num_cols = mat1_shape.dim_size(mat1_rank - 1);
+      const int32_t mat2_num_rows = mat2_shape.dim_size(mat2_rank - 2);
+      const int32_t mat2_num_cols = mat2_shape.dim_size(mat2_rank - 1);
+      const int32_t mat1_num_batches = mat1.NumElements() / (mat1_num_rows * mat1_num_cols); 
 
       Tensor* output = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(0, values_shape, &output));
 
       OP_REQUIRES_OK(ctx, functor::SampledADDMMFunctor<Device, T>::Compute(ctx,
-                                     indices_t, values_t, 
+                                     indices_t, values_t, dense_shape_t, 
                                      mat1, mat2, batch_size, 
                                      beta_, alpha_, 
                                      mat1_num_rows, mat1_num_cols, 

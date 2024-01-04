@@ -32,8 +32,8 @@ __global__ void SampledADDMMCustomKernel(
 
       if (alpha_ != 0) {
         for (int32_t j = 0; j < mat1_num_cols; ++j) {
-          auto mat1_idx = mat1_batch_offset + row_idx * mat1_num_cols + j;
-          auto mat2_idx = mat2_batch_offset + j * mat2_num_cols + col_idx;
+          int32_t mat1_idx = mat1_batch_offset + row_idx * mat1_num_cols + j;
+          int32_t mat2_idx = mat2_batch_offset + j * mat2_num_cols + col_idx;
           dot += mat1[mat1_idx] * mat2[mat2_idx];
         }
       }
@@ -47,8 +47,8 @@ namespace functor {
 
 template <typename T>
 struct SampledADDMMFunctor<GPUDevice, T> {
-  static Status Compute(OpKernelContext* ctx,
-                     const Tensor& indices_t, const Tensor& values_t,
+  static Status Compute(OpKernelContext* ctx, const Tensor& indices_t,
+                     const Tensor& values_t, const Tensor& dense_shape_t,
                      const Tensor& mat1, const Tensor& mat2,
                      const int32_t batch_size, const T beta_, const T alpha_,
                      const int32_t mat1_num_rows, const int32_t mat1_num_cols,
