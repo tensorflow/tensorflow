@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/py_array.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -26,11 +27,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "xla/layout_util.h"
 #include "xla/pjrt/lru_cache.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/memory.h"
@@ -43,7 +49,9 @@ limitations under the License.
 #include "xla/python/python_utils.h"
 #include "xla/python/sharding.h"
 #include "xla/python/transfer_guard_lib.h"
+#include "xla/python/types.h"
 #include "xla/python/util.h"
+#include "xla/shape.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -629,11 +637,68 @@ StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
       IfrtHelpers::pjrt_buffer(arr.ifrt_array()));
 }
 
-StatusOr<py::dict> PyArray::CudaArrayInterface() {
-  TF_ASSIGN_OR_RETURN(auto arr, AssertUnsharded("UnsafeBufferPointer"));
+py::dict PyArray::CudaArrayInterface() {
+  auto arr = ValueOrThrow(AssertUnsharded("UnsafeBufferPointer"));
 
-  return IfrtHelpers::CudaArrayInterface(arr.ifrt_array(),
-                                         arr.GetStorage().dynamic_shape);
+  ifrt::Array* ifrt_array = arr.ifrt_array();
+  std::optional<Shape>& scratch = arr.GetStorage().dynamic_shape;
+  auto* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
+  if (pjrt_buffer->client()->platform_id() != CudaId()) {
+    throw py::attribute_error(
+        "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
+  }
+  if (pjrt_buffer->IsTuple()) {
+    throw py::attribute_error(
+        "__cuda_array_interface__ is only defined for array buffers.");
+  }
+
+  switch (pjrt_buffer->element_type()) {
+    case PrimitiveType::PRED:
+    case PrimitiveType::S8:
+    case PrimitiveType::S16:
+    case PrimitiveType::S32:
+    case PrimitiveType::S64:
+    case PrimitiveType::U8:
+    case PrimitiveType::U16:
+    case PrimitiveType::U32:
+    case PrimitiveType::U64:
+    case PrimitiveType::F16:
+    case PrimitiveType::F32:
+    case PrimitiveType::F64:
+    case PrimitiveType::C64:
+    case PrimitiveType::C128:
+      break;
+
+    default:
+      throw py::attribute_error(absl::StrFormat(
+          "__cuda_array_interface__ is not supported for %s buffers.",
+          PrimitiveType_Name(pjrt_buffer->element_type())));
+  }
+
+  py::str typestr =
+      ValueOrThrow(TypeDescriptorForPrimitiveType(pjrt_buffer->element_type()));
+
+  if (!LayoutUtil::IsMonotonicWithDim0Major(pjrt_buffer->layout())) {
+    throw py::attribute_error(
+        "__cuda_array_interface__ is only currently supported for "
+        "buffers in row-major order.");
+  }
+
+  py::dict result;
+  const auto* dynamic_shape =
+      ValueOrThrow(IfrtHelpers::xla_dynamic_shape(ifrt_array, scratch));
+  result["shape"] = SpanToTuple(dynamic_shape->dimensions());
+  result["typestr"] = std::move(typestr);
+  std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold =
+      ValueOrThrow(pjrt_buffer->AcquireExternalReference());
+  const void* root_ptr =
+      external_reference_hold->OpaqueDeviceMemoryDataPointer();
+  py::tuple data(2);
+  data[0] = py::int_(absl::bit_cast<std::uintptr_t>(root_ptr));
+  data[1] = py::bool_(true);  // read-only
+  result["data"] = std::move(data);
+  result["version"] = py::int_(2);
+  return result;
 }
 
 Status PyArray::Delete() {
@@ -1107,10 +1172,8 @@ Status PyArray::RegisterTypes(py::module& m) {
         return xla::ValueOrThrow(self.UnsafeBufferPointer());
       },
       py::is_method(type));
-  type.attr("__cuda_array_interface__") =
-      jax::property_readonly([](PyArray self) {
-        return xla::ValueOrThrow(self.CudaArrayInterface());
-      });
+  type.attr("__cuda_array_interface__") = jax::property_readonly(
+      [](PyArray self) { return self.CudaArrayInterface(); });
   type.attr("on_device_size_in_bytes") = py::cpp_function(
       xla::ValueOrThrowWrapper(&PyArray::GetOnDeviceSizeInBytes),
       py::is_method(type));
