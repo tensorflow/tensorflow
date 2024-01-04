@@ -1178,7 +1178,7 @@ std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size, const int64_t index_vector_dim) {
   if (operand_sharding.IsTileMaximal() || operand_sharding.IsManual()) {
-    return operand_sharding;
+    return std::nullopt;
   }
   auto operand_passthrough_dims = GetGatherScatterOperandPassthroughOperandDims(
       operand_shape, collapsed_or_inserted_dims, index_map,
