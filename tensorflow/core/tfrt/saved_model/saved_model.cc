@@ -454,6 +454,7 @@ SavedModelImpl::LoadSavedModel(Options options,
       saved_model_dir;
 
   const bool aot_exist = AotPackageExists(saved_model_dir);
+  options.enable_lazy_loading = options.enable_lazy_loading && !aot_exist;
   // Register TFRT dialects
   mlir::DialectRegistry registry;
   if (aot_exist) {
