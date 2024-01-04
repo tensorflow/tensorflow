@@ -589,10 +589,13 @@ AutoShardingSolverResult CallORToolsSolver(
   if (dump_solver_request) {
     uint64_t solver_request_fprint =
         tsl::Fingerprint64(unscaled_request.SerializeAsString());
+    std::string request_dump_path =
+        absl::StrCat("/tmp/solver_request_", unscaled_request.request_name(),
+                     "_", solver_request_fprint, ".proto");
     auto write_status = file::SetBinaryProto(
         // Modify this file path if needed.
-        absl::StrCat("/tmp/solver_request_", solver_request_fprint, ".proto"),
-        unscaled_request, file::Defaults());
+        request_dump_path, unscaled_request, file::Defaults());
+    VLOG(5) << "Dumped solver request to " << request_dump_path;
     if (!write_status.ok()) {
       LOG(ERROR) << write_status.message();
     }

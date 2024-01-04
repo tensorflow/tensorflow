@@ -67,4 +67,5 @@ message AutoShardingSolverRequest {
   double saltiplier = 23;
   bool deterministic_mode = 27;
   string module_name = 24;
+  string request_name = 30;
 }
