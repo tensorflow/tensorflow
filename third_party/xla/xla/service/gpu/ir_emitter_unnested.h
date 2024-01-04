@@ -183,6 +183,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitInfeed(mlir::Operation* op);
   Status EmitInfeed(const HloInfeedInstruction* instr);
   Status EmitOutfeed(mlir::Operation* op);
+  Status EmitOutfeed(const HloOutfeedInstruction* instr);
   Status EmitRngGetAndUpdateState(mlir::Operation* op);
   Status EmitRngGetAndUpdateState(
       const HloRngGetAndUpdateStateInstruction* instr);

@@ -2991,6 +2991,31 @@ Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
   return OkStatus();
 }
 
+Status IrEmitterUnnested::EmitOutfeed(const HloOutfeedInstruction* instr) {
+  // HLO outfeed instruction has 2 operands, the source and a token, and a
+  // single token output.
+  const HloInstruction* source = instr->operand(0);
+  std::vector<ShapedSlice> shaped_slices;
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      source->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsTuple()) return OkStatus();
+        if (subshape.IsArray()) {
+          TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
+                              GetAllocationSliceForHlo(source, index));
+          ShapedSlice shaped_slice = {data, subshape};
+          shaped_slices.push_back(shaped_slice);
+          return OkStatus();
+        }
+        return InternalError("Unexpected shape kind for %s and shape index %s",
+                             source->ToString(), index.ToString());
+      }));
+
+  auto thunk = std::make_unique<OutfeedThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(shaped_slices));
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
 StatusOr<
     std::pair<std::vector<llvm_ir::IrArray>, std::vector<llvm_ir::IrArray>>>
 IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
@@ -3462,6 +3487,9 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::OutfeedOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitOutfeed(Cast<HloOutfeedInstruction>(hlo_for_lmhlo.at(op)));
+    }
     return EmitOutfeed(op);
   }
 
@@ -3566,6 +3594,8 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
     }
     case HloOpcode::kAllReduceDone:
       return EmitNcclAsyncDone(Thunk::kNcclAllReduceDone, instr);
+    case HloOpcode::kOutfeed:
+      return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
     case HloOpcode::kBitcast:
