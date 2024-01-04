@@ -30,6 +30,8 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
@@ -244,12 +246,16 @@ LaunchCmd::LaunchCmd(std::string kernel_name,
 
 Status LaunchCmd::Initialize(se::StreamExecutor* executor,
                              ExecutableSource source) {
-  if (kernels_.contains(executor)) return OkStatus();
+  {
+    absl::MutexLock lock(&mutex_);
+    if (kernels_.contains(executor)) return OkStatus();
+  }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       CreateKernel(kernel_name_, args_.size(), source.text,
                                    source.binary, executor, shmem_bytes_));
 
+  absl::MutexLock lock(&mutex_);
   kernels_.emplace(executor, std::move(kernel));
   return OkStatus();
 }
@@ -259,10 +265,14 @@ Status LaunchCmd::Record(const RecordParams& params,
   VLOG(5) << "LaunchCmd: kernel=" << kernel_name_
           << ", shmem_bytes=" << shmem_bytes_;
 
-  se::Kernel* kernel = kernels_[params.executor].get();
+  se::Kernel* kernel = [&] {
+    absl::MutexLock lock(&mutex_);
+    return kernels_[params.executor].get();
+  }();
+
   if (kernel == nullptr) {
-    return absl::InternalError(
-        "Kernel not loaded on a command buffer executor");
+    return absl::InternalError(absl::StrCat(
+        "Kernel not loaded on a command buffer executor: ", kernel_name_));
   }
 
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffers;
@@ -300,14 +310,16 @@ CustomKernelLaunchCmd::CustomKernelLaunchCmd(
 
 Status CustomKernelLaunchCmd::Initialize(se::StreamExecutor* executor,
                                          ExecutableSource source) {
-  if (kernels_.contains(executor)) {
-    return OkStatus();
+  {
+    absl::MutexLock lock(&mutex_);
+    if (kernels_.contains(executor)) return OkStatus();
   }
 
   auto kernel = std::make_unique<se::Kernel>(executor);
   TF_RETURN_IF_ERROR(
       executor->GetKernel(custom_kernel_.kernel_spec(), kernel.get()));
 
+  absl::MutexLock lock(&mutex_);
   kernels_.emplace(executor, std::move(kernel));
   return OkStatus();
 }
@@ -316,10 +328,15 @@ Status CustomKernelLaunchCmd::Record(const RecordParams& params,
                                      se::CommandBuffer* command_buffer) {
   VLOG(5) << "CustomKernelLaunchCmd: custom_kernel=" << custom_kernel_.name();
 
-  se::Kernel* kernel = kernels_[params.executor].get();
+  se::Kernel* kernel = [&] {
+    absl::MutexLock lock(&mutex_);
+    return kernels_[params.executor].get();
+  }();
+
   if (kernel == nullptr) {
     return absl::InternalError(
-        "Kernel not loaded on a command buffer executor");
+        absl::StrCat("Custom kernel not loaded on a command buffer executor: ",
+                     custom_kernel_.name()));
   }
 
   absl::InlinedVector<se::DeviceMemoryBase, 4> buffers;
