@@ -3835,11 +3835,19 @@ StatusOr<bool> AutoSharding::Run(
     }
     module_is_changed = false;
   } else {
+    std::string trying_to_find;
+    if (option_.try_multiple_mesh_shapes) {
+      trying_to_find = "a device mesh (and the corresponding shardings)";
+    } else {
+      trying_to_find = "shardings";
+    }
     CHECK_GE(min_mesh_shape_index, 0)
-        << "The auto-sharding pass could not find a device mesh that works for "
-           "this input. This could be the result of a low memory budget. If "
-           "you think you have set a reasonably large memory budget, please "
-           "report this as a bug.";
+        << "The auto-sharding pass could not find " << trying_to_find
+        << " that works for this input. This could be the result of a low "
+           "memory budget (please refer to the "
+           "`--xla_tpu_auto_spmd_partitioning_memory_budget_ratio` flag to set "
+           "a higher budget). If you think you have set a reasonably large "
+           "memory budget, please report this as a bug.";
 
     if (!changed[min_mesh_shape_index].ok()) {
       module_is_changed = changed[min_mesh_shape_index].status();
