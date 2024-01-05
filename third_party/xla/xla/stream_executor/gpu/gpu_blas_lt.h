@@ -51,11 +51,13 @@ struct MatrixLayout {  // plain MatrixLayout which is extended with create
     kColumnMajor,  // Elements in the same column are contiguous in memory.
   };
 
-  void Transpose() {
-    std::swap(num_rows, num_cols);
-    order =
-        (order == Order::kRowMajor) ? Order::kColumnMajor : Order::kRowMajor;
-  }
+  MatrixLayout(xla::PrimitiveType dtype_, int64_t num_rows_, int64_t num_cols_,
+               Order order_, int64_t batch_size_ = 1,
+               std::optional<int64_t> leading_dim_stride_ = {},
+               std::optional<int64_t> batch_stride_ = {},
+               std::optional<blas::Transpose> transpose_ = {});
+
+  void Transpose();
 
   xla::PrimitiveType dtype;
   // `num_rows` / `num_cols` are for the "logical" matrix shape:
@@ -65,16 +67,39 @@ struct MatrixLayout {  // plain MatrixLayout which is extended with create
   int64_t num_cols;
   Order order;
   int64_t batch_size;
-  std::optional<int64_t> leading_dim_stride;
+  int64_t leading_dim_stride;
   // `batch_stride` is set to `0` when `batch_size == 1`.
-  std::optional<int64_t> batch_stride;
-  std::optional<blas::Transpose> transpose;
+  int64_t batch_stride;
+  blas::Transpose transpose;
+};
+
+// compact version of the matrix layout to be used to pass matrices
+// to underlying blas API
+struct MatrixDescriptor {
+  DeviceMemoryBase data;
+  int64_t leading_dim_stride = 0;
+  int64_t batch_stride = 0;
+  blas::DataType type{};
+  blas::Transpose transpose{};
+
+  template <typename T>
+  DeviceMemory<T> cast() const {
+    return DeviceMemory<T>(data);
+  }
+};
+
+struct OutputMatrixDescriptor : public MatrixDescriptor {
+  OutputMatrixDescriptor(MatrixDescriptor&& parent) noexcept
+      : MatrixDescriptor(std::move(parent)) {}
+  int64_t batch_size = 0;
+  int64_t m = 0, n = 0, k = 0;
+  blas::ComputationType compute_type{};
 };
 
 // BLAS GeMM's output is column-major. If we require row-major, use identity:
 // C^T = (A @ B)^T = B^T @ A^T.
 bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
-                           MatrixLayout& output, MatrixLayout* pC = nullptr);
+                           MatrixLayout& output, MatrixLayout* c = nullptr);
 
 struct GemmConfig {  // plain GemmConfig which is extended with create functions
                      // in matmul_utils.h
@@ -90,17 +115,6 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   bool grad_y;
   std::optional<blas::ComputationType> compute_type;
 };
-
-// template < cudaDataType_t What, cudaDataType_t SrcT, class Z, class... T>
-// struct ChooseType {
-//    using type = std::conditional_t< What == SrcT, Z,
-//         typename ChooseType< What, T...>::type>;
-// };
-
-// template < cudaDataType_t What >
-// using CudaToNativeT = typename ChooseType< What, CUDA_R_8F_E4M3,
-// tsl::float8_e4m3fn,
-//         CUDA_R_8F_E5M2, tsl::float8_e5m2, ... >::type;
 
 struct BlasLt {
   enum class Epilogue {

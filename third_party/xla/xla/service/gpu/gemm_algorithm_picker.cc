@@ -279,11 +279,11 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
 
     TF_ASSIGN_OR_RETURN(
         bool has_vector_bias,
-        xla::gpu::gpublas_lt::EpilogueAddsVectorBias(gemm_config.epilogue()));
+        gpublas_lt::EpilogueAddsVectorBias(gemm_config.epilogue()));
 
-    TF_ASSIGN_OR_RETURN(bool has_aux_output,
-                        xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(
-                            gemm_config.epilogue()));
+    TF_ASSIGN_OR_RETURN(
+        bool has_aux_output,
+        gpublas_lt::EpilogueHasAuxiliaryOutput(gemm_config.epilogue()));
 
     TF_ASSIGN_OR_RETURN(auto epilogue,
                         AsBlasLtEpilogue(gemm_config.epilogue()));

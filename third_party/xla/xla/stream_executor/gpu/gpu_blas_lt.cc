@@ -91,6 +91,35 @@ tsl::StatusOr<PrimitiveType> AsXlaPrimitiveType(DataType dtype) {
   }
 }
 
+MatrixLayout::MatrixLayout(xla::PrimitiveType dtype_, int64_t num_rows_,
+                           int64_t num_cols_, MatrixLayout::Order order_,
+                           int64_t batch_size_,
+                           std::optional<int64_t> leading_dim_stride_,
+                           std::optional<int64_t> batch_stride_,
+                           std::optional<blas::Transpose> transpose_)
+    : dtype(dtype_),
+      num_rows(num_rows_),
+      num_cols(num_cols_),
+      order(order_),
+      batch_size(batch_size_) {
+  if (!leading_dim_stride_) {
+    leading_dim_stride = order == Order::kRowMajor ? num_cols : num_rows;
+  } else {
+    leading_dim_stride = *leading_dim_stride_;
+  }
+  if (!batch_stride_) {
+    batch_stride = (batch_size > 1) ? num_rows * num_cols : 0;
+  } else {
+    batch_stride = *batch_stride_;
+  }
+  transpose = transpose_ ? *transpose_ : blas::Transpose::kNoTranspose;
+}
+
+void MatrixLayout::Transpose() {
+  std::swap(num_rows, num_cols);
+  order = (order == Order::kRowMajor) ? Order::kColumnMajor : Order::kRowMajor;
+}
+
 tsl::StatusOr<ComputationType> GetBlasComputationType(
     PrimitiveType lhs_dtype, PrimitiveType output_dtype,
     int64_t compute_precision) {
@@ -125,15 +154,17 @@ tsl::StatusOr<ComputationType> GetBlasComputationType(
 // BLAS GeMM's output is column-major. If we require row-major, use identity:
 // C^T = (A @ B)^T = B^T @ A^T.
 bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
-                           MatrixLayout& output, MatrixLayout* pC) {
+                           MatrixLayout& output, MatrixLayout* c) {
   bool swap_operands = output.order != MatrixLayout::Order::kColumnMajor;
   if (swap_operands) {
     std::swap(lhs, rhs);
     rhs.Transpose();
-    lhs.Transpose();
-    // prevent pC and output from being swapped two times if they are equal!
-    if (pC != nullptr && pC != &output) {
-      pC->Transpose();
+    // prevent layouts from being swapped two times if they are equal
+    if (&lhs != &rhs) {
+      lhs.Transpose();
+    }
+    if (c != nullptr && c != &output) {
+      c->Transpose();
     }
     output.Transpose();
   }

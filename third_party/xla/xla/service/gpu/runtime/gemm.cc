@@ -51,10 +51,12 @@ using xla::runtime::StridedMemrefView;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // TODO(ezhulenev): Delete run time auto tuning from XLA.
-Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
-                           se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs,
-                           se::DeviceMemoryBase out, const Shape& output_shape,
-                           double beta, const DebugOptions* debug_options,
+Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
+                           se::DeviceMemoryBase lhs_buffer,
+                           se::DeviceMemoryBase rhs_buffer,
+                           se::DeviceMemoryBase output_buffer,
+                           const Shape& output_shape, double beta,
+                           const DebugOptions* debug_options,
                            NonAtomicallyUpgradeableRWLock* gpu_lock) {
   VLOG(3) << "Running GEMM runtime autotuning";
   std::vector<se::blas::AlgorithmType> algorithms;
@@ -86,7 +88,8 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
       AutotuneResult best_algorithm,
       GetBestBlasAlgorithm(
           stream, buffer_allocator, /*gemm_str=*/std::nullopt, autotune_config,
-          lhs, rhs, out, algorithms, output_shape, HloModuleConfig(), beta,
+          lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
+          HloModuleConfig(), beta,
           [&](const se::blas::AlgorithmType& algorithm)
               -> StatusOr<se::blas::ProfileResult> {
             se::blas::ProfileResult profile_result;
@@ -96,13 +99,14 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
             // always return true, and the actual success-ness is returned in
             // ProfileResult::is_valid.
             TF_RETURN_IF_ERROR(
-                RunGemm(config, lhs, rhs, out, se::DeviceMemoryBase(nullptr, 0),
-                        deterministic_ops, stream, algorithm, &profile_result));
+                RunGemm(*config, lhs_buffer, rhs_buffer, output_buffer,
+                        se::DeviceMemoryBase(nullptr, 0), deterministic_ops,
+                        stream, algorithm, &profile_result));
             return std::move(profile_result);
           }));
 
   if (best_algorithm.has_gemm()) {
-    config.algorithm = algorithms[best_algorithm.gemm().algorithm()];
+    config->algorithm = algorithms[best_algorithm.gemm().algorithm()];
     return OkStatus();
   } else {
     return InternalError("Runtime autotuning failed to select an algorithm");
@@ -145,7 +149,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   // deadlock.
   if (gemm_config->algorithm == stream_executor::blas::kRuntimeAutotuning) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    auto status = DoRuntimeAutotuning(stream, *gemm_config, lhs_data, rhs_data,
+    auto status = DoRuntimeAutotuning(stream, gemm_config, lhs_data, rhs_data,
                                       output_data, output_shape, beta,
                                       debug_options, gpu_lock);
     if (!status.ok()) {
@@ -153,7 +157,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
     }
 #else
     return absl::InternalError(
-        "Failed to run runtime autotuner because CUDA is not enabled");
+        "Failed to run runtime autotuner because GPU support is not enabled");
 #endif
   }
 
