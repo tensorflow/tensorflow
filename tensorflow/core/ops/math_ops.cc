@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
+// TODO(intel-tf): Move all MKL ops in this file to a separate file,
+// mkl_math_ops.cc.
+
 namespace tensorflow {
 
 using shape_inference::DimensionHandle;
@@ -167,7 +170,7 @@ REGISTER_OP("_MklBatchMatMul")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .Attr("grad_x: bool = false")
@@ -178,7 +181,7 @@ REGISTER_OP("_MklBatchMatMulV2")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .Attr("grad_x: bool = false")
@@ -974,7 +977,7 @@ REGISTER_OP("_MklMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("grad_a: bool = false")
     .Attr("grad_b: bool = false")
     .SetShapeFn(shape_inference::MatMulShape);

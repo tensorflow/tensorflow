@@ -3077,6 +3077,7 @@ REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
 
 TF_CALL_float(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
 TF_CALL_bfloat16(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
+TF_CALL_half(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
 
 // Register 2D operations
 #define REGISTER_MKL_CPU_2D(T)                                                 \
@@ -3148,6 +3149,7 @@ TF_CALL_bfloat16(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D);
+TF_CALL_half(REGISTER_MKL_CPU_2D);
 
 #define REGISTER_MKL_CPU_2D_DEPTHWISE(T)                                      \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -3179,6 +3181,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
+TF_CALL_half(REGISTER_MKL_CPU_2D_DEPTHWISE);
 
 // Note we are registering _MklFusedConv2D.
 // We check the fused_ops attributes to decide if bias is enabled or not.
@@ -3233,6 +3236,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_FUSED);
+TF_CALL_half(REGISTER_MKL_CPU_2D_FUSED);
 
 // Register 3D operations
 #define REGISTER_MKL_CPU_3D(T)                                                 \
@@ -3256,12 +3260,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_FUSED);
       MklFusedConv3DOp<CPUDevice, T, T, T, T, T, int32, false, true>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_3D);
-
-REGISTER_KERNEL_BUILDER(
-    Name("_FusedConv3D").Device(DEVICE_CPU).TypeConstraint<float>("T"), NoOp);
-REGISTER_KERNEL_BUILDER(
-    Name("_FusedConv3D").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
-    NoOp);
+TF_CALL_half(REGISTER_MKL_CPU_3D);
 
 #undef APPEND_DEPTHWISE
 #undef APPEND_ELTWISE
