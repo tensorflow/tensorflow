@@ -491,11 +491,6 @@ message DebugOptions {
   // executed to free space on device.
   int32 xla_gpu_graph_eviction_timeout_seconds = 230;
 
-  // Allocate temp buffers once during the first execution of an executable.
-  // Reuse the allocated buffers in subsequent executions. Executables cannot
-  // run concurrently if this is enabled.
-  bool xla_gpu_enable_persistent_temp_buffers = 206;
-
   // Size threshold (in megabytes) for the GPU redzone scratch allocator.
   int64 xla_gpu_redzone_scratch_max_megabytes = 167;
 
@@ -685,7 +680,8 @@ message DebugOptions {
   // xla_gpu_enable_experimental_block_size
   // xla_gpu_graph_level
   // xla_gpu_single_wave_autotuning
-  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242;
+  // xla_gpu_enable_persistent_temp_buffers
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 242, 206;
 }
 
 // Contains flags which affects the GPU compilation result.

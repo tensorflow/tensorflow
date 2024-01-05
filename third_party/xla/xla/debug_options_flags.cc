@@ -101,7 +101,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   opts.set_xla_gpu_graph_num_runs_to_instantiate(-1);
-  opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_graph_min_graph_size(5);
   opts.set_xla_gpu_graph_enable_concurrent_region(false);
   opts.set_xla_gpu_graph_eviction_timeout_seconds(60);
@@ -1033,14 +1032,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "XLA instantiates new Gpu graphs, it evicts graphs that were not "
       "recently executed to free space on device."));
 
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_persistent_temp_buffers",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_enable_persistent_temp_buffers),
-      debug_options->xla_gpu_enable_persistent_temp_buffers(),
-      "Allocate temp buffers once during the first execution of an executable. "
-      "Reuse the allocated buffers in subsequent executions. Executables cannot"
-      " run concurrently if this is enabled."));
   flag_list->push_back(
       tsl::Flag("xla_dump_disable_metadata",
                 bool_setter_for(&DebugOptions::set_xla_dump_disable_metadata),

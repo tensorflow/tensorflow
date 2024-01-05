@@ -96,7 +96,6 @@ class GpuExecutable : public Executable {
     xla::Shape output_shape;
     std::optional<std::vector<BufferAllocation>> mlir_allocations;
     std::unique_ptr<const BufferAssignment> buffer_assignment;
-    bool enable_persistent_temp_buffers;
     int64_t debug_buffer_assignment_show_max;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
@@ -240,11 +239,6 @@ class GpuExecutable : public Executable {
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
 
-  // Allocate the temp buffers and store them with the GpuExecutable. This
-  // function only allocates buffers on the first run for each executor.
-  Status PopulatePersistentTempBuffers(se::StreamExecutor* executor)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(persistent_temp_buffers_mu_);
-
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
@@ -253,9 +247,7 @@ class GpuExecutable : public Executable {
   StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-      const BufferAllocToDeviceMemoryMap&
-          buffer_alloc_to_persistent_memory_map);
+      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal);
 
   StatusOr<se::DeviceMemoryBase> BufferForAllocation(
       VariantArguments arguments,
@@ -313,16 +305,6 @@ class GpuExecutable : public Executable {
   std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
 
   std::optional<ModuleAnnotations> annotation_info_;
-
-  bool enable_persistent_temp_buffers_ = false;
-
-  absl::Mutex persistent_temp_buffers_mu_;
-  // Temp buffers can be allocated once and be reused whenever the GpuExecutable
-  // is executed. The persistent temp buffer is stored in a map that maps from
-  // a BufferAllocation to the temp buffer.
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
-                      BufferAllocToDeviceMemoryMap>
-      persistent_temp_buffers_ ABSL_GUARDED_BY(persistent_temp_buffers_mu_);
 
   int64_t debug_buffer_assignment_show_max_;
 
