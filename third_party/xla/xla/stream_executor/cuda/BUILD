@@ -12,7 +12,7 @@ load(
     "tf_additional_cudnn_plugin_deps",
     "tf_additional_gpu_compilation_copts",
 )
-load("@local_tsl//tsl:tsl.bzl", "if_google", "set_external_visibility", "tsl_copts")
+load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "set_external_visibility", "tsl_copts")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
@@ -131,6 +131,7 @@ cc_library(
     name = "cuda_driver",
     srcs = if_cuda_is_configured(["cuda_driver.cc"]),
     hdrs = if_cuda_is_configured(["cuda_driver.h"]),
+    defines = if_nccl(["NCCL_ENABLED=1"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_diagnostics",
@@ -164,7 +165,7 @@ cc_library(
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ]),
+    ]) + if_nccl(["@local_config_nccl//:nccl"]),
 )
 
 cc_library(

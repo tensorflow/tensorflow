@@ -599,6 +599,13 @@ int GpuExecutor::CompareOccupancy(int* initial_blocks,
 }
 
 DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
+  if (memory_space == 1) {
+    auto result = GpuDriver::CollectiveMemoryAllocate(context_, size);
+    if (!result.ok()) {
+      LOG(ERROR) << result.status();
+    }
+    return DeviceMemoryBase(*result, size);
+  }
   CHECK_EQ(memory_space, 0);
   return DeviceMemoryBase(GpuDriver::DeviceAllocate(context_, size), size);
 }

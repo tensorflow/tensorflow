@@ -154,6 +154,14 @@ class GpuExecutor : public internal::StreamExecutorInterface {
     return GpuDriver::UnifiedMemoryDeallocate(context_, location);
   }
 
+  tsl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) override {
+    return GpuDriver::CollectiveMemoryAllocate(context_, size);
+  }
+
+  tsl::Status CollectiveMemoryDeallocate(void* location) override {
+    return GpuDriver::CollectiveMemoryDeallocate(context_, location);
+  }
+
   // CUDA allocation/registration functions are necessary because the driver
   // internally sets up buffers for DMA operations (and page locks them).
   // There's no external interface for us to otherwise control these DMA
