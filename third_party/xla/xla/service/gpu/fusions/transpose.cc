@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -291,8 +290,7 @@ Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
       .status();
 }
 
-std::optional<StatusOr<LaunchDimensions>> TransposeFusion::launch_dimensions()
-    const {
+std::optional<LaunchDimensions> TransposeFusion::launch_dimensions() const {
   return LaunchDimensions(tiling_scheme_.GetNumberOfBlocksPhysical(),
                           tiling_scheme_.GetNumThreadsPerBlockPhysical());
 }

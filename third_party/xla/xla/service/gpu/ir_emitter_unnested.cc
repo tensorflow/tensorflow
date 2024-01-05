@@ -266,73 +266,6 @@ StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
   }
 }
 
-// Builds a thunk that calls a new or reused kernel for a fusion operation.
-//
-// The caller must specify the same launch dimensions for fusions which have
-// the same computation.
-//
-// If a given fusion is implemented using multiple kernels, then for each
-// kernel we should provide a discriminator, such as "init" and "impl".
-//
-// The builder_fn is only invoked if the kernel couldn't be reused.
-//
-// This is the typical usage pattern of this method:
-//
-// ```
-// auto builder_fn = [](std::vector<llvm_ir::IrArray> inputs,
-//                      std::vector<llvm_ir::IrArray> outputs) { ... };
-// TF_ASSIGN_OR_RETURN(
-//   auto thunk,
-//   BuildKernelThunkForFusion(..., fusion_op, launch_dimensions, builder_fn,
-//                             ...));
-// AddThunkToThunkSequence(std::move(thunk))
-// ```
-StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
-    IrEmitterContext& ir_emitter_context, KernelReuseCache& kernel_cache,
-    const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
-    const HloComputation* fused_computation,
-    const LaunchDimensions& launch_dimensions, absl::string_view discriminator,
-    std::function<Status(std::vector<llvm_ir::IrArray>,
-                         std::vector<llvm_ir::IrArray>)>
-        kernel_builder_fn,
-    llvm::IRBuilder<>* builder) {
-  std::string suggested_kernel_name = std::string(fusion->name());
-
-  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
-                      ir_emitter_context.emit_ir_from_hlo()
-                          ? KernelArguments::Create(
-                                ir_emitter_context.buffer_assignment(), fusion)
-                          : KernelArguments::Create(
-                                ir_emitter_context.allocations(), fusion_op));
-
-  auto kernel_builder_status = OkStatus();
-  auto [entry, cached] = kernel_cache.Get(
-      fused_computation, kernel_arguments.args(), discriminator,
-      [&]() -> KernelReuseCache::Entry {
-        auto [kernel, input_arrays, output_arrays] = BuildKernelPrototype(
-            ir_emitter_context, suggested_kernel_name, kernel_arguments.args(),
-            fusion->operand_count(), launch_dimensions, builder);
-        kernel_builder_status = kernel_builder_fn(input_arrays, output_arrays);
-        return {kernel->getName().str(), launch_dimensions};
-      });
-  TF_RETURN_IF_ERROR(kernel_builder_status);
-  if (cached) {
-    VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
-            << entry.kernel_name;
-  }
-
-  std::variant<mlir::Operation*, const HloInstruction*> op;
-  if (ir_emitter_context.emit_ir_from_hlo()) {
-    op = fusion;
-  } else {
-    op = fusion_op;
-  }
-
-  return std::make_unique<KernelThunk>(
-      op, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
-      /*shmem_bytes=*/0);
-}
-
 }  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(IrEmitterContext* ir_emitter_context)
@@ -526,10 +459,8 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
 
   const Shape& input_shape = GetShape(pad_to_static.getArgs().front());
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          input_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor}));
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
   std::vector<llvm_ir::IrArray> input_arrays;
   std::vector<llvm_ir::IrArray> output_arrays;
   TF_ASSIGN_OR_RETURN(
@@ -652,10 +583,8 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
 
   const Shape& input_shape = GetShape(slice_to_dynamic.getArgs().front());
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          input_shape, ir_emitter_context_->gpu_device_info(),
-                          {unroll_factor}));
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      input_shape, ir_emitter_context_->gpu_device_info(), {unroll_factor});
   llvm::Type* index_ty = GetIndexTypeForKernel(
       slice_to_dynamic, launch_dimensions.launch_bound(), &b_);
   std::vector<llvm_ir::IrArray> input_arrays, output_arrays;
@@ -2169,10 +2098,8 @@ Status IrEmitterUnnested::EmitSelectAndScatter(
                                            select_and_scatter_op.getInitValue(),
                                            select_and_scatter_op.getOut()));
 
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      CalculateLaunchDimensions(source_shape,
-                                ir_emitter_context_->gpu_device_info()));
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      source_shape, ir_emitter_context_->gpu_device_info());
 
   // Init value is not needed in IR emission.
   TF_ASSIGN_OR_RETURN(auto ir_arrays, BuildKernelThunkForNonFusionOp(
@@ -2572,10 +2499,8 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op,
   standard_iteration_shape.set_dimensions(dimension_to_sort,
                                           standard_num_iterations_in_sort_dim);
 
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions standard_launch_dimensions,
-      CalculateLaunchDimensions(standard_iteration_shape,
-                                ir_emitter_context_->gpu_device_info()));
+  LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
+      standard_iteration_shape, ir_emitter_context_->gpu_device_info());
 
   // Calculate the launch dimensions for the case where we use tiling. We split
   // the dimension that should be sorted into tiles of size 'kTileSize'. This
@@ -3034,9 +2959,14 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 
-  auto [kernel, inputs, outputs] = BuildKernelPrototype(
-      *ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
-      needed_operands.size(), launch_dimensions, &b_);
+  llvm::Function* kernel;
+  std::vector<llvm_ir::IrArray> inputs;
+  std::vector<llvm_ir::IrArray> outputs;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(kernel, inputs, outputs),
+      BuildKernelPrototype(*ir_emitter_context_, suggested_kernel_name,
+                           kernel_arguments.args(), needed_operands.size(),
+                           launch_dimensions, &b_));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       op, kernel->getName().str(), kernel_arguments.args(), launch_dimensions,
@@ -3060,9 +2990,14 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 
-  auto [kernel, inputs, outputs] = BuildKernelPrototype(
-      *ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
-      kernel_arguments.args().size(), launch_dimensions, &b_);
+  llvm::Function* kernel;
+  std::vector<llvm_ir::IrArray> inputs;
+  std::vector<llvm_ir::IrArray> outputs;
+  TF_ASSIGN_OR_RETURN(
+      std::tie(kernel, inputs, outputs),
+      BuildKernelPrototype(
+          *ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
+          kernel_arguments.args().size(), launch_dimensions, &b_));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       hlo, kernel->getName().str(), kernel_arguments.args(), launch_dimensions,
@@ -3102,9 +3037,8 @@ Status IrEmitterUnnested::BuildInitializerThunk(
   // will just need the IR arrays for the initial value and the destination.
   const Shape dest_shape = GetShape(dest);
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          dest_shape, ir_emitter_context_->gpu_device_info()));
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      dest_shape, ir_emitter_context_->gpu_device_info());
   TF_ASSIGN_OR_RETURN(auto ir_arrays,
                       BuildKernelThunkForNonFusionOp(
                           op, {init_value_mlir, dest}, launch_dimensions));

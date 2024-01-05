@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -42,7 +41,7 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
  public:
   explicit InputSlicesFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis) {}
-  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
+  std::optional<LaunchDimensions> launch_dimensions() const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,

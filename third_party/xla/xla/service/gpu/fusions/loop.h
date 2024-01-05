@@ -35,7 +35,7 @@ namespace gpu {
 class LoopFusion : public KernelFusionEmitterBase {
  public:
   explicit LoopFusion(const HloFusionAnalysis& analysis);
-  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
+  std::optional<LaunchDimensions> launch_dimensions() const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,

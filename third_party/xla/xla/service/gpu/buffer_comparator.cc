@@ -84,8 +84,8 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   const se::DeviceDescription& gpu_device_info =
       executor->GetDeviceDescription();
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions dim,
-                      CalculateLaunchDimensions(buffer_shape, gpu_device_info));
+  LaunchDimensions dim =
+      CalculateLaunchDimensions(buffer_shape, gpu_device_info);
 
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       dim.thread_counts_per_block(), dim.block_counts(), *comparison_kernel,

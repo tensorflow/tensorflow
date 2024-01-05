@@ -72,10 +72,9 @@ TEST_F(ScatterFusionTest, ScatterFusion) {
       auto emitter,
       GetFusionEmitter(PreBufferAssignmentFusionInfo{*analysis_fused}));
   ASSERT_NE(dynamic_cast<ScatterFusion*>(emitter.get()), nullptr);
-  auto maybe_launch_dims = emitter->launch_dimensions();
-  ASSERT_NE(maybe_launch_dims, std::nullopt);
-  TF_ASSERT_OK_AND_ASSIGN(auto launch_dimensions, maybe_launch_dims.value());
-  EXPECT_EQ(launch_dimensions.launch_bound(), 3 * 9 /* updates size */);
+  auto launch_dims = emitter->launch_dimensions();
+  ASSERT_NE(launch_dims, std::nullopt);
+  EXPECT_EQ(launch_dims->launch_bound(), 3 * 9 /* updates size */);
 }
 
 }  // namespace

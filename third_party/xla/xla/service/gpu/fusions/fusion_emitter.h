@@ -46,7 +46,7 @@ class FusionInterface {
       KernelReuseCache& kernel_cache) const = 0;
 
   // Returns the fusion's launch dimensions, if applicable.
-  virtual std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const {
+  virtual std::optional<LaunchDimensions> launch_dimensions() const {
     return std::nullopt;
   }
 };
@@ -69,8 +69,8 @@ class KernelFusionEmitterBase : public FusionInterface {
                             llvm::IRBuilder<>* builder) const = 0;
 };
 
-std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
-           std::vector<llvm_ir::IrArray> /*outputs*/>
+StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
+                    std::vector<llvm_ir::IrArray> /*outputs*/>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const std::string& suggested_name,
                      absl::Span<const KernelArgument> arguments,

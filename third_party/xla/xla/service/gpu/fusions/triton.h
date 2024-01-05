@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_TRITON_H_
 #define XLA_SERVICE_GPU_FUSIONS_TRITON_H_
 
+#include <optional>
+
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
@@ -36,7 +38,7 @@ class TritonFusion : public FusionInterface {
       const HloFusionInstruction& fusion,
       KernelReuseCache& kernel_cache) const final;
 
-  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
+  std::optional<LaunchDimensions> launch_dimensions() const override;
 
  private:
   const HloFusionAnalysis& analysis_;

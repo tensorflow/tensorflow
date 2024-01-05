@@ -43,14 +43,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-std::optional<StatusOr<LaunchDimensions>> ScatterFusion::launch_dimensions()
-    const {
+std::optional<LaunchDimensions> ScatterFusion::launch_dimensions() const {
   const auto& updates_shape =
       analysis_.fusion_roots().front()->operand(2)->shape();
   return CalculateLaunchDimensions(updates_shape, analysis_.device_info());

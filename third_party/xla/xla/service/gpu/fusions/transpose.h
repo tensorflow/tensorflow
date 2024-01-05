@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -57,7 +56,7 @@ namespace gpu {
 class TransposeFusion : public KernelFusionEmitterBase {
  public:
   explicit TransposeFusion(const HloFusionAnalysis& analysis);
-  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
+  std::optional<LaunchDimensions> launch_dimensions() const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,

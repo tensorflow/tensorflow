@@ -48,8 +48,11 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/status_macros.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -74,9 +77,15 @@ void AnnotateWithInt32Value(std::string name, int64_t value,
 
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
-void AnnotateKernelLaunchDimensions(const LaunchDimensions& launch_dims,
-                                    const std::string& kernel_name,
-                                    llvm::Module* llvm_module) {
+Status AnnotateKernelLaunchDimensions(const se::DeviceDescription& device_info,
+                                      const LaunchDimensions& launch_dims,
+                                      const std::string& kernel_name,
+                                      llvm::Module* llvm_module) {
+  TF_RET_CHECK(device_info.block_dim_limit().x == 0 ||
+               launch_dims.block_counts().x < device_info.block_dim_limit().x)
+      << "Kernel '" << kernel_name << "' launch needs more blocks ("
+      << launch_dims.block_counts().x << ") than allowed by hardware ("
+      << device_info.block_dim_limit().x << ").";
   // Add __launch_bounds__ to metadata. This limits registers per thread to
   // avoid out-of-resources launching errors.
 
@@ -92,12 +101,14 @@ void AnnotateKernelLaunchDimensions(const LaunchDimensions& launch_dims,
     AnnotateWithInt32Value("reqntidz", launch_dims.thread_counts_per_block().z,
                            kernel_name, llvm_module);
   }
+
+  return OkStatus();
 }
 
 }  // namespace
 
-std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
-           std::vector<llvm_ir::IrArray>>
+StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
+                    std::vector<llvm_ir::IrArray>>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const std::string& suggested_name,
                      absl::Span<const KernelArgument> arguments,
@@ -137,7 +148,9 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                              kernel_name, llvm_module);
 
   AnnotateFunctionAsGpuKernel(llvm_module, kernel, builder);
-  AnnotateKernelLaunchDimensions(launch_dimensions, kernel_name, llvm_module);
+  TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+      ir_emitter_context.gpu_device_info(), launch_dimensions, kernel_name,
+      llvm_module));
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
   // kernels makes sense.
@@ -188,7 +201,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
     (arg_no < num_inputs ? inputs : outputs).push_back(ir_array);
   }
 
-  return {kernel, std::move(inputs), std::move(outputs)};
+  return {{kernel, std::move(inputs), std::move(outputs)}};
 }
 
 StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
@@ -207,28 +220,28 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   auto* fused_computation = fusion.fused_instructions_computation();
 
   FusionEmissionResult result;
-  auto maybe_launch_dims = launch_dimensions();
-  TF_RET_CHECK(maybe_launch_dims.has_value());
-  TF_RETURN_IF_ERROR(maybe_launch_dims->status());
-  const auto& launch_dims = maybe_launch_dims->value();
+  auto launch_dims = launch_dimensions();
+  TF_RET_CHECK(launch_dims.has_value());
   std::vector<llvm_ir::IrArray> inputs, outputs;
   auto [entry, cached] = kernel_cache.GetWithStatus(
       fused_computation, kernel_arguments.args(), /*discriminator=*/"",
       [&]() -> StatusOr<KernelReuseCache::Entry> {
         llvm::Function* kernel;
-        std::tie(kernel, inputs, outputs) = BuildKernelPrototype(
-            ir_emitter_context, suggested_kernel_name, kernel_arguments.args(),
-            fusion.operand_count(), launch_dims, &builder);
+        TF_ASSIGN_OR_RETURN(std::tie(kernel, inputs, outputs),
+                            BuildKernelPrototype(
+                                ir_emitter_context, suggested_kernel_name,
+                                kernel_arguments.args(), fusion.operand_count(),
+                                *launch_dims, &builder));
         if (ir_emitter_context.emit_kernels()) {
-          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion, launch_dims,
-                                        std::move(inputs), std::move(outputs),
-                                        &builder));
+          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion,
+                                        *launch_dims, std::move(inputs),
+                                        std::move(outputs), &builder));
         } else {
           VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
         }
         // TODO(jreiffers): Return shmem_bytes from EmitKernel when
         // converting the Triton emitters to this infrastructure.
-        return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
+        return KernelReuseCache::Entry{kernel->getName().str(), *launch_dims,
                                        /*shmem_bytes=*/0};
       });
   TF_RETURN_IF_ERROR(entry.status());
@@ -240,11 +253,11 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
 
   if (ir_emitter_context.emit_ir_from_hlo()) {
     result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
+        &fusion, entry->kernel_name, kernel_arguments.args(), *launch_dims,
         entry->shmem_bytes));
   } else {
     result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
+        fusion_op, entry->kernel_name, kernel_arguments.args(), *launch_dims,
         entry->shmem_bytes));
   }
 

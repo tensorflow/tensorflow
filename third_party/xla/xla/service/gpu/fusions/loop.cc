@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/loop.h"
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -240,8 +241,7 @@ Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
       .EmitLoop(fusion.name(), index_type);
 }
 
-std::optional<StatusOr<LaunchDimensions>> LoopFusion::launch_dimensions()
-    const {
+std::optional<LaunchDimensions> LoopFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(GetElementShape(analysis_),
                                    analysis_.device_info(), config_);
 }

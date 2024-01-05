@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -808,32 +809,40 @@ StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildKernelThunkForFusion(
                                     fusion_op_));
 
   auto kernel_builder_status = OkStatus();
-  auto [entry, cached] = kernel_cache_.Get(
+  auto [entry, cached] = kernel_cache_.GetWithStatus(
       fused_computation, kernel_arguments.args(), discriminator,
-      [&]() -> KernelReuseCache::Entry {
-        auto [kernel, input_arrays, output_arrays] = BuildKernelPrototype(
-            ir_emitter_context_, suggested_kernel_name, kernel_arguments.args(),
-            fusion_.operand_count(), launch_dimensions, builder_);
-        kernel_builder_status = kernel_builder_fn(input_arrays, output_arrays);
-        return {kernel->getName().str(), launch_dimensions};
+      [&]() -> StatusOr<KernelReuseCache::Entry> {
+        llvm::Function* kernel;
+        std::vector<llvm_ir::IrArray> input_arrays;
+        std::vector<llvm_ir::IrArray> output_arrays;
+        TF_ASSIGN_OR_RETURN(
+            std::tie(kernel, input_arrays, output_arrays),
+            BuildKernelPrototype(ir_emitter_context_, suggested_kernel_name,
+                                 kernel_arguments.args(),
+                                 fusion_.operand_count(), launch_dimensions,
+                                 builder_));
+        TF_RETURN_IF_ERROR(kernel_builder_fn(input_arrays, output_arrays));
+        return {{kernel->getName().str(), launch_dimensions}};
       });
-  TF_RETURN_IF_ERROR(kernel_builder_status);
+  TF_RETURN_IF_ERROR(entry.status());
   if (cached) {
     VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
-            << entry.kernel_name;
+            << entry->kernel_name;
   }
 
   if (ir_emitter_context_.emit_ir_from_hlo()) {
     return std::make_unique<KernelThunk>(
-        &fusion_, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
+        &fusion_, entry->kernel_name, kernel_arguments.args(),
+        launch_dimensions,
         // Shared memory is allocated statically.
         /*shmem_bytes=*/0);
   }
 
-  return std::make_unique<KernelThunk>(
-      fusion_op_, entry.kernel_name, kernel_arguments.args(), launch_dimensions,
-      // Shared memory is allocated statically.
-      /*shmem_bytes=*/0);
+  return std::make_unique<KernelThunk>(fusion_op_, entry->kernel_name,
+                                       kernel_arguments.args(),
+                                       launch_dimensions,
+                                       // Shared memory is allocated statically.
+                                       /*shmem_bytes=*/0);
 }
 
 Status ReductionGroupEmitter::EmitExtraOutputsForReduce(
@@ -892,9 +901,8 @@ StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildFusedInitializerThunk(
 
   const Shape dest_shape = fusion_root->shape();
 
-  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
-                      CalculateLaunchDimensions(
-                          dest_shape, ir_emitter_context_.gpu_device_info()));
+  LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
+      dest_shape, ir_emitter_context_.gpu_device_info());
   const HloComputation* fused_computation =
       fusion_.fused_instructions_computation();
 
@@ -1624,14 +1632,13 @@ StatusOr<FusionEmissionResult> ReductionFusion::Emit(
   llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, &builder);
   return ReductionEmitter(analysis_, reduction_codegen_info_,
-                          **launch_dimensions(), ir_emitter_context,
+                          *launch_dimensions(), ir_emitter_context,
                           elemental_emitter, fusion_op, fusion, kernel_cache,
                           &builder)
       .Emit();
 }
 
-std::optional<StatusOr<LaunchDimensions>> ReductionFusion::launch_dimensions()
-    const {
+std::optional<LaunchDimensions> ReductionFusion::launch_dimensions() const {
   const TilingScheme& tiling_scheme = reduction_codegen_info_.GetTilingScheme();
   size_t blocks_y = reduction_codegen_info_.GetIndexGroups().size();
   return LaunchDimensions(

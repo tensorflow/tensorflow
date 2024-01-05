@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/triton.h"
 
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -132,7 +133,7 @@ StatusOr<FusionEmissionResult> TritonFusion::Emit(
     TritonWrapperResult triton_wrapper_result;
     LaunchDimensions launch_dimensions;
     if (fusion_kind == kTritonSoftmaxFusionKind) {
-      TF_ASSIGN_OR_RETURN(launch_dimensions, *this->launch_dimensions());
+      launch_dimensions = *this->launch_dimensions();
 
       auto& triton_config = *backend_config.mutable_triton_gemm_config();
       triton_config.set_num_stages(1);
@@ -190,9 +191,14 @@ StatusOr<FusionEmissionResult> TritonFusion::Emit(
         ir_emitter_context.llvm_module()->getFunction(impl_fn_name);
     TF_RET_CHECK(impl_fn);
 
-    auto [kernel, inputs, outputs] = BuildKernelPrototype(
-        ir_emitter_context, suggested_kernel_name, kernel_arguments.args(),
-        impl_fn->arg_size(), launch_dimensions, &builder);
+    llvm::Function* kernel;
+    std::vector<llvm_ir::IrArray> inputs;
+    std::vector<llvm_ir::IrArray> outputs;
+    TF_ASSIGN_OR_RETURN(
+        std::tie(kernel, inputs, outputs),
+        BuildKernelPrototype(ir_emitter_context, suggested_kernel_name,
+                             kernel_arguments.args(), impl_fn->arg_size(),
+                             launch_dimensions, &builder));
 
     // Move function body into kernel prototype.
     llvm::Function* prototype_func = builder.GetInsertBlock()->getParent();
@@ -229,8 +235,7 @@ StatusOr<FusionEmissionResult> TritonFusion::Emit(
 #endif
 }
 
-std::optional<StatusOr<LaunchDimensions>> TritonFusion::launch_dimensions()
-    const {
+std::optional<LaunchDimensions> TritonFusion::launch_dimensions() const {
   if (analysis_.fusion_backend_config().kind() == kTritonSoftmaxFusionKind) {
     return CalculateSoftMaxLaunchDimensions(analysis_.fusion());
   }

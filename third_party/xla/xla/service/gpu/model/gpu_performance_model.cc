@@ -250,9 +250,8 @@ LaunchDimensions EstimateFusionLaunchDimensions(
     auto emitter =
         GetFusionEmitter(PreBufferAssignmentFusionInfo{*fusion_analysis});
     if (emitter.ok()) {
-      auto launch_dimensions = (*emitter)->launch_dimensions();
-      if (launch_dimensions && launch_dimensions->ok()) {
-        return **launch_dimensions;
+      if (auto launch_dimensions = (*emitter)->launch_dimensions()) {
+        return *launch_dimensions;
       }
     }
   }

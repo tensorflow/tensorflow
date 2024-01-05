@@ -82,6 +82,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla:status",
+        "//xla:status_macros",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
@@ -94,6 +95,7 @@ cc_library(
         "//xla/service/gpu/runtime3:kernel_thunk",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -101,6 +103,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

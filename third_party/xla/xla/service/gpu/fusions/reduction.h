@@ -106,7 +106,7 @@ class ReductionFusion : public FusionInterface {
 
   // The launch dimensions of the main reduction kernel (not any initializer
   // kernels).
-  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
+  std::optional<LaunchDimensions> launch_dimensions() const override;
 
  private:
   const HloFusionAnalysis& analysis_;
