@@ -133,8 +133,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     new_outputs = root.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
-    # Tests that the quantized graph outputs similar values. The rtol value is
-    # arbitrary.
+    # Tests that the quantized graph outputs similar values. The rtol and atol
+    # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
   @parameterized.parameters(
@@ -219,8 +219,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     new_outputs = root.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
-    # Tests that the quantized graph outputs similar values. The rtol value is
-    # arbitrary.
+    # Tests that the quantized graph outputs similar values. The rtol and atol
+    # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
   @parameterized.named_parameters(
@@ -281,13 +281,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
         {'serving_default': data_gen()}
     )
-    tags = {tag_constants.SERVING}
 
     config = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
-        tags=tags,
+        tags={tag_constants.SERVING},
         signature_keys=['serving_default'],
         op_set=target_opset,
         representative_datasets={
@@ -315,9 +314,88 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     new_outputs = root.signatures['serving_default'](
         input_tensor=ops.convert_to_tensor(input_data)
     )
-    # Tests that the quantized graph outputs similar values. The rtol value is
-    # arbitrary.
+    # Tests that the quantized graph outputs similar values. The rtol and atol
+    # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.05)
+
+  @parameterized.parameters(
+      ('abc,cde->abde', quant_opts_pb2.STABLEHLO),
+      ('abc,dce->abde', quant_opts_pb2.STABLEHLO),
+  )
+  def test_einsum_ptq_model(
+      self,
+      equation: str,
+      target_opset: quant_opts_pb2.OpSet,
+  ):
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes(equation, use_bias=True)
+    )
+
+    model = self._create_einsum_model(
+        self._input_saved_model_path,
+        equation,
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+    )
+
+    # Generate model input data.
+    rng = np.random.default_rng(seed=1231)
+    input_data = ops.convert_to_tensor(
+        rng.uniform(low=0.0, high=1.0, size=x_signature).astype('f4')
+    )
+
+    def data_gen() -> repr_dataset.RepresentativeDataset:
+      for _ in range(100):
+        yield {
+            'x': ops.convert_to_tensor(
+                np.random.uniform(low=0.0, high=1.0, size=x_signature).astype(
+                    'f4'
+                )
+            ),
+        }
+
+    dataset_path = self.create_tempfile('tfrecord').full_path
+    path_map = {'serving_default': dataset_path}
+    repr_dataset.TfRecordRepresentativeDatasetSaver(path_map).save(
+        {'serving_default': data_gen()}
+    )
+
+    config = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags={tag_constants.SERVING},
+        signature_keys=['serving_default'],
+        op_set=target_opset,
+        representative_datasets={
+            'serving_default': quant_opts_pb2.RepresentativeDatasetFile(
+                tfrecord_file_path=dataset_path
+            )
+        },
+        calibration_options=quant_opts_pb2.CalibrationOptions(
+            calibration_method=quant_opts_pb2.CalibrationOptions.CALIBRATION_METHOD_MIN_MAX
+        ),
+    )
+
+    quantization.quantize_saved_model(
+        self._input_saved_model_path,
+        self._output_saved_model_path,
+        config,
+    )
+
+    expected_outputs = model.einsum_with_kernel(input_data)
+
+    root = load.load(self._output_saved_model_path)
+    self.assertCountEqual(root.signatures.keys(), {'serving_default'})
+
+    new_outputs = root.signatures['serving_default'](
+        x=ops.convert_to_tensor(input_data)
+    )
+    # Tests that the quantized graph outputs similar values. The rtol and atol
+    # values are arbitrary.
+    self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.04)
 
   def test_when_preset_not_srq_raise_error(self):
     self._create_matmul_model(
