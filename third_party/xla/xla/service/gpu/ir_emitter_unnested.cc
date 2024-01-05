@@ -2337,29 +2337,25 @@ Status IrEmitterUnnested::EmitWhile(
                       *while_op.getTripCount(), hlo_for_lmhlo));
     AddThunkToThunkSequence(std::move(thunk));
   } else {
-    // TODO(ezhulenev): We have few remaining tests that depend on emitting
-    // special fusions, so we can't yet enable while thunk emission here.
-    static constexpr bool kWhileThunkNotSupported = false;
-    if (ir_emitter_context_->emit_ir_from_hlo() && kWhileThunkNotSupported) {
-      const HloInstruction* instr = hlo_for_lmhlo.at(op);
-      TF_ASSIGN_OR_RETURN(
-          auto thunk,
-          BuildWhileThunk(instr,
-                          Thunk::ThunkInfo::WithProfileAnnotation(instr)));
-      AddThunkToThunkSequence(std::move(thunk));
-    } else {
-      TF_ASSIGN_OR_RETURN(
-          auto thunk,
-          BuildWhileThunk(while_op, Thunk::ThunkInfo::WithProfileAnnotation(op),
-                          hlo_for_lmhlo));
-      AddThunkToThunkSequence(std::move(thunk));
-    }
+    TF_ASSIGN_OR_RETURN(
+        auto thunk,
+        BuildWhileThunk(while_op, Thunk::ThunkInfo::WithProfileAnnotation(op),
+                        hlo_for_lmhlo));
+    AddThunkToThunkSequence(std::move(thunk));
   }
   return OkStatus();
 }
 
 Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
-  // TODO(ezhulenev): Add support for emitting ForThunks for known trip count.
+  TF_ASSIGN_OR_RETURN(auto config,
+                      instr->backend_config<xla::WhileLoopBackendConfig>());
+  if (config.has_known_trip_count()) {
+    int64_t trip_count = config.known_trip_count().n();
+    TF_ASSIGN_OR_RETURN(auto thunk, BuildForThunk(instr, trip_count));
+    AddThunkToThunkSequence(std::move(thunk));
+    return OkStatus();
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto thunk,
       BuildWhileThunk(instr, Thunk::ThunkInfo::WithProfileAnnotation(instr)));
@@ -3108,6 +3104,16 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
+    const HloInstruction* instr, int64_t loop_limit) {
+  HloComputation* body = instr->while_body();
+  auto ir_emitter_body = IrEmitterUnnested::Create(ir_emitter_context_);
+  TF_RETURN_IF_ERROR(ir_emitter_body->EmitHloComputation(body));
+  return std::unique_ptr<Thunk>(
+      new ForThunk(Thunk::ThunkInfo::WithProfileAnnotation(instr), loop_limit,
+                   ir_emitter_body->ConsumeThunkSequence()));
+}
+
+StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
     mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
     const int64_t loop_limit,
     const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -3433,6 +3439,12 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::WhileOp>(op)) {
+    // TODO(ezhulenev): While loops may contain instructions that do not support
+    // emitting from HLO, so we can't yet enable while thunk emission here.
+    static constexpr bool kWhileThunkNotSupported = true;
+    if (ir_emitter_context_->emit_ir_from_hlo() && !kWhileThunkNotSupported) {
+      return EmitWhile(hlo_for_lmhlo.at(op));
+    }
     return EmitWhile(op, hlo_for_lmhlo);
   }
 

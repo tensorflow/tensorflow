@@ -408,7 +408,7 @@ class IrEmitterUnnested : public IrEmitter {
                                mlir::Value init_value_mlir, mlir::Value dest);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
-  // 'body' sub-computations of while instruction 'hlo'.
+  // 'body' sub-computations of while instruction.
   StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -418,7 +418,10 @@ class IrEmitterUnnested : public IrEmitter {
       const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info);
 
   // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
-  // sequence from the 'body' sub-computation of the while instruction 'hlo'.
+  // sequence from the 'body' sub-computation of the while instruction.
+  StatusOr<std::unique_ptr<Thunk>> BuildForThunk(const HloInstruction* instr,
+                                                 int64_t loop_limit);
+
   StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
       int64_t loop_limit,
