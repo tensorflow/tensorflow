@@ -214,10 +214,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   hipModule_t module = nullptr;
   const string* kernel_name;
 
-  if (spec.has_cuda_cubin_on_disk()) {
-    return tsl::errors::Internal(
-        "Loading ROCM kernel from disk is not supported");
-  } else if (spec.has_cuda_cubin_in_memory()) {
+  if (spec.has_cuda_cubin_in_memory()) {
     kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
 
     const char* hsaco = spec.cuda_cubin_in_memory().bytes();

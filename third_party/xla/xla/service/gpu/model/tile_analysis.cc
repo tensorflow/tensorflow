@@ -1018,7 +1018,7 @@ bool AffineExprReducesToScalar(
     case AffineExprKind::Mod:
     case AffineExprKind::FloorDiv:
     case AffineExprKind::CeilDiv: {
-      auto binop_expr = mlir::cast<AffineBinaryOpExpr>(expr);
+      auto binop_expr = llvm::cast<AffineBinaryOpExpr>(expr);
       return AffineExprReducesToScalar(binop_expr.getLHS(),
                                        trivial_symbol_ids) &&
              AffineExprReducesToScalar(binop_expr.getRHS(), trivial_symbol_ids);
@@ -1029,7 +1029,7 @@ bool AffineExprReducesToScalar(
       return true;
     case AffineExprKind::SymbolId:
       return trivial_symbol_ids.contains(
-          mlir::cast<AffineSymbolExpr>(expr).getPosition());
+          llvm::cast<AffineSymbolExpr>(expr).getPosition());
   }
 }
 
@@ -1041,7 +1041,7 @@ bool AffineExprIsStridedRangeExpression(
   switch (expr.getKind()) {
     case AffineExprKind::Add:
     case AffineExprKind::Mul: {
-      auto binop_expr = mlir::cast<AffineBinaryOpExpr>(expr);
+      auto binop_expr = llvm::cast<AffineBinaryOpExpr>(expr);
       return AffineExprReducesToScalar(binop_expr.getLHS(),
                                        trivial_symbol_ids) ||
              AffineExprReducesToScalar(binop_expr.getRHS(), trivial_symbol_ids);
