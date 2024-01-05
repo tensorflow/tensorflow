@@ -1,3 +1,10 @@
+TFCI_ARTIFACT_FINAL_GCS_ENABLE=1
+TFCI_ARTIFACT_FINAL_PYPI_ENABLE=1
+# TODO(angerson) Change final URI to gs://tensorflow/ci once fully tested.
+TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_nightly"
+TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_nightly_latest"
+TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-artifact-staging/nightly/${_LOUHI_EXECUTION_ID:-$(git rev-parse HEAD)}"
+TFCI_ARTIFACT_STAGING_GCS_ENABLE=1
 TFCI_UPLOAD_LIB_ENABLE=1
 TFCI_UPLOAD_LIB_GCS_URI="gs://libtensorflow-nightly/$(date +%Y-%m-%d)"
 TFCI_UPLOAD_LIB_LATEST_ENABLE=1

@@ -36,6 +36,12 @@ if [[ "$TFCI_UPLOAD_WHL_GCS_ENABLE" == 1 ]]; then
   gsutil cp "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_UPLOAD_WHL_GCS_URI"
 fi
 
+# TODO(angerson): Replace individual uploads (above) with this
+# shared output bucket
+if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
+  gsutil cp "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_ARTIFACT_STAGING_GCS_URI"
+fi
+
 if [[ "$TFCI_WHL_BAZEL_TEST_ENABLE" == 1 ]]; then
   tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_wheel_test"
 fi

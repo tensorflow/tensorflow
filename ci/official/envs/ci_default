@@ -10,6 +10,8 @@
 #   cd ci/official
 #   grep -o '^TFCI\w*' envs/ci_default | xargs -n 1 -I{} bash -c "echo; echo {}; grep -R -H --exclude-dir=envs --color=always '{}'"
 
+TFCI_ARTIFACT_UPLOADER_ENABLE=
+TFCI_ARTIFACT_UPLOADER_GCS_URI=
 TFCI_BAZEL_BAZELRC_ARGS=
 TFCI_BAZEL_COMMON_ARGS=
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=
@@ -46,13 +48,6 @@ TFCI_UPLOAD_WHL_GCS_ENABLE=
 TFCI_UPLOAD_WHL_GCS_URI=
 TFCI_UPLOAD_WHL_PYPI_ARGS=
 TFCI_UPLOAD_WHL_PYPI_ENABLE=
-TFCI_VER_FULL="${TFCI_VER_MAJOR}.${TFCI_VER_MINOR}.${TFCI_VER_PATCH}${TFCI_VER_SUFFIX}"
-TFCI_VER_MAJOR=$(sed -n 's/#define TF_MAJOR_VERSION \([0-9]\+\)/\1/p' core/public/version.h)
-TFCI_VER_MINOR=$(sed -n 's/#define TF_MINOR_VERSION \([0-9]\+\)/\1/p' core/public/version.h)
-TFCI_VER_PATCH=$(sed -n 's/#define TF_PATCH_VERSION \([0-9]\+\)/\1/p' core/public/version.h)
-TFCI_VER_PYTHON=$(sed -n "s/_VERSION = '\(.\+\)'/\1/p" tools/pip_package/setup.py)
-TFCI_VER_SHORT="${TFCI_VER_MAJOR}.${TFCI_VER_MINOR}"
-TFCI_VER_SUFFIX=$(sed -n 's/#define TF_VERSION_SUFFIX "\(.\+\)"/\1/p' core/public/version.h)
 TFCI_WHL_AUDIT_ENABLE=1
 TFCI_WHL_AUDIT_PLAT=
 TFCI_WHL_BAZEL_TEST_ENABLE=1
