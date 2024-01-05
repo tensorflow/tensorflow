@@ -551,8 +551,19 @@ llvm::Value* IrArray::EmitLinearArrayElementAddress(
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* type = PrimitiveTypeToIrType(shape_.element_type(), module);
   if (!primitive_util::Is4BitType(shape_.element_type())) {
-    return b->CreateInBoundsGEP(type, base_ptr_, index.linear(),
-                                llvm_ir::AsStringRef(name));
+    auto linear_index = llvm::dyn_cast<llvm::BinaryOperator>(index.linear());
+    if (linear_index && (linear_index->getOpcode() == llvm::Instruction::Add)) {
+      llvm::Value* index_operand_0 = linear_index->getOperand(0);
+      llvm::Value* index_operand_1 = linear_index->getOperand(1);
+      llvm::Value* ptr_address =
+          b->CreateGEP(type, base_ptr_, index_operand_0, "");
+
+      return b->CreateInBoundsGEP(type, ptr_address, index_operand_1,
+                                  llvm_ir::AsStringRef(name));
+    } else {
+      return b->CreateInBoundsGEP(type, base_ptr_, index.linear(),
+                                  llvm_ir::AsStringRef(name));
+    }
   }
 
   // Handle int4 case by dividing index by 2. Int4 arrays are represented in

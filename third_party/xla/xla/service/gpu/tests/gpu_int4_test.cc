@@ -100,7 +100,7 @@ TEST_F(GpuInt4Test, TestOddElements) {
   // unrolled loop
   auto expected_ir = R"(
 ; CHECK: {{.*}}.in_bounds-true:
-; CHECK-NEXT: %[[in_bounds:.*]] = icmp ult i32 %linear_index_base, 5
+; CHECK-NEXT: %[[in_bounds:.*]] = icmp ult i32 %linear_index0, 5
 ; CHECK-NEXT: br i1 %{{.*}}, label %[[in_bounds_true:.*unrolled_in_bounds-true]], label %[[in_bounds_after:.*unrolled_in_bounds-after]]
 ;
 ; CHECK: [[in_bounds_true]]:

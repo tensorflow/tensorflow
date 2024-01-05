@@ -171,9 +171,11 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
                      R"(
 ; CHECK-LABEL: @wrapped_convert
 ; CHECK: icmp ult i32 %[[linear_index:.*]], 262144
-; CHECK: %[[ld_addr:.*]] = getelementptr inbounds float, ptr {{.*}}, i32 %[[linear_index]]
+; CHECK: %[[ld_addr_base:.*]] = getelementptr float, ptr {{.*}}, i32 %[[linear_index]]
+; CHECK: %[[ld_addr:.*]] = getelementptr inbounds float, ptr %[[ld_addr_base]], i32 0
 ; CHECK: load float, ptr %[[ld_addr]]
-; CHECK: %[[st_addr:.*]] = getelementptr inbounds half, ptr {{.*}}, i32 %[[linear_index]]
+; CHECK: %[[st_addr_base:.*]] = getelementptr half, ptr {{.*}}, i32 %[[linear_index]]
+; CHECK: %[[st_addr:.*]] = getelementptr inbounds half, ptr %[[st_addr_base]], i32 0
 ; CHECK: store half {{.*}}, ptr %[[st_addr]]
       )",
                      /*match_optimized_ir=*/false);
