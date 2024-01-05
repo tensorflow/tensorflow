@@ -1933,7 +1933,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // Turns an F8 dot into an F16 dot, converting operands to F16 and
   // converting the output back to F8.
   StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
-    DCHECK(IsF8Type(instr));
     DCHECK(IsF8Type(instr->operand(0)));
     DCHECK(IsF8Type(instr->operand(1)));
 
@@ -1947,15 +1946,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(instr->ReplaceOperandWith(i, convert));
     }
 
-    // Clone instruction and convert output to F8
-    Shape output_f16_shape = instr->shape();
-    output_f16_shape.set_element_type(F16);
-    HloInstruction *f16_dot =
-        instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
-    HloInstruction *convert_to_f8 = instr->AddInstruction(
-        HloInstruction::CreateConvert(instr->shape(), f16_dot));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
-    return f16_dot;
+    // If output is F8, change output to F16 and then convert it back to F8
+    if (IsF8Type(instr)) {
+      Shape output_f16_shape = instr->shape();
+      output_f16_shape.set_element_type(F16);
+      HloInstruction *f16_dot =
+          instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
+      HloInstruction *convert_to_f8 = instr->AddInstruction(
+          HloInstruction::CreateConvert(instr->shape(), f16_dot));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
+      return f16_dot;
+    } else {
+      return instr;
+    }
   }
 };
 
