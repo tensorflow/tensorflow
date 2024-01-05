@@ -4866,15 +4866,31 @@ def sampled_addmm(indices,
     beta=1.0,
     alpha=1.0
 ):
-  res = gen_math_ops.sampled_addmm(
-      indices,
-      values,
-      dense_shape,
-      mat1,
-      mat2,
-      beta=beta,
-      alpha=alpha
-  )
+#  res = gen_math_ops.sampled_addmm(
+#      indices,
+#      values,
+#      dense_shape,
+#      mat1,
+#      mat2,
+#      beta=beta,
+#      alpha=alpha
+#  )
+  indices_dims = indices.get_shape().ndims
+  row_indices = array_ops.slice(indices, [0] * indices_dims,
+                            [-1] * (indices_dims - 1) + [1])
+  col_indices = array_ops.slice(indices,
+                            [0] * (indices_dims -1) + [1],
+                            [-1] * (indices_dims - 1) + [1])
+  rows = array_ops.gather_nd(mat1, row_indices,
+                             batch_dims=indices_dims - 2)
+  mat2_transpose = array_ops.transpose(mat2,
+       perm=[0] * (indices_dims - 2) + [indices_dims - 1] + 
+            [indices_dims - 2])
+  cols = array_ops.gather_nd(mat2_transpose, col_indices,
+                             batch_dims=indices_dims - 2)
+  product = rows * cols
+  dot = reduce_sum(product, axis=-1)
+  res = alpha * dot + beta * values
 
   return (indices, res, dense_shape)
 
