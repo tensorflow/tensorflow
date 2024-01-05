@@ -11702,7 +11702,6 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
             const memory_space_assignment::SlicedPrefetchOptions& options) {
           return slice_proposer_.ProposeSlices(shape, options);
         };
-    options_.update_layout_fn = [](Shape* shape) {};
   }
 
   bool allocate_across_sequential_calls() const override { return true; }

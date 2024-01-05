@@ -6219,7 +6219,7 @@ void AlternateMemoryBestFitHeap::AddAsyncSlicesForPrefetch(
       std::make_unique<MemorySpaceAssignment::SlicedCopyAllocation>(
           prev_allocation, MemorySpaceAssignment::MemorySpace::kAlternate,
           slice_decisions_sorted_by_start_time, prefetch_end_time,
-          allocation_end_time, options_.update_layout_fn));
+          allocation_end_time));
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
@@ -7777,7 +7777,7 @@ bool MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail::operator==(
 Status
 MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
     const Shape& original_shape, HloInstruction& producer,
-    HloComputation& parent, absl::FunctionRef<void(Shape*)> update_layout_fn) {
+    HloComputation& parent) {
   if (original_shape.rank() != slice_decision.sizing.slice_params.size()) {
     return FailedPrecondition(
         "%s", absl::StrCat("The number of SlicedCopyAllocation parameters ",
@@ -7792,42 +7792,31 @@ MemorySpaceAssignment::SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
   limit_indices.reserve(slice_decision.sizing.slice_params.size());
   std::vector<int64_t> strides;
   strides.reserve(slice_decision.sizing.slice_params.size());
-  Shape new_shape(original_shape);
 
   for (int i = 0; i < slice_decision.sizing.slice_params.size(); ++i) {
     const SliceParam& slice_param = slice_decision.sizing.slice_params[i];
     start_indices.push_back(slice_param.start_inclusive);
     limit_indices.push_back(slice_param.end_exclusive);
     strides.push_back(1);
-    int64_t new_value = slice_param.end_exclusive - slice_param.start_inclusive;
-    if (new_value <= 0) {
+    const int64_t new_dim =
+        slice_param.end_exclusive - slice_param.start_inclusive;
+    if (new_dim <= 0) {
       return FailedPrecondition(
           "%s", absl::StrCat("SlicedCopyAllocation new dimension size is ",
-                             new_value, ", expected something > 0."));
+                             new_dim, ", expected something > 0."));
     }
-    if (new_shape.dimensions(i) < new_value) {
+    if (original_shape.dimensions(i) < new_dim) {
       return FailedPrecondition(
           "%s",
-          absl::StrCat("SlicedCopyAllocation sliced dimension size ", new_value,
+          absl::StrCat("SlicedCopyAllocation sliced dimension size ", new_dim,
                        " is bigger than its original dimension size of ",
-                       new_shape.dimensions(i), "."));
+                       original_shape.dimensions(i), "."));
     }
-    new_shape.set_dimensions(i, new_value);
-  }
-  update_layout_fn(&new_shape);
-  if (!Shape::Equal().IgnoreMemorySpaceInLayout()(
-          slice_decision.sizing.slice_shape, new_shape)) {
-    return FailedPrecondition(
-        "%s",
-        absl::StrCat(
-            "Slice was calculated to have shape ",
-            slice_decision.sizing.slice_shape.ToString(true),
-            ", but we are trying to create the slice instruction with shape ",
-            new_shape.ToString(true), "."));
   }
 
-  HloInstruction* slice = parent.AddInstruction(HloInstruction::CreateSlice(
-      new_shape, &producer, start_indices, limit_indices, strides));
+  HloInstruction* slice = parent.AddInstruction(
+      HloInstruction::CreateSlice(slice_decision.sizing.slice_shape, &producer,
+                                  start_indices, limit_indices, strides));
   TF_ASSIGN_OR_RETURN(copy_done, parent.CreateAsyncInstructions(
                                      slice, {ShapeUtil::MakeShape(S32, {})}));
   copy_start = copy_done->mutable_operand(0);
@@ -7879,8 +7868,7 @@ int64_t GetSlicedCopyAllocationExclusiveStartTime(
 MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
     const Allocation& prev_allocation, MemorySpace memory_space,
     std::vector<SliceDecision> slice_decisions_sorted_by_exclusive_start_time,
-    int64_t copy_done_schedule_before_time, int64_t end_time,
-    absl::FunctionRef<void(Shape*)> update_layout_fn)
+    int64_t copy_done_schedule_before_time, int64_t end_time)
     : Allocation(
           /*defining_position=*/{nullptr, {}}, memory_space,
           GetSlicedCopyAllocationChunk(
@@ -7892,8 +7880,7 @@ MemorySpaceAssignment::SlicedCopyAllocation::SlicedCopyAllocation(
           end_time,
           /*is_scoped_allocation=*/false),
       original_shape_to_slice_(prev_allocation.defining_position().shape()),
-      prev_allocation_(prev_allocation),
-      update_layout_fn_(update_layout_fn) {
+      prev_allocation_(prev_allocation) {
   CHECK_GE(slice_decisions_sorted_by_exclusive_start_time.size(), 2);
   slice_details_sorted_by_start_time_.reserve(
       slice_decisions_sorted_by_exclusive_start_time.size());
@@ -7983,7 +7970,7 @@ Status MemorySpaceAssignment::SlicedCopyAllocation::Process() {
   // Sliced copy allocations need to insert asynchronous copy nodes.
   for (SliceDetail& slice_detail : slice_details_sorted_by_start_time_) {
     TF_RETURN_IF_ERROR(slice_detail.CreateAsyncSlice(
-        shape, *producing_instruction, *computation, update_layout_fn_));
+        shape, *producing_instruction, *computation));
     VLOG(4) << "Created " << slice_detail.copy_start->name()
             << " for sliced copy allocation: " << ToString();
     slice_dones.push_back(slice_detail.copy_done);

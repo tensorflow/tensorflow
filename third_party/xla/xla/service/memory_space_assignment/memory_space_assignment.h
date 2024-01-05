@@ -611,7 +611,6 @@ class MemorySpaceAssignment {
       const absl::flat_hash_set<
           std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
       const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
-  using UpdateLayoutFunction = std::function<void(Shape*)>;
 
   // The BufferInterval sorting interface that MemorySpaceAssignment expects.
   class BufferIntervalComparator {
@@ -961,13 +960,9 @@ class MemorySpaceAssignment {
       bool operator==(const SliceDetail& other) const;
 
       // Create the instructions to copy the slice. This method updates
-      // copy_start and copy_done. Given a Shape, the hardware may have
-      // constraints on how the shape is physically laid out in memory.
-      // update_layout_fn updates a Shape's layout in accordance with those
-      // constraints.
+      // copy_start and copy_done.
       Status CreateAsyncSlice(const Shape& original_shape,
-                              HloInstruction& producer, HloComputation& parent,
-                              absl::FunctionRef<void(Shape*)> update_layout_fn);
+                              HloInstruction& producer, HloComputation& parent);
 
       SliceDecision slice_decision;
       int64_t copy_start_after_time = -1;
@@ -982,8 +977,7 @@ class MemorySpaceAssignment {
     SlicedCopyAllocation(
         const Allocation& prev_allocation, MemorySpace memory_space,
         std::vector<SliceDecision> slice_decisions_sorted_by_start_time,
-        int64_t copy_done_schedule_before_time, int64_t end_time,
-        absl::FunctionRef<void(Shape*)> update_layout_fn);
+        int64_t copy_done_schedule_before_time, int64_t end_time);
 
     bool is_sliced_copy_allocation() const override { return true; }
 
@@ -1035,7 +1029,6 @@ class MemorySpaceAssignment {
     //   sorted_segments_[i+j].copy.start_before_time
     std::vector<SliceDetail> slice_details_sorted_by_start_time_;
     HloInstruction* concat_ = nullptr;
-    absl::FunctionRef<void(Shape*)> update_layout_fn_;
   };
 
   // An allocation in the default memory space that mirrors another Allocation
@@ -1672,9 +1665,6 @@ struct Options {
 
   // Options for the memory-bound loop optimizer feature.
   MemoryBoundLoopOptimizerOptions memory_bound_loop_optimizer_options;
-
-  // A function for updating shape layouts.
-  MemorySpaceAssignment::UpdateLayoutFunction update_layout_fn = [](Shape*) {};
 
   MemorySpaceAssignment::SliceProposalFunction propose_slice_fn =
       [](const Shape&, const SlicedPrefetchOptions&)
