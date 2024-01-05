@@ -3597,6 +3597,8 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
       return EmitNcclAsyncDone(Thunk::kNcclAllReduceDone, instr);
     case HloOpcode::kOutfeed:
       return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
+    case HloOpcode::kCall:
+      return EmitCommandBufferThunk(instr);
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
     case HloOpcode::kBitcast:
