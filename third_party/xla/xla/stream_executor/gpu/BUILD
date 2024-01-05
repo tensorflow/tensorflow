@@ -6,6 +6,10 @@ load(
     "xla_test",
 )
 load(
+    "//xla:xla.bzl",
+    "xla_cc_test",
+)
+load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
 )
@@ -32,6 +36,7 @@ load(
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
+    "tf_gpu_tests_tags",
 )
 load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
@@ -408,6 +413,25 @@ cc_library(
     ]) + ["@local_tsl//tsl/platform:statusor"],
 )
 
+gpu_kernel_library(
+    name = "redzone_allocator_kernel",
+    srcs = if_gpu_is_configured(["redzone_allocator.cu.cc"]),
+    hdrs = if_gpu_is_configured(["redzone_allocator.h"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    deps = if_gpu_is_configured([
+        ":gpu_asm_opts",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream_executor_headers",
+    ]) + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
+)
+
 cc_library(
     name = "redzone_allocator",
     srcs = if_gpu_is_configured(["redzone_allocator.cc"]),
@@ -433,7 +457,26 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream_executor_headers",
         "@local_tsl//tsl/platform:status",
+    ]) + if_rocm_is_configured([
+        ":redzone_allocator_kernel",
     ]),
+)
+
+xla_cc_test(
+    name = "redzone_allocator_test",
+    srcs = if_gpu_is_configured(["redzone_allocator_test.cc"]),
+    tags = tf_gpu_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/171512140): re-enable.
+    ],
+    deps = [
+        ":gpu_asm_opts",
+        ":redzone_allocator",
+        "//xla/stream_executor",
+        "//xla/stream_executor:device_memory_allocator",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
 
 # TODO(tlongeri): Remove gpu_cudamallocasync_allocator header/impl split

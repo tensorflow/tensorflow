@@ -20,11 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/lib/math/math_util.h"
 
 namespace stream_executor {
 
@@ -45,7 +43,7 @@ class RedzoneAllocator : public ScratchAllocator {
       1LL << 23;  // 8MiB per side, 16MiB total.
   static constexpr uint8_t kDefaultRedzonePattern = -1;  // NOLINT
   RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
-                   GpuAsmOpts gpu_compilation_opts_,
+                   const GpuAsmOpts& gpu_compilation_opts_,
                    int64_t memory_limit = (1LL << 32),  // 4GB
                    int64_t redzone_size = kDefaultRedzoneSize,
                    uint8_t redzone_pattern = kDefaultRedzonePattern);
@@ -100,6 +98,9 @@ class RedzoneAllocator : public ScratchAllocator {
   tsl::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
 
   Stream* stream() const { return stream_; }
+
+  // Return a pointer to in-process kernel symbol (used to check redzones).
+  void* kernel_symbol() const;
 
  private:
   const int device_ordinal_;

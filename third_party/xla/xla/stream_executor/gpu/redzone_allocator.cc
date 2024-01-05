@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
+#include "tsl/lib/math/math_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
@@ -52,7 +53,7 @@ using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
 RedzoneAllocator::RedzoneAllocator(Stream* stream,
                                    DeviceMemoryAllocator* memory_allocator,
-                                   GpuAsmOpts gpu_compilation_opts,
+                                   const GpuAsmOpts& gpu_compilation_opts,
                                    int64_t memory_limit, int64_t redzone_size,
                                    uint8_t redzone_pattern)
     : device_ordinal_(stream->parent()->device_ordinal()),
@@ -308,6 +309,7 @@ static tsl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
 tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
+#if GOOGLE_CUDA
   absl::Span<const uint8_t> compiled_ptx = {};
   tsl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
       CompileGpuAsmOrGetCached(executor->device_ordinal(), redzone_checker_ptx,
@@ -324,11 +326,6 @@ tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
     });
   }
 
-  ScopedDeviceMemory<uint64_t> out_param =
-      executor->AllocateOwnedScalar<uint64_t>();
-  stream_->ThenMemZero(out_param.ptr(), sizeof(uint64_t));
-
-#if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<ComparisonKernelT> loaded_kernel,
       (LoadKernelOrGetPtr<DeviceMemory<uint8_t>, uint8_t, uint64_t,
@@ -338,9 +335,12 @@ tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ComparisonKernelT> loaded_kernel,
       (executor->CreateTypedKernel<DeviceMemory<uint8>, uint8, uint64_t,
-                                   DeviceMemory<uint64_t>>(
-          "redzone_checker", redzone_checker_ptx, compiled_ptx)));
+                                   DeviceMemory<uint64_t>>("redzone_checker",
+                                                           kernel_symbol())));
 #endif  // GOOGLE_CUDA
+
+  auto out_param = executor->AllocateOwnedScalar<uint64_t>();
+  stream_->ThenMemZero(out_param.ptr(), sizeof(uint64_t));
 
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(
