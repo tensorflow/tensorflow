@@ -63,8 +63,6 @@ struct PjitCacheEntry {
   // Bitvector of kept arguments from Jaxpr DCE pass. Used to drop some `args`
   // in PjitFunction::Call before calling into compiled computation.
   std::vector<bool> kept_var_bitvec;
-  py::object arg_handler_devices;
-  std::vector<py::object> arg_handler_indices;
 
   // Ensures a single thread performs the compilation for a given executable.
   //
@@ -320,12 +318,11 @@ PjitFunction::PjitFunction(
 PjitFunction::~PjitFunction() { GetGlobalPjitFunctionStore().Erase(this); }
 
 void CallShardArgFallback(
-    py::handle arg, py::handle devices, py::handle indices, py::handle sharding,
-    const py::function& fallback,
+    py::handle arg, py::handle sharding, const py::function& fallback,
     std::vector<tsl::RCReference<xla::ifrt::Array>>& num_args_arrays,
     ParsedArgumentsAsBuffers& arguments) {
   tsl::profiler::TraceMe traceme("cpp_pjit_shard_arg_fallback");
-  auto py_array_or_bufs = fallback(arg, devices, indices, sharding);
+  auto py_array_or_bufs = fallback(arg, sharding);
   auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
   num_args_arrays.push_back(tsl::FormRef(py_array.ifrt_array()));
   arguments.keep_alive_objects.push_back(std::move(py_array_or_bufs));
@@ -337,8 +334,6 @@ xla::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
 PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                   ParsedArgumentsAsBuffers& arguments,
                   const std::vector<bool>& kept_args,
-                  py::handle arg_handler_devices,
-                  const std::vector<py::object>& arg_handler_indices,
                   const std::vector<py::object>& in_shardings,
                   const py::function& shard_arg_fallback) {
   const auto& addressable_devices = executable.AddressableDevices();
@@ -382,9 +377,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
         }
         continue;
       } else {
-        CallShardArgFallback(arg, arg_handler_devices,
-                             arg_handler_indices[dce_index],
-                             in_shardings[dce_index], shard_arg_fallback,
+        CallShardArgFallback(arg, in_shardings[dce_index], shard_arg_fallback,
                              num_args_arrays, arguments);
         continue;
       }
@@ -401,17 +394,13 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
            (!py_array.committed() && sharding_num_devices == 1));
 
     if (sharding.get_type() == jax::PmapSharding::type()) {
-      CallShardArgFallback(arg, arg_handler_devices,
-                           arg_handler_indices[dce_index],
-                           in_shardings[dce_index], shard_arg_fallback,
+      CallShardArgFallback(arg, in_shardings[dce_index], shard_arg_fallback,
                            num_args_arrays, arguments);
       continue;
     }
 
     if (py_array.num_shards() != addressable_devices.size()) {
-      CallShardArgFallback(arg, arg_handler_devices,
-                           arg_handler_indices[dce_index],
-                           in_shardings[dce_index], shard_arg_fallback,
+      CallShardArgFallback(arg, in_shardings[dce_index], shard_arg_fallback,
                            num_args_arrays, arguments);
       continue;
     }
@@ -516,7 +505,7 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
     }
 
     // Only allow committed PyArray in cpp pjit for now as the logic on handling
-    // sharding for uncommited PyArray is complicated and still under
+    // sharding for uncommitted PyArray is complicated and still under
     // development.
     //
     // TODO(chky): Consider support uncommitted PyArray in cpp when the python
@@ -595,7 +584,6 @@ xla::StatusOr<py::object> PjitFunction::Call(py::handle callable,
   // A vector of [num_inputs].
   auto num_args_arrays = PrepareIfrtInputs(
       *cache_entry->executable, arguments, cache_entry->kept_var_bitvec,
-      cache_entry->arg_handler_devices, cache_entry->arg_handler_indices,
       cache_entry->in_shardings, shard_arg_fallback_);
 
   if (!num_args_arrays.ok()) {
@@ -757,14 +745,6 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
   cache_entry.kept_var_bitvec.reserve(kept_var_bitvec.size());
   for (py::handle k : kept_var_bitvec) {
     cache_entry.kept_var_bitvec.push_back(py::cast<bool>(k));
-  }
-
-  cache_entry.arg_handler_devices = fastpath_data.attr("arg_handler_devices");
-
-  py::list arg_handler_indices = fastpath_data.attr("arg_handler_indices");
-  cache_entry.arg_handler_indices.reserve(in_shardings.size());
-  for (int i = 0; i < arg_handler_indices.size(); ++i) {
-    cache_entry.arg_handler_indices.push_back(arg_handler_indices[i]);
   }
 }
 
