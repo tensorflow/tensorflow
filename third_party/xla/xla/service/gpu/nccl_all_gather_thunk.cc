@@ -15,12 +15,24 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 #if XLA_ENABLE_XCCL
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -32,11 +44,37 @@ namespace gpu {
 using mlir::lmhlo_gpu::AllGatherStartOp;
 
 namespace impl {
+NcclAllGatherConfig GetNcclAllGatherConfig(
+    const HloAllGatherInstruction* inst) {
+  NcclAllGatherConfig config;
+  config.config = GetNcclCollectiveConfig(inst, inst->use_global_device_ids());
+  return config;
+}
+
 NcclAllGatherConfig GetNcclAllGatherConfig(AllGatherStartOp op) {
   NcclAllGatherConfig config;
   config.config =
       GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
   return config;
+}
+
+Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+
+  for (HloInstruction* operand : inst->operands()) {
+    const Shape& shape = operand->shape();
+
+    TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kNcclAllGather));
+
+    if (!ShapeUtil::IsEffectivelyMostMajorDimension(
+            shape, inst->all_gather_dimension())) {
+      return tsl::errors::Unimplemented(absl::StrFormat(
+          "all-gather dim %u is not the most major in input shape %s",
+          inst->all_gather_dimension(), shape.ToString(/*print_layout=*/true)));
+    }
+  }
+
+  return OkStatus();
 }
 
 Status CheckImplementable(AllGatherStartOp op) {
@@ -65,15 +103,38 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
+NcclAllGatherStartThunk::NcclAllGatherStartThunk(
+    ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
+    std::vector<Buffer> buffers)
+    : NcclCollectiveThunk(
+          Thunk::kNcclAllGatherStart, thunk_info,
+          inst->backend_config<CollectiveBackendConfig>()->is_sync()),
+      config_(impl::GetNcclAllGatherConfig(inst)),
+      buffers_(std::move(buffers)) {
+  CHECK_EQ(config_.config.operand_count, buffers_.size());
+}
+
 /*static*/ Status NcclAllGatherStartThunk::CheckImplementable(
     AllGatherStartOp op, int64_t replica_count, int64_t partition_count) {
   return AddOpDescription<NcclAllGatherStartThunk>(
       impl::CheckImplementable(op), op, replica_count, partition_count);
 }
 
+/*static*/ Status NcclAllGatherStartThunk::CheckImplementable(
+    const HloAllGatherInstruction* inst, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclAllGatherStartThunk>(
+      impl::CheckImplementableInst(inst), inst, replica_count, partition_count);
+}
+
 /*static*/ CollectiveOpGroupMode NcclAllGatherStartThunk::GetGroupMode(
     AllGatherStartOp op) {
   return impl::GetNcclAllGatherConfig(op).config.group_mode;
+}
+
+/*static*/ CollectiveOpGroupMode NcclAllGatherStartThunk::GetGroupMode(
+    const HloAllGatherInstruction* inst) {
+  return impl::GetNcclAllGatherConfig(inst).config.group_mode;
 }
 
 Status NcclAllGatherStartThunk::RunNcclCollective(const ExecuteParams& params,
@@ -126,7 +187,6 @@ Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
       "compiler, which is necessary to build the NCCL source library.");
 #endif  // XLA_ENABLE_XCCL
 }
-
 
 }  // namespace gpu
 }  // namespace xla

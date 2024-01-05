@@ -437,7 +437,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
-      const HloInstruction* instr, const ShapeIndex& index) const;
+      const HloInstruction* instr, const ShapeIndex& index = {}) const;
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;

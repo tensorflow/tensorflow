@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_ALL_GATHER_THUNK_H_
 #define XLA_SERVICE_GPU_NCCL_ALL_GATHER_THUNK_H_
 
+#include <cstdint>
 #include <vector>
 
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/status.h"
 
 namespace xla {
 namespace gpu {
@@ -35,13 +38,25 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
                           mlir::lmhlo_gpu::AllGatherStartOp op,
                           std::vector<Buffer> buffers);
 
+  NcclAllGatherStartThunk(ThunkInfo thunk_info,
+                          const HloAllGatherInstruction* inst,
+                          std::vector<Buffer> buffers);
+
   static const char* GetHloOpName() { return "all-gather-start"; }
 
   static Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
                                    int64_t replica_count,
                                    int64_t partition_count);
+
+  static Status CheckImplementable(const HloAllGatherInstruction* inst,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
+
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllGatherStartOp op);
+
+  static CollectiveOpGroupMode GetGroupMode(
+      const HloAllGatherInstruction* inst);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }

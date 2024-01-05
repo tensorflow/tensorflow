@@ -2780,24 +2780,40 @@ Status IrEmitterUnnested::EmitNcclThunk(
   std::vector<NcclCollectiveThunk::Buffer> buffers;
   buffers.reserve(inst->operand_count());
 
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      inst->shape(), [&](const Shape& shape, const ShapeIndex& index) {
-        if (!shape.IsArray()) return OkStatus();
+  // Adds a source and destination buffers pair to `buffers`.
+  auto add_buffer = [&](const Shape& shape, BufferAllocation::Slice src,
+                        BufferAllocation::Slice dst) {
+    buffers.push_back(NcclCollectiveThunk::Buffer{
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/src,
+        /*destination_buffer=*/dst,
+        /*source_value=*/nullptr,
+        /*destination_value=*/nullptr});
+  };
 
-        TF_ASSIGN_OR_RETURN(
-            auto source_slice,
-            GetAllocationSliceForHlo(inst->operand(buffers.size()), {}));
-        TF_ASSIGN_OR_RETURN(auto dest_slice,
-                            GetAllocationSliceForHlo(inst, index));
-        buffers.push_back(NcclCollectiveThunk::Buffer{
-            /*element_count=*/ShapeUtil::ElementsIn(shape),
-            /*source_buffer=*/source_slice,
-            /*destination_buffer=*/dest_slice,
-            /*source_value=*/nullptr,
-            /*destination_value=*/nullptr});
+  if (kind == Thunk::Kind::kNcclAllGatherStart) {
+    // AllGatherStart returns a tuple of (<<inputs>>, <<outputs>>) where outputs
+    // can be a tuple itself (if operation has multiple operands).
+    for (int64_t i = 0; i < inst->operand_count(); i++) {
+      TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
+      TF_ASSIGN_OR_RETURN(
+          auto dst, GetAllocationSliceForHlo(inst, inst->operand_count() > 1
+                                                       ? ShapeIndex({1, i})
+                                                       : ShapeIndex({1})));
+      add_buffer(inst->operand(i)->shape(), src, dst);
+    }
 
-        return OkStatus();
-      }));
+  } else {
+    // For other operations simply zip operands with results.
+    for (int64_t i = 0; i < inst->operand_count(); i++) {
+      TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
+      TF_ASSIGN_OR_RETURN(
+          auto dst, GetAllocationSliceForHlo(inst, inst->operand_count() > 1
+                                                       ? ShapeIndex({i})
+                                                       : ShapeIndex({})));
+      add_buffer(inst->operand(i)->shape(), src, dst);
+    }
+  }
 
   if (should_use_nccl_thunk) {
     auto thunk = std::make_unique<NcclThunkType>(
@@ -3368,11 +3384,20 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllGatherStartOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      auto* all_gather = Cast<HloAllGatherInstruction>(hlo_for_lmhlo.at(op));
+      return EmitNcclThunk<NcclAllGatherStartThunk, HloAllGatherInstruction>(
+          Thunk::kNcclAllGatherStart, all_gather,
+          all_gather->use_global_device_ids());
+    }
     return EmitNcclThunk<NcclAllGatherStartThunk,
                          mlir::lmhlo_gpu::AllGatherStartOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::AllGatherDoneOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitNcclAsyncDone(Thunk::kNcclAllGatherDone, hlo_for_lmhlo.at(op));
+    }
     return EmitNcclAsyncDone(
         Thunk::kNcclAllGatherDone, op,
         mlir::cast<mlir::lmhlo_gpu::AllGatherDoneOp>(op).getToken());
