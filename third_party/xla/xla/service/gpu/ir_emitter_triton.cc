@@ -742,15 +742,15 @@ Status CreateTritonPipeline(mlir::OpPassManager& pm,
   // @triton//:python/triton/compiler/backends/cuda.py
   pm.addPass(mt::createConvertTritonToTritonGPUPass(
       config.num_warps, threadsPerWarp, config.num_ctas, ccAsInt));
-  pm.addPass(mlir::createTritonGPUCoalescePass());
+  pm.addPass(mt::gpu::createCoalescePass());
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
   pm.addPass(mlir::createTritonGPURewriteTensorPointerPass(ccAsInt));
   pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass(&clusterInfo));
-  pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
-  pm.addPass(mlir::createTritonGPUOptimizeThreadLocalityPass());
-  pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
-  pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
-  pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
+  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
+  pm.addPass(mt::gpu::createOptimizeThreadLocalityPass());
+  pm.addPass(mt::gpu::createAccelerateMatmulPass(ccAsInt));
+  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
+  pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
   pm.addPass(mlir::createCSEPass());
 
   if (cc.IsAtLeastHopper() && config.enable_warp_specialization) {
@@ -775,20 +775,20 @@ Status CreateTritonPipeline(mlir::OpPassManager& pm,
     pm.addPass(mlir::createLoopInvariantCodeMotionPass());
     pm.addPass(mlir::createCSEPass());
   } else {
-    pm.addPass(mlir::createTritonGPUPipelinePass(
-        config.num_stages, config.num_warps, config.num_ctas, ccAsInt));
+    pm.addPass(mt::gpu::createPipelinePass(config.num_stages, config.num_warps,
+                                           config.num_ctas, ccAsInt));
   }
 
   pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass(
       config.num_warps, ccAsInt));
   if (ccAsInt <= 80) {
-    pm.addPass(mlir::createTritonGPUPrefetchPass());
+    pm.addPass(mlir::triton::gpu::createPrefetchPass());
   }
-  pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
-  pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
-  pm.addPass(mlir::createTritonGPUDecomposeConversionsPass());
+  pm.addPass(mt::gpu::createOptimizeDotOperandsPass());
+  pm.addPass(mt::gpu::createRemoveLayoutConversionsPass());
+  pm.addPass(mt::gpu::createDecomposeConversionsPass());
   pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
-  pm.addPass(mlir::createTritonGPUReorderInstructionsPass());
+  pm.addPass(mt::gpu::createReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
   if (cc.IsAtLeastHopper()) {
