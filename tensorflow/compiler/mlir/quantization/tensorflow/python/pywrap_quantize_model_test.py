@@ -40,7 +40,7 @@ class PywrapQuantizeModelTest(test.TestCase):
           signature_def_map_serialized={},
           function_aliases={},
           py_function_library=py_function_lib.PyFunctionLibrary(),
-          representative_dataset=None,
+          representative_dataset_file_map_serialized=None,
       )
 
   def test_quantize_model_fails_when_invalid_quant_options_type(self):
@@ -58,7 +58,7 @@ class PywrapQuantizeModelTest(test.TestCase):
           signature_def_map_serialized={},
           function_aliases={},
           py_function_library=py_function_lib.PyFunctionLibrary(),
-          representative_dataset=None,
+          representative_dataset_file_map_serialized=None,
       )
 
 

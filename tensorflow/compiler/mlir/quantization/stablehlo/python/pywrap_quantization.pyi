@@ -27,7 +27,8 @@ def static_range_ptq(
     signature_def_map_serialized: dict[str, bytes],
     function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
-    representative_dataset: rd.RepresentativeDatasetOrMapping,
+    # Value type: RepresentativeDatasetFile.
+    representative_dataset_file_map_serialized: dict[str, bytes],
 ) -> Any: ...  # Status
 
 # LINT.ThenChange()

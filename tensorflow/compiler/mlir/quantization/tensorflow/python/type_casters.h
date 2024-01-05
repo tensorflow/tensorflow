@@ -148,6 +148,11 @@ struct type_caster<stablehlo::quantization::QuantizationConfig>
     : public internal::SerializedProtobufCaster<
           stablehlo::quantization::QuantizationConfig> {};
 
+template <>
+struct type_caster<tensorflow::quantization::RepresentativeDatasetFile>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::quantization::RepresentativeDatasetFile> {};
+
 }  // namespace pybind11::detail
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_TYPE_CASTERS_H_

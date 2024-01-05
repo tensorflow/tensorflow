@@ -41,6 +41,7 @@ using ::tensorflow::calibrator::CalibrationStatistics;
 using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
+using ::tensorflow::quantization::RepresentativeDatasetFile;
 
 // A "trampoline" class that redirects virtual function calls to the python
 // implementation.
@@ -62,16 +63,18 @@ class PyFunctionLibraryTrampoline : public PyFunctionLibrary {
                            src_saved_model_path, tags, signature_def_map);
   }
 
-  void RunCalibration(const absl::string_view saved_model_path,
-                      const std::vector<std::string>& signature_keys,
-                      const std::unordered_set<std::string>& tags,
-                      const CalibrationOptions& calibration_options,
-                      const bool force_graph_mode_calibration,
-                      const py::object representative_dataset) const override {
+  void RunCalibration(
+      const absl::string_view saved_model_path,
+      const std::vector<std::string>& signature_keys,
+      const std::unordered_set<std::string>& tags,
+      const CalibrationOptions& calibration_options,
+      const bool force_graph_mode_calibration,
+      const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
+          representative_dataset_file_map) const override {
     PYBIND11_OVERRIDE_PURE(void, PyFunctionLibrary, run_calibration,
                            saved_model_path, signature_keys, tags,
                            calibration_options, force_graph_mode_calibration,
-                           representative_dataset);
+                           representative_dataset_file_map);
   }
 
   MinMaxValue GetCalibrationMinMaxValue(
@@ -98,7 +101,7 @@ PYBIND11_MODULE(pywrap_function_lib, m) {
            py::arg("saved_model_path"), py::arg("signature_keys"),
            py::arg("tags"), py::arg("calibration_options_serialized"),
            py::arg("force_graph_mode_calibration"),
-           py::arg("representative_dataset"))
+           py::arg("representative_dataset_file_map_serialized"))
       .def("get_calibration_min_max_value",
            &PyFunctionLibrary::GetCalibrationMinMaxValue,
            py::arg("calibration_statistics_serialized"),

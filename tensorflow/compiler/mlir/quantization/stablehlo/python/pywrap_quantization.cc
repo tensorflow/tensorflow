@@ -55,6 +55,7 @@ using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 using ::tensorflow::quantization::QuantizationOptions;
+using ::tensorflow::quantization::RepresentativeDatasetFile;
 
 }  // namespace
 
@@ -77,7 +78,8 @@ PYBIND11_MODULE(pywrap_quantization, m) {
              signature_def_map,
          const absl::flat_hash_map<std::string, std::string>& function_aliases,
          const PyFunctionLibrary& py_function_library,
-         py::object representative_dataset) -> absl::Status {
+         const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
+             representative_dataset_file_map_serialized) -> absl::Status {
         // LINT.ThenChange(pywrap_quantization.pyi:static_range_ptq)
         std::unordered_set<std::string> tags;
         tags.insert(quantization_options.tags().begin(),
@@ -107,7 +109,7 @@ PYBIND11_MODULE(pywrap_quantization, m) {
             *precalibrated_saved_model_dir, signature_keys, tags,
             quantization_options.calibration_options(),
             quantization_options.force_graph_mode_calibration(),
-            representative_dataset);
+            representative_dataset_file_map_serialized);
 
         if (absl::Status status = AddCalibrationStatistics(
                 *exported_model->mutable_graph_def(),
@@ -177,11 +179,16 @@ PYBIND11_MODULE(pywrap_quantization, m) {
       defined by the `MetaGraphDef::MetaInfoDef::function_aliases` from the
       input SavedModel.
 
+      `representative_dataset_file_map_serialized` is a signature key ->
+      `RepresentativeDatasetFile` (serialized) mapping for running the
+      calibration step. Each dataset file stores the representative dataset for
+      the function matching the signature key.
+
       Raises `StatusNotOk` exception if when the run was unsuccessful.
       )pbdoc",
       py::arg("saved_model_path"), py::arg("dst_saved_model_path"),
       py::arg("quantization_options_serialized"), py::kw_only(),
       py::arg("signature_keys"), py::arg("signature_def_map_serialized"),
       py::arg("function_aliases"), py::arg("py_function_library"),
-      py::arg("representative_dataset"));
+      py::arg("representative_dataset_file_map_serialized"));
 }
