@@ -1,5 +1,10 @@
 # Variables containing version strings extracted from the canonical sources:
 # tensorflow/core/public/version.h and tools/pip_package/setup.py.
+#
+# These variables aren't available by default. Scripts must source this file
+# explicitly, *after* checking if update_version.py needs to be run for a
+# nightly job. update_version.py affects TFCI_VER_SUFFIX, TFCI_VER_PYTHON, and
+# TFCI_VER_FULL.
 
 # Note: in awk, the command '/search/ {commands}' applies the commands to any line that
 # matches the /search/ regular expression. "print $N" prints the Nth "field",

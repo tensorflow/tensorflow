@@ -1,5 +1,3 @@
-# Disable arm64 uploads while being worked on
-source ci/official/envs/disable_all_uploads
 TFCI_BAZEL_COMMON_ARGS="--config release_macos_arm64 --config tf_public_macos_cache_push --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
 TFCI_DOCKER_ENABLE=0
 TFCI_LIB_SUFFIX="-cpu-darwin-arm64"

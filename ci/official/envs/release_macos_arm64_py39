@@ -1,4 +1,3 @@
-source ci/official/envs/disable_all_uploads
 # TODO(srnitin): Add resultstore config once the macOS builds have the right
 # permissions
 TFCI_BAZEL_COMMON_ARGS="--config release_macos_arm64 --config tf_public_macos_cache_push --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"

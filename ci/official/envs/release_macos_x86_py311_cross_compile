@@ -1,5 +1,3 @@
-# Disable uploads as this is an experimental cross-compile build
-source ci/official/envs/disable_all_uploads
 TFCI_BAZEL_COMMON_ARGS="--config rbe_cross_compile_macos_x86 --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=macos_x86
 TFCI_BUILD_PIP_PACKAGE_ARGS="--cpu --nightly_flag"
