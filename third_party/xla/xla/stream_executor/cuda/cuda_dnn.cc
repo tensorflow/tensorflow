@@ -363,28 +363,41 @@ enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
 // Preload sub libs for cudnn 8.0.4+ to make sure that the loading time isn't
 // measured in the autotuning.
 void PreloadCudnnSubLibs(PreloadCudnnType type) {
-#if CUDNN_VERSION >= 8004
   switch (type) {
     case PreloadCudnnType::ConvBwdFilter:
     case PreloadCudnnType::ConvBwdData: {
+#if CUDNN_VERSION >= 8004 && CUDNN_VERSION < 9000
       cudnnOpsTrainVersionCheck();
       cudnnCnnTrainVersionCheck();
+#endif  // CUDNN_VERSION >= 8004 && CUDNN_VERSION < 9000
       [[clang::fallthrough]];
     }
     case PreloadCudnnType::ConvFwd: {
+#if CUDNN >= 9000 && TF_ENABLE_CUDNN_FRONTEND
+      cudnnGraphVersionCheck();
+      cudnnOpsVersionCheck();
+#elif CUDNN_VERSION >= 9000
+      cudnnCnnVersionCheck();
+      cudnnOpsVersionCheck();
+#elif CUDNN_VERSION >= 8004
       cudnnOpsInferVersionCheck();
       cudnnCnnInferVersionCheck();
+#endif  // CUDNN >= 9000 && TF_ENABLE_CUDNN_FRONTEND
       break;
     }
     case PreloadCudnnType::Rnn: {
+#if CUDNN_VERSION >= 9000
+      cudnnOpsVersionCheck();
+      cudnnAdvVersionCheck();
+#elif CUDNN_VERSION >= 8004
       cudnnOpsInferVersionCheck();
       cudnnAdvInferVersionCheck();
       cudnnOpsTrainVersionCheck();
       cudnnAdvTrainVersionCheck();
+#endif  // CUDNN_VERSION >= 9000
       break;
     }
   }
-#endif  // CUDNN_VERSION >= 8004
 }
 
 void PreloadCudnnSubLibsHelper(dnn::ConvolutionKind kind) {
