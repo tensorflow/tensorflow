@@ -14,22 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_DEVICE_ID_UTILS_H_
-#define XLA_STREAM_EXECUTOR_DEVICE_ID_UTILS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_ID_UTILS_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_ID_UTILS_H_
 
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/framework/device_id_manager.h"
 
-namespace stream_executor {
+namespace tensorflow {
 
-// Utility methods for getting the associated executor given a TfDeviceId
-// or PlatformDeviceId.
+// Utility method for getting the associated executor given a TfDeviceId.
 class DeviceIdUtil {
  public:
-  static tsl::StatusOr<StreamExecutor*> ExecutorForTfDeviceId(
-      const tsl::DeviceType& type, Platform* device_manager,
+  static absl::StatusOr<stream_executor::StreamExecutor*> ExecutorForTfDeviceId(
+      const tsl::DeviceType& type, stream_executor::Platform* device_manager,
       tsl::TfDeviceId tf_device_id) {
     tsl::PlatformDeviceId platform_device_id;
     TF_RETURN_IF_ERROR(tsl::DeviceIdManager::TfToPlatformDeviceId(
@@ -38,6 +37,6 @@ class DeviceIdUtil {
   }
 };
 
-}  // namespace stream_executor
+}  // namespace tensorflow
 
-#endif  // XLA_STREAM_EXECUTOR_DEVICE_ID_UTILS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_ID_UTILS_H_

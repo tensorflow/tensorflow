@@ -58,7 +58,6 @@ filegroup(
         "command_buffer.h",
         "data_type.h",
         "device_description.h",
-        "device_id_utils.h",
         "device_memory.h",
         "device_memory_allocator.h",
         "device_options.h",
@@ -205,17 +204,6 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
-    name = "device_id_utils",
-    hdrs = ["device_id_utils.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":platform",
-        ":stream_executor",
-        "@local_tsl//tsl/framework:device_id_impl",
     ],
 )
 

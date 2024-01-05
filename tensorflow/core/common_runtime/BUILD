@@ -3518,3 +3518,13 @@ cc_library(
         ":serving_device_selector",
     ],
 )
+
+cc_library(
+    name = "device_id_utils",
+    hdrs = ["device_id_utils.h"],
+    deps = [
+        "@local_tsl//tsl/framework:device_id_impl",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:platform",
+    ],
+)

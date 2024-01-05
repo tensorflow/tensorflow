@@ -45,10 +45,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_split.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -506,7 +506,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options,
 #else
 Status BaseGPUDevice::Init(const SessionOptions& options) {
 #endif  // TF_GPU_USE_PJRT
-  auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
+  auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
       DEVICE_GPU, se::GPUMachineManager(), tf_device_id_);
   if (!executor_status.status().ok()) {
     return errors::Internal("Failed to get StreamExecutor for device ",
@@ -1751,7 +1751,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 
 #ifdef TF_GPU_USE_PJRT
     // Create xla::LocalDeviceState.
-    const auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
+    const auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
         DEVICE_GPU, gpu_manager, tf_device_id);
     if (!executor_status.status().ok()) {
       return absl::InternalError(absl::StrCat(
