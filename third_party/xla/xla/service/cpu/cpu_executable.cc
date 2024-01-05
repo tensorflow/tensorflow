@@ -100,6 +100,9 @@ StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
+  executable->set_ir_module_string(
+      xla_runtime_executable->GetExecutable().take_ir_module_string());
+  executable->module_name_ = "main";
   executable->xla_runtime_executable_ = std::move(xla_runtime_executable);
   return executable;
 }

@@ -429,6 +429,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
       };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());
+  opts.compiler.embed_ir_in_executable =
+      module.config().debug_options().xla_embed_ir_in_executable();
   return opts;
 }
 
