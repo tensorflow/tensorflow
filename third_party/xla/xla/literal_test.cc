@@ -2194,30 +2194,32 @@ TEST_F(LiteralUtilTest, ProtoRoundTrip) {
   auto nested_tuple =
       LiteralUtil::MakeTuple({&tuple, &vector_bfloat16, &tuple, &nil_literal});
 
-  auto to_from_proto = [](const Literal& literal) -> Literal {
-    return Literal::CreateFromProto(literal.ToProto()).value();
+  auto test_proto = [](const Literal& literal) {
+    LiteralProto proto = literal.ToProto();
+    EXPECT_EQ(literal, Literal::CreateFromProto(proto).value());
+    EXPECT_EQ(literal, BorrowingLiteral(proto));
   };
 
-  EXPECT_EQ(one_f32, to_from_proto(one_f32));
-  EXPECT_EQ(vector_int8, to_from_proto(vector_int8));
-  EXPECT_EQ(vector_uint8, to_from_proto(vector_uint8));
-  EXPECT_EQ(vector_c64, to_from_proto(vector_c64));
-  EXPECT_EQ(vector_c128, to_from_proto(vector_c128));
-  EXPECT_EQ(vector_bfloat16, to_from_proto(vector_bfloat16));
-  EXPECT_EQ(vector_f8e5m2, to_from_proto(vector_f8e5m2));
-  EXPECT_EQ(vector_f8e4m3, to_from_proto(vector_f8e4m3));
-  EXPECT_EQ(vector_f8e4m3b11, to_from_proto(vector_f8e4m3b11));
-  EXPECT_EQ(vector_f8e5m2fnuz, to_from_proto(vector_f8e5m2fnuz));
-  EXPECT_EQ(vector_f8e4m3fnuz, to_from_proto(vector_f8e4m3fnuz));
-  EXPECT_EQ(matrix_pred, to_from_proto(matrix_pred));
-  EXPECT_EQ(vector_s4, to_from_proto(vector_s4));
-  EXPECT_EQ(vector_u4, to_from_proto(vector_u4));
-  EXPECT_EQ(tuple, to_from_proto(tuple));
-  EXPECT_EQ(nested_tuple, to_from_proto(nested_tuple));
-  EXPECT_EQ(nil_literal, to_from_proto(nil_literal));
+  test_proto(one_f32);
+  test_proto(vector_int8);
+  test_proto(vector_uint8);
+  test_proto(vector_c64);
+  test_proto(vector_c128);
+  test_proto(vector_bfloat16);
+  test_proto(vector_f8e5m2);
+  test_proto(vector_f8e4m3);
+  test_proto(vector_f8e4m3b11);
+  test_proto(vector_f8e5m2fnuz);
+  test_proto(vector_f8e4m3fnuz);
+  test_proto(matrix_pred);
+  test_proto(vector_s4);
+  test_proto(vector_u4);
+  test_proto(tuple);
+  test_proto(nested_tuple);
+  test_proto(nil_literal);
 
   EXPECT_NE(one_f32, two_f32);
-  EXPECT_NE(one_f32, to_from_proto(two_f32));
+  EXPECT_NE(one_f32, Literal::CreateFromProto(two_f32.ToProto()).value());
 }
 
 TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
