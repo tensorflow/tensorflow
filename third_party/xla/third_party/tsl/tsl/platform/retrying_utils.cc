@@ -15,6 +15,7 @@ limitations under the License.
 #include "tsl/platform/retrying_utils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 
@@ -131,13 +132,8 @@ absl::Duration ComputeRetryBackoff(int current_retry_attempt,
   const absl::Duration first_term = min_delay * kBackoffRandMult;
 
   // This is calculating min_delay * 1.3^retries.
-  // TODO(yangchen): Use std::pow to compute this.
-  absl::Duration uncapped_second_term = min_delay;
-  while (current_retry_attempt > 0 &&
-         uncapped_second_term < max_delay - first_term) {
-    current_retry_attempt--;
-    uncapped_second_term *= kBackoffBase;
-  }
+  absl::Duration uncapped_second_term =
+      min_delay * std::pow(kBackoffBase, current_retry_attempt);
 
   // Note that first_term + uncapped_second_term can exceed max_delay here
   // because of the final multiply by kBackoffBase.  We fix that problem with
