@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_chunk_provider.h"
 #include "tensorflow/core/data/split_utils.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"

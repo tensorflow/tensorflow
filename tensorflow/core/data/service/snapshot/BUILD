@@ -97,7 +97,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
-        "//tensorflow/core/framework:allocator",
         "//tensorflow/core/framework:op_requires",
         "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/status",
