@@ -82,7 +82,7 @@ class ScopedDeviceMemory {
   // object.
   //
   // Postcondition: other == nullptr.
-  ScopedDeviceMemory(ScopedDeviceMemory &&other)
+  ScopedDeviceMemory(ScopedDeviceMemory &&other) noexcept
       : wrapped_(other.Release()),
         device_ordinal_(other.device_ordinal_),
         allocator_(other.allocator_) {}
@@ -94,7 +94,7 @@ class ScopedDeviceMemory {
   // Moves ownership of the memory from other to this object.
   //
   // Postcondition: other == nullptr.
-  ScopedDeviceMemory &operator=(ScopedDeviceMemory &&other) {
+  ScopedDeviceMemory &operator=(ScopedDeviceMemory &&other) noexcept {
     TF_CHECK_OK(Free());
     wrapped_ = other.Release();
     allocator_ = other.allocator_;
