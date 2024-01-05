@@ -206,17 +206,9 @@ void HloInstruction::Users::RebuildMap() {
 
 bool HloInstruction::Users::CheckInvariants() {
   if (user_map_ != nullptr) {
-    int64_t index = 0;
-    for (const HloInstruction* u : users_) {
-      CHECK(user_map_->contains(u));
-      CHECK_EQ((*user_map_)[u], index);
-      index++;
-    }
-    for (auto [u, index] : *user_map_) {
-      CHECK_GE(index, 0);
-      CHECK_LT(index, users_.size());
-      CHECK_EQ(users_[index], u);
-    }
+    // Avoid quadratic behavior by doing a quick and dirty check on
+    // size instead of actually comparing mapped indices.
+    CHECK_EQ(users_.size(), user_map_->size());
   }
   return true;
 }
