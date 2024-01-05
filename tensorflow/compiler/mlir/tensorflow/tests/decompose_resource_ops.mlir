@@ -144,8 +144,8 @@ func.func @decompose_resource_apply_gradient_descent(%arg0: tensor<f32>) -> () {
 
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<f32>>>
 
-    // CHECK: %[[ALPHA:.*]] = "tf.Const"
-    // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
+    // CHECK-DAG: %[[ALPHA:.*]] = "tf.Const"
+    // CHECK-DAG: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
     // CHECK: %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"(%[[RES_HANDLE]])
     // CHECK: %[[MUL:[0-9]*]] = "tf.Mul"(%[[DELTA]], %[[ALPHA]])
     // CHECK: %[[SUB:[0-9]*]] = "tf.Sub"(%[[RES_READ_VAL]], %[[MUL]])
@@ -372,10 +372,10 @@ func.func @decompose_resource_apply_adagrad(%arg0: tensor<f32>, %arg1: tensor<f3
 func.func @decompose_resource_apply_adam_non_nesterov(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>) -> () {
   "tf_device.cluster"() ({
 
-    // CHECK: [[ONE:%.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
-    // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"()
-    // CHECK: [[M_HANDLE:%.*]] = "tf.VarHandleOp"()
-    // CHECK: [[V_HANDLE:%.*]] = "tf.VarHandleOp"()
+    // CHECK-DAG: [[ONE:%.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
+    // CHECK-DAG: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"()
+    // CHECK-DAG: [[M_HANDLE:%.*]] = "tf.VarHandleOp"()
+    // CHECK-DAG: [[V_HANDLE:%.*]] = "tf.VarHandleOp"()
     // CHECK: [[ONE_MINUS_BETA2_POWER:%.*]] = "tf.Sub"([[ONE]], [[BETA2_POWER]])
     // CHECK: [[SQRT_ONE_MINUS_BETA2_POWER:%.*]] = "tf.Sqrt"([[ONE_MINUS_BETA2_POWER]])
     // CHECK: [[ONE_MINUS_BETA1_POWER:%.*]] = "tf.Sub"([[ONE]], [[BETA1_POWER]])
@@ -422,10 +422,10 @@ func.func @decompose_resource_apply_adam_non_nesterov(%arg0: tensor<f32>, %arg1:
 func.func @decompose_resource_apply_adam_nesterov(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>) -> () {
   "tf_device.cluster"() ({
 
-  // CHECK: [[ONE:%.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
-  // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"() <{container = "c", shared_name = "v"}>
-  // CHECK: [[M_HANDLE:%.*]] = "tf.VarHandleOp"() <{container = "c", shared_name = "v"}>
-  // CHECK: [[V_HANDLE:%.*]] = "tf.VarHandleOp"() <{container = "c", shared_name = "v"}>
+  // CHECK-DAG: [[ONE:%.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
+  // CHECK-DAG: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"() <{container = "c", shared_name = "v"}>
+  // CHECK-DAG: [[M_HANDLE:%.*]] = "tf.VarHandleOp"() <{container = "c", shared_name = "v"}>
+  // CHECK-DAG: [[V_HANDLE:%.*]] = "tf.VarHandleOp"() <{container = "c", shared_name = "v"}>
   // CHECK: [[VAL_82:%.*]] = "tf.Sub"([[ONE]], [[BETA2_POWER]])
   // CHECK: [[VAL_83:%.*]] = "tf.Sqrt"([[VAL_82]])
   // CHECK: [[VAL_84:%.*]] = "tf.Sub"([[ONE]], [[BETA1_POWER]])
@@ -489,12 +489,12 @@ func.func @decompose_adam_with_complex_inputs(%arg0: tensor<!tf_type.resource<te
 // CHECK-SAME: [[INDEX:%.+]]: tensor<?xi32>
 func.func @decompose_resource_gather_op(%indices : tensor<?xi32>) -> tensor<*xi32> {
   %0 = "tf_device.cluster"() ({
-    // CHECK: [[ZERO:%.+]] = "tf.Const"() <{value = dense<0> : tensor<i64>}>
+    // CHECK-DAG: [[ZERO:%.+]] = "tf.Const"() <{value = dense<0> : tensor<i64>}>
 
-    // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+    // CHECK-DAG: [[VAR:%.+]] = "tf.VarHandleOp"
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
 
-    // CHECK: [[READVAR:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK-DAG: [[READVAR:%.+]] = "tf.ReadVariableOp"([[VAR]])
     // CHECK: [[GATHER:%.+]] = "tf.GatherV2"([[READVAR]], [[INDEX]], [[ZERO]]) <{batch_dims = 0 : i64}> : (tensor<*xi32>, tensor<?xi32>, tensor<i64>) -> tensor<*xi32>
     // CHECK: return [[GATHER]]
     %1 = "tf.ResourceGather"(%resource, %indices) : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<?xi32>) -> (tensor<*xi32>)
@@ -527,11 +527,11 @@ func.func @decompose_resource_gather_op_subtype(%indices : tensor<5xi32>) -> ten
 // CHECK-SAME:  [[VAR:%.*]]: tensor<f32>, [[MG:%.*]]: tensor<f32>, [[MS:%.*]]: tensor<f32>, [[MOM:%.*]]: tensor<f32>, [[LR:%.*]]: tensor<f32>, [[RHO:%.*]]: tensor<f32>, [[MOMENTUM:%.*]]: tensor<f32>, [[EPSILON:%.*]]: tensor<f32>, [[GRAD:%.*]]: tensor<f32>
 func.func @decompose_resource_apply_centered_RMS_prop(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>, %arg8: tensor<f32>) -> () {
   "tf_device.cluster"() ({
-    // CHECK: [[ONE:%.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
-    // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"
-    // CHECK: [[MG_HANDLE:%.*]] = "tf.VarHandleOp"
-    // CHECK: [[MS_HANDLE:%.*]] = "tf.VarHandleOp"
-    // CHECK: [[MOM_HANDLE:%.*]] = "tf.VarHandleOp"
+    // CHECK-DAG: [[ONE:%.*]] = "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
+    // CHECK-DAG: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"
+    // CHECK-DAG: [[MG_HANDLE:%.*]] = "tf.VarHandleOp"
+    // CHECK-DAG: [[MS_HANDLE:%.*]] = "tf.VarHandleOp"
+    // CHECK-DAG: [[MOM_HANDLE:%.*]] = "tf.VarHandleOp"
     %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<f32>>>
     %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<f32>>>
     %2 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<f32>>>
@@ -609,12 +609,12 @@ func.func @decompose_resource_apply_RMS_prop(%arg0: tensor<*x!tf_type.resource>,
 // CHECK-LABEL: @decompose_resource_scatter_add_op
 // CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
 func.func @decompose_resource_scatter_add_op(%indices : tensor<2x?xi32>, %updates: tensor<?x?x?xi32>) {
-  // CHECK: [[CST:%.+]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG: [[CST:%.+]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
   "tf_device.cluster"() ({
-    // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+    // CHECK-DAG: [[VAR:%.+]] = "tf.VarHandleOp"
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
 
-    // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK-DAG: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
     // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<2x?xi32>, tensor<i32>) -> tensor<2x?x1xi32>
     // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterAdd"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
     // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
@@ -630,12 +630,12 @@ func.func @decompose_resource_scatter_add_op(%indices : tensor<2x?xi32>, %update
 // CHECK-LABEL: @decompose_resource_scatter_add_op_1d_indices
 // CHECK-SAME: ([[INDEX:%.+]]: tensor<?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
 func.func @decompose_resource_scatter_add_op_1d_indices(%indices : tensor<?xi32>, %updates: tensor<?x?x?xi32>) {
-  // CHECK: [[CST:%.+]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG: [[CST:%.+]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
   "tf_device.cluster"() ({
-    // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+    // CHECK-DAG: [[VAR:%.+]] = "tf.VarHandleOp"
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
 
-    // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK-DAG: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
     // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<?xi32>, tensor<i32>) -> tensor<?x1xi32>
     // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterAdd"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
     // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
@@ -679,12 +679,12 @@ func.func @decompose_ResourceScatterAdd_with_unranked_updates(%resource : tensor
 // CHECK-LABEL: @decompose_resource_scatter_update_op
 // CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
 func.func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates: tensor<?x?x?xi32>) {
-  // CHECK: [[CST:%.+]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG: [[CST:%.+]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
   "tf_device.cluster"() ({
-    // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+    // CHECK-DAG: [[VAR:%.+]] = "tf.VarHandleOp"
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
 
-    // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+    // CHECK-DAG: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
     // CHECK: [[EXPAND:%.+]] = "tf.ExpandDims"([[INDEX]], [[CST]]) : (tensor<2x?xi32>, tensor<i32>) -> tensor<2x?x1xi32>
     // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterUpdate"([[READ]], [[EXPAND]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?x1xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
     // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])

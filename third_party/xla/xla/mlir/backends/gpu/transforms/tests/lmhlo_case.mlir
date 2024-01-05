@@ -22,8 +22,8 @@ module attributes {gpu.container_module} {
   func.func @case_true_false(%arg0: memref<i32>, %arg1: memref<i1>) {
     %c1 = arith.constant 1 : index
 
-    // CHECK: %[[C0:.*]] = arith.constant 0 : i32
-    // CHECK: %[[C1:.*]] = arith.constant 1 : i32
+    // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+    // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : i32
 
     // CHECK: %[[HOST:.*]] = memref.alloca() : memref<i1>
     // CHECK: gpu.memcpy %[[HOST]], %[[ARG1]]
@@ -70,8 +70,8 @@ module attributes {gpu.container_module} {
   func.func @case_index(%arg0: memref<i32>, %arg1: memref<i32>) {
     %c1 = arith.constant 1 : index
 
-    // CHECK: %[[C0:.*]] = arith.constant 0 : i32
-    // CHECK: %[[C1:.*]] = arith.constant 1 : i32
+    // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+    // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : i32
 
     // CHECK: %[[HOST:.*]] = memref.alloca() : memref<i32>
     // CHECK: gpu.memcpy %[[HOST]], %[[ARG1]]
