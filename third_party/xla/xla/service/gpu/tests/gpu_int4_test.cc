@@ -38,7 +38,7 @@ TEST_F(GpuInt4Test, TestInt4ParameterSize) {
 
   // The input should be 2 bytes and the output should be 4 bytes
   auto expected_ir = R"(
-; CHECK: define void {{.*}} dereferenceable(2){{.*}} dereferenceable(4)
+; CHECK: define KERNEL_ANNOTATION {{.*}} dereferenceable(2){{.*}} dereferenceable(4)
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
@@ -58,7 +58,7 @@ TEST_F(GpuInt4Test, TestInt4OutputSize) {
 
   // The input should be 4 bytes and the output should be 2 bytes
   auto expected_ir = R"(
-; CHECK: define void {{.*}} dereferenceable(4){{.*}} dereferenceable(2)
+; CHECK: define KERNEL_ANNOTATION {{.*}} dereferenceable(4){{.*}} dereferenceable(2)
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
@@ -78,7 +78,7 @@ TEST_F(GpuInt4Test, TestConstantSize) {
 
   // The constant should be 2 bytes and the output should be 4 bytes
   auto expected_ir = R"(
-; CHECK: define void {{.*}} dereferenceable(2){{.*}} dereferenceable(4)
+; CHECK: define KERNEL_ANNOTATION {{.*}} dereferenceable(2){{.*}} dereferenceable(4)
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
