@@ -159,9 +159,9 @@ cc_library(
 )
 
 cc_library(
-    name = "precalibration",
-    srcs = ["precalibration.cc"],
-    hdrs = ["precalibration.h"],
+    name = "pre_calibration",
+    srcs = ["pre_calibration.cc"],
+    hdrs = ["pre_calibration.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":component",
@@ -179,10 +179,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "precalibration_test",
-    srcs = ["precalibration_test.cc"],
+    name = "pre_calibration_test",
+    srcs = ["pre_calibration_test.cc"],
     deps = [
-        ":precalibration",
+        ":pre_calibration",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

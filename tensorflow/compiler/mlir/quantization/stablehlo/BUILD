@@ -484,7 +484,7 @@ cc_library(
         ":stablehlo_test_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:post_calibration",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:precalibration",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pre_calibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
