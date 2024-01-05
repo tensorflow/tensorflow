@@ -361,8 +361,27 @@ class ConvertNdConvOp : public OpConversionPattern<mhlo::ConvolutionOp> {
     // Emulate negative padding with a slice and remove negative values from the
     // padding vector.
     Value sliced_lhs = SliceNegativePadding(lhs, explicit_padding, rewriter);
-    auto new_padding = llvm::to_vector<4>(llvm::map_range(
-        explicit_padding, [](int64_t dim) { return dim > 0 ? dim : 0; }));
+    auto new_padding =
+        llvm::to_vector<(num_spatial_dims * 2) + 4>(llvm::map_range(
+            explicit_padding, [](int64_t dim) { return dim > 0 ? dim : 0; }));
+
+    // Add an TF.PadOp before the LHS if there is explicit_padding on a 3D
+    // Convolution. This is needed because TF.Conv3DOp doesn't support EXPLICIT.
+    if (padding == "EXPLICIT" && num_spatial_dims == 3) {
+      auto lhs_type =
+          conv_op.getLhs().getType().template dyn_cast<RankedTensorType>();
+      RankedTensorType padding_attr_type = mlir::RankedTensorType::get(
+          {lhs_type.getRank(), 2}, rewriter.getIntegerType(64));
+      auto padding_const = rewriter.create<TF::ConstOp>(
+          conv_op->getLoc(),
+          mlir::DenseElementsAttr::get(padding_attr_type,
+                                       ArrayRef<int64_t>(new_padding)));
+      // Add Pad op.
+      auto pad_output_type = UnrankedTensorType::get(lhs_type.getElementType());
+      sliced_lhs = rewriter.create<TF::PadOp>(
+          conv_op->getLoc(), pad_output_type, sliced_lhs, padding_const);
+      padding = "VALID";
+    }
 
     auto conv_output_type = conv_op.getType().cast<RankedTensorType>();
     DenseIntElementsAttr permutation;
