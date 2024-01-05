@@ -176,9 +176,13 @@ xla_test(
     name = "command_buffer_thunk_test",
     srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
     backend_tags = {
-        "gpu": ["config-cuda-only"],
+        "gpu_a100": ["config-cuda-only"],
+        "gpu_v100": ["config-cuda-only"],
     },
-    backends = ["gpu"],
+    backends = [
+        "gpu_a100",
+        "gpu_v100",
+    ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":command_buffer_allocations",

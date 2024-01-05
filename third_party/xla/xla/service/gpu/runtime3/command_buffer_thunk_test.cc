@@ -607,7 +607,8 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   Thunk::ExecuteParams params(run_options, allocations, &stream, &stream, {});
 
   CommandBufferCmd::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
+  TF_ASSERT_OK(
+      thunk.Initialize({executor, source, &allocations, &stream, &stream}));
 
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
