@@ -208,7 +208,8 @@ class IrEmitterUnnested : public IrEmitter {
                            mlir::Value token);
 
   template <typename NcclThunkType, typename HloInstType>
-  Status EmitNcclThunk(Thunk::Kind kind, const HloInstType* inst,
+  Status EmitNcclThunk(Thunk::Kind kind, const HloInstruction* async_start,
+                       const HloInstType* inst,
                        std::optional<bool> use_global_device_ids);
 
   Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* inst);

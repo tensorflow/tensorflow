@@ -320,6 +320,14 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
                                           impl::GetNcclAllReduceConfig(op),
                                           std::move(buffers), op.getIsSync()) {}
 
+NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
+    ThunkInfo thunk_info, const HloReduceScatterInstruction* inst,
+    std::vector<Buffer> buffers)
+    : NcclAllReduceReduceScatterThunkBase(
+          Thunk::kNcclAllReduceStart, thunk_info,
+          impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
+          inst->backend_config<CollectiveBackendConfig>()->is_sync()) {}
+
 /*static*/ Status NcclReduceScatterStartThunk::CheckImplementable(
     ReduceScatterStartOp op, int64_t replica_count, int64_t partition_count) {
   return AddOpDescription<NcclReduceScatterStartThunk>(
@@ -327,9 +335,22 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
       replica_count, partition_count);
 }
 
+/*static*/ Status NcclReduceScatterStartThunk::CheckImplementable(
+    const HloReduceScatterInstruction* inst, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclReduceScatterStartThunk>(
+      impl::CheckImplementableInst(inst, Thunk::kNcclReduceScatterStart), inst,
+      replica_count, partition_count);
+}
+
 /*static*/ CollectiveOpGroupMode NcclReduceScatterStartThunk::GetGroupMode(
     ReduceScatterStartOp op) {
   return impl::GetGroupMode(op);
+}
+
+/*static*/ CollectiveOpGroupMode NcclReduceScatterStartThunk::GetGroupMode(
+    const HloReduceScatterInstruction* inst) {
+  return impl::GetGroupModeInst(inst);
 }
 
 Status NcclReduceScatterStartThunk::RunNcclCollective(

@@ -101,13 +101,25 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
                               mlir::lmhlo_gpu::ReduceScatterStartOp op,
                               std::vector<Buffer> buffers);
 
+  NcclReduceScatterStartThunk(ThunkInfo thunk_info,
+                              const HloReduceScatterInstruction* inst,
+                              std::vector<Buffer> buffers);
+
   static const char* GetHloOpName() { return "reduce-scatter-start"; }
 
   static Status CheckImplementable(mlir::lmhlo_gpu::ReduceScatterStartOp op,
                                    int64_t replica_count,
                                    int64_t partition_count);
+
+  static Status CheckImplementable(const HloReduceScatterInstruction* inst,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
+
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::ReduceScatterStartOp op);
+
+  static CollectiveOpGroupMode GetGroupMode(
+      const HloReduceScatterInstruction* inst);
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,

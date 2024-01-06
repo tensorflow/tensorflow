@@ -2755,8 +2755,8 @@ Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
 
 template <typename NcclThunkType, typename HloInstType>
 Status IrEmitterUnnested::EmitNcclThunk(
-    Thunk::Kind kind, const HloInstType* inst,
-    std::optional<bool> use_global_device_ids) {
+    Thunk::Kind kind, const HloInstruction* async_start,
+    const HloInstType* inst, std::optional<bool> use_global_device_ids) {
   const auto& hlo_config = ir_emitter_context_->hlo_module().config();
   int64_t replica_count = hlo_config.replica_count();
   int64_t partition_count = hlo_config.num_partitions();
@@ -2792,8 +2792,8 @@ Status IrEmitterUnnested::EmitNcclThunk(
   };
 
   if (kind == Thunk::Kind::kNcclAllGatherStart) {
-    // AllGatherStart returns a tuple of (<<inputs>>, <<outputs>>) where outputs
-    // can be a tuple itself (if operation has multiple operands).
+    // Start operations return a tuple of (<<inputs>>, <<outputs>>) where
+    // outputs can be a tuple itself (if operation has multiple operands).
     for (int64_t i = 0; i < inst->operand_count(); i++) {
       TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
       TF_ASSIGN_OR_RETURN(
@@ -2819,7 +2819,7 @@ Status IrEmitterUnnested::EmitNcclThunk(
     auto thunk = std::make_unique<NcclThunkType>(
         Thunk::ThunkInfo::WithProfileAnnotation(inst), inst,
         /*buffers=*/std::move(buffers));
-    async_executors_.insert({inst, thunk->async_executor()});
+    async_executors_.insert({async_start, thunk->async_executor()});
     AddThunkToThunkSequence(std::move(thunk));
     return OkStatus();
   }
@@ -2829,7 +2829,7 @@ Status IrEmitterUnnested::EmitNcclThunk(
   }
 
   // Signal that start thunk not created with nullptr.
-  async_executors_.insert({inst, nullptr});
+  async_executors_.insert({async_start, nullptr});
 
   VLOG(1) << "Collective call is degenerate, not doing NCCL call";
 
@@ -3387,7 +3387,7 @@ Status IrEmitterUnnested::EmitOp(
     if (ir_emitter_context_->emit_ir_from_hlo()) {
       auto* all_gather = Cast<HloAllGatherInstruction>(hlo_for_lmhlo.at(op));
       return EmitNcclThunk<NcclAllGatherStartThunk, HloAllGatherInstruction>(
-          Thunk::kNcclAllGatherStart, all_gather,
+          Thunk::kNcclAllGatherStart, all_gather, all_gather,
           all_gather->use_global_device_ids());
     }
     return EmitNcclThunk<NcclAllGatherStartThunk,
@@ -3407,7 +3407,7 @@ Status IrEmitterUnnested::EmitOp(
     if (ir_emitter_context_->emit_ir_from_hlo()) {
       auto* all_reduce = Cast<HloAllReduceInstruction>(hlo_for_lmhlo.at(op));
       return EmitNcclThunk<NcclAllReduceStartThunk, HloAllReduceInstruction>(
-          Thunk::kNcclAllReduceStart, all_reduce,
+          Thunk::kNcclAllReduceStart, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
     }
     return EmitNcclThunk<NcclAllReduceStartThunk,
@@ -3424,11 +3424,24 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::ReduceScatterStartOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      auto* async_start = hlo_for_lmhlo.at(op);
+      auto* reduce_scatter = Cast<HloReduceScatterInstruction>(
+          async_start->async_wrapped_instruction());
+      return EmitNcclThunk<NcclReduceScatterStartThunk,
+                           HloReduceScatterInstruction>(
+          Thunk::kNcclReduceScatterStart, async_start, reduce_scatter,
+          reduce_scatter->use_global_device_ids());
+    }
     return EmitNcclThunk<NcclReduceScatterStartThunk,
                          mlir::lmhlo_gpu::ReduceScatterStartOp>(op);
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::ReduceScatterDoneOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone,
+                               hlo_for_lmhlo.at(op));
+    }
     return EmitNcclAsyncDone(
         Thunk::kNcclReduceScatterDone, op,
         mlir::cast<mlir::lmhlo_gpu::ReduceScatterDoneOp>(op).getToken());
@@ -3561,7 +3574,7 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
     case HloOpcode::kAllReduceStart: {
       auto* all_reduce = Cast<HloAllReduceInstruction>(instr);
       return EmitNcclThunk<NcclAllReduceStartThunk, HloAllReduceInstruction>(
-          Thunk::kNcclAllReduceStart, all_reduce,
+          Thunk::kNcclAllReduceStart, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
     }
     case HloOpcode::kAllReduceDone:
