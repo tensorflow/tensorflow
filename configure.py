@@ -239,7 +239,7 @@ def setup_python(environ_cp):
   write_to_bazelrc('build --python_path=\"{}"'.format(python_bin_path))
   environ_cp['PYTHON_BIN_PATH'] = python_bin_path
 
-  # If choosen python_lib_path is from a path specified in the PYTHONPATH
+  # If chosen python_lib_path is from a path specified in the PYTHONPATH
   # variable, need to tell bazel to include PYTHONPATH
   if environ_cp.get('PYTHONPATH'):
     python_paths = environ_cp.get('PYTHONPATH').split(':')

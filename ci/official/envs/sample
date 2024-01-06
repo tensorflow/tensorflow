@@ -1,7 +1,7 @@
 # Sample of a local build environment.
 #
 # Copy this file into your own location (tensorflow/build_output is a good one)
-# and change "your_choice_here" to one of the official enviroments you want to
+# and change "your_choice_here" to one of the official environments you want to
 # replicate. Then you can change additional settings below.
 # Afterwards, run "export TFCI=$(realpath path-to-your-env-file)" and execute
 # a build script to run it with your custom settings.
