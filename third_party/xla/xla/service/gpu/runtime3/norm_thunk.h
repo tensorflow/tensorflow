@@ -13,24 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_NORM_THUNK_H_
-#define XLA_SERVICE_GPU_NORM_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_NORM_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_NORM_THUNK_H_
 
 #include <memory>
 #include <optional>
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -69,4 +63,4 @@ class NormThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_NORM_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_NORM_THUNK_H_

@@ -13,19 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/norm_thunk.h"
+#include "xla/service/gpu/runtime3/norm_thunk.h"
 
 #include <memory>
 #include <optional>
-#include <string>
 
-#include "absl/strings/str_cat.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {

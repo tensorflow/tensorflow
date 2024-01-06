@@ -400,6 +400,23 @@ cc_library(
 )
 
 cc_library(
+    name = "norm_thunk",
+    srcs = ["norm_thunk.cc"],
+    hdrs = ["norm_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:gpu_norm_runner",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "sequential_thunk",
     srcs = ["sequential_thunk.cc"],
     hdrs = ["sequential_thunk.h"],
