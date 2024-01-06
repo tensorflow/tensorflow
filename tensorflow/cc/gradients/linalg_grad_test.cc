@@ -106,7 +106,7 @@ TEST_F(LinalgGradTest, Einsum_MatMulBroadcast) {
 TEST_F(LinalgGradTest, Einsum_Trace) {
   TensorShape x_shape({3, 3});
   Output x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  // Note: In Python this could just be "ii" becuase tf.einsum normalizes the
+  // Note: In Python this could just be "ii" because tf.einsum normalizes the
   // equation, but c++ doesn't do that.
   auto z = Einsum(scope_, {x}, "ii->");
   TensorShape z_shape({});
@@ -116,7 +116,7 @@ TEST_F(LinalgGradTest, Einsum_Trace) {
 TEST_F(LinalgGradTest, Einsum_TraceBroadcast) {
   TensorShape x_shape({4, 3, 3});
   Output x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
-  // Note: In Python this could just be "ii" becuase tf.einsum normalizes the
+  // Note: In Python this could just be "ii" because tf.einsum normalizes the
   // equation, but c++ doesn't do that.
   auto z = Einsum(scope_, {x}, "...ii->...");
   TensorShape z_shape({4});
