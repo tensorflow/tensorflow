@@ -25,6 +25,7 @@ limitations under the License.
 #include <system_error>  // NOLINT
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/Alignment.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Memory.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Process.h"
 #include "llvm/TargetParser/Host.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
@@ -311,7 +313,7 @@ SimpleOrcJIT::SimpleOrcJIT(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook)
+    absl::AnyInvocable<void(const llvm::object::ObjectFile&)> post_codegen_hook)
     : target_machine_(InferTargetMachineForJIT(target_options, opt_level)),
       target_triple_(target_machine_->getTargetTriple()),
       data_layout_(target_machine_->createDataLayout()),
@@ -388,7 +390,8 @@ llvm::Expected<std::unique_ptr<SimpleOrcJIT>> SimpleOrcJIT::Create(
     bool disable_slp_vectorizer, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
-    std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook) {
+    absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
+        post_codegen_hook) {
   auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
   auto target_process_control =
       llvm::orc::SelfExecutorProcessControl::Create(std::move(SSP));
@@ -441,6 +444,11 @@ void SimpleOrcJIT::notifyObjectLoaded(
 
 void SimpleOrcJIT::notifyFreeingObject(llvm::JITEventListener::ObjectKey key) {
   gdb_jit_event_listener_->notifyFreeingObject(key);
+}
+
+llvm::Error SimpleOrcJIT::AddObjFile(
+    std::unique_ptr<llvm::MemoryBuffer> obj_file) {
+  return object_layer_.add(*main_jit_dylib_, std::move(obj_file));
 }
 
 llvm::Error SimpleOrcJIT::AddModule(llvm::orc::ThreadSafeModule module) {

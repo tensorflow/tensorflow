@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-syntax = "proto2";
+syntax = "proto3";
 
 package xla.cpu;
 
@@ -23,4 +23,11 @@ import "xla/service/hlo.proto";
 message XlaRuntimeCpuExecutableProto {
   optional XlaRuntimeExecutableProto xla_runtime_executable = 1;
   optional XlaFrameworkMappingProto xla_framework_mapping = 2;
+}
+
+message CompilationResultProto {
+  HloModuleProto hlo_module = 1;
+  BufferAssignmentProto buffer_assignment = 2;
+  string entry_function_name = 3;
+  bytes obj_file = 4;
 }
