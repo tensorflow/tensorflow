@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -137,8 +139,15 @@ static bool IsCommand(const HloInstruction* hlo,
 
 static bool IsAsyncStartCommand(const HloInstruction* hlo,
                                 const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceStart) {
+  if (hlo->opcode() == HloOpcode::kAllReduceStart ||
+      hlo->opcode() == HloOpcode::kAllGatherStart) {
     return config.contains(DebugOptions::NCCL);
+  }
+
+  if (hlo->opcode() == HloOpcode::kAsyncStart) {
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+      return config.contains(DebugOptions::NCCL);
+    }
   }
 
   return false;
@@ -146,7 +155,9 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
 
 // Finds an async-done HLO operation corresponding on an async-start one.
 static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
-  if (start->opcode() == HloOpcode::kAllReduceStart) {
+  if (start->opcode() == HloOpcode::kAllReduceStart ||
+      start->opcode() == HloOpcode::kAllGatherStart ||
+      start->opcode() == HloOpcode::kAsyncStart) {
     CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
     return start->users().front();
   }
@@ -554,17 +565,15 @@ StatusOr<bool> CommandBufferScheduling::Run(
     }
   };
 
-  bool do_erase = std::visit(
-      VariantVisitor{[this](const se::CudaComputeCapability&) {
-                       return std::min(gpu_toolkit_version_,
-                                       gpu_driver_version_) < 12030;
-                     },
-                     [](const se::RocmComputeCapability&) {  // TODO: check for
-                                                             // ROCM support
-                       return true;
-                     }},
-      gpu_compute_comp_);
-  if (do_erase) {
+  // Check if CUDA/ROCM driver supports required features.
+  auto check_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
+    return std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030;
+  };
+  auto check_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
+    return true;  // check for ROCM support
+  };
+
+  if (std::visit(VariantVisitor{check_cuda, check_rocm}, gpu_compute_comp_)) {
     erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
     erase(kRequireConditionals);  // on-device control flow
   }
@@ -574,8 +583,13 @@ StatusOr<bool> CommandBufferScheduling::Run(
   absl::flat_hash_set<HloComputation*> processed_command_buffers;
 
   for (HloComputation* comp : order) {
-    if (comp->IsFusionComputation() || processed_command_buffers.contains(comp))
+    // Skip special computations that do not have lowering to thunks.
+    if (comp->IsFusionComputation() || comp->IsAsyncComputation() ||
+        comp->IsCustomCallComputation())
       continue;
+
+    // Skip computations that already part of command buffers.
+    if (processed_command_buffers.contains(comp)) continue;
 
     TF_RETURN_IF_ERROR(MoveParametersAndConstantsToFront(comp));
 

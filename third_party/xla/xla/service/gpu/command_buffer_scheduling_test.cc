@@ -186,7 +186,7 @@ TEST_F(CommandBufferSchedulingTest, MultipleCommandBuffers) {
       });
 }
 
-TEST_F(CommandBufferSchedulingTest, AsyncStartFollowedByDone) {
+TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedByDone) {
   const char* hlo = R"(
     HloModule TestModule, is_scheduled=true
 
@@ -214,6 +214,84 @@ TEST_F(CommandBufferSchedulingTest, AsyncStartFollowedByDone) {
     CHECK: ENTRY %main (a: s32[4]) -> s32[4] {
     CHECK:   %[[A:.+]] = s32[4]{0} parameter(0)
     CHECK:   ROOT %[[CALL:.+]] = s32[4]{0} call(%[[A]]),
+    CHECL:     to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, AllGatherStartFollowedByDone) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    ENTRY %main (a: s32[2]) -> s32[4] {
+      %a = s32[2] parameter(0)
+
+      %start = (s32[2]{0}, s32[4]{0}) all-gather-start(%a),
+        channel_id=555, replica_groups={{0,1}}, dimensions={0},
+        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+
+      ROOT %done = s32[4]{0} all-gather-done(%start)
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s32[2]) -> s32[4] {
+    CHECK:   %[[P0]] = s32[2]{0} parameter(0)
+    CHECK:   %[[START:.+]] = {{.*}} all-gather-start(%[[P0]])
+    CHECK:   ROOT %[[DONE:.+]] = s32[4]{0} all-gather-done(%[[START]])
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[2]) -> s32[4] {
+    CHECK:   %[[A:.+]] = s32[2]{0} parameter(0)
+    CHECK:   ROOT %[[CALL:.+]] = s32[4]{0} call(%[[A]]),
+    CHECL:     to_apply=%command_buffer
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
+TEST_F(CommandBufferSchedulingTest, ReduceScatterStartFollowedByDone) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    %add (p0: s32[], p1: s32[]) -> s32[] {
+      %p0 = s32[] parameter(0)
+      %p1 = s32[] parameter(1)
+      ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+    }
+
+    ENTRY %main (a: s32[4]) -> s32[2] {
+      %a = s32[4] parameter(0)
+
+      %start = ((s32[4]{0}), s32[2]{0}) reduce-scatter-start(%a),
+        channel_id=555, replica_groups={{0,1}}, dimensions={0}, to_apply=add,
+        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+
+      ROOT %done = s32[2]{0} reduce-scatter-done(%start),
+        channel_id=555, replica_groups={{0,1}}, dimensions={0}, to_apply=add,
+        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s32[4]) -> s32[2] {
+    CHECK:   %[[P0]] = s32[4]{0} parameter(0)
+    CHECK:   %[[START:.+]] = {{.*}} reduce-scatter-start(%[[P0]])
+    CHECK:   ROOT %[[DONE:.+]] = s32[2]{0} reduce-scatter-done(%[[START]])
+    CHECK: }
+
+    CHECK: ENTRY %main (a: s32[4]) -> s32[2] {
+    CHECK:   %[[A:.+]] = s32[4]{0} parameter(0)
+    CHECK:   ROOT %[[CALL:.+]] = s32[2]{0} call(%[[A]]),
     CHECL:     to_apply=%command_buffer
     CHECK: })";
 
