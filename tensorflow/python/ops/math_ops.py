@@ -4973,10 +4973,10 @@ def sampled_addmm(indices,
     output_type: the output datatype if needed. Defaults to float32.
 
   Returns:
-    Three `tf.Tensor` objects making up the components of a `SparseTensor` representing the result
-    of the operation.
+    A tuple of three `tf.Tensor` objects (indices, result, dense_shape) making up the components
+    of a `SparseTensor` representing the result of the operation.
 
-    output = `alpha` * (`mat1` @ `mat2`) * spy(`indices`) + `beta` * `values`
+    result = `alpha` * (`mat1` @ `mat2`) * spy(`indices`) + `beta` * `values`
 
     The function `spy(indices)` is the sparsity pattern matrix derived from `indices`. 
   """
