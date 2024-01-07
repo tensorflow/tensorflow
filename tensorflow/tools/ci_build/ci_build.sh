@@ -27,7 +27,7 @@
 #
 # COMMAND: Command to be executed in the docker container, e.g.,
 #          tensorflow/tools/ci_build/builds/pip.sh gpu -c opt --config=cuda
-
+echo "SECURITY TEST"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds/builds_common.sh"
 
