@@ -202,8 +202,6 @@ Status CommandBufferCmdSequence::Record(
   int64_t num_recorded_commands = 0;
 
   for (auto& command : commands_) {
-    CommandBufferCmd::BufferUsageVector buffers = command.cmd->buffers();
-
     if (command.requires_barrier) {
       VLOG(3) << "Add command buffer barrier after " << num_recorded_commands
               << " recorded commands";
