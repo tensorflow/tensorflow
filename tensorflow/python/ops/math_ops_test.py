@@ -397,8 +397,9 @@ class SampledADDMMTest(test_util.TensorFlowTestCase):
       indices = constant_op.constant([[0, 0],[1, 1]])
       values = constant_op.constant([0.5, 0.3], dtype=dtype)
       dense_shape = constant_op.constant([2, 2])
-      mat1 = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype) 
-      mat2 = constant_op.constant([7, 8, 9, 10, 11, 12], shape=[3, 2], dtype=dtype)
+      mat1 = constant_op.constant([1, 2, 3, 4, 5, 6], shape=[2, 3], dtype=dtype)
+      mat2 = constant_op.constant([7, 8, 9, 10, 11, 12], shape=[3, 2],
+                                  dtype=dtype)
       alpha = 0.75
       beta = 0.25
     
@@ -425,8 +426,10 @@ class SampledADDMMTest(test_util.TensorFlowTestCase):
       indices = constant_op.constant([[[0, 1],[1,0]],[[0, 0],[1, 0]]])
       values = constant_op.constant([[3, 5],[2, 7]], dtype=dtype)
       dense_shape = constant_op.constant([2, 2])
-      mat1 = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3], dtype=dtype)
-      mat2 = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2], dtype=dtype)
+      mat1 = constant_op.constant(np.arange(1, 13), shape=[2, 2, 3],
+                                  dtype=dtype)
+      mat2 = constant_op.constant(np.arange(13, 25), shape=[2, 3, 2],
+                                  dtype=dtype)
       alpha = 0.4
       beta = 0.6
  

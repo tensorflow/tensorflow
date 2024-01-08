@@ -4867,19 +4867,21 @@ def sampled_addmm(indices,
       alpha=1.0,
       output_type=dtypes.float32
 ):
-  """Multiplies matrix `mat1` by matrix `mat2` at the locations defined by `indices`.
-  The product is scaled and added to `values`, 
+  """Multiplies matrix `mat1` by matrix `mat2` at the locations defined by
+  `indices`. The product is scaled and added to `values`, 
   producing `alpha` * (`mat1` @ `mat2`) * spy(`indices`) + `beta` * `values`
 
-  The function `spy(indices)` is the sparsity pattern matrix derived from `indices`.
+  The function `spy(indices)` is the sparsity pattern matrix derived from
+  `indices`.
 
   The `mat1` and `mat2` inputs must be tensors of rank >= 2 where the inner 2
-  dimensions specify valid matrix multiplication dimensions, and any further dimensions
-  specify matching batch size.
+  dimensions specify valid matrix multiplication dimensions, and any further
+  dimensions specify matching batch size.
 
-  The `indices`, `values`, and `dense_shape` inputs make up the components of a 
-  `SparseTensor` which defines the sparsity pattern of the output. The sparsity pattern
-  has values of 1 at the positions defined by the `SparseTensor`, and 0 elsewhere.
+  The `indices`, `values`, and `dense_shape` inputs make up the components of a
+  `SparseTensor` which defines the sparsity pattern of the output. The sparsity
+  pattern has values of 1 at the positions defined by the `SparseTensor`, and 0
+  elsewhere.
 
   The `alpha` and `beta` inputs are the scaling factors.
 
@@ -4910,11 +4912,13 @@ def sampled_addmm(indices,
   array([[ 7,  8],
          [ 9, 10],
          [11, 12]], dtype=int32)>
-  >>> tf.sparse.sampled_addmm(indices, values, dense_shape, mat1, mat2, alpha=0.75, beta=0.25)
+  >>> tf.sparse.sampled_addmm(indices, values, dense_shape, mat1, mat2,
+  ... alpha=0.75, beta=0.25)
   (<tf.Tensor: shape=(2, 2), dtype=int32, numpy=
   array([[0, 0],
          [1, 1]], dtype=int32)>, 
-  <tf.Tensor: shape=(2,), dtype=float32, numpy=array([ 43.625, 115.575], dtype=float32)>, 
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=
+  array([ 43.625, 115.575], dtype=float32)>, 
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>)
 
   A batch operation:
@@ -4950,35 +4954,39 @@ def sampled_addmm(indices,
          [[19, 20],
           [21, 22],
           [23, 24]]])>
-  >>> tf.sparse.sampled_addmm(indices, values, dense_shape, mat1, mat2, alpha=0.75, beta=0.25)
+  >>> tf.sparse.sampled_addmm(indices, values, dense_shape, mat1, mat2,
+  ... alpha=0.75, beta=0.25)
   (<tf.Tensor: shape=(2, 2, 2), dtype=int32, numpy=
   array([[[0, 1],
           [1, 0]],
          [[0, 0],
-          [1, 0]]], dtype=int32)>, <tf.Tensor: shape=(2, 2), dtype=float32, numpy=
-  array([[ 75.75, 173.  ],
+          [1, 0]]], dtype=int32)>, <tf.Tensor: shape=(2, 2), dtype=float32,
+  numpy=array([[ 75.75, 173.  ],
          [381.5 , 524.5 ]], dtype=float32)>, 
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>)
 
   Args:
-    indices: `tf.Tensor` containing coordinates for the rows and columns to be multiplied.
-      Must have rank > 1.
-    values: `tf.Tensor` containing the values to be scaled and added to the sampled dot product.
+    indices: `tf.Tensor` containing coordinates for the rows and columns to be
+      multiplied. Must have rank > 1.
+    values: `tf.Tensor` containing the values to be scaled and added to the
+      sampled dot product.
     dense_shape: `tf.Tensor` defining the dense shape of the output.
     mat1: `tf.Tensor` to be multiplied. Must have rank > 1.
     mat2: `tf.Tensor` to be multiplied. Must have rank > 1.
     beta: Number to be multipled with `values`. Defaults to 1.0.
-    alpha: Number to be multiplied with the sampled dot product of `mat1` and `mat2`.
-      Defaults to 1.0.
+    alpha: Number to be multiplied with the sampled dot product of `mat1` and
+      `mat2`. Defaults to 1.0.
     output_type: the output datatype if needed. Defaults to float32.
 
   Returns:
-    A tuple of three `tf.Tensor` objects (indices, result, dense_shape) making up the components
-    of a `SparseTensor` representing the result of the operation.
+    A tuple of three `tf.Tensor` objects (indices, result, dense_shape) making
+    up the components of a `SparseTensor` representing the result of the
+    operation.
 
     result = `alpha` * (`mat1` @ `mat2`) * spy(`indices`) + `beta` * `values`
 
-    The function `spy(indices)` is the sparsity pattern matrix derived from `indices`. 
+    The function `spy(indices)` is the sparsity pattern matrix derived from
+    `indices`. 
   """
   if context.executing_eagerly():
     if not isinstance(indices, ops.EagerTensor):
@@ -5021,7 +5029,7 @@ def sampled_addmm(indices,
   # Extract rows and columns 
   rows = array_ops.gather_nd(mat1, row_indices, 
                              batch_dims=mat1.ndim - 2)
-  cols = array_ops.gather_nd(array_ops.matrix_transpose(mat2), col_indices, 
+  cols = array_ops.gather_nd(array_ops.matrix_transpose(mat2), col_indices,
                              batch_dims=mat2.ndim - 2)
 
   # Calculate dot product for the selected rows and columns
