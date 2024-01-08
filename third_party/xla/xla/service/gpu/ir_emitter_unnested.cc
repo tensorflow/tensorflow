@@ -2086,6 +2086,84 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
   }
   return OkStatus();
 }
+
+Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
+    const HloInstruction* instr) {
+  TF_RET_CHECK(instr->operand_count() == 2);
+  auto operands = instr->operands();
+  TF_RET_CHECK(instr->shape().IsTuple() &&
+               instr->shape().tuple_shapes_size() == 2);
+
+  // We expect Fortran layout for everything other than the temp buffer (the
+  // last operand).  Fortran layout is not XLA default layout with elements 0
+  // and 1 swapped.  For example instead of default layout {3,2,1,0} we'd have
+  // Fortran layout {2,3,1,0}.
+  auto has_fortran_layout = [](const Layout& layout) {
+    int n = layout.minor_to_major_size();
+    return layout.minor_to_major(0) == n - 2 &&
+           layout.minor_to_major(1) == n - 1;
+  };
+  TF_RET_CHECK(has_fortran_layout(operands[0]->shape().layout()));
+  TF_RET_CHECK(has_fortran_layout(operands[1]->shape().layout()));
+  TF_RET_CHECK(has_fortran_layout(instr->shape().tuple_shapes(0).layout()));
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_slice,
+                      GetAllocationSliceForHlo(operands[0]));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b_slice,
+                      GetAllocationSliceForHlo(operands[1]));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      GetAllocationSliceForHlo(instr, {0}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice temp_slice,
+                      GetAllocationSliceForHlo(instr, {1}));
+
+  const Shape b_shape = operands[1]->shape();
+  const PrimitiveType elem_ty = b_shape.element_type();
+
+  TriangularSolveOptions backend_config;
+  auto& backend_config_str = instr->raw_backend_config_string();
+  if (!backend_config_str.empty()) {
+    TF_RETURN_IF_ERROR(
+        tsl::HumanReadableJsonToProto(backend_config_str, &backend_config));
+  }
+
+  ThunkSequence thunks;
+
+  // Triangular solve is in-place on 'b', so copy 'b' to the output if they
+  // aren't the same buffer.
+  if (b_slice != result_slice) {
+    thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        /*source_buffer=*/b_slice,
+        /*destination_buffer=*/result_slice,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(b_shape),
+        /*source_value=*/nullptr,
+        /*destination_value=*/nullptr));
+  }
+
+  int64_t m = b_shape.dimensions(b_shape.rank() - 2);
+  int64_t n = b_shape.dimensions(b_shape.rank() - 1);
+  int64_t batch_size = std::accumulate(
+      b_shape.dimensions().begin(), b_shape.dimensions().end() - 2, int64_t{1},
+      [](int64_t a, int64_t b) { return a * b; });
+  int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(elem_ty);
+  int64_t a_batch_stride =
+      backend_config.left_side() ? m * m * elem_size : n * n * elem_size;
+  int64_t b_batch_stride = m * n * elem_size;
+  thunks.push_back(std::make_unique<TriangularSolveThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), backend_config,
+      PtxOptsFromDebugOptions(ir_emitter_context_->debug_options()),
+      /*a_buffer=*/a_slice, /*b_buffer=*/result_slice, temp_slice, elem_ty,
+      batch_size, m, n, a_batch_stride, b_batch_stride));
+
+  // Elide the sequential thunk if there's no copy.
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(thunks)));
+  }
+  return OkStatus();
+}
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 Status IrEmitterUnnested::EmitTopKCustomCall(
@@ -3735,6 +3813,9 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (IsCustomCallToCusolver(*instr)) {
         return EmitCholeskyThunk(instr);
+      }
+      if (IsTriangularSolve(*instr)) {
+        return EmitTriangularSolveCustomCall(instr);
       }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       return EmitCustomCallThunk(custom_call);
