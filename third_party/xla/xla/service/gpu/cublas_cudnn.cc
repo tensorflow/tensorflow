@@ -47,6 +47,11 @@ bool IsCublasLtMatmulF8(const HloInstruction& hlo) {
          hlo.custom_call_target() == kCublasLtMatmulF8CallTarget;
 }
 
+bool IsTriangularSolve(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kTriangularSolveCallTarget;
+}
+
 const absl::string_view kGemmCallTarget = "__cublas$gemm";
 const absl::string_view kCublasLtMatmulCallTarget = "__cublas$lt$matmul";
 const absl::string_view kCublasLtMatmulF8CallTarget = "__cublas$lt$matmul$f8";
