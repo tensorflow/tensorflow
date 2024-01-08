@@ -34,7 +34,7 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-using ::mlir::quant::common::QuantizationTestBase;
+using ::mlir::quant::QuantizationTestBase;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::CalibrationOptions;
 using ::testing::Contains;

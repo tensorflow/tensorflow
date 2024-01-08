@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
+#include "llvm/Support/Debug.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -131,6 +133,21 @@ bool AreSplatValuesEqual(Value x, Value y) {
 // Clones an operation with new operands while keeping attributes.
 SmallVector<Value> CloneOpWithReplacedOperands(
     OpBuilder &builder, Operation *op, const SmallVector<Value> &new_operands);
+
+// Tries casting `op` with a concrete op type `T`. If the cast fails or `op` is
+// a `nullptr`, returns `failure` and prints a debugging message identifying
+// the cast attempt as `name`.
+template <typename T>
+FailureOr<T> TryCast(Operation *op, const StringRef name) {
+  auto cast_op = dyn_cast_or_null<T>(op);
+  if (cast_op) {
+    return cast_op;
+  } else {
+    llvm::dbgs() << "Failed to match " << name << " (" << T::getOperationName()
+                 << ").\n";
+    return failure();
+  }
+}
 
 }  // namespace mlir::quant
 

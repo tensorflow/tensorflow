@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/core/platform/test.h"
 
-namespace mlir::quant::common {
+namespace mlir::quant {
 
 using ::testing::Test;
 
@@ -78,6 +78,6 @@ class QuantizationTestBase : public Test {
   OpBuilder builder_{&ctx_};
 };
 
-}  // namespace mlir::quant::common
+}  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_TEST_BASE_H_
