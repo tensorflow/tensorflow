@@ -213,6 +213,15 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                    toco_flags.qdq_conversion_mode());
   }
 
+  if (toco_flags.has_qdq_conversion_mode() &&
+      toco_flags.qdq_conversion_mode() != "NONE") {
+    // Setting this flag causes
+    // PrepareQuantize::SetInputNodesQuantizationParams() to be false and allows
+    // PrepareQuantizePass to complete. For the most part this step is
+    // unnecessary for non-TF QDQ models.
+    pass_config.quant_specs.disable_set_input_nodes_quantization_params = true;
+  }
+
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config, tags, result,
