@@ -268,9 +268,9 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "tile_analysis",
-    srcs = ["tile_analysis.cc"],
-    hdrs = ["tile_analysis.h"],
+    name = "indexing_analysis",
+    srcs = ["indexing_analysis.cc"],
+    hdrs = ["indexing_analysis.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":indexing_map_simplifier",
@@ -298,10 +298,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "tile_analysis_test",
-    srcs = ["tile_analysis_test.cc"],
+    name = "indexing_analysis_test",
+    srcs = ["indexing_analysis_test.cc"],
     deps = [
-        ":tile_analysis",
+        ":indexing_analysis",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:test_helpers",
@@ -319,12 +319,49 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "tile_analysis",
+    srcs = ["tile_analysis.cc"],
+    hdrs = ["tile_analysis.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":indexing_analysis",
+        ":indexing_map_simplifier",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "tile_analysis_test",
+    srcs = ["tile_analysis_test.cc"],
+    deps = [
+        ":tile_analysis",
+        "//xla:status_macros",
+        "//xla:statusor",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "coalescing_analysis",
     srcs = ["coalescing_analysis.cc"],
     hdrs = ["coalescing_analysis.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tile_analysis",
+        ":indexing_analysis",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -342,7 +379,7 @@ xla_cc_test(
     srcs = ["coalescing_analysis_test.cc"],
     deps = [
         ":coalescing_analysis",
-        ":tile_analysis",
+        ":indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/log:check",

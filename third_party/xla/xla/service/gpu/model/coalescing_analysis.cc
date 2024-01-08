@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/tile_analysis.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 
 namespace xla {
 namespace gpu {
