@@ -53,11 +53,6 @@ void AddQuantizePtqPostCalibrationPasses(
 void AddQuantizePtqPreCalibrationStablehloPasses(
     mlir::OpPassManager &pm, const CalibrationOptions &quantization_options);
 
-void AddQuantizePtqPostCalibrationStablehloPasses(
-    mlir::OpPassManager &pm,
-    std::optional<const absl::string_view> mlir_dump_file_prefix =
-        std::nullopt);
-
 }  // namespace quantization
 }  // namespace tensorflow
 

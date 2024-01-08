@@ -151,10 +151,14 @@ cc_library(
     hdrs = ["pass_pipeline.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
     ],
 )
 
@@ -215,16 +219,18 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":component",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        ":pass_pipeline",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:errors",
-        "@stablehlo//:chlo_ops",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
     ],
 )
