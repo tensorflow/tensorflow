@@ -10,7 +10,7 @@
 // CHECK:    return
 //
 // CHECK:  func.func private @_ifrt_program__func(%arg0: tensor<1x3xf32>)
-// CHECK-SAME: __tpu_compile_metadata_debug = "args { dtype: DT_FLOAT shape { dim { size: 1 } dim { size: 3 } } kind: PARAMETER sharding { } is_bounded_dynamic_dim: false } retvals { sharding { } } num_replicas: 1 num_cores_per_replica: 1 "
+// CHECK-SAME: __tpu_compile_metadata_text = "args { dtype: DT_FLOAT shape { dim { size: 1 } dim { size: 3 } } kind: PARAMETER sharding { } is_bounded_dynamic_dim: false } retvals { sharding { } } num_replicas: 1 num_cores_per_replica: 1 "
 // CHECK-SAME: tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64,  tpu_compile_metadata =
 // CHECK:      return
 
@@ -38,7 +38,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>) -> (tensor<1x3xf32>) {
 // CHECK:    return
 //
 // CHECK:  func.func private @_ifrt_program__func(%arg0: tensor<1x3xf32>)
-// CHECK-SAME: __tpu_compile_metadata_debug = "args { dtype: DT_FLOAT shape { dim { size: 1 } dim { size: 3 } } kind: PARAMETER sharding { type: OTHER tile_assignment_dimensions: 2 tile_assignment_dimensions: 1 tile_assignment_devices: 0 tile_assignment_devices: 1 } is_bounded_dynamic_dim: false } num_replicas: 1 num_cores_per_replica: 2 device_assignment { replica_count: 1 computation_count: 2 computation_devices { replica_device_ids: 0 } computation_devices { replica_device_ids: 1 } } use_spmd_for_xla_partitioning: true "
+// CHECK-SAME: __tpu_compile_metadata_text = "args { dtype: DT_FLOAT shape { dim { size: 1 } dim { size: 3 } } kind: PARAMETER sharding { type: OTHER tile_assignment_dimensions: 2 tile_assignment_dimensions: 1 tile_assignment_devices: 0 tile_assignment_devices: 1 } is_bounded_dynamic_dim: false } num_replicas: 1 num_cores_per_replica: 2 device_assignment { replica_count: 1 computation_count: 2 computation_devices { replica_device_ids: 0 } computation_devices { replica_device_ids: 1 } } use_spmd_for_xla_partitioning: true "
 // CHECK-SAME: tfrt_ifrt_serving.program_id = [[PROGRAM_ID]] : i64,  tpu_compile_metadata =
 // CHECK:      return
 

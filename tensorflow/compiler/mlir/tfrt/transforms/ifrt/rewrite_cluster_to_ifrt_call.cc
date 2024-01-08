@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/tpu_metadata_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -214,8 +215,7 @@ class RewriteClusterToIfrtCallPass
     }
 
     cloned_ifrt_program->setAttr(
-        "tpu_compile_metadata",
-        builder.getStringAttr(metadata.SerializeAsString()));
+        kMetadataAttrName, builder.getStringAttr(metadata.SerializeAsString()));
 
     if (tpu_compile_metadata_debug_) {
       std::string serialized_metadata;
@@ -223,7 +223,7 @@ class RewriteClusterToIfrtCallPass
       printer.SetSingleLineMode(true);
       printer.PrintToString(metadata, &serialized_metadata);
 
-      cloned_ifrt_program->setAttr("__tpu_compile_metadata_debug",
+      cloned_ifrt_program->setAttr(kMetadataTextAttrName,
                                    builder.getStringAttr(serialized_metadata));
     }
     cloned_ifrt_program.setName(ifrt_program_name);

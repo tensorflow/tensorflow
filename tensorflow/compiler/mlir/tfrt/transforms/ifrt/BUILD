@@ -39,6 +39,15 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "ifrt_constants",
+    srcs = [],
+    hdrs = ["ifrt_constants.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "tf_ifrt_passes",
     srcs = [
         "rewrite_cluster_to_ifrt_call.cc",
@@ -49,6 +58,7 @@ cc_library(
     ],
     textual_hdrs = ["passes.h.inc"],
     deps = [
+        ":ifrt_constants",
         ":pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
@@ -80,6 +90,7 @@ cc_library(
     srcs = ["tf2hlo.cc"],
     hdrs = ["tf2hlo.h"],
     deps = [
+        ":ifrt_constants",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
