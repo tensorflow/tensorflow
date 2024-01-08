@@ -554,6 +554,27 @@ class ReduceScatterCmd : public CommandBufferCmd {
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
 };
 
+//===----------------------------------------------------------------------===//
+// AllGatherCmd
+//===----------------------------------------------------------------------===//
+
+class AllGatherCmd : public CommandBufferCmd {
+ public:
+  AllGatherCmd(NcclCollectiveConfig config,
+               absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  NcclCollectiveConfig config_;
+  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+};
+
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_RUNTIME3_COMMAND_BUFFER_CMD_H_

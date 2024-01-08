@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gemm_thunk.h"
+#include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
@@ -112,6 +113,11 @@ static StatusOr<Command> ConvertReduceScatterStartThunk(
       thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
+static StatusOr<Command> ConvertAllGatherStartThunk(
+    const NcclAllGatherStartThunk& thunk) {
+  return std::make_unique<AllGatherCmd>(thunk.config(), thunk.buffers());
+}
+
 static StatusOr<Command> ConvertThunk(const Thunk& thunk, bool force_barriers) {
   switch (thunk.kind()) {
     case Thunk::Kind::kKernel:
@@ -138,9 +144,14 @@ static StatusOr<Command> ConvertThunk(const Thunk& thunk, bool force_barriers) {
     case Thunk::Kind::kNcclReduceScatterStart:
       return ConvertReduceScatterStartThunk(
           static_cast<const NcclReduceScatterStartThunk&>(thunk));
+    case Thunk::Kind::kNcclAllGatherStart:
+      return ConvertAllGatherStartThunk(
+          static_cast<const NcclAllGatherStartThunk&>(thunk));
     case Thunk::Kind::kNcclAllReduceDone:
       return Command{};
     case Thunk::Kind::kNcclReduceScatterDone:
+      return Command{};
+    case Thunk::Kind::kNcclAllGatherDone:
       return Command{};
     default:
       return InternalError("Unsupported thunk kind: %s",

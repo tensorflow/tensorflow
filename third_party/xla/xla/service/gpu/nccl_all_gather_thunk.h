@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
@@ -58,8 +59,10 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllGatherInstruction* inst);
 
- protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
+  absl::Span<const Buffer> buffers() const { return buffers_; }
+
+ protected:
   Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
 

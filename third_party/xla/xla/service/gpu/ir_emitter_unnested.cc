@@ -3582,6 +3582,16 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
     case HloOpcode::kAllReduceDone:
       return EmitNcclAsyncDone(Thunk::kNcclAllReduceDone, instr);
 
+    case HloOpcode::kAllGatherStart: {
+      auto* all_gather = Cast<HloAllGatherInstruction>(instr);
+      return EmitNcclThunk<NcclAllGatherStartThunk, HloAllGatherInstruction>(
+          Thunk::kNcclAllGatherStart, all_gather, all_gather,
+          all_gather->use_global_device_ids());
+    }
+
+    case HloOpcode::kAllGatherDone:
+      return EmitNcclAsyncDone(Thunk::kNcclAllGatherDone, instr);
+
     case HloOpcode::kAsyncStart: {
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
