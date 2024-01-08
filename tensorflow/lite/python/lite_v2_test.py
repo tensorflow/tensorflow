@@ -2939,6 +2939,33 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     else:
       self.assertEqual(np.int8, quantized_weight['dtype'])
 
+  @parameterized.named_parameters(
+      ('_NONE', 'NONE'),
+      ('_STATIC', 'STATIC'),
+      ('_DYNAMIC', 'DYNAMIC'),
+      ('_UNKNOWN', 'UNKNOWN'),
+  )
+  def testQDQConversionMode(self, mode):
+    num_filters = 1024
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
+    )
+    model.build(input_shape=(1, 32, 32, 3))
+    saved_model_dir = self.create_tempdir()
+    save(model, saved_model_dir.full_path)
+    converter = tf.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir.full_path
+    )
+    converter._experimental_qdq_conversion_mode = mode
+
+    if mode == 'UNKNOWN':
+      with self.assertRaises(convert.ConverterError) as error:
+        converter.convert()
+      self.assertIn('Unknown QDQ conversion mode:', str(error.exception))
+    else:
+      model = converter.convert()
+      self.assertIsNotNone(model)
+
   # pylint: disable=pointless-string-statement
   """disable test for now """
   """@parameterized.named_parameters(

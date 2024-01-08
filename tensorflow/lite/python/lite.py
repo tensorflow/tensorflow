@@ -663,6 +663,7 @@ class TFLiteConverterBase:
     self._experimental_disable_fuse_mul_and_fc = False
     self._experimental_use_buffer_offset = False
     self._experimental_reduce_type_precision = False
+    self._experimental_qdq_conversion_mode = None
 
     # Debug parameters
     self.mlir_dump_dir = None
@@ -816,6 +817,7 @@ class TFLiteConverterBase:
         "use_buffer_offset": self._experimental_use_buffer_offset,
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
+        "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
     }
 
     if self.saved_model_dir:

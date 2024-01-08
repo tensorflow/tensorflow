@@ -159,5 +159,16 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
   return false;
 }
 
+std::string GetQDQQuantModeString(QDQConversionMode mode) {
+  switch (mode) {
+    case QDQConversionMode::kQDQStatic:
+      return "Static";
+    case QDQConversionMode::kQDQDynamic:
+      return "Dynamic";
+    default:
+      return "NoQDQ";
+  }
+}
+
 }  // namespace quant
 }  // namespace mlir
