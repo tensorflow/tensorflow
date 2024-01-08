@@ -119,7 +119,8 @@ class DistributedSaveLoadTest(
         num_workers=num_workers,
         snapshot_max_chunk_size_bytes=max_chunk_size_bytes)
     snapshot_dir = data_service_test_base.TempDir()
-    dataset = dataset_ops.Dataset.range(num_elements).shuffle(buffer_size=10)
+    dataset = dataset_ops.Dataset.range(num_elements).shuffle(
+        buffer_size=num_elements)
     self.evaluate(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
@@ -301,6 +302,28 @@ class DistributedSaveLoadTest(
     with self.assertRaises(errors.InvalidArgumentError):
       dataset = load_op._load_with_retry(snapshot_dir.full_path)
       self.getDatasetOutput(dataset)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_elements=[10])))
+  def test_dataset_spec_file_is_optional(self, num_elements: int):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    snapshot_dir = data_service_test_base.TempDir()
+    dataset = dataset_ops.Dataset.range(num_elements)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    self.assertDatasetProduces(dataset, list(range(num_elements)))
+
+    # After removing the dataset_spec file, the loaded dataset should produce
+    # the same output.
+    os.remove(os.path.join(
+        snapshot_dir.full_path, dataset_ops.DATASET_SPEC_FILENAME))
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    self.assertDatasetProduces(dataset, list(range(num_elements)))
 
   @combinations.generate(test_base.default_test_combinations())
   def test_snapshot_does_not_exist(self):

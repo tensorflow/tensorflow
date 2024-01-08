@@ -53,18 +53,15 @@ def _load(  # pylint: disable=unused-private-name
         cycle_length=multiprocessing.cpu_count(),
         num_parallel_calls=dataset_ops.AUTOTUNE)
 
-  if element_spec is None:
-    with gfile.GFile(
-        os.path.join(path, dataset_ops.DATASET_SPEC_FILENAME), "rb") as f:
-      encoded_spec = f.read()
-    element_spec = _parse_element_spec(encoded_spec)
-
   distributed_snapshot_metadata = _load_distributed_snapshot_metadata(path)
   if distributed_snapshot_metadata:
     _validate_snapshot(
         path, distributed_snapshot_metadata, element_spec, compression)
     return _load_distributed_snapshot(
         path, distributed_snapshot_metadata, reader_func)
+
+  if element_spec is None:
+    element_spec = _load_element_spec(path)
   return _LoadDataset(path, element_spec, compression, reader_func)
 
 
@@ -133,6 +130,27 @@ def _load_distributed_snapshot(
           element_spec=_parse_element_spec(metadata.element_spec),
           compression=metadata.compression))
   return reader_func(dataset)
+
+
+def _load_element_spec(path: str) -> Any:
+  """Loads the dataset element spec.
+
+  Args:
+    path: Base path of the snapshot.
+
+  Returns:
+    Dataset element_spec.
+  """
+  with gfile.GFile(
+      os.path.join(path, dataset_ops.DATASET_SPEC_FILENAME), "rb") as f:
+    encoded_spec = f.read()
+  return _parse_element_spec(encoded_spec)
+
+
+def _parse_element_spec(encoded_element_spec: Union[bytes, str]) -> Any:
+  struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
+  struct_pb.ParseFromString(encoded_element_spec)
+  return nested_structure_coder.decode_proto(struct_pb)
 
 
 class _LoadDataset(dataset_ops.DatasetSource):
@@ -238,9 +256,3 @@ def _validate_snapshot(
         f"Failed to load tf.data snapshot at {path}. User specified "
         f"compression {compression}, but the actual compression is "
         f"{metadata.compression}.")
-
-
-def _parse_element_spec(encoded_element_spec: Union[bytes, str]) -> Any:
-  struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
-  struct_pb.ParseFromString(encoded_element_spec)
-  return nested_structure_coder.decode_proto(struct_pb)
