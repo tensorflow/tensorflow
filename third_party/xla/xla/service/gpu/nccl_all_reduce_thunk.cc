@@ -324,7 +324,7 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     ThunkInfo thunk_info, const HloReduceScatterInstruction* inst,
     std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclAllReduceStart, thunk_info,
+          Thunk::kNcclReduceScatterStart, thunk_info,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<CollectiveBackendConfig>()->is_sync()) {}
 

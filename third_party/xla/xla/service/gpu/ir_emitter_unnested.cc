@@ -3571,14 +3571,45 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
           Cast<HloRngGetAndUpdateStateInstruction>(instr));
     case HloOpcode::kInfeed:
       return EmitInfeed(Cast<HloInfeedInstruction>(instr));
+
     case HloOpcode::kAllReduceStart: {
       auto* all_reduce = Cast<HloAllReduceInstruction>(instr);
       return EmitNcclThunk<NcclAllReduceStartThunk, HloAllReduceInstruction>(
           Thunk::kNcclAllReduceStart, all_reduce, all_reduce,
           all_reduce->use_global_device_ids());
     }
+
     case HloOpcode::kAllReduceDone:
       return EmitNcclAsyncDone(Thunk::kNcclAllReduceDone, instr);
+
+    case HloOpcode::kAsyncStart: {
+      const HloInstruction* wrapped = instr->async_wrapped_instruction();
+      switch (wrapped->opcode()) {
+        case HloOpcode::kReduceScatter: {
+          auto* reduce_scatter = Cast<HloReduceScatterInstruction>(wrapped);
+          return EmitNcclThunk<NcclReduceScatterStartThunk,
+                               HloReduceScatterInstruction>(
+              Thunk::kNcclReduceScatter, instr, reduce_scatter,
+              reduce_scatter->use_global_device_ids());
+        }
+        default:
+          return InternalError(
+              "Unsupported async start wrapped instruction: %s",
+              HloOpcodeString(wrapped->opcode()));
+      }
+    }
+
+    case HloOpcode::kAsyncDone: {
+      const HloInstruction* wrapped = instr->async_wrapped_instruction();
+      switch (wrapped->opcode()) {
+        case HloOpcode::kReduceScatter:
+          return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr);
+        default:
+          return InternalError("Unsupported async done wrapped instruction: %s",
+                               HloOpcodeString(wrapped->opcode()));
+      }
+    }
+
     case HloOpcode::kOutfeed:
       return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
     case HloOpcode::kCall:

@@ -106,6 +106,12 @@ static StatusOr<Command> ConvertAllReduceStartThunk(
                                         thunk.buffers());
 }
 
+static StatusOr<Command> ConvertReduceScatterStartThunk(
+    const NcclReduceScatterStartThunk& thunk) {
+  return std::make_unique<ReduceScatterCmd>(
+      thunk.config(), thunk.reduction_kind(), thunk.buffers());
+}
+
 static StatusOr<Command> ConvertThunk(const Thunk& thunk, bool force_barriers) {
   switch (thunk.kind()) {
     case Thunk::Kind::kKernel:
@@ -129,7 +135,12 @@ static StatusOr<Command> ConvertThunk(const Thunk& thunk, bool force_barriers) {
     case Thunk::Kind::kNcclAllReduceStart:
       return ConvertAllReduceStartThunk(
           static_cast<const NcclAllReduceStartThunk&>(thunk));
+    case Thunk::Kind::kNcclReduceScatterStart:
+      return ConvertReduceScatterStartThunk(
+          static_cast<const NcclReduceScatterStartThunk&>(thunk));
     case Thunk::Kind::kNcclAllReduceDone:
+      return Command{};
+    case Thunk::Kind::kNcclReduceScatterDone:
       return Command{};
     default:
       return InternalError("Unsupported thunk kind: %s",
