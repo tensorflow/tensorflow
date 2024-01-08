@@ -16,10 +16,12 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <queue>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -67,6 +69,11 @@ class SingleInstructionFusion : public HloFusionAdaptor {
   }
 
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const override {
+    return {instruction_};
+  }
+
+  absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
+      const override {
     return {instruction_};
   }
 
@@ -129,6 +136,23 @@ class HloComputationFusion : public HloFusionAdaptor {
         << computation_->ToString();
 
     return roots_;
+  }
+
+  absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
+      const override {
+    auto post_order = computation_->MakeInstructionPostOrder();
+
+    absl::InlinedVector<HloInstructionAdaptor, 2> result;
+    result.reserve(post_order.size() - computation_->num_parameters());
+
+    for (auto* instr : post_order) {
+      // Skip parameter as FusionAdaptor hides their existance.
+      // HloInstructionAdaptor will look through them and return operands
+      // outside of the computation if necessary.
+      if (instr->opcode() == HloOpcode::kParameter) continue;
+      result.emplace_back(*instr);
+    }
+    return result;
   }
 
  private:

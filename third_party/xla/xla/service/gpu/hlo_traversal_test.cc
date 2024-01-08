@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/hlo_traversal.h"
 
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -28,6 +30,8 @@ namespace gpu {
 namespace {
 
 using ::testing::ElementsAre;
+
+MATCHER_P(InstructionAdaptorName, name, "") { return arg.name() == name; }
 
 class HloTraversalTest : public HloTestBase {};
 
@@ -334,6 +338,27 @@ TEST_F(HloTraversalTest, SingleInstructionFusionOfInstruction) {
                                 });
 
   EXPECT_THAT(nodes, ElementsAre("negate"));
+}
+
+TEST_F(HloTraversalTest, MakeInstructionsPostOrder_SingleInstruction) {
+  auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
+  auto fusion = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("negate"));
+
+  auto nodes = fusion->MakeInstructionPostOrder();
+  EXPECT_THAT(nodes, ElementsAre(InstructionAdaptorName("negate")));
+}
+
+TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoFusions) {
+  auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
+  auto fusion = ProducerConsumerFusion(
+      module->entry_computation()->GetInstructionWithName("fusion.1"),
+      module->entry_computation()->GetInstructionWithName("fusion.2"));
+
+  auto nodes = fusion.MakeInstructionPostOrder();
+  EXPECT_THAT(nodes, ElementsAre(InstructionAdaptorName("mul"),
+                                 InstructionAdaptorName("reduce.1"),
+                                 InstructionAdaptorName("reduce.2")));
 }
 
 }  // namespace

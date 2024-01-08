@@ -16,11 +16,19 @@ limitations under the License.
 #define XLA_SERVICE_GPU_HLO_TRAVERSAL_H_
 
 #include <functional>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -64,6 +72,8 @@ class HloFusionAdaptor {
   virtual ~HloFusionAdaptor() = default;
   virtual bool ContainsInstruction(HloInstructionAdaptor instruction) const = 0;
   virtual absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const = 0;
+  virtual absl::InlinedVector<HloInstructionAdaptor, 2>
+  MakeInstructionPostOrder() const = 0;
 
   static std::unique_ptr<HloFusionAdaptor> ForInstruction(
       const HloInstruction* instruction);
@@ -77,6 +87,11 @@ class ProducerConsumerFusion : public HloFusionAdaptor {
                          std::unique_ptr<HloFusionAdaptor> consumer)
       : producer_(std::move(producer)), consumer_(std::move(consumer)) {}
 
+  ProducerConsumerFusion(const HloInstruction* producer,
+                         const HloInstruction* consumer)
+      : ProducerConsumerFusion(HloFusionAdaptor::ForInstruction(producer),
+                               HloFusionAdaptor::ForInstruction(consumer)) {}
+
   bool ContainsInstruction(HloInstructionAdaptor instruction) const override {
     return producer_->ContainsInstruction(instruction) ||
            consumer_->ContainsInstruction(instruction);
@@ -84,6 +99,19 @@ class ProducerConsumerFusion : public HloFusionAdaptor {
 
   absl::InlinedVector<HloInstructionAdaptor, 2> GetRoots() const override {
     return consumer_->GetRoots();
+  }
+
+  absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
+      const override {
+    auto producer_post_order = producer_->MakeInstructionPostOrder();
+    auto consumer_post_order = consumer_->MakeInstructionPostOrder();
+
+    producer_post_order.reserve(consumer_post_order.size() +
+                                producer_post_order.size());
+
+    absl::c_move(consumer_post_order, std::back_inserter(producer_post_order));
+
+    return producer_post_order;
   }
 
  private:
