@@ -15,26 +15,44 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_utils.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/executable_run_options.h"
+#include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/rendezvous.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
+
+#if GOOGLE_CUDA
+#include "third_party/nccl/nccl.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -49,10 +67,10 @@ Status ToStatus(ncclResult_t s, const char* file, int64_t line,
   if (s == ncclSuccess) {
     return OkStatus();
   }
-  return tsl::errors::Internal(absl::StrFormat(
+  return absl::InternalError(absl::StrFormat(
       "%s:%d: NCCL operation %s failed: %s."
       " Last NCCL warning(error) log entry (may be unrelated) '%s'.",
-      file, line, expr, ncclGetErrorString(s), ncclGetLastError(NULL)));
+      file, line, expr, ncclGetErrorString(s), ncclGetLastError(nullptr)));
 }
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind) {
@@ -201,25 +219,60 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
                                : absl::InfiniteDuration());
 }
 
-void CheckNcclAsyncError(NcclComm& lockable_comm) {
-  ncclComm_t comm = *lockable_comm.Acquire();
-  if (comm == nullptr) return;
+// Adds NCCL communicator to a global per-process state that tracks NCCL
+// communicators health.
+void TrackNcclCommunicatorHealth(NcclComm* comm) {
+  struct AllCommunicators {
+    absl::Mutex mu;
+    std::vector<NcclComm*> communicators ABSL_GUARDED_BY(mu);
+  };
 
-  Status status = [comm] {
+  static auto* all_communicators = new AllCommunicators();
+
+  absl::MutexLock lock(&all_communicators->mu);
+  all_communicators->communicators.push_back(comm);
+
+  // Runs an async error check for a `comm` and aborts it if it is in the error
+  // state. It will free resources that are allocated to a communicator and
+  // abort any uncompleted operations before destroying the communicator.
+  auto check_nccl_async_error = [](NcclComm* lockable_comm) -> Status {
+    ncclComm_t comm = *lockable_comm->Acquire();
+    if (comm == nullptr) return OkStatus();
+
     ncclResult_t async_err;
     XLA_CUDA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
+
     if (async_err != ncclSuccess) {
       LOG(ERROR) << "Aborting communicator: " << comm
                  << " due to async NCCL error: "
                  << ncclGetErrorString(async_err)
                  << ". Last NCCL warning(error) log entry (may be unrelated): "
-                 << ncclGetLastError(NULL);
+                 << ncclGetLastError(nullptr);
       XLA_CUDA_RETURN_IF_ERROR(ncclCommAbort(comm));
     }
-    return XLA_CUDA_STATUS(async_err);
-  }();
 
-  if (!status.ok()) LOG(ERROR) << status;
+    return XLA_CUDA_STATUS(async_err);
+  };
+
+  // Launch a thread that periodically checks all NCCL communicators for
+  // asynchronous errors. If an asynchronous error is observed, the communicator
+  // is aborted and an error message logged.
+  static auto check_async_error_thread = tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "nccl_async_error_thread", [&] {
+        while (true) {
+          absl::SleepFor(absl::Seconds(30));
+          absl::MutexLock lock(&all_communicators->mu);
+          VLOG(5) << "Checking NCCL communicators for async errors"
+                  << "; num_communicators="
+                  << all_communicators->communicators.size();
+          for (NcclComm* comm : all_communicators->communicators) {
+            if (auto status = check_nccl_async_error(comm); !status.ok()) {
+              LOG(ERROR) << status;
+            }
+          }
+        }
+      });
+  (void)check_async_error_thread;  // Silence unused variable warning.
 }
 
 }  // namespace
@@ -258,12 +311,12 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
-    bool enable_clique_optimization) {
+    const NcclUniqueIdCallback& unique_id_callback, int32_t rank,
+    int64_t stream_id, bool enable_clique_optimization) {
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
   // The enable_clique_optimization value is only used for asynchronous
-  // collective stream currenly. For synchronous collectives, we should always
+  // collective stream currently. For synchronous collectives, we should always
   // enable the optimization. For P2P stream, we currently have to always enable
   // the optimization, because we initially implement this optimization to
   // workaround an NCCL bug related to P2P operations.
@@ -273,33 +326,15 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
       enable_clique_optimization ||
           stream_id != GetStreamId(/*is_async=*/true, kAsyncStreamCollective));
 
-  if (!clique->ok()) return clique->status();
+  TF_RETURN_IF_ERROR(clique->status());
+  NcclCliqueState& state = *clique->value();
 
-  struct AllCommunicators {
-    absl::Mutex mu;
-    std::vector<NcclComm*> communicators ABSL_GUARDED_BY(mu);
-  };
-  static auto& all_communicators = *new AllCommunicators;
-
-  // Launch a thread that periodically checks all NCCL communicators for
-  // asynchronous errors. If an asynchronous error is observed, the communicator
-  // is aborted and an error message logged.
-  static auto check_async_error_thread = tsl::Env::Default()->StartThread(
-      tsl::ThreadOptions(), "nccl_async_error_thread", [&] {
-        while (true) {
-          absl::SleepFor(absl::Seconds(30));
-          absl::MutexLock lock(&all_communicators.mu);
-          for (NcclComm* comm : all_communicators.communicators) {
-            CheckNcclAsyncError(*comm);
-          }
-        }
-      });
-  (void)check_async_error_thread;  // Silence unused variable warning.
-
-  NcclCliqueState& state = ***clique;
   if (!state.ready.HasBeenNotified()) {
     int nranks = clique_key.devices().size();
     const ncclUniqueId& id = state.unique_id;
+
+    VLOG(3) << "Initialize NCCL communicator for rank #" << rank << " of "
+            << nranks << "; id=" << absl::HashOf(absl::MakeSpan(id.internal));
 
     ncclComm_t comm = nullptr;
     Status status = XLA_CUDA_STATUS(ncclCommInitRank(&comm, nranks, id, rank));
@@ -323,8 +358,8 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
       state.ready.WaitForNotification();
     }
 
-    absl::MutexLock lock(&all_communicators.mu);
-    all_communicators.communicators.push_back(state.communicators[rank].get());
+    // Register initialized communicator with pre-process health tracking.
+    TrackNcclCommunicatorHealth(state.communicators[rank].get());
   }
 
   TF_RETURN_IF_ERROR(state.status);
