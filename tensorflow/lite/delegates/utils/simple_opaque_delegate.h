@@ -79,7 +79,6 @@ class SimpleOpaqueDelegateKernelInterface {
 // - Initialize
 // - Name
 // - CreateDelegateKernelInterface
-// - DelegateOptions
 class SimpleOpaqueDelegateInterface {
  public:
   virtual ~SimpleOpaqueDelegateInterface() = default;
@@ -105,6 +104,32 @@ class SimpleOpaqueDelegateInterface {
   // Caller takes ownership of the returned object.
   virtual std::unique_ptr<SimpleOpaqueDelegateKernelInterface>
   CreateDelegateKernelInterface() = 0;
+
+  /// Optional method for supporting hardware buffers.
+  /// Copies the data from delegate buffer handle into raw memory of the given
+  /// `tensor`. Note that the delegate is allowed to allocate the raw bytes as
+  /// long as it follows the rules for kTfLiteDynamic tensors.
+  virtual TfLiteStatus CopyFromBufferHandle(TfLiteOpaqueContext* context,
+                                            TfLiteBufferHandle buffer_handle,
+                                            TfLiteOpaqueTensor* tensor) {
+    return kTfLiteError;
+  }
+
+  /// Optional method for supporting hardware buffers.
+  /// Copies the data from raw memory of the given `tensor` to delegate buffer
+  /// handle.
+  virtual TfLiteStatus CopyToBufferHandle(TfLiteOpaqueContext* context,
+                                          TfLiteBufferHandle buffer_handle,
+                                          const TfLiteOpaqueTensor* tensor) {
+    return kTfLiteError;
+  }
+
+  /// Optional method for supporting hardware buffers.
+  /// Frees the Delegate Buffer Handle. Note: This only frees the handle, but
+  /// this doesn't release the underlying resource (e.g. textures). The
+  /// resources are either owned by application layer or the delegate.
+  virtual void FreeBufferHandle(TfLiteOpaqueContext* context,
+                                TfLiteBufferHandle* handle) {}
 };
 
 // Factory class that provides static methods to deal with SimpleDelegate

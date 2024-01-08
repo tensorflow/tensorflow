@@ -131,6 +131,31 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateFactory::CreateSimpleDelegate(
   opaque_delegate_builder.Prepare = &DelegatePrepare;
   opaque_delegate_builder.flags = flags;
   opaque_delegate_builder.data = simple_delegate.release();
+  opaque_delegate_builder.CopyFromBufferHandle =
+      [](TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate,
+         void* data, TfLiteBufferHandle buffer_handle,
+         TfLiteOpaqueTensor* tensor) {
+        auto* simple_delegate =
+            reinterpret_cast<SimpleOpaqueDelegateInterface*>(data);
+        return simple_delegate->CopyFromBufferHandle(context, buffer_handle,
+                                                     tensor);
+      };
+  opaque_delegate_builder.CopyToBufferHandle =
+      [](TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate,
+         void* data, TfLiteBufferHandle buffer_handle,
+         TfLiteOpaqueTensor* tensor) {
+        auto* simple_delegate =
+            reinterpret_cast<SimpleOpaqueDelegateInterface*>(data);
+        return simple_delegate->CopyToBufferHandle(context, buffer_handle,
+                                                   tensor);
+      };
+  opaque_delegate_builder.FreeBufferHandle =
+      [](TfLiteOpaqueContext* context, TfLiteOpaqueDelegate* delegate,
+         void* data, TfLiteBufferHandle* buffer_handle) {
+        auto* simple_delegate =
+            reinterpret_cast<SimpleOpaqueDelegateInterface*>(data);
+        simple_delegate->FreeBufferHandle(context, buffer_handle);
+      };
 
   return TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
 }
