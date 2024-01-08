@@ -16,17 +16,28 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 /*static*/
@@ -154,6 +165,12 @@ HloLiveRange::LogicalTime HloLiveRange::GetLastUsageTime(
   LogicalTime end_time = -1;
   for (const HloUse& use : value.GetUses()) {
     const HloInstruction* used = use.instruction;
+
+    // In module scoped mode when all call operations are flattened ignore uses
+    // by call operation itself, and rely on the last usage time inferred from
+    // the operations in the called computation.
+    if (module_scoped_analysis_ && used->opcode() == HloOpcode::kCall) continue;
+
     // As an optimization, we deem a while's init value's live range ends as
     // soon as the loop body starts. This optimization is only applicable in
     // module scoped mode.
