@@ -16,7 +16,6 @@
 
 import enum
 
-from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
@@ -108,7 +107,6 @@ class SaveOptions:
       "experimental_custom_gradients",
       "experimental_image_format",
       "experimental_skip_saver",
-      "experimental_sharding_callback",
   )
 
   def __init__(
@@ -121,7 +119,6 @@ class SaveOptions:
       experimental_custom_gradients=True,
       experimental_image_format=False,
       experimental_skip_saver=False,
-      experimental_sharding_callback=None,
   ):
     """Creates an object that stores options for SavedModel saving.
 
@@ -173,12 +170,6 @@ class SaveOptions:
         its native checkpointing ops - this is for models that do not use
         SavedModel's native checkpointing functionality to avoid the costs
         associated with creating and serializing those ops.
-      experimental_sharding_callback: `tf.train.experimental.ShardingCallback`.
-        A pre-made or custom callback that determines how checkpoints are
-        sharded on disk. Pre-made callback options are
-        `tf.train.experimental.ShardByDevicePolicy` and
-        `tf.train.experimental.MaxShardSizePolicy`. You may also write a custom
-        callback, see `tf.train.experimental.ShardingCallback`.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist
@@ -199,14 +190,6 @@ class SaveOptions:
           "The option `experimental_image_format` is disabled in OSS."
       )
     self.experimental_image_format = experimental_image_format
-
-    if experimental_sharding_callback is not None:
-      if not isinstance(
-          experimental_sharding_callback, sharding_util.ShardingCallback):
-        raise ValueError("The experimental_sharding_callback checkpoint option"
-                         "must be of type ShardingCallback. The option provided"
-                         f"was of type {type(experimental_sharding_callback)}.")
-    self.experimental_sharding_callback = experimental_sharding_callback
 
 
 def _validate_namespace_whitelist(namespace_whitelist):

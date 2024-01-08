@@ -18,7 +18,6 @@ import random
 import string
 
 from tensorflow.python.checkpoint import checkpoint
-from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.checkpoint.sharding import sharding_util
@@ -32,7 +31,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
@@ -121,34 +119,6 @@ class ShardingPoliciesTest(test.TestCase):
         self.evaluate(shards[2]["v2/.ATTRIBUTES/VARIABLE_VALUE"][""]),
         v2.numpy())
 
-  def test_CheckpointOption_ShardByTaskPolicy(self):
-    servers = [server_lib.Server.create_local_server() for _ in range(3)]
-    cluster_spec = server_lib.ClusterSpec({
-        "worker": [s.target[len("grpc://"):] for s in servers]})
-    remote.connect_to_cluster(cluster_spec)
-    root = module.Module()
-    with ops.device("/job:worker/task:0/cpu:0"):
-      v0 = resource_variable_ops.ResourceVariable(0.0, name="v0")
-    self.evaluate(v0.initializer)
-    with ops.device("/job:worker/task:1/cpu:0"):
-      v1 = resource_variable_ops.ResourceVariable(1.0, name="v1")
-    self.evaluate(v1.initializer)
-    with ops.device("/job:worker/task:2/cpu:0"):
-      v2 = resource_variable_ops.ResourceVariable(2.0, name="v2")
-    self.evaluate(v2.initializer)
-    root.v0 = v0
-    root.v1 = v1
-    root.v2 = v2
-
-    tmp_dir = self.create_tempdir("ckpt")
-    ckpt = checkpoint.Checkpoint(root)
-    save_path = ckpt.save(
-        tmp_dir, options=checkpoint_options.CheckpointOptions(
-            experimental_sharding_callback=(
-                sharding_policies.ShardByTaskPolicy())))
-    self.assertLen(gfile.Glob(save_path + ".data*"), 4)
-    ckpt.restore(save_path)
-
   @test_util.run_in_graph_and_eager_modes
   def test_MaxShardSizePolicy_1D(self):
     root = module.Module()
@@ -208,7 +178,8 @@ class ShardingPoliciesTest(test.TestCase):
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -250,7 +221,8 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -285,7 +257,8 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -317,7 +290,8 @@ class ShardingPoliciesTest(test.TestCase):
         [set(shard.keys()) for shard in shards],
         [
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -342,7 +316,8 @@ class ShardingPoliciesTest(test.TestCase):
         [set(shard.keys()) for shard in shards],
         [
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -410,7 +385,8 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -455,7 +431,8 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -507,7 +484,8 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -549,7 +527,8 @@ class ShardingPoliciesTest(test.TestCase):
         [
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE", "v1/.ATTRIBUTES/VARIABLE_VALUE"},
-            {"v1/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v1/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     # V0
@@ -611,7 +590,8 @@ class ShardingPoliciesTest(test.TestCase):
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
             {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
-            {"v0/.ATTRIBUTES/VARIABLE_VALUE", "_CHECKPOINTABLE_OBJECT_GRAPH",}
+            {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
     slice_spec = V0SaveSliceInfo(var_offset=[0], var_shape=[1]).spec
@@ -654,42 +634,14 @@ class ShardingPoliciesTest(test.TestCase):
     self.assertEqual(
         [set(shard.keys()) for shard in shards],
         [
-            {"_CHECKPOINTABLE_OBJECT_GRAPH",},
-            {"v0/.ATTRIBUTES/VARIABLE_VALUE",}
+            {"v0/.ATTRIBUTES/VARIABLE_VALUE",},
+            {"_CHECKPOINTABLE_OBJECT_GRAPH",}
         ])
 
-    tensor_val = (self.evaluate(shards[1][v0_name][""])
+    tensor_val = (self.evaluate(shards[0][v0_name][""])
                   if ops.context.executing_eagerly()
-                  else shards[1][v0_name][""])
+                  else shards[0][v0_name][""])
     self.assertEqual(tensor_val, v_string)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_CheckpointOption_MaxShardSizePolicy(self):
-    root = module.Module()
-    with ops.device("cpu:0"):
-      v0 = resource_variable_ops.ResourceVariable([[0, 1],
-                                                   [2, 3],
-                                                   [4, 5]],
-                                                  name="v0")
-      v1 = resource_variable_ops.ResourceVariable([[[6.0], [7.0]],
-                                                   [[8.0], [9.0]],
-                                                   [[10.0], [11.0]]], name="v1")
-      v2 = resource_variable_ops.ResourceVariable("test_string", name="v1")
-    self.evaluate(v0.initializer)
-    self.evaluate(v1.initializer)
-    self.evaluate(v2.initializer)
-    root.v0 = v0
-    root.v1 = v1
-    root.v2 = v2
-
-    tmp_dir = self.create_tempdir("ckpt")
-    ckpt = checkpoint.Checkpoint(root)
-    save_path = ckpt.save(
-        tmp_dir, options=checkpoint_options.CheckpointOptions(
-            experimental_sharding_callback=(
-                sharding_policies.MaxShardSizePolicy(max_shard_size=10))))
-    self.assertLen(gfile.Glob(save_path + ".data*"), 8)
-    ckpt.restore(save_path)
 
 
 if __name__ == "__main__":

@@ -23,14 +23,12 @@ from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.checkpoint import checkpoint
-from tensorflow.python.checkpoint.sharding import sharding_policies
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -50,7 +48,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import loader_impl
@@ -61,7 +58,6 @@ from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import saver
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
 
@@ -947,48 +943,6 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     result = save.save(root, save_dir)
     self.assertIsNone(result)
-
-  def test_sharding_callback_saveoption(self):
-    servers = [server_lib.Server.create_local_server() for _ in range(3)]
-    cluster_spec = server_lib.ClusterSpec({
-        "worker": [s.target[len("grpc://"):] for s in servers]})
-    remote.connect_to_cluster(cluster_spec)
-    root = module.Module()
-    with ops.device("/job:worker/task:0/cpu:0"):
-      v0 = resource_variable_ops.ResourceVariable(0.0, name="v0")
-    self.evaluate(v0.initializer)
-    with ops.device("/job:worker/task:1/cpu:0"):
-      v1 = resource_variable_ops.ResourceVariable(1.0, name="v1")
-      v2 = resource_variable_ops.ResourceVariable([2.0, 3.0], name="v2")
-    self.evaluate(v1.initializer)
-    self.evaluate(v2.initializer)
-    root.v0 = v0
-    root.v1 = v1
-    root.v2 = v2
-
-    save_dir = os.path.join(self.get_temp_dir(), "shard_by_task")
-    save.save(
-        root, save_dir, options=save_options.SaveOptions(
-            experimental_sharding_callback=(
-                sharding_policies.ShardByTaskPolicy())))
-    self.assertLen(gfile.Glob(save_dir + "/variables/variables.data*"), 3)
-    loaded_root = load.load(save_dir)
-    self.assertEqual(loaded_root.v0.numpy(), root.v0.numpy())
-    self.assertEqual(loaded_root.v1.numpy(), root.v1.numpy())
-    self.assertEqual(loaded_root.v2.numpy()[0], root.v2.numpy()[0])
-    self.assertEqual(loaded_root.v2.numpy()[1], root.v2.numpy()[1])
-
-    save_dir = os.path.join(self.get_temp_dir(), "max_shard_size")
-    save.save(
-        root, save_dir, options=save_options.SaveOptions(
-            experimental_sharding_callback=(
-                sharding_policies.MaxShardSizePolicy(max_shard_size=(4)))))
-    self.assertLen(gfile.Glob(save_dir + "/variables/variables.data*"), 5)
-    loaded_root = load.load(save_dir)
-    self.assertEqual(loaded_root.v0.numpy(), root.v0.numpy())
-    self.assertEqual(loaded_root.v1.numpy(), root.v1.numpy())
-    self.assertEqual(loaded_root.v2.numpy()[0], root.v2.numpy()[0])
-    self.assertEqual(loaded_root.v2.numpy()[1], root.v2.numpy()[1])
 
 
 class DependencyTest(test.TestCase):
