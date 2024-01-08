@@ -20,8 +20,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -31,7 +29,6 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-using ::mlir::quant::stablehlo::AddCallModuleSerializationPasses;
 using ::tensorflow::quantization::QuantizationOptions;
 
 void AddConvertTpuToCpuModelPasses(mlir::OpPassManager &pm) {
@@ -194,19 +191,6 @@ void AddQuantizePtqPostCalibrationPasses(
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
-}
-
-// StableHLO Quantization passes that are ran if StableHLO opset is selected.
-void AddQuantizePtqPreCalibrationStablehloPasses(
-    mlir::OpPassManager &pm, const CalibrationOptions &calibration_options) {
-  pm.addPass(
-      mlir::quant::stablehlo::createLiftQuantizableSpotsAsFunctionsPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateInsertCustomAggregationOpsPass(calibration_options));
-  pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
-  // StableHLO Quantizer currently uses TF's calibration passes. Serialize
-  // the StableHLO module as tf.XlaCallModule to run calibration.
-  AddCallModuleSerializationPasses(pm);
 }
 
 void AddQuantizeWeightOnlyPasses(

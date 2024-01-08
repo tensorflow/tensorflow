@@ -16,12 +16,15 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tsl/platform/errors.h"
 
 namespace mlir::quant::stablehlo {
@@ -42,8 +45,14 @@ absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
   TF_RETURN_IF_ERROR(RunPasses(
       /*name=*/kQuantPtqPreCalibrationStepName,
       /*add_passes_func=*/
-      [this](mlir::PassManager& pm) {
-        AddQuantizePtqPreCalibrationStablehloPasses(pm, calibration_options_);
+      [this](PassManager& pm) {
+        pm.addPass(createLiftQuantizableSpotsAsFunctionsPass());
+        pm.addNestedPass<func::FuncOp>(
+            CreateInsertCustomAggregationOpsPass(calibration_options_));
+        pm.addPass(CreateIssueIDsOfCustomAggregationOpsPass());
+        // StableHLO Quantizer currently uses TF's calibration passes. Serialize
+        // the StableHLO module as tf.XlaCallModule to run calibration.
+        AddCallModuleSerializationPasses(pm);
       },
       ctx_, module_op));
   return module_op;
