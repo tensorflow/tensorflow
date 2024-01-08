@@ -20,7 +20,6 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/statusor.h"
@@ -30,7 +29,7 @@ namespace gpu {
 
 StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion, KernelReuseCache&) const {
+    const HloFusionInstruction& fusion) const {
   FusionEmissionResult result;
   for (int i = 0; i < src_buffers_.size(); ++i) {
     if (src_buffers_[i] != dst_buffers_[i]) {

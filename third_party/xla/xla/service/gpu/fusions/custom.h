@@ -19,7 +19,6 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -29,10 +28,9 @@ namespace gpu {
 // xla/service/gpu/kernels. See custom_fusion.h in that folder for details.
 class CustomFusionEmitter : public FusionInterface {
  public:
-  StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
-                                      mlir::lmhlo::FusionOp fusion_op,
-                                      const HloFusionInstruction& fusion,
-                                      KernelReuseCache&) const final;
+  StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion) const final;
 };
 
 }  // namespace gpu

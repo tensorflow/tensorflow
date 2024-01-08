@@ -96,7 +96,7 @@ LaunchDimensions CalculateSoftMaxLaunchDimensions(
 
 StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache) const {
+    const HloFusionInstruction& fusion) const {
   llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
 #if GOOGLE_CUDA
   if (!ir_emitter_context.emit_ir_from_hlo()) {
@@ -212,9 +212,9 @@ StatusOr<FusionEmissionResult> TritonFusion::Emit(
              triton_wrapper_result.shmem_bytes}};
   };
 
-  auto [kernel, was_cached] =
-      kernel_cache.GetWithStatus(hlo_computation, kernel_arguments.args(),
-                                 /*discriminator=*/"", generate);
+  auto [kernel, was_cached] = ir_emitter_context.kernel_cache().GetWithStatus(
+      hlo_computation, kernel_arguments.args(),
+      /*discriminator=*/"", generate);
   TF_RETURN_IF_ERROR(kernel.status());
 
   std::variant<mlir::Operation*, const HloInstruction*> fusion_op_or_hlo;

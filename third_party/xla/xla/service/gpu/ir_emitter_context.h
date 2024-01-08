@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -27,6 +26,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -102,6 +102,8 @@ class IrEmitterContext {
     return hlo_module_->config().debug_options();
   }
 
+  KernelReuseCache& kernel_cache() { return kernel_cache_; }
+
   bool emit_ir_from_hlo() const { return emit_ir_from_hlo_; }
   bool emit_kernels() const { return emit_kernels_; }
 
@@ -121,6 +123,7 @@ class IrEmitterContext {
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
   const bool emit_ir_from_hlo_;
+  KernelReuseCache kernel_cache_;
 
   // We should not emit kernels when loading thunks from a compilation result.
   const bool emit_kernels_;

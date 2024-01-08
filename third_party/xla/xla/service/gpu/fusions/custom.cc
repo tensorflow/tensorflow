@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
@@ -67,7 +66,7 @@ StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
 
 StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion, KernelReuseCache&) const {
+    const HloFusionInstruction& fusion) const {
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       fusion.backend_config<FusionBackendConfig>());
   const auto& config = backend_config.custom_fusion_config();

@@ -101,8 +101,7 @@ class ReductionFusion : public FusionInterface {
 
   StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion,
-      KernelReuseCache& kernel_cache) const override;
+      const HloFusionInstruction& fusion) const override;
 
   // The launch dimensions of the main reduction kernel (not any initializer
   // kernels).

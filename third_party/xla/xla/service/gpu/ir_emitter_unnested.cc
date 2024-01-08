@@ -2317,8 +2317,8 @@ Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
       std::unique_ptr<FusionInterface> emitter,
       GetFusionEmitter(HloFusionInfo(
           fusion_analysis, instr, &ir_emitter_context_->buffer_assignment())));
-  return AddThunksToThunkSequence(emitter->Emit(*ir_emitter_context_, nullptr,
-                                                *instr, kernel_reuse_cache_));
+  return AddThunksToThunkSequence(
+      emitter->Emit(*ir_emitter_context_, nullptr, *instr));
 }
 
 Status IrEmitterUnnested::EmitFusion(
@@ -2338,8 +2338,8 @@ Status IrEmitterUnnested::EmitFusion(
       std::unique_ptr<FusionInterface> emitter,
       GetFusionEmitter(LmhloFusionInfo(fusion_analysis, fusion_op,
                                        ir_emitter_context_->allocations())));
-  return AddThunksToThunkSequence(emitter->Emit(*ir_emitter_context_, fusion_op,
-                                                *fusion, kernel_reuse_cache_));
+  return AddThunksToThunkSequence(
+      emitter->Emit(*ir_emitter_context_, fusion_op, *fusion));
 }
 
 Status IrEmitterUnnested::AssertNonDeterminismIsOkay(

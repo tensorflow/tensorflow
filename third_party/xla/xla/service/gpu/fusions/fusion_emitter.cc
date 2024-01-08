@@ -206,7 +206,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 
 StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache) const {
+    const HloFusionInstruction& fusion) const {
   llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
   std::string suggested_kernel_name = std::string(fusion.name());
 
@@ -223,7 +223,7 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   auto launch_dims = launch_dimensions();
   TF_RET_CHECK(launch_dims.has_value());
   std::vector<llvm_ir::IrArray> inputs, outputs;
-  auto [entry, cached] = kernel_cache.GetWithStatus(
+  auto [entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
       fused_computation, kernel_arguments.args(), /*discriminator=*/"",
       [&]() -> StatusOr<KernelReuseCache::Entry> {
         llvm::Function* kernel;

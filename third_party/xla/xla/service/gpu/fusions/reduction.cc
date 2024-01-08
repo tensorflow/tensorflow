@@ -512,7 +512,7 @@ class ReductionEmitter {
                    ElementalIrEmitter& elemental_emitter,
                    mlir::lmhlo::FusionOp fusion_op,
                    const HloFusionInstruction& fusion,
-                   KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder)
+                   llvm::IRBuilder<>* builder)
       : analysis_(analysis),
         reduction_codegen_info_(reduction_codegen_info),
         launch_dimensions_(std::move(launch_dimensions)),
@@ -520,7 +520,6 @@ class ReductionEmitter {
         elemental_emitter_(elemental_emitter),
         fusion_op_(fusion_op),
         fusion_(fusion),
-        kernel_cache_(kernel_cache),
         builder_(builder),
         index_ty_(GetIndexType(fusion, reduction_codegen_info.GetTilingScheme(),
                                builder)) {}
@@ -560,7 +559,6 @@ class ReductionEmitter {
   ElementalIrEmitter& elemental_emitter_;
   mlir::lmhlo::FusionOp fusion_op_;
   const HloFusionInstruction& fusion_;
-  KernelReuseCache& kernel_cache_;
   llvm::IRBuilder<>* builder_;
   llvm::Type* index_ty_;
 };
@@ -809,7 +807,7 @@ StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildKernelThunkForFusion(
                                     fusion_op_));
 
   auto kernel_builder_status = OkStatus();
-  auto [entry, cached] = kernel_cache_.GetWithStatus(
+  auto [entry, cached] = ir_emitter_context_.kernel_cache().GetWithStatus(
       fused_computation, kernel_arguments.args(), discriminator,
       [&]() -> StatusOr<KernelReuseCache::Entry> {
         llvm::Function* kernel;
@@ -1628,13 +1626,12 @@ ReductionFusion::ReductionFusion(const HloFusionAnalysis& analysis)
 
 StatusOr<FusionEmissionResult> ReductionFusion::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache) const {
+    const HloFusionInstruction& fusion) const {
   llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, &builder);
   return ReductionEmitter(analysis_, reduction_codegen_info_,
                           *launch_dimensions(), ir_emitter_context,
-                          elemental_emitter, fusion_op, fusion, kernel_cache,
-                          &builder)
+                          elemental_emitter, fusion_op, fusion, &builder)
       .Emit();
 }
 

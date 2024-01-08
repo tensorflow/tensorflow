@@ -42,8 +42,7 @@ class FusionInterface {
 
   virtual StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion,
-      KernelReuseCache& kernel_cache) const = 0;
+      const HloFusionInstruction& fusion) const = 0;
 
   // Returns the fusion's launch dimensions, if applicable.
   virtual std::optional<LaunchDimensions> launch_dimensions() const {
@@ -57,8 +56,7 @@ class KernelFusionEmitterBase : public FusionInterface {
  public:
   StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion,
-      KernelReuseCache& kernel_cache) const final;
+      const HloFusionInstruction& fusion) const final;
 
  protected:
   virtual Status EmitKernel(IrEmitterContext& ir_emitter_context,

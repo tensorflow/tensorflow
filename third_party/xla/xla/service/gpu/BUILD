@@ -265,6 +265,7 @@ cc_library(
         ":gpu_constants",
         ":gpu_executable",
         ":ir_emission_utils",
+        ":kernel_reuse_cache",
         "//xla/service:buffer_assignment",
         "//xla/service:name_uniquer",
         "//xla/stream_executor:device_description",

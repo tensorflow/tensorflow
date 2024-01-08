@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -35,8 +34,7 @@ class TritonFusion : public FusionInterface {
 
   StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion,
-      KernelReuseCache& kernel_cache) const final;
+      const HloFusionInstruction& fusion) const final;
 
   std::optional<LaunchDimensions> launch_dimensions() const override;
 
