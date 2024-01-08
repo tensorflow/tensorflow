@@ -3829,55 +3829,8 @@ Status IrEmitterUnnested::EmitLmhloRegion(
 Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
   // TODO(anlunx): Support other instruction opcodes.
   switch (instr->opcode()) {
-    case HloOpcode::kFusion: {
-      auto* fusion = Cast<HloFusionInstruction>(instr);
-      TF_ASSIGN_OR_RETURN(auto backend_config,
-                          instr->backend_config<FusionBackendConfig>());
-      const se::DeviceDescription& device_info =
-          ir_emitter_context_->gpu_device_info();
-      TF_ASSIGN_OR_RETURN(auto fusion_analysis,
-                          HloFusionAnalysis::Create(fusion, &device_info));
-      return EmitFusion(fusion, fusion_analysis);
-    }
-    case HloOpcode::kConditional:
-      return EmitConditional(instr);
-    case HloOpcode::kWhile:
-      return EmitWhile(instr);
-    case HloOpcode::kSort:
-      return EmitSort(Cast<HloSortInstruction>(instr));
-    case HloOpcode::kConstant:
-      return EmitConstant(Cast<HloConstantInstruction>(instr));
-    case HloOpcode::kCustomCall: {
-      auto* custom_call = Cast<HloCustomCallInstruction>(instr);
-      if (IsLegacyCublasMatmul(*instr)) {
-        return EmitGemmThunk(custom_call);
-      }
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      if (IsCustomCallToCusolver(*instr)) {
-        return EmitCholeskyThunk(instr);
-      }
-      if (IsTriangularSolve(*instr)) {
-        return EmitTriangularSolveCustomCall(instr);
-      }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      return EmitCustomCallThunk(custom_call);
-    }
-    case HloOpcode::kRngGetAndUpdateState:
-      return EmitRngGetAndUpdateState(
-          Cast<HloRngGetAndUpdateStateInstruction>(instr));
-    case HloOpcode::kInfeed:
-      return EmitInfeed(Cast<HloInfeedInstruction>(instr));
-
-    case HloOpcode::kAllReduceStart: {
-      auto* all_reduce = Cast<HloAllReduceInstruction>(instr);
-      return EmitNcclThunk<NcclAllReduceStartThunk, HloAllReduceInstruction>(
-          Thunk::kNcclAllReduceStart, all_reduce, all_reduce,
-          all_reduce->use_global_device_ids());
-    }
-
-    case HloOpcode::kAllReduceDone:
-      return EmitNcclAsyncDone(Thunk::kNcclAllReduceDone, instr);
-
+    case HloOpcode::kAllGatherDone:
+      return EmitNcclAsyncDone(Thunk::kNcclAllGatherDone, instr);
     case HloOpcode::kAllGatherStart: {
       auto* all_gather = Cast<HloAllGatherInstruction>(instr);
       return EmitNcclThunk<NcclAllGatherStartThunk, HloAllGatherInstruction>(
@@ -3885,9 +3838,25 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
           all_gather->use_global_device_ids());
     }
 
-    case HloOpcode::kAllGatherDone:
-      return EmitNcclAsyncDone(Thunk::kNcclAllGatherDone, instr);
+    case HloOpcode::kAllReduceDone:
+      return EmitNcclAsyncDone(Thunk::kNcclAllReduceDone, instr);
+    case HloOpcode::kAllReduceStart: {
+      auto* all_reduce = Cast<HloAllReduceInstruction>(instr);
+      return EmitNcclThunk<NcclAllReduceStartThunk, HloAllReduceInstruction>(
+          Thunk::kNcclAllReduceStart, all_reduce, all_reduce,
+          all_reduce->use_global_device_ids());
+    }
 
+    case HloOpcode::kAsyncDone: {
+      const HloInstruction* wrapped = instr->async_wrapped_instruction();
+      switch (wrapped->opcode()) {
+        case HloOpcode::kReduceScatter:
+          return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr);
+        default:
+          return InternalError("Unsupported async done wrapped instruction: %s",
+                               HloOpcodeString(wrapped->opcode()));
+      }
+    }
     case HloOpcode::kAsyncStart: {
       const HloInstruction* wrapped = instr->async_wrapped_instruction();
       switch (wrapped->opcode()) {
@@ -3905,30 +3874,57 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
       }
     }
 
-    case HloOpcode::kAsyncDone: {
-      const HloInstruction* wrapped = instr->async_wrapped_instruction();
-      switch (wrapped->opcode()) {
-        case HloOpcode::kReduceScatter:
-          return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr);
-        default:
-          return InternalError("Unsupported async done wrapped instruction: %s",
-                               HloOpcodeString(wrapped->opcode()));
-      }
-    }
-
-    case HloOpcode::kOutfeed:
-      return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
     case HloOpcode::kCall:
       return EmitCommandBufferThunk(instr);
+    case HloOpcode::kConditional:
+      return EmitConditional(instr);
+    case HloOpcode::kConstant:
+      return EmitConstant(Cast<HloConstantInstruction>(instr));
+    case HloOpcode::kCustomCall: {
+      auto* custom_call = Cast<HloCustomCallInstruction>(instr);
+      if (IsLegacyCublasMatmul(*instr)) {
+        return EmitGemmThunk(custom_call);
+      }
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+      if (IsCustomCallToCusolver(*instr)) {
+        return EmitCholeskyThunk(instr);
+      }
+      if (IsTriangularSolve(*instr)) {
+        return EmitTriangularSolveCustomCall(instr);
+      }
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+      return EmitCustomCallThunk(custom_call);
+    }
+    case HloOpcode::kFusion: {
+      auto* fusion = Cast<HloFusionInstruction>(instr);
+      TF_ASSIGN_OR_RETURN(auto backend_config,
+                          instr->backend_config<FusionBackendConfig>());
+      const se::DeviceDescription& device_info =
+          ir_emitter_context_->gpu_device_info();
+      TF_ASSIGN_OR_RETURN(auto fusion_analysis,
+                          HloFusionAnalysis::Create(fusion, &device_info));
+      return EmitFusion(fusion, fusion_analysis);
+    }
+    case HloOpcode::kInfeed:
+      return EmitInfeed(Cast<HloInfeedInstruction>(instr));
+    case HloOpcode::kOutfeed:
+      return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
+    case HloOpcode::kRngGetAndUpdateState:
+      return EmitRngGetAndUpdateState(
+          Cast<HloRngGetAndUpdateStateInstruction>(instr));
+    case HloOpcode::kSort:
+      return EmitSort(Cast<HloSortInstruction>(instr));
+    case HloOpcode::kWhile:
+      return EmitWhile(instr);
+
+    // HLO module is already ordered, so kAfterAll is a noop.
+    case HloOpcode::kAfterAll:
     // We don't need to emit thunks for these operations because their semantics
     // are encoded by buffers.
     case HloOpcode::kBitcast:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
-      return OkStatus();
-    // HLO module is already ordered, so kAfterAll is a noop.
-    case HloOpcode::kAfterAll:
       return OkStatus();
     default:
       return InternalError("Unsupported instruction opcode: %s",
