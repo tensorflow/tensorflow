@@ -1,6 +1,7 @@
 # Disable uploads as this is an experimental cross-compile build
 source ci/official/envs/disable_all_uploads
-TFCI_BAZEL_COMMON_ARGS="--config rbe_cross_compile_macos_x86 --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
+# Limit jobs to 100 to avoid running into "out of memory" issues (b/316266643)
+TFCI_BAZEL_COMMON_ARGS="--config rbe_cross_compile_macos_x86 --jobs 100 --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=macos_x86
 TFCI_BUILD_PIP_PACKAGE_ARGS="--cpu --nightly_flag"
 TFCI_DOCKER_ENABLE=0
@@ -11,7 +12,7 @@ TFCI_WHL_SIZE_LIMIT=275M
 TFCI_MACOS_INSTALL_BAZELISK_ENABLE=1
 TFCI_MACOS_INSTALL_BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-darwin-amd64"
 TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=1
-TFCI_MACOS_BAZEL_TEST_DIR_PATH="/Volumes/BuildData/bazel_output"
+TFCI_MACOS_BAZEL_TEST_DIR_PATH="/System/Volumes/Data/bazel_output"
 TFCI_MACOS_TWINE_INSTALL_ENABLE=1
 TFCI_MACOS_CROSS_COMPILE_ENABLE=1
 TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE="/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
