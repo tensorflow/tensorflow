@@ -467,7 +467,6 @@ filegroup(
         "file_system_helper.h",
         "fingerprint.h",
         "init_main.h",
-        "logger.h",
         "mem.h",
         "net.h",
         "notification.h",
@@ -1098,21 +1097,6 @@ cc_library(
     deps = [
         ":platform",
     ] + tf_stream_executor_deps("dso_loader"),
-)
-
-cc_library(
-    name = "logger",
-    srcs = ["logger.cc"],
-    hdrs = ["logger.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "env",
-        ":logging",
-        ":protobuf",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/synchronization",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
