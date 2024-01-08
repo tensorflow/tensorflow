@@ -47,9 +47,10 @@ LaunchDimensions GetMatMulLaunchDimensions(const TritonFusionAnalysis& analysis,
                                            const TritonGemmConfig& config);
 // Use tiling and execution parameters from 'config'.
 Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
+                  const se::DeviceDescription& device_info,
                   const TritonFusionAnalysis& analysis,
                   const HloComputation* computation, mlir::triton::FuncOp fn,
-                  const TritonGemmConfig& config, int shmem_budget);
+                  const TritonGemmConfig& config);
 
 // Compute the launch dimensions for the given Triton SoftMax.
 LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
@@ -57,13 +58,15 @@ LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
 // Generate Softmax in Triton IR inside 'fn'.
 // Use execution parameters from 'config'.
 Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
+                   const se::DeviceDescription& device_info,
                    const TritonFusionAnalysis& analysis,
                    const HloComputation* computation, mlir::triton::FuncOp fn,
-                   const TritonGemmConfig& config, int shmem_budget);
+                   const TritonGemmConfig& config);
 
 using TritonIrEmitter = std::function<Status(
-    mlir::OpBuilder, absl::string_view, const TritonFusionAnalysis& analysis,
-    const HloComputation*, mlir::triton::FuncOp, const TritonGemmConfig&, int)>;
+    mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,
+    const TritonFusionAnalysis& analysis, const HloComputation*,
+    mlir::triton::FuncOp, const TritonGemmConfig&)>;
 
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.

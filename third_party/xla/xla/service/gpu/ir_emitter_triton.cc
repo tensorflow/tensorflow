@@ -329,9 +329,12 @@ Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
       values[0], values[1]);
 }
 
-Value Maximum(ImplicitLocOpBuilder& b, ValueRange values) {
-  // ma::MaximumFOp seems to think that max(NaN, x) = x, so we don't use that.
-  //
+Value Maximum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
+              ValueRange values) {
+  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::FloatType>() &&
+      device_info.cuda_compute_capability().IsAtLeastAmpere()) {
+    return b.create<ma::MaximumFOp>(values);
+  }
   // logic: isNaN(lhs) || (!isNan(rhs) && lhs >= rhs) ? lhs : rhs
   // See also: IEEE Std 754-2008 5.11.
   //
@@ -348,9 +351,12 @@ Value Maximum(ImplicitLocOpBuilder& b, ValueRange values) {
       values[0], values[1]);
 }
 
-Value Minimum(ImplicitLocOpBuilder& b, ValueRange values) {
-  // ma::MinimumFOp seems to think that min(NaN, x) = x, so we don't use that.
-  //
+Value Minimum(ImplicitLocOpBuilder& b, const se::DeviceDescription& device_info,
+              ValueRange values) {
+  if (mlir::getElementTypeOrSelf(values[0]).isa<mlir::FloatType>() &&
+      device_info.cuda_compute_capability().IsAtLeastAmpere()) {
+    return b.create<ma::MinimumFOp>(values);
+  }
   // logic: isNaN(lhs) || (!isNan(rhs) && lhs <= rhs) ? lhs : rhs
   // See also: IEEE Std 754-2008 5.11.
   //
@@ -392,6 +398,7 @@ Value AddPtr(ImplicitLocOpBuilder& b, Value ptr, Value offset) {
 }
 
 Value EmitElementwise(ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+                      const se::DeviceDescription& device_info,
                       const HloInstruction& hlo, ValueRange inputs) {
   if (mlir::getElementTypeOrSelf(inputs[0]).isF32() ||
       mlir::getElementTypeOrSelf(inputs[0]).isF64()) {
@@ -437,9 +444,9 @@ Value EmitElementwise(ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
       }
       return b.create<ma::MulFOp>(inputs[0], inputs[1]);
     case HloOpcode::kMaximum:
-      return Maximum(b, inputs);
+      return Maximum(b, device_info, inputs);
     case HloOpcode::kMinimum:
-      return Minimum(b, inputs);
+      return Minimum(b, device_info, inputs);
     case HloOpcode::kAnd:
       return b.create<ma::AndIOp>(inputs[0], inputs[1]);
     case HloOpcode::kOr:
@@ -559,6 +566,7 @@ Value EmitBroadcast(ImplicitLocOpBuilder& b,
 
 StatusOr<Value> EmitScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
     const TritonFusionAnalysis* analysis, TritonFusionAnalysis::Scope scope,
     absl::Span<const DimProperties> tiled_dimensions,
     absl::Span<const HloInstruction* const> instructions,
@@ -566,6 +574,7 @@ StatusOr<Value> EmitScope(
 
 StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
                            absl::string_view libdevice_path,
+                           const se::DeviceDescription& device_info,
                            const HloInstruction& hlo_reduce, Value input) {
   llvm::ArrayRef<int64_t> input_shape =
       input.cast<TensorValue>().getType().getShape();
@@ -643,10 +652,11 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
     CHECK(!to_emit.empty());
 
     b.setInsertionPointToStart(reducer);
-    TF_ASSIGN_OR_RETURN(Value result,
-                        EmitScope(b, libdevice_path, /*analysis=*/nullptr,
-                                  TritonFusionAnalysis::Scope::OUTPUT, {},
-                                  to_emit, region_values));
+    TF_ASSIGN_OR_RETURN(
+        Value result,
+        EmitScope(b, libdevice_path, device_info, /*analysis=*/nullptr,
+                  TritonFusionAnalysis::Scope::OUTPUT, {}, to_emit,
+                  region_values));
     b.create<mt::ReduceReturnOp>(SmallVector<Value>({result}));
     b.setInsertionPointAfter(reduction);
   }
@@ -667,6 +677,7 @@ StatusOr<Value> EmitReduce(ImplicitLocOpBuilder& b,
 // before consumers.
 StatusOr<Value> EmitScope(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
+    const se::DeviceDescription& device_info,
     const TritonFusionAnalysis* analysis, TritonFusionAnalysis::Scope scope,
     absl::Span<const DimProperties> tiled_dimensions,
     absl::Span<const HloInstruction* const> instructions,
@@ -690,15 +701,15 @@ StatusOr<Value> EmitScope(
       result = EmitBroadcast(b, analysis, scope, tiled_dimensions, *hlo,
                              values[hlo->operand(0)]);
     } else if (hlo->opcode() == HloOpcode::kReduce) {
-      TF_ASSIGN_OR_RETURN(
-          result, EmitReduce(b, libdevice_path, *hlo, values[hlo->operand(0)]));
+      TF_ASSIGN_OR_RETURN(result, EmitReduce(b, libdevice_path, device_info,
+                                             *hlo, values[hlo->operand(0)]));
     } else if (hlo->IsElementwise()) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
       for (const HloInstruction* operand : hlo->operands()) {
         operands.push_back(values[operand]);
       }
-      result = EmitElementwise(b, libdevice_path, *hlo, operands);
+      result = EmitElementwise(b, libdevice_path, device_info, *hlo, operands);
     } else if (hlo->opcode() == HloOpcode::kTuple) {
       TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
     } else if (hlo->opcode() == HloOpcode::kBitcast ||
@@ -1147,12 +1158,14 @@ Status UncompilableMatmul(absl::string_view explanation) {
 class MatMulEmitterHelper {
  public:
   MatMulEmitterHelper(absl::string_view libdevice_path,
+                      const se::DeviceDescription& device_info,
                       const HloDotInstruction* dot_instr,
                       ImplicitLocOpBuilder& b, Type index_ty, MatMulDims dims,
                       const MatMulLaunchConfig& launch_config,
                       const TritonFusionAnalysis& analysis)
       : b_(b),
         libdevice_path_(libdevice_path),
+        device_info_(device_info),
         dot_instr_(dot_instr),
         index_ty_(index_ty),
         analysis_(analysis),
@@ -1214,7 +1227,8 @@ class MatMulEmitterHelper {
   Value MakeInput(Side& side, int64_t operand_index,
                   absl::flat_hash_map<const HloInstruction*, Value>& values) {
     return *EmitScope(
-        b_, libdevice_path_, &analysis_, side.scope, side.tiled_dims,
+        b_, libdevice_path_, device_info_, &analysis_, side.scope,
+        side.tiled_dims,
         dot_instr_->parent()->MakeInstructionPostOrderFrom(
             const_cast<HloInstruction&>(*dot_instr_->operand(operand_index))),
         values);
@@ -1459,6 +1473,7 @@ class MatMulEmitterHelper {
 
   ImplicitLocOpBuilder& b_;
   absl::string_view libdevice_path_;
+  const se::DeviceDescription& device_info_;
   const HloDotInstruction* dot_instr_;
   Type index_ty_;
   TritonFusionAnalysis analysis_;
@@ -1526,9 +1541,10 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
 
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
 Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
+                  const se::DeviceDescription& device_info,
                   const TritonFusionAnalysis& analysis,
                   const HloComputation* computation, mlir::triton::FuncOp fn,
-                  const TritonGemmConfig& config, int shmem_budget) {
+                  const TritonGemmConfig& config) {
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   // Use 32-bit indexing if addressing any of the inputs or the output (which
@@ -1560,8 +1576,8 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
   VLOG(6) << analysis.ToString();
 
-  MatMulEmitterHelper emitter(libdevice_path, dot_instr, b, index_ty, dims,
-                              launch_config, analysis);
+  MatMulEmitterHelper emitter(libdevice_path, device_info, dot_instr, b,
+                              index_ty, dims, launch_config, analysis);
 
   constexpr int group_m = 8;
   const int64_t width = group_m * launch_config.grid_n;
@@ -1768,7 +1784,7 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
                          EmitParameterLoad(b, tensor_pointer, boundary_checks)})
                 .second);
     }
-    TF_RETURN_IF_ERROR(EmitScope(b, libdevice_path, &analysis,
+    TF_RETURN_IF_ERROR(EmitScope(b, libdevice_path, device_info, &analysis,
                                  TritonFusionAnalysis::Scope::OUTPUT,
                                  out.tiled_dims, to_emit, values_out)
                            .status());
@@ -1793,9 +1809,10 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
 }
 
 Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
+                   const se::DeviceDescription& device_info,
                    const TritonFusionAnalysis& analysis,
                    const HloComputation* computation, mlir::triton::FuncOp fn,
-                   const TritonGemmConfig& config, int) {
+                   const TritonGemmConfig& config) {
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   ImplicitLocOpBuilder b(loc, builder);
@@ -1916,7 +1933,7 @@ Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
       /*index=*/0, pid, result_block_size, /*split_value=*/1)};
   TF_ASSIGN_OR_RETURN(
       Value result,
-      EmitScope(b, libdevice_path, &analysis,
+      EmitScope(b, libdevice_path, device_info, &analysis,
                 TritonFusionAnalysis::Scope::OUTPUT, tiled_dims,
                 computation->MakeInstructionPostOrder(), values_out));
 
@@ -2013,9 +2030,9 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_RETURN_IF_ERROR(ir_emitter(b, GetLibdevicePath(hlo_computation), analysis,
-                                hlo_computation, fn, config,
-                                device_info.shared_memory_per_block_optin()));
+  TF_RETURN_IF_ERROR(ir_emitter(b, GetLibdevicePath(hlo_computation),
+                                device_info, analysis, hlo_computation, fn,
+                                config));
 
   b.create<mt::ReturnOp>(loc);
 
