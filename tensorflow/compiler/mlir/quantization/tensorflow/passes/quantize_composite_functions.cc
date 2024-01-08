@@ -398,9 +398,6 @@ bool IsQuantizedCallforStaticRange(TF::PartitionedCallOp call_op) {
   bool has_quantized_types = false;
   for (Value input : call_op.getArgs()) {
     if (auto type = input.getType().dyn_cast<TensorType>()) {
-      if (type.getElementType().isa<FloatType>()) {
-        return false;
-      }
       if (type.getElementType().isa<QuantizedType>()) {
         has_quantized_types = true;
       }
@@ -408,9 +405,6 @@ bool IsQuantizedCallforStaticRange(TF::PartitionedCallOp call_op) {
   }
   for (Value output : call_op.getOutput()) {
     if (auto type = output.getType().dyn_cast<TensorType>()) {
-      if (type.getElementType().isa<FloatType>()) {
-        return false;
-      }
       if (type.getElementType().isa<QuantizedType>()) {
         has_quantized_types = true;
       }
