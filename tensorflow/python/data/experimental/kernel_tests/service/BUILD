@@ -258,6 +258,8 @@ tf_py_strict_test(
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
