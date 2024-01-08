@@ -188,33 +188,43 @@ std::string FindCudaExecutable(const std::string& binary_name,
     return it->second;
   }
 
-  // Try searching in the default PATH first if applicable.
-  if (tsl::PreferPtxasFromPath() &&
-      GetToolVersionString(binary_filename).ok()) {
+  auto env = tsl::Env::Default();
+  std::string binary_path =
+      tsl::io::JoinPath(preferred_cuda_dir, "bin", binary_filename);
+
+  // Search in the preferred cuda directory
+  VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
+  if (env->FileExists(binary_path).ok() &&
+      GetToolVersionString(binary_path).ok()) {
+    VLOG(2) << "Using " << binary_filename << " at " << binary_path;
+    seen_binary_paths->emplace(std::move(cache_key), binary_path);
+    return binary_path;
+  }
+
+  // Try searching in PATH if the preferred cuda directory didn't work.
+  if (GetToolVersionString(binary_filename).ok()) {
     VLOG(2) << "Using " << binary_filename;
     seen_binary_paths->emplace(std::move(cache_key), binary_filename);
     return binary_filename;
   }
 
   // Search in cuda root candidates.
-  auto env = tsl::Env::Default();
-  std::string binary_path;
-  for (const std::string& cuda_root :
-       tsl::CandidateCudaRoots(preferred_cuda_dir)) {
+  for (const std::string& cuda_root : tsl::CandidateCudaRoots()) {
     binary_path = tsl::io::JoinPath(cuda_root, "bin", binary_filename);
     VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
     if (env->FileExists(binary_path).ok() &&
         GetToolVersionString(binary_path).ok()) {
-      break;
+      VLOG(2) << "Using " << binary_filename << " at " << binary_path;
+      seen_binary_paths->emplace(std::move(cache_key), binary_path);
+      return binary_path;
     }
   }
-  if (!env->FileExists(binary_path).ok()) {
-    // Give up and just rely on subprocess invocation to find the correct
-    // binary. This won't work, in all probability, given we already tried that
-    // above, but it's the best we can do.
-    VLOG(2) << "Unable to find " << binary_name;
-    binary_path = binary_filename;
-  }
+
+  // Give up and just rely on subprocess invocation to find the correct
+  // binary. This won't work, in all probability, given we already tried that
+  // above, but it's the best we can do.
+  VLOG(2) << "Unable to find " << binary_name;
+  binary_path = binary_filename;
   VLOG(2) << "Using " << binary_filename << " at " << binary_path;
   seen_binary_paths->emplace(std::move(cache_key), binary_path);
   return binary_path;
