@@ -16,12 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF_IFRT_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_TF_IFRT_PASSES_H_
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace tensorflow {
 namespace ifrt_serving {
+
+// Create a pass to convert tf_device.cluster_func to tf.ifrt_program_call.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateRewriteClusterToIfrtCallPass();
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
 
 // Register all passes.
 void RegisterTfIfrtPasses();

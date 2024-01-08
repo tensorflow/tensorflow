@@ -1,3 +1,4 @@
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 
 package(
@@ -19,6 +20,24 @@ package_group(
     ]),
 )
 
+gentbl_cc_library(
+    name = "pass_inc_gen",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TfrtIfrtServing",
+            ],
+            "passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "tf_ifrt_passes",
     srcs = [
@@ -26,10 +45,11 @@ cc_library(
         "tf_ifrt_passes.cc",
     ],
     hdrs = [
-        "rewrite_cluster_to_ifrt_call.h",
         "tf_ifrt_passes.h",
     ],
+    textual_hdrs = ["passes.h.inc"],
     deps = [
+        ":pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
