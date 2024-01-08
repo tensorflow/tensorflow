@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -50,8 +51,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-
-extern const char kXlaHostTransferRendezvousNameAttr[];
 
 SendRecvGroupMap CreateSendRecvGroupMap(const HloModule& hlo_module) {
   SendRecvGroupMap send_recv_group_map;
