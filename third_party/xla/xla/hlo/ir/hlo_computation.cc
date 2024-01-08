@@ -107,7 +107,9 @@ HloComputation::HloComputation(
       collective_call_instruction_(nullptr),
       is_collective_called_computation_(false),
       while_call_instruction_(nullptr),
-      is_while_call_body_computation_(false) {
+      is_while_call_body_computation_(false),
+      conditional_call_instruction_(nullptr),
+      is_conditional_branch_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
