@@ -1247,7 +1247,7 @@ filegroup(
 #     name = "xla_py_pb2",
 #     testonly = 0,
 #     api_version = 2,
-#     compatible_with = ["//buildenv/target:gce"],
+#     compatible_with = ["//buildenv/target:non_prod"],
 #     visibility = [":friends"],
 #     deps = [":xla_proto"],
 # )
