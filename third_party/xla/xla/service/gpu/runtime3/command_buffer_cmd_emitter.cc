@@ -18,9 +18,10 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "xla/service/buffer_assignment.h"
+#include "absl/status/status.h"
 #include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
@@ -31,55 +32,64 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
+// Appends command(s) converted from `thunk` to `cmd_sequence`.
+static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                             const Thunk& thunk, bool force_barriers);
+
+// Appends command(s) converted from `sequence` to `cmd_sequence`.
+static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                             const ThunkSequence& sequence,
+                             bool force_barriers);
+
+//===----------------------------------------------------------------------===//
+// Conversions from Thunk to Command
+//===----------------------------------------------------------------------===//
+
 using Command = std::unique_ptr<CommandBufferCmd>;
 
-static StatusOr<Command> ConvertKernelThunk(const KernelThunk& thunk) {
+static auto ArgsAccess(const std::vector<bool>& written) {
   absl::InlinedVector<CommandBufferCmd::MemoryAccess, 4> args_access;
-  args_access.reserve(thunk.written().size());
-  for (bool written : thunk.written()) {
-    args_access.push_back(written ? CommandBufferCmd::MemoryAccess::kWrite
-                                  : CommandBufferCmd::MemoryAccess::kRead);
+  args_access.reserve(written.size());
+  for (bool w : written) {
+    args_access.push_back(w ? CommandBufferCmd::MemoryAccess::kWrite
+                            : CommandBufferCmd::MemoryAccess::kRead);
   }
-  return std::make_unique<LaunchCmd>(thunk.kernel_name(), thunk.arguments(),
-                                     args_access, thunk.launch_dimensions(),
-                                     thunk.shmem_bytes());
+  return args_access;
 }
 
-static StatusOr<Command> ConvertCustomKernelThunk(
-    const CustomKernelThunk& thunk) {
-  absl::InlinedVector<CommandBufferCmd::MemoryAccess, 4> args_access;
-  args_access.reserve(thunk.written().size());
-  for (bool written : thunk.written()) {
-    args_access.push_back(written ? CommandBufferCmd::MemoryAccess::kWrite
-                                  : CommandBufferCmd::MemoryAccess::kRead);
-  }
-  return std::make_unique<CustomKernelLaunchCmd>(thunk.arguments(), args_access,
-                                                 thunk.custom_kernel());
+static StatusOr<Command> Convert(const KernelThunk& thunk) {
+  return std::make_unique<LaunchCmd>(
+      thunk.kernel_name(), thunk.arguments(), ArgsAccess(thunk.written()),
+      thunk.launch_dimensions(), thunk.shmem_bytes());
 }
 
-static StatusOr<Command> ConvertCopyThunk(
-    const DeviceToDeviceCopyThunk& thunk) {
+static StatusOr<Command> Convert(const CustomKernelThunk& thunk) {
+  return std::make_unique<CustomKernelLaunchCmd>(
+      thunk.arguments(), ArgsAccess(thunk.written()), thunk.custom_kernel());
+}
+
+static StatusOr<Command> Convert(const DeviceToDeviceCopyThunk& thunk) {
   return std::make_unique<MemcpyDeviceToDeviceCmd>(
       thunk.destination(), thunk.source(), thunk.size_bytes());
 }
 
-static StatusOr<Command> ConvertMemzeroThunk(const MemzeroThunk& thunk) {
+static StatusOr<Command> Convert(const MemzeroThunk& thunk) {
   return std::make_unique<MemzeroCmd>(thunk.destination());
 }
 
-static StatusOr<Command> ConvertMemset32Thunk(
-    const Memset32BitValueThunk& thunk) {
+static StatusOr<Command> Convert(const Memset32BitValueThunk& thunk) {
   return std::make_unique<Memset32Cmd>(thunk.destination(), thunk.value());
 }
 
-static StatusOr<Command> ConvertWhileThunk(const WhileThunk& thunk,
-                                           bool force_barriers) {
+static StatusOr<Command> Convert(const WhileThunk& thunk, bool force_barriers) {
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdSequence cond_cmds,
       ConvertToCommands(thunk.condition_thunk_sequence()->thunks(),
@@ -91,81 +101,106 @@ static StatusOr<Command> ConvertWhileThunk(const WhileThunk& thunk,
                                     std::move(cond_cmds), std::move(body_cmds));
 }
 
-static StatusOr<Command> ConvertGemmThunk(const GemmThunk& thunk) {
-  std::optional<const BufferAllocation::Slice> workspace = thunk.workspace();
-  if (!workspace.has_value()) {
-    return InternalError("Gemm thunk does not contain a workspace buffer");
+static StatusOr<Command> Convert(const GemmThunk& thunk) {
+  if (!thunk.workspace().has_value()) {
+    return absl::InternalError(
+        "Gemm thunk does not contain a workspace buffer");
   }
-  return std::make_unique<GemmCmd>(thunk.config(), thunk.lhs_buffer(),
-                                   thunk.rhs_buffer(), thunk.output_buffer(),
-                                   workspace.value(), thunk.deterministic());
+  return std::make_unique<GemmCmd>(
+      thunk.config(), thunk.lhs_buffer(), thunk.rhs_buffer(),
+      thunk.output_buffer(), thunk.workspace().value(), thunk.deterministic());
 }
 
-static StatusOr<Command> ConvertAllReduceStartThunk(
-    const NcclAllReduceStartThunk& thunk) {
+static StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
   return std::make_unique<AllReduceCmd>(thunk.config(), thunk.reduction_kind(),
                                         thunk.buffers());
 }
 
-static StatusOr<Command> ConvertReduceScatterStartThunk(
-    const NcclReduceScatterStartThunk& thunk) {
+static StatusOr<Command> Convert(const NcclReduceScatterStartThunk& thunk) {
   return std::make_unique<ReduceScatterCmd>(
       thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
-static StatusOr<Command> ConvertAllGatherStartThunk(
-    const NcclAllGatherStartThunk& thunk) {
+static StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
   return std::make_unique<AllGatherCmd>(thunk.config(), thunk.buffers());
 }
 
-static StatusOr<Command> ConvertThunk(const Thunk& thunk, bool force_barriers) {
+//===----------------------------------------------------------------------===//
+
+template <typename ThunkType>
+static StatusOr<Command> Convert(const Thunk& thunk) {
+  return Convert(static_cast<const ThunkType&>(thunk));
+}
+
+template <typename ThunkType>
+static StatusOr<Command> Convert(const Thunk& thunk, bool force_barriers) {
+  return Convert(static_cast<const ThunkType&>(thunk), force_barriers);
+}
+
+static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                             const Thunk& thunk, bool force_barriers) {
+  auto append = [&](StatusOr<Command> command) -> Status {
+    if (command.ok()) {
+      cmd_sequence.Append(std::move(*command));
+      return OkStatus();
+    }
+    return command.status();
+  };
+
   switch (thunk.kind()) {
     case Thunk::Kind::kKernel:
-      return ConvertKernelThunk(static_cast<const KernelThunk&>(thunk));
+      return append(Convert<KernelThunk>(thunk));
     case Thunk::Kind::kCustomKernel:
-      return ConvertCustomKernelThunk(
-          static_cast<const CustomKernelThunk&>(thunk));
+      return append(Convert<CustomKernelThunk>(thunk));
     case Thunk::Kind::kCopy:
-      return ConvertCopyThunk(
-          static_cast<const DeviceToDeviceCopyThunk&>(thunk));
+      return append(Convert<DeviceToDeviceCopyThunk>(thunk));
     case Thunk::Kind::kMemzero:
-      return ConvertMemzeroThunk(static_cast<const MemzeroThunk&>(thunk));
+      return append(Convert<MemzeroThunk>(thunk));
     case Thunk::Kind::kMemset32BitValue:
-      return ConvertMemset32Thunk(
-          static_cast<const Memset32BitValueThunk&>(thunk));
+      return append(Convert<Memset32BitValueThunk>(thunk));
     case Thunk::Kind::kWhile:
-      return ConvertWhileThunk(static_cast<const WhileThunk&>(thunk),
-                               force_barriers);
+      return append(Convert<WhileThunk>(thunk, force_barriers));
     case Thunk::Kind::kGemm:
-      return ConvertGemmThunk(static_cast<const GemmThunk&>(thunk));
+      return append(Convert<GemmThunk>(thunk));
     case Thunk::Kind::kNcclAllReduceStart:
-      return ConvertAllReduceStartThunk(
-          static_cast<const NcclAllReduceStartThunk&>(thunk));
+      return append(Convert<NcclAllReduceStartThunk>(thunk));
     case Thunk::Kind::kNcclReduceScatterStart:
-      return ConvertReduceScatterStartThunk(
-          static_cast<const NcclReduceScatterStartThunk&>(thunk));
+      return append(Convert<NcclReduceScatterStartThunk>(thunk));
     case Thunk::Kind::kNcclAllGatherStart:
-      return ConvertAllGatherStartThunk(
-          static_cast<const NcclAllGatherStartThunk&>(thunk));
+      return append(Convert<NcclAllGatherStartThunk>(thunk));
+
+    // Sequential thunk does not have any special semantics and we simply inline
+    // all nested thunks into command buffer.
+    case Thunk::Kind::kSequential:
+      return AppendCommands(cmd_sequence,
+                            static_cast<const SequentialThunk&>(thunk).thunks(),
+                            force_barriers);
+
+    // Currently all collective operations recorded on the tracing stream and do
+    // not need to have a separate done command.
     case Thunk::Kind::kNcclAllReduceDone:
-      return Command{};
     case Thunk::Kind::kNcclReduceScatterDone:
-      return Command{};
     case Thunk::Kind::kNcclAllGatherDone:
-      return Command{};
+      return OkStatus();
+
     default:
       return InternalError("Unsupported thunk kind: %s",
                            Thunk::KindToString(thunk.kind()));
   }
 }
 
+static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                             const ThunkSequence& sequence,
+                             bool force_barriers) {
+  for (const std::unique_ptr<Thunk>& thunk : sequence)
+    TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, *thunk, force_barriers));
+  return OkStatus();
+}
+
 StatusOr<CommandBufferCmdSequence> ConvertToCommands(
     const ThunkSequence& sequence, bool force_barriers) {
   CommandBufferCmdSequence cmd_sequence(force_barriers);
-  for (const std::unique_ptr<Thunk>& thunk : sequence) {
-    TF_ASSIGN_OR_RETURN(Command cmd, ConvertThunk(*thunk, force_barriers));
-    if (cmd) cmd_sequence.Append(std::move(cmd));
-  }
+  TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, sequence, force_barriers));
   return cmd_sequence;
 }
 
