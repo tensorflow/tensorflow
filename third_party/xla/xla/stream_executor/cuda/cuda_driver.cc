@@ -57,9 +57,9 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
-#ifdef NCCL_ENABLED
+#ifdef XLA_ENABLE_XCCL
 #include "third_party/nccl/nccl.h"
-#endif  // NCCL_ENABLED
+#endif  // XLA_ENABLE_XCCL
 
 static constexpr bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 static constexpr bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
@@ -1636,7 +1636,7 @@ struct BitPatternToValue {
   ScopedActivateContext activated{context};
   void* ptr = nullptr;
 
-#ifdef NCCL_ENABLED
+#ifdef XLA_ENABLE_XCCL
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
   if (res != ncclSuccess) {
     return absl::InternalError(absl::StrFormat(
@@ -1659,7 +1659,7 @@ struct BitPatternToValue {
     GpuContext* context, void* location) {
   ScopedActivateContext activation(context);
 
-#ifdef NCCL_ENABLED
+#ifdef XLA_ENABLE_XCCL
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
     return absl::InternalError(absl::StrFormat(
