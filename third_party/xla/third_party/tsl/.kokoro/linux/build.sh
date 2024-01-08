@@ -37,6 +37,8 @@ fi
 
 # Pull the container (in case it was updated since the instance started) and
 # store its SHA in the Sponge log.
+# TODO(hebecker): Remove this once build:latest-python3.9 has caught up
+DOCKER_IMAGE="gcr.io/tensorflow-sigs/build:579131652-python3.9"
 docker pull "$DOCKER_IMAGE"
 echo "TF_INFO_DOCKER_IMAGE,$DOCKER_IMAGE" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
 echo "TF_INFO_DOCKER_SHA,$(docker pull "$DOCKER_IMAGE" | sed -n '/Digest:/s/Digest: //g p')" >> "$KOKORO_ARTIFACTS_DIR/custom_sponge_config.csv"
