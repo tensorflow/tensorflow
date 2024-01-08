@@ -77,6 +77,16 @@ struct CubinOrPTXImage {
 tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
     std::vector<CubinOrPTXImage> images, GpuAsmOpts options);
 
+struct HsacoImage {
+  std::string gfx_arch;
+  std::vector<uint8_t> bytes;
+};
+
+// Bundles the GPU machine code (HSA Code Object) and returns the resulting
+// binary (i.e. a fatbin) as a byte array.
+tsl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
+    std::vector<HsacoImage> images, const std::string rocm_root_dir);
+
 // Links multiple relocatable GPU images (e.g. results of ptxas -c) into a
 // single image.
 tsl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
