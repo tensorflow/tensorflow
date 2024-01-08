@@ -398,40 +398,48 @@ cc_library(
     ],
 )
 
-xla_cc_test(
-    name = "hlo_op_profiler_run",
-    timeout = "eternal",
-    srcs = ["hlo_op_profiler_run.cc"],
-    # Disable backend optimizations (in particular reassociate and instcombine) which would optimize
-    # expressions like integer add and multiply.
-    args = ["--xla_backend_optimization_level=0"],
-    # This is a development tool, not a normal test, and thus should only be run
-    # manually with --config=cuda.
-    tags = [
-        "gpu",
-        "manual",
-        "notap",
-        "requires-gpu-nvidia",
-    ],
-    deps = [
-        ":hlo_op_profile_proto_cc",
-        ":hlo_op_profiler_lib",
-        "//xla:debug_options_flags",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_runner",
-        "//xla/service:platform_util",
-        "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/util:command_line_flags",
-    ],
-)
+[
+    xla_cc_test(
+        name = "hlo_op_profiler_run_" + sm,
+        timeout = "eternal",
+        srcs = ["hlo_op_profiler_run.cc"],
+        # Disable backend optimizations (in particular reassociate and instcombine) which would optimize
+        # expressions like integer add and multiply.
+        args = ["--xla_backend_optimization_level=0"],
+        # This is a development tool, not a normal test, and thus should only be run
+        # manually with --config=cuda.
+        tags = [
+            "gpu",
+            "manual",
+            "notap",
+            "requires-gpu-" + sm + "-only",
+        ],
+        deps = [
+            ":hlo_op_profile_proto_cc",
+            ":hlo_op_profiler_lib",
+            "//xla:debug_options_flags",
+            "//xla:xla_data_proto_cc",
+            "//xla/hlo/ir:hlo",
+            "//xla/service:hlo_runner",
+            "//xla/service:platform_util",
+            "//xla/stream_executor:device_description",
+            "@com_google_absl//absl/log",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/strings:str_format",
+            "@local_tsl//tsl/platform:env",
+            "@local_tsl//tsl/platform:path",
+            "@local_tsl//tsl/platform:platform_port",
+            "@local_tsl//tsl/platform:status",
+            "@local_tsl//tsl/util:command_line_flags",
+        ],
+    )
+    for sm in [
+        "sm60",
+        "sm70",
+        "sm80",
+        "sm90",
+    ]
+]
 
 xla_cc_test(
     name = "hlo_op_profiler_test",
