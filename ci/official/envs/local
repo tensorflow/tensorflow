@@ -1,0 +1,15 @@
+# Base settings for a local execution
+# Don't generate the summary index
+TFCI_INDEX_HTML_ENABLE=
+# Defining this variable as empty will overwrite "hey, that's empty" errors
+KOKORO_KEYSTORE_DIR=
+# Don't try and upload anything, since permissions won't work anyway
+source ci/official/envs/no_upload
+# Remove execution-affecting arguments from the TFCI_BAZEL_COMMON_ARGS value
+# so that other local_ envs can add whatever they want. This seems easier
+# than trying to juggle different environment variables for it.
+TFCI_BAZEL_COMMON_ARGS=$(echo "$TFCI_BAZEL_COMMON_ARGS" | sed 's/cache_push/cache/g')
+if [[ $TFCI_BAZEL_COMMON_ARGS ~= ".*rbe.*" ]]; then
+  TFCI_BAZEL_COMMON_ARGS=$(echo "$TFCI_BAZEL_COMMON_ARGS" | sed 's/--config \w*cache\w*//g')
+  TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"
+fi

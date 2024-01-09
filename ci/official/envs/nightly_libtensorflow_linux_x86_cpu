@@ -1,2 +1,0 @@
-source ci/official/envs/release_libtensorflow_linux_x86_cpu
-source ci/official/envs/ci_convert_to_nightly

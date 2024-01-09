@@ -61,13 +61,11 @@ else
   # Source the default ci values
   source ./ci/official/envs/ci_default
 
-  # Sourcing TFCI twice, the first time with "-u" unset, means that variable
-  # order does not matter. i.e. "TFCI_BAR=$TFCI_FOO; TFCI_FOO=true" will work.
-  # TFCI_FOO is only valid the second time through.
-  set +u
-  source "$TFCI"
-  set -u
-  source "$TFCI"
+  # TODO(angerson) write this documentation
+  # Sources every env, in order, from the comma-separated list "TFCI"
+  for env_file in ${TFCI//,/ }; do
+    source "./ci/official/envs/$env_file"
+  done
 
   # Load those stored pre-existing TFCI_ vars, if any
   if [[ -s "$FROM_ENV" ]]; then

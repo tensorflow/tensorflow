@@ -17,6 +17,14 @@
 # job chain to GCS and PyPI.
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
+# Update the version numbers for Nightly only, then fetch the version numbers
+# for choosing the final directory name. This adds "-devYYYYMMDD" to the end of
+# the version string (.devYYYYMMDD for Python; see pypi.org/project/tf-nightly)
+if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
+  tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
+fi
+source ci/official/envs/ci_versions
+
 DOWNLOADS="$(mktemp -d)/$TFCI_VER_FULL"
 gsutil -m cp -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$STAGED"
 ls "$STAGED"

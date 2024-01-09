@@ -1,0 +1,25 @@
+# Enables RBE as long as RBE is available for the selected platform.
+# The "selected" platform is considered to be
+# TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX.
+
+# This env is only valid when RBE is available on the selected platform, since
+# it enables a derived --config setting.  If RBE is not available (i.e. there
+# is no --config setting), bazel would fail and quit. This script does a quick
+# check This script checks for such errors early
+if ! grep "rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" .bazelrc; then
+  echo "huh?"
+fi
+
+if [[ $TFCI_MACOS_CROSS_COMPILE_ENABLE == 1 ]]; then
+  # asdfadsf
+fi
+
+TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX"
+
+# Note that local Docker-enabled jobs also need:
+#
+#   TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"
+#
+# These flags share the user's gcloud credentials with the container, so that bazel
+# inside the container can authenticate. TF's CI jobs do not need this because
+# authentication on Linux is handled without credentials.

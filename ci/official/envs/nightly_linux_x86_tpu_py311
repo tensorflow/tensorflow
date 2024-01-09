@@ -1,2 +1,0 @@
-source ci/official/envs/release_linux_x86_tpu_py311
-source ci/official/envs/ci_convert_to_nightly

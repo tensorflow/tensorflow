@@ -1,4 +1,0 @@
-source ci/official/envs/release_macos_arm64_py39
-source ci/official/envs/ci_convert_to_nightly
-# Uploads disabled while in development
-source ci/official/envs/disable_all_uploads

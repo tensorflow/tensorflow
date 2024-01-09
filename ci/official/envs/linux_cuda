@@ -1,0 +1,9 @@
+TFCI_BAZEL_COMMON_ARGS="--repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config release_gpu_linux"
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_cuda
+TFCI_BUILD_PIP_PACKAGE_ARGS=
+TFCI_DOCKER_ARGS="--gpus all"
+TFCI_DOCKER_IMAGE=tensorflow/build:latest-python${TFCI_PYTHON_VERSION}
+TFCI_DOCKER_REBUILD_ARGS="--build-arg PYTHON_VERSION=python$TFCI_PYTHON_VERSION --target=devel tensorflow/tools/tf_sig_build_dockerfiles"
+TFCI_LIB_SUFFIX="-gpu-linux-x86_64"
+TFCI_WHL_AUDIT_PLAT=manylinux2014_x86_64
+TFCI_WHL_SIZE_LIMIT=580M
