@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/die_if_null.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -678,7 +679,9 @@ class TfrtSessionFactory::ThreadPoolManager {
 TfrtSessionFactory::TfrtSessionFactory()
     : thread_pool_manager_(std::make_unique<ThreadPoolManager>()) {}
 
-// Maintains a list of initializers.
+// Holds an initializer, which should only be registered before main executes.
+// As an internal component of `TfrtSessionFactory`, it does not take
+// responsibility for thread safety. (`TfrtSessionFactory` does).
 class InitializerRegistry {
  public:
   static InitializerRegistry& Get() {
@@ -686,55 +689,46 @@ class InitializerRegistry {
     return *reg;
   }
 
-  void Register(std::function<absl::Status()> initializer) {
-    absl::MutexLock l(&mu_);
-    initializer_list_.push_back(initializer);
+  void Register(std::function<absl::Status(tfrt_stub::Runtime*)> initializer) {
+    DCHECK(initializer_ == nullptr);
+    initializer_ = initializer;
   }
 
-  absl::Status RunAllInitializers() {
-    absl::MutexLock l(&mu_);
-    for (const auto& initializer : initializer_list_) {
-      TF_RETURN_IF_ERROR(initializer());
-    }
+  absl::Status RunInitializer(tfrt_stub::Runtime* runtime) {
+    LOG(INFO) << "Running Initializer within TfrtSessionFactory.";
+    TF_RETURN_IF_ERROR(initializer_ ? initializer_(runtime) : OkStatus());
     return OkStatus();
   }
 
  private:
-  mutable absl::Mutex mu_;
-  typedef std::vector<std::function<absl::Status()>> InitializerList;
-  InitializerList initializer_list_ ABSL_GUARDED_BY(mu_);
+  std::function<absl::Status(tfrt_stub::Runtime*)> initializer_;
 };
 
 void TfrtSessionFactory::RegisterInitializer(
-    std::function<absl::Status()> initializer) {
+    std::function<absl::Status(tfrt_stub::Runtime*)> initializer) {
   InitializerRegistry::Get().Register(std::move(initializer));
 }
 
-Status TfrtSessionFactory::Initialize(const TfrtSessionOptions& options) {
-  absl::MutexLock lock(&mutex_);
-  if (IsInitialized()) {
-    return errors::AlreadyExists(
-        "TfrtSessionFactory::Initialize has already been called");
-  }
-  return InitializeLocked(options);
-}
-
 Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
-  DCHECK(!IsInitialized())
-      << "TfrtSessionFactory::Initialize has already been called";
-
+  mutex_.AssertHeld();
+  if (options.use_tpu) {
+    // TODO(b/319186082): Update callers to set `use_tpu` alongside other.
+    // options, instead of separately, and remove this check.
+    DCHECK(runtime_);
+    device_target_ = TfrtDeviceInfraTarget::kBridgeFallback;
+    tpu_use_tpu_runner_ = true;
+    return OkStatus();
+  }
   LOG(INFO) << "Start initializing TfrtSession";
   if (options.runtime != nullptr) {
     runtime_ = options.runtime;
-  } else {
-    // TODO(jingdong): We plan to remove the work queue from Runtime. We will
-    // update the code here after the removal.
+  } else if (runtime_ == nullptr) {
     owned_runtime_ = tensorflow::tfrt_stub::Runtime::Create(
         CreateRunHandlerWorkQueue(options.threadpool_options));
     runtime_ = owned_runtime_.get();
   }
   enable_mlrt_ = options.enable_mlrt;
-  return InitializerRegistry::Get().RunAllInitializers();
+  return OkStatus();
 }
 
 bool TfrtSessionFactory::AcceptsOptions(const SessionOptions& options) {
@@ -760,7 +754,10 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
   *out_session = nullptr;
 
   absl::MutexLock lock(&mutex_);
-  if (!IsInitialized()) TF_RETURN_IF_ERROR(InitializeLocked({}));
+  if (!IsInitialized()) {
+    TF_RETURN_IF_ERROR(InitializeLocked({}));
+    TF_RETURN_IF_ERROR(InitializerRegistry::Get().RunInitializer(runtime_));
+  }
 
   TF_ASSIGN_OR_RETURN(
       auto inter_op_thread_pools,
@@ -776,13 +773,22 @@ namespace {
 static TfrtSessionFactory* session_factory = nullptr;
 }
 
-TfrtSessionFactory& TfrtSessionFactory::Get() {
-  CHECK(session_factory);
-  return *session_factory;
+tfrt_stub::Runtime* TfrtSessionFactory::GetRuntime() {
+  DCHECK(session_factory != nullptr);
+  absl::MutexLock lock(&session_factory->mutex_);
+  return session_factory->runtime_;
 }
 
 Status InitializeTfrtSession(const TfrtSessionOptions& options) {
-  return TfrtSessionFactory::Get().Initialize(options);
+  DCHECK(session_factory != nullptr);
+  absl::MutexLock lock(&session_factory->mutex_);
+  return UpdateTfrtSessionOptionsLocked(options);
+}
+
+Status UpdateTfrtSessionOptionsLocked(const TfrtSessionOptions& options) {
+  DCHECK(session_factory != nullptr);
+  session_factory->mutex_.AssertHeld();
+  return session_factory->InitializeLocked(options);
 }
 
 static const bool kFactoryRgistration = [] {

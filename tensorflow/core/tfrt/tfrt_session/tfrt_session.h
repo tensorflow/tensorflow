@@ -48,6 +48,9 @@ struct TfrtSessionOptions {
   TfrtThreadpoolOptions threadpool_options;
   tensorflow::tfrt_stub::Runtime* runtime = nullptr;
   bool enable_mlrt = false;
+  // TODO(b/319186082): Currently this is set through a separate call to
+  // `InitializeTfrtSession`, but should be set in the same call.
+  bool use_tpu = false;
 };
 
 // Factory class to create `TfrtSession` instances.
@@ -55,36 +58,39 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
  public:
   TfrtSessionFactory();
 
-  Status Initialize(const TfrtSessionOptions& options)
-      TF_LOCKS_EXCLUDED(mutex_);
-
   bool AcceptsOptions(const SessionOptions& options) override;
 
   Status NewSession(const SessionOptions& options,
                     Session** out_session) override TF_LOCKS_EXCLUDED(mutex_);
 
-  static TfrtSessionFactory& Get();
+  // This should only be used for the sake initializing resources for
+  // Python executables. It should only be called before main.
+  //
+  // Due to lack of applications and a concern for the ordering of initializers,
+  // this may only be called once.
+  static void RegisterInitializer(
+      std::function<absl::Status(tfrt_stub::Runtime*)> initializer);
 
-  // Initializers will run at the end of the initialization, assuming lock held.
-  static void RegisterInitializer(std::function<absl::Status()> initializer);
+  // May not be called within code holding mutex_.
+  static tfrt_stub::Runtime* GetRuntime();
 
  private:
   class ThreadPoolManager;
-  friend Status InitTpuForTfrtSessionLocked(bool only_set_fields)
+  friend Status InitializeTfrtSession(const TfrtSessionOptions& options);
+  friend Status UpdateTfrtSessionOptionsLocked(
+      const TfrtSessionOptions& options);
+  Status InitializeLocked(const TfrtSessionOptions& options)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  friend Status InitTpuForTfrtSession(bool only_set_fields)
-      TF_LOCKS_EXCLUDED(mutex_);
-
   bool IsInitialized() const TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_) {
     return runtime_ != nullptr;
   }
-  Status InitializeLocked(const TfrtSessionOptions& options)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutable absl::Mutex mutex_;
+  mutable absl::Mutex runtime_mutex_;
   tensorflow::tfrt_stub::Runtime* runtime_ TF_GUARDED_BY(mutex_) = nullptr;
   std::unique_ptr<tensorflow::tfrt_stub::Runtime> owned_runtime_
       TF_GUARDED_BY(mutex_);
+
   TfrtDeviceInfraTarget device_target_ TF_GUARDED_BY(mutex_) =
       TfrtDeviceInfraTarget::kCpu;
   bool tpu_use_tpu_runner_ TF_GUARDED_BY(mutex_) = false;
@@ -92,11 +98,14 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
   bool enable_mlrt_ TF_GUARDED_BY(mutex_) = false;
 };
 
-// Initiailzes and registers the TfrtSessionFactory. Calling this function makes
-// available a new Tensorflow session target, tfrt_session, which can be used to
-// create a TFRT based tensorflow Session implementation.
+// Configures the TfrtSessionFactory according to `options`. Should not be
+// called within functions that are passed into
+// `TfrtSessionFactory::RegisterInitializer`, because it acquires `mutex_`.
 Status InitializeTfrtSession(const TfrtSessionOptions& options);
 
+// Version of `InitializeTfrtSession` that can be used within functions passed
+// into `TfrtSessionFactory::RegisterInitializer`.
+Status UpdateTfrtSessionOptionsLocked(const TfrtSessionOptions& options);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TFRT_TFRT_SESSION_TFRT_SESSION_H_
