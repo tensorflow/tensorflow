@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "xla/stream_executor/blas.h"
@@ -254,7 +255,7 @@ Stream::Stream(StreamExecutor *parent)
     : parent_(parent),
       implementation_(parent->implementation()->GetStreamImplementation()),
       allocated_(false),
-      status_(tsl::errors::Internal("Uninitialized stream")),
+      status_(absl::InternalError("Uninitialized stream")),
       temporary_memory_manager_(this) {
   VLOG_CALL(PARAM(parent));
 }
@@ -294,12 +295,12 @@ Stream::PlatformSpecificHandle Stream::platform_specific_handle() const {
   return handle;
 }
 
-tsl::Status Stream::RefreshStatus() {
-  tsl::Status status = parent_->GetStatus(this);
+absl::Status Stream::RefreshStatus() {
+  absl::Status status = parent_->GetStatus(this);
   // We should not put the stream in an error state, just because the GetStatus
   // method is unimplemented.
-  if (status != tsl::Status(absl::StatusCode::kUnimplemented,
-                            "GetStatus is not supported on this executor.")) {
+  if (status != absl::UnimplementedError(
+                    "GetStatus is not supported on this executor.")) {
     CheckStatus(status);
   }
   return status;
@@ -316,7 +317,7 @@ Stream &Stream::Init() {
   if (parent_->AllocateStream(this)) {
     // Successful initialization!
     allocated_ = true;
-    status_ = ::tsl::OkStatus();
+    status_ = absl::OkStatus();
   } else {
     LOG(ERROR) << "failed to allocate stream during initialization";
   }
@@ -327,7 +328,7 @@ Stream &Stream::Init() {
 Stream &Stream::ThenRecordEvent(Event *event) {
   VLOG_CALL(PARAM(event));
 
-  tsl::Status status = parent_->RecordEvent(this, event);
+  absl::Status status = parent_->RecordEvent(this, event);
   if (!status.ok()) {
     LOG(ERROR) << "Error recording event in stream: " << status.message()
                << "; not marking stream as bad, as the Event object may be "
@@ -699,7 +700,7 @@ Stream &Stream::ThenWaitFor(Event *event) {
   VLOG_CALL(PARAM(event));
 
   if (ok()) {
-    tsl::Status status = parent_->WaitForEvent(this, event);
+    absl::Status status = parent_->WaitForEvent(this, event);
     if (!status.ok()) {
       LOG(ERROR) << "Error waiting for event in stream: " << status.message()
                  << "; not marking stream as bad, as the Event object may be "
@@ -1557,12 +1558,12 @@ Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
 Stream &Stream::ThenDoHostCallback(absl::AnyInvocable<void() &&> callback) {
   return ThenDoHostCallbackWithStatus([cb = std::move(callback)]() mutable {
     std::move(cb)();
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   });
 }
 
 Stream &Stream::ThenDoHostCallbackWithStatus(
-    absl::AnyInvocable<tsl::Status() &&> callback) {
+    absl::AnyInvocable<absl::Status() &&> callback) {
   VLOG_CALL(PARAM(callback));
 
   if (!ok()) {
@@ -1578,7 +1579,7 @@ void Stream::CheckError(bool operation_retcode) {
     return;
   }
   absl::MutexLock lock(&mu_);
-  status_ = tsl::errors::Internal("Unknown error");
+  status_ = absl::InternalError("Unknown error");
 }
 
 Stream &Stream::ThenFft(fft::Plan *plan,
@@ -1689,14 +1690,13 @@ Stream &Stream::ThenEnqueueOnBackgroundThread(
   });
 }
 
-tsl::Status Stream::BlockHostUntilDone() {
+absl::Status Stream::BlockHostUntilDone() {
   VLOG_CALL();
 
   if (!ok()) {
     absl::MutexLock lock(&mu_);
     LOG(INFO) << status_.ToString();
-    tsl::Status status = tsl::Status(
-        absl::StatusCode::kInternal,
+    absl::Status status = absl::InternalError(
         "stream did not block host until done; was already in an error state");
     LOG(INFO) << DebugStreamPointers() << " " << status;
     return status;
@@ -1704,7 +1704,7 @@ tsl::Status Stream::BlockHostUntilDone() {
 
   temporary_memory_manager_.DeallocateFinalizedTemporaries();
 
-  tsl::Status error = parent_->BlockHostUntilDone(this);
+  absl::Status error = parent_->BlockHostUntilDone(this);
   CheckError(error.ok());
 
   RunAfterBlockHostUntilDoneCallbacks();
@@ -1728,7 +1728,7 @@ std::string Stream::DebugStreamPointers() const {
                       ",impl=", ToVlogString(implementation_.get()), "]");
 }
 
-void Stream::CheckStatus(tsl::Status status) {
+void Stream::CheckStatus(absl::Status status) {
   if (status.ok()) {
     return;
   }

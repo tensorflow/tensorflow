@@ -39,35 +39,33 @@ int HostPlatform::VisibleDeviceCount() const {
 
 const std::string& HostPlatform::Name() const { return name_; }
 
-tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostPlatform::DescriptionForDevice(int ordinal) const {
   return HostExecutor::CreateDeviceDescription(ordinal);
 }
 
-tsl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
+absl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
 
-tsl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
+absl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-tsl::StatusOr<std::unique_ptr<StreamExecutor>>
+absl::StatusOr<std::unique_ptr<StreamExecutor>>
 HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<HostExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return tsl::Status(
-        absl::StatusCode::kInternal,
-        absl::StrFormat(
-            "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str()));
+    return absl::InternalError(absl::StrFormat(
+        "failed initializing StreamExecutor for device ordinal %d: %s",
+        config.ordinal, init_status.ToString().c_str()));
   }
 
   return std::move(executor);

@@ -34,7 +34,7 @@ hipFuncCache_t GpuKernel::GetGpuCacheConfig() const {
   }
 }
 
-tsl::StatusOr<int32_t> GpuKernel::GetMaxOccupiedBlocksPerCore(
+absl::StatusOr<int32_t> GpuKernel::GetMaxOccupiedBlocksPerCore(
     ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
   int32_t threads_per_block = threads.x * threads.y * threads.z;
   VLOG(0) << "Get kernel block occupancy: " << name_

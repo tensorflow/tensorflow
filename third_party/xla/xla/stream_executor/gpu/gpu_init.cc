@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
-tsl::Status ValidateGPUMachineManager() {
+absl::Status ValidateGPUMachineManager() {
   return MultiPlatformManager::PlatformWithName(GpuPlatformName()).status();
 }
 
@@ -33,7 +33,7 @@ Platform* GPUMachineManager() {
   // Cache this result, it's on the critical path for light outside compilation
   // (and probably other things as well).
   static Platform* platform = [&] {
-    tsl::StatusOr<Platform*> p =
+    absl::StatusOr<Platform*> p =
         MultiPlatformManager::PlatformWithName(GpuPlatformName());
     if (!p.ok()) {
       LOG(FATAL) << "Could not find Platform with name " << GpuPlatformName();

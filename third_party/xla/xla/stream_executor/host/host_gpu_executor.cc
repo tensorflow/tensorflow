@@ -25,12 +25,17 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_options.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/host/host_stream.h"
 #include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/mem.h"
 #include "tsl/platform/profile_utils/cpu_utils.h"
@@ -43,18 +48,18 @@ HostStream* AsHostStream(Stream* stream) {
   return dynamic_cast<HostStream*>(stream->implementation());
 }
 
-tsl::Status HostExecutor::Init(int device_ordinal,
-                               DeviceOptions device_options) {
+absl::Status HostExecutor::Init(int device_ordinal,
+                                DeviceOptions device_options) {
   auto it =
       device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
   if (it != device_options.non_portable_tags.end()) {
     if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
-      return tsl::errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
-          it->second);
+          it->second));
     }
   }
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
@@ -77,16 +82,16 @@ void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
   tsl::port::AlignedFree(mem->opaque());
 }
 
-tsl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
-                                             uint64_t size) {
+absl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                              uint64_t size) {
   memset(location->opaque(), 0, size);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
-                                            int value, uint64_t size) {
+absl::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                             int value, uint64_t size) {
   memset(location->opaque(), value, size);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 bool HostExecutor::Memcpy(Stream* stream, void* host_dst,
@@ -123,58 +128,58 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream* stream,
   return true;
 }
 
-tsl::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                                  uint64_t size) {
+absl::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
+                                   uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size]() { memset(gpu_mem, 0, size); });
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                 uint8 pattern, uint64_t size) {
+absl::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
+                                  uint8 pattern, uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                   uint32_t pattern, uint64_t size) {
+absl::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
+                                    uint32_t pattern, uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                            const void* host_src,
-                                            uint64_t size) {
+absl::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+                                             const void* host_src,
+                                             uint64_t size) {
   memcpy(gpu_dst->opaque(), host_src, size);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::SynchronousMemcpy(void* host_dst,
-                                            const DeviceMemoryBase& gpu_src,
-                                            uint64_t size) {
+absl::Status HostExecutor::SynchronousMemcpy(void* host_dst,
+                                             const DeviceMemoryBase& gpu_src,
+                                             uint64_t size) {
   memcpy(host_dst, gpu_src.opaque(), size);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
+absl::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
     DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64_t size) {
   memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-bool HostExecutor::HostCallback(Stream* stream,
-                                absl::AnyInvocable<tsl::Status() &&> callback) {
+bool HostExecutor::HostCallback(
+    Stream* stream, absl::AnyInvocable<absl::Status() &&> callback) {
   AsHostStream(stream)->EnqueueTaskWithStatus(std::move(callback));
   return true;
 }
@@ -214,30 +219,30 @@ static HostEvent* AsHostEvent(Event* event) {
   return static_cast<HostEvent*>(event->implementation());
 }
 
-tsl::Status HostExecutor::AllocateEvent(Event* /*event*/) {
-  return ::tsl::OkStatus();
+absl::Status HostExecutor::AllocateEvent(Event* /*event*/) {
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
-  return ::tsl::OkStatus();
+absl::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
+absl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask([notification]() {
     CHECK(!notification->HasBeenNotified());
     notification->Notify();
   });
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
+absl::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask(
       [notification]() { notification->WaitForNotification(); });
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 Event::Status HostExecutor::PollForEventStatus(Event* event) {
@@ -246,11 +251,11 @@ Event::Status HostExecutor::PollForEventStatus(Event* event) {
                                         : Event::Status::kPending;
 }
 
-tsl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
+absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
   return AsHostStream(stream)->BlockUntilDone();
 }
 
-tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
@@ -272,7 +277,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
 
 blas::BlasSupport* HostExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  tsl::StatusOr<PluginRegistry::BlasFactory> status =
+  absl::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(kHostPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve BLAS factory: "
@@ -285,7 +290,7 @@ blas::BlasSupport* HostExecutor::CreateBlas() {
 
 fft::FftSupport* HostExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  tsl::StatusOr<PluginRegistry::FftFactory> status =
+  absl::StatusOr<PluginRegistry::FftFactory> status =
       registry->GetFactory<PluginRegistry::FftFactory>(kHostPlatformId);
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "

@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -43,11 +44,11 @@ class TpuPlatformInterface : public stream_executor::Platform {
   static TpuPlatformInterface* GetRegisteredPlatform(
       bool initialize_platform = true, int num_tries = 5);
 
-  virtual tsl::Status Reset(bool only_tear_down, absl::string_view reason) = 0;
+  virtual absl::Status Reset(bool only_tear_down, absl::string_view reason) = 0;
 
-  tsl::Status Reset(absl::string_view reason) { return Reset(false, reason); }
+  absl::Status Reset(absl::string_view reason) { return Reset(false, reason); }
 
-  tsl::Status Reset() { return Reset(false, {}); }
+  absl::Status Reset() { return Reset(false, {}); }
 
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
 

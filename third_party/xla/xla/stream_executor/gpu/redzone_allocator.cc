@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "xla/stream_executor/device_memory.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "tsl/framework/allocator.h"
 #include "tsl/lib/math/math_util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -66,15 +66,13 @@ RedzoneAllocator::RedzoneAllocator(Stream* stream,
       memory_allocator_(memory_allocator),
       gpu_compilation_opts_(gpu_compilation_opts) {}
 
-tsl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
+absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
-    return tsl::Status(
-        absl::StatusCode::kResourceExhausted,
-        absl::StrFormat(
-            "Allocating %d bytes exceeds the memory limit of %d bytes.",
-            byte_size, GetMemoryLimitInBytes()));
+    return absl::ResourceExhaustedError(absl::StrFormat(
+        "Allocating %d bytes exceeds the memory limit of %d bytes.", byte_size,
+        GetMemoryLimitInBytes()));
   }
 
   int64_t rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
@@ -183,7 +181,7 @@ using ComparisonKernelT = TypedKernel<DeviceMemory<uint8_t>, uint8_t, uint64_t,
 // Check that redzones weren't overwritten on a host.
 //
 // Slower, but gives a more useful error message.
-static tsl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
+static absl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     DeviceMemoryBase redzone, DeviceMemoryBase user_allocation,
     absl::string_view name, Stream* stream, uint8_t redzone_pattern) {
   uint64_t size = redzone.size();
@@ -217,14 +215,14 @@ static tsl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
 // Run the redzone checker on the provided buffer redzone.
 //
 // Increment out_param if mismatch occurs.
-static tsl::Status RunRedzoneChecker(
+static absl::Status RunRedzoneChecker(
     Stream* stream, const DeviceMemory<uint8_t>& redzone,
     uint8_t redzone_pattern, const DeviceMemory<uint64_t>& out_param,
     const ComparisonKernelT& comparison_kernel) {
   StreamExecutor* executor = stream->parent();
 
   if (redzone.size() == 0) {
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t num_elements = redzone.size();
@@ -236,26 +234,27 @@ static tsl::Status RunRedzoneChecker(
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       ThreadDim(threads_per_block), BlockDim(block_count), comparison_kernel,
       redzone, redzone_pattern, redzone.size(), out_param));
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 // Since we reuse the same buffer for multiple checks, we re-initialize redzone
 // with a NaN pattern after a failed check.
 //
 // This function is blocking, since redzone failing is a rare event.
-static tsl::Status ReinitializeRedzone(Stream* stream, DeviceMemoryBase redzone,
-                                       uint8_t redzone_pattern) {
+static absl::Status ReinitializeRedzone(Stream* stream,
+                                        DeviceMemoryBase redzone,
+                                        uint8_t redzone_pattern) {
   absl::FixedArray<uint8_t> redzone_array(redzone.size());
   redzone_array.fill(redzone_pattern);
   stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 // Check redzones around the user allocation.
 //
 // Precondition: the memory pointed out by out_param is zeroed.
-static tsl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
+static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
     Stream* stream, DeviceMemoryBase memory,
     const DeviceMemory<uint64_t>& out_param,
     const ComparisonKernelT& comparison_kernel, int64_t user_allocation_size,
@@ -306,12 +305,12 @@ static tsl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   return RedzoneCheckStatus::OK();
 }
 
-tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
+absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
 #if GOOGLE_CUDA
   absl::Span<const uint8_t> compiled_ptx = {};
-  tsl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
+  absl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
       CompileGpuAsmOrGetCached(executor->device_ordinal(), redzone_checker_ptx,
                                gpu_compilation_opts_);
   if (compiled_ptx_or.ok()) {

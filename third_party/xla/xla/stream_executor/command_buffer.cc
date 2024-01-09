@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -44,7 +44,7 @@ void CommandBuffer::Deleter::operator()(
   if (owned) delete impl;
 }
 
-/*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Create(
+/*static*/ absl::StatusOr<CommandBuffer> CommandBuffer::Create(
     StreamExecutor* executor, Mode mode) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<internal::CommandBufferInterface> command_buffer,
@@ -54,9 +54,9 @@ void CommandBuffer::Deleter::operator()(
   return cmd;
 }
 
-/*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Trace(
-    StreamExecutor* executor, absl::AnyInvocable<tsl::Status(Stream*)> function,
-    Mode mode) {
+/*static*/ absl::StatusOr<CommandBuffer> CommandBuffer::Trace(
+    StreamExecutor* executor,
+    absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
   Stream stream(executor);
   if (stream.Init(); !stream.ok())
     return absl::InternalError(
@@ -65,9 +65,9 @@ void CommandBuffer::Deleter::operator()(
   return Trace(executor, &stream, std::move(function), mode);
 }
 
-/*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Trace(
+/*static*/ absl::StatusOr<CommandBuffer> CommandBuffer::Trace(
     StreamExecutor* executor, Stream* stream,
-    absl::AnyInvocable<tsl::Status(Stream*)> function, Mode mode) {
+    absl::AnyInvocable<absl::Status(Stream*)> function, Mode mode) {
   if (stream == nullptr)
     return absl::InvalidArgumentError(
         "Can't trace command buffer on a null stream");
@@ -108,7 +108,7 @@ internal::CommandBufferInterface* CommandBuffer::implementation() {
   return CommandBuffer(std::move(implementation));
 }
 
-/*static*/ tsl::Status CommandBuffer::Build(
+/*static*/ absl::Status CommandBuffer::Build(
     internal::CommandBufferInterface* implementation,
     const CommandBuffer::Builder& builder) {
   CommandBuffer command_buffer(implementation);
@@ -122,68 +122,70 @@ CommandBuffer::CommandBuffer(
 CommandBuffer::CommandBuffer(internal::CommandBufferInterface* implementation)
     : implementation_(implementation, {/*owned=*/false}) {}
 
-tsl::Status CommandBuffer::Barrier(StreamExecutor* executor) {
+absl::Status CommandBuffer::Barrier(StreamExecutor* executor) {
   return implementation_->Barrier(executor);
 }
 
-tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
-                                  const BlockDim& blocks, const Kernel& kernel,
-                                  const KernelArgs& args) {
+absl::Status CommandBuffer::Launch(const ThreadDim& threads,
+                                   const BlockDim& blocks, const Kernel& kernel,
+                                   const KernelArgs& args) {
   return implementation_->Launch(threads, blocks, kernel, args);
 }
 
-tsl::Status CommandBuffer::AddNestedCommandBuffer(const CommandBuffer& nested) {
+absl::Status CommandBuffer::AddNestedCommandBuffer(
+    const CommandBuffer& nested) {
   return implementation_->AddNestedCommandBuffer(nested);
 }
 
-tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
-                                                const DeviceMemoryBase& src,
-                                                uint64_t size) {
+absl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
+                                                 const DeviceMemoryBase& src,
+                                                 uint64_t size) {
   return implementation_->MemcpyDeviceToDevice(dst, src, size);
 }
 
-tsl::Status CommandBuffer::Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
-                                  size_t num_elements) {
+absl::Status CommandBuffer::Memset(DeviceMemoryBase* dst,
+                                   BitPattern bit_pattern,
+                                   size_t num_elements) {
   return implementation_->Memset(dst, bit_pattern, num_elements);
 }
 
-tsl::StatusOr<DeviceMemoryBase> CommandBuffer::Allocate(size_t bytes) {
+absl::StatusOr<DeviceMemoryBase> CommandBuffer::Allocate(size_t bytes) {
   return implementation_->Allocate(bytes);
 }
 
-tsl::Status CommandBuffer::If(StreamExecutor* executor, DeviceMemory<bool> pred,
-                              Builder then_builder) {
+absl::Status CommandBuffer::If(StreamExecutor* executor,
+                               DeviceMemory<bool> pred, Builder then_builder) {
   return implementation_->If(executor, pred, std::move(then_builder));
 }
 
-tsl::Status CommandBuffer::IfElse(StreamExecutor* executor,
-                                  DeviceMemory<bool> pred, Builder then_builder,
-                                  Builder else_builder) {
+absl::Status CommandBuffer::IfElse(StreamExecutor* executor,
+                                   DeviceMemory<bool> pred,
+                                   Builder then_builder, Builder else_builder) {
   return implementation_->IfElse(executor, pred, std::move(then_builder),
                                  std::move(else_builder));
 }
 
-tsl::Status CommandBuffer::Case(StreamExecutor* executor,
-                                DeviceMemory<int32_t> index,
-                                std::vector<Builder> branches) {
+absl::Status CommandBuffer::Case(StreamExecutor* executor,
+                                 DeviceMemory<int32_t> index,
+                                 std::vector<Builder> branches) {
   return implementation_->Case(executor, index, std::move(branches));
 }
 
-tsl::Status CommandBuffer::For(StreamExecutor* executor, int32_t num_iteration,
-                               DeviceMemory<int32_t> loop_counter,
-                               Builder body_builder) {
+absl::Status CommandBuffer::For(StreamExecutor* executor, int32_t num_iteration,
+                                DeviceMemory<int32_t> loop_counter,
+                                Builder body_builder) {
   return implementation_->For(executor, num_iteration, loop_counter,
                               std::move(body_builder));
 }
 
-tsl::Status CommandBuffer::While(StreamExecutor* executor,
-                                 DeviceMemory<bool> pred, Builder cond_builder,
-                                 Builder body_builder) {
+absl::Status CommandBuffer::While(StreamExecutor* executor,
+                                  DeviceMemory<bool> pred, Builder cond_builder,
+                                  Builder body_builder) {
   return implementation_->While(executor, pred, std::move(cond_builder),
                                 std::move(body_builder));
 }
 
-tsl::Status CommandBuffer::Free(DeviceMemoryBase dst) {
+absl::Status CommandBuffer::Free(DeviceMemoryBase dst) {
   return implementation_->Free(dst);
 }
 
@@ -195,8 +197,8 @@ CommandBuffer::State CommandBuffer::state() const {
   return implementation_->state();
 }
 
-tsl::Status CommandBuffer::Finalize() { return implementation_->Finalize(); }
+absl::Status CommandBuffer::Finalize() { return implementation_->Finalize(); }
 
-tsl::Status CommandBuffer::Update() { return implementation_->Update(); }
+absl::Status CommandBuffer::Update() { return implementation_->Update(); }
 
 }  // namespace stream_executor

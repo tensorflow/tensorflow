@@ -18,14 +18,14 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/status.h"
+#include "absl/status/status.h"
 
 namespace stream_executor {
 class Platform;
 
 // Initializes the GPU platform and returns OK if the GPU
 // platform could be initialized.
-tsl::Status ValidateGPUMachineManager();
+absl::Status ValidateGPUMachineManager();
 
 // Returns the GPU machine manager singleton, creating it and
 // initializing the GPUs on the machine if needed the first time it is

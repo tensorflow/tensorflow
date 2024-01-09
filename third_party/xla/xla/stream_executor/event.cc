@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/event.h"
 
+#include <cstdint>
+
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 
@@ -52,7 +54,7 @@ Event::Status Event::PollForStatus() {
   return stream_exec_->PollForEventStatus(this);
 }
 
-tsl::Status Event::WaitForEventOnExternalStream(std::intptr_t stream) {
+absl::Status Event::WaitForEventOnExternalStream(std::intptr_t stream) {
   return stream_exec_->WaitForEventOnExternalStream(stream, this);
 }
 

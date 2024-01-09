@@ -32,11 +32,11 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-tsl::StatusOr<blas::DataType> AsBlasDataType(xla::PrimitiveType dtype);
+absl::StatusOr<blas::DataType> AsBlasDataType(xla::PrimitiveType dtype);
 
-tsl::StatusOr<xla::PrimitiveType> AsXlaPrimitiveType(blas::DataType dtype);
+absl::StatusOr<xla::PrimitiveType> AsXlaPrimitiveType(blas::DataType dtype);
 
-tsl::StatusOr<blas::ComputationType> GetBlasComputationType(
+absl::StatusOr<blas::ComputationType> GetBlasComputationType(
     xla::PrimitiveType lhs_dtype, xla::PrimitiveType output_dtype,
     int64_t compute_precision);
 
@@ -141,20 +141,21 @@ struct BlasLt {
 
   struct MatmulPlan {
     template <typename A, typename B, typename C, typename D, typename Scale>
-    tsl::Status DoMatmul(Stream* stream, const HostOrDeviceScalar<Scale>& alpha,
-                         const DeviceMemory<A>& a, const DeviceMemory<B>& b,
-                         const HostOrDeviceScalar<Scale>& beta,
-                         const DeviceMemory<C>& c, DeviceMemory<D>& d,
-                         const MatmulAlgorithm& algorithm,
-                         ScratchAllocator& scratch_allocator,
-                         const DeviceMemory<C>& bias = {},
-                         const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
-                         const DeviceMemory<Scale>& a_scale = {},
-                         const DeviceMemory<Scale>& b_scale = {},
-                         const DeviceMemory<Scale>& c_scale = {},
-                         const DeviceMemory<Scale>& d_scale = {},
-                         const DeviceMemory<Scale>& d_amax = {},
-                         blas::ProfileResult* profile_result = nullptr) const {
+    absl::Status DoMatmul(Stream* stream,
+                          const HostOrDeviceScalar<Scale>& alpha,
+                          const DeviceMemory<A>& a, const DeviceMemory<B>& b,
+                          const HostOrDeviceScalar<Scale>& beta,
+                          const DeviceMemory<C>& c, DeviceMemory<D>& d,
+                          const MatmulAlgorithm& algorithm,
+                          ScratchAllocator& scratch_allocator,
+                          const DeviceMemory<C>& bias = {},
+                          const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
+                          const DeviceMemory<Scale>& a_scale = {},
+                          const DeviceMemory<Scale>& b_scale = {},
+                          const DeviceMemory<Scale>& c_scale = {},
+                          const DeviceMemory<Scale>& d_scale = {},
+                          const DeviceMemory<Scale>& d_amax = {},
+                          blas::ProfileResult* profile_result = nullptr) const {
       TF_RETURN_IF_ERROR(ValidateInputs(
           blas::ToDataType<Scale>::value, alpha.on_device(), beta.on_device(),
           blas::ToDataType<A>::value, blas::ToDataType<B>::value,
@@ -166,21 +167,22 @@ struct BlasLt {
     }
 
     template <typename A, typename B, typename C, typename D, typename Scale>
-    tsl::Status DoMatmul(Stream* stream, const HostOrDeviceScalar<Scale>& alpha,
-                         const DeviceMemory<A>& a, const DeviceMemory<B>& b,
-                         const HostOrDeviceScalar<Scale>& beta,
-                         const DeviceMemory<C>& c, DeviceMemory<D>& d,
-                         const MatmulAlgorithm& algorithm,
-                         ScratchAllocator& scratch_allocator,
-                         const DeviceMemory<C>& bias = {},
-                         const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
-                         blas::ProfileResult* profile_result = nullptr) const {
+    absl::Status DoMatmul(Stream* stream,
+                          const HostOrDeviceScalar<Scale>& alpha,
+                          const DeviceMemory<A>& a, const DeviceMemory<B>& b,
+                          const HostOrDeviceScalar<Scale>& beta,
+                          const DeviceMemory<C>& c, DeviceMemory<D>& d,
+                          const MatmulAlgorithm& algorithm,
+                          ScratchAllocator& scratch_allocator,
+                          const DeviceMemory<C>& bias = {},
+                          const DeviceMemoryBase& aux = DeviceMemory<uint8_t>{},
+                          blas::ProfileResult* profile_result = nullptr) const {
       return DoMatmul(stream, alpha, a, b, beta, c, d, algorithm,
                       scratch_allocator, bias, aux, {}, {}, {}, {}, {},
                       profile_result);
     }
 
-    virtual tsl::Status ExecuteOnStream(
+    virtual absl::Status ExecuteOnStream(
         Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
         DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
         DeviceMemoryBase bias_buffer,  // may be null
@@ -194,7 +196,7 @@ struct BlasLt {
     // Returns a list of supported algorithms for DoMatmul. The algorithms are
     // returned in the order of increasing estimated compute time according to
     // an internal heuristic.
-    virtual tsl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
+    virtual absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         size_t max_algorithm_count = 128,
         size_t max_workspace_size = 1ll << 32) const = 0;
 
@@ -204,16 +206,16 @@ struct BlasLt {
     // might be used internally by ExecuteOnStream in derived classes
     template <typename Scale, typename A, typename B = A, typename C = A,
               typename D = A>
-    tsl::Status DoMatmul(Stream* stream, xla::complex128 alpha,
-                         DeviceMemoryBase a, DeviceMemoryBase b, double beta,
-                         DeviceMemoryBase c, DeviceMemoryBase d,
-                         DeviceMemoryBase bias, DeviceMemoryBase aux,
-                         DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-                         DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-                         DeviceMemoryBase d_amax,
-                         const MatmulAlgorithm& algorithm,
-                         ScratchAllocator& scratch_allocator,
-                         blas::ProfileResult* profile_result) const {
+    absl::Status DoMatmul(Stream* stream, xla::complex128 alpha,
+                          DeviceMemoryBase a, DeviceMemoryBase b, double beta,
+                          DeviceMemoryBase c, DeviceMemoryBase d,
+                          DeviceMemoryBase bias, DeviceMemoryBase aux,
+                          DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+                          DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+                          DeviceMemoryBase d_amax,
+                          const MatmulAlgorithm& algorithm,
+                          ScratchAllocator& scratch_allocator,
+                          blas::ProfileResult* profile_result) const {
       Scale salpha;
       if constexpr (std::is_same_v<Scale, xla::complex64> ||
                     std::is_same_v<Scale, xla::complex128>) {
@@ -235,12 +237,12 @@ struct BlasLt {
     }
 
     // used internally by template DoMatmul function to validate inputs
-    virtual tsl::Status ValidateInputs(
+    virtual absl::Status ValidateInputs(
         blas::DataType scale_type, bool alpha_on_device, bool beta_on_device,
         blas::DataType A_type, blas::DataType B_type, blas::DataType C_type,
         blas::DataType D_type) const = 0;
 
-    virtual tsl::Status DoMatmul(
+    virtual absl::Status DoMatmul(
         Stream* stream, const void* alpha, DeviceMemoryBase a,
         DeviceMemoryBase b, const void* beta, DeviceMemoryBase c,
         DeviceMemoryBase d, const MatmulAlgorithm& algorithm,
@@ -253,17 +255,17 @@ struct BlasLt {
 
   using MatmulPlanPtr = std::unique_ptr<MatmulPlan>;
 
-  virtual tsl::Status Init() = 0;
+  virtual absl::Status Init() = 0;
 
-  virtual tsl::StatusOr<MatmulPlanPtr> GetMatmulPlan(
+  virtual absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(
       const GemmConfig& cfg, Epilogue epilogue) const = 0;
 
   static BlasLt* Get(const Stream* stream);
 
   // convenience function to create MatmulPlan directly using stream
-  static tsl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const Stream* stream,
-                                                    const GemmConfig& cfg,
-                                                    Epilogue epilogue);
+  static absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const Stream* stream,
+                                                     const GemmConfig& cfg,
+                                                     Epilogue epilogue);
 
   virtual ~BlasLt() {}
 };  // class BlasLt

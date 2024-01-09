@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout_util.h"
@@ -61,7 +62,7 @@ static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
     if (transfer_stream && transfer_stream != stream) {
       stream->ThenWaitFor(transfer_stream);
     }
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   } else {
     return transfer_manager->WriteTupleIndexTablesAsync(stream, result);
   }
@@ -113,7 +114,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
                 alias->ToString());
           }
         }
-        return ::tsl::OkStatus();
+        return absl::OkStatus();
       }));
 
   if (VLOG_IS_ON(3)) {

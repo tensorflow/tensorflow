@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/test.h"
 
@@ -34,7 +35,7 @@ TEST_F(StreamSearchTest, NoMatchBadPtr) {
   StreamExecutorConfig config;
   config.gpu_stream = bad_ptr;
 
-  tsl::StatusOr<StreamExecutor*> found_executor =
+  absl::StatusOr<StreamExecutor*> found_executor =
       GetPlatform()->GetExecutor(config);
 
   // No executor found.
@@ -42,7 +43,8 @@ TEST_F(StreamSearchTest, NoMatchBadPtr) {
 }
 
 TEST_F(StreamSearchTest, FoundPrevExecutor) {
-  tsl::StatusOr<StreamExecutor*> executor = GetPlatform()->ExecutorForDevice(0);
+  absl::StatusOr<StreamExecutor*> executor =
+      GetPlatform()->ExecutorForDevice(0);
   EXPECT_TRUE(executor.ok());
 
   Stream s(*executor);
@@ -57,7 +59,8 @@ TEST_F(StreamSearchTest, FoundPrevExecutor) {
   StreamExecutorConfig c;
   c.gpu_stream = gpu_ptr;
 
-  tsl::StatusOr<StreamExecutor*> found_executor = GetPlatform()->GetExecutor(c);
+  absl::StatusOr<StreamExecutor*> found_executor =
+      GetPlatform()->GetExecutor(c);
   EXPECT_TRUE(found_executor.ok());
   EXPECT_EQ(*found_executor, *executor);
 

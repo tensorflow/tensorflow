@@ -19,19 +19,19 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
 ExecutorCache::ExecutorCache() = default;
 ExecutorCache::~ExecutorCache() { DestroyAllExecutors(); }
 
-tsl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
+absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
     const StreamExecutorConfig& config, const ExecutorFactory& factory) {
   // In the fast path case, the cache already has an entry and we can just
   // return after Get() which only takes a shared lock and not a unique lock.
@@ -60,7 +60,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   }
 
   VLOG(2) << "building executor";
-  tsl::StatusOr<std::unique_ptr<StreamExecutor>> result = factory();
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> result = factory();
   if (!result.ok()) {
     VLOG(2) << "failed to get build executor: " << result.status();
     // If construction failed, leave the cache Entry around, but with a null
@@ -71,7 +71,7 @@ tsl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   return entry->configurations.back().second.get();
 }
 
-tsl::StatusOr<StreamExecutor*> ExecutorCache::Get(
+absl::StatusOr<StreamExecutor*> ExecutorCache::Get(
     const StreamExecutorConfig& config) {
   Entry* entry = nullptr;
   {

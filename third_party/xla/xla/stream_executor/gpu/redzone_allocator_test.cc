@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
@@ -30,12 +31,13 @@ namespace gpu {
 
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
-static void EXPECT_REDZONE_OK(tsl::StatusOr<RedzoneCheckStatus> status) {
+static void EXPECT_REDZONE_OK(absl::StatusOr<RedzoneCheckStatus> status) {
   EXPECT_TRUE(status.ok());
   EXPECT_TRUE(status.value().ok());
 }
 
-static void EXPECT_REDZONE_VIOLATION(tsl::StatusOr<RedzoneCheckStatus> status) {
+static void EXPECT_REDZONE_VIOLATION(
+    absl::StatusOr<RedzoneCheckStatus> status) {
   EXPECT_TRUE(status.ok());
   EXPECT_FALSE(status.value().ok());
 }

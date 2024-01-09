@@ -24,13 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -54,7 +54,7 @@ class CommandBufferInterface;
 class CommandBuffer {
  public:
   // Builder constructs nested command buffers owned by a parent command buffer.
-  using Builder = std::function<tsl::Status(CommandBuffer*)>;
+  using Builder = std::function<absl::Status(CommandBuffer*)>;
 
   ~CommandBuffer();
   CommandBuffer(CommandBuffer&&);
@@ -87,8 +87,8 @@ class CommandBuffer {
   //===--------------------------------------------------------------------===//
 
   // Creates a new empty command buffer on the given executor.
-  static tsl::StatusOr<CommandBuffer> Create(StreamExecutor* executor,
-                                             Mode mode = Mode::kPrimary);
+  static absl::StatusOr<CommandBuffer> Create(StreamExecutor* executor,
+                                              Mode mode = Mode::kPrimary);
 
   // Creates a new command buffer on the given executor by tracing `function`
   // invocation. All StreamExecutor operations on a Stream argument will be
@@ -100,16 +100,16 @@ class CommandBuffer {
   // default we construct traced command buffers in nested mode because the
   // primary use case for traced command buffers is to be inserted into primary
   // command buffers constructed with explicit APIs.
-  static tsl::StatusOr<CommandBuffer> Trace(
+  static absl::StatusOr<CommandBuffer> Trace(
       StreamExecutor* executor,
-      absl::AnyInvocable<tsl::Status(Stream*)> function,
+      absl::AnyInvocable<absl::Status(Stream*)> function,
       Mode mode = Mode::kNested);
 
   // Creates a new command buffer on the given executor by tracing `function`
   // invocation using a user provided stream that will be passed to `function`.
-  static tsl::StatusOr<CommandBuffer> Trace(
+  static absl::StatusOr<CommandBuffer> Trace(
       StreamExecutor* executor, Stream* stream,
-      absl::AnyInvocable<tsl::Status(Stream*)> function,
+      absl::AnyInvocable<absl::Status(Stream*)> function,
       Mode mode = Mode::kNested);
 
   //===--------------------------------------------------------------------===//
@@ -126,33 +126,33 @@ class CommandBuffer {
 
   // Adds an execution barrier to a command buffer: all commands added before a
   // barrier will complete before any of the commands added after a barrier.
-  tsl::Status Barrier(StreamExecutor* executor);
+  absl::Status Barrier(StreamExecutor* executor);
 
   // Adds a kernel launch command to the command buffer.
-  tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
-                     const Kernel& kernel, const KernelArgs& args);
+  absl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
+                      const Kernel& kernel, const KernelArgs& args);
 
   // Adds a nested command buffer to the command buffer.
-  tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested);
+  absl::Status AddNestedCommandBuffer(const CommandBuffer& nested);
 
   // Adds a device-to-device memory copy to the command buffer.
-  tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
-                                   const DeviceMemoryBase& src, uint64_t size);
+  absl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
+                                    const DeviceMemoryBase& src, uint64_t size);
 
   // Adds a memset node to the command buffer.
   using BitPattern = std::variant<uint8_t, uint16_t, uint32_t>;
-  tsl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
-                     size_t num_elements);
+  absl::Status Memset(DeviceMemoryBase* dst, BitPattern bit_pattern,
+                      size_t num_elements);
 
   //--------------------------------------------------------------------------//
   // Command buffer memory allocation API
   //--------------------------------------------------------------------------//
 
   // Adds a device memory allocation command to the command buffer.
-  tsl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes);
+  absl::StatusOr<DeviceMemoryBase> Allocate(size_t bytes);
 
   // This API free buffer that is allocated by Allocate command
-  tsl::Status Free(DeviceMemoryBase dst);
+  absl::Status Free(DeviceMemoryBase dst);
 
   //--------------------------------------------------------------------------//
   // Command buffer condtitional commands API
@@ -160,29 +160,29 @@ class CommandBuffer {
 
   // Adds a conditional operation that will execute a command buffer constructed
   // by `then_builder` if `pred` value is `true`.
-  tsl::Status If(StreamExecutor* executor, DeviceMemory<bool> pred,
-                 Builder then_builder);
+  absl::Status If(StreamExecutor* executor, DeviceMemory<bool> pred,
+                  Builder then_builder);
 
   // Adds a conditional operation that will execute a command buffer constructed
   // by `then_builder` if `pred` value is `true`, or a command buffer
   // constructed by `else_builder` if `pred` is `false`.
-  tsl::Status IfElse(StreamExecutor* executor, DeviceMemory<bool> pred,
-                     Builder then_builder, Builder else_builder);
+  absl::Status IfElse(StreamExecutor* executor, DeviceMemory<bool> pred,
+                      Builder then_builder, Builder else_builder);
 
   // Adds a conditional operation that will execute a command buffer constructed
   // by the `branches` builder at `index`. If `index` is out of range, then it
   // will run a conditional command buffer constructed by the last builder.
   //
   // See: https://github.com/openxla/stablehlo/blob/main/docs/spec.md#case
-  tsl::Status Case(StreamExecutor* executor, DeviceMemory<int32_t> index,
-                   std::vector<Builder> branches);
+  absl::Status Case(StreamExecutor* executor, DeviceMemory<int32_t> index,
+                    std::vector<Builder> branches);
 
   // Adds a conditional operation that will execute a command buffer constructed
   // by the `body_builder` exactly `num_iteration` times. This means the
   // condition is known at compile time (`num_iteration` < `loop_counter`), and
   // does not require a `cond_builder`.
-  tsl::Status For(StreamExecutor* executor, int32_t num_iteration,
-                  DeviceMemory<int32_t> loop_counter, Builder body_builder);
+  absl::Status For(StreamExecutor* executor, int32_t num_iteration,
+                   DeviceMemory<int32_t> loop_counter, Builder body_builder);
 
   // Adds a conditional operation that will execute a command buffer constructed
   // by the `cond_builder` that must update `pred` value, and then depending on
@@ -197,25 +197,25 @@ class CommandBuffer {
   //     body_builder()
   //     cond_builder()
   //
-  tsl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
-                    Builder cond_builder, Builder body_builder);
+  absl::Status While(StreamExecutor* executor, DeviceMemory<bool> pred,
+                     Builder cond_builder, Builder body_builder);
 
   //--------------------------------------------------------------------------//
 
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
-  tsl::Status Finalize();
+  absl::Status Finalize();
 
   // Begins command buffer update. Command buffer update should be finalized
   // before it can be executed.
-  tsl::Status Update();
+  absl::Status Update();
 
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
   template <typename... Params, typename... Args>
-  tsl::Status Launch(const TypedKernel<Params...>& kernel,
-                     const ThreadDim& threads, const BlockDim& blocks,
-                     Args... args);
+  absl::Status Launch(const TypedKernel<Params...>& kernel,
+                      const ThreadDim& threads, const BlockDim& blocks,
+                      Args... args);
 
   // Returns command buffer execution mode.
   Mode mode() const;
@@ -239,8 +239,8 @@ class CommandBuffer {
 
   // An adaptor for a command buffer builder that records commands into the
   // platform-specific implementation
-  static tsl::Status Build(internal::CommandBufferInterface* implementation,
-                           const CommandBuffer::Builder& builder);
+  static absl::Status Build(internal::CommandBufferInterface* implementation,
+                            const CommandBuffer::Builder& builder);
 
  private:
   explicit CommandBuffer(
@@ -266,12 +266,13 @@ class CommandBuffer {
 //===----------------------------------------------------------------------===//
 
 template <typename... Params, typename... Args>
-inline tsl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
-                                         const ThreadDim& threads,
-                                         const BlockDim& blocks, Args... args) {
+inline absl::Status CommandBuffer::Launch(const TypedKernel<Params...>& kernel,
+                                          const ThreadDim& threads,
+                                          const BlockDim& blocks,
+                                          Args... args) {
   auto kernel_args = PackKernelArgs(kernel, args...);
   TF_RETURN_IF_ERROR(Launch(threads, blocks, kernel, *kernel_args));
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace stream_executor

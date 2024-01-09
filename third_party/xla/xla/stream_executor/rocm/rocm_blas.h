@@ -137,13 +137,13 @@ class ROCMBlas : public blas::BlasSupport {
                               /*err_on_failure=*/true, args...);
   }
 
-  // Same as above, but returns tsl::Status.
+  // Same as above, but returns absl::Status.
   template <typename... Args>
-  tsl::Status DoBlasInternalStatus(Args... args) {
+  absl::Status DoBlasInternalStatus(Args... args) {
     if (!DoBlasInternal(args...)) {
-      return tsl::errors::Internal("Failed calling rocBLAS");
+      return absl::InternalError("Failed calling rocBLAS");
     }
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   template <typename FuncT, typename... Args>
@@ -156,7 +156,7 @@ class ROCMBlas : public blas::BlasSupport {
   // A helper allocation function to convert raw pointers memory layout to
   // strided flavor
   template <typename T>
-  tsl::Status AllocateStridedBuffer(
+  absl::Status AllocateStridedBuffer(
       const std::vector<typename RocBlasTypeConversionHelper<T>::mapped_type *>
           &raw_ptrs,
       int batch_count, uint64_t batch_stride,
@@ -184,7 +184,7 @@ class ROCMBlas : public blas::BlasSupport {
   // It will take advantage of the AllocateStridedBuffer subroutine to
   // reallocate the memory layout to be strided batched.
   template <typename T, typename FuncT>
-  tsl::Status DoBlasGemmBatchedInternal(
+  absl::Status DoBlasGemmBatchedInternal(
       FuncT rocblas_func, Stream *stream, blas::Transpose transa,
       blas::Transpose transb, uint64_t m, uint64 n, uint64 k, T alpha,
       DeviceMemorySlice<T> a_ptrs_to_wrappers, int lda,

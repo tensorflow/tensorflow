@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <array>
 #include <complex>
+#include <cstdint>
 #include <limits>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -75,13 +76,13 @@ bool SetStream(GpuExecutor *parent, cufftHandle plan, Stream *stream) {
 
 // Populates array of 32b integers from 64b integers, or an error if the
 // numbers don't fit in 32b (signed).
-tsl::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
+absl::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
     std::array<long long, 3> source, int32_t rank) {  // NOLINT
   std::array<int32_t, 3> downsized = {0};
   for (int32_t i = 0; i < rank; ++i) {
     if (source[i] > std::numeric_limits<int32_t>::max()) {
-      return tsl::errors::InvalidArgument(
-          source[i], " exceeds max 32b signed integer. Conversion failed.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          source[i], " exceeds max 32b signed integer. Conversion failed."));
     }
     downsized[i] = static_cast<int32_t>(source[i]);
   }
@@ -90,13 +91,13 @@ tsl::StatusOr<std::array<int32_t, 3>> Downsize64bArray(
 
 }  // namespace
 
-tsl::Status CUDAFftPlan::Initialize(
+absl::Status CUDAFftPlan::Initialize(
     GpuExecutor *parent, Stream *stream, int rank, uint64_t *elem_count,
     uint64_t *input_embed, uint64 input_stride, uint64 input_distance,
     uint64_t *output_embed, uint64 output_stride, uint64 output_distance,
     fft::Type type, int batch_count, ScratchAllocator *scratch_allocator) {
   if (IsInitialized()) {
-    return tsl::errors::Internal("cuFFT is already initialized.");
+    return absl::InternalError("cuFFT is already initialized.");
   }
   is_initialized_ = true;
   scratch_allocator_ = scratch_allocator;
@@ -127,44 +128,44 @@ tsl::Status CUDAFftPlan::Initialize(
                             1 /* = batch */);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to create cuFFT 1d plan: " << ret;
-            return tsl::errors::Internal("Failed to create cuFFT 1d plan.");
+            return absl::InternalError("Failed to create cuFFT 1d plan.");
           }
-          return ::tsl::OkStatus();
+          return absl::OkStatus();
         case 2:
           // cufftPlan2d
           ret = cufftPlan2d(&plan_, elem_count_[0], elem_count_[1],
                             CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to create cuFFT 2d plan: " << ret;
-            return tsl::errors::Internal("Failed to create cuFFT 2d plan.");
+            return absl::InternalError("Failed to create cuFFT 2d plan.");
           }
-          return ::tsl::OkStatus();
+          return absl::OkStatus();
         case 3:
           // cufftPlan3d
           ret = cufftPlan3d(&plan_, elem_count_[0], elem_count_[1],
                             elem_count_[2], CUDAFftType(type));
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to create cuFFT 3d plan: " << ret;
-            return tsl::errors::Internal("Failed to create cuFFT 3d plan.");
+            return absl::InternalError("Failed to create cuFFT 3d plan.");
           }
-          return ::tsl::OkStatus();
+          return absl::OkStatus();
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return tsl::errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "cufftPlan only takes rank 1, 2, or 3.");
       }
     } else {
       ret = cufftCreate(&plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to create cuFFT plan: " << ret;
-        return tsl::errors::Internal("Failed to create cuFFT plan.");
+        return absl::InternalError("Failed to create cuFFT plan.");
       }
       ret = cufftSetAutoAllocation(plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to set auto allocation for cuFFT plan: " << ret;
-        return tsl::errors::Internal(
+        return absl::InternalError(
             "Failed to set auto allocation for cuFFT plan.");
       }
       switch (rank) {
@@ -173,7 +174,7 @@ tsl::Status CUDAFftPlan::Initialize(
                                 /*batch=*/1, &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to make cuFFT 1d plan: " << ret;
-            return tsl::errors::Internal("Failed to make cuFFT 1d plan.");
+            return absl::InternalError("Failed to make cuFFT 1d plan.");
           }
           break;
         case 2:
@@ -181,7 +182,7 @@ tsl::Status CUDAFftPlan::Initialize(
                                 CUDAFftType(type), &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to make cuFFT 2d plan: " << ret;
-            return tsl::errors::Internal("Failed to make cuFFT 2d plan.");
+            return absl::InternalError("Failed to make cuFFT 2d plan.");
           }
           break;
         case 3:
@@ -190,14 +191,14 @@ tsl::Status CUDAFftPlan::Initialize(
                                 &scratch_size_bytes_);
           if (ret != CUFFT_SUCCESS) {
             LOG(ERROR) << "Failed to make cuFFT 3d plan: " << ret;
-            return tsl::errors::Internal("Failed to make cuFFT 3d plan.");
+            return absl::InternalError("Failed to make cuFFT 3d plan.");
           }
           break;
         default:
           LOG(ERROR) << "Invalid rank value for cufftPlan. "
                         "Requested 1, 2, or 3, given: "
                      << rank;
-          return tsl::errors::InvalidArgument(
+          return absl::InvalidArgumentError(
               "cufftPlan only takes rank 1, 2, or 3.");
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
@@ -219,19 +220,19 @@ tsl::Status CUDAFftPlan::Initialize(
           output_stride, output_distance, CUDAFftType(type), batch_count);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to create cuFFT batched plan: " << ret;
-        return tsl::errors::Internal("Failed to create cuFFT batched plan.");
+        return absl::InternalError("Failed to create cuFFT batched plan.");
       }
     } else {
       auto ret = cufftCreate(&plan_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to create cuFFT batched plan: " << ret;
-        return tsl::errors::Internal("Failed to create cuFFT batched plan.");
+        return absl::InternalError("Failed to create cuFFT batched plan.");
       }
       ret = cufftSetAutoAllocation(plan_, 0);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to set auto allocation for cuFFT batched plan: "
                    << ret;
-        return tsl::errors::Internal(
+        return absl::InternalError(
             "Failed to set auto allocation for cuFFT batched plan.");
       }
       ret = cufftMakePlanMany64(
@@ -242,18 +243,18 @@ tsl::Status CUDAFftPlan::Initialize(
           &scratch_size_bytes_);
       if (ret != CUFFT_SUCCESS) {
         LOG(ERROR) << "Failed to make cuFFT batched plan: " << ret;
-        return tsl::errors::Internal("Failed to make cuFFT batched plan.");
+        return absl::InternalError("Failed to make cuFFT batched plan.");
       }
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
   }
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
-                                    int rank, uint64_t *elem_count,
-                                    fft::Type type,
-                                    ScratchAllocator *scratch_allocator) {
+absl::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
+                                     int rank, uint64_t *elem_count,
+                                     fft::Type type,
+                                     ScratchAllocator *scratch_allocator) {
   return Initialize(parent_, stream, rank, elem_count,
                     /*input_embed=*/nullptr, /*input_stride=*/0,
                     /*input_distance=*/0,
@@ -261,7 +262,7 @@ tsl::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
                     /*output_distance=*/0, type, 1, scratch_allocator);
 }
 
-tsl::Status CUDAFftPlan::UpdateScratchAllocator(
+absl::Status CUDAFftPlan::UpdateScratchAllocator(
     Stream *stream, ScratchAllocator *scratch_allocator) {
   scratch_allocator_ = scratch_allocator;
 
@@ -277,9 +278,9 @@ tsl::Status CUDAFftPlan::UpdateScratchAllocator(
   cufftResult_t ret = cufftSetWorkArea(plan_, scratch_.opaque());
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "Failed to set work area for cuFFT plan: " << ret;
-    return tsl::errors::Internal("Failed to set work area for cuFFT plan.");
+    return absl::InternalError("Failed to set work area for cuFFT plan.");
   }
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 CUDAFftPlan::~CUDAFftPlan() {
@@ -314,7 +315,7 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
     uint64_t output_stride, uint64 output_distance, fft::Type type,
     bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) {
   std::unique_ptr<CUDAFftPlan> fft_plan_ptr{new CUDAFftPlan()};
-  tsl::Status status = fft_plan_ptr->Initialize(
+  absl::Status status = fft_plan_ptr->Initialize(
       parent_, stream, rank, elem_count, input_embed, input_stride,
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, scratch_allocator);
@@ -339,7 +340,7 @@ std::unique_ptr<fft::Plan> CUDAFft::CreateBatchedPlanWithScratchAllocator(
 void CUDAFft::UpdatePlanWithScratchAllocator(
     Stream *stream, fft::Plan *plan, ScratchAllocator *scratch_allocator) {
   CUDAFftPlan *cuda_fft_plan = dynamic_cast<CUDAFftPlan *>(plan);
-  tsl::Status status =
+  absl::Status status =
       cuda_fft_plan->UpdateScratchAllocator(stream, scratch_allocator);
   if (!status.ok()) {
     LOG(FATAL) << "Failed to update custom allocator for cufft plan: "
@@ -459,7 +460,7 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 }  // namespace gpu
 
 void initialize_cufft() {
-  tsl::Status status =
+  absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
           cuda::kCudaPlatformId, "cuFFT",
           [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {

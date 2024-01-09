@@ -18,14 +18,14 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/backend.h"
 #include "xla/service/stream_pool.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -38,7 +38,7 @@ namespace tpu {
 class TpuNodeContext final {
  public:
   template <typename T>
-  using StatusOr = tsl::StatusOr<T>;
+  using StatusOr = absl::StatusOr<T>;
 
   static StatusOr<std::unique_ptr<TpuNodeContext>> Create(int device_ordinal);
 
@@ -48,9 +48,9 @@ class TpuNodeContext final {
   }
   ~TpuNodeContext();
 
-  static tsl::Status CloseTpuHost();
+  static absl::Status CloseTpuHost();
 
-  static tsl::Status Initialize(int device_ordinal);
+  static absl::Status Initialize(int device_ordinal);
 
   static TpuPlatformInterface* platform();
 

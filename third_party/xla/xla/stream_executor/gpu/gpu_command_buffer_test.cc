@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -806,7 +805,7 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
       for (int i = 1; i < state.range(0); ++i) {
         CHECK_OK(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, b, b, b));
       }
-      return tsl::OkStatus();
+      return absl::OkStatus();
     };
 
     CHECK_OK(CommandBuffer::Trace(executor, launch_kernels, nested));

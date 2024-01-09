@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 
@@ -52,11 +52,11 @@ class GpuRuntime {
   // current device (and create it if it doesn't exist yet).
   //
   // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DRIVER.html#group__CUDART__DRIVER_1gaba6f8d01e745f0c8d8776ceb18be617
-  static tsl::StatusOr<GpuFunctionHandle> GetFuncBySymbol(void* symbol);
+  static absl::StatusOr<GpuFunctionHandle> GetFuncBySymbol(void* symbol);
 
   // Returns the Gpu Runtime version.
   // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART____VERSION.html#group__CUDART____VERSION_1g0e3952c7802fd730432180f1f4a6cdc6
-  static tsl::StatusOr<int32_t> GetRuntimeVersion();
+  static absl::StatusOr<int32_t> GetRuntimeVersion();
 };
 
 }  // namespace stream_executor::gpu

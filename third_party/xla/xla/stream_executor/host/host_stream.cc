@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
@@ -56,12 +57,12 @@ HostStream::~HostStream() {
 bool HostStream::EnqueueTask(absl::AnyInvocable<void() &&> task) {
   return EnqueueTaskWithStatus([task = std::move(task)]() mutable {
     std::move(task)();
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   });
 }
 
 bool HostStream::EnqueueTaskWithStatus(
-    absl::AnyInvocable<tsl::Status() &&> task) {
+    absl::AnyInvocable<absl::Status() &&> task) {
   CHECK(task != nullptr);
   absl::MutexLock lock(&mu_);
   work_queue_.push(std::move(task));
@@ -77,14 +78,14 @@ void HostStream::WorkLoop() {
   tsl::port::ScopedFlushDenormal flush;
   tsl::port::ScopedSetRound round(FE_TONEAREST);
   while (true) {
-    std::queue<absl::AnyInvocable<tsl::Status() &&>> queue;
+    std::queue<absl::AnyInvocable<absl::Status() &&>> queue;
     {
       absl::MutexLock lock(&mu_);
       mu_.Await(absl::Condition(this, &HostStream::WorkAvailable));
       std::swap(queue, work_queue_);
     }
     while (!queue.empty()) {
-      absl::AnyInvocable<tsl::Status()&&>& fn = queue.front();
+      absl::AnyInvocable<absl::Status() &&>& fn = queue.front();
       if (!fn) {
         return;
       }
@@ -94,15 +95,15 @@ void HostStream::WorkLoop() {
   }
 }
 
-tsl::Status HostStream::BlockUntilDone() {
+absl::Status HostStream::BlockUntilDone() {
   absl::Notification done;
-  tsl::Status status;
+  absl::Status status;
   EnqueueTask([&done, &status, this]() {
     // This task is always executed synchronously before 'status_' is updated
     // with the result of the task (always OK() in this case), so we don't need
     // to worry about locking access to 'status_'.
     status = status_;
-    status_ = ::tsl::OkStatus();
+    status_ = absl::OkStatus();
     done.Notify();
   });
   done.WaitForNotification();

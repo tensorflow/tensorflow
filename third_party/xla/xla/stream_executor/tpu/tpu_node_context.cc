@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-using tsl::StatusOr;
+using absl::StatusOr;
 
 /*static*/
 StatusOr<std::unique_ptr<TpuNodeContext>> TpuNodeContext::Create(
@@ -46,7 +46,7 @@ TpuNodeContext::~TpuNodeContext() {
 }
 
 /* static */
-tsl::Status TpuNodeContext::CloseTpuHost() {
+absl::Status TpuNodeContext::CloseTpuHost() {
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuNodeContext_CloseTpuHostFn(
       status.c_status);
@@ -54,7 +54,7 @@ tsl::Status TpuNodeContext::CloseTpuHost() {
 }
 
 /* static */
-tsl::Status TpuNodeContext::Initialize(int device_ordinal) {
+absl::Status TpuNodeContext::Initialize(int device_ordinal) {
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()->TpuNodeContext_InitializeFn(
       device_ordinal, status.c_status);
