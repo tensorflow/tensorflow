@@ -3894,6 +3894,12 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateState(
           Cast<HloRngGetAndUpdateStateInstruction>(instr));
+
+    case HloOpcode::kSend:
+      return EmitSendThunk(Cast<HloSendInstruction>(instr));
+    case HloOpcode::kSendDone:
+      return EmitSendDoneThunk(Cast<HloSendDoneInstruction>(instr));
+
     case HloOpcode::kSort:
       return EmitSort(Cast<HloSortInstruction>(instr));
     case HloOpcode::kWhile:
