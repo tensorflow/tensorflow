@@ -221,12 +221,6 @@ std::string ComputationLayoutConstraint::ToString() const {
                          layout_state_, computation_layout_.ToString());
 }
 
-LayoutAssignment::LayoutConstraints::LayoutConstraints(
-    HloComputation* computation, ComputationLayout* computation_layout,
-    int64_t priority)
-    : computation_(computation),
-      computation_constraint_(computation, computation_layout, priority) {}
-
 PointsToSet::BufferSet* LayoutAssignment::GetBufferSet(
     const HloInstruction* instruction) const {
   auto it = buffer_sets_cache_.find(instruction);
@@ -715,19 +709,23 @@ Status LayoutAssignment::AddMandatoryConstraints(
     } else if (instruction->opcode() == HloOpcode::kParameter) {
       if (reverse_computation_order_ ||
           (constraints->computation()->IsEntryComputation() &&
-           entry_computation_layout_->LayoutIsSet()) ||
+           entry_computation_layout_->AnyLayoutSet()) ||
           (conditional_mismatch_.count(constraints->computation()) == 0 &&
            constraints->computation_constraint().parameter_layout_is_set())) {
         const ShapeLayout& parameter_layout =
             constraints->computation_layout().parameter_layout(
                 instruction->parameter_number());
-        // Parameter layouts must match the respective layout in
-        // ComputationLayout, if there is one.
-        TF_RETURN_IF_ERROR(
-            SetInstructionLayout(parameter_layout.shape(), instruction));
-        if (reverse_computation_order_) {
-          TF_RETURN_IF_ERROR(PropagateParameterLayoutToUsers(
-              instruction, parameter_layout.shape(), this));
+        // Allow some paramter/result layouts to be unset in the entry
+        // computation.
+        if (parameter_layout.LayoutIsSet()) {
+          // Parameter layouts must match the respective layout in
+          // ComputationLayout, if there is one.
+          TF_RETURN_IF_ERROR(
+              SetInstructionLayout(parameter_layout.shape(), instruction));
+          if (reverse_computation_order_) {
+            TF_RETURN_IF_ERROR(PropagateParameterLayoutToUsers(
+                instruction, parameter_layout.shape(), this));
+          }
         }
       }
     } else if (IsLayoutConstrainedCustomCall(instruction)) {
@@ -927,7 +925,8 @@ Status LayoutAssignment::AddMandatoryConstraints(
         current_priority_ + kNumberOfPropagationRounds));
   } else if (reverse_computation_order_ ||
              (constraints->computation()->IsEntryComputation() &&
-              entry_computation_layout_->LayoutIsSet()) ||
+              entry_computation_layout_->AnyLayoutSet() &&
+              entry_computation_layout_->result_layout().LayoutIsSet()) ||
              current_priority_ > LayoutConstraint::kBeginningPriority) {
     const ShapeLayout* result_layout = constraints->ResultLayout();
     if (result_layout != nullptr) {
@@ -1680,14 +1679,17 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
       [&shape_layout, this, priority, user](
           const ShapeIndex& index,
           const PointsToSet::BufferList& buffers) -> Status {
-        if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index)) {
+        const auto& subshape =
+            ShapeUtil::GetSubshape(shape_layout.shape(), index);
+        if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index) &&
+            subshape.has_layout()) {
           for (const LogicalBuffer* buffer : buffers) {
             if (buffer->shape().IsArray() &&
                 (buffer->instruction()->opcode() != HloOpcode::kReduce ||
                  !buffer->instruction()->shape().IsTuple())) {
-              TF_RETURN_IF_ERROR(SetBufferLayout(
-                  ShapeUtil::GetSubshape(shape_layout.shape(), index).layout(),
-                  *buffer, /*mandatory=*/false, /*dfs=*/true, priority, user));
+              TF_RETURN_IF_ERROR(SetBufferLayout(subshape.layout(), *buffer,
+                                                 /*mandatory=*/false,
+                                                 /*dfs=*/true, priority, user));
             }
           }
         }
@@ -2202,7 +2204,8 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   }
   // Copy the root instruction's result if its layout does not match the result
   // layout constraint.
-  if (constraints.ResultLayout() != nullptr) {
+  if (constraints.ResultLayout() != nullptr &&
+      constraints.ResultLayout()->LayoutIsSet()) {
     // Layout assignment at this point only does minor-to-major assignment so
     // tiling info should be ignored here for comparison.
     VLOG(5) << "Computation result layout needs root copying\n";
@@ -2226,6 +2229,8 @@ Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
                 result_shape.layout().tiles().begin(),
                 result_shape.layout().tiles().end());
           }
+          subshape->mutable_layout()->set_element_size_in_bits(
+              result_shape.layout().element_size_in_bits());
         }
       };
       xla::ShapeUtil::ForEachMutableSubshape(
@@ -2250,7 +2255,7 @@ Status LayoutAssignment::CalculateComputationLayout(
     ShapeUtil::ForEachSubshape(
         operand->shape(), [this, &change, operand, update](
                               const Shape& subshape, const ShapeIndex& index) {
-          if (subshape.IsTuple()) {
+          if (subshape.IsTuple() || !subshape.has_layout()) {
             return;
           }
           auto param_layout = InferArrayLayout(operand, index);
@@ -2661,10 +2666,10 @@ StatusOr<bool> LayoutAssignment::Run(
   computation_layouts_.emplace(
       module->entry_computation(),
       new LayoutConstraints(entry,
-                            entry_computation_layout_->LayoutIsSet()
+                            entry_computation_layout_->AnyLayoutSet()
                                 ? entry_computation_layout_
                                 : nullptr,
-                            entry_computation_layout_->LayoutIsSet()
+                            entry_computation_layout_->AnyLayoutSet()
                                 ? LayoutConstraint::kGivenPriority
                                 : LayoutConstraint::kDefaultPriority));
   for (int64_t i = 0; i < kNumberOfPropagationRounds; ++i) {

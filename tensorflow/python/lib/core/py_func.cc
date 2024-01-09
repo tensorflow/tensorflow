@@ -403,7 +403,8 @@ class PyFuncOp : public OpKernel {
 
   bool eager_async_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PyFuncOp);
+  PyFuncOp(const PyFuncOp&) = delete;
+  void operator=(const PyFuncOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("PyFunc").Device(DEVICE_CPU), PyFuncOp);

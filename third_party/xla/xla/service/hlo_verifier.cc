@@ -160,6 +160,10 @@ Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (arity) {
     TF_RETURN_IF_ERROR(CheckOperandCount(hlo, *arity));
   }
+  if (!opts_.allow_unbounded_dynamism && hlo->shape().is_unbounded_dynamic()) {
+    return InvalidArgument("Unbounded dynamism is disabled for instruction: %s",
+                           hlo->ToString());
+  }
   return OkStatus();
 }
 
@@ -434,6 +438,7 @@ static Status CheckCommonAllGatherInvariants(HloInstruction* hlo,
                                                ag->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
+  TF_RET_CHECK(ag->operand_count() >= 1);
 
   int64_t shard_count;
   for (int64_t i = 0; i < ag->operand_count(); ++i) {
@@ -521,6 +526,7 @@ Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
                                                ars->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
   TF_RET_CHECK(ars->scatter_dimension() >= 0);
+  TF_RET_CHECK(ars->operand_count() >= 1);
 
   for (int64_t i = 0; i < ars->operand_count(); ++i) {
     TF_RET_CHECK(ars->scatter_dimension() < ars->operand(i)->shape().rank());
@@ -871,7 +877,8 @@ Status ShapeVerifier::HandleInfeed(HloInstruction* instruction) {
   // The output of infeed is a tuple containing the data value and a token.
   return CheckShape(infeed,
                     ShapeUtil::MakeTupleShape(
-                        {infeed->infeed_shape(), ShapeUtil::MakeTokenShape()}));
+                        {infeed->infeed_shape(), ShapeUtil::MakeTokenShape()}),
+                    /*only_compare_minor_to_major_in_layout=*/true);
 }
 
 Status ShapeVerifier::HandleOutfeed(HloInstruction* instruction) {
@@ -988,35 +995,7 @@ Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
-static bool IsStrictComparison(const HloComputation* cmp) {
-  const HloInstruction* root = cmp->root_instruction();
-  return Match(root, m::Compare(m::Parameter(0), m::Parameter(1))
-                         .WithComparisonDirection(ComparisonDirection::kGt)) ||
-         Match(root, m::Compare(m::Parameter(1), m::Parameter(0))
-                         .WithComparisonDirection(ComparisonDirection::kGt)) ||
-         Match(root, m::Compare(m::Parameter(0), m::Parameter(1))
-                         .WithComparisonDirection(ComparisonDirection::kLt)) ||
-         Match(root, m::Compare(m::Parameter(1), m::Parameter(0))
-                         .WithComparisonDirection(ComparisonDirection::kLt));
-}
-
 Status ShapeVerifier::HandleTopK(HloInstruction* hlo) {
-  HloComputation* compare = hlo->to_apply();
-  Shape compare_shape = compare->root_instruction()->shape();
-  if (!ShapeUtil::Compatible(compare_shape, ShapeUtil::MakeShape(PRED, {}))) {
-    return InternalError(
-        "The TopK compare computation shape does not lead to a scalar "
-        "predicate shape: %s",
-        StringifyShape(compare_shape));
-  }
-
-  TF_RETURN_IF_ERROR(CheckParameterCount(hlo, compare, 2));
-  if (!IsStrictComparison(compare)) {
-    // TODO(cheshire): Less strict restriction.
-    return InternalError(
-        "TopK HLO expects a strict comparison of the operands");
-  }
-
   return CheckShape(
       hlo, ShapeInference::InferTopKShape(hlo->operand(0)->shape(),
                                           Cast<HloTopKInstruction>(hlo)->k()));
@@ -2759,15 +2738,18 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
             operand_shape.rank() == result_shape.rank() &&
             operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
-          TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
+          Layout::Equal equal_predicate = Layout::Equal();
+          if (instruction->opcode() == HloOpcode::kConvert) {
+            // Convert instructions can change element_size_in_bits
+            equal_predicate.IgnoreElementSize();
+          }
+          TF_RET_CHECK(equal_predicate(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "
               << instruction->ToString() << " From " << result_shape << " To "
               << operand_shape;
         }
       }
     }
-    TF_RETURN_IF_ERROR(VerifyS4U4Usage(instruction));
-
     return OkStatus();
   }
 
@@ -2789,41 +2771,6 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
           << " sharding among instructions: \n"
           << common_sharding_inst->ToString() << "\n"
           << check_inst->ToString();
-    }
-    return OkStatus();
-  }
-
-  static Status VerifyS4U4Usage(HloInstruction* instruction) {
-    // TODO(b/259306620): Support S4/U4 operands in all instructions that
-    // support inputs of other integer dtypes. Currently only aim to use it in
-    // matmul and convolution op.
-    if (instruction->opcode() != HloOpcode::kDot &&
-        instruction->opcode() != HloOpcode::kConvolution &&
-        instruction->opcode() != HloOpcode::kConvert &&
-        instruction->opcode() != HloOpcode::kFusion &&
-        instruction->opcode() != HloOpcode::kBitcast &&
-        instruction->opcode() != HloOpcode::kCopy &&
-        instruction->opcode() != HloOpcode::kCopyStart &&
-        instruction->opcode() != HloOpcode::kCopyDone &&
-        instruction->opcode() != HloOpcode::kGetTupleElement &&
-        instruction->opcode() != HloOpcode::kTuple &&
-        instruction->opcode() != HloOpcode::kWhile &&
-        instruction->opcode() != HloOpcode::kCustomCall &&
-        instruction->opcode() != HloOpcode::kReshape &&
-        instruction->opcode() != HloOpcode::kDynamicSlice &&
-        instruction->opcode() != HloOpcode::kBitcastConvert &&
-        instruction->opcode() != HloOpcode::kSlice &&
-        instruction->opcode() != HloOpcode::kBroadcast &&
-        !(instruction->opcode() == HloOpcode::kCall &&
-          instruction->metadata().op_type() == "XlaCallModule") &&
-        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
-          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
-                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
-        })) {
-      return InvalidArgument(
-          "S4/U4 is currently only supported in matmul and convolution, but "
-          "got instruction with S4/U4 input: %s",
-          instruction->ToString());
     }
     return OkStatus();
   }
@@ -2874,14 +2821,18 @@ StatusOr<bool> HloVerifier::Run(
       TF_RETURN_IF_ERROR(module->schedule().Verify());
     }
 
-    TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
-        *module, [this](const Shape& shape) -> int64_t {
-          if (target_metadata_->GetVerifierOpts().IsLayoutSensitive()) {
-            return target_metadata_->GetVerifierOpts().ShapeSize(shape);
-          } else {
-            return 0;
-          }
-        }));
+    if (HloInstruction::IsThreadIncluded(
+            module->entry_computation()->execution_thread(),
+            execution_threads)) {
+      TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
+          *module, [this](const Shape& shape) -> int64_t {
+            if (target_metadata_->GetVerifierOpts().IsLayoutSensitive()) {
+              return target_metadata_->GetVerifierOpts().ShapeSize(shape);
+            } else {
+              return 0;
+            }
+          }));
+    }
 
     TF_RETURN_IF_ERROR(module->buffer_donor_config().Verify(*module));
     TF_RETURN_IF_ERROR(VerifyLayoutConstrainedAllReduce(*module));

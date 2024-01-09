@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -53,6 +54,8 @@ class GpuGraphSupport {
 
   static size_t allocated_gpu_graph_execs();
   static size_t alive_gpu_graph_execs();
+
+  static void TrimDeviceMemory(StreamExecutor* executor);
 
  private:
   // Global counters for the total number of allocated and alive gpu graph
@@ -87,11 +90,9 @@ class OwnedGpuGraphExec
   OwnedGpuGraphExec(OwnedGpuGraphExec&&) = default;
   OwnedGpuGraphExec& operator=(OwnedGpuGraphExec&&) = default;
 
-  enum class UpdateResult { kSuccess, kFallback };
-
   // Updates executable graph instance with a newly captured graph. Returns an
   // error if the new graph is not compatible (see `cudaGraphExecUpdate`).
-  tsl::StatusOr<UpdateResult> Update(OwnedGpuGraph graph);
+  tsl::Status Update(OwnedGpuGraph graph);
 
   // Launches captured graph on a given stream.
   tsl::Status Launch(stream_executor::Stream* stream);
@@ -114,8 +115,8 @@ tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph();
 // Adds a kernel node to the graph.
 tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
-    ThreadDim threads, BlockDim blocks, const KernelBase& kernel,
-    const KernelArgsArrayBase& args);
+    ThreadDim threads, BlockDim blocks, const Kernel& kernel,
+    const KernelArgs& args);
 
 // Adds a memory copy node to the graph.
 tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(

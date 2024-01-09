@@ -83,10 +83,6 @@ class Diagnostician {
       tsl::StatusOr<DriverVersion> dso_version,
       tsl::StatusOr<DriverVersion> kernel_version);
 
-  // Logs information about the dev nodes present on this machine: their
-  // existence, permissions, accessibility from this uid/gid.
-  static void LogDevNodeDiagnosticInformation();
-
   static std::string GetDevNodePath(int dev_node_ordinal);
 
   Diagnostician(const Diagnostician&) = delete;

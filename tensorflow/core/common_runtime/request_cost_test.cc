@@ -22,6 +22,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ::testing::ElementsAre;
+using ::testing::FieldsAre;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
@@ -53,13 +55,26 @@ TEST(RequestCostTest, RecordBatchMetrics) {
   RequestCost request_cost;
 
   request_cost.RecordBatchMetrics(RequestCost::BatchMetrics{
-      /*processed_size=*/8, /*input_size=*/8, /*padding_size=*/0});
+      /*processed_size=*/8,
+      /*input_size=*/8,
+      /*padding_size=*/0,
+      {{"gcu", absl::Milliseconds(80)}, {"tpu", absl::Milliseconds(160)}}});
   request_cost.RecordBatchMetrics(RequestCost::BatchMetrics{
-      /*processed_size=*/4, /*input_size=*/2, /*padding_size=*/1});
+      /*processed_size=*/4,
+      /*input_size=*/2,
+      /*padding_size=*/1,
+      {{"gcu", absl::Milliseconds(40)}, {"tpu", absl::Milliseconds(80)}}});
 
-  EXPECT_THAT(request_cost.GetBatchMetrics(),
-              testing::ElementsAre(testing::FieldsAre(8, 8, 0),
-                                   testing::FieldsAre(4, 2, 1)));
+  EXPECT_THAT(
+      request_cost.GetBatchMetrics(),
+      ElementsAre(
+          FieldsAre(8, 8, 0,
+                    UnorderedElementsAre(Pair("gcu", absl::Milliseconds(80)),
+                                         Pair("tpu", absl::Milliseconds(160)))),
+          FieldsAre(
+              4, 2, 1,
+              UnorderedElementsAre(Pair("gcu", absl::Milliseconds(40)),
+                                   Pair("tpu", absl::Milliseconds(80))))));
 }
 
 }  // namespace

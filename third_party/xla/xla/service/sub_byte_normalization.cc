@@ -15,30 +15,71 @@ limitations under the License.
 
 #include "xla/service/sub_byte_normalization.h"
 
+#include <cstdint>
+
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
 namespace {
 
-bool RemoveInt4SizeFromShape(Shape* shape) {
+// Updates the layout by setting element_size_in_bits to the appropriate value.
+// Returns true if the layout was changed.
+bool UpdateLayout(Layout* layout, PrimitiveType type,
+                  SubByteNormalization::Mode mode) {
+  auto set_element_size = [layout](int64_t element_size) {
+    if (layout->element_size_in_bits() != element_size) {
+      layout->set_element_size_in_bits(element_size);
+      return true;
+    }
+    return false;
+  };
+
+  switch (mode) {
+    case SubByteNormalization::REMOVE_ELEMENT_SIZE:
+      return set_element_size(0);
+    case SubByteNormalization::SET_ELEMENT_SIZE:
+      if (primitive_util::Is4BitType(type)) {
+        return set_element_size(4);
+      } else {
+        return set_element_size(0);
+      }
+  }
+}
+
+// Updates the shape by setting set_element_size_in_bits on the shape's layout.
+// Returns true if a layout was changed.
+bool UpdateShape(Shape* shape, SubByteNormalization::Mode mode) {
   if (shape->IsTuple()) {
     bool changed = false;
     for (int idx = 0; idx < shape->tuple_shapes_size(); ++idx) {
-      changed |= RemoveInt4SizeFromShape(shape->mutable_tuple_shapes(idx));
+      changed |= UpdateShape(shape->mutable_tuple_shapes(idx), mode);
     }
     return changed;
   }
-  if (shape->IsArray()) {
-    const int64_t element_size_in_bits = shape->layout().element_size_in_bits();
-    if (element_size_in_bits != 0 && element_size_in_bits < 8) {
-      shape->mutable_layout()->set_element_size_in_bits(0);
-      return true;
-    }
+  if (shape->IsArray() && shape->has_layout()) {
+    return UpdateLayout(shape->mutable_layout(), shape->element_type(), mode);
   }
   return false;
+}
+
+// Sets element_size_in_bits on a ShapeLayout's layout. Returns true if the
+// layout was changed.
+bool ProcessInputOrOutputLayout(ShapeLayout* shape_layout,
+                                SubByteNormalization::Mode mode) {
+  Shape shape = shape_layout->shape();
+  bool changed = UpdateShape(&shape, mode);
+  if (changed) {
+    TF_CHECK_OK(shape_layout->CopyLayoutFromShape(shape));
+  }
+  return changed;
 }
 
 }  // namespace
@@ -49,7 +90,7 @@ StatusOr<bool> SubByteNormalization::Run(
   bool changed = false;
   FunctionVisitor visitor([&](HloInstruction* hlo) -> Status {
     auto* shape = hlo->mutable_shape();
-    changed |= RemoveInt4SizeFromShape(shape);
+    changed |= UpdateShape(shape, mode_);
     return OkStatus();
   });
   for (HloComputation* computation :
@@ -60,16 +101,10 @@ StatusOr<bool> SubByteNormalization::Run(
   for (int param_no = 0; param_no < computation_layout->parameter_count();
        ++param_no) {
     auto* shape_layout = computation_layout->mutable_parameter_layout(param_no);
-    if (shape_layout->LayoutIsSet() && shape_layout->shape().IsArray()) {
-      Layout layout = shape_layout->layout();
-      const int64_t element_size_in_bits = layout.element_size_in_bits();
-      if (element_size_in_bits != 0 && element_size_in_bits < 8) {
-        layout.set_element_size_in_bits(0);
-        shape_layout->ResetLayout(layout);
-        changed = true;
-      }
-    }
+    changed |= ProcessInputOrOutputLayout(shape_layout, mode_);
   }
+  auto* output_layout = computation_layout->mutable_result_layout();
+  changed |= ProcessInputOrOutputLayout(output_layout, mode_);
   if (changed) {
     XLA_VLOG_LINES(2, "SubByteNormalization::Run() modified hlo_module:\n" +
                           module->ToString());

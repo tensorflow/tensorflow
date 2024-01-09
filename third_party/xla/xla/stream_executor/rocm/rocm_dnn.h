@@ -294,6 +294,21 @@ class MIOpenSupport : public dnn::DnnSupport {
       bool is_training, ScratchAllocator* reserve_space_allocator,
       ScratchAllocator* workspace_allocator) override;
 
+  bool DoBatchNormalizationForward(
+      Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+      const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const DeviceMemory<Eigen::bfloat16>& side_input,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
+      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+      DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+      DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+      bool is_training, ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator) override;
+
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
       const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
@@ -319,6 +334,21 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
       DeviceMemory<Eigen::half>* side_input_backprop,
       DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator) override;
+
+  bool DoBatchNormalizationBackward(
+      Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+      const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var,
+      const DeviceMemory<Eigen::bfloat16>& y,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      dnn::ActivationMode activation_mode,
+      DeviceMemory<Eigen::bfloat16>* x_backprop,
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+      DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
   tsl::Status DoConvolve(
@@ -349,71 +379,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
 
-  bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int8>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DoConvolveQuantized not supported by MIOpen";
-    return false;
-  }
-
-  bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int16>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DoConvolveQuantized not supported by MIOpen";
-    return false;
-  }
-
-  bool DoSeparableConvolve(
-      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor, int depth_multiplier,
-      const DeviceMemory<float>& first_weights,
-      const DeviceMemory<float>& second_weights,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "separable convolution not supported by MIOpen";
-    return false;
-  }
-
-  bool DoMatMul(Stream* stream, const DeviceMemory<float>& input_data,
-                const DeviceMemory<float>& weights,
-                const dnn::BatchDescriptor& input_dimensions,
-                const dnn::BatchDescriptor& output_dimensions,
-                DeviceMemory<float>* output_data) override;
-
-  bool DoMatMulQuantized(Stream* stream, const DeviceMemory<float>& input_data,
-                         const DeviceMemory<int8>& quantized_weights,
-                         const DeviceMemory<float>& weight_scales,
-                         const dnn::BatchDescriptor& input_dimensions,
-                         const dnn::BatchDescriptor& output_dimensions,
-                         DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DNN MatMulQuantized not supported by MIOpen";
-    return false;
-  }
-
-  bool DoMatMulQuantized(Stream* stream, const DeviceMemory<float>& input_data,
-                         const DeviceMemory<int16>& quantized_weights,
-                         const DeviceMemory<float>& weight_scales,
-                         const dnn::BatchDescriptor& input_dimensions,
-                         const dnn::BatchDescriptor& output_dimensions,
-                         DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DNN MatMulQuantized not supported by MIOpen";
-    return false;
-  }
-
   tsl::Status GetFusedMatmulRunners(
       bool use_cudnn_frontend, dnn::DataType input_type,
       dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
@@ -423,16 +388,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans) override;
-
-  bool DoBiasAdd(Stream* stream, const DeviceMemory<float>& input_data,
-                 const DeviceMemory<float>& biases,
-                 const dnn::BatchDescriptor& dimensions,
-                 DeviceMemory<float>* output_data) override;
-
-  bool DoActivate(Stream* stream, dnn::ActivationMode activation_mode,
-                  const dnn::BatchDescriptor& dimensions,
-                  const DeviceMemory<float>& input_data,
-                  DeviceMemory<float>* output_data, uint64_t options) override;
 
   tsl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
                             const dnn::PoolingDescriptor& pooling_dimensions,
@@ -471,33 +426,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data) override;
-
-  bool DoElementwiseOperate(
-      Stream* stream, dnn::ElementwiseOperation operation,
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data) override;
-
-  bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
-               const DeviceMemory<float>& input_data, int64_t left_pad,
-               int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
-               DeviceMemory<float>* output_data) override;
-
-  bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
-                 const DeviceMemory<float>& input_data, int64_t left_trim,
-                 int64_t right_trim, int64_t top_trim, int64_t bottom_trim,
-                 DeviceMemory<float>* output_data) override;
-
-  bool DoMemcpyD2HQuantized(Stream* stream,
-                            const DeviceMemory<float>& device_unquantized_src,
-                            dnn::QuantizedActivationMode mode, void* host_dst,
-                            int64_t size) override;
-
-  bool DoMemcpyH2DQuantized(
-      Stream* stream, const void* host_src, int64_t size,
-      dnn::QuantizedActivationMode mode,
-      DeviceMemory<float>* device_unquantized_dst) override;
 
   // Derives an output batch descriptor from an input batch and convolution
   // descriptors.
@@ -571,46 +499,48 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<U>* offset_backprop);
 
   template <class T>
-  bool DoRnnForwardImpl(Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
-                        const MIOpenRnnSequenceTensorDescriptor& input_desc,
-                        const DeviceMemory<T>& input_data,
-                        const MIOpenRnnStateTensorDescriptor& input_h_desc,
-                        const DeviceMemory<T>& input_h_data,
-                        const MIOpenRnnStateTensorDescriptor& input_c_desc,
-                        const DeviceMemory<T>& input_c_data,
-                        const DeviceMemory<T>& params,
-                        const MIOpenRnnSequenceTensorDescriptor& output_desc,
-                        DeviceMemory<T>* output_data,
-                        const MIOpenRnnStateTensorDescriptor& output_h_desc,
-                        DeviceMemory<T>* output_h_data,
-                        const MIOpenRnnStateTensorDescriptor& output_c_desc,
-                        DeviceMemory<T>* output_c_data, bool is_training,
-                        ScratchAllocator* reserve_space_allocator,
-                        ScratchAllocator* workspace_allocator);
+  tsl::Status DoRnnForwardImpl(
+      Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
+      const MIOpenRnnSequenceTensorDescriptor& input_desc,
+      const DeviceMemory<T>& input_data,
+      const MIOpenRnnStateTensorDescriptor& input_h_desc,
+      const DeviceMemory<T>& input_h_data,
+      const MIOpenRnnStateTensorDescriptor& input_c_desc,
+      const DeviceMemory<T>& input_c_data, const DeviceMemory<T>& params,
+      const MIOpenRnnSequenceTensorDescriptor& output_desc,
+      DeviceMemory<T>* output_data,
+      const MIOpenRnnStateTensorDescriptor& output_h_desc,
+      DeviceMemory<T>* output_h_data,
+      const MIOpenRnnStateTensorDescriptor& output_c_desc,
+      DeviceMemory<T>* output_c_data, bool is_training,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator,
+      dnn::ProfileResult* output_profile_result);
   template <class T>
-  bool DoRnnBackwardImpl(Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
-                         const MIOpenRnnSequenceTensorDescriptor& input_desc,
-                         const DeviceMemory<T>& input_data,
-                         const MIOpenRnnStateTensorDescriptor& input_h_desc,
-                         const DeviceMemory<T>& input_h_data,
-                         const MIOpenRnnStateTensorDescriptor& input_c_desc,
-                         const DeviceMemory<T>& input_c_data,
-                         const DeviceMemory<T>& params,
-                         const MIOpenRnnSequenceTensorDescriptor& output_desc,
-                         const DeviceMemory<T>& output_data,
-                         const MIOpenRnnStateTensorDescriptor& output_h_desc,
-                         const DeviceMemory<T>& output_h_data,
-                         const MIOpenRnnStateTensorDescriptor& output_c_desc,
-                         const DeviceMemory<T>& output_c_data,
-                         const DeviceMemory<T>& output_backprop_data,
-                         const DeviceMemory<T>& output_h_backprop_data,
-                         const DeviceMemory<T>& output_c_backprop_data,
-                         DeviceMemory<T>* input_backprop_data,
-                         DeviceMemory<T>* input_h_backprop_data,
-                         DeviceMemory<T>* input_c_backprop_data,
-                         DeviceMemory<T>* params_backprop_data,
-                         DeviceMemory<uint8>* reserve_space_data,
-                         ScratchAllocator* workspace_allocator);
+  tsl::Status DoRnnBackwardImpl(
+      Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
+      const MIOpenRnnSequenceTensorDescriptor& input_desc,
+      const DeviceMemory<T>& input_data,
+      const MIOpenRnnStateTensorDescriptor& input_h_desc,
+      const DeviceMemory<T>& input_h_data,
+      const MIOpenRnnStateTensorDescriptor& input_c_desc,
+      const DeviceMemory<T>& input_c_data, const DeviceMemory<T>& params,
+      const MIOpenRnnSequenceTensorDescriptor& output_desc,
+      const DeviceMemory<T>& output_data,
+      const MIOpenRnnStateTensorDescriptor& output_h_desc,
+      const DeviceMemory<T>& output_h_data,
+      const MIOpenRnnStateTensorDescriptor& output_c_desc,
+      const DeviceMemory<T>& output_c_data,
+      const DeviceMemory<T>& output_backprop_data,
+      const DeviceMemory<T>& output_h_backprop_data,
+      const DeviceMemory<T>& output_c_backprop_data,
+      DeviceMemory<T>* input_backprop_data,
+      DeviceMemory<T>* input_h_backprop_data,
+      DeviceMemory<T>* input_c_backprop_data,
+      DeviceMemory<T>* params_backprop_data,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator,
+      dnn::ProfileResult* output_profile_result);
 
   tsl::Status DoPrepareForConvolution(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
@@ -669,6 +599,16 @@ class MIOpenSupport : public dnn::DnnSupport {
   MIOpenSupport(const MIOpenSupport&) = delete;
   void operator=(const MIOpenSupport&) = delete;
 };
+
+// A helper function for the front frameworks.
+// e.g., TF(tensorflow/core/kernels/conv_ops.cc, fused_batch_norm_op.cc
+// and tensorflow/core/grappler/optimizers/generic_layout_optimizer.cc)
+// This will decide whether to use NHWC in Convolution/Batchnorm.
+// This mode can be faster in in FP16 workloads on gfx908 and beyond.
+// Requires ROCm 5.0+.
+// TODO (ROCm): Use autotune to choose between this mode and NCHW
+// when MIOpen has more optimized kernels.
+bool UseNhwcLayoutForRocm();
 
 }  // namespace gpu
 }  // namespace stream_executor

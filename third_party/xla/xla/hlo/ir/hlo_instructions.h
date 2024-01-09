@@ -460,7 +460,7 @@ class HloChannelInstruction : public HloInstruction {
 class HloTopKInstruction : public HloInstruction {
  public:
   HloTopKInstruction(const Shape& shape, HloInstruction* input, int64_t k,
-                     HloComputation* compare);
+                     bool largest);
 
   HloInstructionProto ToProto() const override;
 
@@ -470,6 +470,9 @@ class HloTopKInstruction : public HloInstruction {
 
   // Returns how many K-s does it need.
   int64_t k() const { return k_; }
+
+  // Returns whether the largest or smallest K values should be computed.
+  bool largest() const { return largest_; }
 
   void PrintExtraAttributesImpl(AttributePrinter& printer,
                                 const HloPrintOptions& options) const override;
@@ -484,6 +487,7 @@ class HloTopKInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   int64_t k_;
+  bool largest_;
 };
 
 class HloSendRecvInstruction : public HloChannelInstruction {

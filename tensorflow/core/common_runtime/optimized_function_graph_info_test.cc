@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/substitute.h"
 #include "third_party/protobuf/text_format.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -94,7 +95,7 @@ StatusOr<OptimizedFunctionGraphInfo> CreateSimpleOptimizedFunctionGraphInfo() {
   TF_RETURN_IF_ERROR(status);
 
   // Create a simple library with one function.
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_RETURN_IF_ERROR(lib_def.AddFunctionDef(test::function::NonZero()));
 
   // Construct an OptimizedFunctionGraphInfo.

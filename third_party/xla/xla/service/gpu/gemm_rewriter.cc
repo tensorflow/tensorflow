@@ -11,13 +11,15 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-==============================================================================*/
+=
+=============================================================================*/
 
 #include "xla/service/gpu/gemm_rewriter.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -42,10 +44,14 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -237,19 +243,21 @@ bool IsSupportedF8Pattern(
   auto use_spmd_partitioning = [](const HloInstruction *instr) -> bool {
     return instr->GetModule()->config().use_spmd_partitioning();
   };
+
   for (int i = 3; i < subgraph.size(); ++i) {
     // The remaining instructions must be commutative with dequantization.
     // Bitcast, broadcast, copy, dynamic-slice, pad, reshape, select, slice,
-    // all-gather, all-to-all and collective-permute instructions are supported.
-    // Specifically, the all-gather, all-to-all and collective-permute
-    // operations are permitted only in SPMD cases since the optimization cannot
-    // be guaranteed to be applied to all replicas in the MPMD scenario.
+    // transpose, all-gather, all-to-all and collective-permute instructions are
+    // supported. Specifically, the all-gather, all-to-all and
+    // collective-permute operations are permitted only in SPMD cases since the
+    // optimization cannot be guaranteed to be applied to all replicas in the
+    // MPMD scenario.
     if (!Match(
             subgraph[i].first,
             m::AnyOf<HloInstruction>(
                 m::Bitcast().WithPredicate(preserves_element_type),
                 m::Broadcast(), m::Copy(), m::DynamicSlice(), m::Pad(),
-                m::Reshape(), m::Select(), m::Slice(),
+                m::Reshape(), m::Select(), m::Slice(), m::Transpose(),
                 m::AllGather().WithPredicate(use_spmd_partitioning),
                 m::AllToAll().WithPredicate(use_spmd_partitioning),
                 m::CollectivePermute().WithPredicate(use_spmd_partitioning)))) {
@@ -465,7 +473,7 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 // when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterVisitor(se::GpuComputeCapability gpu_version)
+  explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version)
       : gpu_version_(gpu_version) {}
 
   Status HandleDot(HloInstruction *instr) override {
@@ -485,6 +493,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     *gemm_backend_config.mutable_dot_dimension_numbers() =
         instr->dot_dimension_numbers();
     *gemm_backend_config.mutable_precision_config() = instr->precision_config();
+
+    HloInstruction *lhs = instr->mutable_operand(0);
+    HloInstruction *rhs = instr->mutable_operand(1);
+    auto attributes = instr->frontend_attributes().map();
+    gemm_backend_config.set_grad_x(attributes["grad_x"] == "true");
+    gemm_backend_config.set_grad_y(attributes["grad_y"] == "true");
+
+    int64_t lhs_batch_dims_size =
+        instr->dot_dimension_numbers().lhs_batch_dimensions_size();
+    int64_t lhs_stride = lhs->shape().dimensions(lhs_batch_dims_size) *
+                         lhs->shape().dimensions(lhs_batch_dims_size + 1);
+    int64_t rhs_stride = rhs->shape().dimensions(lhs_batch_dims_size) *
+                         rhs->shape().dimensions(lhs_batch_dims_size + 1);
+
+    gemm_backend_config.set_lhs_stride(lhs_stride);
+    gemm_backend_config.set_rhs_stride(rhs_stride);
 
     // First try to match the fp8 gemm pattern.
     TF_ASSIGN_OR_RETURN(bool supported_by_cublaslt,
@@ -571,10 +595,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (Match(instr, m::MultiplyAnyOrder(
                          m::AnyOf<HloInstruction>(
                              m::Slice(&slice_or_bitcast,
-                                      CublasLtMatmul(&existing_gemm)),
+                                      CublasLtMatmulMaybeF8(&existing_gemm)),
                              m::Bitcast(&slice_or_bitcast,
-                                        CublasLtMatmul(&existing_gemm)),
-                             CublasLtMatmul(&existing_gemm)),
+                                        CublasLtMatmulMaybeF8(&existing_gemm)),
+                             CublasLtMatmulMaybeF8(&existing_gemm)),
                          m::Op(&cdf).WithOneUser())) &&
         Match(cdf,
               m::MultiplyAnyOrder(
@@ -1582,13 +1606,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // supports. Figure out the computeType and scaleType.
     if (!absl::c_linear_search(supported_type, output_type)) return false;
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
-                        AsBlasDataType(output_type));
+                        se::gpu::AsBlasDataType(output_type));
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        GetBlasComputationType(
+                        se::gpu::GetBlasComputationType(
                             a_dtype, output_type,
                             stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
-        cublas_lt::GetScaleType(output_dtype, compute_type);
+        se::gpu::GetScaleType(output_dtype, compute_type);
 
     using se::blas::ComputationType;
     using se::blas::DataType;
@@ -1670,15 +1694,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // cublasLt has a defined set of combinations of types that it supports.
     // Figure out the computeType and scaleType.
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
-                        AsBlasDataType(output_type));
+                        se::gpu::AsBlasDataType(output_type));
     int max_precision = *absl::c_max_element(
         backend_config.precision_config().operand_precision());
     TF_ASSIGN_OR_RETURN(
         const se::blas::ComputationType compute_type,
-        GetBlasComputationType(a_dtype, instr.shape().element_type(),
-                               max_precision));
+        se::gpu::GetBlasComputationType(a_dtype, instr.shape().element_type(),
+                                        max_precision));
     se::blas::DataType scale_type =
-        cublas_lt::GetScaleType(output_dtype, compute_type);
+        se::gpu::GetScaleType(output_dtype, compute_type);
 
     using se::blas::ComputationType;
     using se::blas::DataType;
@@ -1798,7 +1822,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
             dot_dims.rhs_contracting_dimensions(),
             /*output_shape=*/instr.shape(), gemm_backend_config.alpha_real(),
             gemm_backend_config.alpha_imag(), gemm_backend_config.beta(),
-            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision));
+            /*algorithm*/ std::nullopt, se::blas::kDefaultComputePrecision,
+            gemm_backend_config.grad_x(), gemm_backend_config.grad_y()));
 
     if (matrix_name == "lhs" || matrix_name == "a") {
       return gemm_config.lhs_layout.order == MatrixLayout::Order::kColumnMajor;
@@ -1846,12 +1871,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(bool output_is_column_major,
                         MatrixIsColumnMajor(instr, gemm_backend_config));
 
-    if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
-      auto rocm_compute_capability_ =
-          std::get<se::RocmComputeCapability>(gpu_version_);
-
-      // as of ROCm 5.5, hipblaslt only supports MI200.
-      if (rocm_compute_capability_.gcn_arch_name().substr(0, 6) != "gfx90a") {
+    if (auto isrocm = std::get_if<se::RocmComputeCapability>(&gpu_version_);
+        isrocm) {
+      if (!isrocm->has_hipblaslt()) {
         return false;
       }
     }
@@ -1911,7 +1933,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // Turns an F8 dot into an F16 dot, converting operands to F16 and
   // converting the output back to F8.
   StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
-    DCHECK(IsF8Type(instr));
     DCHECK(IsF8Type(instr->operand(0)));
     DCHECK(IsF8Type(instr->operand(1)));
 
@@ -1925,22 +1946,90 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(instr->ReplaceOperandWith(i, convert));
     }
 
-    // Clone instruction and convert output to F8
-    Shape output_f16_shape = instr->shape();
-    output_f16_shape.set_element_type(F16);
-    HloInstruction *f16_dot =
-        instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
-    HloInstruction *convert_to_f8 = instr->AddInstruction(
-        HloInstruction::CreateConvert(instr->shape(), f16_dot));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
-    return f16_dot;
+    // If output is F8, change output to F16 and then convert it back to F8
+    if (IsF8Type(instr)) {
+      Shape output_f16_shape = instr->shape();
+      output_f16_shape.set_element_type(F16);
+      HloInstruction *f16_dot =
+          instr->AddInstruction(instr->CloneWithNewShape(output_f16_shape));
+      HloInstruction *convert_to_f8 = instr->AddInstruction(
+          HloInstruction::CreateConvert(instr->shape(), f16_dot));
+      TF_RETURN_IF_ERROR(ReplaceInstruction(instr, convert_to_f8));
+      return f16_dot;
+    } else {
+      return instr;
+    }
   }
+};
+
+// Rewriter that adds a workspace to legacy cuBLAS custom calls. We run it
+// separately after gemm rewriter, so that we can do pattern matching without
+// having to match output tuples.
+class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
+ public:
+  explicit GemmWorkspaceRewriteVisitor(
+      const se::GpuComputeCapability &gpu_version)
+      : gpu_version_(gpu_version) {}
+
+  Status HandleCustomCall(HloInstruction *instr) override {
+    if (instr->custom_call_target() != kGemmCallTarget ||
+        !instr->shape().IsArray()) {
+      return OkStatus();
+    }
+
+    auto *cuda_cc = std::get_if<se::CudaComputeCapability>(&gpu_version_);
+
+    // Pass a user-managed workspace to legacy cuBLAS operations, as
+    // otherwise cuBLAS will use its own internal pool which will be competing
+    // with XLA allocator for device memory.
+    int64_t workspace = cuda_cc == nullptr ? GemmConfig::kDefaultWorkspace
+                        : cuda_cc->IsAtLeastHopper()
+                            ? GemmConfig::kHopperWorkspace
+                            : GemmConfig::kDefaultWorkspace;
+
+    // We do not know the workspace size required by cuBLAS, but we can guess
+    // that in a worst case cuBLAS will transpose all operands into tiled
+    // layout optimal for the tensor cores. It doesn't make sense to allocate a
+    // larger workspace.
+    //
+    // TODO(ezhulenev): This is not based on any measurement, just a common
+    // sense, we should tweak it to find the minimal workspace size.
+    int64_t operands_byte_size = 0;
+    for (auto &operand : instr->operands()) {
+      operands_byte_size += ShapeUtil::ByteSizeOf(operand->shape());
+    }
+    workspace = std::min(workspace, operands_byte_size);
+
+    // Append workspace buffer to instruction outputs.
+    std::vector<Shape> output_shapes = {instr->shape()};
+    output_shapes.emplace_back(ShapeUtil::MakeShape(S8, {workspace}));
+    Shape output_shape = ShapeUtil::MakeTupleShape(output_shapes);
+
+    // Clone custom call with a new shape.
+    HloInstruction *new_call = instr->AddInstruction(
+        instr->CloneWithNewOperands(output_shape, instr->operands()));
+
+    // Update operand aliasing if it was a fused gemm with aliased output.
+    auto *custom_call = xla::Cast<HloCustomCallInstruction>(new_call);
+    if (!custom_call->output_to_operand_aliasing().empty()) {
+      custom_call->set_output_to_operand_aliasing({{{0}, {2, {}}}});
+    }
+
+    HloInstruction *get_output = instr->AddInstruction(
+        HloInstruction::CreateGetTupleElement(new_call, 0));
+    return ReplaceInstruction(instr, get_output);
+  }
+
+ private:
+  se::GpuComputeCapability gpu_version_;
 };
 
 StatusOr<bool> RunOnComputation(HloComputation *computation,
                                 se::GpuComputeCapability gpu_version) {
   GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
+  GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
+  TF_RETURN_IF_ERROR(computation->Accept(&workspace_visitor));
   return visitor.changed();
 }
 

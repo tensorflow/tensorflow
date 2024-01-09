@@ -177,7 +177,7 @@ void GetXPlaneHloModuleInfo(
 
 }  // namespace
 
-Status ConvertXplaneToProfiledInstructionsProto(
+Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto) {
   // Find the xplane files for each host under logdir.
@@ -198,7 +198,14 @@ Status ConvertXplaneToProfiledInstructionsProto(
     }
   }
 
-  // Gets the duration information for each hlo.
+  return ConvertXplaneToProfiledInstructionsProto(xspaces,
+                                                  profiled_instructions_proto);
+}
+
+Status ConvertXplaneToProfiledInstructionsProto(
+    std::vector<tensorflow::profiler::XSpace> xspaces,
+    tensorflow::profiler::ProfiledInstructionsProto*
+        profiled_instructions_proto) {
   absl::flat_hash_map<std::string, HloLatencyInfo> hlo_latency_info;
   absl::flat_hash_map<std::string, std::string> hlo_module_info;
   // Iterate through each host.

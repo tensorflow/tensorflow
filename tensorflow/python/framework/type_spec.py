@@ -33,7 +33,6 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import core as core_types
 from tensorflow.python.types import internal
 from tensorflow.python.types import trace
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -1057,6 +1056,3 @@ def register_type_spec_from_value_converter(type_object,
   _, type_object = tf_decorator.unwrap(type_object)
   _TYPE_CONVERSION_FUNCTION_REGISTRY.append(
       (type_object, converter_fn, allow_subclass))
-
-
-_pywrap_utils.RegisterType("TypeSpec", TypeSpec)

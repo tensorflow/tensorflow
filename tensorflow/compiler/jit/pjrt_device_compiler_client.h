@@ -71,8 +71,14 @@ class PjRtDeviceCompilerClient
  private:
   xla::PjRtClient* const client_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PjRtDeviceCompilerClient);
+  PjRtDeviceCompilerClient(const PjRtDeviceCompilerClient&) = delete;
+  void operator=(const PjRtDeviceCompilerClient&) = delete;
 };
+
+// Generates CompileOptions for PJRT compilation.
+xla::CompileOptions GetPjRtCompileOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result);
 
 }  // namespace tensorflow
 

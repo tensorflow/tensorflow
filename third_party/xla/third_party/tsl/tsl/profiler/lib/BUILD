@@ -1,8 +1,12 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl/platform:build_config_root.bzl", "if_static")
 load("//tsl:tsl.default.bzl", "filegroup")
 load("//tsl:tsl.bzl", "if_not_android", "set_external_visibility")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
+load(
+    "//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load(
     "//tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
@@ -252,8 +256,8 @@ cc_library(
         "//tsl/platform:macros",
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
-    ] + if_not_android([
-        "//tsl/profiler/backends/cpu:annotation_stack",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",  # NVTX headers
     ]),
 )
 

@@ -705,8 +705,8 @@ mlir::LogicalResult UpdateLayoutsForOp(
 
 mlir::LogicalResult InsertDTensorLayoutOps(
     mlir::OpBuilder& builder,
-    const llvm::DenseMap<mlir::Value, Layout>& merged_layouts) {
-  for (const auto& merged_layout : merged_layouts) {
+    llvm::DenseMap<mlir::Value, Layout>& merged_layouts) {
+  for (auto& merged_layout : merged_layouts) {
     // merged_layout is a pair of mlir::Value and Layout.
     // If there is only one user of the Value and that user is a DTensorLayout
     // op, then we can skip creating the op as the layout is already there. Note

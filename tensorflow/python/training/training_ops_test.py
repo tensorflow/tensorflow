@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.learning.training_ops."""
+"""Tests for tensorflow.ops.gen_training_ops."""
 
 import itertools
 import threading
@@ -26,12 +26,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.test_util import TensorFlowTestCase
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
-from tensorflow.python.training import training_ops
 
 
 class TrainingOpsTest(TensorFlowTestCase):
@@ -56,7 +56,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       var = variable_v1.VariableV1(x)
       self.evaluate(variables.global_variables_initializer())
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
-      apply_sgd = training_ops.apply_gradient_descent(var, alpha, delta)
+      apply_sgd = gen_training_ops.apply_gradient_descent(var, alpha, delta)
       out = self.evaluate(apply_sgd)
       self.assertShapeEqual(out, apply_sgd)
       self.assertAllCloseAccordingToType(x - alpha * delta, out)
@@ -79,7 +79,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
-      apply_adagrad = training_ops.apply_adagrad(var, accum, lr, grad)
+      apply_adagrad = gen_training_ops.apply_adagrad(var, accum, lr, grad)
       out = self.evaluate(apply_adagrad)
       self.assertShapeEqual(out, apply_adagrad)
       self.assertAllCloseAccordingToType(x - lr * grad * (y + grad * grad)**
@@ -104,8 +104,8 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
-      apply_ftrl = training_ops.apply_ftrl(var, accum, linear, grad, lr, l1, l2,
-                                           lr_power)
+      apply_ftrl = gen_training_ops.apply_ftrl(var, accum, linear, grad, lr, l1,
+                                               l2, lr_power)
       out = self.evaluate(apply_ftrl)
       self.assertShapeEqual(out, apply_ftrl)
       accum_update = y + grad * grad
@@ -150,7 +150,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
       apply_ftrl = (
-          training_ops.apply_ftrl(
+          gen_training_ops.apply_ftrl(
               var,
               accum,
               linear,
@@ -232,7 +232,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
-      sparse_apply_adagrad = training_ops.sparse_apply_adagrad(
+      sparse_apply_adagrad = gen_training_ops.sparse_apply_adagrad(
           var, accum, lr, grad,
           constant_op.constant(indices, self._toType(indices.dtype)))
       out = self.evaluate(sparse_apply_adagrad)
@@ -264,7 +264,7 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.evaluate(variables.global_variables_initializer())
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
-      sparse_apply_ftrl = training_ops.sparse_apply_ftrl(
+      sparse_apply_ftrl = gen_training_ops.sparse_apply_ftrl(
           var,
           accum,
           linear,
@@ -304,7 +304,7 @@ class TrainingOpsTest(TensorFlowTestCase):
 
       self.assertAllCloseAccordingToType(x, self.evaluate(var))
       sparse_apply_ftrl = (
-          training_ops.sparse_apply_ftrl(
+          gen_training_ops.sparse_apply_ftrl(
               var,
               accum,
               linear,
@@ -440,9 +440,9 @@ class TrainingOpsTest(TensorFlowTestCase):
       self.assertAllCloseAccordingToType(var, self.evaluate(var_t))
       new_var, _, _ = self._adamUpdateNumpy(var, grad, t, m, v, lr, beta1,
                                             beta2, epsilon)
-      apply_adam = training_ops.apply_adam(var_t, m_t, v_t, beta1_power_t,
-                                           beta2_power_t, lr_t, beta1_t,
-                                           beta2_t, epsilon_t, grad)
+      apply_adam = gen_training_ops.apply_adam(var_t, m_t, v_t, beta1_power_t,
+                                               beta2_power_t, lr_t, beta1_t,
+                                               beta2_t, epsilon_t, grad)
       out = self.evaluate(apply_adam)
       self.assertShapeEqual(out, apply_adam)
       self.assertAllCloseAccordingToType(new_var, out)
@@ -488,7 +488,7 @@ class TrainingOpsTest(TensorFlowTestCase):
     def fn_resource_sparse_apply_adagrad_v2():
       ret = constant_op.constant(0, dtypes.int32)
       for i in math_ops.range(num_iter):
-        adagrad_op = training_ops.resource_sparse_apply_adagrad_v2(
+        adagrad_op = gen_training_ops.resource_sparse_apply_adagrad_v2(
             var.handle, accum.handle, lr, epsilon, grad,
             constant_op.constant(indices, dtypes.int32))
         with ops.control_dependencies([adagrad_op]):

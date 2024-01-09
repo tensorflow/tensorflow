@@ -636,7 +636,8 @@ class TFLiteConverterBase:
     # full_integer_quantization_bias_type.
     self._experimental_full_integer_quantization_bias_type = None
     # Provides specs for quantization, whether preset or custom.
-    self._experimental_quantization_options = None
+    self._experimental_quantization_options = None  # Deprecated
+    self.experimental_use_stablehlo_quantizer = False
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
     self._metadata = conversion_metdata_fb.ConversionMetadataT()
@@ -662,6 +663,7 @@ class TFLiteConverterBase:
     self._experimental_disable_fuse_mul_and_fc = False
     self._experimental_use_buffer_offset = False
     self._experimental_reduce_type_precision = False
+    self._experimental_qdq_conversion_mode = None
 
     # Debug parameters
     self.mlir_dump_dir = None
@@ -814,6 +816,8 @@ class TFLiteConverterBase:
         ),
         "use_buffer_offset": self._experimental_use_buffer_offset,
         "reduce_type_precision": self._experimental_reduce_type_precision,
+        "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
+        "qdq_conversion_mode": self._experimental_qdq_conversion_mode,
     }
 
     if self.saved_model_dir:
@@ -831,6 +835,10 @@ class TFLiteConverterBase:
           " option only supports StableHLO path. Setting this option in TFLite"
           " path will be a no-op."
       )
+
+    # TODO: b/307626169 - Integrate StableHLO Quantizer.
+    if self.experimental_use_stablehlo_quantizer:
+      raise ValueError("StableHLO quantizer is not supported yet.")
 
     return args
 
@@ -956,13 +964,11 @@ class TFLiteConverterBase:
 
     # pylint: disable=protected-access
     if self.target_spec._experimental_supported_accumulation_type:
-      converter_kwargs.update(
-          {
-              "accumulation_type": (
-                  self.target_spec._experimental_supported_accumulation_type
-              )
-          }
-      )
+      converter_kwargs.update({
+          "accumulation_type": (
+              self.target_spec._experimental_supported_accumulation_type
+          )
+      })
     # pylint: enable=protected-access
 
     def format_element(elem):
@@ -1160,7 +1166,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       if quant_mode.is_post_training_int16x8_quantization():
         all_types = default_types + [_dtypes.int16]
       else:
-        all_types = default_types + [_dtypes.int8, _dtypes.uint8]
+        all_types = default_types + [_dtypes.int8, _dtypes.uint8, _dtypes.int16]
       if (
           self.inference_input_type not in all_types
           or self.inference_output_type not in all_types

@@ -1410,7 +1410,7 @@ def save_and_return_nodes(
         compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
     file_io.atomic_write_string_to_file(
         path, saved_model.SerializeToString(deterministic=True))
-    fingerprinting_utils.write_fingerprint(export_dir)
+  fingerprinting_utils.write_fingerprint(export_dir)
 
   # Save debug info, if requested.
   if options.save_debug_info:

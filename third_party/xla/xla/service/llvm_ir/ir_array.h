@@ -223,12 +223,14 @@ class IrArray {
   // base_ptr is a pointer type pointing to the first element(lowest address)
   // of the array.
   //
-  // For int4 arrays, pointee_type should be i8, not i4, as int4
-  // IrArrays are represented as i8 arrays where each i8 value stores two 4-bit
-  // values. Additionally, reads and write return or take in i8 values which
-  // hold a value representable by i4, instead of directly returning or taking
-  // in i4 values. Specifically, the i8 values returned or passed in are between
-  // 0 and 15 for U4 arrays and between -8 and 7 for S4 arrays.
+  // For int4 arrays, base_ptr should have half the number of bytes as array
+  // elements (rounded up), as two int4 values are packed into a byte.
+  // pointee_type should be an i4 array in this case, and reads and writes will
+  // return or take in i4 values. IrArray internally reads or writes i8 values,
+  // by treating base_ptr as an i8 array and masking out the high- or low-order
+  // 4 bits of the byte. IrArray does not directly read/write i4 values, since
+  // arrays of i4 values in LLVM are not packed (every element of an LLVM IR
+  // array must have unique address).
   IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape);
 
   // Default implementations of copying and moving.
@@ -272,10 +274,6 @@ class IrArray {
   // the emitted LLVM IR.
   // 'use_linear_index' can be used to specify whether the linear index (if
   // available) or the multi-dimensional index should be used.
-  //
-  // For int4 arrays, returns an i8 value that is representable by i4. The
-  // returned i8 value will be between 0 and 15 for U4 arrays and between -8 and
-  // 7 for S4 arrays.
   llvm::Value* EmitReadArrayElement(const Index& index, llvm::IRBuilder<>* b,
                                     absl::string_view name = "",
                                     bool use_linear_index = true) const;
@@ -284,11 +282,10 @@ class IrArray {
   // 'use_linear_index' can be used to specify whether the linear index (if
   // available) or the multi-dimensional index should be used.
   //
-  // For int4 arrays, the given value must be an i8 value representable by i4.
-  // Only 4 bits of a byte in the array are written. First the appropriate byte
-  // is read from the array, then 4 bits are modified and written back. To avoid
-  // race conditions, the caller must ensure that the two different 4-bit values
-  // within a byte are not written to in parallel.
+  // For int4 arrays, only 4 bits of a byte in the array are written. First the
+  // appropriate byte is read from the array, then 4 bits are modified and
+  // written back. To avoid race conditions, the caller must ensure that the two
+  // different 4-bit values within a byte are not written to in parallel.
   void EmitWriteArrayElement(const Index& index, llvm::Value* value,
                              llvm::IRBuilder<>* b,
                              bool use_linear_index = true) const;

@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "rocm/include/miopen/miopen.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -75,6 +76,23 @@ using dnn::NormalizeDescriptor;
 using dnn::PoolingDescriptor;
 
 namespace gpu {
+
+// Populates the profile result if not empty.
+static tsl::Status PopulateProfileFromTimer(
+    std::optional<GpuTimer>& timer, const dnn::AlgorithmDesc& algorithm,
+    dnn::ProfileResult* profile_result,
+    std::optional<uint64_t> scratch_size = std::nullopt) {
+  if (profile_result) {
+    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    profile_result->set_algorithm(algorithm);
+    profile_result->set_elapsed_time_in_ms(
+        absl::ToDoubleMilliseconds(duration));
+    if (scratch_size.has_value()) {
+      profile_result->set_scratch_size(*scratch_size);
+    }
+  }
+  return tsl::OkStatus();
+}
 
 string ToString(miopenStatus_t status) {
   switch (status) {
@@ -252,7 +270,7 @@ namespace wrap {
 
 #endif
 
-#if (TF_ROCM_VERSION >= 50300)
+#if (TF_ROCM_VERSION >= 50000)
 // clang-format off
 #define MIOPEN_DNN_ROUTINE_EACH(__macro)                             \
   __macro(miopenBatchNormalizationBackward)                          \
@@ -625,8 +643,8 @@ std::set<uint64_t> CachedFusionPlans::unsupported_plans;
 dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
-  profile_result.set_algorithm(
-      {solution.solution_id, false, solution.workspace_size});
+  profile_result.set_algorithm({(dnn::AlgorithmDesc::Index)solution.solution_id,
+                                false, solution.workspace_size});
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
@@ -1312,7 +1330,7 @@ class ScopedFusionPlanBase {
       const int op_idx, const float* alpha, const float* beta,
       const void* scale, const void* offset, void* running_mean,
       void* running_variance, void* saved_mean, void* saved_inv_variance,
-      double epsilon, double exponential_average_factor) {
+      double exponential_average_factor, double epsilon) {
     miopenFusionOpDescriptor_t batchnorm_op;
     auto status =
         wrap::miopenFusionPlanGetOp(fusion_plan_, op_idx, &batchnorm_op);
@@ -1323,8 +1341,8 @@ class ScopedFusionPlanBase {
 
     status = wrap::miopenSetOpArgsBatchNormForward(
         fusion_args_, batchnorm_op, alpha, beta, scale, offset, saved_mean,
-        saved_inv_variance, running_mean, running_variance, epsilon,
-        exponential_average_factor);
+        saved_inv_variance, running_mean, running_variance,
+        exponential_average_factor, epsilon);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "call to miopenSetOpArgsBatchNormForward failed: "
                  << ToString(status);
@@ -1684,7 +1702,7 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
     float beta = 0.0;
     return ScopedFusionPlanBase::SetBatchNormForwardArgs(
         k_batchnorm_op_idx, &alpha, &beta, scale, offset, batch_mean, batch_var,
-        saved_mean, saved_var, epsilon, /*exponential_average_factor=*/1.0);
+        saved_mean, saved_var, /*exponential_average_factor=*/1.0, epsilon);
   }
 
   miopenStatus_t SetActivationForwardArgs(
@@ -1842,6 +1860,9 @@ miopenDataType_t ToMIOpenDataType(
     case dnn::DataType::kInt8:
       if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
     case dnn::DataType::kDouble:
+      LOG(FATAL)
+          << "Unsupported DNN data type: tf.float64 (dnn::DataType::kDouble)";
+      break;
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
@@ -1956,6 +1977,7 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
                       miopenRNNDirectionMode_t direction_mode,
                       miopenRNNMode_t rnn_mode, miopenDataType_t data_type,
                       float dropout, uint64_t seed,
+                      const dnn::AlgorithmConfig& algorithm_config,
                       ScratchAllocator* state_allocator)
       : rnn_desc_(nullptr),
         num_layers_(num_layers),
@@ -1964,7 +1986,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         input_mode_(input_mode),
         direction_mode_(direction_mode),
         rnn_mode_(rnn_mode),
-        data_type_(data_type) {
+        data_type_(data_type),
+        algorithm_config_(algorithm_config) {
     // Create the RNN handle
     auto status = wrap::miopenCreateRNNDescriptor(&rnn_desc_);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to create RNN descriptor");
@@ -2000,6 +2023,9 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenRNNDirectionMode_t direction_mode() const { return direction_mode_; }
   miopenRNNMode_t rnn_mode() const { return rnn_mode_; }
   miopenDataType_t data_type() const { return data_type_; }
+  const dnn::AlgorithmConfig& algorithm_config() const {
+    return algorithm_config_;
+  }
   int64_t ParamsSizeInBytes() const override {
     return miopen_params_desc_->params_size_in_bytes();
   }
@@ -2025,6 +2051,7 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenRNNDirectionMode_t direction_mode_;
   miopenRNNMode_t rnn_mode_;
   miopenDataType_t data_type_;
+  dnn::AlgorithmConfig algorithm_config_;
   tsl::Status status_;
   // no dropout in MIOpen.
   // std::unique_ptr<miopenDropoutDescriptor> miopen_dropout_desc_;
@@ -2275,7 +2302,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
 }  // namespace
 
 template <class T>
-bool MIOpenSupport::DoRnnForwardImpl(
+tsl::Status MIOpenSupport::DoRnnForwardImpl(
     Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
     const MIOpenRnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<T>& input_data,
@@ -2290,7 +2317,8 @@ bool MIOpenSupport::DoRnnForwardImpl(
     const MIOpenRnnStateTensorDescriptor& output_c_desc,
     DeviceMemory<T>* output_c_data, bool is_training,
     ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
   // extract model parameters
   RnnModelDims model_dims;
   bool res = ExtractAndCheckRnnForward(
@@ -2300,7 +2328,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
       &model_dims);
   if (!res) {
     LOG(ERROR) << "Invalid parameters for RNN Model";
-    return false;
+    return tsl::errors::Internal("ExtractAndCheckRnnForward returned false");
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
@@ -2309,7 +2337,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
 
   if (!CheckRNNParameterSize(miopen.handle(), rnn_desc, input_desc)) {
     LOG(ERROR) << "Invalid parameters";
-    return false;
+    return tsl::errors::Internal("CheckRNNParameterSize returned false");
   }
 
   // create the workspace
@@ -2317,8 +2345,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
   if (!CreateRnnWorkspace(stream, miopen.handle(), rnn_desc, input_desc,
                           workspace_allocator, &workspace)) {
     LOG(ERROR) << "Unable to create rnn workspace";
-
-    return false;
+    return tsl::errors::Internal("CreateRnnWorkspace returned false");
   }
 
   // query the reserve space size
@@ -2332,7 +2359,8 @@ bool MIOpenSupport::DoRnnForwardImpl(
         &reserve_space_size_in_bytes /*sizeInBytes*/);
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Unable to query reserve space size: " << ToString(status);
-      return false;
+      return tsl::errors::Internal(
+          "miopenGetRNNTrainingReserveSize returned failure");
     }
 
     if (reserve_space_size_in_bytes > 0) {
@@ -2340,11 +2368,17 @@ bool MIOpenSupport::DoRnnForwardImpl(
           reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
       if (!allocated.ok() || (reserve_space = allocated.value()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
-        return false;
+        return tsl::errors::Internal("AllocateBytes for RNN failed");
       }
       stream->ThenMemZero(&reserve_space, reserve_space_size_in_bytes);
     }
   }
+
+  const bool is_profiling = output_profile_result != nullptr;
+
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
   // make the forward call
   if (!is_training) {
@@ -2363,7 +2397,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Failed to call miopenRNNForwardInference: "
                  << ToString(status);
-      return false;
+      return tsl::errors::Internal("miopenRNNForwardInference failed");
     }
   } else {
     auto status = wrap::miopenRNNForwardTraining(
@@ -2382,14 +2416,21 @@ bool MIOpenSupport::DoRnnForwardImpl(
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Failed to call miopenRNNForwardTraining"
                  << ToString(status);
-      return false;
+      return tsl::errors::Internal("miopenRNNForwardTraining failed");
     }
   }
-  return true;
+
+  if (is_profiling) {
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+        timer, *rnn_desc.algorithm_config().algorithm(),
+        output_profile_result));
+  }
+
+  return ::tsl::OkStatus();
 }
 
 template <class T>
-bool MIOpenSupport::DoRnnBackwardImpl(
+tsl::Status MIOpenSupport::DoRnnBackwardImpl(
     Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
     const MIOpenRnnSequenceTensorDescriptor& input_desc,
     const DeviceMemory<T>& input_data,
@@ -2411,7 +2452,8 @@ bool MIOpenSupport::DoRnnBackwardImpl(
     DeviceMemory<T>* input_c_backprop_data,
     DeviceMemory<T>* params_backprop_data,
     DeviceMemory<uint8>* reserve_space_data,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
   // extract model parameters
   RnnModelDims model_dims;
   bool res = ExtractAndCheckRnnForward(
@@ -2420,7 +2462,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
       output_h_desc, output_h_data, output_c_desc, output_c_data, &model_dims);
   if (!res) {
     LOG(ERROR) << "Invalid parameters for RNN Model";
-    return false;
+    return tsl::errors::Internal("ExtractAndCheckRnnForward failed");
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
@@ -2429,7 +2471,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
 
   if (!CheckRNNParameterSize(miopen.handle(), rnn_desc, input_desc)) {
     LOG(ERROR) << "Invalid parameters";
-    return false;
+    return tsl::errors::Internal("CheckRNNParameterSize failed");
   }
 
   // create the workspace
@@ -2437,7 +2479,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
   if (!CreateRnnWorkspace(stream, miopen.handle(), rnn_desc, input_desc,
                           workspace_allocator, &workspace)) {
     LOG(ERROR) << "Unable to create rnn workspace";
-    return false;
+    return tsl::errors::Internal("CreateRnnWorkspace failed");
   }
 
   // workaround for missing initialization support in MIOpen.
@@ -2457,6 +2499,12 @@ bool MIOpenSupport::DoRnnBackwardImpl(
               input_c_desc.data_size();
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
     stream->ThenMemZero(input_c_backprop_data, size_data * type_size);
+
+  const bool is_profiling = output_profile_result != nullptr;
+
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
@@ -2480,7 +2528,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
       reserve_space_data->size() /*reserveSpaceSizeInBytes*/);
   if (status != miopenStatusSuccess) {
     LOG(ERROR) << "Failed to call miopenRNNBackwardData: " << ToString(status);
-    return false;
+    return tsl::errors::Internal("miopenRNNBackwardData failed");
   }
 
   if (params_backprop_data != nullptr) {
@@ -2500,11 +2548,17 @@ bool MIOpenSupport::DoRnnBackwardImpl(
     if (status != miopenStatusSuccess) {
       LOG(ERROR) << "Failed to call miopenRNNBackwardWeights: "
                  << ToString(status);
-      return false;
+      return tsl::errors::Internal("miopenRNNBackwardWeights failed");
     }
   }
 
-  return true;
+  if (is_profiling) {
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+        timer, *rnn_desc.algorithm_config().algorithm(),
+        output_profile_result));
+  }
+
+  return ::tsl::OkStatus();
 }
 
 MIOpenRnnParamsDescriptor::MIOpenRnnParamsDescriptor(
@@ -2733,7 +2787,8 @@ MIOpenSupport::createRnnDescriptor(
       miopen.handle(), num_layers, hidden_size, input_size,
       ToMIOpenRnnInputMode(input_mode),
       ToMIOpenRnnDirectionMode(direction_mode), ToMIOpenRnnMode(rnn_mode),
-      ToMIOpenDataType(data_type), dropout, seed, state_allocator));
+      ToMIOpenDataType(data_type), dropout, seed, algorithm_config,
+      state_allocator));
   if (!rnn_desc->ok()) {
     return rnn_desc->Status();
   }
@@ -2788,8 +2843,6 @@ bool MIOpenSupport::DoRnnForward(
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-  // ROCM TODO: output_profile_result is ignore for now
-
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -2805,12 +2858,14 @@ bool MIOpenSupport::DoRnnForward(
   const MIOpenRnnStateTensorDescriptor& miopen_output_c_desc =
       static_cast<const MIOpenRnnStateTensorDescriptor&>(output_c_desc);
 
-  return DoRnnForwardImpl<Eigen::half>(
-      stream, miopen_rnn_desc, miopen_input_desc, input_data,
-      miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
-      params, miopen_output_desc, output_data, miopen_output_h_desc,
-      output_h_data, miopen_output_c_desc, output_c_data, is_training,
-      reserve_space_allocator, workspace_allocator);
+  return IsStatusOk(
+      DoRnnForwardImpl<Eigen::half>(
+          stream, miopen_rnn_desc, miopen_input_desc, input_data,
+          miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
+          params, miopen_output_desc, output_data, miopen_output_h_desc,
+          output_h_data, miopen_output_c_desc, output_c_data, is_training,
+          reserve_space_allocator, workspace_allocator, output_profile_result),
+      /*report_error=*/!output_profile_result);
 }
 
 bool MIOpenSupport::DoRnnForward(
@@ -2831,8 +2886,6 @@ bool MIOpenSupport::DoRnnForward(
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-  // ROCM TODO: output_profile_result is ignore for now
-
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -2848,12 +2901,14 @@ bool MIOpenSupport::DoRnnForward(
   const MIOpenRnnStateTensorDescriptor& miopen_output_c_desc =
       static_cast<const MIOpenRnnStateTensorDescriptor&>(output_c_desc);
 
-  return DoRnnForwardImpl<float>(
-      stream, miopen_rnn_desc, miopen_input_desc, input_data,
-      miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
-      params, miopen_output_desc, output_data, miopen_output_h_desc,
-      output_h_data, miopen_output_c_desc, output_c_data, is_training,
-      reserve_space_allocator, workspace_allocator);
+  return IsStatusOk(
+      DoRnnForwardImpl<float>(
+          stream, miopen_rnn_desc, miopen_input_desc, input_data,
+          miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
+          params, miopen_output_desc, output_data, miopen_output_h_desc,
+          output_h_data, miopen_output_c_desc, output_c_data, is_training,
+          reserve_space_allocator, workspace_allocator, output_profile_result),
+      /*report_error=*/!output_profile_result);
 }
 
 bool MIOpenSupport::DoRnnForward(
@@ -2905,8 +2960,6 @@ bool MIOpenSupport::DoRnnBackward(
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-  // ROCM TODO: output_profile_result is ignore for now
-
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -2922,14 +2975,17 @@ bool MIOpenSupport::DoRnnBackward(
   const MIOpenRnnStateTensorDescriptor& miopen_output_c_desc =
       static_cast<const MIOpenRnnStateTensorDescriptor&>(output_c_desc);
 
-  return DoRnnBackwardImpl<Eigen::half>(
-      stream, miopen_rnn_desc, miopen_input_desc, input_data,
-      miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
-      params, miopen_output_desc, output_data, miopen_output_h_desc,
-      output_h_data, miopen_output_c_desc, output_c_data, output_backprop_data,
-      output_h_backprop_data, output_c_backprop_data, input_backprop_data,
-      input_h_backprop_data, input_c_backprop_data, params_backprop_data,
-      reserve_space_data, workspace_allocator);
+  return IsStatusOk(
+      DoRnnBackwardImpl<Eigen::half>(
+          stream, miopen_rnn_desc, miopen_input_desc, input_data,
+          miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
+          params, miopen_output_desc, output_data, miopen_output_h_desc,
+          output_h_data, miopen_output_c_desc, output_c_data,
+          output_backprop_data, output_h_backprop_data, output_c_backprop_data,
+          input_backprop_data, input_h_backprop_data, input_c_backprop_data,
+          params_backprop_data, reserve_space_data, workspace_allocator,
+          output_profile_result),
+      /*report_error=*/true);
 }
 
 bool MIOpenSupport::DoRnnBackward(
@@ -2957,8 +3013,6 @@ bool MIOpenSupport::DoRnnBackward(
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-  // ROCM TODO: output_profile_result is ignore for now
-
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -2974,14 +3028,17 @@ bool MIOpenSupport::DoRnnBackward(
   const MIOpenRnnStateTensorDescriptor& miopen_output_c_desc =
       static_cast<const MIOpenRnnStateTensorDescriptor&>(output_c_desc);
 
-  return DoRnnBackwardImpl<float>(
-      stream, miopen_rnn_desc, miopen_input_desc, input_data,
-      miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
-      params, miopen_output_desc, output_data, miopen_output_h_desc,
-      output_h_data, miopen_output_c_desc, output_c_data, output_backprop_data,
-      output_h_backprop_data, output_c_backprop_data, input_backprop_data,
-      input_h_backprop_data, input_c_backprop_data, params_backprop_data,
-      reserve_space_data, workspace_allocator);
+  return IsStatusOk(
+      DoRnnBackwardImpl<float>(
+          stream, miopen_rnn_desc, miopen_input_desc, input_data,
+          miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
+          params, miopen_output_desc, output_data, miopen_output_h_desc,
+          output_h_data, miopen_output_c_desc, output_c_data,
+          output_backprop_data, output_h_backprop_data, output_c_backprop_data,
+          input_backprop_data, input_h_backprop_data, input_c_backprop_data,
+          params_backprop_data, reserve_space_data, workspace_allocator,
+          output_profile_result),
+      /*report_error=*/true);
 }
 
 bool MIOpenSupport::DoRnnBackward(
@@ -3106,7 +3163,16 @@ class RocmConvRunner : public dnn::ConvRunner {
         input_desc_{input_descriptor, ToMIOpenDataType(input_type)},
         output_desc_{output_descriptor, ToMIOpenDataType(input_type)},
         filter_desc_{filter_descriptor, ToMIOpenDataType(input_type)},
-        conv_desc_{conv_descriptor, ToMIOpenDataType(input_type)} {}
+        conv_desc_{conv_descriptor, ToMIOpenDataType(input_type)} {
+    bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
+                        (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
+    // #if TF_ROCM_VERSION >= 50000
+    if (is_backprop && (ToMIOpenDataType(input_type) == miopenHalf)) {
+      wrap::miopenSetConvolutionAttribute(
+          conv_desc_.handle(), MIOPEN_CONVOLUTION_ATTRIB_FP16_ALT_IMPL, 1);
+    }
+    // #endif
+  }
 
   std::string ToString() const override {
     return dnn::AlgorithmDesc{algo_id_, false, workspace_size_}.ToString();
@@ -3361,6 +3427,17 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsImmediateMode(
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
 
+  bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
+                      (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
+  // bool is_backprop = (call_context == dnn::CallContext::kBackpropData) ||
+  //                   (call_context == dnn::CallContext::kBackpropFilter);
+
+#if TF_ROCM_VERSION >= 50000
+  if (is_backprop && (ToMIOpenDataType(element_type) == miopenHalf)) {
+    wrap::miopenSetConvolutionAttribute(
+        conv.handle(), MIOPEN_CONVOLUTION_ATTRIB_FP16_ALT_IMPL, 1);
+  }
+#endif
   // First determine the number of algorityhms available
   size_t maxSolutionCount = 0;
 
@@ -3570,6 +3647,18 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
   ScopedConvolutionDescriptor conv{convolution_descriptor,
                                    ToMIOpenDataType(element_type)};
 
+  bool is_backprop = ((kind == dnn::ConvolutionKind::BACKWARD_DATA) ||
+                      (kind == dnn::ConvolutionKind::BACKWARD_FILTER));
+  // bool is_backprop = (call_context == dnn::CallContext::kBackpropData) ||
+  //                    (call_context == dnn::CallContext::kBackpropFilter);
+
+#if TF_ROCM_VERSION >= 50000
+  if (is_backprop && (ToMIOpenDataType(element_type) == miopenHalf)) {
+    wrap::miopenSetConvolutionAttribute(
+        conv.handle(), MIOPEN_CONVOLUTION_ATTRIB_FP16_ALT_IMPL, 1);
+  }
+#endif
+
   // Determine the workspace memory size that will need by the call to Find
   size_t scratch_memory_size = 0;
   switch (kind) {
@@ -3711,8 +3800,38 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
 
 bool MIOpenSupport::GetRnnAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  // ROCM TODO: implement this with proper MIOpen API
+  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
+      // clang-format off
+    miopenRNNdefault,
+      // clang-format on
+  };
+
+  out_algorithms->clear();
+  for (auto i : algo_types) {
+    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
+  }
   return true;
+}
+
+bool MIOpenSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
+    const DeviceMemory<Eigen::bfloat16>& side_input,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+  return DoBatchNormalizationForwardImpl<Eigen::bfloat16, float>(
+      stream, dnn::DataType::kBF16, dnn::DataType::kFloat, x, scale, offset,
+      estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
+      epsilon, exponential_average_factor, activation_mode, y, batch_mean,
+      batch_var, saved_mean, saved_inv_var, is_training);
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
@@ -3803,6 +3922,25 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     return false;
   }
   return true;
+}
+
+bool MIOpenSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+    const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::bfloat16>& y,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    dnn::ActivationMode activation_mode,
+    DeviceMemory<Eigen::bfloat16>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+    DeviceMemory<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  return DoBatchNormalizationBackwardImpl<Eigen::bfloat16, float>(
+      stream, miopenBFloat16, miopenFloat, y_backprop, x, scale, mean, inv_var,
+      x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      offset_backprop);
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
@@ -3964,7 +4102,8 @@ tsl::Status ROCmFusedMatmulRunner::gemm(Stream* stream, DeviceMemoryBase a_data,
   return stream->ThenBlasGemm<T, T>(
       tb, ta, _n, _m, _k, static_cast<DeviceMemory<T>>(b_data), _ldb,
       static_cast<DeviceMemory<T>>(a_data), _lda,
-      static_cast<DeviceMemory<T>*>(&c_data), _ldc, NumericOptions{});
+      static_cast<DeviceMemory<T>*>(&c_data), _ldc, NumericOptions{},
+      blas::CallContext::kNone);
 }
 
 template <typename T>
@@ -4080,198 +4219,6 @@ bool MIOpenSupport::DoTransformTensor(Stream* stream,
                                       DeviceMemoryBase* output_data) {
   // ROCM TODO implement this operation
   LOG(ERROR) << "transform tensor not implemented yet";
-  return false;
-}
-
-bool MIOpenSupport::DoMatMul(Stream* stream,
-                             const DeviceMemory<float>& input_data,
-                             const DeviceMemory<float>& weights,
-                             const dnn::BatchDescriptor& input_dimensions,
-                             const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<float>* output_data) {
-  if (input_dimensions.count() != output_dimensions.count()) {
-    LOG(ERROR) << "MatMul input and output dimensions are not compatible.";
-    return false;
-  }
-
-  // We do not permute the input or output, instead we just
-  // reinterpret the layout. We are working with row-major matrices
-  // and the rows of the input and output correspond to batch, so
-  // batch has to be outermost in both the input and output.
-  //
-  // By adding transposes to the BLAS gemm call we could perhaps make
-  // the kYXDepthBatch layout work as well, but there has been no need
-  // for that so far.
-  if (input_dimensions.layout() != dnn::DataLayout::kBatchYXDepth &&
-      input_dimensions.layout() != dnn::DataLayout::kBatchDepthYX) {
-    LOG(ERROR) << "Unsupported MatMul input layout.";
-    return false;
-  }
-  if (output_dimensions.layout() != dnn::DataLayout::kBatchYXDepth &&
-      output_dimensions.layout() != dnn::DataLayout::kBatchDepthYX) {
-    LOG(ERROR) << "Unsupported MatMul output layout.";
-    return false;
-  }
-
-  if (output_dimensions.width() == 1 && output_dimensions.height() == 1) {
-    // This is a fast path that also supports the kBatchYXDepth layout.
-
-    // The matrices here are in row-major format while BLAS expects
-    // column-major, i.e. our matrices are transposed as far as BLAS
-    // is concerned. So we need to compute output^T =
-    // input^T*weights^T. There is no parameter for transposing the
-    // output in BLAS gemm, but instead we can transpose both sides of
-    // the equality to see that this is equivalent to
-    // output=weights*input. So we only need to swap the order of
-    // weights and input in the matrix product to correct for the
-    // row-major versus column-major difference.
-    const int64_t m = output_dimensions.NodesAcrossFeatureMaps();
-    const int64_t n = input_dimensions.count();
-    const int64_t k = input_dimensions.NodesAcrossFeatureMaps();
-    if (!stream
-             ->ThenBlasGemm(blas::Transpose::kNoTranspose,
-                            blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m, NumericOptions{})
-             .ok()) {
-      return false;
-    }
-  } else {
-    // This is a slower and more complex path that supports output
-    // width() * height() > 1, though it only supports the
-    // kBatchYXDepth layout. Does support kBatchDepthYX if output
-    // feature_map_count() == 1, as then there is no difference
-    // between the two layouts.
-    //
-    // The operation here is the same as above, except that we have to
-    // do the matrix multiplication for each (y,x) output coordinate
-    // separately. We then interpret weights as containing K = width()
-    // * height() different matrices, which we all multiply onto the
-    // matrix from input_data, yielding K matrix products. We then
-    // combine these together into one matrix by concatenating all the
-    // first rows of these matrices, then all the seconds rows and so
-    // on. We can do this with a batched matrix multiplication, where
-    // the result is written to a different submatrix of the output
-    // for each matrix multiplication.
-    //
-    // The reason that we only support the kBatchYXDepth output layout
-    // is that we have to do something in the depth for each (y,x)
-    // coordinate. The kBatchYXDepth layout has the depth information
-    // for each point (y,x) in contiguous memory while the
-    // kBatchDepthYX layout does not.
-    //
-    // TODO(broune): Consider a special case for when output depth ==
-    // 1, as then possibly this could all be done as one matrix
-    // multiplication instead of a batched one, which should be
-    // faster. Another possibility would be to add a weights layout
-    // parameter and then support kBatchDepthYX for a different
-    // weights layout.
-    if (output_dimensions.layout() != dnn::DataLayout::kBatchYXDepth &&
-        !(output_dimensions.layout() == dnn::DataLayout::kBatchDepthYX &&
-          output_dimensions.feature_map_count() == 1)) {
-      LOG(ERROR) << "Unsupported MatMul output layout.";
-      return false;
-    }
-
-    const float alpha = 1.0f;  // Take the matrix product without scaling it.
-    const float beta = 0.0f;   // Ignore the original values in output_data.
-    const uint64_t m = output_dimensions.feature_map_count();
-    const uint64_t n = input_dimensions.count();
-    const uint64_t k = input_dimensions.NodesAcrossFeatureMaps();
-    const int lda = m;
-    const int ldb = k;
-    const int ldc = output_dimensions.NodesAcrossFeatureMaps();
-    const int batch_count = output_dimensions.NodesPerFeatureMap();
-
-    std::vector<DeviceMemory<float>> a(batch_count);
-    std::vector<DeviceMemory<float>> b(batch_count);
-    std::vector<DeviceMemory<float>> c(batch_count);
-    for (int i = 0; i < batch_count; ++i) {
-      const int weights_offset = i * input_dimensions.NodesAcrossFeatureMaps() *
-                                 output_dimensions.feature_map_count();
-      a[i] = DeviceMemory<float>::MakeFromByteSize(
-          const_cast<float*>(reinterpret_cast<const float*>(weights.opaque())) +
-              weights_offset,
-          weights.ElementCount() - weights_offset);
-
-      b[i] = input_data;
-
-      const int output_offset = i * output_dimensions.feature_map_count();
-      c[i] = DeviceMemory<float>::MakeFromByteSize(
-          const_cast<float*>(
-              reinterpret_cast<const float*>(output_data->opaque())) +
-              output_offset,
-          output_data->ElementCount() - output_offset);
-    }
-    const auto toPtrs = [](std::vector<DeviceMemory<float>>& v) {
-      std::vector<DeviceMemory<float>*> ptrs;
-      ptrs.reserve(v.size());
-      for (auto& mem : v) {
-        ptrs.push_back(&mem);
-      }
-      return ptrs;
-    };
-
-    stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
-                                blas::Transpose::kNoTranspose, m, n, k, alpha,
-                                toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count, NumericOptions{});
-  }
-
-  return stream->ok();
-}
-
-bool MIOpenSupport::DoBiasAdd(Stream* stream,
-                              const DeviceMemory<float>& input_data,
-                              const DeviceMemory<float>& biases,
-                              const dnn::BatchDescriptor& dimensions,
-                              DeviceMemory<float>* output_data) {
-  ScopedTensorDescriptor input_descriptor{dimensions, miopenFloat};
-
-  BatchDescriptor bias_dimensions;
-  bias_dimensions.set_count(1)
-      .set_feature_map_count(dimensions.feature_map_count())
-      .set_height(1)
-      .set_width(1)
-      .set_layout(dnn::DataLayout::kBatchYXDepth);
-  ScopedTensorDescriptor bias_descriptor{bias_dimensions, miopenFloat};
-
-  if (input_data.opaque() != output_data->opaque()) {
-    stream->ThenMemcpy(output_data, input_data,
-                       dimensions.ElementCount() * sizeof(float));
-    if (!stream->ok()) {
-      LOG(ERROR)
-          << "stream " << stream
-          << " could not enqueue a tensor copy as part of bias addition.";
-      return false;
-    }
-  }
-
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  const float alpha1 = 1.0f;
-  const float alpha2 = 0.0f;
-  const float beta = 1.0f;
-
-  auto status = wrap::miopenOpTensor(
-      miopen.handle(), miopenTensorOpAdd, &alpha1, bias_descriptor.handle(),
-      biases.opaque(), &alpha2, bias_descriptor.handle(), biases.opaque(),
-      &beta, input_descriptor.handle(), output_data->opaque());
-
-  if (status != miopenStatusSuccess) {
-    LOG(ERROR) << "stream " << stream << " could not enqueue bias addition.";
-    return false;
-  }
-
-  return true;
-}
-
-bool MIOpenSupport::DoActivate(Stream* stream,
-                               dnn::ActivationMode activation_mode,
-                               const dnn::BatchDescriptor& dimensions,
-                               const DeviceMemory<float>& input_data,
-                               DeviceMemory<float>* output_data,
-                               uint64_t options) {
-  LOG(ERROR) << "miopen does not support activation yet";
   return false;
 }
 
@@ -4738,51 +4685,6 @@ bool MIOpenSupport::DoDepthConcatenate(
   return true;
 }
 
-bool MIOpenSupport::DoElementwiseOperate(
-    Stream* stream, dnn::ElementwiseOperation operation,
-    absl::Span<const dnn::BatchDescriptor> input_dimensions,
-    absl::Span<const DeviceMemory<float>* const> input_data,
-    const dnn::BatchDescriptor& output_dimensions,
-    DeviceMemory<float>* output_data) {
-  LOG(FATAL) << "not yet implemented";  // TODO(leary)
-  return false;
-}
-
-bool MIOpenSupport::DoXYPad(Stream* stream,
-                            const dnn::BatchDescriptor& dimensions,
-                            const DeviceMemory<float>& input_data,
-                            int64_t left_pad, int64_t right_pad,
-                            int64_t top_pad, int64_t bottom_pad,
-                            DeviceMemory<float>* output_data) {
-  LOG(FATAL) << "not yet implemented";  // TODO(leary)
-  return false;
-}
-
-bool MIOpenSupport::DoXYSlice(Stream* stream,
-                              const dnn::BatchDescriptor& dimensions,
-                              const DeviceMemory<float>& input_data,
-                              int64_t left_trim, int64_t right_trim,
-                              int64_t top_trim, int64_t bottom_trim,
-                              DeviceMemory<float>* output_data) {
-  LOG(FATAL) << "not yet implemented";  // TODO(leary)
-  return false;
-}
-
-bool MIOpenSupport::DoMemcpyD2HQuantized(
-    Stream* stream, const DeviceMemory<float>& gpu_unquantized_src,
-    dnn::QuantizedActivationMode mode, void* host_dst, int64_t size) {
-  LOG(ERROR) << "quantized memcpy not supported by MIOpen";
-  return false;
-}
-
-bool MIOpenSupport::DoMemcpyH2DQuantized(
-    Stream* stream, const void* host_src, int64_t size,
-    dnn::QuantizedActivationMode mode,
-    DeviceMemory<float>* gpu_unquantized_dst) {
-  LOG(ERROR) << "quantized memcpy not supported by MIOpen";
-  return false;
-}
-
 bool MIOpenSupport::DeriveOutputBatchDescriptor(
     const BatchDescriptor& batch_descriptor,
     const FilterDescriptor& filter_descriptor,
@@ -4812,6 +4714,20 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
   }
 
   return true;
+}
+
+bool UseNhwcLayoutForRocm() {
+#if TF_ROCM_VERSION >= 50100
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
+                                        /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+#else  // TF_ROCM_VERSION < 50000
+  return false;
+#endif
 }
 
 }  // namespace gpu

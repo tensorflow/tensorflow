@@ -60,8 +60,6 @@ struct IfrtHelpers {
   static PjRtDevice* pjrt_device(ifrt::Array* ifrt_array);
   static pybind11::tuple python_shape(ifrt::Array* ifrt_array);
   static pybind11::dtype python_dtype(ifrt::Array* ifrt_array);
-  static StatusOr<pybind11::dict> CudaArrayInterface(
-      ifrt::Array* ifrt_array, std::optional<Shape>& scratch);
 };
 
 // TODO(hyeontaek): Move the following functions to a separate file.

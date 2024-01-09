@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/tools/proto_splitter/cc/graph_def_splitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <variant>
@@ -179,7 +180,12 @@ TEST(GraphDefSplitterTest, TestLotsNodes) {
   const std::string graph_def_path =
       io::JoinPath(testing::TensorFlowSrcRoot(),
                    "tools/proto_splitter/testdata", "split-lots-nodes.pb");
-  int64_t max_size = 500;
+
+  // split-lots-nodes.pb has 15 nodes that are 95 or 96 bytes each. The max size
+  // is set to "exactly" the size of 5 nodes, but with the extra encoding bytes,
+  // only 4 nodes should fit in each chunk. Thus, there should be exactly 4
+  // chunks created for all 15 nodes.
+  int64_t max_size = 96 * 5;
   DebugSetMaxSize(max_size);
 
   TF_EXPECT_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
@@ -196,7 +202,9 @@ TEST(GraphDefSplitterTest, TestLotsNodes) {
       *chunked_message,
       EqualsProto(R"pb(chunk_index: 0
                        chunked_fields { message { chunk_index: 1 } }
-                       chunked_fields { message { chunk_index: 2 } })pb"));
+                       chunked_fields { message { chunk_index: 2 } }
+                       chunked_fields { message { chunk_index: 3 } }
+                       chunked_fields { message { chunk_index: 4 } })pb"));
 
   auto chunks = x.first;
   EXPECT_CHUNK_SIZES(chunks, max_size);

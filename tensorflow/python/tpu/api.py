@@ -27,6 +27,7 @@ from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v1
 from tensorflow.python.tpu import tpu_embedding_v2
 from tensorflow.python.tpu import tpu_embedding_v2_utils
+from tensorflow.python.tpu import tpu_embedding_v3
 from tensorflow.python.tpu import tpu_hardware_feature
 from tensorflow.python.tpu import tpu_optimizer
 # pylint: enable=unused-import

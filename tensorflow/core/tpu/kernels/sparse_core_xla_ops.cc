@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/status_helper.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/xla_data.pb.h"
@@ -40,20 +40,23 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 #include "tsl/platform/macros.h"
 
+typedef tensorflow::monitoring::Gauge<int64_t, 2> TFGaugeMetric;
+static TFGaugeMetric* max_ids_per_partition_gauge_ = TFGaugeMetric::New(
+    "/tensorflow/tpu/embedding/maximum_ids_per_partition",
+    "Max ids_per_partition limit for each table", "device", "table");
+static TFGaugeMetric* max_unique_ids_per_partition_gauge_ = TFGaugeMetric::New(
+    "/tensorflow/tpu/embedding/maximum_unique_ids_per_partition",
+    "Max unique_ids_per_partition limit for each table", "device", "table");
+
 namespace tensorflow {
 namespace {
-
-xla::XlaOp PowHack(xla::XlaOp base, xla::XlaOp exp) {
-  // FIXME(b/250994736) replace PowHack with xla::Pow once this bug is fixed.
-  // Approximation of xla::Pow(base, exp);
-  return xla::Exp(xla::Log(base) * exp);
-}
 
 // Get the SparseCore logical replica count.
 // TODO(agagik): get it from the tpu topology.
@@ -215,6 +218,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
         quantization_config_high_ = quant_clipping_float;
       }
     }
+    device_name_ = ctx->device()->name();
     // Check for incomplete quantization config.
     OP_REQUIRES(ctx,
                 quantization_config_low_.has_value() ==
@@ -247,10 +251,17 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
         ctx, GetMaxIdsAndUniquesExternal(
                  "", table_name_, per_sparse_core_batch_size, feature_width,
                  &max_ids_per_partition, &max_unique_ids_per_partition));
-    VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
-            << "table_name = '" << table_name_
-            << "', max_ids = " << max_ids_per_partition
-            << ", max_uniques = " << max_unique_ids_per_partition;
+    // Log max_ids and max_uniques for offline analysis. We do this here since
+    // these values are fixed at TPU compile time and remain fixed during
+    // training.
+    max_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_ids_per_partition);
+    max_unique_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_unique_ids_per_partition);
+    LOG(INFO) << "Lowering XlaSparseDenseMatmulWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(ctx->InputShape(
                     "num_minibatches_per_physical_sparse_core")),
@@ -320,6 +331,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
   std::optional<float> quantization_config_low_;
   std::optional<float> quantization_config_high_;
   std::optional<int> quantization_config_num_buckets_;
+  std::string device_name_;
   std::string table_name_;
 
   XlaSparseDenseMatmulWithCsrInputOp(
@@ -330,13 +342,21 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulWithCsrInput"),
                 XlaSparseDenseMatmulWithCsrInputOp);
 
-
 // Base class for all the minibatch with CSR input optimizer kernel.
 class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
  public:
   explicit XlaSparseDenseMatmulGradWithCsrInputBase(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_min", &clip_weight_min_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_max", &clip_weight_max_));
+
+    OP_REQUIRES(ctx, clip_weight_min_ <= clip_weight_max_,
+                absl::InvalidArgumentError(
+                    absl::StrCat("clip_weight_min must be smaller or equal to "
+                                 "clip_weight_max but got clip_weight_min as ",
+                                 clip_weight_min_, " and clip_weight_max as ",
+                                 clip_weight_max_, ".")));
   }
 
   ~XlaSparseDenseMatmulGradWithCsrInputBase() override = default;
@@ -349,6 +369,15 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
   virtual xla::XlaOp get_hyperparameters_input(XlaOpKernelContext* ctx) = 0;
 
   virtual xla::Shape get_tables_shape(xla::Shape embedding_table_shape) = 0;
+
+  xla::XlaOp apply_weight_clipping_to_table(xla::XlaBuilder* builder,
+                                            xla::XlaOp table) {
+    xla::XlaOp clip_weight_min = xla::ConstantR0(builder, clip_weight_min_);
+    xla::XlaOp clip_weight_max = xla::ConstantR0(builder, clip_weight_max_);
+    xla::XlaOp clipped_table =
+        xla::Clamp(clip_weight_min, table, clip_weight_max);
+    return clipped_table;
+  }
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
@@ -391,10 +420,10 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
         ctx, GetMaxIdsAndUniquesExternal(
                  "", table_name_, per_sparse_core_batch_size, feature_width,
                  &max_ids_per_partition, &max_unique_ids_per_partition));
-    VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
-            << "table_name = '" << table_name_
-            << "', max_ids = " << max_ids_per_partition
-            << ", max_uniques = " << max_unique_ids_per_partition;
+    LOG(INFO) << "Lowering XlaSparseDenseMatmulGradWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
 
     xla::XlaComputation optimizer = build_optimizer_computation(feature_width);
 
@@ -451,6 +480,10 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     builder->SetFrontendAttributes(original_frontend_attributes);
   }
 
+ protected:
+  float clip_weight_min_;
+  float clip_weight_max_;
+
  private:
   std::string table_name_;
 
@@ -497,8 +530,12 @@ class XlaSparseDenseMatmulGradWithSgdAndCsrInputOp
           xla::GetTupleElement(tables, 0) -
           xla::GetTupleElement(hyperparameters, 0) * gradient;
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          sgd_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
-          xla::Tuple(sgd_optimizer_builder.get(), {updated_embedding_table});
+          xla::Tuple(sgd_optimizer_builder.get(), {clipped_embedding_table});
 
       return sgd_optimizer_builder->Build(updated_tables).value();
     }();
@@ -574,9 +611,13 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
           embedding_table -
           learning_rate * gradient / xla::Sqrt(new_accumulator);
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          adagrad_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
           xla::Tuple(adagrad_optimizer_builder.get(),
-                     {updated_embedding_table, new_accumulator});
+                     {clipped_embedding_table, new_accumulator});
       return adagrad_optimizer_builder->Build(updated_tables).value();
     }();
 
@@ -681,7 +722,7 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
 
       // scaled_gradient = (accumulator + epsilon)^(-1/k) * gradient
       xla::XlaOp scaled_gradients =
-          PowHack(new_accumulator + epsilon, xla::Neg(exponent)) * gradient;
+          Pow(new_accumulator + epsilon, xla::Neg(exponent)) * gradient;
 
       // momenta(t) = beta1 * momenta(t-1) + scaled_gradient(t)
       xla::XlaOp new_momenta = beta1 * momenta + scaled_gradients;
@@ -699,9 +740,13 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
         updated_embedding_table = embedding_table - learning_rate * new_momenta;
       }
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          adagrad_momentum_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
           xla::Tuple(adagrad_momentum_optimizer_builder.get(),
-                     {updated_embedding_table, new_accumulator, new_momenta});
+                     {clipped_embedding_table, new_accumulator, new_momenta});
       return adagrad_momentum_optimizer_builder->Build(updated_tables).value();
     }();
 
@@ -768,7 +813,6 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
 
       xla::XlaOp gradient = xla::Parameter(adam_optimizer_builder.get(), 0,
                                            per_row_shape, "gradient");
-
       xla::XlaOp tables =
           xla::Parameter(adam_optimizer_builder.get(), 1,
                          xla::ShapeUtil::MakeTupleShape(
@@ -814,9 +858,13 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
           embedding_table -
           learning_rate * new_momenta / (xla::Sqrt(new_velocity + e1) + e2);
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          adam_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
           xla::Tuple(adam_optimizer_builder.get(),
-                     {updated_embedding_table, new_momenta, new_velocity});
+                     {clipped_embedding_table, new_momenta, new_velocity});
       return adam_optimizer_builder->Build(updated_tables).value();
     }();
 
@@ -910,10 +958,9 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
       xla::XlaOp learning_rate_power =
           xla::ConstantR0(ftrl_optimizer_builder.get(), learning_rate_power_);
 
-      xla::XlaOp power_old =
-          PowHack(accumulator, xla::Neg(learning_rate_power));
+      xla::XlaOp power_old = Pow(accumulator, xla::Neg(learning_rate_power));
       xla::XlaOp power_new =
-          PowHack(new_accumulator, xla::Neg(learning_rate_power));
+          Pow(new_accumulator, xla::Neg(learning_rate_power));
       xla::XlaOp delta_p = power_new - power_old;
 
       xla::XlaOp zero = xla::ConstantR0(ftrl_optimizer_builder.get(), 0.0f);
@@ -973,9 +1020,13 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
       }
       xla::XlaOp updated_embedding_table = numer / denom;
 
+      // Apply the weight clipping.
+      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
+          ftrl_optimizer_builder.get(), updated_embedding_table);
+
       xla::XlaOp updated_tables =
           xla::Tuple(ftrl_optimizer_builder.get(),
-                     {updated_embedding_table, new_accumulator, new_linear});
+                     {clipped_embedding_table, new_accumulator, new_linear});
       return ftrl_optimizer_builder->Build(updated_tables).value();
     }();
 
@@ -1187,7 +1238,7 @@ class XlaSparseCoreAdagradMomentumOp : public XlaSparseCoreOptimizerOpBase {
     }
     // scaled_gradient = (accumulator + epsilon)^(-1/k) * gradient
     xla::XlaOp scaled_gradients =
-        PowHack(accum_new + epsilon, xla::Neg(exponent)) * gradient;
+        Pow(accum_new + epsilon, xla::Neg(exponent)) * gradient;
 
     // momentum(t) = beta_1 * momentum(t-1) + scaled_gradient(t)
     xla::XlaOp momen_new = beta_1 * momen_old + scaled_gradients;
@@ -1338,8 +1389,8 @@ class XlaSparseCoreFtrlOp : public XlaSparseCoreOptimizerOpBase {
     // accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
     xla::XlaOp accum_new = accum_old + gradient * gradient;
 
-    xla::XlaOp power_old = PowHack(accum_old, -learning_rate_power);
-    xla::XlaOp power_new = PowHack(accum_new, -learning_rate_power);
+    xla::XlaOp power_old = Pow(accum_old, -learning_rate_power);
+    xla::XlaOp power_new = Pow(accum_new, -learning_rate_power);
     xla::XlaOp delta_p = power_new - power_old;
 
     xla::XlaOp two = xla::ConstantR0(builder, 2.0f);

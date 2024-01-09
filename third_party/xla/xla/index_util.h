@@ -110,7 +110,7 @@ class IndexUtil {
   // Converts a linear index into multidimensional index (eg {x, y, z}) based on
   // the shape and its layout. The first index in the returned multidimensional
   // index is dimension 0.
-  static std::vector<int64_t> LinearIndexToMultidimensionalIndex(
+  static DimensionVector LinearIndexToMultidimensionalIndex(
       const Shape& shape, int64_t linear_index);
 
   // Bumps a sequence of indices; e.g. {0,0,0,0} up by one index value; e.g. to

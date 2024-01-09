@@ -43,7 +43,7 @@ func.func @while_cond(%arg0: tensor<i32> {tf.device = "/job:localhost/replica:0/
 // CHECK: func @while_body(%[[ARG_0:.*]]: tensor<i32> {tf.device = "/job:localhost/replica:0/task:0/device:CPU:0"})
 // CHECK-NEXT:   %[[RESULT_0:.*]] = "tf.Const"()
 // CHECK-NEXT:   %[[RESULT_1:.*]] = "tf.AddV2"(%[[ARG_0]], %[[RESULT_0]])
-// CHECK-NEXT:   %[[RESULT_2:.*]] = "tf.Const"() {value = dense<16> : tensor<i32>} : () -> tensor<i32>
+// CHECK-NEXT:   %[[RESULT_2:.*]] = "tf.Const"() <{value = dense<16> : tensor<i32>}> : () -> tensor<i32>
 // CHECK-NEXT:   tf_device.send %[[RESULT_2]] "key-0" "/job:worker/replica:0/task:1/device:CPU:0"
 // CHECK-SAME:  device = "/job:localhost/replica:0/task:0/device:CPU:0"
 // CHECK-NEXT:   tf_device.remote_run "/job:worker/replica:0/task:1" @[[BODY_PARTITION_0:.*]]() : () -> ()

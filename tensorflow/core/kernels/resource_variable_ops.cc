@@ -48,6 +48,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -318,14 +319,14 @@ TF_CALL_int4(REGISTER_DEFAULT_KERNELS);
 TF_CALL_uint4(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
 
-REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
-                            .Device(DEVICE_DEFAULT)
-                            .HostMemory("resources")
-                            .TypeConstraint("dtypes",
-                                            {DT_INT64, DT_COMPLEX64,
-                                             DT_COMPLEX128, DT_HALF, DT_FLOAT,
-                                             DT_DOUBLE, DT_BOOL, DT_VARIANT}),
-                        ResourceHandlesOp<Var>);
+REGISTER_KERNEL_BUILDER(
+    Name("_VarHandlesOp")
+        .Device(DEVICE_DEFAULT)
+        .HostMemory("resources")
+        .TypeConstraint("dtypes", {DT_INT64, DT_COMPLEX64, DT_COMPLEX128,
+                                   DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BOOL,
+                                   DT_VARIANT, DT_BFLOAT16}),
+    ResourceHandlesOp<Var>);
 
 REGISTER_KERNEL_BUILDER(
     Name("VariableShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
@@ -1115,6 +1116,13 @@ class ResourceScatterUpdateOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+
+    // Check data type of update and resource to scatter.
+    const DataType update_dtype = c->input(2).dtype();
+    OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
+                errors::InvalidArgument(
+                    "DType of scatter resource and updates does not match."));
+
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     const bool is_non_pod_dtype = c->input_dtype(0) == DT_RESOURCE ||
                                   c->input_dtype(0) == DT_STRING ||

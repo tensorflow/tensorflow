@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/slice_op.h"
 
+#include "absl/base/prefetch.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/prefetch.h"
 
 namespace tensorflow {
 
@@ -183,9 +183,8 @@ class SliceOp : public OpKernel {
         for (int i = 0; i < row_size; ++i) {
           const int64_t row = row_begin + i;
           if (i + 1 < size[0]) {
-            port::prefetch<port::PREFETCH_HINT_T0>(&output_t(i + 1, 0));
-            port::prefetch<port::PREFETCH_HINT_T0>(
-                &input_t(row + 1, col_begin));
+            absl::PrefetchToLocalCache(&output_t(i + 1, 0));
+            absl::PrefetchToLocalCache(&input_t(row + 1, col_begin));
           }
           memcpy(&output_t(i, 0), &input_t(row, col_begin),
                  col_size * sizeof(T));

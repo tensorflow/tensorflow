@@ -16,10 +16,21 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_fused_conv_rewriter.h"
 
 #include <array>
+#include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/device_description.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -118,7 +129,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
                               ParseAndReturnVerifiedModule(hlo_with_new_type));
       DebugOptions debug_opts = module->config().debug_options();
       debug_opts.set_xla_gpu_use_runtime_fusion(true);
-      module->config().set_debug_options(debug_opts);
+      module->mutable_config().set_debug_options(debug_opts);
       EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{0.01}))
           << optimized_hlo_string;
     }
@@ -1511,7 +1522,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseElu) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   DebugOptions debug_opts = m->config().debug_options();
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->config().set_debug_options(debug_opts);
+  m->mutable_config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1553,12 +1564,12 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
       expm1 = exponential-minus-one(sum)
       elu = select(cmp, sum, expm1)
       not_elu = minimum(sum, zeros)
-      ROOT root = tuple(elu, not_elu) 
+      ROOT root = tuple(elu, not_elu)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   DebugOptions debug_opts = m->config().debug_options();
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->config().set_debug_options(debug_opts);
+  m->mutable_config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1609,7 +1620,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseRelu6) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   DebugOptions debug_opts = m->config().debug_options();
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->config().set_debug_options(debug_opts);
+  m->mutable_config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1651,7 +1662,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseRelu6IfMultipleUses) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   DebugOptions debug_opts = m->config().debug_options();
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->config().set_debug_options(debug_opts);
+  m->mutable_config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1697,7 +1708,7 @@ TEST_F(CudnnFusedConvRewriterHloTest, FuseLeakyRelu) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   DebugOptions debug_opts = m->config().debug_options();
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->config().set_debug_options(debug_opts);
+  m->mutable_config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());
@@ -1737,12 +1748,12 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseLeakyReluIfMultipleUses) {
       mul = multiply(sum, alphas)
       leaky_relu = select(cmp, sum, mul)
       not_leaky_relu = minimum(sum, zeros)
-      ROOT root = tuple(leaky_relu, not_leaky_relu) 
+      ROOT root = tuple(leaky_relu, not_leaky_relu)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   DebugOptions debug_opts = m->config().debug_options();
   debug_opts.set_xla_gpu_use_runtime_fusion(true);
-  m->config().set_debug_options(debug_opts);
+  m->mutable_config().set_debug_options(debug_opts);
 
   GpuConvRewriter rewriter;
   TF_ASSERT_OK(RunHloPass(&rewriter, m.get()).status());

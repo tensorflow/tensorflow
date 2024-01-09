@@ -151,7 +151,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4) {
                                    /*is_high_order_bits=*/&is_high_order_bits);
   std::string ir_str = DumpToString(&module_);
 
-  // The index is divided by 2 and used as an index to the i8 array. A
+  // The index is divided by 2 and used as an index to the i8 array. A remainder
   // is also computed to calculate is_high_order_bits.
   const char* filecheck_pattern = R"(
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx:[0-9]+]]) {
@@ -186,7 +186,7 @@ TEST_F(IrArrayTest, EmitArrayElementAddressInt4NonLinear) {
   std::string ir_str = DumpToString(&module_);
 
   // The index is linearized despite use_linear_index=false being passed because
-  // non-linaer indices are not supported with int4
+  // non-linear indices are not supported with int4
   const char* filecheck_pattern = R"(
     CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]], i32 %[[idx1:[0-9]+]]) {
     CHECK: %[[mul1:[0-9]+]] = mul nuw nsw i32 %[[idx1]], 1
@@ -222,15 +222,14 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
     COM: Calculate the address.
     CHECK: %[[srem:[0-9]+]] = srem i32 %[[idx0]], 2
     CHECK: %[[addr:[0-9]+]] = udiv i32 %[[idx0]], 2
-    CHECK: %[[isodd:[0-9]+]] = icmp eq i32 %[[srem]], 0
+    CHECK: %[[iseven:[0-9]+]] = icmp eq i32 %[[srem]], 0
     CHECK: %[[gep:[0-9]+]] = getelementptr inbounds i8, ptr %[[ptr]], i32 %[[addr]]
 
-    COM: Load the element and mask out 4 bits.
+    COM: Load the element, optionally shift, and truncate.
     CHECK: %[[load:[0-9]+]] = load i8, ptr %[[gep]], align 1
-    CHECK: %[[shift:[0-9]+]] = ashr i8 %[[load]], 4
-    CHECK: %[[trunc:[0-9]+]] = trunc i8 %[[load]] to i4
-    CHECK: %[[sext:[0-9]+]] = sext i4 %[[trunc]] to i8
-    CHECK: select i1 %[[isodd]], i8 %[[shift]], i8 %[[sext]]
+    CHECK: %[[shift:[0-9]+]] = lshr i8 %[[load]], 4
+    CHECK: %[[select:[0-9]+]] = select i1 %[[iseven]], i8 %[[shift]], i8 %[[load]]
+    CHECK: trunc i8 %[[select]] to i4
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(bool filecheck_match,
@@ -240,7 +239,7 @@ TEST_F(IrArrayTest, EmitReadArrayElementInt4) {
 
 TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
   llvm::Function* function = EmitFunctionAndSetInsertPoint(
-      {builder_.getPtrTy(), builder_.getInt32Ty(), builder_.getInt8Ty()});
+      {builder_.getPtrTy(), builder_.getInt32Ty(), builder_.getIntNTy(4)});
   llvm::Argument* array_ptr = function->getArg(0);
   llvm::Argument* array_index = function->getArg(1);
   llvm::Argument* val_to_write = function->getArg(2);
@@ -254,7 +253,7 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
   std::string ir_str = DumpToString(&module_);
 
   const char* filecheck_pattern = R"(
-    CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]], i8 %[[val:[0-9]+]]) {
+    CHECK: define void @test_function(ptr %[[ptr:[0-9]+]], i32 %[[idx0:[0-9]+]], i4 %[[val:[0-9]+]]) {
 
     COM: Calculate the address.
     CHECK: %[[srem:[0-9]+]] = srem i32 %[[idx0]], 2
@@ -264,10 +263,11 @@ TEST_F(IrArrayTest, EmitWriteArrayElementInt4) {
 
     COM: Load address, replace 4 bits with the value, and write to address.
     CHECK: %[[load:[0-9]+]] = load i8, ptr %[[gep]], align 1
-    CHECK: %[[shl:[0-9]+]] = shl i8 %[[val]], 4
+    CHECK: %[[sext:[0-9]+]] = sext i4 %[[val]] to i8
+    CHECK: %[[shl:[0-9]+]] = shl i8 %[[sext]], 4
     CHECK: %[[and1:[0-9]+]] = and i8 %[[load]], 15
     CHECK: %[[or1:[0-9]+]] = or i8 %[[shl]], %[[and1]]
-    CHECK: %[[and2:[0-9]+]] = and i8 %[[val]], 15
+    CHECK: %[[and2:[0-9]+]] = and i8 %[[sext]], 15
     CHECK: %[[and3:[0-9]+]] = and i8 %[[load]], -16
     CHECK: %[[or2:[0-9]+]] = or i8 %[[and2]], %[[and3]]
     CHECK: %[[towrite:[0-9]+]] = select i1 %[[isodd]], i8 %[[or1]], i8 %[[or2]]

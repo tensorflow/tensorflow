@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime:device_id_utils",
         "//tensorflow/core/common_runtime/device:device_event_mgr",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -58,7 +59,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/framework:device_id_utils",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:device_mem_allocator",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ],
     alwayslink = 1,
 )
@@ -96,14 +97,13 @@ cc_library(
         "//tensorflow/core/common_runtime:shared_counter",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_api",
         "//tensorflow/core/common_runtime/next_pluggable_device:next_pluggable_device_factory",
-        "//tensorflow/core/common_runtime/next_pluggable_device:pjrt_compile_on_demand_op",
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@local_xla//xla/pjrt:pjrt_api",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:device_mem_allocator",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
         "//tensorflow/core/common_runtime:copy_tensor",
     ]),
@@ -126,7 +126,7 @@ cc_library(
         "//tensorflow/core/platform:stream_executor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:device_mem_allocator",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ] + if_static([
         # Temporary workaround for duplicated symbols issues.
         ":pluggable_device_runtime_impl",

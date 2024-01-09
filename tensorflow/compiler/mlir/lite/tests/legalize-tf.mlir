@@ -198,7 +198,7 @@ func.func @fakeQuantVarsTrue(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>, %ar
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantVarsTrue
-  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32, narrow_range = true, num_bits = 5 : i64}
+  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) <{narrow_range = true, num_bits = 5 : i64}> {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32}
 }
 
 func.func @fakeQuantArgsFalse4Bits(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
@@ -235,7 +235,7 @@ func.func @fakeQuantVarsTrue4Bits(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantVarsTrue
-  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32, narrow_range = true, num_bits = 3 : i64}
+  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) <{narrow_range = true, num_bits = 3 : i64}> {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32}
 }
 
 func.func @const() -> tensor<2xi32> {
@@ -1421,7 +1421,7 @@ func.func @strided_slice_big_dims(%arg0: tensor<5x6x7xf32>, %arg1: tensor<3xi32>
   %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
   func.return %0 : tensor<1x1x5x6x7xf32>
   // CHECK-LABEL: strided_slice_big_dims
-  // CHECK: %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, offset = false, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
+  // CHECK: %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64}> {offset = false} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
 }
 
 func.func @slice1Tensor(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {
@@ -1606,7 +1606,7 @@ func.func @sparse_to_dense_with_2d_sparse_indices_and_second_dim_greater_than_4(
   %0 = "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true}: (tensor<3x5xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
   func.return %0 : tensor<?x?x?xf32>
   // CHECK-LABEL: sparse_to_dense_with_2d_sparse_indices_and_second_dim_greater_than_4
-  // CHECK: "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true} : (tensor<3x5xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
+  // CHECK: "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) <{validate_indices = true}> : (tensor<3x5xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
 }
 
 func.func @where(%arg0: tensor<3x5xi1>) -> tensor<?x2xi64> {
@@ -2311,7 +2311,7 @@ func.func @conv3d_invalid_strides(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x
   %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
   func.return %0: tensor<?x?x?x?x?xf32>
   // CHECK-LABEL: conv3d_invalid_strides
-  // CHECK:  [[BCT:%.*]] = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+  // CHECK:  [[BCT:%.*]] = "tf.Conv3D"(%arg0, %arg1) <{padding = "SAME", strides = [2, 1, 1, 1, 1]}> : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
   // CHECK:  return [[BCT]] : tensor<?x?x?x?x?xf32>
 }
 
@@ -2705,7 +2705,7 @@ func.func @approx_top_k_with_min_k(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, 
   func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
 
   // CHECK-LABEL: approx_top_k_with_min_k
-  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = false, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) <{aggregate_to_topk = true, is_max_k = false, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64}> : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
   // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
 }
 
@@ -2714,7 +2714,7 @@ func.func @approx_top_k_reduction_dimension_not_last_dim(%arg0: tensor<1x4xf32>)
   func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
 
   // CHECK-LABEL: approx_top_k_reduction_dimension_not_last_dim
-  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 0 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) <{aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 0 : i64, reduction_input_size_override = -1 : i64}> : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
   // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
 }
 

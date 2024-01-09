@@ -190,6 +190,21 @@ bool CallGraph::Dominates(const HloComputation* a,
   return DominatesHelper(a, b, &visited);
 }
 
+bool CallGraph::CanReach(const HloComputation* a,
+                         const HloComputation* b) const {
+  if (a == b) {
+    return true;
+  }
+
+  const CallGraphNode& b_node = GetNode(b);
+  for (const HloComputation* b_caller : b_node.callers()) {
+    if (CanReach(a, b_caller)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 namespace {
 // Returns the call context of a computation which is called from contexts 'a'
 // and 'b'.

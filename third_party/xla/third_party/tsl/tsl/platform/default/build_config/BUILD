@@ -1,7 +1,7 @@
 # Description:
 # Platform-specific build configurations.
 
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
 
 package(default_visibility = ["//visibility:public"])

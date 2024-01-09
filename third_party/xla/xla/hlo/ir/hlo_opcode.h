@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef XLA_HLO_IR_HLO_OPCODE_H_
 #define XLA_HLO_IR_HLO_OPCODE_H_
 
+#include <cstdint>
 #include <iosfwd>
 #include <optional>
 
 #include "absl/strings/string_view.h"
 #include "xla/statusor.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
@@ -41,6 +43,10 @@ using mlir::DialectRegistry;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::OwningOpRef;
+using tensorflow::monitoring::testing::CellReader;
+
+static constexpr char kCompilationStreamz[] =
+    "/tensorflow/core/tf2xla/api/v1/tf_dialect_to_executor_dialect_status";
 
 std::string TestDataPath() {
   return tensorflow::GetDataDependencyFilepath(
@@ -73,15 +79,23 @@ class TensorflowDialectToExecutorTest : public ::testing::Test {
 };
 
 TEST_F(TensorflowDialectToExecutorTest, ConvertsToExecutor) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
   TF_EXPECT_OK(ExportFromTensorflowDialectToExecutor(*mlir_module_));
+
+  EXPECT_EQ(compilation_status.Delta("success"), 1);
 }
 
 TEST_F(TensorflowDialectToExecutorTest, ErrorsWhenCannotConvert) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("invalid_executor.mlir"));
 
   EXPECT_FALSE(ExportFromTensorflowDialectToExecutor(*mlir_module_).ok());
+
+  EXPECT_EQ(compilation_status.Delta("failed"), 1);
 }
 
 }  // namespace

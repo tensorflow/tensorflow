@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/utils.h"
@@ -271,7 +272,7 @@ class TrackedDeviceBuffer {
                       absl::Span<se::DeviceMemoryBase const> device_memory,
                       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
                           definition_events,
-                      std::function<void()> on_delete_callback);
+                      absl::AnyInvocable<void() &&> on_delete_callback);
   ~TrackedDeviceBuffer();
 
  private:
@@ -300,7 +301,7 @@ class TrackedDeviceBuffer {
   StreamAndEventContainer usage_events_;
 
   // A callback to call when the TrackedDeviceBuffer is about to be destroyed.
-  std::function<void()> on_delete_callback_;
+  absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 
 // Populates 'events' with the set of buffer events for buffer. If

@@ -86,17 +86,14 @@ class AsyncValue {
   // Currently an IndirectAsyncValue is available if and only if it is resolved.
   bool IsUnresolvedIndirect() const;
 
+  // Return true if this is an IndirectAsyncValue.
+  bool IsIndirect() const;
+
   // Return reference count. This should be used for testing and debugging only.
   uint32_t NumRef() const { return refcount_.load(std::memory_order_acquire); }
 
   // Return true if reference count is 1.
-  bool IsUnique() const {
-    // Conservatively return false if it is an IndirectAsyncValue, because the
-    // refcount of an IndirectAsyncValue may not match the refcount of the
-    // underlying AsyncValue.
-    return (kind() != Kind::kIndirect) &&
-           (refcount_.load(std::memory_order_acquire) == 1);
-  }
+  bool IsUnique() const;
 
   // Add a new reference to this object.
   //
@@ -756,6 +753,14 @@ class IndirectAsyncValue : public AsyncValue {
     return v->kind() == AsyncValue::Kind::kIndirect;
   }
 
+  bool IsUnique() const {
+    // In addition to checking the refcount of this IndirectAsyncValue, we also
+    // need to check the refcount of the underlying value. If the underlying
+    // value is not available, we conservatively return false.
+    return (refcount_.load(std::memory_order_acquire) == 1) && IsAvailable() &&
+           value_->IsUnique();
+  }
+
  private:
   ~IndirectAsyncValue() { Destroy(); }
 
@@ -807,6 +812,8 @@ inline bool AsyncValue::IsConcrete() const {
 inline bool AsyncValue::IsUnresolvedIndirect() const {
   return IsUnavailable() && (kind() == Kind::kIndirect);
 }
+
+inline bool AsyncValue::IsIndirect() const { return kind() == Kind::kIndirect; }
 
 inline AsyncValue* AsyncValue::AddRef(uint32_t count) {
   // Always enable reference counting in debug builds to verify that the use of
@@ -974,6 +981,16 @@ inline void AsyncValue::Destroy() {
 
   GetTypeInfo().destructor(this);
   if (was_ref_counted) internal::AlignedFree(this);
+}
+
+inline bool AsyncValue::IsUnique() const {
+  if (kind() != Kind::kIndirect) {
+    return refcount_.load(std::memory_order_acquire) == 1;
+  }
+
+  // If it is an IndirectAsyncValue, we also need to check the refcount of the
+  // underlying value.
+  return static_cast<const IndirectAsyncValue*>(this)->IsUnique();
 }
 
 }  // namespace tsl

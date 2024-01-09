@@ -24,10 +24,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -37,6 +42,7 @@ limitations under the License.
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
 #include "xla/xla.pb.h"
@@ -238,18 +244,33 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
-  return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0);
+  return GetStreamExecutorGpuClient(GpuClientOptions());
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateMockGpuClient(
     int num_nodes) {
-  return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0,
-      /*num_nodes=*/num_nodes, /*allowed_devices=*/std::nullopt,
-      /*platform_name=*/std::nullopt,
-      /*should_stage_host_to_device_transfers=*/true,
-      /*kv_get=*/nullptr, /*kv_put=*/nullptr, /*enable_mock_nccl=*/true);
+  GpuClientOptions options;
+  options.num_nodes = num_nodes;
+  options.enable_mock_nccl = true;
+  return GetStreamExecutorGpuClient(options);
+}
+
+StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient(
+    std::shared_ptr<xla::DistributedRuntimeClient> distributed_client,
+    int node_id, int num_nodes) {
+  if (node_id < 0 || node_id >= num_nodes) {
+    return absl::InvalidArgumentError(
+        "Node id is expected to be in range [0, num_nodes)");
+  }
+
+  TF_RET_CHECK(distributed_client != nullptr);
+
+  GpuClientOptions options;
+  options.node_id = node_id;
+  options.num_nodes = num_nodes;
+  options.kv_store =
+      GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"gpu:");
+  return GetStreamExecutorGpuClient(options);
 }
 
 StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(
@@ -720,7 +741,7 @@ ParameterType GetParameterType(const HloModule& module) {
 Status FunctionalHloRunner::PrepareHloModuleForCompilation(
     HloModule* hlo_module, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options) {
-  hlo_module->config().set_debug_options(debug_options);
+  hlo_module->mutable_config().set_debug_options(debug_options);
 
   if (preproc_options.is_spmd_partitioned_module()) {
     // If the module has already been partitioned by SPMD, add sharding
@@ -1426,7 +1447,7 @@ FunctionalHloRunner::FetchAndLogOutput(
                "same device";
         output_slice.emplace_back(
             ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
-        buffer->ToLiteral(&output_slice.back(), [&](Status s) {
+        buffer->ToLiteral(&output_slice.back()).OnReady([&](Status s) {
           absl::MutexLock lock(&mu);
           --num_pending_transfers;
           status.Update(s);

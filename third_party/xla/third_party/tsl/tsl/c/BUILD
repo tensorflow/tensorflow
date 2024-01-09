@@ -2,7 +2,7 @@
 # C API for TensorFlow, for use by client language bindings.
 
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl:tsl.bzl", "tsl_copts", "tsl_gpu_library")
 
 # buildifier: disable=same-origin-load

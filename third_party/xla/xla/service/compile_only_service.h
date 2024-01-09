@@ -57,10 +57,6 @@ class CompileOnlyService : public Service {
                           GetDeviceHandlesResponse* result) override {
     return Unimplemented("CompileOnlyService does not support devices.");
   }
-  Status WaitForExecution(const WaitForExecutionRequest* arg,
-                          WaitForExecutionResponse* result) override {
-    return Unimplemented("CompileOnlyService does not support execution.");
-  }
   Status TransferToServer(const TransferToServerRequest* arg,
                           TransferToServerResponse* result) override {
     return Unimplemented(

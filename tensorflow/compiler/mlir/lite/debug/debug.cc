@@ -87,7 +87,7 @@ struct WritableFileRawStream : public llvm::raw_ostream {
 };
 
 // Reproducer stream that emits a reproducer to the given `llvm::raw_ostream`.
-class ReproducerStream : public mlir::PassManager::ReproducerStream {
+class ReproducerStream : public mlir::ReproducerStream {
  public:
   ReproducerStream(std::string name, std::unique_ptr<llvm::raw_ostream> os)
       : name_(std::move(name)), os_(std::move(os)) {}
@@ -103,12 +103,12 @@ class ReproducerStream : public mlir::PassManager::ReproducerStream {
 
 // Returns a function that builds a reproducer stream, or nullptr if the MLIR
 // reproducer will not be enabled.
-mlir::PassManager::ReproducerStreamFactory GetReproducerStreamFactory(
+mlir::ReproducerStreamFactory GetReproducerStreamFactory(
     absl::string_view dump_dir) {
   std::string path = tsl::io::JoinPath(dump_dir, "tfl_mlir_crash_repro.mlir");
 
-  return [path = std::move(path)](std::string& error)
-             -> std::unique_ptr<mlir::PassManager::ReproducerStream> {
+  return [path = std::move(path)](
+             std::string& error) -> std::unique_ptr<mlir::ReproducerStream> {
     std::unique_ptr<tsl::WritableFile> file;
     if (auto status = tsl::Env::Default()->NewWritableFile(path, &file);
         !status.ok()) {

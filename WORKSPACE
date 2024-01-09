@@ -31,12 +31,12 @@ load(
 
 python_repository(name = "python_version_repo")
 
-load("@python_version_repo//:py_version.bzl", "HERMETIC_PYTHON_VERSION")
+load("@python_version_repo//:py_version.bzl", "TF_PYTHON_VERSION")
 
 python_register_toolchains(
     name = "python",
     ignore_root_user_error = True,
-    python_version = HERMETIC_PYTHON_VERSION,
+    python_version = TF_PYTHON_VERSION,
 )
 
 load("@python//:defs.bzl", "interpreter")
@@ -62,7 +62,7 @@ pip_parse(
     name = "pypi",
     annotations = NUMPY_ANNOTATIONS,
     python_interpreter_target = interpreter,
-    requirements = "//:requirements_lock_" + HERMETIC_PYTHON_VERSION.replace(".", "_") + ".txt",
+    requirements = "//:requirements_lock_" + TF_PYTHON_VERSION.replace(".", "_") + ".txt",
 )
 
 load("@pypi//:requirements.bzl", "install_deps")

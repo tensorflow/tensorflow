@@ -1,4 +1,3 @@
-load("@tf_runtime//tools:mlir_to_bef.bzl", "mlir_to_bef")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_test", "tf_cc_test")
 # copybara:uncomment load("//third_party/tf_runtime_google/cpp_tests:gen_tests.bzl", "tfrt_cc_test_and_strict_benchmark")
 
@@ -15,21 +14,6 @@ package_group(
         "//tensorflow/core/runtime_fallback/test/...",
         "//tensorflow/core/runtime_fallback/test/gpu/...",
     ],
-)
-
-mlir_to_bef(
-    name = "testdata/batch_function_fallback.mlir",
-    tfrt_translate = "//tensorflow/compiler/mlir/tfrt:tfrt_fallback_translate",
-)
-
-mlir_to_bef(
-    name = "testdata/create_op.mlir",
-    tfrt_translate = "//tensorflow/compiler/mlir/tfrt:tfrt_fallback_translate",
-)
-
-mlir_to_bef(
-    name = "testdata/custom_thread_pool.mlir",
-    tfrt_translate = "//tensorflow/compiler/mlir/tfrt:tfrt_fallback_translate",
 )
 
 cc_library(
@@ -142,43 +126,6 @@ cc_library(
 #     ],
 # )
 #
-# # C++ benchmarks for batch function runtime fallback.
-# tfrt_cc_test_and_strict_benchmark(
-#     name = "batch_function_fallback_benchmark",
-#     srcs = ["batch_function_fallback_benchmark_test.cc"],
-#     data = ["testdata/batch_function_fallback.mlir.bef"],
-#     enable_xprof = True,
-#     includes = ["third_party/tf_runtime/include"],
-#     owners = ["tf-runtime-testing"],
-#     tags = [
-#         "need_main",
-#         "no_gpu",
-#     ],
-#     deps = [
-#         "//base",
-#         "//devtools/build/runtime:get_runfiles_dir",
-#         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
-#         "//tensorflow/core/platform:env",
-#         "//tensorflow/core/platform:resource_loader",
-#         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
-#         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
-#         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
-#         "//tensorflow/core/runtime_fallback/util:fallback_test_util",
-#         "//tensorflow/core/runtime_fallback/util:tensor_util",
-#         "//tensorflow/core/tfrt/utils:fallback_tensor",
-#         "@eigen_archive//:eigen3",
-#         "@tf_runtime//:bef",
-#         "@tf_runtime//:befexecutor",
-#         "@tf_runtime//:core_runtime_alwayslink",
-#         "@tf_runtime//:hostcontext_alwayslink",
-#         "@tf_runtime//:mlirtobef",
-#         "@tf_runtime//:support",
-#         "@tf_runtime//:tensor",
-#         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
-#         "@tf_runtime//backends/cpu:test_ops_alwayslink",
-#     ],
-# )
-#
 # # C++ tests and benchmarks for runtime fallback.
 # tfrt_cc_test_and_strict_benchmark(
 #     name = "c_api_tfrt",
@@ -214,10 +161,10 @@ cc_library(
 #     srcs = ["runtime_fallback_kernels_test.cc"],
 #     deps = [
 #         ":coreruntime_driver",
-#         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
 #         "@com_google_googletest//:gtest",
 #         "@com_google_googletest//:gtest_main",
 #         "@llvm-project//llvm:Support",
+#         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
 #         "@tf_runtime//:core_runtime",
 #         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
 #     ] + select({
@@ -241,11 +188,11 @@ cc_library(
 #     includes = ["third_party/tf_runtime/include"],
 #     deps = [
 #         ":coreruntime_driver",
+#         "@com_google_googletest//:gtest",
 #         "//tensorflow/core/platform:test_benchmark",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
 #         "@local_tsl//tsl/platform/default/build_config:test_main",
-#         "@com_google_googletest//:gtest",
 #         "@tf_runtime//:core_runtime_alwayslink",
 #         "@tf_runtime//:hostcontext",
 #         "@tf_runtime//:tensor",
@@ -266,11 +213,11 @@ cc_library(
 #     srcs = ["kernel_fallback_compat_request_state_test.cc"],
 #     includes = ["third_party/tf_runtime/include"],
 #     deps = [
+#         "@com_google_googletest//:gtest",
 #         "//tensorflow/core/framework:tensor_testutil",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
 #         "@local_tsl//tsl/platform/default/build_config:test_main",
-#         "@com_google_googletest//:gtest",
 #         "@tf_runtime//:core_runtime_alwayslink",
 #     ],
 # )
@@ -322,33 +269,4 @@ cc_library(
         ],
     }),
     alwayslink = 1,
-)
-
-tf_cc_shared_test(
-    name = "kernel_fallback_compat_test",
-    srcs = ["kernel_fallback_compat_test.cc"],
-    data = [
-        "testdata/create_op.mlir.bef",
-        "testdata/custom_thread_pool.mlir.bef",
-    ],
-    tags = ["no_oss"],
-    deps = [
-        "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
-        "//tensorflow/core:all_kernels",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
-        "//tensorflow/core/runtime_fallback/util:fallback_test_util",
-        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
-        "//tensorflow/core/tfrt/runtime",
-        "//tensorflow/core/tfrt/utils:thread_pool",
-        "@com_google_googletest//:gtest_main",
-        "@tf_runtime//:bef",
-        "@tf_runtime//:befexecutor",
-        "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:init_tfrt_dialects",
-        "@tf_runtime//:tracing",
-    ],
 )

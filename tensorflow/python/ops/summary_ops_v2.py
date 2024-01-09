@@ -28,7 +28,6 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.dtensor.python import api as dtensor_api
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
-from tensorflow.python.eager import profiler as _profiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -43,6 +42,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import profiler_v2 as _profiler
 from tensorflow.python.trackable import resource
 from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
@@ -1327,7 +1327,7 @@ _current_trace_context = None
 
 
 @tf_export("summary.trace_on", v1=[])
-def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-name
+def trace_on(graph=True, profiler=False, profiler_outdir=None):  # pylint: disable=redefined-outer-name
   """Starts a trace to record computation graphs and profiling information.
 
   Must be invoked in eager mode.
@@ -1342,12 +1342,13 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
 
   Args:
     graph: If True, enables collection of executed graphs. It includes ones from
-        tf.function invocation and ones from the legacy graph mode. The default
-        is True.
+      tf.function invocation and ones from the legacy graph mode. The default is
+      True.
     profiler: If True, enables the advanced profiler. Enabling profiler
-        implicitly enables the graph collection. The profiler may incur a high
-        memory overhead. The default is False.
-
+      implicitly enables the graph collection. The profiler may incur a high
+      memory overhead. The default is False.
+    profiler_outdir: Output directory for profiler. It is required when profiler
+      is enabled when trace was started. Otherwise, it is ignored.
   """
   if ops.inside_function():
     logging.warn("Cannot enable trace inside a tf.function.")
@@ -1365,12 +1366,22 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
     if graph and not profiler:
       context.context().enable_graph_collection()
     if profiler:
-      context.context().enable_run_metadata()
-      _profiler.start()
+      if profiler_outdir is None:
+        # TODO(b/149431324): Change this to throw a ValueError when Tensorflow
+        # major version advances. (current version is 2.15)
+        logging.warn(
+            "No `profiler_outdir` passed to trace_on(). Profiler won't be"
+            " enabled."
+        )
+      else:
+        context.context().enable_run_metadata()
+        _profiler.start(profiler_outdir)
 
     _current_trace_context = _TraceContext(graph=graph, profiler=profiler)
 
 
+# TODO(b/149431324): Delete `profiler_outdir` arg when Tensorflow major version
+# advances. (current version is 2.15)
 @tf_export("summary.trace_export", v1=[])
 def trace_export(name, step=None, profiler_outdir=None):
   """Stops and exports the active trace as a Summary and/or profile file.
@@ -1383,8 +1394,7 @@ def trace_export(name, step=None, profiler_outdir=None):
     step: Explicit `int64`-castable monotonic step value for this summary. If
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
-    profiler_outdir: Output directory for profiler. It is required when profiler
-      is enabled when trace was started. Otherwise, it is ignored.
+    profiler_outdir: This arg is a no-op. Please set this in trace_on().
 
   Raises:
     ValueError: if a default writer exists, but no step was provided and
@@ -1406,8 +1416,6 @@ def trace_export(name, step=None, profiler_outdir=None):
       raise ValueError("Must enable trace before export through "
                        "tf.summary.trace_on.")
     graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
-    if profiler and profiler_outdir is None:
-      raise ValueError("Argument `profiler_outdir` is not specified.")
 
   run_meta = context.context().export_run_metadata()
 
@@ -1417,7 +1425,12 @@ def trace_export(name, step=None, profiler_outdir=None):
     run_metadata(name, run_meta, step)
 
   if profiler:
-    _profiler.save(profiler_outdir, _profiler.stop())
+    if profiler_outdir:
+      logging.warn(
+          "Ignoring `profiler_outdir` passed to trace_export(). Please pass it"
+          " to trace_on() instead."
+      )
+    _profiler.stop()
 
   trace_off()
 
@@ -1439,7 +1452,8 @@ def trace_off():
   if profiler:
     try:
       _profiler.stop()
-    except _profiler.ProfilerNotRunningError:
+    except Exception as e:  # pylint: disable=broad-except
+      logging.warn("Error while stopping profiler: %s", e)
       pass
 
 

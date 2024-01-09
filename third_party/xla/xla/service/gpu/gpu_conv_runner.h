@@ -200,8 +200,6 @@ struct RunConvOptions {
   GenericConvRunner* runner_cache;
 };
 
-// This file contains low-level routines for running cudnn convolutions.
-
 // Calls into cudnn to run the specified convolution.
 //
 // We provide one overload which takes a scratch buffer, and another which takes

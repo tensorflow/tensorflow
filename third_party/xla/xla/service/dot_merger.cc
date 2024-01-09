@@ -19,6 +19,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/service/graphcycles/graphcycles.h"
@@ -304,10 +305,18 @@ StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge) {
   // them earlier because removing an instruction deletes it; we'd then have
   // dangling pointers in our hashtable!)
   absl::flat_hash_set<HloInstruction*> dead_instrs;
+  std::vector<HloInstruction*> keys;
+  keys.reserve(equivalence_classes.size());
   for (auto& kv : equivalence_classes) {
+    keys.push_back(kv.first);
+  }
+  absl::c_sort(keys, [](const HloInstruction* a, const HloInstruction* b) {
+    return a->unique_id() < b->unique_id();
+  });
+  for (auto key : keys) {
+    const auto& values = equivalence_classes[key];
     // For determinism, iterate in order of the instructions' IDs.
-    absl::InlinedVector<HloInstruction*, 16> dots(kv.second.begin(),
-                                                  kv.second.end());
+    absl::InlinedVector<HloInstruction*, 16> dots(values.begin(), values.end());
     absl::c_sort(dots, [](const HloInstruction* a, const HloInstruction* b) {
       return a->unique_id() < b->unique_id();
     });

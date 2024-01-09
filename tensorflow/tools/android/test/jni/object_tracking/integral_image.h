@@ -179,7 +179,8 @@ class IntegralImage : public Image<uint32_t> {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(IntegralImage);
+  IntegralImage(const IntegralImage&) = delete;
+  void operator=(const IntegralImage&) = delete;
 };
 
 }  // namespace tf_tracking

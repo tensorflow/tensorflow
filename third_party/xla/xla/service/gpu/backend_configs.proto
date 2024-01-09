@@ -94,6 +94,12 @@ message GemmBackendConfig {
   }
 
   Epilogue epilogue = 13;
+
+  optional int64 lhs_stride = 14;
+  optional int64 rhs_stride = 15;
+
+  optional bool grad_x = 16;
+  optional bool grad_y = 17;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
@@ -105,13 +111,24 @@ message BitcastBackendConfig {
 // Backend config for async collective operations. Note that for is_sync will
 // be false by default, so even if a backend config is not explicitly attached
 // to the HLOInstruction, getting the backend_config will yield a default valued
-// proto which will have is_sync = false.
+// proto which will have is_sync = false. Attribute no_parallel_custom_call
+// asserts that an asynchronous collective operation does not execute in
+// parallel with custom-calls, which can trigger device synchronization . This
+// attribute will also be false by default and should lead to conversative
+// runtime behavior.
 message CollectiveBackendConfig {
   bool is_sync = 1;
+  bool no_parallel_custom_call = 2;
 }
 
 message ReificationCost {
   double end_to_end_cycles = 1;  // Total execution time of the reified op.
+}
+
+// Backend config for a custom fusion (pre-compiled device kernel implementing a
+// fusion computation).
+message CustomFusionConfig {
+  string name = 1;
 }
 
 message FusionBackendConfig {
@@ -130,8 +147,20 @@ message FusionBackendConfig {
   // present, we use the default Triton config.
   AutotuneResult.TritonGemmKey triton_gemm_config = 2;
 
+  // Only valid when kind == "__custom_fusion".
+  CustomFusionConfig custom_fusion_config = 4;
+
   // Cost model prediction.
   ReificationCost reification_cost = 3;
+}
+
+// Backed config for norm executed by cuDNN.
+message CudnnNormBackendConfig {
+  // Epsilon parameter.
+  double epsilon = 1;
+
+  // Opaque algorithm number.
+  stream_executor.dnn.AlgorithmProto algorithm = 2;
 }
 
 // Backend config for a fused Multi-Headed Attention (fMHA) that runs through
@@ -161,4 +190,10 @@ message CudnnfMHABackendConfig {
 
   // Random seed used by dropout
   int64 seed = 15;
+
+  // Is flash attention
+  bool is_flash_attention = 20;
+
+  // Is causal mask
+  bool is_causal_mask = 21;
 }

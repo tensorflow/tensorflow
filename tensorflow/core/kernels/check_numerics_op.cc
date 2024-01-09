@@ -258,17 +258,21 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     TensorReference abnormal_detected_ref(abnormal_detected);
     auto check_cb = [this, stream, abnormal_detected_ref,
                      abnormal_detected_host, context, done]() {
+      {
 #if GOOGLE_CUDA
-      se::cuda::ScopedActivateExecutorContext scoped_activation{
-          stream->parent()};
+        se::cuda::ScopedActivateExecutorContext scoped_activation{
+            stream->parent()};
 #elif TENSORFLOW_USE_ROCM
-      se::rocm::ScopedActivateExecutorContext scoped_activation{
-          stream->parent()};
+        se::rocm::ScopedActivateExecutorContext scoped_activation{
+            stream->parent()};
 #endif
-      TTypes<const int>::Vec abnormal_detected_host_flat =
-          abnormal_detected_host.flat<int>();
-      abnormal_detected_ref.Unref();
-      checkForAnomalies(context, abnormal_detected_host_flat);
+        TTypes<const int>::Vec abnormal_detected_host_flat =
+            abnormal_detected_host.flat<int>();
+        abnormal_detected_ref.Unref();
+        checkForAnomalies(context, abnormal_detected_host_flat);
+      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
       done();
     };
     context->device()

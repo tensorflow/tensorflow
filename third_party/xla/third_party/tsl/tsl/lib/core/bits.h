@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_LIB_CORE_BITS_H_
 #define TENSORFLOW_TSL_LIB_CORE_BITS_H_
 
+#include <cstdint>
+
+#include "absl/numeric/bits.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/types.h"
 
@@ -102,6 +105,14 @@ inline uint64 NextPowerOfTwo64(uint64 value) {
   int exponent = Log2Ceiling(value);
   DCHECK_LT(exponent, std::numeric_limits<uint64>::digits);
   return 1LL << exponent;
+}
+
+inline int64_t NextPowerOfTwoS64(int64_t value) {
+  constexpr int64_t kMaxRepresentablePowerOfTwo =
+      static_cast<int64_t>(uint64_t{1} << 62);
+  DCHECK_GE(value, 0);
+  DCHECK_LE(value, kMaxRepresentablePowerOfTwo);
+  return static_cast<int64_t>(absl::bit_ceil(static_cast<uint64_t>(value)));
 }
 
 }  // namespace tsl

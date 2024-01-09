@@ -1,0 +1,18 @@
+op 	 {
+  name: "TPUAnnotateTensorsWithDynamicShape"
+  input_arg {
+    name: "tensors"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "tpu_tensors"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

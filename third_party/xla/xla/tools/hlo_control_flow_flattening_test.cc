@@ -494,6 +494,27 @@ TEST_F(HloControlFlowFlatteningTest, CollectivePermute) {
             "collective-permute");
 }
 
+TEST_F(HloControlFlowFlatteningTest, ReplicaIdSucceedsWithChange) {
+  absl::string_view hlo_string = R"(
+  HloModule ReplicaId
+
+  ENTRY ReplicaId {
+    ROOT replica-id.18600 = u32[]{:T(128)} replica-id()
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::Constant());
+  EXPECT_EQ(module->entry_computation()->root_instruction()->name(),
+            "replica-id.18600");
+}
+
 TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
   absl::string_view hlo_string = R"(
   HloModule CollectivePermuteInPlaceUpdate

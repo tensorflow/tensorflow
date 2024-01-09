@@ -155,6 +155,12 @@ struct TfrtCompileOptions {
 
   // Serialized MLIR module file under aot_packages.
   std::string aot_mlir_module_file;
+
+  // If true, BEF will be serialized to aot_packages.
+  bool serialize_bef_to_aot_packages = false;
+
+  // Serialized BEF file under aot_packages.
+  std::string aot_bef_file;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

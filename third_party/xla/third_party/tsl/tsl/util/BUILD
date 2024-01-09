@@ -5,7 +5,7 @@
 #   to other TF components outside of TSL.
 
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
@@ -286,6 +286,7 @@ cc_library(
         "//tsl/platform:stringpiece",
         "//tsl/platform:stringprintf",
         "//tsl/platform:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -1,4 +1,4 @@
-# Release 2.15.0
+# Release 2.16.0
 
 ## TensorFlow
 
@@ -9,8 +9,11 @@
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
-* `tf.types.experimental.GenericFunction` has been renamed to
-  `tf.types.experimental.PolymorphicFunction`.
+* `tf.summary.trace_on` now takes a `profiler_outdir` argument. This must be set
+  if `profiler` arg is set to `True`.
+    * `tf.summary.trace_export`'s `profiler_outdir` arg is now a no-op. Enabling
+      the profiler now requires setting `profiler_outdir` in `trace_on`.
+
 
 ### Known Caveats
 
@@ -23,116 +26,38 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
-*   [oneDNN CPU performance optimizations](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md)
-    Windows x64 & x86.
-
-    *   **Windows x64 & x86 packages:**
-        *   oneDNN optimizations are *enabled by default* on X86 CPUs
-    *   To explicitly enable or disable oneDNN optimizations, set the
-        environment variable `TF_ENABLE_ONEDNN_OPTS` to `1` (enable) or `0`
-        (disable) before running TensorFlow. To fall back to default settings,
-        unset the environment variable.
-    *   oneDNN optimizations can yield slightly different numerical results from
-        without oneDNN optimizations due to floating-point round-off errors from
-        different computation approaches and orders.
-    *   To verify if oneDNN optimizations are on, look for a message with
-        *"oneDNN custom operations are on"* in the log. If the exact phrase is
-        not there, it means they are off.
-
-* Making the `tf.function` type system fully available:
-
-    * `tf.types.experimental.TraceType` now allows custom tf.function inputs to
-       declare Tensor decomposition and type casting support.
-    * Introducing `tf.types.experimental.FunctionType` as the comprehensive
-      representation of the signature of `tf.function` callables. It can be
-      accessed through the `function_type` property of `tf.function`s and
-      `ConcreteFunction`s. See the `tf.types.experimental.FunctionType`
-      documentation for more details.
-
-* Introducing `tf.types.experimental.AtomicFunction` as the fastest way to
-  perform TF computations in Python.
-
-    * Can be accessed through `inference_fn` property of `ConcreteFunction`s
-    * Does not support gradients.
-    * See `tf.types.experimental.AtomicFunction` documentation for how to call
-      and use it.
-
-
-*   `tf.data`:
-
-    *   Moved option `warm_start` from
-        `tf.data.experimental.OptimizationOptions` to `tf.data.Options`.
-
-*   `tf.lite`:
-
-    *   `sub_op` and `mul_op` support broadcasting up to 6 dimensions.
-
-    *  The `tflite::SignatureRunner` class, which provides support for named
-       parameters and for multiple named computations within a single TF Lite
-       model, is no longer considered experimental. Likewise for the following
-       signature-related methods of `tflite::Interpreter`:
-
-       *   `tflite::Interpreter::GetSignatureRunner`
-       *   `tflite::Interpreter::signature_keys`
-       *   `tflite::Interpreter::signature_inputs`
-       *   `tflite::Interpreter::signature_outputs`
-       *   `tflite::Interpreter::input_tensor_by_signature`
-       *   `tflite::Interpreter::output_tensor_by_signature`
-
-    *  Similarly, the following signature runner functions in the TF Lite C API
-       are no longer considered experimental:
-
-       *    `TfLiteInterpreterGetSignatureCount`
-       *    `TfLiteInterpreterGetSignatureKey`
-       *    `TfLiteInterpreterGetSignatureRunner`
-       *    `TfLiteSignatureRunnerAllocateTensors`
-       *    `TfLiteSignatureRunnerGetInputCount`
-       *    `TfLiteSignatureRunnerGetInputName`
-       *    `TfLiteSignatureRunnerGetInputTensor`
-       *    `TfLiteSignatureRunnerGetOutputCount`
-       *    `TfLiteSignatureRunnerGetOutputName`
-       *    `TfLiteSignatureRunnerGetOutputTensor`
-       *    `TfLiteSignatureRunnerInvoke`
-       *    `TfLiteSignatureRunnerResizeInputTensor`
-
-    * New C API function `TfLiteExtensionApisVersion` added to
-      `tensorflow/lite/c/c_api.h`.
-
-    * Add int8 and int16x8 support for RSQRT operator
-
-* Android NDK r25 is supported.
-
 ### Bug Fixes and Other Changes
 
-*   <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-*   <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-*   <NOTES SHOULD BE GROUPED PER AREA>
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
 
-*   Add TensorFlow Quantizer to TensorFlow pip package.
-
-*   `tf.sparse.segment_sum` `tf.sparse.segment_mean` `tf.sparse.segment_sqrt_n`
-    `SparseSegmentSum/Mean/SqrtN[WithNumSegments]`
-
-    *   Added `sparse_gradient` option (default=false) that makes the gradient
-        of these functions/ops sparse (`IndexedSlices`) instead of dense
-        (`Tensor`), using new `SparseSegmentSum/Mean/SqrtNGradV2` ops.
-
-*   `tf.nn.embedding_lookup_sparse`
-
-    *   Optimized this function for some cases by fusing internal operations.
-
-*   `tf.saved_model.SaveOptions`
-
-    *   Provided a new `experimental_skip_saver` argument which, if specified,
-        will suppress the addition of `SavedModel`-native save and restore ops
-        to the `SavedModel`, for cases where users already build custom
-        save/restore ops and checkpoint formats for the model being saved, and
-        the creation of the SavedModel-native save/restore ops simply cause
-        longer model serialization times.
+* `tf.lite`
+    * Added support for `stablehlo.gather`.
+    * Added support for `stablehlo.add`.
+    * Added support for `stablehlo.multiply`.
+    * Added support for `stablehlo.maximum`.
+    * Added support for `stablehlo.minimum`.
+    * Added boolean parameter support for `tfl.gather_nd`.
 
 ## Keras
 
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+*  `keras.layers.experimental.DynamicEmbedding`
+    * Added `DynamicEmbedding` Keras layer
+    * Added 'UpdateEmbeddingCallback`
+    * `DynamicEmbedding` layer allows for the continuous updating of the
+      vocabulary and embeddings during the training process. This layer
+      maintains a hash table to track the most up-to-date vocabulary based on
+      the inputs received by the layer and the eviction policy. When this layer
+      is used with an `UpdateEmbeddingCallback`, which is a time-based callback,
+      the vocabulary lookup tensor is updated at the time interval set in the
+      `UpdateEmbeddingCallback` based on the most up-to-date vocabulary hash
+      table maintained by the layer. If this layer is not used in conjunction
+      with `UpdateEmbeddingCallback` the behavior of the layer would be same as
+      `keras.layers.Embedding`.
+*  `keras.optimizers.Adam`
+    * Added the option to set adaptive epsilon to match implementations with Jax
+      and PyTorch equivalents.
 
 ### Breaking Changes
 
@@ -156,28 +81,157 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
-* Add ops to `tensorflow.raw_ops` that were missing.
-* `tf.CheckpointOptions`
-    * It now takes in a new argument called `experimental_write_callbacks`.
-    These are callbacks that will be executed after a saving event finishes
-    writing the checkpoint file.
-* Add an option `disable_eager_executer_streaming_enqueue` to
-  `tensorflow.ConfigProto.Experimental` to control the eager runtime's behavior
-  around parallel remote function invocations; when set to `True`, the eager
-  runtime will be allowed to execute multiple function invocations in parallel.
-* `tf.constant_initializer`
-    * It now takes a new argument called `support_partition`.
-    If True, constant_initializers can create sharded variables.
-    This is disabled by default, similar to existing behavior.
-
-* `tf.lite`
-    * Added support for `stablehlo.scatter`.
-
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
 <INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.15.0.post1
+
+## TensorFlow
+
+### Bug Fixes and Other Changes
+
+*   Hot-fix was needed for an issue affecting the TensorFlow installation
+    process.
+    *   TensorFlow 2.15.0 Python package was requesting `tensorrt`-related
+        packages that cannot be found unless the user installs them beforehand
+        or provides additional installation flags.
+    *   This dependency affected anyone installing TensorFlow 2.15 alongside
+        NVIDIA CUDA dependencies via `pip install tensorflow[and-cuda]`.
+    *   Depending on the installation method, TensorFlow 2.14 would be installed
+        instead of 2.15, or users could receive an installation error due to
+        those missing dependencies.
+*   TensorFlow 2.15.0.post1 is being released for Linux x86_64 to resolve this
+    issue as quickly as possible.
+    *   This version removes the `tensorrt` Python package dependencies from the
+        tensorflow[and-cuda] installation method to ensure `pip install
+        tensorflow[and-cuda]` works as originally intended for TensorFlow 2.15.
+    *   Support for TensorRT is otherwise unaffected as long as TensorRT is
+        already installed on the system.
+*   Using .post1 instead of a full minor release allowed us to push this release
+    out quickly. However, please note the following caveat:
+    *   For users wishing to pin their Python dependency in a requirements file
+        or other situation, under Python's version specification rules,
+        `tensorflow[and-cuda]==2.15.0` will not install this fixed version.
+        Please use `==2.15.0.post1` to specify this exact version on Linux
+        platforms, or a fuzzy version specification, such as `==2.15.*`, to
+        specify the most recent compatible version of TensorFlow 2.15 on all
+        platforms.
+
+# Release 2.15.0
+
+## TensorFlow
+
+### Breaking Changes
+
+* `tf.types.experimental.GenericFunction` has been renamed to `tf.types.experimental.PolymorphicFunction`.
+
+### Known Caveats
+
+### Major Features and Improvements
+
+*   [oneDNN CPU performance optimizations](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md)
+    Windows x64 & x86.
+
+    *   **Windows x64 & x86 packages:**
+        *   oneDNN optimizations are *enabled by default* on X86 CPUs
+    *   To explicitly enable or disable oneDNN optimizations, set the environment variable `TF_ENABLE_ONEDNN_OPTS` to `1` (enable) or `0` (disable) before running TensorFlow. To fall back to default settings, unset the environment variable.
+    *   oneDNN optimizations can yield slightly different numerical results compared to when oneDNN optimizations are disabled due to floating-point round-off errors from
+ different computation approaches and orders.
+    *   To verify if oneDNN optimizations are on, look for a message with *"oneDNN custom operations are on"* in the log. If the exact phrase is not there, it means they are off.
+
+* Making the `tf.function` type system fully available:
+
+    * `tf.types.experimental.TraceType` now allows custom tf.function inputs to declare Tensor decomposition and type casting support.
+    * Introducing `tf.types.experimental.FunctionType` as the comprehensive representation of the signature of `tf.function` callables. It can be accessed through the `function_type` property of `tf.function`s and `ConcreteFunction`s. See the `tf.types.experimental.FunctionType` documentation for more details.
+
+* Introducing `tf.types.experimental.AtomicFunction` as the fastest way to perform TF computations in Python.
+
+    * Can be accessed through `inference_fn` property of `ConcreteFunction`s
+    * Does not support gradients.
+    * See `tf.types.experimental.AtomicFunction` documentation for how to call and use it.
+
+*   `tf.data`:
+
+    *   Moved option `warm_start` from `tf.data.experimental.OptimizationOptions` to `tf.data.Options`.
+
+*   `tf.lite`:
+
+    *   `sub_op` and `mul_op` support broadcasting up to 6 dimensions.
+
+    *  The `tflite::SignatureRunner` class, which provides support for named parameters and for multiple named computations within a single TF Lite model, is no longer considered experimental. Likewise for the following signature-related methods of `tflite::Interpreter`:
+
+       *   `tflite::Interpreter::GetSignatureRunner`
+       *   `tflite::Interpreter::signature_keys`
+       *   `tflite::Interpreter::signature_inputs`
+       *   `tflite::Interpreter::signature_outputs`
+       *   `tflite::Interpreter::input_tensor_by_signature`
+       *   `tflite::Interpreter::output_tensor_by_signature`
+
+    *  Similarly, the following signature runner functions in the TF Lite C API are no longer considered experimental:
+
+       *    `TfLiteInterpreterGetSignatureCount`
+       *    `TfLiteInterpreterGetSignatureKey`
+       *    `TfLiteInterpreterGetSignatureRunner`
+       *    `TfLiteSignatureRunnerAllocateTensors`
+       *    `TfLiteSignatureRunnerGetInputCount`
+       *    `TfLiteSignatureRunnerGetInputName`
+       *    `TfLiteSignatureRunnerGetInputTensor`
+       *    `TfLiteSignatureRunnerGetOutputCount`
+       *    `TfLiteSignatureRunnerGetOutputName`
+       *    `TfLiteSignatureRunnerGetOutputTensor`
+       *    `TfLiteSignatureRunnerInvoke`
+       *    `TfLiteSignatureRunnerResizeInputTensor`
+
+    * New C API function `TfLiteExtensionApisVersion` added to `tensorflow/lite/c/c_api.h`.
+
+    * Add int8 and int16x8 support for RSQRT operator
+
+* Android NDK r25 is supported.
+
+### Bug Fixes and Other Changes
+
+*   Add TensorFlow Quantizer to TensorFlow pip package.
+
+*   `tf.sparse.segment_sum` `tf.sparse.segment_mean` `tf.sparse.segment_sqrt_n` `SparseSegmentSum/Mean/SqrtN[WithNumSegments]`
+
+    *   Added `sparse_gradient` option (default=false) that makes the gradient of these functions/ops sparse (`IndexedSlices`) instead of dense (`Tensor`), using new `SparseSegmentSum/Mean/SqrtNGradV2` ops.
+
+*   `tf.nn.embedding_lookup_sparse`
+
+    *   Optimized this function for some cases by fusing internal operations.
+
+*   `tf.saved_model.SaveOptions`
+
+    *   Provided a new `experimental_skip_saver` argument which, if specified, will suppress the addition of `SavedModel`-native save and restore ops to the `SavedModel`, for cases where users already build custom save/restore ops and checkpoint formats for the model being saved, and the creation of the SavedModel-native save/restore ops simply cause longer model serialization times.
+
+* Add ops to `tensorflow.raw_ops` that were missing.
+
+* `tf.CheckpointOptions`
+    * It now takes in a new argument called `experimental_write_callbacks`. These are callbacks that will be executed after a saving event finishes writing the checkpoint file.
+
+* Add an option `disable_eager_executer_streaming_enqueue` to `tensorflow.ConfigProto.Experimental` to control the eager runtime's behavior around parallel remote function invocations; when set to `True`, the eager runtime will be allowed to execute multiple function invocations in parallel.
+
+* `tf.constant_initializer`
+    * It now takes a new argument called `support_partition`. If True, constant_initializers can create sharded variables. This is disabled by default, similar to existing behavior.
+
+* `tf.lite`
+    * Added support for `stablehlo.scatter`.
+
+* `tf.estimator`
+    * The tf.estimator API removal is in progress and will be targeted for the 2.16 release.
+
+## Keras
+
+* This will be the final release before the launch of Keras 3.0, when Keras will become multi-backend. For the compatibility page and other info, please see: https://github.com/keras-team/keras-core
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Aiden Grossman, Akash Patel, Akhil Goel, Alexander Pivovarov, Andrew Goodbody, Ayan Moitra, Ben Barsdell, Ben Olson, Bhavani Subramanian, Boian Petkantchin, Bruce Lai, Chao Chen, Christian Steinmeyer, cjflan, David Korczynski, Donghak Park, Dragan Mladjenovic, Eli Kobrin, Fadi Arafeh, Feiyue Chen, Frédéric Bastien, guozhong.zhuang, halseycamilla, Harshavardhan Bellamkonda, James Ward, jameshollyer, Jane Liu, johnnkp, jswag180, justkw, Kanvi Khanna, Keith Smiley, Koan-Sin Tan, Kulin Seth, Kun-Lu, kushanam, Lu Teng, mdfaijul, Mehdi Drissi, mgokulkrish, mraunak, Mustafa Uzun, Namrata Bhave, Pavel Emeliyanenko, pemeliya, Peng Sun, Philipp Hack, Pratik Joshi, Rahul Batra, Raunak, redwrasse, Saoirse Stewart, SaoirseARM, seanshpark, Shanbin Ke, Spenser Bauman, Surya, sushreebarsa, Tai Ly, Thibaut Goetghebuer-Planchon, tilakrayal, Tirumalesh, Tj Xu, Vladislav, weihanmines, Wen Chen, wenchenvincent, wenscarl, William Muir, Zhoulong, Jiang
 
 # Release 2.14.0
 

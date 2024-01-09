@@ -25,8 +25,8 @@ limitations under the License.
 
 #include "xla/test.h"
 #include "xla/types.h"
-#include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace {
@@ -181,14 +181,6 @@ TEST(UtilTest, RoundTripFpToString) {
             "nan(0x1)");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<double>(true, 0x1)),
             "-nan(0x1)");
-}
-
-TEST(UtilTest, SplitF64ToF32) {
-  // Overflowing the F32 exponent in SplitF64ToF32 should result in a pair of
-  // [∞,0].
-  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).first,
-            std::numeric_limits<float>::infinity());
-  EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).second, 0.0f);
 }
 
 namespace {

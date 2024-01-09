@@ -17,11 +17,24 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
-#include <utility>
+#include <cstdint>
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuComplex.h"
+#include "third_party/gpus/cuda/include/cusolverDn.h"
+#include "third_party/gpus/cuda/include/cusolver_common.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
+#endif
 #include "xla/primitive_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {

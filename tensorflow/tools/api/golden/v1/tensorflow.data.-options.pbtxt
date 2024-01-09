@@ -8,6 +8,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "dataset_name"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "deterministic"
     mtype: "<type \'property\'>"
   }

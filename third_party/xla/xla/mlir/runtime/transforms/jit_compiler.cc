@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/mlir/runtime/ir/rt_ops.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/passes.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 namespace runtime {
@@ -112,14 +113,22 @@ static void PrintPassPipeline(const mlir::PassManager& pm) {
 }
 
 static LogicalResult RunPipeline(
-    ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
+    ModuleOp module, const std::function<void(PassManager&)>& create_pipeline,
+    int verification_level) {
   if (!create_pipeline) return success();
 
   // Instrument the pass manager to capture timing information.
   DefaultTimingManager tm;
   TimingScope timing;
 
+  bool should_verify = verification_level >= 1;
+#ifndef NDEBUG
+  should_verify = true;
+#endif
+
   mlir::PassManager pm(module.getContext());
+  pm.enableVerifier(should_verify);
+
   SetupPassDebugging(module.getContext(), pm);
 
   if (EnablePassTiming()) {
@@ -140,13 +149,15 @@ static LogicalResult RunPipeline(
 // Runs the user-provided compilation pipeline to compile the module to LLVM.
 static LogicalResult RunCompilationPipeline(ModuleOp module,
                                             const JitCompiler::Options& opts) {
-  return RunPipeline(module, opts.create_compilation_pipeline);
+  return RunPipeline(module, opts.create_compilation_pipeline,
+                     opts.verification_level);
 }
 
 // Runs the user-provided specialization pipeline.
 static LogicalResult RunSpecializationPipeline(
     ModuleOp module, const JitCompiler::Options& opts) {
-  return RunPipeline(module, opts.create_specialization_pipeline);
+  return RunPipeline(module, opts.create_specialization_pipeline,
+                     opts.verification_level);
 }
 
 //===----------------------------------------------------------------------===//
@@ -412,6 +423,11 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
   if (!llvm_module)
     return compiler->Error("failed to translate module to LLVM IR");
 
+  std::string llvm_module_string;
+  if (compiler->options().embed_ir_in_executable) {
+    llvm_module_string = llvm_ir::DumpToString(llvm_module.get());
+  }
+
   // Compile input module to the native function.
   auto engine = ExecutionEngine::CreateFromModule(
       std::move(llvm_ctx), std::move(llvm_module), engine_options, exported);
@@ -431,7 +447,7 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
 
   return Executable(compiler->name(), std::move(memory_mapper),
                     std::move(*engine), std::move(functions), specialization,
-                    time_to_compile);
+                    time_to_compile, std::move(llvm_module_string));
 }
 
 // TODO(ezhulenev): Currently it's possible to specialize only one function. It

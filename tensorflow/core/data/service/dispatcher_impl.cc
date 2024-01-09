@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/data/utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -272,6 +273,27 @@ Status DataServiceDispatcherImpl::Start() {
   return OkStatus();
 }
 
+void DataServiceDispatcherImpl::Stop() TF_LOCKS_EXCLUDED(mu_) {
+  std::vector<SplitProvider*> split_providers;
+  {
+    mutex_lock l(mu_);
+    cancelled_ = true;
+    for (const auto& [iteration_id, source_providers] : split_providers_) {
+      for (const std::unique_ptr<SplitProvider>& split_provider :
+           source_providers) {
+        split_providers.push_back(split_provider.get());
+      }
+    }
+  }
+  // Cancels split providers without holding `mu_` as cancellation may require
+  // the split provider's lock. Waiting for the split provider's lock while
+  // holding the dispatcher's lock may result in a deadlock if the split
+  // provider is blocked waiting for some resources.
+  for (SplitProvider* split_provider : split_providers) {
+    split_provider->Cancel();
+  }
+}
+
 size_t DataServiceDispatcherImpl::NumActiveIterations() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   size_t count = 0;
@@ -485,53 +507,56 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
 Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
                                            GetSplitResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  mutex_lock l(mu_);
   int64_t iteration_id = request->iteration_id();
   int64_t repetition = request->repetition();
   int64_t provider_index = request->split_provider_index();
   VLOG(3) << "Received GetSplit request for iteration " << iteration_id
           << ", repetition " << repetition << ", split provider index "
           << provider_index;
-  std::shared_ptr<const Iteration> iteration;
-  TF_RETURN_IF_ERROR(state_.IterationFromId(iteration_id, iteration));
-  if (!iteration->distributed_epoch_state.has_value()) {
-    return errors::FailedPrecondition(
-        "Cannot get split for iteration ", iteration_id,
-        ", since it is not a distributed_epoch iteration.");
+  mutex_lock l(get_split_mu_);
+  int64_t current_repetition = 0;
+  SplitProvider* split_provider = nullptr;
+  {
+    mutex_lock l(mu_);
+    std::shared_ptr<const Iteration> iteration;
+    TF_RETURN_IF_ERROR(state_.IterationFromId(iteration_id, iteration));
+    if (!iteration->distributed_epoch_state.has_value()) {
+      return errors::FailedPrecondition(
+          "Cannot get split for iteration ", iteration_id,
+          ", since it is not a distributed_epoch iteration.");
+    }
+    current_repetition =
+        iteration->distributed_epoch_state.value().repetitions[provider_index];
+    if (request->repetition() < current_repetition) {
+      response->set_end_of_splits(true);
+      VLOG(3) << "Returning end_of_splits since current repetition "
+              << current_repetition
+              << " is greater than the requested repetition " << repetition;
+      return OkStatus();
+    }
+    split_provider = split_providers_[iteration_id][provider_index].get();
   }
-  int64_t current_repetition =
-      iteration->distributed_epoch_state.value().repetitions[provider_index];
-  if (repetition < current_repetition) {
-    response->set_end_of_splits(true);
-    VLOG(3) << "Returning end_of_splits since current repetition "
-            << current_repetition
-            << " is greater than the requested repetition " << repetition;
-    return OkStatus();
-  }
-  if (repetition > current_repetition) {
+  if (request->repetition() > current_repetition) {
     // This could happen if an iterator is repeated before reaching end of
     // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
     // the previous repetitions as completed and advance to the requested
     // repetition.
-    TF_RETURN_IF_ERROR(split_providers_[iteration_id][provider_index]->Reset());
+    TF_RETURN_IF_ERROR(split_provider->Reset());
   }
-  SplitProvider* split_provider =
-      split_providers_[iteration_id][provider_index].get();
-  DCHECK(split_provider != nullptr);
   Tensor split;
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
   TF_RETURN_IF_ERROR(RecordSplitProduced(iteration_id, repetition,
-                                         request->split_provider_index(),
-                                         end_of_splits));
+                                         provider_index, end_of_splits));
   response->set_end_of_splits(end_of_splits);
   if (end_of_splits) {
     // Reset the split provider to prepare for the next iteration.
-    TF_RETURN_IF_ERROR(split_providers_[iteration_id][provider_index]->Reset());
+    TF_RETURN_IF_ERROR(split_provider->Reset());
   } else {
     split.AsProtoTensorContent(response->mutable_split());
   }
-  VLOG(3) << "Returning from GetSplit, end_of_splits=" << end_of_splits;
+  VLOG(3) << "Returning from GetSplit, split=" << split
+          << ", end_of_splits=" << end_of_splits;
   return OkStatus();
 }
 
@@ -1195,6 +1220,7 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
     const DisableCompressionAtRuntimeRequest* request,
     DisableCompressionAtRuntimeResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
   std::shared_ptr<const Dataset> dataset;
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
@@ -1271,7 +1297,8 @@ Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
 
 Status DataServiceDispatcherImpl::RecordSplitProduced(
     int64_t iteration_id, int64_t repetition, int64_t split_provider_index,
-    bool finished) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    bool finished) TF_LOCKS_EXCLUDED(mu_) {
+  mutex_lock l(mu_);
   Update update;
   ProduceSplitUpdate* produce_split = update.mutable_produce_split();
   produce_split->set_iteration_id(iteration_id);

@@ -495,9 +495,16 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         // time of the node. If restoring, pass nullptr to not record processing
         // time because iterator modeling is only used to model Iterator's
         // GetNext() resource usage.
-        TF_RETURN_IF_ERROR(instantiated_reduce_func_->Run(
+        auto status = instantiated_reduce_func_->Run(
             ctx, std::move(args), &return_values,
-            ctx->is_restoring() ? nullptr : model_node()));
+            ctx->is_restoring() ? nullptr : model_node());
+        if (!status.ok()) {
+          return absl::InternalError(absl::StrFormat(
+              "Got error code %s and message: {\n%s\n} \nfrom running "
+              "user-defined function %s: ",
+              absl::StatusCodeToString(status.code()), status.message(),
+              instantiated_reduce_func_->func_name()));
+        }
 
         if (!(return_values.size() == 1 &&
               return_values[0].dtype() == DT_VARIANT &&

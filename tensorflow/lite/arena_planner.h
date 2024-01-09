@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ARENA_PLANNER_H_
 #define TENSORFLOW_LITE_ARENA_PLANNER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
@@ -30,7 +31,6 @@ limitations under the License.
 namespace tflite {
 
 constexpr const int kDefaultArenaAlignment = 64;
-struct AllocationInfo;
 
 // A memory planner that makes all the allocations using arenas.
 //
@@ -141,6 +141,8 @@ class ArenaPlanner : public MemoryPlanner {
   // Raw memory buffer that is allocated for all temporary and graph outputs
   // that are declared kTfLiteArenaRw.
   SimpleMemoryArena arena_;
+  // True when the arena_ has allocated memory (Commit was called).
+  bool has_nonpersistent_memory_;
 
   // Raw memory buffer that is allocated for persistent tensors that are
   // declared as kTfLiteArenaRwPersistent.

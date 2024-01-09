@@ -595,6 +595,18 @@ class LiteralBase {
       return tuple_rep->children[index];
     }
 
+    Piece& child(ShapeIndexView index) {
+      return const_cast<Piece&>(const_cast<const Piece*>(this)->child(index));
+    }
+    const Piece& child(ShapeIndexView index) const {
+      const Piece* result = this;
+      while (!index.empty()) {
+        result = &result->child(index.front());
+        index.remove_prefix(1);
+      }
+      return *result;
+    }
+
     // Adds a child piece to this piece's children.
     void emplace_back(Piece child_piece) {
       auto* tuple_rep = GetTupleRep();
@@ -1236,6 +1248,10 @@ class BorrowingLiteral : public LiteralBase {
   BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
                    const Shape& shape);
   // TODO(b/79707221): adding constructors for nested tuples as well.
+
+  // Construct a BorrowingLiteral from a LiteralProto.  The proto must not be
+  // modified during the lifetime of the BorrowingLiteral.
+  explicit BorrowingLiteral(const LiteralProto& proto);
 
  private:
   // Recursively builds the subtree for the given piece and sets the subshapes

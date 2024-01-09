@@ -20,7 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -29,7 +32,7 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
                                      int64_t bytes_per_element,
                                      absl::string_view symbol_name,
                                      int allocation_idx,
-                                     llvm::ArrayRef<uint8_t> content,
+                                     DenseDataIntermediate content,
                                      llvm::IRBuilder<>* b) {
   // LLVM and PTXAS don't deal well with large constants, so we only emit very
   // small constants directly in LLVM IR.  Larger constants are emitted with
@@ -50,15 +53,17 @@ void IrEmitterContext::emit_constant(int64_t num_elements,
   GpuExecutable::ConstantInfo info;
   llvm::Constant* initializer = [&]() -> llvm::Constant* {
     if (!should_emit_initializer) {
-      info.content = content;
+      info.content = std::move(content);
       return llvm::ConstantAggregateZero::get(global_type);
     }
 
     std::vector<uint8_t> padded(kMinConstAllocationInBytes, 0);
-    absl::c_copy(content, padded.begin());
+    absl::c_copy(content.span(), padded.begin());
     return llvm::ConstantDataArray::get<uint8_t>(
         llvm_module_->getContext(),
-        needs_padding ? llvm::ArrayRef<uint8_t>(padded) : content);
+        needs_padding ? llvm::ArrayRef<uint8_t>(padded)
+                      : llvm::ArrayRef<uint8_t>(content.span().data(),
+                                                content.span().size()));
   }();
 
   // These globals will be looked up by name by GpuExecutable so we need to

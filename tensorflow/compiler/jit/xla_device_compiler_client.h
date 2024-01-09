@@ -60,7 +60,8 @@ class XlaDeviceCompilerClient
  private:
   xla::LocalClient* const client_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaDeviceCompilerClient);
+  XlaDeviceCompilerClient(const XlaDeviceCompilerClient&) = delete;
+  void operator=(const XlaDeviceCompilerClient&) = delete;
 };
 
 }  // namespace tensorflow

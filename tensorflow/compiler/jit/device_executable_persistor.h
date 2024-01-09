@@ -157,7 +157,8 @@ class DeviceExecutablePersistor {
   // Cache is read-only if set to true.
   const bool persistent_cache_directory_read_only_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceExecutablePersistor);
+  DeviceExecutablePersistor(const DeviceExecutablePersistor&) = delete;
+  void operator=(const DeviceExecutablePersistor&) = delete;
 };
 
 template <typename ExecutableType, typename ClientType>

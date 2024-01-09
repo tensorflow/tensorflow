@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/alias_passthrough_params.h"
 
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_utils.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 

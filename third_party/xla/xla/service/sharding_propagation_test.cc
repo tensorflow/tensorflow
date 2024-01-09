@@ -19,9 +19,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
+#include "xla/hlo/transforms/hlo_constant_splitter.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo_dce.h"
@@ -1218,9 +1220,10 @@ ENTRY %entry {
   auto* tuple = module->entry_computation()->root_instruction()->operand(0);
   ASSERT_NE(tuple, nullptr);
   // Check that the sharding on param1 is not replicated on tuple element[1].
-  EXPECT_THAT(tuple, op::Sharding("{{replicated}, {manual}, {manual}}"));
+  EXPECT_THAT(tuple, op::Sharding("{{manual}, {manual}, {manual}}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-    EXPECT_THAT(tuple->sharding().tuple_elements()[0], ShardingMetadata({}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("a")}));
     EXPECT_THAT(tuple->sharding().tuple_elements()[1],
                 ShardingMetadata({CreateMetadata("a")}));
     EXPECT_THAT(tuple->sharding().tuple_elements()[2],
@@ -9040,6 +9043,35 @@ ENTRY %entry {
   EXPECT_THAT(instruction, op::Sharding("{manual}"));
 }
 
+TEST_F(ShardingPropagationTest, DefaultManualCustomCallForward) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3]{1,0} parameter(0),
+    sharding={manual metadata={op_name="a"}}
+  %copy = f32[6,3]{1,0} copy(%param0)
+  %param1 = f32[6,3]{1,0} parameter(1)
+  %copy.1 = f32[6,3]{1,0} copy(%param1)
+  %param2 = f32[6,3]{1,0} parameter(2)
+  %copy.2 = f32[6,3]{1,0} copy(%param2)
+  %custom-call = (f32[], f32[6,3]{1,0}) custom-call(%copy, %copy.1, %copy.2), custom_call_target="some_custom_call"
+  ROOT %copy.3 = (f32[], f32[6,3]{1,0}) copy(%custom-call)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{{manual},{manual}}"));
+}
+
 TEST_F(ShardingPropagationTest, RefineUnspecifiedDims) {
   const char* const hlo_string = R"(
 HloModule module
@@ -9206,7 +9238,7 @@ ENTRY %entry {
   EXPECT_FALSE(spmd_shard_to_full->sharding().IsManual());
 }
 
-TEST_F(ShardingPropagationTest, DoNotPassManualShardingThroughConstant) {
+TEST_F(ShardingPropagationTest, ManualShardingPassThroughSplitConstant) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -9224,16 +9256,25 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(
+      bool is_split,
+      HloConstantSplitter(/*split_expressions=*/true).Run(module.get()));
+  EXPECT_TRUE(is_split);
+  TF_ASSERT_OK_AND_ASSIGN(auto _, HloDCE().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   // Sharding op is changed to a copy.
   EXPECT_TRUE(changed);
-  HloInstruction* constant = FindInstruction(module.get(), "constant");
-  EXPECT_FALSE(constant->sharding().IsManual());
-  HloInstruction* add1 = FindInstruction(module.get(), "add.1");
-  EXPECT_FALSE(add1->sharding().IsManual());
+  const HloInstruction* add0 = FindInstruction(module.get(), "add.0");
+  const HloInstruction* manual_constant = add0->operand(0);
+  EXPECT_TRUE(manual_constant->IsConstant() &&
+              manual_constant->sharding().IsManual());
+  const HloInstruction* add1 = FindInstruction(module.get(), "add.1");
+  const HloInstruction* replicate_constant = add1->operand(0);
+  EXPECT_TRUE(replicate_constant->IsConstant() &&
+              replicate_constant->sharding().IsReplicated());
 }
 
 TEST_F(ShardingPropagationTest, ReshapeNoMatchSubgroupManual) {
@@ -10297,6 +10338,63 @@ ENTRY %entry {
   EXPECT_EQ(add_1->sharding(), output->sharding());
 }
 
+TEST_F(ShardingPropagationTest, PropagateShardAsBetweenInputOutput) {
+  const char* const hlo_string = R"(
+HloModule jit_zeros_like
+
+ENTRY main.6 {
+  Arg_0.1 = s64[8,2]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}
+  custom-call.4 = s64[8,2]{1,0} custom-call(Arg_0.1), custom_call_target="Sharding", sharding={unknown shard_as 0}
+  constant.2 = s64[] constant(0)
+  broadcast.3 = s64[8,2]{1,0} broadcast(constant.2), dimensions={}
+  ROOT custom-call.5 = s64[8,2]{1,0} custom-call(broadcast.3), custom_call_target="Sharding", sharding={unknown shard_as 0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false, false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{devices=[4,2]0,1,2,3,4,5,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, PropagateShardAsBetweenInputOutput2) {
+  const char* const hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[8]{0:T(256)})->(f32[8]{0:T(256)}, f32[8]{0:T(256)})}, allow_spmd_sharding_propagation_to_output={true,true}, num_partitions=4
+
+ENTRY main.9 {
+  Arg_0.1 = f32[8]{0} parameter(0), sharding={replicated}
+  custom-call.6 = f32[8]{0} custom-call(Arg_0.1), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 0}, metadata={op_name="jit(f)/jit(main)/shard_alike" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=206}
+  custom-call.4 = f32[8]{0} custom-call(Arg_0.1), custom_call_target="Sharding", sharding={devices=[4]<=[4]}, metadata={op_name="jit(f)/jit(main)/sharding_constraint[sharding=GSPMDSharding({devices=[4]<=[4]}) resource_env=ResourceEnv(mesh=Mesh(), ()) unconstrained_dims=set()]" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=204}
+  constant.0 = f32[] constant(2)
+  broadcast.0 = f32[8]{0} broadcast(constant.0), dimensions={}
+  multiply.5 = f32[8]{0} multiply(custom-call.4, broadcast.0), metadata={op_name="jit(f)/jit(main)/mul" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=205}
+  custom-call.7 = f32[8]{0} custom-call(multiply.5), custom_call_target="Sharding", custom_call_has_side_effect=true, sharding={unknown shard_as 0}, metadata={op_name="jit(f)/jit(main)/shard_alike" source_file="third_party/py/jax/tests/shard_alike_test.py" source_line=206}
+  ROOT tuple.8 = (f32[8]{0}, f32[8]{0}) tuple(custom-call.6, custom-call.7)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{true, true},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          .Run(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Sharding("{{devices=[4]<=[4]}, {devices=[4]<=[4]}}"));
+}
+
 TEST_F(ShardingPropagationTest, LookaheadUsersOfDot) {
   const char* const hlo_string = R"(
 HloModule module
@@ -10330,6 +10428,157 @@ ENTRY %entry {
   EXPECT_THAT(instruction,
               op::Sharding(
                   "{devices=[4,4,1,4]<=[4,16]T(1,0) last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, AsyncInstructionManualShardingArray) {
+  const char* const hlo_string = R"(
+HloModule module
+
+called_computation {
+  p0 = s32[8] parameter(0)
+  p1 = s32[8] parameter(1)
+  ROOT add = s32[8] add(p0, p1)
+}, execution_thread="thread_1" // called_computation
+
+ENTRY entry_computation {
+  p0 = s32[8] parameter(0), sharding={manual}
+  p1 = s32[8] parameter(1), sharding={manual}
+  async-start = ((s32[8], s32[8]), s32[8], u32[]) call-start(p0, p1), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+  ROOT async-done = s32[8] call-done(async-start), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+}, execution_thread="thread_0" // entry_computation
+
+)";
+
+  {
+    // Test with execution_threads = {"thread_0"}
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get(), {"thread_0"}));
+    EXPECT_TRUE(changed);
+
+    XLA_VLOG_LINES(1, module->ToString());
+
+    auto* instruction = FindInstruction(module.get(), "async-start");
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_THAT(instruction,
+                op::Sharding("{{manual}, {manual}, {manual}, {manual}}"));
+
+    auto* async_done = FindInstruction(module.get(), "async-done");
+    ASSERT_NE(async_done, nullptr);
+    EXPECT_THAT(async_done, op::Sharding("{manual}"));
+  }
+
+  {
+    // Test with execution_threads = {"thread_0", "thread_1"}
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get(), {"thread_0", "thread_1"}));
+    EXPECT_FALSE(changed);
+  }
+
+  {
+    // Test with execution_threads = {}. Empty execution_threads means all
+    // execution_threads are included.
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get()));
+    EXPECT_FALSE(changed);
+  }
+}
+
+TEST_F(ShardingPropagationTest, AsyncInstructionManualShardingTuple) {
+  const char* const hlo_string = R"(
+HloModule module
+
+called_computation {
+  p0 = s32[8] parameter(0)
+  p1 = s32[8] parameter(1)
+  add = s32[8] add(p0, p1)
+  mul = s32[8] multiply(p0, p1)
+  ROOT result = (s32[8], s32[8]) tuple(add, mul)
+}, execution_thread="thread_1" // called_computation
+
+ENTRY entry_computation {
+  p0 = s32[8] parameter(0), sharding={manual}
+  p1 = s32[8] parameter(1), sharding={manual}
+  async-start = ((s32[8], s32[8]), (s32[8], s32[8]), u32[]) call-start(p0, p1), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+  ROOT async-done = (s32[8], s32[8]) call-done(async-start), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+}, execution_thread="thread_0" // entry_computation
+
+)";
+
+  {
+    // Test with execution_threads = {"thread_0"}
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get(), {"thread_0"}));
+    EXPECT_TRUE(changed);
+
+    XLA_VLOG_LINES(1, module->ToString());
+
+    auto* async_start = FindInstruction(module.get(), "async-start");
+    ASSERT_NE(async_start, nullptr);
+    EXPECT_THAT(
+        async_start,
+        op::Sharding("{{manual}, {manual}, {manual}, {manual}, {manual}}"));
+
+    auto* async_done = FindInstruction(module.get(), "async-done");
+    ASSERT_NE(async_done, nullptr);
+    EXPECT_THAT(async_done, op::Sharding("{{manual}, {manual}}"));
+  }
+
+  {
+    // Test with execution_threads = {"thread_0", "thread_1"}
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get(), {"thread_0", "thread_1"}));
+    EXPECT_FALSE(changed);
+  }
+
+  {
+    // Test with execution_threads = {}. Empty execution_threads means all
+    // execution_threads are included.
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    TF_ASSERT_OK_AND_ASSIGN(
+        bool changed,
+        ShardingPropagation(
+            /*is_spmd=*/true, /*propagate_metadata=*/true,
+            /*allow_spmd_sharding_propagation_to_output=*/{true},
+            /*allow_spmd_sharding_propagation_to_parameters=*/{true})
+            .Run(module.get()));
+    EXPECT_FALSE(changed);
+  }
 }
 
 }  // namespace

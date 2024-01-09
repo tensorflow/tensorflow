@@ -563,5 +563,7 @@ ENTRY DuplicateDonationError() -> (f32[2, 2], f32[2, 2]) {
   }
 }
 
+TEST(PjRtClientTest, GetDefaultLayout) {}
+
 }  // namespace
 }  // namespace xla

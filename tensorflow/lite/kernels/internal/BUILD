@@ -40,6 +40,14 @@ NEON_FLAGS_IF_APPLICABLE = select({
     ],
 })
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = ["compatibility.h"],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 cc_library(
     name = "compatibility",
     hdrs = ["compatibility.h"],

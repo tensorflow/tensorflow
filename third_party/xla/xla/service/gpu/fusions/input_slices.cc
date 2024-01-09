@@ -14,13 +14,36 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/input_slices.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
-#include "xla/service/elemental_ir_emitter.h"
+#include "llvm/IR/Value.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
-#include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/llvm_ir/llvm_loop.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -151,20 +174,24 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 }  // namespace
 
-StatusOr<LaunchDimensions> InputSlicesFusion::launch_dimensions(
-    IrEmitterContext& ir_emitter_context, int kernel_index) const {
-  return analysis_.GetLaunchDimensions();
+LaunchDimensions InputSlicesFusion::launch_dimensions() const {
+  auto* root = analysis_.fusion_roots().front();
+  const auto& shape = root->operands()[0]->shape();
+  constexpr int kUnrollFactor = 1;
+  return CalculateLaunchDimensions(shape, analysis_.device_info(),
+                                   {kUnrollFactor});
 }
 
-Status InputSlicesFusion::EmitKernel(
-    IrEmitterContext& ir_emitter_context, ElementalIrEmitter& elemental_emitter,
-    mlir::lmhlo::FusionOp fusion_op, const HloFusionInstruction& fusion,
-    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
-    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder,
-    int kernel_index) const {
+Status InputSlicesFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                     const HloFusionInstruction& fusion,
+                                     const LaunchDimensions& launch_dims,
+                                     std::vector<llvm_ir::IrArray> inputs,
+                                     std::vector<llvm_ir::IrArray> outputs,
+                                     llvm::IRBuilder<>* builder) const {
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(
                           fusion.fused_instructions_computation()));
+  GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   return ParallelLoopEmitter(
              [&](const llvm_ir::IrArray::Index index) -> Status {
                return EmitElementForInputFusibleSlices(
@@ -172,9 +199,9 @@ Status InputSlicesFusion::EmitKernel(
                    inputs, outputs, index, builder);
              },
              element_shape, launch_dims, builder)
-      .EmitLoop(llvm_ir::IrName(GetIrNameFromLoc(fusion_op.getLoc())),
-                GetIndexTypeForKernel(fusion_op, launch_dims.launch_bound(),
-                                      builder));
+      .EmitLoop(
+          fusion.name(),
+          GetIndexTypeForKernel(&fusion, launch_dims.launch_bound(), builder));
 }
 
 }  // namespace gpu

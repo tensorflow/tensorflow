@@ -23,6 +23,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -203,6 +205,12 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       seed_generator_->GenerateSeeds(&seed_, &seed2_);
       ResetRngs();
+      // Initialize checkpoint_indices_ to the entire buffer.
+      if (ctx->symbolic_checkpoint()) {
+        for (int64_t i = 0; i < buffer_->size(); ++i) {
+          checkpoint_indices_.insert(i);
+        }
+      }
       return OkStatus();
     }
 
@@ -229,6 +237,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       this->RecordBufferDequeue(ctx, *out_tensors);
       std::swap(buffer_->at(index),
                 buffer_->at(slices_.front()->start % buffer_->size()));
+      checkpoint_indices_.insert(index);
+      checkpoint_indices_.insert(slices_.front()->start % buffer_->size());
       slices_.front()->start++;
       num_elements_--;
       return OkStatus();
@@ -273,8 +283,20 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kEpoch, epoch_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kNumElements, num_elements_));
-      TF_RETURN_IF_ERROR(WriteElementsToCheckpoint(
-          writer, absl::StrCat(prefix(), kColon, "buffer"), *buffer_));
+      const std::string key_prefix = absl::StrCat(prefix(), kColon, "buffer");
+      if (ctx->symbolic_checkpoint()) {
+        // When symbolic checkpointing is turned on, `writer`
+        // already contains checkpoint of the shuffle buffer created by the
+        // previous invocation of this instance and the indices that need to be
+        // updated are stored in `checkpoint_indices`.
+        TF_RETURN_IF_ERROR(UpdateCheckpointElements(
+            writer, key_prefix, *buffer_, checkpoint_indices_));
+        checkpoint_indices_.clear();
+      } else {
+        TF_RETURN_IF_ERROR(
+            WriteElementsToCheckpoint(writer, key_prefix, *buffer_));
+      }
+
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kSlicesSize, slices_.size()));
       for (size_t i = 0; i < slices_.size(); ++i) {
@@ -339,6 +361,12 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       TF_RETURN_IF_ERROR(ReadElementsFromCheckpoint(
           ctx, reader, absl::StrCat(prefix(), kColon, "buffer"),
           buffer_.get()));
+      if (ctx->symbolic_checkpoint()) {
+        DCHECK(checkpoint_indices_.empty());
+        for (size_t i = 0; i < buffer_->size(); ++i) {
+          checkpoint_indices_.insert(i);
+        }
+      }
       for (const auto& element : *buffer_) {
         RecordBufferEnqueue(ctx, element);
       }
@@ -502,9 +530,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       this->RecordBufferEnqueue(ctx, element);
       if (num_elements_ == buffer_->size()) {
         DCHECK(IsShuffleAll());
+        checkpoint_indices_.insert(buffer_->size());
         buffer_->push_back(element);
       } else {
         size_t index = slices_.back()->end % buffer_->size();
+        checkpoint_indices_.insert(index);
         buffer_->at(index) = std::move(element);
       }
       num_elements_++;
@@ -530,6 +560,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     SeedGenerator* const seed_generator_ TF_GUARDED_BY(mu_);  // Not owned.
     std::unique_ptr<std::vector<std::vector<Tensor>>> buffer_
         TF_GUARDED_BY(mu_);
+    // Holds the indices of `buffer_` that have changed since the previous
+    // `SaveInternal()` and need to be updated in the MemoryCheckpoint
+    // (if symbolic checkpointing is used) in the next `SaveInternal()`.
+    absl::flat_hash_set<int64_t> checkpoint_indices_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_) = nullptr;
     int64_t epoch_ TF_GUARDED_BY(mu_) = 0;
     int64_t num_elements_ TF_GUARDED_BY(mu_) = 0;

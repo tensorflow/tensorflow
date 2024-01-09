@@ -81,7 +81,8 @@ class XlaHostSendDeviceContext : public DeviceContext {
   const xla::Shape shape_;
   tsl::AsyncValueRef<se::Event> done_event_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaHostSendDeviceContext);
+  XlaHostSendDeviceContext(const XlaHostSendDeviceContext&) = delete;
+  void operator=(const XlaHostSendDeviceContext&) = delete;
 };
 
 }  // namespace tensorflow

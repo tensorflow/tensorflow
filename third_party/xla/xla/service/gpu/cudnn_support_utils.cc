@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_support_utils.h"
 
-#include <functional>
+#include <cstdint>
 #include <vector>
 
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/util.h"
 #include "xla/window_util.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {

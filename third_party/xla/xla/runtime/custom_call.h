@@ -47,8 +47,8 @@ limitations under the License.
 #include "xla/runtime/memref_view.h"
 #include "xla/runtime/state.h"
 #include "xla/runtime/type_id.h"
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/chain.h"
 
 namespace xla {
 namespace runtime {

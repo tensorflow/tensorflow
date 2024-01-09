@@ -48,6 +48,8 @@ class GpuTransferManager : public GenericTransferManager {
   GpuTransferManager(const GpuTransferManager&) = delete;
   GpuTransferManager& operator=(const GpuTransferManager&) = delete;
 
+  bool PackSubbyteTypes() const override { return true; }
+
   // This class keeps a pool of pinned memory
   // (StreamExecutor::HostMemoryAllocate()) that serves ReadDynamicShapes().
   // This is a bit of a hack: Callers like TensorFlow already have a full pinned

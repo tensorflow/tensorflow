@@ -32,10 +32,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -196,37 +196,54 @@ class AddCustomAggregationOp : public RewritePattern {
     // Return early if the given operator is the custom aggregator op.
     if (dyn_cast_or_null<TF::CustomAggregatorOp>(op)) return failure();
 
-    // Return early if the given op is a non-quantizable op.
-    auto call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
-    if (call_op && !op->hasAttr(kQuantTraitAttrName)) {
-      return failure();
+    // The CustomAggregatorOp is only added after quantizable values.
+    SmallVector<Value> quantizable_values;
+    if (isCallToLiftedFunction(op)) {
+      // Quantize inputs of quantizable composite functions.
+      for (Value input : op->getOperands()) {
+        Type element_type = getElementTypeOrSelf(input.getType());
+        // Non-float cases won't be calibrated.
+        if (!element_type.isF32()) {
+          continue;
+        }
+
+        // Skip when there is any already existing CustomAggregatorOp found.
+        Operation *defining_op = input.getDefiningOp();
+        if (dyn_cast_or_null<TF::CustomAggregatorOp>(defining_op)) {
+          continue;
+        }
+
+        // Skip calibration when the given operand comes from a constant.
+        if (defining_op != nullptr &&
+            defining_op->hasTrait<OpTrait::ConstantLike>()) {
+          continue;
+        }
+
+        quantizable_values.push_back(input);
+      }
+    } else {
+      // Quantize output of fully quantizable composite functions.
+      for (Value input : op->getOperands()) {
+        auto defining_op = input.getDefiningOp();
+        if (!isCallToLiftedFunction(defining_op)) {
+          continue;
+        }
+
+        // Do not add CustomAggregatorOp after Gather since it is a weight-only
+        // quantizable op.
+        if (auto call_op =
+                dyn_cast_or_null<TF::PartitionedCallOp>(defining_op)) {
+          StringRef function_name =
+              call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+          if (function_name.contains("gather")) continue;
+        }
+
+        quantizable_values.push_back(input);
+      }
     }
+    if (quantizable_values.empty()) return failure();
 
-    bool mutated = false;
-    for (Value input : op->getOperands()) {
-      Type element_type = getElementTypeOrSelf(input.getType());
-      // Non-float cases won't be calibrated.
-      if (!element_type.isF32()) {
-        continue;
-      }
-
-      // Skip when the given operator is under the quantizable spot.
-      if (IsInLiftedFunc(op)) {
-        continue;
-      }
-
-      // Skip when there is any already existing CustomAggregatorOp found.
-      Operation *defining_op = input.getDefiningOp();
-      if (dyn_cast_or_null<TF::CustomAggregatorOp>(defining_op)) {
-        continue;
-      }
-
-      // Skip calibration when the given operand comes from a constant.
-      if (defining_op != nullptr &&
-          defining_op->hasTrait<OpTrait::ConstantLike>()) {
-        continue;
-      }
-
+    for (Value value : quantizable_values) {
       // ID attribute will have empty value for now.
       SmallVector<NamedAttribute, 5> attributes{
           rewriter.getNamedAttr("id", rewriter.getStringAttr("")),
@@ -248,24 +265,32 @@ class AddCustomAggregationOp : public RewritePattern {
       };
 
       // Insert custom aggregation op between operand and operator.
-      rewriter.setInsertionPointAfterValue(input);
+      rewriter.setInsertionPointAfterValue(value);
       Operation *aggregator_op = rewriter.create<TF::CustomAggregatorOp>(
-          op->getLoc(), input.getType(), input, attributes);
+          op->getLoc(), value.getType(), value, attributes);
 
       Value aggregator_op_result = aggregator_op->getOpResult(0);
-      input.replaceAllUsesWith(aggregator_op_result);
-      aggregator_op->replaceUsesOfWith(aggregator_op_result, input);
-
-      // Mark mutated.
-      mutated = true;
+      value.replaceAllUsesWith(aggregator_op_result);
+      aggregator_op->replaceUsesOfWith(aggregator_op_result, value);
     }
 
-    // Return failure when there is no matching operand.
-    return mutated ? success() : failure();
+    return success();
   }
 
  private:
   CalibrationOptions calib_opts_;
+
+  // Whether the op is a call op to lifted composite function.
+  bool isCallToLiftedFunction(Operation *op) const {
+    if (!op) return false;
+    if (isa<TF::XlaCallModuleOp>(op)) return true;
+
+    TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
+    return call_op && call_op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
+           call_op->getAttrOfType<StringAttr>(kQuantTraitAttrName)
+               .getValue()
+               .equals(QuantTraitValues[QuantizationTrait::FullyQuantizable]);
+  }
 };
 
 void InsertCustomAggregationOpsPass::runOnOperation() {

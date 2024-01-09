@@ -146,7 +146,8 @@ class Predicate {
  private:
   const int64_t id_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Predicate);
+  Predicate(const Predicate&) = delete;
+  void operator=(const Predicate&) = delete;
 };
 
 // Represents a logical conjunction of a set of predicates.

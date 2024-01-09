@@ -8,6 +8,21 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        ":error_reporter.cc",
+        ":error_reporter.h",
+        ":op_resolver.cc",
+        ":op_resolver.h",
+        ":op_resolver_internal.h",
+        ":verifier.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 cc_library(
     name = "api",
     srcs = [
@@ -138,7 +153,10 @@ cc_test(
     deps = [
         ":api",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
     ],
 )

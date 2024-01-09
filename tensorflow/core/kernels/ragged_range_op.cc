@@ -16,6 +16,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -84,7 +85,7 @@ class RaggedRangeOp : public OpKernel {
       if (((delta > 0) && (limit < start)) ||
           ((delta < 0) && (limit > start))) {
         size = 0;
-      } else if (std::is_integral<T>::value) {
+      } else if constexpr (std::is_integral<T>::value) {
         // The following is copied from tensorflow::RangeOp::Compute().
         size = Eigen::divup(Eigen::numext::abs(limit - start),
                             Eigen::numext::abs(delta));

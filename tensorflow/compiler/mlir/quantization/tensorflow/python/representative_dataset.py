@@ -18,7 +18,10 @@ import collections.abc
 import os
 from typing import Iterable, Mapping, Optional, Union
 
+import numpy as np
+
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
@@ -141,6 +144,12 @@ class TfRecordRepresentativeDatasetSaver(RepresentativeDatasetSaver):
     Returns:
       a RepresentativeDatasetFile instance contains the path to the saved file.
     """
+    # When running in graph mode (TF1), tf.Tensor types should be converted to
+    # numpy ndarray types to be compatible with `make_tensor_proto`.
+    if not context.executing_eagerly():
+      with session.Session() as sess:
+        repr_ds = replace_tensors_by_numpy_ndarrays(repr_ds, sess)
+
     tfrecord_file_path = self.path_map[signature_def_key]
     with python_io.TFRecordWriter(tfrecord_file_path) as writer:
       for repr_sample in repr_ds:
@@ -197,6 +206,22 @@ class RepresentativeDatasetLoader:
   """Representative dataset loader.
 
   Exposes the `load` method that loads the representative dataset from files.
+  """
+
+  def load(self) -> RepresentativeDatasetMapping:
+    """Loads the representative datasets.
+
+    Returns:
+      representative dataset mapping: A loaded signature def key ->
+      representative mapping.
+    """
+    raise NotImplementedError('Method "load" is not implemented.')
+
+
+class TfRecordRepresentativeDatasetLoader(RepresentativeDatasetLoader):
+  """TFRecord representative dataset loader.
+
+  Loads representative dataset stored in TFRecord files.
   """
 
   def __init__(
@@ -302,3 +327,40 @@ def get_num_samples(repr_ds: RepresentativeDataset) -> Optional[int]:
       return None
   else:
     return None
+
+
+def create_feed_dict_from_input_data(
+    input_data: RepresentativeSample,
+    signature_def: meta_graph_pb2.SignatureDef,
+) -> Mapping[str, np.ndarray]:
+  """Constructs a feed_dict from input data.
+
+  Note: This function should only be used in graph mode.
+
+  This is a helper function that converts an 'input key -> input value' mapping
+  to a feed dict. A feed dict is an 'input tensor name -> input value' mapping
+  and can be directly passed to the `feed_dict` argument of `sess.run()`.
+
+  Args:
+    input_data: Input key -> input value mapping. The input keys should match
+      the input keys of `signature_def`.
+    signature_def: A SignatureDef representing the function that `input_data` is
+      an input to.
+
+  Returns:
+    Feed dict, which is intended to be used as input for `sess.run`. It is
+    essentially a mapping: input tensor name -> input value. Note that the input
+    value in the feed dict is not a `Tensor`.
+  """
+  feed_dict = {}
+  for input_key, input_value in input_data.items():
+    input_tensor_name = signature_def.inputs[input_key].name
+
+    value = input_value
+    if isinstance(input_value, core.Tensor):
+      # Take the data out of the tensor.
+      value = input_value.eval()
+
+    feed_dict[input_tensor_name] = value
+
+  return feed_dict

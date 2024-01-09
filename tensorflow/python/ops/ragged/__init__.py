@@ -25,3 +25,4 @@ and the [Ragged Tensor Guide](/guide/ragged_tensor).
 
 API docstring: tensorflow.ragged
 """
+from tensorflow.python.ops.ragged import ragged_tensor

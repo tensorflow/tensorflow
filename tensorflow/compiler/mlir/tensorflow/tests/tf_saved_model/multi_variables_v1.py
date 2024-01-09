@@ -19,8 +19,8 @@
 import tensorflow.compat.v1 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
-# CHECK: "tf_saved_model.global_tensor"() {is_mutable, sym_name = "[[VAR0:[a-zA-Z_0-9]+]]", type = tensor<5x3xf32>, value = {{.*}} : tensor<5x3xf32>} : () -> ()
-# CHECK: "tf_saved_model.global_tensor"() {is_mutable, sym_name = "[[VAR1:[a-zA-Z_0-9]+]]", type = tensor<3x5xf32>, value = {{.*}} : tensor<3x5xf32>} : () -> ()
+# CHECK: "tf_saved_model.global_tensor"() <{is_mutable, sym_name = "[[VAR0:[a-zA-Z_0-9]+]]", type = tensor<5x3xf32>, value = {{.*}} : tensor<5x3xf32>}> : () -> ()
+# CHECK: "tf_saved_model.global_tensor"() <{is_mutable, sym_name = "[[VAR1:[a-zA-Z_0-9]+]]", type = tensor<3x5xf32>, value = {{.*}} : tensor<3x5xf32>}> : () -> ()
 # CHECK:      func {{@[a-zA-Z_0-9]+}}(
 # CHECK-SAME:   [[ARG0:%.*]]: tensor<!tf_type.resource<tensor<5x3xf32>>> {tf_saved_model.bound_input = @[[VAR0]]},
 # CHECK-SAME:   [[ARG1:%.*]]: tensor<!tf_type.resource<tensor<3x5xf32>>> {tf_saved_model.bound_input = @[[VAR1]]})
@@ -29,7 +29,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
 # CHECK-NEXT: [[R0:%.*]] = "tf.ReadVariableOp"([[ARG0]]) {{{.*}}} : (tensor<!tf_type.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
 # CHECK-NEXT: [[R1:%.*]] = "tf.ReadVariableOp"([[ARG1]]) {{{.*}}} : (tensor<!tf_type.resource<tensor<3x5xf32>>>) -> tensor<3x5xf32>
-# CHECK-NEXT: [[R2:%.*]] = "tf.MatMul"([[R0]], [[R1]]) {{{.*}}} : (tensor<5x3xf32>, tensor<3x5xf32>) -> tensor<5x5xf32>
+# CHECK-NEXT: [[R2:%.*]] = "tf.MatMul"([[R0]], [[R1]]) <{{{.*}}}> {{{.*}}} : (tensor<5x3xf32>, tensor<3x5xf32>) -> tensor<5x5xf32>
 
 
 def Test():

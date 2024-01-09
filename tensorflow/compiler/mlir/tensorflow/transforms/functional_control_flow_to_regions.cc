@@ -102,7 +102,9 @@ Value ConvertConditionToBoolean(Operation* op, Value cond) {
       return cond;
 
   OpBuilder builder(op);
-  return builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  Value to_bool = builder.create<TF::ToBoolOp>(op->getLoc(), cond);
+  CopyDeviceAndUnderscoredAttributes(op, to_bool.getDefiningOp());
+  return to_bool;
 }
 
 // Transform a functional IfOp to a region based IfRegionOp.
@@ -171,6 +173,48 @@ LogicalResult ConvertWhileOp(WhileOp while_op, bool allow_passthrough_args) {
   return success();
 }
 
+LogicalResult ConvertGeneratorDatasetOp(GeneratorDatasetOp generator_op) {
+  auto generator_region =
+      OpBuilder(generator_op)
+          .create<TF::GeneratorDatasetRegionOp>(
+              generator_op.getLoc(), generator_op->getResultTypes(),
+              generator_op.getInitFuncOtherArgs(),
+              generator_op.getNextFuncOtherArgs(),
+              generator_op.getFinalizeFuncOtherArgs(),
+              generator_op.getOutputTypes(), generator_op.getOutputShapes(),
+              generator_op.getMetadata());
+  CopyDeviceAndUnderscoredAttributes(generator_op, generator_region);
+
+  func::FuncOp init_function =
+      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          generator_op, generator_op.getInitFunc());
+  func::FuncOp next_function =
+      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          generator_op, generator_op.getNextFunc());
+  func::FuncOp finalize_function =
+      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+          generator_op, generator_op.getFinalizeFunc());
+
+  if (!init_function || !next_function || !finalize_function) {
+    return failure();
+  }
+
+  CreateCall(generator_op, init_function, generator_region.getInit(),
+             generator_region.getInitFuncOtherArgs(),
+             /*use_region_args=*/true, /*forward_block_args=*/false);
+  CreateCall(generator_op, next_function, generator_region.getNext(),
+             generator_region.getNextFuncOtherArgs(),
+             /*use_region_args=*/true, /*forward_block_args=*/false);
+  CreateCall(generator_op, finalize_function, generator_region.getFinalize(),
+             generator_region.getFinalizeFuncOtherArgs(),
+             /*use_region_args=*/true, /*forward_block_args=*/false);
+
+  generator_op->replaceAllUsesWith(generator_region->getResults());
+  generator_op->erase();
+
+  return success();
+}
+
 void FunctionalControlFlowToRegions::runOnOperation() {
   ModuleOp module = getOperation();
   auto result = module.walk([&](Operation* op) {
@@ -188,6 +232,13 @@ void FunctionalControlFlowToRegions::runOnOperation() {
       if (failed(ConvertWhileOp(while_op, allow_passthrough_args_))) {
         op->emitOpError() << "failed to convert to region form";
         return WalkResult::interrupt();
+      }
+    } else if (auto generator_op = llvm::dyn_cast<GeneratorDatasetOp>(op)) {
+      if (allow_passthrough_args_) {
+        if (failed(ConvertGeneratorDatasetOp(generator_op))) {
+          op->emitOpError() << "failed to convert to region form";
+          return WalkResult::interrupt();
+        }
       }
     }
     return WalkResult::advance();
