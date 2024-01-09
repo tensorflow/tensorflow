@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -241,6 +243,18 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
       std::optional<MemorySpaceAssignment::BufferIntervalCompare>
           buffer_interval_compare,
       PrefetchIntervalPicker* prefetch_interval_picker) {
+    auto status_or = AssignMemorySpaceAndReturnStatus(module, options_override,
+                                                      buffer_interval_compare,
+                                                      prefetch_interval_picker);
+    TF_EXPECT_OK(status_or.status());
+    return std::move(status_or.value());
+  }
+
+  StatusOr<std::unique_ptr<PresetAssignments>> AssignMemorySpaceAndReturnStatus(
+      HloModule* module, std::optional<Options> options_override,
+      std::optional<MemorySpaceAssignment::BufferIntervalCompare>
+          buffer_interval_compare,
+      PrefetchIntervalPicker* prefetch_interval_picker) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -289,16 +303,14 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
       options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
     }
 
-    auto alias_analysis = HloAliasAnalysis::Run(module).value();
-    std::unique_ptr<HloLiveRange> hlo_live_range =
-        HloLiveRange::Run(module->schedule(), *alias_analysis,
-                          module->entry_computation())
-            .value();
+    TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                        HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                          module->entry_computation()));
 
-    std::unique_ptr<PresetAssignments> preset_assignments =
-        MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
-                                   options)
-            .value();
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PresetAssignments> preset_assignments,
+                        MemorySpaceAssignment::Run(module, *hlo_live_range,
+                                                   *alias_analysis, options));
     if (check_parameters_in_default_memory) {
       CheckParametersInDefaultMemory(module);
     }
@@ -5830,6 +5842,147 @@ ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s3
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_TRUE(!root->shape().has_layout() ||
               root->shape().layout().memory_space() == kDefaultMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest, PrecoloredBuffer) {
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[8,3]{1,0:S(1)} cosine(param0)
+    b = f32[2,4] negate(param1)
+    d = f32[8,3] negate(a)
+    c = f32[2,4] negate(b)
+    e = f32[2,4] negate(c)
+    f = f32[8,3] negate(d)
+    g = f32[2,4] negate(e)
+    h = f32[2,4] negate(g)
+    i = f32[2,4] negate(h)
+    j = f32[2,4] negate(i)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] negate(k)
+    m = f32[2,4] negate(l)
+    n = f32[2,4] negate(m)
+    o = f32[8,3] negate(f)
+    p = f32[2,4] negate(n)
+    q = f32[8,3] add(f, o)
+    r = f32[8,3] add(q, a)
+    ROOT tuple = (f32[2,4], f32[8,3]) tuple(p, r)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kNegate:
+              return 0;
+            case HloOpcode::kAdd:
+              return 1;
+            case HloOpcode::kCos:
+              return 2;
+            default:
+              return 3;
+          }
+        };
+
+        return get_opcode_priority(a.buffer->defining_instruction()->opcode()) <
+               get_opcode_priority(b.buffer->defining_instruction()->opcode());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  Options options = DefaultMemorySpaceOptions();
+  std::unique_ptr<PresetAssignments> preset_assignments =
+      AssignMemorySpace(module.get(), options, buffer_interval_compare,
+                        &prefetch_interval_picker);
+
+  const HloInstruction* r = FindInstruction(module.get(), "r");
+  const HloInstruction* d = FindInstruction(module.get(), "d");
+  const HloInstruction* a = FindInstruction(module.get(), "a");
+  // Make sure the r and d operands aren't prefetched.
+  EXPECT_EQ(r->operand(1), a);
+  EXPECT_EQ(d->operand(0), a);
+  // Make sure they are allocated in the alternate memory.
+  EXPECT_EQ(a->shape().layout().memory_space(), kAlternateMemorySpace);
+  // Make sure the a buffer has an entry in the preset assignments.
+  auto a_entry = std::find_if(
+      preset_assignments->chunks().begin(), preset_assignments->chunks().end(),
+      [&](std::pair<HloPosition, HeapSimulator::Chunk> position_and_chunk) {
+        return position_and_chunk.first.instruction == a;
+      });
+  EXPECT_NE(a_entry, preset_assignments->chunks().end());
+}
+
+TEST_P(MemorySpaceAssignmentTest, PrecoloredBufferOOM) {
+  // Same as above but there are two 96-byte values that are pinned to the
+  // alternate memory (the size of the alternate memory is 128 bytes), which is
+  // unsatisfiable.
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[8,3]{1,0:S(1)} cosine(param0)
+    b = f32[2,4] negate(param1)
+    d = f32[8,3] negate(a)
+    c = f32[2,4] negate(b)
+    e = f32[2,4] negate(c)
+    f = f32[8,3] negate(d)
+    g = f32[2,4] negate(e)
+    h = f32[2,4] negate(g)
+    i = f32[2,4] negate(h)
+    j = f32[2,4] negate(i)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] negate(k)
+    m = f32[2,4] negate(l)
+    n = f32[2,4] negate(m)
+    o = f32[8,3]{1,0:S(1)} negate(f)
+    p = f32[2,4] negate(n)
+    q = f32[8,3] add(f, o)
+    r = f32[8,3] add(q, a)
+    ROOT tuple = (f32[2,4], f32[8,3]) tuple(p, r)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kNegate:
+              return 0;
+            case HloOpcode::kAdd:
+              return 1;
+            case HloOpcode::kCos:
+              return 2;
+            default:
+              return 3;
+          }
+        };
+
+        return get_opcode_priority(a.buffer->defining_instruction()->opcode()) <
+               get_opcode_priority(b.buffer->defining_instruction()->opcode());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  Options options = DefaultMemorySpaceOptions();
+  auto status_or = AssignMemorySpaceAndReturnStatus(module.get(), options,
+                                                    buffer_interval_compare,
+                                                    &prefetch_interval_picker);
+  EXPECT_THAT(
+      status_or.status(),
+      tsl::testing::StatusIs(
+          tsl::error::FAILED_PRECONDITION,
+          ::testing::HasSubstr("requires allocation in the alternate memory, "
+                               "which could not be satisfied")));
 }
 
 TEST_P(MemorySpaceAssignmentTest, AsyncOpShortLiveRange) {

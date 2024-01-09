@@ -27,11 +27,12 @@ class MemorySpaceAssignmentUtils {
   // Returns true if this buffer is allowed to be placed in the alternate
   // memory.
   static bool IsIntervalAllowedInAlternateMemory(
-      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval&
-          interval);
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
+      int64_t alternate_memory_space);
 
   // Returns true if the HloValue is allowed to be placed in alternate memory.
-  static bool IsValueAllowedInAlternateMemory(const HloValue* value);
+  static bool IsValueAllowedInAlternateMemory(const HloValue* value,
+                                              int64_t alternate_memory_space);
 };
 
 }  // namespace memory_space_assignment

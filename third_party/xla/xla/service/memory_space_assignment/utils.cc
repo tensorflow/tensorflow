@@ -17,12 +17,13 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/hlo_value.h"
 
 namespace xla {
 namespace memory_space_assignment {
 
 bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
-    const HloValue* value) {
+    const HloValue* value, int64_t alternate_memory_space) {
   // If the buffer is a tuple, don't use this algorithm for now. The buffers
   // that are pointed to by the tuple will still use this algorithm.  Because
   // tuples are cheap to place in the alternate memory (they are just pointers)
@@ -66,19 +67,19 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
       return false;
     }
 
-    // WARNING (b/259460539): output_to_operand_aliasing was moved from
-    // HloCustomCallInstruction to HloCallableInstruction so that fusions can
-    // also be annotated with this aliasing. This feature might not be complete.
-    if (auto* callable =
-            DynCast<HloCallableInstruction>(position.instruction)) {
-      for (const auto& pair : callable->output_to_operand_aliasing()) {
-        if (position.index == pair.first) {
-          VLOG(4) << "Keeping value " << value->ToShortString()
-                  << " in default mem because it is a custom-call/fusion output"
-                     " that aliases an operand buffer.";
-          return false;
-        }
-      }
+    // If the tensor is pre-colored to a memory space that is neither the
+    // default (0) nor the alternate, disallow it from the alternate memory
+    // space.
+    int64_t memory_space = 0;
+    if (position.shape().has_layout()) {
+      memory_space = position.shape().layout().memory_space();
+    }
+    if (memory_space != 0 && memory_space != alternate_memory_space) {
+      VLOG(4) << "Value " << value->ToShortString()
+              << " not allowed in the alternate memory space due to existing "
+                 "memory space: "
+              << memory_space;
+      return false;
     }
   }
 
@@ -86,9 +87,15 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
 }
 
 bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
-    const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval) {
-  return IsValueAllowedInAlternateMemory(interval.buffer) &&
-         absl::c_all_of(interval.colocations, IsValueAllowedInAlternateMemory);
+    const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
+    int64_t alternate_memory_space) {
+  return IsValueAllowedInAlternateMemory(interval.buffer,
+                                         alternate_memory_space) &&
+         absl::c_all_of(interval.colocations,
+                        [alternate_memory_space](const HloValue* value) {
+                          return IsValueAllowedInAlternateMemory(
+                              value, alternate_memory_space);
+                        });
 }
 
 }  // namespace memory_space_assignment

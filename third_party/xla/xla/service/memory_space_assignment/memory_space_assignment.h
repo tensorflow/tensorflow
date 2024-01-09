@@ -2109,7 +2109,7 @@ class AlternateMemoryBestFitHeap
   void AllocateCrossProgramPrefetchBuffer(
       HloModule* module, const BufferInterval& prefetch_candidate);
 
-  HeapSimulator::Result<HloValue> Finish() override;
+  StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
@@ -2184,6 +2184,7 @@ class AlternateMemoryBestFitHeap
     int64_t size;
     bool prefer_no_copy_alternate_mem_allocation;
     bool allow_no_copy_alternate_mem_allocation;
+    bool require_no_copy_alternate_mem_allocation;
     bool allow_prefetch;
     std::optional<int64_t> earliest_prefetch_time;
     std::optional<int64_t> preferred_prefetch_time;
@@ -2447,7 +2448,7 @@ class AlternateMemoryBestFitHeap
   // All of the allocation values have a must-alias relationship with each
   // other. Returns either kSuccess if all of the sites could be placed in the
   // alternate memory or a bitwise OR of failure reasons why they couldn't
-  Result AllocateAllocationValues(
+  StatusOr<Result> AllocateAllocationValues(
       absl::Span<AllocationValue> allocation_values);
 
   // Finds an allocation for an allocation request for a segment (see the
@@ -2712,6 +2713,10 @@ class AlternateMemoryBestFitHeap
   // instruction.
   const std::vector<const HloInstruction*>* GetRepeatedInstructionList(
       const HloInstruction* instruction) const;
+
+  // Returns true if the interval is pinned in the alternate memory. Buffers are
+  // pinned when their layout has the alternate memory space before MSA runs.
+  bool IsIntervalPinnedToAlternateMemory(const BufferInterval& interval) const;
 
   MemorySpaceAssignment::AllocationSequence* allocations_;
   const Options& options_;

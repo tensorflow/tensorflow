@@ -136,6 +136,7 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/statusor.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -484,7 +485,7 @@ class BestFitRepacker
     LOG(FATAL) << "We should never get here.";
   }
 
-  Result Finish() override {
+  StatusOr<Result> Finish() override {
     std::vector<BufferInterval> sorted_buffer_intervals =
         GetSortedBufferIntervals();
 
@@ -560,7 +561,7 @@ class BestFitRepacker
   }
 
   bool Repack() {
-    Finish();
+    TF_CHECK_OK(Finish().status());
     bool success = result_.heap_size <= max_size_;
     if (!success) {
       VLOG(1) << "Repacking unsuccessful with heap size " << result_.heap_size;

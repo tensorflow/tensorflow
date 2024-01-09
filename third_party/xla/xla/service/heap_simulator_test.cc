@@ -260,7 +260,7 @@ class HeapCallRecorder : public HeapAlgorithm<HloValue> {
   void Free(const HloValue* buffer, int64_t size) override {
     calls_->emplace_back(kFree, buffer);
   }
-  Result Finish() override {
+  StatusOr<Result> Finish() override {
     calls_->emplace_back(kFinish, nullptr);
     HeapSimulator::Result<HloValue> result;
     result.heap_size = result_.heap_size;
@@ -1034,7 +1034,9 @@ class NoFragmentationStatsHeapTest : public HeapAlgorithmTestBase {};
 
 TEST_F(NoFragmentationStatsHeapTest, Empty) {
   NoFragmentationStatsHeap<HloValue> heap;
-  EXPECT_EQ(0, heap.Finish().heap_size);
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
+  EXPECT_EQ(0, result.heap_size);
 }
 
 TEST_F(NoFragmentationStatsHeapTest, Simple) {
@@ -1047,7 +1049,9 @@ TEST_F(NoFragmentationStatsHeapTest, Simple) {
   heap.Free(buffer_b_, 20);
   heap.Free(buffer_c_, 30);
   heap.Free(buffer_d_, 30);
-  EXPECT_EQ(90, heap.Finish().heap_size);
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
+  EXPECT_EQ(90, result.heap_size);
 }
 
 TEST_F(NoFragmentationStatsHeapTest, Mixed) {
@@ -1064,14 +1068,17 @@ TEST_F(NoFragmentationStatsHeapTest, Mixed) {
   heap.Free(buffer_d_, 5);
 
   heap.Free(buffer_a_, 10);
-  EXPECT_EQ(40, heap.Finish().heap_size);
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
+  EXPECT_EQ(40, result.heap_size);
 }
 
 class GlobalDecreasingSizeBestFitHeapTest : public HeapAlgorithmTestBase {};
 
 TEST_F(GlobalDecreasingSizeBestFitHeapTest, Empty) {
   GlobalDecreasingSizeBestFitHeap<HloValue> heap(/*alignment=*/1);
-  const HeapSimulator::Result<HloValue> result = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
   EXPECT_EQ(0, result.heap_size);
   EXPECT_EQ(1, result.heap_results.size());
   EXPECT_EQ(0, result.heap_results.at(0).chunk_map.size());
@@ -1101,7 +1108,8 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSize) {
   heap.Free(buffer_c_, 20);
   heap.Free(buffer_d_, 40);
 
-  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> results,
+                          heap.Finish());
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
@@ -1143,7 +1151,8 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, DecreasingSizeWithAlignment) {
   heap.Free(buffer_c_, 50);
   heap.Free(buffer_d_, 40);
 
-  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> results,
+                          heap.Finish());
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
@@ -1189,7 +1198,8 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, BestFit) {
   heap.Free(buffer_d_, 30);
   heap.Free(buffer_e_, 50);
 
-  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> results,
+                          heap.Finish());
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
@@ -1224,7 +1234,8 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, Colocated) {
   heap.ShareWith(buffer_c_, buffer_a_, 40);
   heap.Free(buffer_c_, 40);
 
-  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> results,
+                          heap.Finish());
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
@@ -1256,7 +1267,8 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
   heap.Free(buffer_c_, 40);
   heap.Free(buffer_b_, 20);
 
-  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> results,
+                          heap.Finish());
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
@@ -1289,7 +1301,8 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedIII) {
   heap.Free(buffer_c_, 10);
   heap.Free(buffer_b_, 30);
 
-  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> results,
+                          heap.Finish());
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
@@ -1321,7 +1334,8 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize1) {
   heap.Free(buffer_c_, 30);
   heap.Free(buffer_b_, 20);
 
-  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> results,
+                          heap.Finish());
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
@@ -1354,7 +1368,8 @@ TEST_F(GlobalDecreasingSizeBestFitHeapTest, ColocatedDifferentSize2) {
   heap.Free(buffer_c_, 50);
   heap.Free(buffer_b_, 20);
 
-  const HeapSimulator::Result<HloValue> results = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> results,
+                          heap.Finish());
   EXPECT_EQ(1, results.heap_results.size());
   const HeapSimulator::HeapResult<HloValue>& result =
       results.heap_results.at(0);
@@ -1724,7 +1739,8 @@ TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest, DecreasingSize) {
   heap.Free(buffer_c_, 20);
   heap.Free(buffer_d_, 40);
 
-  const HeapSimulator::Result<HloValue> result = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
   EXPECT_EQ(100, result.heap_size);
   EXPECT_EQ(2, result.heap_results.size());
 
@@ -1766,7 +1782,8 @@ TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest,
   heap.Free(buffer_c_, 50);
   heap.Free(buffer_d_, 40);
 
-  const HeapSimulator::Result<HloValue> result = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
   EXPECT_EQ(130, result.heap_size);  // 70 + 60
   EXPECT_EQ(2, result.heap_results.size());
 
@@ -1799,7 +1816,8 @@ TEST_F(ConstrainedGlobalDecreasingSizeBestFitHeapTest, ColocatedII) {
   heap.Free(buffer_c_, 40);
   heap.Free(buffer_b_, 20);
 
-  const HeapSimulator::Result<HloValue> result = heap.Finish();
+  TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                          heap.Finish());
   EXPECT_EQ(60, result.heap_size);  // 40 + 20
   EXPECT_EQ(2, result.heap_results.size());
 

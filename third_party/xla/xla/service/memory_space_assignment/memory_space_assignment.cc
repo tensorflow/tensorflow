@@ -1743,6 +1743,13 @@ std::string MemorySpaceAssignment::AllocationValue::ToShortString() const {
                       (requires_contiguous_allocation_ ? " (cont alloc)" : ""));
 }
 
+bool AlternateMemoryBestFitHeap::IsIntervalPinnedToAlternateMemory(
+    const AlternateMemoryBestFitHeap::BufferInterval& interval) const {
+  const Shape& shape = interval.buffer->shape();
+  return shape.has_layout() &&
+         shape.layout().memory_space() == options_.alternate_memory_space;
+}
+
 AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
     MemorySpaceAssignment::AllocationSequence* allocations,
     const Options& options, const HloAliasAnalysis& alias_analysis,
@@ -1754,10 +1761,26 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
       hlo_live_range_(hlo_live_range),
       peak_memory_usage_(hlo_live_range.schedule_end_time() + 1) {
   // Override buffer interval compare if provided.
+  auto comparison_function = GetSpatialBufferIntervalCompare();
   if (options.buffer_interval_comparator) {
-    buffer_interval_compare_ =
+    comparison_function =
         options.buffer_interval_comparator->GetComparisonFunctor();
   }
+
+  // Prioritize pinned buffers in the buffer interval order.
+  buffer_interval_compare_ =
+      [this, comparison_function = std::move(comparison_function)](
+          const BufferInterval& a, const BufferInterval& b) {
+        bool is_a_pinned = IsIntervalPinnedToAlternateMemory(a);
+        bool is_b_pinned = IsIntervalPinnedToAlternateMemory(b);
+        if (is_a_pinned && !is_b_pinned) {
+          return true;
+        }
+        if (!is_a_pinned && is_b_pinned) {
+          return false;
+        }
+        return comparison_function(a, b);
+      };
 
   call_graph_ = CallGraph::Build(&alias_analysis_.dataflow_analysis().module());
 
@@ -3692,7 +3715,7 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
   }
 }
 
-HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
+StatusOr<HeapSimulator::Result<HloValue>> AlternateMemoryBestFitHeap::Finish() {
   if (options_.autotuning_config.has_value()) {
     CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
   }
@@ -3721,7 +3744,7 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation ||
         !MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
-            interval) ||
+            interval, options_.alternate_memory_space) ||
         interval.size > available_heap_size()) {
       continue;
     }
@@ -3788,11 +3811,15 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
 
   for (auto& interval : sorted_buffer_intervals) {
     if (!interval.need_allocation) {
+      VLOG(3) << "Skip " << interval.buffer->ToShortString()
+              << " because it doesn't need an allocation.";
       continue;
     }
 
     if (!MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
-            interval)) {
+            interval, options_.alternate_memory_space)) {
+      VLOG(3) << "Skip " << interval.buffer->ToShortString()
+              << " because it is not allowed in the alternate memory.";
       continue;
     }
 
@@ -3870,8 +3897,9 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
          retry_number++) {
       AddRequiredAssignmentsForColocatedIntervals(colocated_intervals);
       options_.prefetch_interval_picker->SetRetryNumber(retry_number);
-      Result result =
-          AllocateAllocationValues(absl::MakeSpan(allocation_values));
+      TF_ASSIGN_OR_RETURN(
+          Result result,
+          AllocateAllocationValues(absl::MakeSpan(allocation_values)));
       VLOG(2) << "Allocation result = "
               << absl::StrFormat("%x", static_cast<int>(result));
       if (result_requires_uncommit(result)) {
@@ -4266,7 +4294,7 @@ void AlternateMemoryBestFitHeap::CreateAllocationValuesFromColocatedIntervals(
   FindAliases(&allocation_values);
 }
 
-AlternateMemoryBestFitHeap::Result
+StatusOr<AlternateMemoryBestFitHeap::Result>
 AlternateMemoryBestFitHeap::AllocateAllocationValues(
     absl::Span<MemorySpaceAssignment::AllocationValue> allocation_values) {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
@@ -4293,11 +4321,26 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
     int64_t definition_time =
         instruction_schedule.at(allocation_value.defining_instruction());
 
+    bool require_no_copy_alternate_mem_allocation =
+        allocation_value.value()->shape().has_layout() &&
+        allocation_value.value()->shape().layout().memory_space() ==
+            options_.alternate_memory_space;
+    VLOG(3) << "require_no_copy_alternate_mem_allocation = "
+            << require_no_copy_alternate_mem_allocation;
     if (!options_.is_position_allowed_in_alternate_mem_fn(
             allocation_value.defining_position())) {
-      AddRequiredAssignment(allocation_value.value(),
-                            allocation_value.defining_instruction(),
-                            MemorySpace::kDefault, definition_time);
+      if (require_no_copy_alternate_mem_allocation) {
+        LOG(WARNING)
+            << "The value " << allocation_value.value()->ToShortString()
+            << " is pre-colored for alternate memory but the position "
+            << allocation_value.defining_position().ToString()
+            << " is not allowed in the alternate memory. Respecting the color "
+               "but this may break things later in compilation.";
+      } else {
+        AddRequiredAssignment(allocation_value.value(),
+                              allocation_value.defining_instruction(),
+                              MemorySpace::kDefault, definition_time);
+      }
     }
 
     AliasedOffset* preferred_offset = nullptr;
@@ -4377,8 +4420,17 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
       // Add a required assignment in default memory if the use not allowed in
       // alternate memory.
       if (!IsUseAllowedInAlternateMemory(allocation_value, hlo_use)) {
-        AddRequiredAssignment(allocation_value.value(), hlo_use.instruction,
-                              MemorySpace::kDefault, use_time);
+        if (require_no_copy_alternate_mem_allocation) {
+          LOG(WARNING)
+              << "The value " << allocation_value.value()->ToShortString()
+              << " is pre-colored for alternate memory but the use "
+              << hlo_use.ToString()
+              << " is not allowed in the alternate memory. Respecting the "
+                 "color but this may break things later in compilation.";
+        } else {
+          AddRequiredAssignment(allocation_value.value(), hlo_use.instruction,
+                                MemorySpace::kDefault, use_time);
+        }
       } else if (use_idx > 0) {
         // We allow buffers in alternate memory that are passed into
         // conditionals to give up their alternate memory allocation inside the
@@ -4519,6 +4571,8 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
         request.allow_no_copy_alternate_mem_allocation =
             allow_no_copy_alternate_mem_allocation;
         request.allow_prefetch = allow_prefetch;
+        request.require_no_copy_alternate_mem_allocation =
+            require_no_copy_alternate_mem_allocation;
         request.earliest_prefetch_time = earliest_prefetch_time;
         request.preferred_prefetch_time = preferred_prefetch_time;
         request.preferred_offset = preferred_offset;
@@ -4526,6 +4580,17 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
         request.allocation_value = &allocation_value;
         request.all_use_times = all_use_times;
         result_mark(AllocateSegment(request), result);
+        if (request.require_no_copy_alternate_mem_allocation &&
+            result != Result::kSuccess) {
+          Status failed_precondition = FailedPrecondition(
+              "The value defined at %s requires allocation in the alternate "
+              "memory, which could not be satisfied. This typically happens "
+              "because more pinned buffers are live than the alternate memory "
+              "capacity.",
+              allocation_value.defining_instruction()->ToString());
+          LOG(ERROR) << failed_precondition;
+          return failed_precondition;
+        }
         if (result_requires_uncommit(result)) {
           // If the allocation finding failed (e.g., due to running out of
           // asynchronous copies), then fall back to allocating the buffer
@@ -5453,6 +5518,8 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
             << "Mismatch in required assignments at time " << instruction_time
             << " value: " << value->ToString();
       } else {
+        VLOG(3) << "Adding required assignment: " << value->ToShortString()
+                << " at " << instruction_time << " at def";
         required_assignments.push_back(
             {MemorySpace::kDefault, instruction_time});
       }
@@ -5897,6 +5964,9 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
           << " use = " << request.use->hlo_use.ToString()
           << ". Size = " << request.size
           << ", def pos = " << defining_position.ToString();
+  if (request.require_no_copy_alternate_mem_allocation) {
+    VLOG(2) << "Requiring alternate memory allocation.";
+  }
   CHECK_LE(request.inclusive_start_time, request.end_time);
   if (VLOG_IS_ON(3) && options_.cost_analysis) {
     const HloPosition& defining_position =
@@ -5990,7 +6060,13 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
     if (allocation_result == Result::kSuccess) {
       return Result::kSuccess;
     }
+    // If we required alternate memory allocation, return on failure.
+    if (request.require_no_copy_alternate_mem_allocation) {
+      return allocation_result;
+    }
   }
+
+  CHECK(!request.require_no_copy_alternate_mem_allocation);
 
   auto prev_allocation_it = allocation_sequence->rbegin();
   // Find a previous allocation that is in the default memory space (not
@@ -6297,7 +6373,8 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
       request.allocation_value->defining_position();
   // If prefer_no_copy_alternate_mem_allocation is true, bypass the live range
   // duration checks.
-  if (!request.prefer_no_copy_alternate_mem_allocation &&
+  if (!request.require_no_copy_alternate_mem_allocation &&
+      !request.prefer_no_copy_alternate_mem_allocation &&
       !options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
           defining_position.shape(), request.inclusive_start_time,
           request.end_time)) {
