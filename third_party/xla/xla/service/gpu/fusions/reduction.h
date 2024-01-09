@@ -16,14 +16,18 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 
 #include <optional>
+#include <vector>
 
+#include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/llvm_ir/ir_array.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
 
 namespace xla {
@@ -95,17 +99,23 @@ namespace gpu {
 // complicating the index calculation in the code generation of the reduce
 // instructions. In other words, a block_id_y is assigned to a group and so
 // different groups can be run in parallel.
-class ReductionFusion : public FusionInterface {
+class ReductionFusion : public KernelFusionEmitterBase {
  public:
   explicit ReductionFusion(const HloFusionAnalysis& analysis);
 
-  StatusOr<FusionEmissionResult> Emit(
+  std::optional<LaunchDimensions> launch_dimensions() const override;
+
+ protected:
+  StatusOr<FusionEmissionResult> EmitInitializers(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion) const override;
 
-  // The launch dimensions of the main reduction kernel (not any initializer
-  // kernels).
-  std::optional<LaunchDimensions> launch_dimensions() const override;
+  Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                    const HloFusionInstruction& fusion,
+                    const LaunchDimensions& launch_dims,
+                    std::vector<llvm_ir::IrArray> inputs,
+                    std::vector<llvm_ir::IrArray> outputs,
+                    llvm::IRBuilder<>* builder) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

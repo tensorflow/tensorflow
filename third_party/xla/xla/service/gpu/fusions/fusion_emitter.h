@@ -59,6 +59,14 @@ class KernelFusionEmitterBase : public FusionInterface {
       const HloFusionInstruction& fusion) const final;
 
  protected:
+  // Creates initializer thunks that need to run before the main kernel.
+  virtual StatusOr<FusionEmissionResult> EmitInitializers(
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion) const {
+    // No initializers by default.
+    return FusionEmissionResult{};
+  }
+
   virtual Status EmitKernel(IrEmitterContext& ir_emitter_context,
                             const HloFusionInstruction& fusion,
                             const LaunchDimensions& launch_dims,
