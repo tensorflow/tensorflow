@@ -34,12 +34,12 @@ namespace internal {
 using mlir::OpPassManager;
 using mlir::func::FuncOp;
 
-// LINT.IfChange(tpu_bridge_passes)
+// LINT.IfChange(replicated_bridge_passes)
 
-// Adds Bridge clustering pipeline passes to the given pass_manager. Does not
-// run them.
-void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
-                                       llvm::StringRef module_name) {
+// Adds replicated Bridge clustering pipeline passes to the given pass_manager.
+// Does not run them.
+void AddReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm,
+                                                 llvm::StringRef module_name) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this but this is
   // currently not the case (see b/177478741).
@@ -158,12 +158,14 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
-// LINT.ThenChange(:non_tpu_bridge_passes)
+// LINT.ThenChange(:non_replicated_bridge_passes)
 
 void NoCanonicalization(OpPassManager& pm) {}
 
-// LINT.IfChange(non_tpu_bridge_passes)
-void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
+// LINT.IfChange(non_replicated_bridge_passes)
+
+// Same as above but for non-replicated Bridge.
+void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
   VLOG(2) << "Create TF XLA Bridge pipeline";
@@ -240,7 +242,7 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
-// LINT.ThenChange(:tpu_bridge_passes)
+// LINT.ThenChange(:replicated_bridge_passes)
 
 };  // namespace internal
 };  // namespace tf2xla
