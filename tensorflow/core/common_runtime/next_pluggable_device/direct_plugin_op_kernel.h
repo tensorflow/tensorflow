@@ -112,6 +112,8 @@ class DirectPluginOpKernelContext : public PluginOpKernelContext {
 
   int GetDeviceId() const override;
 
+  std::string_view GetDeviceName() const override;
+
   std::string GetSessionName() const override {
     return ctx_->session_metadata() ? ctx_->session_metadata()->name() : "";
   }

@@ -140,4 +140,8 @@ int DirectPluginOpKernelContext::GetDeviceId() const {
   return device->parsed_name().id;
 }
 
+std::string_view DirectPluginOpKernelContext::GetDeviceName() const {
+  return ctx_->device()->name();
+}
+
 }  // namespace tensorflow
