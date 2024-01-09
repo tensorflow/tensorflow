@@ -103,7 +103,7 @@ class ReductionFusion : public KernelFusionEmitterBase {
  public:
   explicit ReductionFusion(const HloFusionAnalysis& analysis);
 
-  std::optional<LaunchDimensions> launch_dimensions() const override;
+  LaunchDimensions launch_dimensions() const override;
 
  protected:
   StatusOr<FusionEmissionResult> EmitInitializers(

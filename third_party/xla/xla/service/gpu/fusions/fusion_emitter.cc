@@ -222,7 +222,6 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   TF_ASSIGN_OR_RETURN(auto result,
                       EmitInitializers(ir_emitter_context, fusion_op, fusion));
   auto launch_dims = launch_dimensions();
-  TF_RET_CHECK(launch_dims.has_value());
   std::vector<llvm_ir::IrArray> inputs, outputs;
   auto [entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
       fused_computation, kernel_arguments.args(), /*discriminator=*/"",
@@ -232,17 +231,17 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
                             BuildKernelPrototype(
                                 ir_emitter_context, suggested_kernel_name,
                                 kernel_arguments.args(), fusion.operand_count(),
-                                *launch_dims, &builder));
+                                launch_dims, &builder));
         if (ir_emitter_context.emit_kernels()) {
-          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion,
-                                        *launch_dims, std::move(inputs),
-                                        std::move(outputs), &builder));
+          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion, launch_dims,
+                                        std::move(inputs), std::move(outputs),
+                                        &builder));
         } else {
           VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
         }
         // TODO(jreiffers): Return shmem_bytes from EmitKernel when
         // converting the Triton emitters to this infrastructure.
-        return KernelReuseCache::Entry{kernel->getName().str(), *launch_dims,
+        return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
                                        /*shmem_bytes=*/0};
       });
   TF_RETURN_IF_ERROR(entry.status());
@@ -254,11 +253,11 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
 
   if (ir_emitter_context.emit_ir_from_hlo()) {
     result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        &fusion, entry->kernel_name, kernel_arguments.args(), *launch_dims,
+        &fusion, entry->kernel_name, kernel_arguments.args(), launch_dims,
         entry->shmem_bytes));
   } else {
     result.thunks.emplace_back(std::make_unique<KernelThunk>(
-        fusion_op, entry->kernel_name, kernel_arguments.args(), *launch_dims,
+        fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
         entry->shmem_bytes));
   }
 

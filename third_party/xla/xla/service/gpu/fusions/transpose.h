@@ -56,7 +56,7 @@ namespace gpu {
 class TransposeFusion : public KernelFusionEmitterBase {
  public:
   explicit TransposeFusion(const HloFusionAnalysis& analysis);
-  std::optional<LaunchDimensions> launch_dimensions() const override;
+  LaunchDimensions launch_dimensions() const override;
 
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,

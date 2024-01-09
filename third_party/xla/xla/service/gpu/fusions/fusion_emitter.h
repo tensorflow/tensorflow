@@ -43,16 +43,20 @@ class FusionInterface {
   virtual StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion) const = 0;
+};
 
-  // Returns the fusion's launch dimensions, if applicable.
-  virtual std::optional<LaunchDimensions> launch_dimensions() const {
-    return std::nullopt;
-  }
+// Interface for fusions that are implemented using cuda kernels.
+class KernelFusionInterface : public FusionInterface {
+ public:
+  virtual ~KernelFusionInterface() = default;
+
+  // Returns the fusion's launch dimensions.
+  virtual LaunchDimensions launch_dimensions() const = 0;
 };
 
 // Base class for fusions that are implemented using a single kernel, which is
 // generated using LLVM.
-class KernelFusionEmitterBase : public FusionInterface {
+class KernelFusionEmitterBase : public KernelFusionInterface {
  public:
   StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,

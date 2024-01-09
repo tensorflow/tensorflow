@@ -174,7 +174,7 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 
 }  // namespace
 
-std::optional<LaunchDimensions> InputSlicesFusion::launch_dimensions() const {
+LaunchDimensions InputSlicesFusion::launch_dimensions() const {
   auto* root = analysis_.fusion_roots().front();
   const auto& shape = root->operands()[0]->shape();
   constexpr int kUnrollFactor = 1;

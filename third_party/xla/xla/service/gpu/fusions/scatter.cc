@@ -47,7 +47,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::optional<LaunchDimensions> ScatterFusion::launch_dimensions() const {
+LaunchDimensions ScatterFusion::launch_dimensions() const {
   const auto& updates_shape =
       analysis_.fusion_roots().front()->operand(2)->shape();
   return CalculateLaunchDimensions(updates_shape, analysis_.device_info());

@@ -250,8 +250,9 @@ LaunchDimensions EstimateFusionLaunchDimensions(
     auto emitter =
         GetFusionEmitter(PreBufferAssignmentFusionInfo{*fusion_analysis});
     if (emitter.ok()) {
-      if (auto launch_dimensions = (*emitter)->launch_dimensions()) {
-        return *launch_dimensions;
+      if (const auto* kernel_emitter =
+              dynamic_cast<const KernelFusionInterface*>(emitter->get())) {
+        return kernel_emitter->launch_dimensions();
       }
     }
   }

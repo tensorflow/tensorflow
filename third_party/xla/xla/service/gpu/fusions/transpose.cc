@@ -290,7 +290,7 @@ Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
       .status();
 }
 
-std::optional<LaunchDimensions> TransposeFusion::launch_dimensions() const {
+LaunchDimensions TransposeFusion::launch_dimensions() const {
   return LaunchDimensions(tiling_scheme_.GetNumberOfBlocksPhysical(),
                           tiling_scheme_.GetNumThreadsPerBlockPhysical());
 }

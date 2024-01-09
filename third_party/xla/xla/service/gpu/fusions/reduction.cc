@@ -1635,14 +1635,13 @@ Status ReductionFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
       .EmitKernel(launch_dims, inputs, outputs);
 }
 
-std::optional<LaunchDimensions> ReductionFusion::launch_dimensions() const {
+LaunchDimensions ReductionFusion::launch_dimensions() const {
   const TilingScheme& tiling_scheme = reduction_codegen_info_.GetTilingScheme();
   size_t blocks_y = reduction_codegen_info_.GetIndexGroups().size();
-  return LaunchDimensions(
-      se::BlockDim(/*x=*/tiling_scheme.GetNumberOfBlocksPhysical(),
-                   /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
-      se::ThreadDim(/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(),
-                    /*y=*/1, /*z=*/1));
+  return {se::BlockDim(/*x=*/tiling_scheme.GetNumberOfBlocksPhysical(),
+                       /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
+          se::ThreadDim(/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(),
+                        /*y=*/1, /*z=*/1)};
 }
 
 }  // namespace gpu
