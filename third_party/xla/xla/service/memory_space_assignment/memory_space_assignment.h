@@ -32,6 +32,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "xla/service/allocation_block.h"
+
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
 #include "absl/container/btree_map.h"
@@ -1000,8 +1002,7 @@ class MemorySpaceAssignment {
     void AddDiffToAllSliceOffsets(int64_t diff);
 
     // Used to update offsets and start times after repacking.
-    void ImportRepackedSliceData(
-        const MemorySpaceAssignmentRepacker::SlicedAllocationData& data);
+    void ImportRepackedSliceData(const SlicedAllocationData& data);
 
     const std::vector<SliceDetail>& slice_details_sorted_by_start_time() const;
     std::vector<SliceDetail>& mutable_slice_details_sorted_by_start_time();
@@ -2145,8 +2146,7 @@ class AlternateMemoryBestFitHeap
  private:
   // We inherit AllocationBlock struct to attach the Allocation information to
   // make importing repacked offsets easier.
-  struct RepackAllocationBlock
-      : MemorySpaceAssignmentRepacker::AllocationBlock {
+  struct RepackAllocationBlock : AllocationBlock {
     MemorySpaceAssignment::Allocation* allocation;
   };
 
@@ -2615,8 +2615,7 @@ class AlternateMemoryBestFitHeap
   // Exports the allocations for repacking and puts them into the vector in the
   // parameter.
   void ExportAllocationsForRepacking(
-      std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>&
-          allocations);
+      std::vector<AllocationBlock*>& allocations);
 
   // Update reserved scoped allocation size for instructions when their
   // operand/output has been allocated in alternate memory by invoking

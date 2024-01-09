@@ -49,6 +49,7 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "//xla/service:allocation_block",
         "//xla/service:buffer_value",
         "//xla/service:call_graph",
         "//xla/service:heap_simulator",
@@ -92,6 +93,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:allocation_block",
         "//xla/service:heap_simulator",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
@@ -120,15 +122,11 @@ xla_cc_test(
 
 cc_library(
     name = "repacking",
-    srcs = ["repacking.cc"],
     hdrs = ["repacking.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
-        "//xla:types",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
+        "//xla/service:allocation_block",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -142,6 +140,7 @@ cc_library(
         ":repacking",
         "//xla:comparison_util",
         "//xla:statusor",
+        "//xla/service:allocation_block",
         "//xla/service:heap_simulator",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -184,6 +183,7 @@ xla_cc_test(
         ":best_fit_repacker",
         ":repacking",
         "//xla:comparison_util",
+        "//xla/service:allocation_block",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",

@@ -27,6 +27,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/service/allocation_block.h"
+#include "xla/service/hlo_value.h"
+
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
 #include "absl/container/btree_map.h"
@@ -923,8 +926,7 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
 };
 
 extern template class GlobalDecreasingSizeBestFitHeap<HloValue>;
-extern template class GlobalDecreasingSizeBestFitHeap<
-    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock>;
+extern template class GlobalDecreasingSizeBestFitHeap<AllocationBlock>;
 extern template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

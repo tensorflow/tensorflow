@@ -132,6 +132,7 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/service/allocation_block.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/statusor.h"
@@ -140,13 +141,6 @@ Step 5: Update AllocationBlocks with the repacking placements
 
 namespace xla {
 namespace {
-
-using AllocationBlock =
-    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock;
-using Type = GlobalDecreasingSizeBestFitHeap<AllocationBlock>::Type;
-using SlicedAllocationData = memory_space_assignment::
-    MemorySpaceAssignmentRepacker::SlicedAllocationData;
-using Slice = memory_space_assignment::MemorySpaceAssignmentRepacker::Slice;
 
 bool IsSliced(const AllocationBlock* block) {
   return block->original_slice_data.has_value();
@@ -357,10 +351,10 @@ class BestFitRepacker
         new_offset = (new_offset == -1 ? chunk.offset
                                        : std::min(new_offset, chunk.offset));
         repacked_slice_data->slices_sorted_by_offset.push_back(
-            Slice({chunk.size, chunk.offset, start_time}));
+            AllocatedSlice({chunk.size, chunk.offset, start_time}));
       }
       absl::c_sort(repacked_slice_data->slices_sorted_by_offset,
-                   [](const Slice& lhs, const Slice& rhs) {
+                   [](const AllocatedSlice& lhs, const AllocatedSlice& rhs) {
                      return lhs.offset < rhs.offset;
                    });
     } else {
@@ -528,7 +522,7 @@ class BestFitRepacker
         for (int i = 0;
              i < block->repacked_slice_data->slices_sorted_by_offset.size();
              ++i) {
-          const Slice& slice =
+          const AllocatedSlice& slice =
               block->repacked_slice_data->slices_sorted_by_offset[i];
           timed_chunks.push_back(
               TimedChunk{absl::StrCat(((int64_t)block), "_slice_", i), block,
@@ -618,8 +612,7 @@ class BestFitRepacker
     std::vector<std::pair<int64_t, int64_t>>
         original_slice_sizes_and_start_times_pairwise_sorted;
     original_slice_sizes_and_start_times_pairwise_sorted.reserve(num_slices);
-    for (const memory_space_assignment::MemorySpaceAssignmentRepacker::Slice&
-             slice :
+    for (const AllocatedSlice& slice :
          allocation_block->original_slice_data->slices_sorted_by_offset) {
       original_slice_sizes_and_start_times_pairwise_sorted.push_back(
           std::make_pair(slice.size, slice.inclusive_start_time));

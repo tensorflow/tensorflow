@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/allocation_block.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator.h"
@@ -3912,8 +3913,7 @@ StatusOr<HeapSimulator::Result<HloValue>> AlternateMemoryBestFitHeap::Finish() {
         ++num_repacks_;
         repacked = true;
         CHECK_NE(options_.repacker, nullptr);
-        std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>
-            repack_allocation_blocks;
+        std::vector<AllocationBlock*> repack_allocation_blocks;
         ExportAllocationsForRepacking(repack_allocation_blocks);
         VLOG(2) << "Repacking.";
         auto repack_status =
@@ -3961,8 +3961,7 @@ StatusOr<HeapSimulator::Result<HloValue>> AlternateMemoryBestFitHeap::Finish() {
   }
   if (options_.repack_after_every_allocation) {
     CHECK_NE(options_.repacker, nullptr);
-    std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>
-        repack_allocation_blocks;
+    std::vector<AllocationBlock*> repack_allocation_blocks;
     ExportAllocationsForRepacking(repack_allocation_blocks);
     VLOG(2) << "Final Repacking.";
     auto repack_status =
@@ -5207,7 +5206,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   // Add a repack allocation block for the Allocation objects in alternate
   // memory.
-  std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
+  std::vector<AllocationBlock*> colocations;
   for (int i = allocations_initial_size; i < allocations_->size(); ++i) {
     const auto& allocation = allocations_->at(i);
     if (allocation->memory_space() == MemorySpace::kAlternate) {
@@ -5596,7 +5595,7 @@ void AlternateMemoryBestFitHeap::UpdateReservedScopedAllocationSize() {
 }
 
 void AlternateMemoryBestFitHeap::ExportAllocationsForRepacking(
-    std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>& allocations) {
+    std::vector<AllocationBlock*>& allocations) {
   using SlicedCopyAllocation = MemorySpaceAssignment::SlicedCopyAllocation;
   using SliceDetail = SlicedCopyAllocation::SliceDetail;
 
@@ -5630,17 +5629,16 @@ void AlternateMemoryBestFitHeap::ExportAllocationsForRepacking(
 
     // Since this is a sliced allocation, construct SlicedAllocationData to
     // attach to the AllocationBlock.
-    MemorySpaceAssignmentRepacker::SlicedAllocationData original_slice_data;
+    SlicedAllocationData original_slice_data;
     for (const SliceDetail* slice_detail : slice_details_sorted_by_offset) {
       CHECK_EQ(slice_detail->copy_start_after_time,
                slice_detail->slice_decision.exclusive_start_time);
-      original_slice_data.slices_sorted_by_offset.push_back(
-          MemorySpaceAssignmentRepacker::Slice{
-              slice_detail->slice_decision.chunk.size,
-              slice_detail->slice_decision.chunk.offset,
-              /*inclusive_start_time=*/
-              ExclusiveToInclusiveStartTime(
-                  slice_detail->slice_decision.exclusive_start_time)});
+      original_slice_data.slices_sorted_by_offset.push_back(AllocatedSlice{
+          slice_detail->slice_decision.chunk.size,
+          slice_detail->slice_decision.chunk.offset,
+          /*inclusive_start_time=*/
+          ExclusiveToInclusiveStartTime(
+              slice_detail->slice_decision.exclusive_start_time)});
     }
 
     allocation_block.original_slice_data = std::move(original_slice_data);
@@ -5758,7 +5756,7 @@ Status AlternateMemoryBestFitHeap::AreRepackedSlicesValid(
   // data structure.
   std::vector<std::pair<int64_t, int64_t>> original_size_to_time_mapping;
   original_size_to_time_mapping.reserve(num_slices);
-  for (const MemorySpaceAssignmentRepacker::Slice& slice :
+  for (const AllocatedSlice& slice :
        block.original_slice_data->slices_sorted_by_offset) {
     original_size_to_time_mapping.push_back(
         std::make_pair(slice.size, slice.inclusive_start_time));
@@ -5766,7 +5764,7 @@ Status AlternateMemoryBestFitHeap::AreRepackedSlicesValid(
   absl::c_sort(original_size_to_time_mapping);
   std::vector<std::pair<int64_t, int64_t>> repacked_size_to_time_mapping;
   repacked_size_to_time_mapping.reserve(num_slices);
-  for (const MemorySpaceAssignmentRepacker::Slice& slice :
+  for (const AllocatedSlice& slice :
        block.repacked_slice_data->slices_sorted_by_offset) {
     repacked_size_to_time_mapping.push_back(
         std::make_pair(slice.size, slice.inclusive_start_time));
@@ -5877,7 +5875,7 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
   // Export these to repack_allocation_blocks_ so that we can repack them to
   // reduce fragmentation.
   for (auto& colocation : colocation_map) {
-    std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
+    std::vector<AllocationBlock*> colocations;
     for (MemorySpaceAssignment::Allocation* colocated_allocation :
          colocation.second) {
       repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
@@ -8105,7 +8103,7 @@ void MemorySpaceAssignment::SlicedCopyAllocation::AddDiffToAllSliceOffsets(
 }
 
 void MemorySpaceAssignment::SlicedCopyAllocation::ImportRepackedSliceData(
-    const MemorySpaceAssignmentRepacker::SlicedAllocationData& data) {
+    const SlicedAllocationData& data) {
   int num_slices = slice_details_sorted_by_start_time_.size();
   CHECK_EQ(data.slices_sorted_by_offset.size(), num_slices);
 
@@ -8122,8 +8120,7 @@ void MemorySpaceAssignment::SlicedCopyAllocation::ImportRepackedSliceData(
   for (int i = 0; i < num_slices; ++i) {
     SliceDetail* slice_detail = slice_details_sorted_by_offset[i];
     Chunk& chunk = slice_detail->slice_decision.chunk;
-    const MemorySpaceAssignmentRepacker::Slice& repacked_slice_data =
-        data.slices_sorted_by_offset[i];
+    const AllocatedSlice& repacked_slice_data = data.slices_sorted_by_offset[i];
     chunk = Chunk::FromOffsetSize(repacked_slice_data.offset, chunk.size);
     slice_detail->copy_start_after_time =
         repacked_slice_data.inclusive_start_time - 1;

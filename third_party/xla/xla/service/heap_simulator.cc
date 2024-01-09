@@ -43,6 +43,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
+#include "xla/service/allocation_block.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/service/time_utils.h"
 #include "xla/status.h"
@@ -1924,8 +1926,7 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
 }
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;
-template class GlobalDecreasingSizeBestFitHeap<
-    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock>;
+template class GlobalDecreasingSizeBestFitHeap<AllocationBlock>;
 template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

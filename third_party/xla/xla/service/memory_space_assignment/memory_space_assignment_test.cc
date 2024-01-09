@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/allocation_block.h"
 #include "xla/service/heap_simulator.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
@@ -6826,8 +6827,7 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
   // Expect that of the four separate allocations for the "a" buffer, the first
   // and the next three are in separate colocations.
   auto check_fun =
-      [](absl::Span<MemorySpaceAssignmentRepacker::AllocationBlock*>
-             allocations) {
+      [](absl::Span<AllocationBlock*> allocations) {
         EXPECT_TRUE(allocations.at(0)->GetColocationsCount() == 1 ||
                     allocations.at(0)->GetColocationsCount() == 3);
         EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 3);
@@ -6880,13 +6880,11 @@ ENTRY entry {
 
   // Expect that the first two value to repack has a colocations size of 2,
   // corresponding to the scoped allocations.
-  auto check_fun =
-      [&](absl::Span<MemorySpaceAssignmentRepacker::AllocationBlock*>
-              allocations) {
-        EXPECT_EQ(allocations.at(0)->GetColocationsCount(), 2);
-        EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 2);
-        repacker_ran = true;
-      };
+  auto check_fun = [&](absl::Span<AllocationBlock*> allocations) {
+    EXPECT_EQ(allocations.at(0)->GetColocationsCount(), 2);
+    EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 2);
+    repacker_ran = true;
+  };
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
   options.repacker = &repacker;
@@ -7066,16 +7064,13 @@ TEST_P(MemorySpaceAssignmentTest, ScopedAllocationWithDifferentOffset) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  auto check_fun =
-      [](absl::Span<MemorySpaceAssignmentRepacker::AllocationBlock*>
-             allocations) {
-        for (MemorySpaceAssignmentRepacker::AllocationBlock* block :
-             allocations) {
-          if (block->inclusive_start_time == block->end_time) {
-            EXPECT_GT(block->GetColocationsCount(), 0);
-          }
-        }
-      };
+  auto check_fun = [](absl::Span<AllocationBlock*> allocations) {
+    for (AllocationBlock* block : allocations) {
+      if (block->inclusive_start_time == block->end_time) {
+        EXPECT_GT(block->GetColocationsCount(), 0);
+      }
+    }
+  };
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
@@ -12325,10 +12320,6 @@ ENTRY main {
   ROOT z5 = f32[32,16] add(z4, d)
 })";
 
-  using Slice = MemorySpaceAssignmentRepacker::Slice;
-  using SlicedAllocationData =
-      MemorySpaceAssignmentRepacker::SlicedAllocationData;
-
   // Create 2 copies of the module, one to run without repacking and one to run
   // with repacking.
   TF_ASSERT_OK_AND_ASSIGN(auto module_no_repacking,
@@ -12403,11 +12394,11 @@ ENTRY main {
   MockRepacker repacker;
   absl::flat_hash_map<std::pair<int64_t, int64_t>, int64_t> repack_map;
   EXPECT_CALL(repacker, Repack(_))
-      .WillRepeatedly([](absl::Span<MockRepacker::AllocationBlock*> allocations)
+      .WillRepeatedly([](absl::Span<AllocationBlock*> allocations)
                           -> StatusOr<bool> {
         bool found_p2 = false;
         bool found_p3 = false;
-        for (MockRepacker::AllocationBlock* block : allocations) {
+        for (AllocationBlock* block : allocations) {
           VLOG(1) << "Allocation block: " << block->ToString();
 
           if (block->inclusive_start_time == 3 &&
@@ -12420,15 +12411,15 @@ ENTRY main {
             EXPECT_TRUE(block->original_slice_data.has_value());
             if (block->original_slice_data.has_value()) {
               SlicedAllocationData expected(
-                  {{Slice{1024, 1024, /*inclusive_start_time=*/3},
-                    Slice{1024, 2048, /*inclusive_start_time=*/7}}});
+                  {{AllocatedSlice{1024, 1024, /*inclusive_start_time=*/3},
+                    AllocatedSlice{1024, 2048, /*inclusive_start_time=*/7}}});
               EXPECT_EQ(*block->original_slice_data, expected)
                   << "\nExpected: " << expected.ToString()
                   << "\nGot: " << block->original_slice_data->ToString();
               // Set the first slice for p2 to be place at the larger offset.
               block->repacked_slice_data = SlicedAllocationData(
-                  {{Slice{1024, 2048, /*inclusive_start_time=*/7},
-                    Slice{1024, 3072, /*inclusive_start_time=*/3}}});
+                  {{AllocatedSlice{1024, 2048, /*inclusive_start_time=*/7},
+                    AllocatedSlice{1024, 3072, /*inclusive_start_time=*/3}}});
             }
           } else if (block->inclusive_start_time == 4 &&
                      block->initial_offset == 3072 && block->size == 1024) {
@@ -12726,12 +12717,12 @@ ENTRY main {
 using RepackingTest = ::testing::Test;
 
 TEST_F(RepackingTest, Colocations) {
-  MemorySpaceAssignmentRepacker::AllocationBlock a{10, 20, 100, 0, 1000, 0};
-  MemorySpaceAssignmentRepacker::AllocationBlock b{15, 25, 150, 0, 2000, 1};
-  MemorySpaceAssignmentRepacker::AllocationBlock c{18, 22, 50, 0, 500, 2};
-  MemorySpaceAssignmentRepacker::AllocationBlock d{5, 9, 20, 0, 3000, 3};
-  MemorySpaceAssignmentRepacker::AllocationBlock e{17, 22, 100, 0, 1500, 4};
-  MemorySpaceAssignmentRepacker::AllocationBlock f{25, 27, 150, 0, 2500, 5};
+  AllocationBlock a{10, 20, 100, 0, 1000, 0};
+  AllocationBlock b{15, 25, 150, 0, 2000, 1};
+  AllocationBlock c{18, 22, 50, 0, 500, 2};
+  AllocationBlock d{5, 9, 20, 0, 3000, 3};
+  AllocationBlock e{17, 22, 100, 0, 1500, 4};
+  AllocationBlock f{25, 27, 150, 0, 2500, 5};
 
   // a doesn't have other colocations.
   a.next_colocated = &a;
