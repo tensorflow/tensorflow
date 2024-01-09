@@ -92,7 +92,7 @@ H AbslHashValue(H h, const Domain& domain) {
 //  %p0 = f32[1, 17, 9, 9] parameter(0)
 //  reverse = f32[1, 17, 9, 9] reverse(%p0), dimensions={1, 2}
 // ```
-// can be written as `(d0, d1, d2, d3) -> (d0, -d1 + 17, -d2 + 9, d3)` with
+// can be written as `(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)` with
 // d0 in [0, 1), d1 in [0, 17), d2 in [0, 9) and d3 in [0, 9).
 struct IndexingMap {
   std::string ToString() const;
