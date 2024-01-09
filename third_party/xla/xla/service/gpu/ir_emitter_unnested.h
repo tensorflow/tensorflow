@@ -144,6 +144,7 @@ class IrEmitterUnnested : public IrEmitter {
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
   Status EmitConvolutionThunk(mlir::Operation* op);
+  Status EmitConvolutionThunk(const HloCustomCallInstruction* instr);
   Status EmitGemmThunk(mlir::Operation* op);
   Status EmitGemmThunk(const HloCustomCallInstruction* instr);
 #if GOOGLE_CUDA || TF_HIPBLASLT

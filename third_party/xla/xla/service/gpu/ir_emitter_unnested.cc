@@ -719,6 +719,49 @@ Status IrEmitterUnnested::EmitCommandBufferThunk(const HloInstruction* instr) {
   return OkStatus();
 }
 
+Status IrEmitterUnnested::EmitConvolutionThunk(
+    const HloCustomCallInstruction* instr) {
+  std::vector<BufferAllocation::Slice> operand_slices;
+  operand_slices.reserve(instr->operand_count());
+  for (const HloInstruction* operand : instr->operands()) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        GetAllocationSliceForHlo(operand, {}));
+    operand_slices.push_back(slice);
+  }
+
+  // The first and the last element in the result tuple for a convolution are
+  // always the result and the scratch buffer. It may have auxiliary results in
+  // addition to the main result.
+  std::vector<BufferAllocation::Slice> result_slices;
+  for (int i = 0; i < instr->shape().tuple_shapes_size() - 1; i++) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                        GetAllocationSliceForHlo(instr, {i}));
+    result_slices.push_back(result_slice);
+  }
+
+  TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      instr->backend_config<CudnnConvBackendConfig>());
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
+                      GetAllocationSliceForHlo(
+                          instr, {instr->shape().tuple_shapes_size() - 1}));
+  GpuConvDescriptor descriptor = {kind,
+                                  backend_config,
+                                  instr->operand(0)->shape(),
+                                  instr->operand(1)->shape(),
+                                  instr->shape().tuple_shapes(0),
+                                  static_cast<size_t>(scratch_slice.size()),
+                                  instr->window(),
+                                  instr->convolution_dimension_numbers(),
+                                  instr->feature_group_count()};
+
+  TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(descriptor, ""));
+  AddThunkToThunkSequence(std::make_unique<ConvolutionThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(config),
+      std::move(operand_slices), std::move(result_slices), scratch_slice));
+  return OkStatus();
+}
+
 Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   using mlir::dyn_cast;
   using mlir::lmhlo_gpu::Activation;
@@ -3563,6 +3606,10 @@ Status IrEmitterUnnested::EmitOp(
                 mlir::lmhlo_gpu::ConvForwardFusedSideInputOp,
                 mlir::lmhlo_gpu::ConvBackwardFilterOp,
                 mlir::lmhlo_gpu::ConvBackwardInputOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitConvolutionThunk(
+          Cast<HloCustomCallInstruction>(hlo_for_lmhlo.at(op)));
+    }
     return EmitConvolutionThunk(op);
   }
 
@@ -3862,6 +3909,9 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
       }
       if (IsCustomCallToTopK(*instr)) {
         return EmitTopKCustomCall(custom_call);
+      }
+      if (IsCustomCallToDnnConvolution(*instr)) {
+        return EmitConvolutionThunk(custom_call);
       }
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (IsCustomCallToCusolver(*instr)) {
