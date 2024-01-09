@@ -3843,6 +3843,9 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
       if (IsLegacyCublasMatmul(*instr)) {
         return EmitGemmThunk(custom_call);
       }
+      if (IsCustomCallToTopK(*instr)) {
+        return EmitTopKCustomCall(custom_call);
+      }
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (IsCustomCallToCusolver(*instr)) {
         return EmitCholeskyThunk(instr);

@@ -167,6 +167,11 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
 }
 
+bool IsCustomCallToTopK(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kTopKCustomCallTarget;
+}
+
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
                           bool verify_no_strides) {
   auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo);

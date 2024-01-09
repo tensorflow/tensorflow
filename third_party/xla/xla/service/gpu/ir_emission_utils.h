@@ -72,12 +72,17 @@ inline constexpr absl::string_view kTritonSoftmaxFusionKind =
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
+inline constexpr absl::string_view kTopKCustomCallTarget = "__gpu$TopK";
+
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
 // This returns true if `hlo` is a CustomCall HLO with a call target equal to
 // one of the kCusolver... constants, but returns *false* for HLOs with
 // say, a kCholesky opcode.
 bool IsCustomCallToCusolver(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to a TopK routine.
+bool IsCustomCallToTopK(const HloInstruction& hlo);
 
 // Cholesky decomposition. Takes a (batched) matrix as input, and returns a
 // tuple of (result, workspace, info), where result is the result of the
