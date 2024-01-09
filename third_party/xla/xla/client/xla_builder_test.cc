@@ -84,6 +84,10 @@ class XlaBuilderTest : public ::testing::Test {
   }
 };
 
+// Subclass for testing unbounded dynamic unary ops
+class UnboundedUnaryOpBuilderTest
+    : public ::testing::TestWithParam<std::vector<std::string>> {};
+
 TEST_F(XlaBuilderTest, OnePlusTwo) {
   XlaBuilder b(TestName());
   Add(ConstantR0<float>(&b, 1.0), ConstantR0<float>(&b, 2.0));
@@ -1562,10 +1566,8 @@ TEST_F(XlaBuilderTest, TopKDimensions) {
 
 TEST_F(XlaBuilderTest, UnboundedAbs) {
   XlaBuilder b(TestName());
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand,
-                          ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
-                          ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, 2, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, 2, <=2, ?]"));
   Abs(Parameter(&b, 0, operand, "operand"));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
@@ -1800,6 +1802,19 @@ TEST_F(XlaBuilderTest, UnboundedConvolution) {
   EXPECT_TRUE(ShapeUtil::Equal(result, expected));
 }
 
+TEST_F(XlaBuilderTest, UnboundedCos) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, 2, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, 2, <=2, ?]"));
+  Cos(Parameter(&b, 0, operand, "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(XlaBuilderTest, UnboundedDiv) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
@@ -1865,10 +1880,8 @@ TEST_F(XlaBuilderTest, UnboundedDotGeneral) {
 
 TEST_F(XlaBuilderTest, UnboundedExp) {
   XlaBuilder b(TestName());
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand,
-                          ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
-                          ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, 2, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, 2, <=2, ?]"));
   Exp(Parameter(&b, 0, operand, "operand"));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
@@ -1895,6 +1908,19 @@ TEST_F(XlaBuilderTest, UnboundedGather) {
   Gather(Parameter(&b, 0, operand, "operand"),
          Parameter(&b, 1, start_indices, "start_indices"), dimension_numbers,
          /*slice_sizes=*/{1, 2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(XlaBuilderTest, UnboundedLogistic) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, 2, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, 2, <=2, ?]"));
+  Logistic(Parameter(&b, 0, operand, "operand"));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result =
       module->entry_computation()->root_instruction()->shape();
@@ -1957,6 +1983,19 @@ TEST_F(XlaBuilderTest, UnboundedMulUnsupportedImplicitBroadcast) {
   ASSERT_FALSE(build_status.ok());
   EXPECT_THAT(build_status.status().message(),
               HasSubstr("Unbounded dynamic shapes not supported"));
+}
+
+TEST_F(XlaBuilderTest, UnboundedNegate) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, 2, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, 2, <=2, ?]"));
+  Neg(Parameter(&b, 0, operand, "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedPad) {
@@ -2085,6 +2124,32 @@ TEST_F(XlaBuilderTest, UnboundedReshapeUnsupported3) {
   EXPECT_THAT(
       statusor.status().message(),
       HasSubstr("Reshaping with unbounded dimensions is not supported."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedRsqrt) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, 2, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, 2, <=2, ?]"));
+  Rsqrt(Parameter(&b, 0, operand, "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(XlaBuilderTest, UnboundedSin) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, 2, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[1, 2, <=2, ?]"));
+  Sin(Parameter(&b, 0, operand, "operand"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(XlaBuilderTest, UnboundedSlice) {
