@@ -1267,6 +1267,7 @@ tf_py_strict_test(
         ":checkpoint_test_base",
         ":test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:options",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/framework:combinations",
         "//tensorflow/python/framework:errors",
