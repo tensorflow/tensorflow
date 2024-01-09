@@ -564,11 +564,6 @@ CreateExtractTPUCopyWithDynamicShapeOpPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUColocateCompositeResourceOps();
 
-// Creates a pass that adds ops which perform formatting on variables at
-// run-time according to compilation result.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUVariableRuntimeReformattingPass();
-
 // Creates a pass that expands outside compilation cluster at the head/tail of
 // TPU computation by adding outside compilation attribute to identity/cast ops
 // that are only used for host computation.
@@ -690,7 +685,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
 #define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS
-#define GEN_PASS_DECL_TPUVARIABLERUNTIMEREFORMATTINGPASS
 #define GEN_PASS_DECL_TENSORARRAYOPSDECOMPOSITIONPASS
 #define GEN_PASS_DECL_TENSORDEVICECOPYCONVERSIONPASS
 #define GEN_PASS_DECL_TENSORFLOWOPTIMIZEPASS
