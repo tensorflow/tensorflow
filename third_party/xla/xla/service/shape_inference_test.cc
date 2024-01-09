@@ -4006,6 +4006,28 @@ TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedExp) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(ShapeInferenceTest, UnboundedGather) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[3, 4, 2]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape start_indices, ParseShape("s32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, 2, 2]"));
+
+  GatherDimensionNumbers dimension_numbers;
+  dimension_numbers.add_offset_dims(2);
+  dimension_numbers.add_offset_dims(3);
+  dimension_numbers.add_collapsed_slice_dims(0);
+  dimension_numbers.add_start_index_map(1);
+  dimension_numbers.add_start_index_map(0);
+  dimension_numbers.set_index_vector_dim(2);
+
+  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape,
+                          ShapeInference::InferGatherShape(
+                              operand, start_indices, dimension_numbers,
+                              /*slice_sizes=*/{1, 2, 2}));
+  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
+      << "inferred: " << ShapeUtil::HumanString(result_shape)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMax) {
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam()[0]));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam()[1]));

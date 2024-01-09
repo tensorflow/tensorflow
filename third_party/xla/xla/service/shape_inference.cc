@@ -3637,8 +3637,10 @@ static Status ValidateGatherDimensionNumbers(
     }
   }
 
-  if (dim_numbers.start_index_map_size() !=
-      start_indices_shape[dim_numbers.index_vector_dim()]) {
+  if (!IsUnboundedDynamicSize(
+          start_indices_shape[dim_numbers.index_vector_dim()]) &&
+      dim_numbers.start_index_map_size() !=
+          start_indices_shape[dim_numbers.index_vector_dim()]) {
     return InvalidArgument(
         "Gather op has %d elements in start_index_map and the "
         "bound of dimension index_vector_dim=%d of start_indices is "
@@ -3766,6 +3768,7 @@ static Status ValidateGatherDimensionNumbers(
   }
 
   for (int i = 0; i < slice_sizes.size(); i++) {
+    if (input_shape.is_unbounded_dynamic_dimension(i)) continue;
     int64_t slice_size = slice_sizes[i];
     int64_t corresponding_input_size = input_shape.dimensions(i);
     if (slice_size < 0 || slice_size > corresponding_input_size) {

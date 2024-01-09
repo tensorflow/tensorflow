@@ -1878,6 +1878,31 @@ TEST_F(XlaBuilderTest, UnboundedExp) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(XlaBuilderTest, UnboundedGather) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[3, 4, 2]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape start_indices, ParseShape("s32[?, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[?, ?, 2, 2]"));
+
+  GatherDimensionNumbers dimension_numbers;
+  dimension_numbers.add_offset_dims(2);
+  dimension_numbers.add_offset_dims(3);
+  dimension_numbers.add_collapsed_slice_dims(0);
+  dimension_numbers.add_start_index_map(1);
+  dimension_numbers.add_start_index_map(0);
+  dimension_numbers.set_index_vector_dim(2);
+
+  Gather(Parameter(&b, 0, operand, "operand"),
+         Parameter(&b, 1, start_indices, "start_indices"), dimension_numbers,
+         /*slice_sizes=*/{1, 2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  const Shape& result =
+      module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(XlaBuilderTest, UnboundedMax) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
