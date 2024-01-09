@@ -39,6 +39,16 @@ class IndexingMapSimplifierTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
 };
 
+TEST_F(IndexingMapSimplifierTest, SimplifyConstantDims) {
+  AffineExpr d0 = getAffineDimExpr(0, &mlir_context_);
+
+  auto map = AffineMap::get(1, 0, d0, &mlir_context_);
+  IndexingMapSimplifier simplifier(&mlir_context_);
+  simplifier.SetInclusiveBounds(d0, 5, 5);
+
+  EXPECT_THAT(ToString(simplifier.Simplify(map)), HasSubstr("(d0) -> (5)"));
+}
+
 TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsIfSmallerThanDivisor) {
   AffineExpr d0 = getAffineDimExpr(0, &mlir_context_);
   AffineExpr d1 = getAffineDimExpr(1, &mlir_context_);

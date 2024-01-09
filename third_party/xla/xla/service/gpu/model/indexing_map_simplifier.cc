@@ -242,6 +242,15 @@ AffineExpr IndexingMapSimplifier::SimplifyOnce(AffineExpr expr) {
       return RewriteMod(mlir::cast<AffineBinaryOpExpr>(expr));
     case AffineExprKind::FloorDiv:
       return RewriteFloorDiv(mlir::cast<AffineBinaryOpExpr>(expr));
+    case AffineExprKind::DimId:
+    case AffineExprKind::SymbolId: {
+      auto bounds = GetInclusiveBounds(expr);
+      if (bounds.lower == bounds.upper) {
+        return getAffineConstantExpr(bounds.lower, mlir_context_);
+      }
+      return expr;
+    }
+
     default:
       return expr;
   }

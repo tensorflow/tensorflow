@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -180,6 +182,21 @@ LaunchDimensions InputSlicesFusion::launch_dimensions() const {
   constexpr int kUnrollFactor = 1;
   return CalculateLaunchDimensions(shape, analysis_.device_info(),
                                    {kUnrollFactor});
+}
+
+std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
+    int64_t output_id, mlir::MLIRContext* ctx) const {
+  // The mapping here is trivial and the same for all outputs - slice offsets
+  // are applied in the indexing from slice outputs to slice inputs.
+  auto launch_dims = launch_dimensions();
+  // The implementation requires the shapes and layouts to be the same, but we
+  // still use the requested output's shape for clarity.
+  const auto& shape = analysis_.fusion_roots()[output_id]->shape();
+  IndexingMap result{
+      GetDefaultThreadIdToOutputIndexingMap(launch_dims, shape, ctx),
+      GetThreadIdDomain(launch_dims)};
+  result.Simplify();
+  return result;
 }
 
 Status InputSlicesFusion::EmitKernel(IrEmitterContext& ir_emitter_context,

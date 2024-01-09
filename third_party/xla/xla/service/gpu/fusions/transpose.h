@@ -58,6 +58,12 @@ class TransposeFusion : public KernelFusionEmitterBase {
   explicit TransposeFusion(const HloFusionAnalysis& analysis);
   LaunchDimensions launch_dimensions() const override;
 
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t output_id, mlir::MLIRContext* ctx) const override {
+    // TODO(b/319081342): Implement this.
+    return std::nullopt;
+  }
+
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,
                     const HloFusionInstruction& fusion,

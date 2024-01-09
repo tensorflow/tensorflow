@@ -147,15 +147,10 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
 
   std::optional<int64_t> undef = std::nullopt;
 
-  // Note: the affine map here could be simplified further since s0 can take on
-  // a single value (0). The fact that it is not is a current limitation of
-  // 'IndexingMapSimplifier`. When that simplification logic becomes more
-  // advanced, this test may thus require editing.
   EXPECT_THAT(operand_tile,
               Optional(MatchSymbolicTile(
                   "(d0, d1, d2, d3, d4, d5, d6, d7)[s0, s1, s2, s3] -> "
-                  "((d0 * s0 + d1) * 11 + d2 * s1 + d3, d4 * s2 + d5, d6 * s3 "
-                  "+ d7)",  // NOLINT
+                  "(d2 * s1 + d3, d4 * s2 + d5, d6 * s3 + d7)",  // NOLINT
                   AllOf(Each(undef), SizeIs(target_shape.size())),
                   ElementsAreArray(target_shape),
                   ElementsAre(1, 1, 11, 11, 17, 17, 19, 19))));

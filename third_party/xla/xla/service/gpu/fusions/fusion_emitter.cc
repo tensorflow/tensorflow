@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -38,21 +39,26 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Metadata.h"
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/layout_util.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -106,6 +112,70 @@ Status AnnotateKernelLaunchDimensions(const se::DeviceDescription& device_info,
 }
 
 }  // namespace
+
+mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
+    const LaunchDimensions& launch_dims, const Shape& output_shape,
+    mlir::MLIRContext* ctx) {
+  std::vector<mlir::AffineExpr> output_dims(output_shape.rank());
+
+  std::array<uint64_t, 3> thread_counts{
+      launch_dims.thread_counts_per_block().x,
+      launch_dims.thread_counts_per_block().y,
+      launch_dims.thread_counts_per_block().z,
+  };
+
+  std::array<uint64_t, 3> total_sizes{
+      launch_dims.thread_counts_per_block().x * launch_dims.block_counts().x,
+      launch_dims.thread_counts_per_block().y * launch_dims.block_counts().y,
+      launch_dims.thread_counts_per_block().z * launch_dims.block_counts().z,
+  };
+
+  // ParallelLoopEmitter makes some assumptions about launch dimensions and
+  // computes the linear index using only the x and y components.
+  //
+  // We implement the general formula instead and rely on the simplifier to
+  // fix it.
+  //
+  // This means that this code supports some launch grids that the parallel
+  // loop emitter doesn't support. This is safe, since the latter CHECK fails
+  // if its assumptions are not fulfilled.
+  mlir::AffineExpr linear_index = mlir::getAffineConstantExpr(0, ctx);
+  uint64_t stride = 1;
+  for (int i = 0; i < 3; ++i) {
+    auto coord = mlir::getAffineDimExpr(kIndexingMapThreadIdxDims[i], ctx) +
+                 mlir::getAffineDimExpr(kIndexingMapBlockIdxDims[i], ctx) *
+                     thread_counts[i];
+    auto linear_component = coord * stride;
+    linear_index = linear_index + linear_component;
+    stride *= total_sizes[i];
+  }
+
+  // See IndexUtil::LinearIndexToMultidimensionalIndex.
+  uint64_t divisor = 1;
+  for (auto dimension : LayoutUtil::MinorToMajor(output_shape)) {
+    output_dims[dimension] =
+        (linear_index.floorDiv(divisor)) %
+        static_cast<uint64_t>(output_shape.dimensions(dimension));
+    divisor *= output_shape.dimensions(dimension);
+  }
+
+  return mlir::AffineMap::get(/*dimCount=*/6, /*symbolCount=*/0, output_dims,
+                              ctx);
+}
+
+Domain KernelFusionInterface::GetThreadIdDomain(
+    const LaunchDimensions& launch_dims) {
+  Domain result;
+  result.dimension_ranges = {
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x)},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y)},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z)},
+      {0, static_cast<int64_t>(launch_dims.block_counts().x)},
+      {0, static_cast<int64_t>(launch_dims.block_counts().y)},
+      {0, static_cast<int64_t>(launch_dims.block_counts().z)},
+  };
+  return result;
+}
 
 StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
                     std::vector<llvm_ir::IrArray>>>

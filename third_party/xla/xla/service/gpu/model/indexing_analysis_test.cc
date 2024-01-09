@@ -382,7 +382,7 @@ TEST_F(TileAnalysisTest, FusionOpWithDot) {
       UnorderedElementsAre(
           Pair(0, ElementsAre(MatchIndexingMap(
                       "(d0, d1, d2, d3, d4, d5)[s0] -> "
-                      "(d2 + d3, d0 * 768 + s0, d4, d5)",
+                      "(d2, d0 * 768 + s0, d4, d5)",
                       ElementsAre(MatchRange(0, 16), MatchRange(0, 16),
                                   MatchRange(0, 3), MatchRange(0, 1),
                                   MatchRange(0, 6), MatchRange(0, 128)),
@@ -412,7 +412,7 @@ TEST_F(TileAnalysisTest, FusionOpWithDot) {
                                   MatchRange(0, 6), MatchRange(0, 128)),
                       ElementsAre(MatchRange(0, 768))))),
           Pair(5, ElementsAre(MatchIndexingMap(
-                      "(d0, d1, d2, d3, d4, d5) -> (d2 + d3, d4, d5)",
+                      "(d0, d1, d2, d3, d4, d5) -> (d2, d4, d5)",
                       ElementsAre(MatchRange(0, 16), MatchRange(0, 16),
                                   MatchRange(0, 3), MatchRange(0, 1),
                                   MatchRange(0, 6), MatchRange(0, 128)),
