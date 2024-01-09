@@ -213,10 +213,12 @@ class IrEmitterUnnested : public IrEmitter {
                        const HloInstType* inst,
                        std::optional<bool> use_global_device_ids);
 
-  Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* inst);
+  Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* instr);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);
+  template <typename ThunkType>
+  Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 
   Status EmitCollectivePermute(mlir::Operation* op);
 

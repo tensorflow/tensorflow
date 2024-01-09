@@ -2860,6 +2860,17 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   return OkStatus();
 }
 
+template <typename ThunkType>
+Status IrEmitterUnnested::EmitReplicaOrPartitionId(
+    const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      GetAllocationSliceForHlo(instr, {}));
+  auto thunk = std::make_unique<ThunkType>(
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), result_slice);
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
 Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   auto collective_permute_op =
       mlir::cast<mlir::lmhlo_gpu::CollectivePermuteStartOp>(op);
@@ -3611,11 +3622,17 @@ Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::ReplicaIdOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitReplicaOrPartitionId<ReplicaIdThunk>(hlo_for_lmhlo.at(op));
+    }
     return EmitReplicaOrPartitionId<ReplicaIdThunk, mlir::lmhlo::ReplicaIdOp>(
         op);
   }
 
   if (mlir::isa<mlir::lmhlo::PartitionIdOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitReplicaOrPartitionId<PartitionIdThunk>(hlo_for_lmhlo.at(op));
+    }
     return EmitReplicaOrPartitionId<PartitionIdThunk,
                                     mlir::lmhlo::PartitionIdOp>(op);
   }
@@ -3870,6 +3887,10 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
       return EmitInfeed(Cast<HloInfeedInstruction>(instr));
     case HloOpcode::kOutfeed:
       return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
+    case HloOpcode::kPartitionId:
+      return EmitReplicaOrPartitionId<PartitionIdThunk>(instr);
+    case HloOpcode::kReplicaId:
+      return EmitReplicaOrPartitionId<ReplicaIdThunk>(instr);
     case HloOpcode::kRngGetAndUpdateState:
       return EmitRngGetAndUpdateState(
           Cast<HloRngGetAndUpdateStateInstruction>(instr));
