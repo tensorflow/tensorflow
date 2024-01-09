@@ -2604,31 +2604,6 @@ TEST_F(HloInstructionTest, SetOperationQueueId) {
             "%add = f32[] add(f32[] %p0, f32[] %p1), operation_queue_id=3");
 }
 
-TEST_F(HloInstructionTest, SetWaitOnOperationQueues) {
-  std::unique_ptr<HloComputation> main_computation;
-  HloComputation::Builder main_builder("Entry");
-  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
-  HloInstruction* param0 = main_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-  HloInstruction* param1 = main_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-
-  HloInstruction* add =
-      main_builder.AddInstruction(HloInstruction::CreateBinary(
-          scalar_shape, HloOpcode::kAdd, param0, param1));
-  std::vector<int64_t> wait_on_queues = {0, 2};
-  add->set_wait_on_operation_queues(wait_on_queues);
-  add->add_wait_on_operation_queues(5);
-
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(main_builder.Build());
-
-  auto options = HloPrintOptions().set_print_metadata(false);
-  EXPECT_EQ(module->entry_computation()->root_instruction()->ToString(options),
-            "%add = f32[] add(f32[] %p0, f32[] %p1), "
-            "wait_on_operation_queues={0, 2, 5}");
-}
-
 TEST_F(HloInstructionTest, ParseOperationQueueId) {
   constexpr char kHloString[] = R"(
   ENTRY main {
@@ -2639,23 +2614,6 @@ TEST_F(HloInstructionTest, ParseOperationQueueId) {
                           ParseAndReturnVerifiedModule(kHloString));
   EXPECT_EQ(
       module->entry_computation()->root_instruction()->operation_queue_id(), 2);
-}
-
-TEST_F(HloInstructionTest, ParseWaitOnOperationQueues) {
-  constexpr char kHloString[] = R"(
-  ENTRY main {
-    c0 = f32[] constant(0)
-    ROOT add0 = f32[] add(c0, c0), wait_on_operation_queues={0,2}
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  std::vector<int64_t> expected_wait_on_queue_ids = {0, 2};
-  for (int64_t i = 0; i < expected_wait_on_queue_ids.size(); i++) {
-    EXPECT_EQ(expected_wait_on_queue_ids[i],
-              module->entry_computation()
-                  ->root_instruction()
-                  ->wait_on_operation_queues()[i]);
-  }
 }
 
 TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {

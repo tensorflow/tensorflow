@@ -1862,7 +1862,7 @@ class HloInstruction {
     return OkStatus();
   }
 
-  bool preserve_layout() const { return metadata_.preserve_layout(); }
+  bool preserve_layout() const { return metadata_->preserve_layout(); }
 
   bool has_backend_config() const { return !backend_config_.empty(); }
 
@@ -1933,20 +1933,9 @@ class HloInstruction {
     operation_queue_id_ = operation_queue_id;
   }
 
-  const std::optional<int64_t> operation_queue_id() const {
+  std::optional<int64_t> operation_queue_id() const {
+    if (operation_queue_id_ == -1) return std::nullopt;
     return operation_queue_id_;
-  }
-
-  void set_wait_on_operation_queues(std::vector<int64_t>& operation_queue_ids) {
-    wait_on_operation_queues_ = operation_queue_ids;
-  }
-
-  const std::vector<int64_t> wait_on_operation_queues() const {
-    return wait_on_operation_queues_;
-  }
-
-  void add_wait_on_operation_queues(int64_t operation_queue_id) {
-    wait_on_operation_queues_.push_back(operation_queue_id);
   }
 
   // Returns a string representation of a proto in the format used by
@@ -1975,35 +1964,35 @@ class HloInstruction {
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
   void set_metadata(const OpMetadata& metadata) {
-    int64_t creation_pass_id = metadata_.creation_pass_id();
-    metadata_ = metadata;
-    metadata_.set_creation_pass_id(creation_pass_id);
+    int64_t creation_pass_id = metadata_->creation_pass_id();
+    *metadata_ = metadata;
+    metadata_->set_creation_pass_id(creation_pass_id);
   }
 
   void set_size_of_generated_code_in_bytes(int64_t code_size_in_bytes) {
-    metadata_.set_size_of_generated_code_in_bytes(code_size_in_bytes);
+    metadata_->set_size_of_generated_code_in_bytes(code_size_in_bytes);
   }
   void set_size_of_memory_working_set_in_bytes(
       int64_t working_set_size_in_bytes) {
-    metadata_.set_size_of_memory_working_set_in_bytes(
+    metadata_->set_size_of_memory_working_set_in_bytes(
         working_set_size_in_bytes);
   }
   void set_creation_pass_id(int64_t pass_id) {
-    metadata_.set_creation_pass_id(pass_id);
+    metadata_->set_creation_pass_id(pass_id);
   }
   void set_metadata_op_name(const std::string& name) {
-    metadata_.set_op_name(name);
+    metadata_->set_op_name(name);
   }
   void set_logical_creation_pass_id(int64_t pass_id) {
-    metadata_.set_logical_creation_pass_id(pass_id);
+    metadata_->set_logical_creation_pass_id(pass_id);
   }
   void set_metadata_deduplicated_name(std::string deduplicated_name) {
-    metadata_.set_deduplicated_name(std::move(deduplicated_name));
+    metadata_->set_deduplicated_name(std::move(deduplicated_name));
   }
   void set_metadata_preserve_layout(bool preserve_layout) {
-    metadata_.set_preserve_layout(preserve_layout);
+    metadata_->set_preserve_layout(preserve_layout);
   }
-  const OpMetadata& metadata() const { return metadata_; }
+  const OpMetadata& metadata() const { return *metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only
   // be called by HloComputation methods which add/remove instructions to
@@ -2513,14 +2502,15 @@ class HloInstruction {
     StatisticsViz statistics_viz;
   };
 
-  static const Rare* kEmptyRare;
+  static const Rare* const kEmptyRare;
 
   bool has_rare() const { return rare_ != nullptr; }
 
   // Return the allocated rare state, or the pointer to the static empty rare
   // state
   const Rare* rare() const {
-    return (rare_ == nullptr) ? kEmptyRare : rare_.get();
+    Rare* r = rare_.get();
+    return (r == nullptr) ? kEmptyRare : r;
   }
 
   // Lazily allocate the Rare struct
@@ -2576,6 +2566,18 @@ class HloInstruction {
   // Opcode for this instruction.
   HloOpcode opcode_;
 
+  // This field is assigned to true when backend_config_ is assigned to
+  // a default configuration.
+  bool is_default_config_ : 1;
+
+  // True if this instruction has already been detached from its user and
+  // operands.
+  bool cleaned_up_ : 1;
+
+  // Intrusive flag used by HloComputation, whether this instruction has
+  // been marked as dead.
+  bool marked_as_dead_ : 1;
+
   // Instruction operands.
   InstructionVector operands_;
 
@@ -2590,14 +2592,14 @@ class HloInstruction {
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
 
-  // Result shape of this instruction.
-  Shape shape_;
-
   // The sharding, if one exists.
   // Uses std::shared_ptr to allow reuse of the same sharding object between
   // HloInstructions and other components as HloSharding can be very large for
   // many element tuples.
   std::shared_ptr<const HloSharding> sharding_;
+
+  // Result shape of this instruction.
+  Shape shape_;
 
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
@@ -2606,26 +2608,12 @@ class HloInstruction {
   // String identifier for instruction.
   std::string name_;
 
-  // Metadata for debugging.
-  OpMetadata metadata_;
-
-  // This field is assigned to true when backend_config_ is assigned to
-  // a default configuration.
-  bool is_default_config_ = false;
-
-  // True if this instruction has already been detached from its user and
-  // operands.
-  bool cleaned_up_ = false;
-
-  // Intrusive flag used by HloComputation, whether this instruction has
-  // been marked as dead.
-  bool marked_as_dead_;
-
   // ID of the operation queue to run this instruction.
-  std::optional<int64_t> operation_queue_id_;
+  int64_t operation_queue_id_ = -1;
 
-  // IDs of operation queues to await before running this instruction.
-  std::vector<int64_t> wait_on_operation_queues_;
+  // Metadata for debugging.  Allocate it on heap, so that it does not increase
+  // the memory footprint of HloInstruction.
+  std::unique_ptr<OpMetadata> metadata_ = std::make_unique<OpMetadata>();
 };
 
 // Explicit instantiations in hlo_instruction.cc.
