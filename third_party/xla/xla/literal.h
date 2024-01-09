@@ -1365,38 +1365,32 @@ NativeT LiteralBase::GetFirstElement() const {
 
 template <typename T>
 int64_t LiteralBase::CountEqual(T value) const {
-  if (!shape().IsArray()) {
+  PrimitiveType ty = shape().element_type();
+  if (!primitive_util::IsArrayType(ty)) {
     return 0;
   }
-  PrimitiveType ty = shape().element_type();
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+  return primitive_util::ArrayTypeSwitch<int64_t>(
       [&](auto primitive_type_constant) -> int64_t {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          scalar.Set<NativeT>({}, static_cast<NativeT>(value));
-          return root_piece().CountAll(scalar);
-        }
-        return 0;
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        scalar.Set<NativeT>({}, static_cast<NativeT>(value));
+        return root_piece().CountAll(scalar);
       },
       ty);
 }
 
 template <typename T>
 int64_t LiteralBase::CountEqual(std::complex<T> value) const {
-  if (!shape().IsArray()) {
+  PrimitiveType ty = shape().element_type();
+  if (!primitive_util::IsComplexType(ty)) {
     return 0;
   }
-  PrimitiveType ty = shape().element_type();
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+  return primitive_util::ComplexTypeSwitch<int64_t>(
       [&](auto primitive_type_constant) -> int64_t {
-        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          scalar.Set<NativeT>({}, static_cast<NativeT>(value));
-          return root_piece().CountAll(scalar);
-        }
-        return 0;
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        scalar.Set<NativeT>({}, static_cast<NativeT>(value));
+        return root_piece().CountAll(scalar);
       },
       ty);
 }
