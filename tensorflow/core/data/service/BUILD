@@ -544,6 +544,8 @@ cc_library(
         ":common",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:retrying_utils",
     ] + tf_grpc_cc_dependencies(),
 )
 

@@ -160,27 +160,6 @@ TEST(GrpcProto, ParseFromString) {
   }
 }
 
-TEST(GrpcUtilTest, ComputeBackoffMicroseconds) {
-  for (int i = 0; i < 30; ++i) {
-    EXPECT_LE(0.4 * 1000 + 0.6 * 1000 * std::pow(1.3, i),
-              ComputeBackoffMicroseconds(/*current_retry_attempt=*/i));
-    EXPECT_LE(ComputeBackoffMicroseconds(/*current_retry_attempt=*/i),
-              0.4 * 1000 + 1000 * std::pow(1.3, i));
-  }
-}
-
-TEST(GrpcUtilTest, ComputeBackoffMicroseconds_MinMaxDelays) {
-  for (int i = 0; i < 30; ++i) {
-    EXPECT_EQ(ComputeBackoffMicroseconds(/*current_retry_attempt=*/i,
-                                         /*min_delay=*/10000000),
-              10000000);
-    EXPECT_EQ(ComputeBackoffMicroseconds(/*current_retry_attempt=*/i,
-                                         /*min_delay=*/1,
-                                         /*max_delay=*/1),
-              1);
-  }
-}
-
 static void BM_UnparseGrpc(::testing::benchmark::State& state) {
   const int size = state.range(0);
 

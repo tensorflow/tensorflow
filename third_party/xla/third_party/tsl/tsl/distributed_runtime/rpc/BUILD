@@ -37,14 +37,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:protobuf",
-        "//tsl/platform:retrying_utils",
         "//tsl/platform:status",
         "//tsl/platform:stringpiece",
         "//tsl/platform:stringprintf",
         "//tsl/protobuf:distributed_runtime_payloads_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
-        "@com_google_absl//absl/time",
     ] + tsl_grpc_cc_dependencies(),
 )
 
