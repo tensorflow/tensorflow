@@ -191,6 +191,7 @@ def if_nccl(if_true, if_false = []):
     return select({
         clean_dep("//tsl:no_nccl_support"): if_false,
         clean_dep("//tsl:windows"): if_false,
+        clean_dep("//tsl:arm"): if_false,
         "//conditions:default": if_true,
     })
 
