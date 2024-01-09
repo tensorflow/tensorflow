@@ -256,6 +256,22 @@ TEST_F(CPluginCoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
   owned_done(absl::CancelledError("error"));
 }
 
+TEST_F(CPluginCoordinationServiceAgentTest,
+       GetKeyValue_ZeroTimeout_ReturnError) {
+  const std::string test_key = "test_key";
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::ZeroDuration());
+
+  EXPECT_EQ(result.status().code(), error::INVALID_ARGUMENT);
+}
+
+TEST_F(CPluginCoordinationServiceAgentTest,
+       GetKeyValue_NegativeTimeout_ReturnError) {
+  const std::string test_key = "test_key";
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(-1));
+
+  EXPECT_EQ(result.status().code(), error::INVALID_ARGUMENT);
+}
+
 TEST_F(CPluginCoordinationServiceAgentTest, InsertKeyValue_Success) {
   const std::string test_key = "test_key";
   const std::string test_value = "test_value";
