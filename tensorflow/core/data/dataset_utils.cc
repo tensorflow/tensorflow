@@ -1001,7 +1001,7 @@ REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
                             AllTasks);
-REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<50>,
+REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
                             AllTasks);
