@@ -968,12 +968,14 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
   if (!IsFusedBatchNorm(*node_def)) return false;
 
   // FusedBatchNormV2 and V3 have an extra type parameter.
-  // Conv2D + FusedBatchNormV2/V3 fusion is currently not supported for bf16.
-  // TODO(intel-tf): enable the fusion for bf16
+  // Conv2D + FusedBatchNormV2/V3 fusion is currently supported only for fp32.
+  // TODO(intel-tf): Enable the fusion for bf16 and fp16.
   bool dtypeU_is_float = HasDataType(node_def, DT_FLOAT, "U");
   bool dtypeT_is_bf16 = HasDataType(node_def, DT_BFLOAT16, "T");
+  bool dtypeT_is_mkl_fp16 =
+      IsMKLEnabled() && HasDataType(node_def, DT_HALF, "T");
   if (node_view->GetOp() != "FusedBatchNorm" &&
-      (!dtypeU_is_float || dtypeT_is_bf16)) {
+      (!dtypeU_is_float || dtypeT_is_bf16 || dtypeT_is_mkl_fp16)) {
     return false;
   }
 
