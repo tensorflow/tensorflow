@@ -65,7 +65,8 @@ class ExtendedInferenceContext {
   std::vector<DataType> input_types_;
   std::vector<DataType> output_types_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtendedInferenceContext);
+  ExtendedInferenceContext(const ExtendedInferenceContext&) = delete;
+  void operator=(const ExtendedInferenceContext&) = delete;
 };
 
 // ShapeRefiner performs shape inference for TensorFlow Graphs.  It is
@@ -326,7 +327,8 @@ class ShapeRefiner {
   // are refined.
   absl::flat_hash_map<std::string, std::unique_ptr<const Graph>> functions_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
+  ShapeRefiner(const ShapeRefiner&) = delete;
+  void operator=(const ShapeRefiner&) = delete;
 };
 
 }  // namespace tensorflow

@@ -587,6 +587,7 @@ def build_conversion_flags(
     mlir_elide_elementsattrs_if_larger=None,
     use_buffer_offset=False,
     reduce_type_precision=False,
+    qdq_conversion_mode=None,
     **_
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -711,6 +712,8 @@ def build_conversion_flags(
     reduce_type_precision: Convert some tensor types to a lower precision if all
       values within that tensor are within the range of the lower precision.
       This could have side effects e.g. reduced flatbuffer size.
+    qdq_conversion_mode: If set, assume input model is a quantized model
+      represented with QDQ ops and convert to quantized kernels.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -824,6 +827,8 @@ def build_conversion_flags(
     conversion_flags.use_buffer_offset = use_buffer_offset
   if reduce_type_precision is not None:
     conversion_flags.reduce_type_precision = reduce_type_precision
+  if qdq_conversion_mode is not None:
+    conversion_flags.qdq_conversion_mode = qdq_conversion_mode
   return conversion_flags
 
 

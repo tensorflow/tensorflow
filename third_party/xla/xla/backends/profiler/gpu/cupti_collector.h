@@ -251,7 +251,8 @@ class AnnotationMap {
   const tsl::uint64 max_size_;
   absl::FixedArray<PerDeviceAnnotationMap> per_device_map_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AnnotationMap);
+  AnnotationMap(const AnnotationMap&) = delete;
+  void operator=(const AnnotationMap&) = delete;
 };
 
 class CuptiTraceCollector {
@@ -282,7 +283,8 @@ class CuptiTraceCollector {
  private:
   AnnotationMap annotation_map_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CuptiTraceCollector);
+  CuptiTraceCollector(const CuptiTraceCollector&) = delete;
+  void operator=(const CuptiTraceCollector&) = delete;
 };
 
 std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(

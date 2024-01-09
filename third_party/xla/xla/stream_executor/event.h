@@ -66,8 +66,8 @@ class Event {
   // Returns a pointer to the underlying platform-specific implementation.
   internal::EventInterface* implementation() { return implementation_.get(); }
 
-  Event(Event&&) = default;
-  Event& operator=(Event&&) = default;
+  Event(Event&&);
+  Event& operator=(Event&&);
 
  private:
   friend class Stream;
@@ -80,7 +80,8 @@ class Event {
   // the object. Owned.
   std::unique_ptr<internal::EventInterface> implementation_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(Event);
+  Event(const Event&) = delete;
+  void operator=(const Event&) = delete;
 };
 
 }  // namespace stream_executor

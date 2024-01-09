@@ -49,42 +49,50 @@ namespace cpu {
 
 static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
   std::vector<llvm::VecDesc> result = {
-      {"tanhf", runtime::kTanhV4F32SymbolName, llvm::ElementCount::getFixed(4)},
+      {"tanhf", runtime::kTanhV4F32SymbolName, llvm::ElementCount::getFixed(4),
+       false, "_ZGV_LLVM_N4v"},
       {"llvm.tanh.f32", runtime::kTanhV4F32SymbolName,
-       llvm::ElementCount::getFixed(4)},
+       llvm::ElementCount::getFixed(4), false, "_ZGV_LLVM_N4v"},
 
-      {"tanhf", runtime::kTanhV8F32SymbolName, llvm::ElementCount::getFixed(8)},
+      {"tanhf", runtime::kTanhV8F32SymbolName, llvm::ElementCount::getFixed(8),
+       false, "_ZGV_LLVM_N8v"},
       {"llvm.tanh.f32", runtime::kTanhV8F32SymbolName,
-       llvm::ElementCount::getFixed(8)},
+       llvm::ElementCount::getFixed(8), false, "_ZGV_LLVM_N8v"},
 
       {"tanhf", runtime::kTanhV16F32SymbolName,
-       llvm::ElementCount::getFixed(16)},
+       llvm::ElementCount::getFixed(16), false, "_ZGV_LLVM_N16v"},
       {"llvm.tanh.f32", runtime::kTanhV16F32SymbolName,
-       llvm::ElementCount::getFixed(16)},
+       llvm::ElementCount::getFixed(16), false, "_ZGV_LLVM_N16v"},
 
-      {"expf", runtime::kExpV4F32SymbolName, llvm::ElementCount::getFixed(4)},
+      {"expf", runtime::kExpV4F32SymbolName, llvm::ElementCount::getFixed(4),
+       false, "_ZGV_LLVM_N4v"},
       {"llvm.exp.f32", runtime::kExpV4F32SymbolName,
-       llvm::ElementCount::getFixed(4)},
+       llvm::ElementCount::getFixed(4), false, "_ZGV_LLVM_N4v"},
 
-      {"expf", runtime::kExpV8F32SymbolName, llvm::ElementCount::getFixed(8)},
+      {"expf", runtime::kExpV8F32SymbolName, llvm::ElementCount::getFixed(8),
+       false, "_ZGV_LLVM_N8v"},
       {"llvm.exp.f32", runtime::kExpV8F32SymbolName,
-       llvm::ElementCount::getFixed(8)},
+       llvm::ElementCount::getFixed(8), false, "_ZGV_LLVM_N8v"},
 
-      {"expf", runtime::kExpV16F32SymbolName, llvm::ElementCount::getFixed(16)},
+      {"expf", runtime::kExpV16F32SymbolName, llvm::ElementCount::getFixed(16),
+       false, "_ZGV_LLVM_N16v"},
       {"llvm.exp.f32", runtime::kExpV16F32SymbolName,
-       llvm::ElementCount::getFixed(16)},
+       llvm::ElementCount::getFixed(16), false, "_ZGV_LLVM_N16v"},
 
-      {"logf", runtime::kLogV4F32SymbolName, llvm::ElementCount::getFixed(4)},
+      {"logf", runtime::kLogV4F32SymbolName, llvm::ElementCount::getFixed(4),
+       false, "_ZGV_LLVM_N4v"},
       {"llvm.log.f32", runtime::kLogV4F32SymbolName,
-       llvm::ElementCount::getFixed(4)},
+       llvm::ElementCount::getFixed(4), false, "_ZGV_LLVM_N4v"},
 
-      {"logf", runtime::kLogV8F32SymbolName, llvm::ElementCount::getFixed(8)},
+      {"logf", runtime::kLogV8F32SymbolName, llvm::ElementCount::getFixed(8),
+       false, "_ZGV_LLVM_N8v"},
       {"llvm.log.f32", runtime::kLogV8F32SymbolName,
-       llvm::ElementCount::getFixed(8)},
+       llvm::ElementCount::getFixed(8), false, "_ZGV_LLVM_N8v"},
 
-      {"logf", runtime::kLogV16F32SymbolName, llvm::ElementCount::getFixed(16)},
+      {"logf", runtime::kLogV16F32SymbolName, llvm::ElementCount::getFixed(16),
+       false, "_ZGV_LLVM_N16v"},
       {"llvm.log.f32", runtime::kLogV16F32SymbolName,
-       llvm::ElementCount::getFixed(16)},
+       llvm::ElementCount::getFixed(16), false, "_ZGV_LLVM_N16v"},
   };
   return result;
 }

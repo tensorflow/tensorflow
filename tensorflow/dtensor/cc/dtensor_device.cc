@@ -2384,6 +2384,9 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   absl::flat_hash_set<Mesh> input_meshes;
   std::vector<int> single_device_input_indices;
 
+  VLOG(4) << "DTensorOperation: " << dtensor_operation.name
+          << " num_inputs are " << num_inputs;
+
   typed_inputs.resize(num_inputs);
   for (int j = 0; j < num_inputs; ++j) {
     TFE_TensorHandle* input = inputs[j];
@@ -2392,6 +2395,8 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     if (name_ != input_device) {
       single_device_input_indices.push_back(j);
       typed_inputs[j] = nullptr;
+      VLOG(5) << "Input " << j << ": "
+              << tensorflow::unwrap(input)->DebugString();
       continue;
     }
     // Handle input which is on DTensor device already.
@@ -2404,9 +2409,14 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
       input_meshes.insert(t->layout().mesh());
     }
     typed_inputs[j] = t;
+    VLOG(5) << "Input " << j << ": " << typed_inputs[j]->DebugString();
   }
 
   const std::optional<Mesh> mesh = ChooseBroadcastingMesh(input_meshes, dtypes);
+
+  VLOG(4) << "Execution DTensorOperation: " << dtensor_operation.name
+          << " with broadcast mesh "
+          << (mesh.has_value() ? mesh->ToString() : "no broadcast mesh");
 
   // TODO(feyu): This short circuit only allows running unsupported op
   // via DTensorDevice in eager mode. for tf.function and its graph, we will

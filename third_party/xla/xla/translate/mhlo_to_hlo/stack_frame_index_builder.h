@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_TRANSLATE_MHLO_TO_HLO_STACK_FRAME_INDEX_BUILDER_H_
 
 #include <map>
+#include <string>
 #include <string_view>
 #include <tuple>
 
@@ -30,7 +31,14 @@ class StackFrameIndexBuilder {
 
   xla::StackFrameIndexProto Build() const;
 
-  int AddCallStackAndGetFirstFrameId(const mlir::Location &root_loc);
+  struct AddStackFrameResult {
+    int last_frame_id;
+    std::string last_frame_file;
+    int last_frame_line;
+  };
+
+  AddStackFrameResult AddCallStackAndGetFirstFrameId(
+      const mlir::Location &root_loc);
 
  private:
   int AddStackFrameLocation(const mlir::NameLoc &name_location,

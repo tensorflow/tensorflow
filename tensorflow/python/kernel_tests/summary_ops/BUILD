@@ -22,7 +22,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:summary_ops_v2",

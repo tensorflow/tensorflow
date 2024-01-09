@@ -16,8 +16,8 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 
 def CreateXLAConvOpFromTFConv2DOp : NativeCodeCall<
   "CreateXlaConvOpFromTfConv2dOp($_builder, $_loc, $0...)">;
@@ -216,7 +216,7 @@ def ConvertTFMatMulToXLADotV2Op : Pat<
   (TF_MatMulOp:$matmul
     (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
     (TF_CastOp (TF_IdentityOp $weight), $truncate1),
-    $transpose_a, $transpose_b),
+    $transpose_a, $transpose_b, $grad_a, $grad_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, $input_zp,
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">), $matmul,
@@ -235,7 +235,7 @@ def ConvertTFMatMulToXLADotV2OpDynamicRange : Pat<
   (TF_MatMulOp:$matmul
     (TF_SubOp:$input (TF_CastOp $input_i8, $truncate0), $input_zp),
     (TF_CastOp (TF_IdentityOp $weight), $truncate1),
-    $transpose_a, $transpose_b),
+    $transpose_a, $transpose_b, $grad_a, $grad_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
@@ -252,7 +252,7 @@ def ConvertTFMatMulToXLADotV2OpWeightOnly : Pat<
   (TF_MatMulOp:$matmul
     $input,
     (TF_MulOp (TF_CastOp (TF_IdentityOp $weight), $truncate1), $scale),
-    $transpose_a, $transpose_b),
+    $transpose_a, $transpose_b, $grad_a, $grad_b),
   (TF_MulOp (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
@@ -270,7 +270,7 @@ def ConvertTFMatMulWithNoZeroPointToXLADotV2Op : Pat<
   (TF_MatMulOp:$matmul
     (TF_CastOp $input, $truncate),
     (TF_CastOp (TF_IdentityOp $weight), $truncate1),
-    $transpose_a, $transpose_b),
+    $transpose_a, $transpose_b, $grad_a, $grad_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
@@ -288,7 +288,7 @@ def ConvertTFMatMulWithTwoInputTensorsToXLADotV2Op : Pat<
   (TF_MatMulOp:$matmul
     (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp),
     (TF_SubOp (TF_CastOp $weight, $truncate2), $weight_zp),
-    $transpose_a, $transpose_b),
+    $transpose_a, $transpose_b, $grad_a, $grad_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, $input_zp, $weight_zp, $matmul, $transpose_a, $transpose_b),
   [(IsInt8ElementType $input),
@@ -306,7 +306,7 @@ def ConvertTFMatMulWithTwoInputTensorsAndNoInputZeroPointToXLADotV2Op : Pat<
   (TF_MatMulOp:$matmul
     (TF_CastOp $input, $truncate),
     (TF_SubOp (TF_CastOp $weight, $truncate2), $weight_zp),
-    $transpose_a, $transpose_b),
+    $transpose_a, $transpose_b, $grad_a, $grad_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $weight_zp, $matmul, $transpose_a, $transpose_b),
@@ -324,7 +324,7 @@ def ConvertTFMatMulWithTwoInputTensorsAndNoWeightZeroPointToXLADotV2Op : Pat<
   (TF_MatMulOp:$matmul
     (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
     (TF_CastOp $weight, $truncate1),
-    $transpose_a, $transpose_b),
+    $transpose_a, $transpose_b, $grad_a, $grad_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, $input_zp,
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
@@ -343,7 +343,7 @@ def ConvertTFMatMulWithTwoInputTensorsAndNoBothZeroPointsToXLADotV2Op : Pat<
   (TF_MatMulOp:$matmul
     (TF_CastOp $input, $truncate),
     (TF_CastOp $weight, $truncate1),
-    $transpose_a, $transpose_b),
+    $transpose_a, $transpose_b, $grad_a, $grad_b),
   (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
@@ -407,7 +407,7 @@ def ConvertTFBatchMatMulToXLADotV2Op : Pat<
   (TF_BatchMatMulV2Op:$batch_matmul
     (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
     (TF_CastOp (TF_IdentityOp $weight), $truncate1),
-    $adj_x, $adj_y),
+    $adj_x, $adj_y, $grad_x, $grad_y),
   (CreateXlaDotV2OpFromTfBatchMatMulOp
     $input, $weight, $input_zp,
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
@@ -426,7 +426,7 @@ def ConvertTFBatchMatMulWithNoZeroPointToXLADotV2Op : Pat<
   (TF_BatchMatMulV2Op:$batch_matmul
     (TF_CastOp $input, $truncate),
     (TF_CastOp (TF_IdentityOp $weight), $truncate1),
-    $adj_x, $adj_y),
+    $adj_x, $adj_y, $grad_x, $grad_y),
   (CreateXlaDotV2OpFromTfBatchMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
@@ -447,7 +447,7 @@ def ConvertTFBatchMatMulWithTwoInputTensorsToXLADotV2Op : Pat<
   (TF_BatchMatMulV2Op:$batch_matmul
     (TF_SubOp (TF_CastOp $input, $truncate), $input_zp),
     (TF_SubOp (TF_CastOp (TF_IdentityOp $weight), $truncate1), $weight_zp),
-    $adj_x, $adj_y),
+    $adj_x, $adj_y, $grad_x, $grad_y),
   (CreateXlaDotV2OpFromTfBatchMatMulOp
     $input, $weight, $input_zp, $weight_zp, $batch_matmul, $adj_x, $adj_y),
   [(IsInt8ElementType $input),
@@ -465,7 +465,7 @@ def ConvertTFBatchMatMulWithTwoInputTensorsAndNoInputZeroPointToXLADotV2Op : Pat
   (TF_BatchMatMulV2Op:$batch_matmul
     (TF_CastOp $input, $truncate),
     (TF_SubOp (TF_CastOp (TF_IdentityOp $weight), $truncate1), $weight_zp),
-    $adj_x, $adj_y),
+    $adj_x, $adj_y, $grad_x, $grad_y),
   (CreateXlaDotV2OpFromTfBatchMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $weight_zp, $batch_matmul, $adj_x, $adj_y),
@@ -483,7 +483,7 @@ def ConvertTFBatchMatMulWithTwoInputTensorsAndNoWeightZeroPointToXLADotV2Op : Pa
   (TF_BatchMatMulV2Op:$batch_matmul
     (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp),
     (TF_CastOp $weight, $truncate2),
-    $adj_x, $adj_y),
+    $adj_x, $adj_y, $grad_x, $grad_y),
   (CreateXlaDotV2OpFromTfBatchMatMulOp
     $input, $weight, $input_zp,
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
@@ -502,7 +502,7 @@ def ConvertTFBatchMatMulWithTwoInputTensorsAndNoBothZeroPointsToXLADotV2Op : Pat
   (TF_BatchMatMulV2Op:$batch_matmul
     (TF_CastOp $input, $truncate1),
     (TF_CastOp $weight, $truncate2),
-    $adj_x, $adj_y),
+    $adj_x, $adj_y, $grad_x, $grad_y),
   (CreateXlaDotV2OpFromTfBatchMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),

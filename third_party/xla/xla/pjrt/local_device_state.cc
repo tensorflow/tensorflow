@@ -46,8 +46,9 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {
-  device_ordinal_ =
-      device_ordinal != -1 ? device_ordinal : executor->device_ordinal();
+  local_hardware_id_ = executor_->device_ordinal();
+  local_device_id_ =
+      device_ordinal != -1 ? device_ordinal : executor_->device_ordinal();
 
   int num_device_to_host_streams =
       stream_options.has_value() ? stream_options->num_device_to_host_streams
@@ -57,12 +58,11 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                  : kNumDeviceToDeviceStreams;
   compute_stream_ = std::make_unique<se::Stream>(executor);
   if (stream_options.has_value()) {
-    compute_stream_->implementation()->SetPriority(stream_options->priority);
+    compute_stream_->SetPriority(stream_options->priority);
   }
   host_to_device_stream_ = std::make_unique<se::Stream>(executor);
   if (stream_options.has_value()) {
-    host_to_device_stream_->implementation()->SetPriority(
-        stream_options->priority);
+    host_to_device_stream_->SetPriority(stream_options->priority);
   }
   compute_stream_->Init();
   host_to_device_stream_->Init();
@@ -74,7 +74,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < num_device_to_host_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     device_to_host_streams_.push_back(std::move(stream));
@@ -83,7 +83,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < num_device_to_device_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
@@ -92,7 +92,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < kNumExternalReadyEventStreams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     external_ready_event_streams_.push_back(std::move(stream));
@@ -119,6 +119,7 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   // fixed, we could remove the BlockHostUntilDone call.
   status.Update(compute_stream_->BlockHostUntilDone());
   if (callback_stream_map_.has_value()) {
+    absl::MutexLock lock(&callback_stream_map_mu_);
     for (auto& callback_stream : callback_stream_map_.value()) {
       status.Update(callback_stream.second->BlockHostUntilDone());
     }
@@ -148,7 +149,7 @@ void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,
   tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(&callback_stream_map_mu_);
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
       auto new_stream = std::make_unique<se::Stream>(executor_);
@@ -195,7 +196,7 @@ StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
   for (const std::unique_ptr<se::Stream>& se_stream :
        external_ready_event_streams_) {
     if (absl::bit_cast<std::intptr_t>(
-            se_stream->implementation()->GpuStreamHack()) == stream) {
+            se_stream->platform_specific_handle().stream) == stream) {
       return se_stream.get();
     }
   }

@@ -26,6 +26,8 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -1008,6 +1010,42 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
   return OkStatus();
 }
 
+Status EagerContext::AddComponentFunction(const FunctionDef& fdef,
+                                          const FunctionDefLibrary& library) {
+  {
+    mutex_lock l(cache_mu_);
+    auto iter = component_function_libraries_.find(fdef.signature().name());
+    if (iter == component_function_libraries_.end()) {
+      // TODO(mrry): For any functions in the main function library, consider
+      //   deduplicating them here.
+      auto component_func_lib_def = std::make_unique<FunctionLibraryDefinition>(
+          OpRegistry::Global(), library);
+      TF_RETURN_IF_ERROR(component_func_lib_def->AddFunctionDef(fdef, {}));
+      component_function_libraries_.insert(
+          {fdef.signature().name(), std::move(component_func_lib_def)});
+    } else {
+      // The function has been registered before. If the function is different,
+      // we error out.
+      const FunctionDef* prev_fdef =
+          iter->second->Find(fdef.signature().name());
+      if (prev_fdef == nullptr) {
+        return absl::InternalError(
+            absl::StrCat("Component function: ", fdef.signature().name(),
+                         " is in the cache but not in the library"));
+      }
+      if (!FunctionDefsEqual(fdef, *prev_fdef)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Attempting to add a duplicate function with name: ",
+            fdef.signature().name(), " where the previous and current ",
+            "definitions differ. Previous definition: ",
+            prev_fdef->DebugString(),
+            " and current definition: ", fdef.DebugString()));
+      }
+    }
+  }
+  return OkStatus();
+}
+
 const FunctionDef* EagerContext::GetFunctionDef(const string& function_name) {
   return func_lib_def_.Find(function_name);
 }
@@ -1165,10 +1203,16 @@ Device* EagerContext::GetCachedDevice(Fprint128 device_cache_key) {
   return iter->second;
 }
 
-void EagerContext::AddKernelToCache(Fprint128 cache_key,
-                                    KernelAndDevice* kernel) {
+core::RefCountPtr<KernelAndDevice> EagerContext::AddKernelToCache(
+    Fprint128 cache_key, core::RefCountPtr<KernelAndDevice> kernel) {
   mutex_lock ml(cache_mu_);
-  core::RefCountPtr<KernelAndDevice> new_ref(kernel);
+  auto iter = kernel_cache_.find(cache_key);
+  if (iter != kernel_cache_.end()) {
+    core::RefCountPtr<KernelAndDevice> new_ref(iter->second.get());
+    new_ref->Ref();
+    return new_ref;
+  }
+  core::RefCountPtr<KernelAndDevice> new_ref(kernel.get());
   new_ref->Ref();
   kernel_cache_[cache_key] = std::move(new_ref);
   auto* registered_function =
@@ -1180,6 +1224,7 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
     VLOG(5) << "Cached key size of kernel " << kernel->name()
             << " is: " << registered_function->cached_kernel_keys->size();
   }
+  return kernel;
 }
 
 void EagerContext::AddDeviceToCache(Fprint128 device_cache_key,

@@ -1081,7 +1081,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloModule, /*replica_count=*/1,
                                    /*num_partitions=*/8));
-  module->config().set_use_spmd_partitioning(true);
+  module->mutable_config().set_use_spmd_partitioning(true);
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   ASSERT_TRUE(simplified_loop);
@@ -1169,7 +1169,7 @@ TEST_F(WhileLoopAllReduceCodeMotionTest,
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kHloModule, /*replica_count=*/1,
                                    /*num_partitions=*/8));
-  module->config().set_use_spmd_partitioning(true);
+  module->mutable_config().set_use_spmd_partitioning(true);
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopAllReduceCodeMotion{}.Run(module.get()));
   EXPECT_FALSE(simplified_loop);

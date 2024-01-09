@@ -55,18 +55,25 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   std::vector<int64_t> lhs_non_contracting_dims;
   lhs_non_contracting_dims.reserve(num_lhs_non_contracting_dims);
   int64_t lhs_contracting_size = 1;
+  bool lhs_contracting_dynamic = false;
   int64_t lhs_non_contracting_size = 1;
+  bool lhs_non_contracting_dynamic = false;
   std::vector<int64_t> batch_dim_sizes;
   batch_dim_sizes.reserve(num_batch_dims);
+  std::vector<bool> batch_dynamic_dims;
+  batch_dynamic_dims.reserve(num_batch_dims);
   for (int64_t i = 0; i < lhs_rank; ++i) {
     if (absl::c_linear_search(original_dnums.lhs_contracting_dimensions(), i)) {
       lhs_contracting_size *= lhs_shape.dimensions(i);
+      lhs_contracting_dynamic |= lhs_shape.is_dynamic_dimension(i);
     } else if (absl::c_linear_search(original_dnums.lhs_batch_dimensions(),
                                      i)) {
       batch_dim_sizes.push_back(lhs_shape.dimensions(i));
+      batch_dynamic_dims.push_back(lhs_shape.is_dynamic_dimension(i));
     } else {
       lhs_non_contracting_dims.push_back(i);
       lhs_non_contracting_size *= lhs_shape.dimensions(i);
+      lhs_non_contracting_dynamic |= lhs_shape.is_dynamic_dimension(i);
     }
   }
   // The canonical form of the lhs is
@@ -90,14 +97,18 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
       &lhs_operand->metadata());
 
   std::vector<int64_t> lhs_reshape_dims = batch_dim_sizes;
+  std::vector<bool> lhs_reshape_dynamic_dims = batch_dynamic_dims;
   if (lhs_non_contracting_size > 1) {
     lhs_reshape_dims.push_back(lhs_non_contracting_size);
+    lhs_reshape_dynamic_dims.push_back(lhs_non_contracting_dynamic);
   }
   lhs_reshape_dims.push_back(lhs_contracting_size);
+  lhs_reshape_dynamic_dims.push_back(lhs_contracting_dynamic);
   // Reshape the contracting and non-contracting dimensions together.
   HloInstruction* reshaped_lhs = computation->AddInstruction(
       HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(lhs_shape.element_type(), lhs_reshape_dims),
+          ShapeUtil::MakeShape(lhs_shape.element_type(), lhs_reshape_dims,
+                               lhs_reshape_dynamic_dims),
           transposed_lhs),
       &transposed_lhs->metadata());
 
@@ -108,14 +119,18 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   std::vector<int64_t> rhs_non_contracting_dims;
   rhs_non_contracting_dims.reserve(num_rhs_non_contracting_dims);
   int64_t rhs_non_contracting_size = 1;
+  bool rhs_non_contracting_dynamic = false;
   int64_t rhs_contracting_size = 1;
+  bool rhs_contracting_dynamic = false;
   for (int64_t i = 0; i < rhs_rank; ++i) {
     if (absl::c_linear_search(original_dnums.rhs_contracting_dimensions(), i)) {
       rhs_contracting_size *= rhs_shape.dimensions(i);
+      rhs_contracting_dynamic |= rhs_shape.is_dynamic_dimension(i);
     } else if (!absl::c_linear_search(original_dnums.rhs_batch_dimensions(),
                                       i)) {
       rhs_non_contracting_dims.push_back(i);
       rhs_non_contracting_size *= rhs_shape.dimensions(i);
+      rhs_non_contracting_dynamic |= rhs_shape.is_dynamic_dimension(i);
     }
   }
 
@@ -141,22 +156,29 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
 
   std::vector<int64_t> rhs_reshape_dims = batch_dim_sizes;
   rhs_reshape_dims.push_back(rhs_contracting_size);
+  std::vector<bool> rhs_reshape_dynamic_dims = batch_dynamic_dims;
+  rhs_reshape_dynamic_dims.push_back(rhs_contracting_dynamic);
   if (rhs_non_contracting_size > 1) {
     rhs_reshape_dims.push_back(rhs_non_contracting_size);
+    rhs_reshape_dynamic_dims.push_back(rhs_non_contracting_dynamic);
   }
   // Reshape the contracting and non-contracting dimensions together.
   HloInstruction* reshaped_rhs = computation->AddInstruction(
       HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(rhs_shape.element_type(), rhs_reshape_dims),
+          ShapeUtil::MakeShape(rhs_shape.element_type(), rhs_reshape_dims,
+                               rhs_reshape_dynamic_dims),
           transposed_rhs),
       &transposed_rhs->metadata());
 
   std::vector<int64_t> dot_dims = batch_dim_sizes;
+  std::vector<bool> dot_dynamic_dims = batch_dynamic_dims;
   if (lhs_non_contracting_size > 1) {
     dot_dims.push_back(lhs_non_contracting_size);
+    dot_dynamic_dims.push_back(lhs_non_contracting_dynamic);
   }
   if (rhs_non_contracting_size > 1) {
     dot_dims.push_back(rhs_non_contracting_size);
+    dot_dynamic_dims.push_back(rhs_non_contracting_dynamic);
   }
 
   DotDimensionNumbers dot_dnums;
@@ -169,7 +191,8 @@ Status CanonicalizeDot(HloInstruction* original_dot) {
   dot_dnums.add_rhs_contracting_dimensions(num_batch_dims);
 
   HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
-      ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims),
+      ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims,
+                           dot_dynamic_dims),
       reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config()));
   original_dot->SetupDerivedInstruction(dot);
 

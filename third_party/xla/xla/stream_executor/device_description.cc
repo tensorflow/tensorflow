@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "tsl/lib/math/math_util.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -53,14 +54,59 @@ DeviceDescription::DeviceDescription()
       core_count_(-1),
       ecc_enabled_(false) {}
 
-namespace internal {
+DeviceDescription::DeviceDescription(const GpuDeviceInfoProto &proto) {
+  if (proto.has_cuda_compute_capability()) {
+    gpu_compute_capability_ =
+        stream_executor::CudaComputeCapability(proto.cuda_compute_capability());
+  } else {
+    gpu_compute_capability_ =
+        stream_executor::RocmComputeCapability(proto.rocm_compute_capability());
+  }
+  threads_per_block_limit_ = proto.threads_per_block_limit();
+  threads_per_warp_ = proto.threads_per_warp();
+  shared_memory_per_block_ = proto.shared_memory_per_block();
+  shared_memory_per_block_optin_ = proto.shared_memory_per_block_optin();
+  shared_memory_per_core_ = proto.shared_memory_per_core();
+  threads_per_core_limit_ = proto.threads_per_core_limit();
+  core_count_ = proto.core_count();
+  fpus_per_core_ = proto.fpus_per_core();
+  block_dim_limit_ =
+      BlockDim(proto.block_dim_limit_x(), proto.block_dim_limit_y(),
+               proto.block_dim_limit_z());
+  memory_bandwidth_ = proto.memory_bandwidth();
+  l2_cache_size_ = proto.l2_cache_size();
+  clock_rate_ghz_ = proto.clock_rate_ghz();
+  device_memory_size_ = proto.device_memory_size();
+}
 
-DeviceDescriptionBuilder::DeviceDescriptionBuilder()
-    : device_description_(new DeviceDescription) {}
+GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
+  stream_executor::GpuDeviceInfoProto proto;
+  if (auto *ptr = std::get_if<stream_executor::CudaComputeCapability>(
+          &gpu_compute_capability_))
+    *proto.mutable_cuda_compute_capability() = ptr->ToProto();
+  if (auto *ptr = std::get_if<stream_executor::RocmComputeCapability>(
+          &gpu_compute_capability_))
+    *proto.mutable_rocm_compute_capability() = ptr->ToProto();
 
-}  // namespace internal
+  proto.set_threads_per_block_limit(threads_per_block_limit_);
+  proto.set_threads_per_warp(threads_per_warp_);
+  proto.set_shared_memory_per_block(shared_memory_per_block_);
+  proto.set_shared_memory_per_block_optin(shared_memory_per_block_optin_);
+  proto.set_shared_memory_per_core(shared_memory_per_core_);
+  proto.set_threads_per_core_limit(threads_per_core_limit_);
+  proto.set_core_count(core_count_);
+  proto.set_fpus_per_core(fpus_per_core_);
+  proto.set_block_dim_limit_x(block_dim_limit().x);
+  proto.set_block_dim_limit_y(block_dim_limit().y);
+  proto.set_block_dim_limit_z(block_dim_limit().z);
+  proto.set_memory_bandwidth(memory_bandwidth_);
+  proto.set_l2_cache_size(l2_cache_size_);
+  proto.set_clock_rate_ghz(clock_rate_ghz_);
+  proto.set_device_memory_size(device_memory_size_);
+  return proto;
+}
 
-GpuComputeCapability DeviceDescription::gpu_compute_capability() const {
+const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {
   return gpu_compute_capability_;
 }
 

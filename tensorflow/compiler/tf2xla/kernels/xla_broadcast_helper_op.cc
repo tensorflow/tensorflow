@@ -104,7 +104,8 @@ class XlaBroadcastHelperOp : public XlaOpKernel {
  private:
   xla::DotDimensionNumbers dnums_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaBroadcastHelperOp);
+  XlaBroadcastHelperOp(const XlaBroadcastHelperOp&) = delete;
+  void operator=(const XlaBroadcastHelperOp&) = delete;
 };
 
 REGISTER_XLA_OP(

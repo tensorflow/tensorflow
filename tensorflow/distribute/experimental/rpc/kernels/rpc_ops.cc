@@ -78,7 +78,8 @@ class RpcServerRegisterOp : public OpKernel {
   NameAttrList func_;
   StructuredValue output_specs_;
   StructuredValue input_specs_;
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcServerRegisterOp);
+  RpcServerRegisterOp(const RpcServerRegisterOp&) = delete;
+  void operator=(const RpcServerRegisterOp&) = delete;
 };
 
 // Create a server resource to store registered functions
@@ -88,7 +89,8 @@ class RpcServerOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcServerOp);
+  RpcServerOp(const RpcServerOp&) = delete;
+  void operator=(const RpcServerOp&) = delete;
 };
 
 // Start GRPC server with registered methods
@@ -98,7 +100,8 @@ class RpcServerStartOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcServerStartOp);
+  RpcServerStartOp(const RpcServerStartOp&) = delete;
+  void operator=(const RpcServerStartOp&) = delete;
 };
 
 // Create a client resource to store registered functions.
@@ -110,7 +113,8 @@ class RpcClientOp : public AsyncOpKernel {
  private:
   std::string name_;
   bool list_registered_methods_;
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcClientOp);
+  RpcClientOp(const RpcClientOp&) = delete;
+  void operator=(const RpcClientOp&) = delete;
 };
 
 // Remote RPC using client handle passed and returns a future Resource handle to
@@ -121,7 +125,8 @@ class RpcCallOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcCallOp);
+  RpcCallOp(const RpcCallOp&) = delete;
+  void operator=(const RpcCallOp&) = delete;
 };
 
 // Remote Check Status Op waits till the RPC issued by Call Op is finished.
@@ -131,7 +136,8 @@ class RpcCheckStatusOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcCheckStatusOp);
+  RpcCheckStatusOp(const RpcCheckStatusOp&) = delete;
+  void operator=(const RpcCheckStatusOp&) = delete;
 };
 
 // Op to get response output after RPC Call.
@@ -141,7 +147,8 @@ class RpcGetValueOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcGetValueOp);
+  RpcGetValueOp(const RpcGetValueOp&) = delete;
+  void operator=(const RpcGetValueOp&) = delete;
 };
 
 class DeleteRpcFutureResourceOp : public OpKernel {

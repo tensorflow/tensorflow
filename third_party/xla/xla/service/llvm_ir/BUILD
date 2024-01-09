@@ -1,9 +1,9 @@
 # Description:
 #    Libraries for helping construct LLVM IR for XLA backends.
 
+load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -43,7 +43,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -54,7 +53,6 @@ xla_cc_test(
         ":alias_analysis",
         "//xla/service:custom_call_status_public_headers",
         "//xla/service:custom_call_target_registry",
-        "//xla/service:hlo_parser",
         "//xla/service/cpu/tests:cpu_codegen_test",
         "//xla/tests:filecheck",
         "@local_tsl//tsl/platform:test",
@@ -167,7 +165,6 @@ cc_library(
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:types",
-        "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Core",
         "@local_tsl//tsl/platform:errors",
@@ -281,6 +278,7 @@ cc_library(
     hdrs = ["buffer_assignment_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "@com_google_absl//absl/strings",
     ],
@@ -312,7 +310,12 @@ xla_cc_test(
     srcs = ["ir_array_test.cc"],
     deps = [
         ":ir_array",
+        ":llvm_util",
         "//xla:test",
+        "//xla/tests:filecheck",
         "//xla/tests:xla_internal_test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

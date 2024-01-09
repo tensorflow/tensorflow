@@ -119,8 +119,8 @@ std::string ToString(enum OperationType op);
 OperationType OperationTypeFromString(const std::string& name);
 
 template <DataType DataTypeT, typename t>
-using TensorOrScalarBase = std::variant<std::monostate, Tensor<HWC, DataTypeT>,
-                                        Tensor<Linear, DataTypeT>, t>;
+using TensorOrScalarBase = absl::variant<std::monostate, Tensor<HWC, DataTypeT>,
+                                         Tensor<Linear, DataTypeT>, t>;
 
 using TensorOrScalar = TensorOrScalarBase<DataType::FLOAT32, float>;
 
@@ -391,18 +391,25 @@ Padding3D CalculateSamePadding(const BHWDC& input,
                                const DepthwiseConvolution3DAttributes& attr);
 
 // f(x):= {
-//   if x < 0  : x -> alpha * x
-//   if x >= 0 : x -> min(clip, x)
+//   if alpha != 0: x -> min(activation_max, x)
+//   else
+//     if x < activation_min : x -> min(activation_min, alpha * x)
+//     if x >= activation_min : x -> min(activation_max, x)
 // }
 //
 // Examples:
-//   - ReLU: clip = 0, alpha = 0
-//   - ReLU6: clip = 6, alpha = 0
-//   - Leaky ReLU: clip = 0, alpha = a
+//   - ReLU: activation_min = 0, activation_max = 0, alpha = 0
+//   - ReLU6: activation_min = 0, activation_max = 6, alpha = 0
+//   - Leaky ReLU: activation_min = 0, activation_max = 0, alpha = a
+//   - ReLUN1To1: activation_min = -1, activation_max = 1, alpha = 0
 struct ReLUAttributes {
-  // clip <= 0 mean it is not set.
-  float clip = 0;
+  // activation_min must be < activation_max
+  float activation_min = 0;
 
+  // activation_max <= 0 mean it is not set.
+  float activation_max = 0;
+
+  // alpha must be <= 1
   float alpha = 0;
 };
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tsl/platform/random.h"
+#include "tsl/platform/threadpool_interface.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -77,6 +79,55 @@ absl::StatusOr<std::optional<StreamCallbackId>> CreateStreamCallbackId(
   return callback_id;
 }
 
+absl::Status StreamCallbackRegistry::CallbackState::Invoke(
+    tsl::thread::ThreadPoolInterface* thread_pool, StreamedResult result) {
+  {
+    absl::MutexLock lock(&mu_);
+    if (closed_) {
+      return absl::InternalError(
+          "Failed to invole the callback that is closed.");
+    }
+    ++num_outstanding_;
+  }
+  thread_pool->Schedule([this, result = std::move(result)]() mutable {
+    InvokeCallback(std::move(result));
+
+    absl::MutexLock lock(&mu_);
+    --num_outstanding_;
+  });
+  return absl::OkStatus();
+}
+
+void StreamCallbackRegistry::CallbackState::Close() {
+  {
+    absl::MutexLock lock(&mu_);
+    closed_ = true;
+
+    auto not_running = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
+      return num_outstanding_ == 0;
+    };
+    mu_.Await(absl::Condition(&not_running));
+  }
+}
+
+void StreamCallbackRegistry::CallbackState::InvokeCallback(
+    StreamedResult result) {
+  absl::Duration dequeue_latency = absl::Now() - result.enqueued_time;
+  interface().RecordDequeueLatency(model_name_, dequeue_latency);
+
+  tsl::profiler::TraceMe trace_me("StreamCallbackInvocation");
+  trace_me.AppendMetadata([&]() {
+    return tsl::profiler::TraceMeEncode({
+        {"callback_id", callback_id_.id},
+        {"step_id", step_id_.id},
+    });
+  });
+
+  absl::Time start_time = absl::Now();
+  callback_(std::move(result.tensors));
+  interface().RecordCallbackLatency(model_name_, absl::Now() - start_time);
+}
+
 absl::StatusOr<ScopedStreamCallback> StreamCallbackRegistry::Register(
     absl::string_view model_name, StreamCallbackId callback_id, StepId step_id,
     absl::AnyInvocable<
@@ -91,39 +142,14 @@ absl::StatusOr<ScopedStreamCallback> StreamCallbackRegistry::Register(
         "Stream callback ", callback_id, " @ ", step_id, " already exists"));
   }
 
-  it->second = std::make_unique<CallbackState>();
-  it->second->thread = absl::WrapUnique(tsl::Env::Default()->StartThread(
-      tensorflow::ThreadOptions(),
-      /*name=*/absl::StrCat("stream_handler_", callback_id, "_", step_id),
-      [model_name = std::string(model_name), callback_id, step_id,
-       callback = std::move(callback), state = it->second.get(),
-       this]() mutable {
-        StreamedResult result;
-        while (state->channel.Read(result)) {
-          absl::Duration dequeue_latency = absl::Now() - result.enqueued_time;
-          interface_->RecordDequeueLatency(model_name, dequeue_latency);
-
-          tsl::profiler::TraceMe trace_me("StreamCallbackInvocation");
-          trace_me.AppendMetadata([&]() {
-            return tsl::profiler::TraceMeEncode({
-                {"callback_id", callback_id.id},
-                {"step_id", step_id.id},
-            });
-          });
-
-          absl::Time start_time = absl::Now();
-          callback(std::move(result.tensors));
-          interface_->RecordCallbackLatency(model_name,
-                                            absl::Now() - start_time);
-        }
-      }));
-
+  it->second = std::make_unique<CallbackState>(this, model_name, callback_id,
+                                               step_id, std::move(callback));
   return ScopedStreamCallback(this, callback_id, step_id);
 }
 
-absl::Status StreamCallbackRegistry::Write(StreamCallbackId callback_id,
-                                           StepId step_id,
-                                           StreamedResult result) {
+absl::Status StreamCallbackRegistry::Invoke(
+    tsl::thread::ThreadPoolInterface* thread_pool, StreamCallbackId callback_id,
+    StepId step_id, StreamedResult result) {
   absl::MutexLock lock(&mu_);
   auto iter = stream_callbacks_.find({callback_id, step_id});
   if (iter == stream_callbacks_.end()) {
@@ -135,7 +161,7 @@ absl::Status StreamCallbackRegistry::Write(StreamCallbackId callback_id,
 
   auto* state = iter->second.get();
   DCHECK(state);
-  return state->channel.Write(std::move(result));
+  return state->Invoke(thread_pool, std::move(result));
 }
 
 std::unique_ptr<StreamCallbackRegistry::CallbackState>
@@ -189,11 +215,9 @@ void ScopedStreamCallback::Unregister() {
   auto state = registry_->Unregister(*callback_id_, step_id_);
   DCHECK(state);
 
-  // At this point, it is safe to close the channel.
-  state->channel.Close();
-
-  // Wait until the stream handler finishes.
-  state->thread.reset();
+  // At this point, it is safe to close the channel. This also wait for the
+  // outstanding stream handlers to finish.
+  state->Close();
 
   callback_id_.reset();
 }

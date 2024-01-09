@@ -70,6 +70,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -80,17 +81,20 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_computation.h"
 #include "xla/cpu_function_runtime.h"
@@ -103,10 +107,16 @@ limitations under the License.
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/tracked_device_buffer.h"
+#include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
+#include "xla/primitive_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
 #include "xla/service/generic_transfer_manager.h"
@@ -115,13 +125,17 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/framework/allocator.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -131,6 +145,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -247,7 +262,7 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
   // appeared.
   absl::c_sort(addressable_devices_,
                [](const PjRtDevice* a, const PjRtDevice* b) {
-                 return a->local_hardware_id() < b->local_hardware_id();
+                 return a->local_device_id() < b->local_device_id();
                });
 }
 
@@ -255,6 +270,16 @@ StatusOr<DeviceAssignment> PjRtStreamExecutorClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   return client_->backend().computation_placer()->AssignDevices(num_replicas,
                                                                 num_partitions);
+}
+
+StatusOr<Layout> PjRtStreamExecutorClient::GetDefaultLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dims) {
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  TF_ASSIGN_OR_RETURN(
+      shape,
+      client()->backend().transfer_manager()->ChooseCompactLayoutForShape(
+          shape));
+  return shape.layout();
 }
 
 StatusOr<std::unique_ptr<HloCostAnalysis>>
@@ -382,7 +407,7 @@ StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>> AllocateDestinationBuffer(
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer dst_buffer,
                       transfer_manager->AllocateScopedShapedBuffer(
                           on_host_shape, se_client->allocator(),
-                          local_device->device_ordinal()));
+                          local_device->local_device_id().value()));
   if (local_device->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
     if (copy_stream == nullptr) {
@@ -729,9 +754,9 @@ PjRtStreamExecutorBuffer::DonateWithControlDependency(
                            original_definition_events.end());
 
   auto new_device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      tracked_buffer->allocator(), device()->local_hardware_id(),
+      tracked_buffer->allocator(), device()->local_device_id().value(),
       std::move(buffers), std::move(definition_events),
-      /*on_delete_callback=*/std::function<void()>());
+      /*on_delete_callback=*/nullptr);
 
   // Make the new buffer which is identical to the old, except for the new
   // definition event.
@@ -764,7 +789,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer, PjRtDevice* device,
     const Layout* device_layout) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
@@ -816,7 +841,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         (host_buffer_semantics ==
              HostBufferSemantics::kImmutableOnlyDuringCall ||
          can_use_zero_copy)) {
-      std::function<void()> on_delete_callback;
+      absl::AnyInvocable<void() &&> on_delete_callback;
       se::DeviceMemoryBase buffer;
       // If we are on the host platform and the input buffer is sufficiently
       // aligned, we can simply point to the input array's data without any
@@ -832,7 +857,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         buffer = se::DeviceMemoryBase(staging_buffer, size);
         std::memcpy(staging_buffer, data, size);
         if (on_done_with_host_buffer) {
-          on_done_with_host_buffer();
+          std::move(on_done_with_host_buffer)();
         }
         on_delete_callback = [staging_buffer, host_memory_allocator =
                                                   host_memory_allocator()]() {
@@ -842,7 +867,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       absl::Span<const std::shared_ptr<BufferSequencingEvent>>
           definition_events;
       auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-          /*allocator=*/nullptr, local_device->device_ordinal(),
+          /*allocator=*/nullptr, local_device->local_device_id().value(),
           std::initializer_list<se::DeviceMemoryBase>{buffer},
           definition_events, std::move(on_delete_callback));
       return std::unique_ptr<PjRtBuffer>(
@@ -880,11 +905,13 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     absl::InlinedVector<int64_t, 4> permutation(dims.size());
     absl::c_reverse_copy(device_shape.layout().minor_to_major(),
                          permutation.begin());
+    TransposePlan::Options options;
+    options.elem_size_in_bytes = primitive_util::ByteWidth(type);
+    options.dims = dims;
+    options.permutation = permutation;
+    options.input_layout = TransposePlan::Striding{*byte_strides};
     absl::MutexLock lock(&transpose_mu_);
-    TF_ASSIGN_OR_RETURN(transpose,
-                        transpose_cache_.GetOrCreate(
-                            primitive_util::ByteWidth(type), dims, permutation,
-                            TransposePlan::Striding{*byte_strides}));
+    TF_ASSIGN_OR_RETURN(transpose, transpose_cache_.GetOrCreate(options));
   }
 
   // Copy the buffer into a staging buffer before returning control to the
@@ -898,7 +925,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
       std::memcpy(staging_buffer.get(), data, size);
     }
     if (on_done_with_host_buffer) {
-      on_done_with_host_buffer();
+      std::move(on_done_with_host_buffer)();
       on_done_with_host_buffer = nullptr;
     }
   }
@@ -915,7 +942,11 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
        py_buffer{py_buffer.get()},
        on_device_shape{py_buffer->on_device_shape()},
        staging_buffer{std::move(staging_buffer)},
-       on_done_with_host_buffer{std::move(on_done_with_host_buffer)},
+       on_done_with_host_buffer =
+           on_done_with_host_buffer
+               ? std::make_shared<absl::AnyInvocable<void() &&>>(
+                     std::move(on_done_with_host_buffer))
+               : nullptr,
        host_buffer_semantics, transpose{std::move(transpose)}]() {
         PjRtStreamExecutorBuffer::ScopedHold device_buffer(
             movable_device_buffer);
@@ -965,9 +996,10 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         local_device->ThenExecuteCallback(
             local_device->host_to_device_stream(),
             [staging_buffer{std::move(staging_buffer)},
-             on_done_with_host_buffer{std::move(on_done_with_host_buffer)}]() {
+             on_done_with_host_buffer{
+                 std::move(on_done_with_host_buffer)}]() mutable {
               if (on_done_with_host_buffer) {
-                on_done_with_host_buffer();
+                std::move (*on_done_with_host_buffer)();
               }
             });
       };
@@ -986,10 +1018,11 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
-  return BufferFromHostBuffer(data, type, dims, byte_strides,
-                              host_buffer_semantics, on_done_with_host_buffer,
-                              device, /*device_layout=*/nullptr);
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+    PjRtDevice* device) {
+  return BufferFromHostBuffer(
+      data, type, dims, byte_strides, host_buffer_semantics,
+      std::move(on_done_with_host_buffer), device, /*device_layout=*/nullptr);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -1202,7 +1235,7 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
                                                definition_stream);
 
   auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
-      /*allocator=*/nullptr, device->local_hardware_id(),
+      /*allocator=*/nullptr, device->local_device_id().value(),
       std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
       std::move(on_delete_callback));
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtStreamExecutorBuffer>(
@@ -1214,7 +1247,7 @@ Status PjRtStreamExecutorDevice::TransferToInfeed(const LiteralSlice& literal) {
   // Only support infeed to local device.
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferToInfeedLocal(
-      literal, local_device->device_ordinal());
+      literal, local_device->local_hardware_id().value());
 }
 
 Status PjRtStreamExecutorDevice::TransferFromOutfeed(
@@ -1222,7 +1255,7 @@ Status PjRtStreamExecutorDevice::TransferFromOutfeed(
   VLOG(1) << "PjRtStreamExecutorDevice::TransferFromOutfeed";
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return local_device->client()->TransferFromOutfeedLocal(
-      local_device->device_ordinal(), literal);
+      local_device->local_hardware_id().value(), literal);
 }
 
 absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorDevice::memory_spaces()
@@ -1239,7 +1272,7 @@ StatusOr<std::intptr_t>
 PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   se::Stream* stream = local_device->GetExternalReadyEventStream();
-  void* raw_stream = stream->implementation()->GpuStreamHack();
+  void* raw_stream = stream->platform_specific_handle().stream;
   if (raw_stream == nullptr) {
     return Unimplemented(
         "GetStreamForExternalReadyEvents not implemented for platform '%s'.",
@@ -1250,13 +1283,18 @@ PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
 
 StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
     int local_hardware_id) const {
+  return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
+}
+
+StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
+    xla::PjRtLocalDeviceId local_device_id) const {
   for (auto* device : addressable_devices_) {
-    if (local_hardware_id == device->local_hardware_id()) {
+    if (local_device_id == device->local_device_id()) {
       return device;
     }
   }
-  return InvalidArgument("No matching device found for local_hardware_id %d",
-                         local_hardware_id);
+  return InvalidArgument("No matching device found for local_device_id %d",
+                         local_device_id.value());
 }
 
 absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorClient::memory_spaces()
@@ -2046,7 +2084,7 @@ bool IsAllZeros(const DeviceAssignment& assignment) {
 
 }  // namespace
 
-PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
+PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
     std::vector<std::unique_ptr<LocalExecutable>> executables,
     bool parameter_is_tupled_arguments,
     std::shared_ptr<DeviceAssignment> device_assignment,
@@ -2081,12 +2119,12 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
   int num_partitions;
   if (device_assignment_ == nullptr) {
     // This must go after `executables_` is initialized.
-    VLOG(3) << "PjRtStreamExecutorExecutable portable single-core";
+    VLOG(3) << "PjRtStreamExecutorLoadedExecutable portable single-core";
     num_partitions = 1;
     CHECK(addressable_devices_.empty());
   } else {
     // This must go after `executables_` is initialized.
-    VLOG(3) << "PjRtStreamExecutorExecutable device_assignment:\n"
+    VLOG(3) << "PjRtStreamExecutorLoadedExecutable device_assignment:\n"
             << device_assignment_->ToString();
     CHECK_GE(addressable_devices_.size(), 1) << device_assignment_->ToString();
 
@@ -2117,7 +2155,7 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
   }
 }
 
-Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
+Status PjRtStreamExecutorLoadedExecutable::SetUpDonation(bool tuple_inputs) {
   parameters_that_must_be_donated_.reserve(executables_.size());
   for (auto& executable : executables_) {
     TF_ASSIGN_OR_RETURN(std::vector<int> parameters_to_donate,
@@ -2129,7 +2167,7 @@ Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
   return OkStatus();
 }
 
-absl::string_view PjRtStreamExecutorExecutable::name() const {
+absl::string_view PjRtStreamExecutorLoadedExecutable::name() const {
   Executable* executable = executables_[0]->executable();
   if (executable->has_module()) {
     return executable->module().name();
@@ -2138,13 +2176,14 @@ absl::string_view PjRtStreamExecutorExecutable::name() const {
   }
 }
 
-absl::Span<int const> PjRtStreamExecutorExecutable::ParametersThatMustBeDonated(
+absl::Span<int const>
+PjRtStreamExecutorLoadedExecutable::ParametersThatMustBeDonated(
     int executable_idx) const {
   return parameters_that_must_be_donated_[executable_idx];
 }
 
 StatusOr<std::vector<ExecutionInput>>
-PjRtStreamExecutorExecutable::MakeExecutionInputsAndWaitForEvents(
+PjRtStreamExecutorLoadedExecutable::MakeExecutionInputsAndWaitForEvents(
     int device_ordinal, const ExecuteOptions& options,
     absl::Span<const Shape> executable_parameter_shapes,
     absl::Span<PjRtBuffer* const> argument_handles,
@@ -2213,24 +2252,22 @@ using tsl::MakeConstructedAsyncValueRef;
 
 // Converts PjRt SendCallbacks to an XLA StreamExecutor send function.
 static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
-    int device_ordinal, const ExecuteOptions& options,
+    int replica, const ExecuteOptions& options,
     tsl::thread::ThreadPool* thread_pool) {
-  // Check if we have callbacks registered for the given device ordinal.
-  if (device_ordinal >= options.send_callbacks.size()) {
-    return
-        [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
-                         const se::DeviceMemoryBase&,
-                         const absl::flat_hash_map<std::string, std::string>&) {
-          return InvalidArgument(
-              "Failed to send a buffer to the channel_id=%d, there was no send "
-              "callbacks registered for the device_ordinal=%d",
-              channel_id, device_ordinal);
-        };
+  // Check if we have callbacks registered for the given replica.
+  if (replica >= options.send_callbacks.size()) {
+    return [replica](int64_t channel_id, se::Stream*, const Shape&,
+                     const se::DeviceMemoryBase&,
+                     const absl::flat_hash_map<std::string, std::string>&) {
+      return Internal(
+          "Don't send a buffer to the channel_id=%d, there was no send "
+          "callbacks registered for the replica=%d",
+          channel_id, replica);
+    };
   }
 
   // SendCallbacks registered for a device ordinal. Can be empty.
-  absl::Span<const SendCallback> callbacks =
-      options.send_callbacks[device_ordinal];
+  absl::Span<const SendCallback> callbacks = options.send_callbacks[replica];
 
   return [callbacks, thread_pool](
              int64_t channel_id, se::Stream* stream, const Shape& shape,
@@ -2258,7 +2295,8 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     thread_pool->Schedule([done_event, stream, src, channel_id, shape, send] {
       tsl::profiler::TraceMe trace([&] {
         return tsl::profiler::TraceMeEncode(
-            "PjRtStreamExecutorExecutable::Send", {{"channel_id", channel_id}});
+            "PjRtStreamExecutorLoadedExecutable::Send",
+            {{"channel_id", channel_id}});
       });
 
       // Allocate chunk on the host for copying data from device.
@@ -2369,23 +2407,21 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
 }  // namespace
 
 static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
-    int device_ordinal, const ExecuteOptions& options) {
-  // Check if we have callbacks registered for the given device ordinal.
-  if (device_ordinal >= options.send_callbacks.size()) {
-    return
-        [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
-                         se::DeviceMemoryBase*,
-                         const absl::flat_hash_map<std::string, std::string>&) {
-          return InvalidArgument(
-              "Failed to receive a buffer from the channel_id=%d, there was no "
-              "recv callbacks registered for the device_ordinal=%d",
-              channel_id, device_ordinal);
-        };
+    int replica, const ExecuteOptions& options) {
+  // Check if we have callbacks registered for the given replica.
+  if (replica >= options.send_callbacks.size()) {
+    return [replica](int64_t channel_id, se::Stream*, const Shape&,
+                     se::DeviceMemoryBase*,
+                     const absl::flat_hash_map<std::string, std::string>&) {
+      return InvalidArgument(
+          "Failed to receive a buffer from the channel_id=%d, there was no "
+          "recv callbacks registered for the replica=%d",
+          channel_id, replica);
+    };
   }
 
   // RecvCallbacks registered for a device ordinal. Can be empty.
-  absl::Span<const RecvCallback> callbacks =
-      options.recv_callbacks[device_ordinal];
+  absl::Span<const RecvCallback> callbacks = options.recv_callbacks[replica];
 
   return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
                      se::DeviceMemoryBase* dst,
@@ -2395,8 +2431,9 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
             << " (shape=" << shape.ToString() << ")";
 
     tsl::profiler::TraceMe trace([&] {
-      return tsl::profiler::TraceMeEncode("PjRtStreamExecutorExecutable::Recv",
-                                          {{"channel_id", channel_id}});
+      return tsl::profiler::TraceMeEncode(
+          "PjRtStreamExecutorLoadedExecutable::Recv",
+          {{"channel_id", channel_id}});
     });
 
     const RecvCallback* recv = FindCallback(channel_id, callbacks);
@@ -2426,7 +2463,8 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
 // converted on success.
 // When `options` has non-zero `launch_id`, use `launch_id` instead of `run_id`
 // to initialize `run_options`.
-StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
+StatusOr<ScopedShapedBuffer>
+PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
     PjRtDevice* device,
@@ -2435,10 +2473,11 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     std::vector<std::function<void()>>& compute_callbacks) const {
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
-                           ->device_ordinal();
+                           ->local_device_id()
+                           .value();
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   tsl::profiler::TraceMeConsumer activity(
-      "PjRtStreamExecutorExecutable::EnqueueExecution",
+      "PjRtStreamExecutorLoadedExecutable::EnqueueExecution",
       tsl::profiler::ContextType::kPjRt, run_id.ToInt());
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
@@ -2542,9 +2581,9 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   // Create a PjRt<->StreamExecutor adaptors to send/recv device memory as
   // PjRt chunks via the user-provided callbacks.
   SendDeviceMemoryFunction send_device_memory =
-      ConvertSendCallbacksToSendFunction(device_ordinal, options, thread_pool);
+      ConvertSendCallbacksToSendFunction(replica, options, thread_pool);
   RecvDeviceMemoryFunction recv_device_memory =
-      ConvertRecvCallbacksToRecvFunction(device_ordinal, options);
+      ConvertRecvCallbacksToRecvFunction(replica, options);
 
   ExecutableRunOptions run_options;
   run_options.set_stream(device_state->compute_stream());
@@ -2630,7 +2669,7 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
 }
 
 std::vector<std::unique_ptr<PjRtBuffer>>
-PjRtStreamExecutorExecutable::MakeOutputBuffers(
+PjRtStreamExecutorLoadedExecutable::MakeOutputBuffers(
     int device_ordinal, const ExecuteOptions& options,
     ScopedShapedBuffer result_buffer,
     std::shared_ptr<BufferSequencingEvent> definition_event, PjRtDevice* device,
@@ -2669,7 +2708,7 @@ PjRtStreamExecutorExecutable::MakeOutputBuffers(
 }
 
 StatusOr<PjRtLoadedExecutable::Result>
-PjRtStreamExecutorExecutable::ExecuteHelper(
+PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options, bool fill_future,
     PjRtDevice* device) const {
@@ -2692,8 +2731,10 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   CHECK_EQ(device->process_index(), client_->process_index());
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
-                           ->device_ordinal();
-  tsl::profiler::TraceMe traceme("PjRtStreamExecutorExecutable::ExecuteHelper");
+                           ->local_device_id()
+                           .value();
+  tsl::profiler::TraceMe traceme(
+      "PjRtStreamExecutorLoadedExecutable::ExecuteHelper");
   VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -2773,7 +2814,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
 }
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-PjRtStreamExecutorExecutable::Execute(
+PjRtStreamExecutorLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
@@ -2783,7 +2824,7 @@ PjRtStreamExecutorExecutable::Execute(
 
   RunId run_id;
   tsl::profiler::TraceMeProducer activity(
-      "PjRtStreamExecutorExecutable::Execute",
+      "PjRtStreamExecutorLoadedExecutable::Execute",
       tsl::profiler::ContextType::kPjRt, run_id.ToInt());
 
   const int num_addressable_devices = addressable_devices_.size();
@@ -2898,7 +2939,7 @@ PjRtStreamExecutorExecutable::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorExecutable::ExecuteSharded(
+PjRtStreamExecutorLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
@@ -2927,7 +2968,7 @@ PjRtStreamExecutorExecutable::ExecuteSharded(
 }
 
 StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorExecutable::ExecutePortable(
+PjRtStreamExecutorLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
@@ -2954,7 +2995,7 @@ PjRtStreamExecutorExecutable::ExecutePortable(
 }
 
 StatusOr<std::vector<std::shared_ptr<HloModule>>>
-PjRtStreamExecutorExecutable::GetHloModules() const {
+PjRtStreamExecutorLoadedExecutable::GetHloModules() const {
   std::vector<std::shared_ptr<HloModule>> modules;
   modules.reserve(executables().size());
   for (const auto& local_exec : executables()) {
@@ -2967,7 +3008,7 @@ PjRtStreamExecutorExecutable::GetHloModules() const {
 }
 
 StatusOr<std::vector<std::vector<absl::string_view>>>
-PjRtStreamExecutorExecutable::GetOutputMemoryKinds() const {
+PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
   return Unimplemented("GetOutputMemoryKinds is not supported.");
 }
 
@@ -2976,7 +3017,7 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
   ExecutableExtras extras;
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
-  std::vector<PjRtStreamExecutorExecutable::LogicalDeviceIds>&
+  std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
@@ -3062,7 +3103,7 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
-  std::vector<PjRtStreamExecutorExecutable::LogicalDeviceIds>&
+  std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
@@ -3082,7 +3123,7 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
       client()->Compile(computation, argument_layout_pointers,
                         options.executable_build_options));
 
-  auto executable = std::make_unique<PjRtStreamExecutorExecutable>(
+  auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(input_options),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
@@ -3106,8 +3147,9 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
 
 StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
-  const PjRtStreamExecutorExecutable* se_executable =
-      tensorflow::down_cast<const PjRtStreamExecutorExecutable*>(&executable);
+  const PjRtStreamExecutorLoadedExecutable* se_executable =
+      tensorflow::down_cast<const PjRtStreamExecutorLoadedExecutable*>(
+          &executable);
 
   absl::Span<const std::shared_ptr<LocalExecutable>> local_executables =
       se_executable->executables();
@@ -3148,7 +3190,8 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   }
   if (!proto.ParseFromArray(serialized.data(), serialized.size())) {
     return Internal(
-        "PjRtStreamExecutorClient::DeserializeExecutable proto deserialization "
+        "PjRtStreamExecutorClient::DeserializeExecutable proto "
+        "deserialization "
         "failed");
   }
 
@@ -3169,7 +3212,7 @@ PjRtStreamExecutorClient::DeserializeExecutable(
                       GetExecutableExtras(&compile_options));
   std::shared_ptr<DeviceAssignment>& device_assignment =
       extras.device_assignment;
-  std::vector<PjRtStreamExecutorExecutable::LogicalDeviceIds>&
+  std::vector<PjRtStreamExecutorLoadedExecutable::LogicalDeviceIds>&
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
@@ -3181,7 +3224,7 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.push_back(std::move(loaded));
 
-  auto executable = std::make_unique<PjRtStreamExecutorExecutable>(
+  auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
       std::move(local_executables),
       compile_options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(input_options),

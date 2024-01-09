@@ -217,6 +217,10 @@ class CallGraph {
   // 'a'. Trivially, a computation dominates itself.
   bool Dominates(const HloComputation* a, const HloComputation* b) const;
 
+  // Returns true if 'a' can reach 'b' in the call graph. 'a' can reach 'b' if
+  // 'a' is 'b' or 'a' can reach one of the callers of 'b'.
+  bool CanReach(const HloComputation* a, const HloComputation* b) const;
+
   // Returns whether 'instruction' is contained in 'computation' either directly
   // ('instruction->parent' is 'computation') or indirectly ('computation'
   // dominates 'instruction->parent' in the call graph).

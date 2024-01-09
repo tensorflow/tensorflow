@@ -109,7 +109,8 @@ class ApproxTopKOpBase : public XlaOpKernel {
   int64_t reduction_input_size_override_;
   bool aggregate_to_topk_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ApproxTopKOpBase);
+  ApproxTopKOpBase(const ApproxTopKOpBase&) = delete;
+  void operator=(const ApproxTopKOpBase&) = delete;
 };
 
 class TpuApproxTopKOp : public ApproxTopKOpBase {

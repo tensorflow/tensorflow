@@ -59,11 +59,11 @@ TEST_F(OpenCLOperationTest, SliceMulMeanConcat) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateConvPointwise(op_def, op_attr);
-      EXPECT_OK(env->ExecuteGPUOperation(
+      ASSERT_OK(env->ExecuteGPUOperation(
           {src_tensor, weights_tensor},
           std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
-      EXPECT_OK(PointWiseNear({5.5f, 5.5f, 8.5f, 8.5f}, dst_tensor.data, eps));
+      ASSERT_OK(PointWiseNear({5.5f, 5.5f, 8.5f, 8.5f}, dst_tensor.data, eps));
     }
   }
 }
@@ -93,11 +93,11 @@ TEST_F(OpenCLOperationTest, SliceMulSumConcat) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateConvPointwise(op_def, op_attr);
-      EXPECT_OK(env->ExecuteGPUOperation(
+      ASSERT_OK(env->ExecuteGPUOperation(
           {src_tensor, weights_tensor},
           std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
-      EXPECT_OK(
+      ASSERT_OK(
           PointWiseNear({11.0f, 11.0f, 17.0f, 17.0f}, dst_tensor.data, eps));
     }
   }

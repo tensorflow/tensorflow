@@ -293,7 +293,8 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
                     .value();
 
   HloPassPipeline fusion("fusion");
-  const GpuDeviceInfo device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  const se::DeviceDescription device_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/false,
                                                  device_info);
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true,

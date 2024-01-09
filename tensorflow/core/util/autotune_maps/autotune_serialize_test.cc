@@ -17,8 +17,6 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
-
-#include "absl/types/variant.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/status_matchers.h"

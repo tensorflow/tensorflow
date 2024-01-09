@@ -31,6 +31,10 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(b/307794935): Remove after bug is fixed.
+is_oss = True  # Updated by copybara.
+
+
 def _IsControlInput(input_name):
   # Expected format: '^operation_name' (control input).
   return input_name.startswith('^')
@@ -505,15 +509,26 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
   # TF_GraphImportGraphDefWithResults call and mutating the them in
   # _ProcessNewOps.
   with graph._mutation_lock():  # pylint: disable=protected-access
-    with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
-      try:
-        with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
-          results = c_api.TF_GraphImportGraphDefWithResults(
-              c_graph, serialized, options)
-        results = c_api_util.ScopedTFImportGraphDefResults(results)
-      except errors.InvalidArgumentError as e:
-        # Convert to ValueError for backwards compatibility.
-        raise ValueError(str(e))
+    if is_oss:
+      graph_def_input = c_api.TF_NewBufferFromString(
+          compat.as_bytes(graph_def.SerializeToString())
+      )
+      graph_import_graphdef = c_api.TF_GraphImportGraphDefWithResults
+    else:
+      graph_def_input = graph_def
+      graph_import_graphdef = (
+          c_api.TF_GraphImportGraphDefWithResultsNoSerialization
+      )
+    try:
+      with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+        results = graph_import_graphdef(c_graph, graph_def_input, options)
+      results = c_api_util.ScopedTFImportGraphDefResults(results)
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
+    finally:
+      if is_oss:
+        c_api.TF_DeleteBuffer(graph_def_input)
 
     # Create _DefinedFunctions for any imported functions.
     #

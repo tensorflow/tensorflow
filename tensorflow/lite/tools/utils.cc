@@ -153,8 +153,8 @@ void GetDataRangesForType(TfLiteType type, float* low_range,
       type == kTfLiteFloat64) {
     *low_range = -0.5f;
     *high_range = 0.5f;
-  } else if (type == kTfLiteInt64 || type == kTfLiteInt64 ||
-             type == kTfLiteInt64 || type == kTfLiteInt64) {
+  } else if (type == kTfLiteInt64 || type == kTfLiteUInt64 ||
+             type == kTfLiteInt32 || type == kTfLiteUInt32) {
     *low_range = 0;
     *high_range = 99;
   } else if (type == kTfLiteUInt8) {

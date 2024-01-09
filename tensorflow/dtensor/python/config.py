@@ -204,6 +204,11 @@ def preferred_device_type() -> str:
   return "CPU"
 
 
+def use_multi_device_mode() -> bool:
+  """Return True if environment indicates multi-device mode is enabled."""
+  return os.environ.get("DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION", "0") != "0"
+
+
 def gpu_use_nccl_communication() -> bool:
   """Return True if environment indicates NCCL shall be used for GPU."""
   return os.environ.get("DTENSOR_GPU_USE_NCCL_COMMUNICATION", "0") != "0"

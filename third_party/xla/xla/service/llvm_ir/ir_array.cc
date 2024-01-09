@@ -21,11 +21,14 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "xla/layout_util.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
@@ -188,8 +191,6 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
       shape_(std::move(shape)) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
-  CHECK(llvm::cast<llvm::PointerType>(base_ptr_->getType())
-            ->isOpaqueOrPointeeTypeMatches(pointee_type));
   int depth = 0;
   element_type_ = pointee_type;
   while (llvm::ArrayType* array_type =
@@ -478,11 +479,14 @@ llvm::Value* IrArray::Index::Linearize(
   return logical_linear_index;
 }
 
-llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
-                                              llvm::IRBuilder<>* b,
-                                              absl::string_view name,
-                                              bool use_linear_index) const {
+llvm::Value* IrArray::EmitArrayElementAddress(
+    const IrArray::Index& index, llvm::IRBuilder<>* b, absl::string_view name,
+    bool use_linear_index, llvm::Value** is_high_order_bits) const {
   if (ShapeUtil::IsScalar(shape_)) {
+    if (primitive_util::Is4BitType(shape_.element_type())) {
+      CHECK_NE(is_high_order_bits, nullptr);
+      *is_high_order_bits = b->getTrue();
+    }
     // Special handling of scalars: a scalar pretends to have the same value for
     // every index, thus effectively implementing broadcasting of its value
     // over higher-rank arrays.
@@ -494,11 +498,24 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
       << " is not compatible with " << shape_.ToString(true);
 
   if (use_linear_index && index.LinearValidOnShape(shape_)) {
-    llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
-    llvm::Type* type = PrimitiveTypeToIrType(shape_.element_type(), module);
-    return b->CreateInBoundsGEP(
-        type, b->CreateBitCast(base_ptr_, type->getPointerTo()), index.linear(),
-        llvm_ir::AsStringRef(name));
+    return EmitLinearArrayElementAddress(index, b, name, is_high_order_bits);
+  }
+
+  if (primitive_util::Is4BitType(shape_.element_type())) {
+    // Int4 arrays require the use of a linear index, because the GEP
+    // multi-indexing logic below does not properly handle packed subbyte types.
+    IrArray::Index linear_index = index;
+    if (!index.LinearValidOnShape(shape_)) {
+      // Create a valid linear index.
+      std::vector<int64_t> dimensions;
+      for (int64_t i = 0; i < shape_.rank(); ++i) {
+        dimensions.push_back(shape_.dimensions(i));
+      }
+      llvm::Value* linearized = index.Linearize(dimensions, b);
+      linear_index = IrArray::Index(linearized, shape_, b);
+    }
+    return EmitLinearArrayElementAddress(linear_index, b, name,
+                                         is_high_order_bits);
   }
 
   std::vector<llvm::Value*> actual_index;
@@ -527,6 +544,43 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
                               llvm_ir::AsStringRef(name));
 }
 
+llvm::Value* IrArray::EmitLinearArrayElementAddress(
+    const IrArray::Index& index, llvm::IRBuilder<>* b, absl::string_view name,
+    llvm::Value** is_high_order_bits) const {
+  CHECK(index.LinearValidOnShape(shape_));
+  llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
+  llvm::Type* type = PrimitiveTypeToIrType(shape_.element_type(), module);
+  if (!primitive_util::Is4BitType(shape_.element_type())) {
+    auto linear_index = llvm::dyn_cast<llvm::BinaryOperator>(index.linear());
+    if (linear_index && (linear_index->getOpcode() == llvm::Instruction::Add)) {
+      llvm::Value* index_operand_0 = linear_index->getOperand(0);
+      llvm::Value* index_operand_1 = linear_index->getOperand(1);
+      llvm::Value* ptr_address =
+          b->CreateGEP(type, base_ptr_, index_operand_0, "");
+
+      return b->CreateInBoundsGEP(type, ptr_address, index_operand_1,
+                                  llvm_ir::AsStringRef(name));
+    } else {
+      return b->CreateInBoundsGEP(type, base_ptr_, index.linear(),
+                                  llvm_ir::AsStringRef(name));
+    }
+  }
+
+  // Handle int4 case by dividing index by 2. Int4 arrays are represented in
+  // LLVM IR as an array of i8 value where each i8 value stores two int4
+  // numbers.
+  llvm::Type* index_type = index.linear()->getType();
+  llvm::Value* zero = llvm::ConstantInt::get(index_type, 0);
+  llvm::Value* two = llvm::ConstantInt::get(index_type, 2);
+  llvm::Value* remainder = b->CreateSRem(index.linear(), two);
+  llvm::Value* byte_offset = b->CreateUDiv(index.linear(), two);
+  // is_high_order_bits must be set for int4 arrays.
+  CHECK_NE(is_high_order_bits, nullptr);
+  *is_high_order_bits = b->CreateICmpEQ(remainder, zero);
+  return b->CreateInBoundsGEP(b->getInt8Ty(), base_ptr_, byte_offset,
+                              llvm_ir::AsStringRef(name));
+}
+
 void IrArray::AnnotateLoadStoreInstructionWithMetadata(
     llvm::Instruction* instruction) const {
   CHECK(llvm::isa<llvm::LoadInst>(instruction) ||
@@ -543,19 +597,54 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
                                            llvm::IRBuilder<>* b,
                                            absl::string_view name,
                                            bool use_linear_index) const {
-  llvm::Value* element_address =
-      EmitArrayElementAddress(index, b, name, use_linear_index);
+  llvm::Value* is_high_order_bits = nullptr;
+  llvm::Value* element_address = EmitArrayElementAddress(
+      index, b, name, use_linear_index, &is_high_order_bits);
+  llvm::Type* load_type = primitive_util::Is4BitType(shape_.element_type())
+                              ? b->getInt8Ty()
+                              : element_type_;
   llvm::LoadInst* load =
-      b->CreateLoad(element_type_, element_address, llvm_ir::AsStringRef(name));
+      b->CreateLoad(load_type, element_address, llvm_ir::AsStringRef(name));
   AnnotateLoadStoreInstructionWithMetadata(load);
-  return load;
+  llvm::Value* elem = load;
+  if (primitive_util::Is4BitType(shape_.element_type())) {
+    llvm::Type* type = load->getType();
+    llvm::Value* shifted = b->CreateLShr(load, llvm::ConstantInt::get(type, 4));
+    elem = b->CreateSelect(is_high_order_bits, shifted, load);
+    elem = b->CreateTrunc(elem, b->getIntNTy(4));
+  }
+  return elem;
 }
 
 void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
                                     llvm::IRBuilder<>* b,
                                     bool use_linear_index) const {
-  llvm::Value* element_address =
-      EmitArrayElementAddress(index, b, "", use_linear_index);
+  llvm::Value* is_high_order_bits = nullptr;
+  llvm::Value* element_address = EmitArrayElementAddress(
+      index, b, "", use_linear_index, &is_high_order_bits);
+  if (primitive_util::Is4BitType(shape_.element_type())) {
+    // Read a byte, replace the high-order or low-order bits with 'value',
+    // and write it back.
+    llvm::LoadInst* load = b->CreateLoad(b->getInt8Ty(), element_address);
+    AnnotateLoadStoreInstructionWithMetadata(load);
+    llvm::Type* type = load->getType();
+    value = b->CreateIntCast(value, b->getInt8Ty(),
+                             /*isSigned=*/shape_.element_type() == S4);
+
+    llvm::Value* high_order_value =
+        b->CreateShl(value, llvm::ConstantInt::get(type, 4));
+    high_order_value =
+        b->CreateOr(high_order_value,
+                    b->CreateAnd(load, llvm::ConstantInt::get(type, 0x0F)));
+
+    llvm::Value* low_order_value =
+        b->CreateAnd(value, llvm::ConstantInt::get(type, 0xF));
+    low_order_value =
+        b->CreateOr(low_order_value,
+                    b->CreateAnd(load, llvm::ConstantInt::get(type, 0xF0)));
+    value =
+        b->CreateSelect(is_high_order_bits, high_order_value, low_order_value);
+  }
   llvm::StoreInst* store = b->CreateStore(value, element_address);
   AnnotateLoadStoreInstructionWithMetadata(store);
 }
@@ -566,9 +655,7 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
 
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
-  IrArray new_irarray(
-      b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_ir_type,
-      new_shape);
+  IrArray new_irarray(base_ptr_, new_ir_type, new_shape);
   new_irarray.metadata_ = metadata_;
   return new_irarray;
 }

@@ -389,7 +389,7 @@ class HostComputeOp : public XlaOpKernel {
           TensorShapeProto shape_proto;
           shape_ctx->ShapeHandleToProto(handle, &shape_proto);
           (*output_shapes)[i] = TensorShape(shape_proto);
-          VLOG(2) << "Inferred shape " << shape_proto.DebugString();
+          VLOG(2) << "Inferred shape " << shape_proto;
         }
       }
     }
@@ -419,7 +419,8 @@ class HostComputeOp : public XlaOpKernel {
   int64_t tpu_core_;
   std::vector<string> token_input_nodes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HostComputeOp);
+  HostComputeOp(const HostComputeOp&) = delete;
+  void operator=(const HostComputeOp&) = delete;
 };
 
 class SendToHostOp : public XlaOpKernel {
@@ -472,7 +473,8 @@ class SendToHostOp : public XlaOpKernel {
   string key_;
   std::vector<string> token_input_nodes_;
   string original_node_name_;
-  TF_DISALLOW_COPY_AND_ASSIGN(SendToHostOp);
+  SendToHostOp(const SendToHostOp&) = delete;
+  void operator=(const SendToHostOp&) = delete;
 };
 
 class RecvFromHostOp : public XlaOpKernel {
@@ -529,7 +531,8 @@ class RecvFromHostOp : public XlaOpKernel {
   string key_;
   std::vector<string> token_input_nodes_;
   string original_node_name_;
-  TF_DISALLOW_COPY_AND_ASSIGN(RecvFromHostOp);
+  RecvFromHostOp(const RecvFromHostOp&) = delete;
+  void operator=(const RecvFromHostOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaHostCompute"), HostComputeOp);

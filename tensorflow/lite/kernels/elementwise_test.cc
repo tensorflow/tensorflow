@@ -443,6 +443,47 @@ TEST(ElementWise, RsqrtNanInt8) {
   EXPECT_THAT(m.Invoke(), kTfLiteError);
 }
 
+TEST(ElementWise, RsqrtInt16) {
+  const float input_min = -0.8f;
+  const float input_max = 0.8f;
+
+  const float output_min = -2.4f;
+  const float output_max = 2.4f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(BuiltinOperator_RSQRT,
+                                {TensorType_INT16, {1, 1, 4, 1}, -10, 10},
+                                {TensorType_INT16, {1, 1, 4, 1}, -10, 10});
+  m.QuantizeAndPopulate<int16_t>(m.input(), {1, 0.1, 4, 9});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractDequantVector<int16_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear({1.00009, 3.19407, 0.500198, 0.333262},
+                                      kQuantizedTolerance)));
+}
+
+TEST(ElementWise, RsqrtNanInt16) {
+  const float input_min = -0.8f;
+  const float input_max = 0.8f;
+
+  const float output_min = -2.4f;
+  const float output_max = 2.4f;
+
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
+
+  ElementWiseOpQuantizedModel m(BuiltinOperator_RSQRT,
+                                {TensorType_INT16, {1, 1, 4, 1}, -10, 10},
+                                {TensorType_INT16, {1, 1, 4, 1}, -10, 10});
+  m.QuantizeAndPopulate<int16_t>(m.input(), {-1, 0, -4, -9});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractDequantVector<int16_t>(m.output()),
+              ElementsAreArray(
+                  ArrayFloatNear({10, 9.82452, 10, 10}, kQuantizedTolerance)));
+}
+
 TEST(ElementWise, Square) {
   ElementWiseOpFloatModel m(BuiltinOperator_SQUARE, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 2, 0.5, -3.0});

@@ -37,7 +37,7 @@ func.func private @"map/while_body"(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg
 // CHECK-SAME: (%arg0: !mlrt.future, %arg1: !mlrt.promise, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<?xf32>)
 // CHECK: [[det:%.*]] = "tf.MatrixDeterminant"
 // CHECK-NEXT: [[ta_0:%.*]] = "tf_mlrt.tf_await"(%arg0) : (!mlrt.future) -> tensor<!tf_type.variant<tensor<*xf32>>>
-// CHECK-NEXT: [[ta_1:%.*]] = "tf.TensorListSetItem"([[ta_0]], %arg3, [[det]]) {
+// CHECK-NEXT: [[ta_1:%.*]] = "tf.TensorListSetItem"([[ta_0]], %arg3, [[det]]) <{
 // CHECK-NEXT:  "tf_mlrt.tf_promise"(%arg1, [[ta_1]]) : (!mlrt.promise, tensor<!tf_type.variant<tensor<*xf32>>>) -> ()
 // CHECK-NEXT: return
 
@@ -53,7 +53,7 @@ func.func @serving_default(%arg0: tensor<?xf32> {tf.device = "/job:localhost/rep
   // CHECK-SAME: {body_fn = @"map/while_body/MapFnBody", num_tensor_list_or_flow_in = 1 : i32}
   // CHECK-NOT: tf.While
   %1:4 = "tf.While"(%cst, %cst, %0, %arg0) {_lower_using_switch_merge = true, _num_original_outputs = 6 : i64, _read_only_resource_inputs = [], _xla_propagate_compile_time_consts = true, body = @"map/while_body", cond = @"map/while_cond", device = "/job:localhost/replica:0/task:0/device:CPU:0", is_stateless = true, parallel_iterations = 4 : i64, shape_invariant} : (tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<?xf32>) -> (tensor<i32>, tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<?xf32>)
-  // CHECK-NEXT: "tf.TensorListStack"([[map_fn_result]], %cst_0) {
+  // CHECK-NEXT: "tf.TensorListStack"([[map_fn_result]], %cst_0) <{
   %2 = "tf.TensorListStack"(%1#2, %cst_0) {device = "/job:localhost/replica:0/task:0/device:CPU:0", num_elements = 3 : i64} : (tensor<!tf_type.variant<tensor<*xf32>>>, tensor<0xi32>) -> tensor<3xf32>
   return %2 : tensor<3xf32>
 }
@@ -458,7 +458,7 @@ func.func private @tf.WhileRegion2_body(%arg0: tensor<*xi32>) -> (tensor<?x!tf_t
   %5 = "tf.TensorArrayGatherV3"(%handle_12, %1, %4#2) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<*x!tf_type.variant>>>, tensor<i32>, tensor<f32>) -> tensor<?x!tf_type.variant>
   // CHECK: TensorArrayGatherV3
   %6 = "tf.TensorArrayGatherV3"(%handle_14, %2, %4#3) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<*x!tf_type.variant>>>, tensor<i32>, tensor<f32>) -> tensor<?x!tf_type.variant>
-  return %5, %6 : tensor<?x!tf_type.variant>, tensor<?x!tf_type.variant> 
+  return %5, %6 : tensor<?x!tf_type.variant>, tensor<?x!tf_type.variant>
 }
 
 // -----

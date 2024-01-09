@@ -83,7 +83,7 @@ Status CPluginOpKernelConstruction::GetInt32AttrList(
                                       &total_size, status);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
 
-  value->reserve(list_size);
+  value->resize(list_size);
 
   TF_OpKernelConstruction_GetAttrInt32List(
       ctx_, attr_name.data(), value->data(), /*max_vals=*/list_size, status);

@@ -49,6 +49,9 @@ Status TestCluster::Initialize() {
   }
   initialized_ = true;
   experimental::DispatcherConfig dispatcher_config;
+  if (!config_.work_dir.empty()) {
+    dispatcher_config.set_work_dir(config_.work_dir);
+  }
   dispatcher_config.set_protocol(kProtocol);
   for (int i = 0; i < num_workers_; ++i) {
     dispatcher_config.add_worker_addresses("localhost");

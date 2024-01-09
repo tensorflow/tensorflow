@@ -45,7 +45,8 @@ class ScopedSetRound {
  private:
   int original_mode_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedSetRound);
+  ScopedSetRound(const ScopedSetRound&) = delete;
+  void operator=(const ScopedSetRound&) = delete;
 };
 
 }  // namespace port

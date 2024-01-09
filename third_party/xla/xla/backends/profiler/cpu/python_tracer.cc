@@ -47,7 +47,8 @@ class PythonTracer : public tsl::profiler::ProfilerInterface {
   const PythonHooksOptions options_;
   std::unique_ptr<PythonHookContext> context_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PythonTracer);
+  PythonTracer(const PythonTracer&) = delete;
+  void operator=(const PythonTracer&) = delete;
 };
 
 PythonTracer::~PythonTracer() { Stop().IgnoreError(); }  // NOLINT

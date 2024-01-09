@@ -82,7 +82,7 @@ class ScopedDeviceMemory {
   // object.
   //
   // Postcondition: other == nullptr.
-  ScopedDeviceMemory(ScopedDeviceMemory &&other)
+  ScopedDeviceMemory(ScopedDeviceMemory &&other) noexcept
       : wrapped_(other.Release()),
         device_ordinal_(other.device_ordinal_),
         allocator_(other.allocator_) {}
@@ -94,7 +94,7 @@ class ScopedDeviceMemory {
   // Moves ownership of the memory from other to this object.
   //
   // Postcondition: other == nullptr.
-  ScopedDeviceMemory &operator=(ScopedDeviceMemory &&other) {
+  ScopedDeviceMemory &operator=(ScopedDeviceMemory &&other) noexcept {
     TF_CHECK_OK(Free());
     wrapped_ = other.Release();
     allocator_ = other.allocator_;
@@ -148,7 +148,8 @@ class ScopedDeviceMemory {
   int device_ordinal_;                // Negative one for inactive object.
   DeviceMemoryAllocator *allocator_;  // Null if this object is inactive.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedDeviceMemory);
+  ScopedDeviceMemory(const ScopedDeviceMemory &) = delete;
+  void operator=(const ScopedDeviceMemory &) = delete;
 };
 
 // Type alias for compatibility with the previous managed memory implementation.

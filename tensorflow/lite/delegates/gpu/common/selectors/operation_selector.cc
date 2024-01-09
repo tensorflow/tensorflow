@@ -310,7 +310,7 @@ absl::Status CreateElementwiseTwoInputWithOneConstant(
     const GpuInfo& gpu_info, const OperationDef& op_def, OperationType op_type,
     const Node& node, const Value* input, const Value* output,
     std::unique_ptr<GPUOperation>* gpu_op) {
-  auto attr = std::any_cast<ElementwiseAttributesBase<DataTypeT, T>>(
+  auto attr = absl::any_cast<ElementwiseAttributesBase<DataTypeT, T>>(
       node.operation.attributes);
   GPUOperation operation;
   if (input->tensor.shape != output->tensor.shape) {

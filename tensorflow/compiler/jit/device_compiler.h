@@ -173,7 +173,8 @@ class DeviceCompiler : public ResourceBase {
                       DeviceCompilationClusterSignature::Hash>
       cluster_mutexes_ TF_GUARDED_BY(cluster_mutexes_mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompiler);
+  DeviceCompiler(const DeviceCompiler&) = delete;
+  void operator=(const DeviceCompiler&) = delete;
 };
 
 namespace device_compiler_internal {

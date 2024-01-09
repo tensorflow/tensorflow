@@ -103,7 +103,8 @@ class Placer {
   const bool allow_soft_placement_;
   const bool log_device_placement_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Placer);
+  Placer(const Placer&) = delete;
+  void operator=(const Placer&) = delete;
 };
 
 }  // namespace tensorflow

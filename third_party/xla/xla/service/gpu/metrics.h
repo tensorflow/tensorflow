@@ -45,6 +45,9 @@ void IncrementCompiledProgramsCount();
 // Gets compiled programs numbers.
 int64_t GetCompiledProgramsCount();
 
+// Records the size of the XLA device binary in bytes.
+void RecordXlaDeviceBinarySize(int64_t size);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_GPU_METRICS_H_

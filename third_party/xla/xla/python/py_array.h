@@ -219,7 +219,7 @@ class PyArray : public pybind11::object {
   StatusOr<size_t> GetOnDeviceSizeInBytes();
   StatusOr<pybind11::object> SingleDeviceArrayToNumpyArray();
   Status CopySingleDeviceArrayToHostAsync();
-  StatusOr<pybind11::dict> CudaArrayInterface();
+  pybind11::dict CudaArrayInterface();
   StatusOr<std::uintptr_t> UnsafeBufferPointer();
 
   Status Delete();

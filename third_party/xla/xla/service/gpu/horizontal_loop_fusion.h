@@ -118,8 +118,9 @@ namespace gpu {
 // Note, reshapes are added only if the tensors isn't already a vector.
 class GpuHorizontalLoopFusion : public HloModulePass {
  public:
-  GpuHorizontalLoopFusion() {}
-  GpuHorizontalLoopFusion(absl::string_view prefix) : prefix_(prefix) {}
+  GpuHorizontalLoopFusion() = default;
+  explicit GpuHorizontalLoopFusion(absl::string_view prefix)
+      : prefix_(prefix) {}
 
   absl::string_view name() const override {
     return "gpu_horizontal_loop_fusion";

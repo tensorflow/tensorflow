@@ -15,14 +15,42 @@ limitations under the License.
 
 #include "xla/mlir/backends/gpu/transforms/passes.h"
 
+#include <cstdint>
+#include <vector>
+
 #include "absl/log/log.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "xla/mlir/runtime/ir/rt_ops.h"
 
 namespace xla {
 namespace gpu {
 
 using namespace mlir;  // NOLINT
+
+std::vector<std::vector<int64_t>> GetAllocationIndices(mlir::ModuleOp module) {
+  std::vector<std::vector<int64_t>> res;
+
+  SymbolTable sym_table(module);
+  for (auto op : module.getOps<runtime::ExportOp>()) {
+    unsigned ordinal = *op.ordinal();
+    if (ordinal >= res.size()) res.resize(ordinal + 1);
+
+    auto func = sym_table.lookup<func::FuncOp>(op.getFunctionRef());
+    res[ordinal].resize(func.getNumArguments(), -1);
+
+    for (unsigned i = 0; i < func.getNumArguments(); ++i) {
+      auto idx = func.getArgAttrOfType<IntegerAttr>(i, "rt.allocation_index");
+      if (idx) res[ordinal][i] = idx.getInt();
+    }
+  }
+
+  return res;
+}
 
 void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
                                  ThunkSequence* thunk_sequence,
@@ -39,7 +67,7 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
 
   // Outline CUDA-Graph-compatible operations into graph capture functions.
   pm.addPass(
-      createOutlineGpuGraphsPass(opts.gpu_graph_level, opts.min_graph_size));
+      createOutlineGpuGraphsPass(opts.command_types, opts.min_graph_size));
   if (opts.enable_concurrent_region) {
     // Concurrent regions create repeated-fork-join topology inside CUDA graphs,
     // which is not optimized by architectures prior to Ampere and may cause

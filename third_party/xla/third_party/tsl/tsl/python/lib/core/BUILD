@@ -33,8 +33,12 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":numpy",
+        "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "//tsl/python/lib/core:numpy",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@pybind11",
     ],
 )

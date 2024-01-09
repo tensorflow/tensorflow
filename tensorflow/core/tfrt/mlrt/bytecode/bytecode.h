@@ -109,6 +109,8 @@ class Buffer {
   size_t size() const { return buffer_.size(); }
   bool empty() const { return buffer_.empty(); }
 
+  void shrink_to_fit() { buffer_.shrink_to_fit(); }
+
  private:
   static_assert(alignof(std::max_align_t) >= 8,
                 "The bytecode buffer needs to be at least 8-byte aligned.");

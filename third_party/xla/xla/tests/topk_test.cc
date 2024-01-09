@@ -22,37 +22,25 @@ namespace {
 
 class TopkTest : public HloTestBase {};
 
-XLA_TEST_F(TopkTest, SimpleTopK) {
+XLA_TEST_F(TopkTest, LargestTopK) {
   absl::string_view hlo = R"(
 HloModule topk
 
-compare {
-  p.0.lhs = bf16[] parameter(0)
-  p.0.rhs = bf16[] parameter(1)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=GT
-}
-
 ENTRY TopK {
   x = bf16[10,10] parameter(0)
-  ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, to_apply=compare
+  ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, largest=true
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_F(TopkTest, SimpleTopKReverseDirection) {
+XLA_TEST_F(TopkTest, SmallestTopK) {
   absl::string_view hlo = R"(
 HloModule topk
 
-compare {
-  p.0.lhs = bf16[] parameter(0)
-  p.0.rhs = bf16[] parameter(1)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
-}
-
 ENTRY TopK {
   x = bf16[10,10] parameter(0)
-  ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, to_apply=compare
+  ROOT topk = (bf16[10,2], s32[10,2]) topk(x), k=2, largest=false
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));

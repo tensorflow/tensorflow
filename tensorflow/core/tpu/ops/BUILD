@@ -11,8 +11,11 @@ cc_library(
     linkstatic = 1,
     deps = [
         ":host_compute_ops",
+        ":sparse_core_ops",
+        ":sparse_core_preprocess_ops",
         ":topk_ops",
         ":tpu_compile_op",
+        ":tpu_copy_with_dynamic_shape_op",
         ":tpu_embedding_ops",
         ":tpu_execute_op",
         ":tpu_handle_to_key_op",
@@ -186,8 +189,34 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu/kernels:sparse_core_ops_utils",
         "@local_xla//xla:util",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "sparse_core_ops",
+    srcs = [
+        "sparse_core_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_copy_with_dynamic_shape_op",
+    srcs = [
+        "tpu_copy_with_dynamic_shape_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/lib/core:status",
     ],
     alwayslink = 1,
 )

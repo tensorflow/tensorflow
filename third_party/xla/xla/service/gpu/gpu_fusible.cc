@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
@@ -106,6 +107,28 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
                                          instr.shape(), instr.dimensions()));
 }
 
+bool TransposesMinorDimension(const HloInstruction* instr) {
+  switch (instr->opcode()) {
+    case HloOpcode::kFusion:
+      return absl::c_any_of(instr->fused_instructions(),
+                            TransposesMinorDimension);
+    case HloOpcode::kCopy:
+      return instr->shape().layout().minor_to_major(0) !=
+             instr->operand(0)->shape().layout().minor_to_major(0);
+    case HloOpcode::kTranspose: {
+      // We have an input ([a,b,c]{x,y,z}) that's being transposed. We need to
+      // check if the minor-most dimension (x) is still the minor-most dimension
+      // after the transpose.
+      int64_t minor_input =
+          instr->operand(0)->shape().layout().minor_to_major(0);
+      int64_t minor_output = instr->shape().layout().minor_to_major(0);
+      return minor_input != instr->dimensions().at(minor_output);
+    }
+    default:
+      return false;
+  }
+}
+
 bool IsReduceInputFusion(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion &&
          absl::c_any_of(GetFusionRoots(*instr.called_computations()[0]),
@@ -130,15 +153,14 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kBitcast) {
+  if (instr.opcode() == HloOpcode::kBitcast || instr.IsCustomFusion()) {
     return false;
   }
-  auto& hero = FindNonTrivialHero(instr);
-  if (GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) {
-    return true;
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return HasAnyTiledTransposeRoot(*instr.fused_instructions_computation());
   }
-  return !instr.IsCustomFusion() && instr.opcode() == HloOpcode::kFusion &&
-         HasAnyTiledTransposeRoot(*instr.called_computations()[0]);
+  auto& hero = FindNonTrivialHero(instr);
+  return GetDescriptionForTiledTransposeEmitter(instr, hero).has_value();
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -318,50 +340,75 @@ bool IsInputFusible(const HloInstruction& instr) {
           IsInputFusibleTranspose(instr));
 }
 
+// Returns true if `instr` can be fused as a producer or as a consumer into a
+// kLoop fusion.
 bool IsUniversallyLoopFusible(const HloInstruction& instr,
                               const HloInstruction& hero) {
-  // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
-  // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
-  // unfused GTE is an input to a kernel (including a fusion kernel), we
-  // compute the address of the GTE at the top of the kernel.  Often we know the
-  // address of the GTE result statically, so we can do this without chasing any
-  // pointers.
-  return ((instr.IsElementwise() && instr.operand_count() > 0 &&
-           instr.opcode() != HloOpcode::kCopy) ||
-          (instr.opcode() == HloOpcode::kCopy &&
-           !GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) ||
-          instr.opcode() == HloOpcode::kBitcast ||
-          instr.opcode() == HloOpcode::kBroadcast ||
-          instr.opcode() == HloOpcode::kConcatenate ||
-          instr.opcode() == HloOpcode::kDynamicSlice ||
-          instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
-          (instr.opcode() == HloOpcode::kFusion &&
-           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-          instr.opcode() == HloOpcode::kGather ||
-          instr.opcode() == HloOpcode::kPad ||
-          instr.opcode() == HloOpcode::kReduceWindow ||
-          instr.opcode() == HloOpcode::kReshape ||
-          instr.opcode() == HloOpcode::kReverse ||
-          instr.opcode() == HloOpcode::kSlice ||
-          instr.opcode() == HloOpcode::kTranspose);
+  // NOTE: this check is done before the switch below, because a fusion instr
+  // can also be elementwise, even if it's not a kLoop.
+  if (instr.IsElementwise() && instr.operand_count() > 0 &&
+      instr.opcode() != HloOpcode::kCopy) {
+    return true;
+  }
+
+  switch (instr.opcode()) {
+    case HloOpcode::kCopy:
+      return !GetDescriptionForTiledTransposeEmitter(instr, hero).has_value();
+
+    case HloOpcode::kFusion:
+      return instr.fusion_kind() == HloInstruction::FusionKind::kLoop;
+
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kGather:
+    case HloOpcode::kPad:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
+    case HloOpcode::kSlice:
+    case HloOpcode::kTranspose:
+      return true;
+    default:
+      return false;
+  }
 }
 
+// Returns true if `instr` can be fused as a consumer into a kLoop fusion.
 bool IsLoopFusibleAsConsumer(const HloInstruction& instr,
                              const HloInstruction& hero) {
-  return instr.IsFusible() && instr.opcode() != HloOpcode::kBitcast &&
-         (IsUniversallyLoopFusible(instr, hero) ||
-          // Any reduction can be fused as a consumer.
-          instr.opcode() == HloOpcode::kReduce);
+  // Instr should be fusible.
+  if (!instr.IsFusible()) return false;
+
+  // An optimization for instruction fusion. Bitcast as a consumer means that it
+  // will be a root of a fusion. This just adds indexing overhead without any
+  // benefit.
+  if (instr.opcode() == HloOpcode::kBitcast) return false;
+
+  // Any reduction can be fused as a consumer.
+  if (instr.opcode() == HloOpcode::kReduce) return true;
+
+  return IsUniversallyLoopFusible(instr, hero);
 }
 
+// Returns true if `instr` can be fused as a producer into a kLoop fusion.
 bool IsLoopFusibleAsProducer(const HloInstruction& instr,
                              const HloInstruction& hero) {
-  return instr.IsFusible() &&
-         (IsUniversallyLoopFusible(instr, hero) ||
-          (instr.opcode() == HloOpcode::kIota ||
-           instr.opcode() == HloOpcode::kConstant ||
-           // Non-variadic reductions can be fused as producers.
-           (instr.opcode() == HloOpcode::kReduce && !instr.shape().IsTuple())));
+  // Instr should be fusible.
+  if (!instr.IsFusible()) return false;
+
+  switch (instr.opcode()) {
+    case HloOpcode::kIota:
+    case HloOpcode::kConstant:
+      return true;
+    case HloOpcode::kReduce:
+      // Non-variadic reductions can be fused as producers.
+      return !instr.shape().IsTuple();
+    default:
+      return IsUniversallyLoopFusible(instr, hero);
+  }
 }
 
 static bool AllSatisfy(const HloInstruction& instr,
@@ -374,6 +421,33 @@ static bool AllSatisfy(const HloInstruction& instr,
       instr.fused_instructions(), [&](const HloInstruction* i) {
         return i->opcode() == HloOpcode::kParameter || predicate(i);
       });
+}
+
+FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
+                                        const HloInstruction& consumer) {
+  if (IsInputFusibleScatter(producer)) {
+    return "do not fuse into the output of scatter";
+  }
+  if (!IsInputFusibleScatter(consumer)) {
+    return {};
+  }
+
+  const HloInstruction* inplace_operand;
+  if (consumer.opcode() == HloOpcode::kFusion) {
+    const HloInstruction* scatter = consumer.fused_expression_root();
+    CHECK_EQ(scatter->opcode(), HloOpcode::kScatter);
+    CHECK_EQ(scatter->operand(0)->opcode(), HloOpcode::kParameter);
+    inplace_operand = consumer.operand(scatter->operand(0)->parameter_number());
+  } else {
+    inplace_operand = consumer.operand(0);
+  }
+  if (inplace_operand == &producer) {
+    return "do not fuse into the in-place operand of scatter";
+  }
+  if (absl::c_linear_search(producer.operands(), inplace_operand)) {
+    return "Producer uses the in-place operand of a scatter";
+  }
+  return {};
 }
 
 FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
@@ -394,6 +468,17 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
              .xla_gpu_enable_reduction_epilogue_fusion()) {
       return "Reduction epilogue fusion is not enabled.";
     }
+    // TODO(akuegel): Remove workaround when producer_hero is computed
+    // correctly.
+    const HloInstruction& reduce_hero =
+        producer_hero.opcode() == HloOpcode::kFusion
+            ? FindNonTrivialHero(*producer_hero.fused_expression_root())
+            : producer_hero;
+    if (!ReductionIsRaceFree(
+            reduce_hero.GetModule()->config(),
+            GetReductionKindAndContiguousComponents(reduce_hero))) {
+      return "Reduction output fusion only works for race free reductions";
+    }
     if (!AllSatisfy(consumer, [](const HloInstruction* hlo) {
           return IsIntermediate(hlo, /*allowed_operand_count=*/1);
         })) {
@@ -403,6 +488,10 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     if (producer.user_count() > 1) {
       return "reduction output fusion only works for single user";
     }
+  }
+
+  if (auto can_fuse = CanEmitInputFusedScatter(producer, consumer); !can_fuse) {
+    return can_fuse;
   }
 
   if (!IsInputFusible(consumer) &&
@@ -620,14 +709,14 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
 // to true to enable more fusion.
 FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   const HloInstruction& instr2,
-                                  const GpuDeviceInfo& device_info,
+                                  const se::DeviceDescription& device_info,
                                   bool is_consumer_producer_fusion,
                                   FusionInfoCache* cache /*=nullptr*/) {
   if (SharedMemoryUsage(instr1, cache) + SharedMemoryUsage(instr2, cache) >
-      device_info.shared_memory_per_block) {
+      device_info.shared_memory_per_block()) {
     return FusionDecision{}
            << "shared memory usage would be over the budget of "
-           << device_info.shared_memory_per_block << "B";
+           << device_info.shared_memory_per_block() << "B";
   }
 
   if (NumUnnestedReductions(instr1, cache) +
@@ -778,8 +867,7 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
           instr.IsElementwise());
 }
 
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& /*producer*/,
-                                            const HloInstruction& consumer) {
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer) {
   return IsInputFusible(consumer) ? HloInstruction::FusionKind::kInput
                                   : HloInstruction::FusionKind::kLoop;
 }
@@ -857,9 +945,42 @@ bool IsRealReductionHero(const HloInstruction& root,
     return false;
   }
   return &root == &hero ||
-         (hero.user_count() == 1 &&
-          ReductionIsRaceFree(hero.GetModule()->config(),
-                              GetReductionKindAndContiguousComponents(hero)));
+         ReductionIsRaceFree(hero.GetModule()->config(),
+                             GetReductionKindAndContiguousComponents(hero));
+}
+
+bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kFusion &&
+         instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
+         instr.backend_config<FusionBackendConfig>().ok() &&
+         instr.backend_config<FusionBackendConfig>()->kind() ==
+             kTritonSoftmaxFusionKind;
+}
+
+bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
+  // An empirically chosen constant: unrolling concat with a large amount of
+  // arguments causes excessive register spilling.
+  static constexpr int kMaxConcatArgumentsForUnrolling = 10;
+  return HloAnyOf(fusion.GetRoots(), fusion, [&](auto node) {
+    switch (node.opcode()) {
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kSort:
+      case HloOpcode::kDot:
+      case HloOpcode::kSin:
+      case HloOpcode::kCos:
+      case HloOpcode::kTan:
+      case HloOpcode::kPower:
+      case HloOpcode::kAtan2:
+        return true;
+      case HloOpcode::kConcatenate:
+        return node.instruction().operand_count() >
+               kMaxConcatArgumentsForUnrolling;
+      case HloOpcode::kReduce:
+        return node.instruction().shape().tuple_shapes_size() > 1;
+      default:
+        return false;
+    }
+  });
 }
 
 }  // namespace gpu

@@ -26,14 +26,14 @@ update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
 
 // CHECK-LABEL: func @main
 // CHECK: "lmhlo.scatter"
-// CHECK: ^bb0(%[[ARG5:.*]]: tensor<i32>, %[[ARG6:.*]]: tensor<i32>):
-// CHECK:  mhlo.return %[[ARG6]]
 // CHECK: indices_are_sorted = false
 // CHECK: update_window_dims = [1]
 // CHECK: inserted_window_dims = [0]
 // CHECK: scatter_dims_to_operand_dims = [0]
 // CHECK: index_vector_dim = 1
 // CHECK: unique_indices = false
+// CHECK: ^bb0(%[[ARG5:.*]]: tensor<i32>, %[[ARG6:.*]]: tensor<i32>):
+// CHECK:  mhlo.return %[[ARG6]]
 // CHECK: (memref<3x3xi32>, memref<2xi32>, memref<2x3xi32>, memref<3x3xi32>) -> ()
 ENTRY main {
   operand = s32[3,3] parameter(0)
@@ -68,15 +68,15 @@ HloModule SelectAndScatter
 // CHECK-LABEL: func @main
 // CHECK: %[[GLOBAL_MEMREF:.*]] = memref.get_global @[[$GLOBAL]] : memref<f32>
 // CHECK: "lmhlo.select_and_scatter"(%{{.*}}, %{{.*}}, %[[GLOBAL_MEMREF]], %{{.*}})
+// CHECK: padding = dense<0> : tensor<1xi64>
+// CHECK: window_dimensions = dense<3> : tensor<1xi64>
+// CHECK: window_strides = dense<3> : tensor<1xi64>
 // CHECK: ^bb0(%[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>):
 // CHECK: %[[COMPARE:.*]] = mhlo.compare GE, %[[ARG0]], %[[ARG1]]
 // CHECK: mhlo.return %[[COMPARE]] : tensor<i1>
 // CHECK: ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
 // CHECK: %[[ADD:.*]] = mhlo.add %[[ARG2]], %[[ARG3]]
 // CHECK: mhlo.return %[[ADD]] : tensor<f32>
-// CHECK: padding = dense<0> : tensor<1xi64>
-// CHECK: window_dimensions = dense<3> : tensor<1xi64>
-// CHECK: window_strides = dense<3> : tensor<1xi64>
 // CHECK: (memref<6xf32>, memref<2xf32>, memref<f32>, memref<6xf32>) -> ()
 ENTRY main () -> f32[6] {
   %operand = f32[6]{0} parameter(0)
@@ -215,12 +215,12 @@ add {
   param0 = f32[8] parameter(0)
   // CHECK:  [[VIEW:%.*]] = memref.view [[BUFFER]]{{.*}} : memref<32xi8> to memref<8xf32>
   // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[VIEW]], [[VIEW]])
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    mhlo.return [[ADD]] : tensor<f32>
-  // CHECK:  }) {
-  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
-  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
+  // CHECK:  })
   // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]])
   start = f32[8] all-reduce-start(param0),
       channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
@@ -247,12 +247,12 @@ add {
   // CHECK:  [[VIEW0:%.*]] = memref.view [[BUFFER0]]{{.*}} : memref<32xi8> to memref<8xf32>
   // CHECK:  [[VIEW1:%.*]] = memref.view [[BUFFER1]]{{.*}} : memref<36xi8> to memref<9xf32>
   // CHECK:  [[TOKEN:%.*]] = "lmhlo_gpu.all_reduce_start"([[VIEW0]], [[VIEW1]], [[VIEW0]], [[VIEW1]])
+  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
   // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
   // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
   // CHECK:    mhlo.return [[ADD]] : tensor<f32>
-  // CHECK:  }) {
-  // CHECK-SAME:  channel_id = #mhlo.channel_handle<handle = 1, type = 0>
-  // CHECK-SAME{LITERAL}:  replica_groups = dense<[[0, 1, 2, 3], [4, 5, 6, 7]]> : tensor<2x4xi64>
+  // CHECK:  })
   // CHECK:  "lmhlo_gpu.all_reduce_done"([[TOKEN]])
   start = (f32[8], f32[9]) all-reduce-start(param0, param1),
       channel_id=1, replica_groups={{0,1,2,3}, {4,5,6,7}}, to_apply=add
@@ -388,7 +388,7 @@ ENTRY main {
 HloModule TestModule
 
 // CHECK: func @main
-// CHECK:   "lmhlo.rng_get_and_update_state"(%{{.*}}) {delta = 131072 : i64} : (memref<2xui64>) -> ()
+// CHECK:   "lmhlo.rng_get_and_update_state"(%{{.*}}) <{delta = 131072 : i64}> : (memref<2xui64>) -> ()
 ENTRY main {
   ROOT %rng-get-and-update-state = u64[2]{0} rng-get-and-update-state(), delta=131072
 }
@@ -564,9 +564,9 @@ ENTRY main {
 HloModule CustomCallWithComputation
 
 // CHECK: "lmhlo.custom_call"
+// CHECK: call_target_name = "__custom"
 // CHECK: %0 = mhlo.add
 // CHECK: mhlo.return %0
-// CHECK: call_target_name = "__custom"
 
 computation1 {
   param_0 = f32[] parameter(0)
@@ -586,17 +586,17 @@ HloModule Send
 // CHECK: func @main
 // CHECK: %[[ARG1:arg[0-9]+]]: memref<16xi8> {lmhlo.params = 1 : index}
 // CHECK: %[[VIEW:.*]] = memref.view %[[ARG1]][%c0][]
-// CHECK: %[[TOKEN:.*]] = "lmhlo.send"(%[[VIEW]]) {
+// CHECK: %[[TOKEN:.*]] = "lmhlo.send"(%[[VIEW]])
 // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
 // CHECK:   frontend_attributes = {_xla_dcn_recv_channel = "2",
 // CHECK:                          _xla_host_transfer_handler_name = "undef",
 // CHECK:                          _xla_host_transfer_rendezvous = "undef"}
 // CHECK:   is_host_transfer = true
-// CHECK: } : (memref<4xf32>) -> !mhlo.token
-// CHECK: "lmhlo.send_done"(%0) {
+// CHECK: : (memref<4xf32>) -> !mhlo.token
+// CHECK: "lmhlo.send_done"(%0)
 // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 2>,
 // CHECK    is_host_transfer = true
-// CHECK: } : (!mhlo.token) -> ()
+// CHECK: : (!mhlo.token) -> ()
 ENTRY main {
   %tok = token[] parameter(0)
   %buf = f32[4]{0} parameter(1)
@@ -611,16 +611,16 @@ HloModule Recv
 // CHECK: func @main
 // CHECK: %[[ARG1:arg[0-9]+]]: memref<16xi8> {lmhlo.output_index = dense<0> : tensor<1xi64>}
 // CHECK: %[[VIEW:.*]] = memref.view %[[ARG1]][%c0][]
-// CHECK: %[[TOKEN:.*]] = "lmhlo.recv"(%[[VIEW]]) {
+// CHECK: %[[TOKEN:.*]] = "lmhlo.recv"(%[[VIEW]])
 // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 3>,
 // CHECK:    frontend_attributes = {_xla_host_transfer_handler_name = "undef",
 // CHECK:                           _xla_host_transfer_rendezvous = "undef"}
 // CHECK:   is_host_transfer = true
-// CHECK: } : (memref<4xf32>) -> !mhlo.token
-// CHECK: "lmhlo.recv_done"(%0) {
+// CHECK: : (memref<4xf32>) -> !mhlo.token
+// CHECK: "lmhlo.recv_done"(%0)
 // CHECK:   channel_handle = #mhlo.channel_handle<handle = 1, type = 3>,
 // CHECK    is_host_transfer = true
-// CHECK: } : (!mhlo.token) -> ()
+// CHECK: : (!mhlo.token) -> ()
 ENTRY main {
   %tok = token[] parameter(0)
   %recv = (f32[4]{0}, u32[], token[]) recv(token[] %tok), channel_id=1, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="undef",_xla_host_transfer_rendezvous="undef"}
@@ -632,7 +632,7 @@ ENTRY main {
 HloModule TestAllGatherAsync
 
 // CHECK: func @main
-// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) {
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) <
 // CHECK-SAME: all_gather_dimension = 1 : i64
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
 // CHECK-SAME: use_global_device_ids = false
@@ -649,14 +649,14 @@ ENTRY main {
 HloModule AsyncReduceScatter
 
 // CHECK: func @main
-// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.reduce_scatter_start"(%{{.*}}, %{{.*}}) ({
-// CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
-// CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
-// CHECK:    mhlo.return [[ADD]] : tensor<f32>
-// CHECK:  }) {
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.reduce_scatter_start"(%{{.*}}, %{{.*}}) <
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
 // CHECK-SAME: scatter_dimension = 0
 // CHECK-SAME: use_global_device_ids = false
+// CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+// CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+// CHECK:    mhlo.return [[ADD]] : tensor<f32>
+// CHECK:  }) :
 // CHECK ""lmhlo_gpu.reduce_scatter_done"(%[[TOKEN]])
 
 add {
@@ -682,7 +682,7 @@ ENTRY main {
 HloModule AsyncAllToAll
 
 // CHECK: func @main
-// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_to_all_start"(%{{.*}}, %{{.*}}) {
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_to_all_start"(%{{.*}}, %{{.*}}) <
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>
 // CHECK ""lmhlo_gpu.all_to_all_done"(%[[TOKEN]])
 
@@ -702,9 +702,10 @@ ENTRY main {
 HloModule TestAllGatherAsyncWithSyncFlagFalse
 
 // CHECK: func @main
-// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) {
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) <
 // CHECK-SAME: all_gather_dimension = 1 : i64
 // CHECK-SAME: is_sync = false
+// CHECK-SAME: no_parallel_custom_call = false
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
 // CHECK-SAME: use_global_device_ids = false
 // CHECK ""lmhlo_gpu.all_gather_done"(%[[TOKEN]])
@@ -720,15 +721,16 @@ ENTRY main {
 HloModule TestAllGatherAsyncWithSyncFlagTrue
 
 // CHECK: func @main
-// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) {
+// CHECK: %[[TOKEN:.*]] = "lmhlo_gpu.all_gather_start"(%{{.*}}, %{{.*}}) <
 // CHECK-SAME: all_gather_dimension = 1 : i64
 // CHECK-SAME: is_sync = true
+// CHECK-SAME: no_parallel_custom_call = true
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
 // CHECK-SAME: use_global_device_ids = false
 // CHECK ""lmhlo_gpu.all_gather_done"(%[[TOKEN]])
 ENTRY main {
   param0 = f32[10,20] parameter(0)
   ags = (f32[10,20], f32[10,80]) all-gather-start(param0), replica_groups={{0,1,2,3}},
-    dimensions={1}, backend_config="{\"is_sync\":true}"
+    dimensions={1}, backend_config="{\"is_sync\":true, \"no_parallel_custom_call\":true}"
   ROOT ag = f32[10,80] all-gather-done(ags)
 }

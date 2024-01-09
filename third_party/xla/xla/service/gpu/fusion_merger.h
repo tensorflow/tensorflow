@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSION_MERGER_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/gpu_device_info.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -48,7 +48,7 @@ namespace gpu {
 // the differences in memory read and written and the number of consumers. The
 // FusionMeger pass takes this into account when making fusion decisions.
 //
-// The pass traverses the HLO module in reverse post-order (defs before uses).
+// The pass traverses the HLO module in post-order (defs before uses).
 // Fusion instructions are merged into their users if some conditions are met:
 // * The result of merging the fusion instruction into its users would not
 //   increase bytes transferred.
@@ -61,7 +61,7 @@ namespace gpu {
 
 class FusionMerger : public HloModulePass {
  public:
-  explicit FusionMerger(const GpuDeviceInfo& d,
+  explicit FusionMerger(const se::DeviceDescription& d,
                         HloCostAnalysis::ShapeSizeFunction f)
       : gpu_device_info_(d), shape_size_function_(f) {}
   absl::string_view name() const override { return "fusion_merger"; }
@@ -72,7 +72,7 @@ class FusionMerger : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const GpuDeviceInfo gpu_device_info_;
+  se::DeviceDescription gpu_device_info_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 };
 

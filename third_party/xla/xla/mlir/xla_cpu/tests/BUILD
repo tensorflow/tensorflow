@@ -1,5 +1,5 @@
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("//xla:glob_lit_test.bzl", "glob_lit_tests")
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 

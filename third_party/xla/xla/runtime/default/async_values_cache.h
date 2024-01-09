@@ -18,9 +18,10 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/DenseMap.h"
-#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
+#include "llvm/ADT/SmallVector.h"
+#include "tsl/concurrency/async_value.h"
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/chain.h"
 
 namespace xla {
 namespace runtime {

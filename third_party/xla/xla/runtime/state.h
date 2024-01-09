@@ -74,6 +74,8 @@ class StateVector {
 
     absl::StatusOr<T*> Get(size_t id);
 
+    absl::Status Erase(size_t id);
+
     // Returns a state constructed from this snapshot for a given id.
     State<T> state(size_t id) { return State<T>(id, this); }
 
@@ -193,6 +195,19 @@ absl::StatusOr<T*> StateVector<T>::Snapshot::Get(size_t id) {
   // the snapshot that we have.
   std::vector<std::unique_ptr<T>>& state = owning_state_.vector_;
   if (id < state.size() && state[id].get()) return state[id].get();
+
+  return absl::InternalError("Value not found in state vector");
+}
+
+template <typename T>
+absl::Status StateVector<T>::Snapshot::Erase(size_t id) {
+  absl::MutexLock lock(&owning_state_.mu_);
+
+  std::vector<std::unique_ptr<T>>& state = owning_state_.vector_;
+  if (id < state.size() && state[id].get()) {
+    state[id].reset(nullptr);
+    return absl::OkStatus();
+  }
 
   return absl::InternalError("Value not found in state vector");
 }

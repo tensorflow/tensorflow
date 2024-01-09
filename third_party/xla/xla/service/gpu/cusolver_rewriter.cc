@@ -15,25 +15,30 @@ limitations under the License.
 
 #include "xla/service/gpu/cusolver_rewriter.h"
 
-#include <cstdlib>
+#include <cstdint>
 #include <functional>
-#include <numeric>
-#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "absl/container/flat_hash_set.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/cusolver_context.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {

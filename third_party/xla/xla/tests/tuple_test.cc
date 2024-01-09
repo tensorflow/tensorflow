@@ -360,7 +360,7 @@ XLA_TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
 
     ENTRY test {
       parameter = f32[3]{0} parameter(0)
-      ROOT tuple = (f32[3]{0}, f32[3]{0}) tuple(parameter)
+      ROOT tuple = (f32[3]{0}, f32[2]{0}) tuple(parameter, parameter)
     }
   )";
 

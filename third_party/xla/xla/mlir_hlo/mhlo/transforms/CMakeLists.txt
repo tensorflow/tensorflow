@@ -107,26 +107,6 @@ add_mlir_library(MhloPasses
   StablehloBroadcastUtils
 )
 
-add_mlir_library(MhloToThloConversion
-  legalize_mhlo_to_thlo/legalize_mhlo_to_thlo.cc
-
-  DEPENDS
-  MLIRMhloPassIncGen
-  THLODialect
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  MhloToArithmeticConversion
-  MhloTypeConversion
-  THLODialect
-  MLIRIR
-  MLIRMhloUtils
-  MLIRPass
-  MLIRTransformUtils
-)
 
 add_mlir_library(MhloToMemrefConversion
   hlo_legalize_to_memref/hlo_legalize_to_memref.cc
@@ -316,21 +296,7 @@ target_link_libraries(AllMhloPasses INTERFACE
   MhloToStandard
   HloToLinalgUtils
   MhloToLinalg
-  MhloToThloConversion
   MhloShapeOpsToStandard
   MhloToStablehlo
   StablehloToMhlo
-)
-
-add_library(AllGmlStPasses INTERFACE)
-target_link_libraries(AllGmlStPasses INTERFACE
-  GmlStPasses
-  GmlStTestPasses
-  MLIRFuncDialect
-  MLIRPass
-)
-
-add_library(AllThloPasses INTERFACE)
-target_link_libraries(AllThloPasses INTERFACE
-  ThloPasses
 )

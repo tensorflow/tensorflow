@@ -305,7 +305,8 @@ class GraphOptimizerStagePipeline {
   std::vector<std::unique_ptr<GraphOptimizerStage<Result>>> stages_;
   std::function<bool(const Result&)> break_predicate_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphOptimizerStagePipeline);
+  GraphOptimizerStagePipeline(const GraphOptimizerStagePipeline&) = delete;
+  void operator=(const GraphOptimizerStagePipeline&) = delete;
 };
 
 }  // end namespace grappler

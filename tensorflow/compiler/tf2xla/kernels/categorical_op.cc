@@ -139,7 +139,8 @@ class CategoricalOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CategoricalOp);
+  CategoricalOp(const CategoricalOp&) = delete;
+  void operator=(const CategoricalOp&) = delete;
 };
 
 // TODO(b/68769717): Rename this sampler to Categorical.
@@ -184,7 +185,8 @@ class StatelessCategoricalOp : public CategoricalOp {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessCategoricalOp);
+  StatelessCategoricalOp(const StatelessCategoricalOp&) = delete;
+  void operator=(const StatelessCategoricalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessMultinomial")

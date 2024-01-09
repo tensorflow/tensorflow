@@ -110,7 +110,8 @@ class XlaArgOp : public XlaOpKernel {
   int index_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaArgOp);
+  XlaArgOp(const XlaArgOp&) = delete;
+  void operator=(const XlaArgOp&) = delete;
 };
 
 REGISTER_XLA_OP(

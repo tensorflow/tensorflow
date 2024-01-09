@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 

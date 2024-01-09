@@ -23,7 +23,7 @@ COPY apt.conf /etc/apt/
 RUN /build_patchelf.sh
 
 ################################################################################
-FROM ubuntu:20.04 as devel
+FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 as devel
 ################################################################################
 COPY --from=builder /dt10 /dt10
 COPY --from=builder /patchelf/patchelf_0.14.3-1_arm64.deb /patchelf/patchelf_0.14.3-1_arm64.deb
@@ -32,6 +32,7 @@ COPY --from=builder /patchelf/patchelf_0.14.3-1_arm64.deb /patchelf/patchelf_0.1
 COPY setup.sources.sh /setup.sources.sh
 COPY setup.packages.sh /setup.packages.sh
 COPY devel.packages.txt /devel.packages.txt
+COPY cuda.packages.txt /cuda.packages.txt
 RUN /setup.sources.sh && /setup.packages.sh /devel.packages.txt
 
 # Install various tools.
@@ -63,6 +64,7 @@ COPY ld.so.conf /dt10/etc/
 
 # Setup JAX Python environment.
 FROM devel as jax
+RUN /setup.packages.sh /cuda.packages.txt
 COPY jax.requirements.txt /devel.requirements.txt
 COPY setup.python.sh /setup.python.sh
 RUN /setup.python.sh python3.9 devel.requirements.txt
@@ -77,3 +79,6 @@ COPY setup.python.sh /setup.python.sh
 RUN /setup.python.sh python3.9 devel.requirements.txt
 RUN /setup.python.sh python3.10 devel.requirements.txt
 RUN /setup.python.sh python3.11 devel.requirements.txt
+RUN /setup.python.sh python3.12 devel.requirements.txt
+# "python3" commands by default run under 3.10
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1

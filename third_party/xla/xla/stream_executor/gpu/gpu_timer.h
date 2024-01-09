@@ -23,6 +23,12 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 
+namespace xla {
+namespace gpu {
+class DeterminismTest;
+}
+}  // namespace xla
+
 namespace stream_executor {
 namespace gpu {
 
@@ -66,7 +72,13 @@ class GpuTimer {
   GpuStream* stream_;
   bool is_stopped_ = false;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(GpuTimer);
+  GpuTimer(const GpuTimer&) = delete;
+  void operator=(const GpuTimer&) = delete;
+
+  // If called, all timers will return random durations instead of the actual
+  // duration the timer took. Used for testing only.
+  static void ReturnRandomDurationsForTesting();
+  friend class ::xla::gpu::DeterminismTest;
 };
 
 }  // namespace gpu

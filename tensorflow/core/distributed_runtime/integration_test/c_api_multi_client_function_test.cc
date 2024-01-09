@@ -346,7 +346,7 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
     // To make sure the sender won't delete the data it sent before the receiver
     // retrieves it, we need to do the following steps:
     // 1. Since we created async EagerContext, we need to force each worker to
-    //    wait until all pening operations finish before deleting the context.
+    //    wait until all pending operations finish before deleting the context.
     // 2. In addition, use the blocking counter to notify the 2 workers when
     //    it is safe to clean up all the data.
     TFE_ContextAsyncWait(ctx, status);

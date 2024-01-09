@@ -75,9 +75,8 @@ Value applySingleResultLhloCode(Location loc, ValueRange operands,
 // into a reduction operator of scf.reduce by doing buffer allocation for
 // scalar arguments and the result of `scf.reduce` to make it compatible with
 // LHLO ops.
-void convertToReductionOperator(Location loc, scf::ReduceOp reduceOp,
+void convertToReductionOperator(Location loc, Block& loopReduceOpBody,
                                 Block* lhloBlock, OpBuilder* b) {
-  Block& loopReduceOpBody = reduceOp.getReductionOperator().front();
   OpBuilder::InsertionGuard guard(*b);
   b->setInsertionPointToStart(&loopReduceOpBody);
   b->create<scf::ReduceReturnOp>(
@@ -211,7 +210,8 @@ class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
     scf::ReduceOp scfReduceOp =
         createReduceOpInNestedParallelLoops(reduceOp, &rewriter);
-    convertToReductionOperator(reduceOp.getLoc(), scfReduceOp,
+    convertToReductionOperator(reduceOp.getLoc(),
+                               scfReduceOp.getReductions().front().front(),
                                &reduceOp.getBody().front(), &rewriter);
     rewriter.replaceOp(reduceOp, std::nullopt);
     return success();
@@ -387,7 +387,8 @@ class ReduceWindowOpConverter
     scf::ReduceOp reduceOp = createReduceOpInNestedParallelLoops(
         reduceWindowOp, outputLoop, windowLoop, &rewriter);
 
-    convertToReductionOperator(reduceWindowOp.getLoc(), reduceOp,
+    convertToReductionOperator(reduceWindowOp.getLoc(),
+                               reduceOp.getReductions().front().front(),
                                &reduceWindowOp.getBody().front(), &rewriter);
     rewriter.replaceOp(reduceWindowOp, std::nullopt);
     return success();

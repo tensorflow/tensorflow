@@ -384,7 +384,8 @@ class FunctionOptimizerContext {
   // Use graph view to find active outputs of the function caller nodes.
   GraphView graph_view_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionOptimizerContext);
+  FunctionOptimizerContext(const FunctionOptimizerContext&) = delete;
+  void operator=(const FunctionOptimizerContext&) = delete;
 };
 
 // Returns a pointer to the called function definition iff the given node is
@@ -1360,7 +1361,8 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       TF_RETURN_IF_ERROR(InlineFunctionBody(flib_def, graph.get(), n,
                                             fbody.get(), inline_options));
-      inlined_function_names.push_back(fbody->fdef.signature().name());
+      inlined_function_names.push_back(
+          fbody->record->fdef().signature().name());
 
     } else {
       VLOG(2) << "Failed to inline function call node: "

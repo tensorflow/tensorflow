@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/python/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
@@ -272,7 +272,9 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
   // We only allow single device case for PyArray in device put.
   if (py_array.num_shards() != 1) {
     return InvalidArgument(
-        "Only single-sharded Array is expected in device_put.");
+        "device_put expects an array with exactly one shard, got an array with "
+        "with %d shards.",
+        py_array.num_shards());
   }
 
   ifrt::Array* ifrt_array = py_array.ifrt_array();

@@ -16,17 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NOTIFICATION_H_
 #define TENSORFLOW_TSL_PLATFORM_NOTIFICATION_H_
 
-#include "tsl/platform/platform.h"
+#include <chrono>              // NOLINT
+#include <condition_variable>  // NOLINT
+#include <cstdint>
+#include <mutex>  // NOLINT
 
-// Include appropriate platform-dependent implementations of Notification.
-#if defined(PLATFORM_GOOGLE)
-#include "tsl/platform/google/notification.h"  // IWYU pragma: export
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
-#include "tsl/platform/default/notification.h"  // IWYU pragma: export
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
+
+namespace tsl {
+
+using absl::Notification;
+
+// TODO(ddunleavy): remove this method and replace uses of `tsl::Notification`
+// with `absl::Notification`.
+inline bool WaitForNotificationWithTimeout(Notification* n,
+                                           int64_t timeout_in_us) {
+  return n->WaitForNotificationWithTimeout(absl::Microseconds(timeout_in_us));
+}
+
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_NOTIFICATION_H_

@@ -235,7 +235,8 @@ class ThreadPool {
   // user_threadpool is not in the constructor.
   std::unique_ptr<Eigen::ThreadPoolTempl<EigenEnvironment>> eigen_threadpool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ThreadPool);
+  ThreadPool(const ThreadPool&) = delete;
+  void operator=(const ThreadPool&) = delete;
 };
 
 }  // namespace thread

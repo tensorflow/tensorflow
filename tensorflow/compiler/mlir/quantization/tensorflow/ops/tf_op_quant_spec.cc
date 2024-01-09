@@ -45,8 +45,8 @@ bool IsOpWithQuantizableTrait(Operation* op) {
   // Supported quantizable ops.
   return isa<TF::XlaConvV2Op, TF::XlaDotV2Op, TF::MatMulOp, TF::Conv2DOp,
              TF::GatherOp, TF::GatherV2Op, TF::XlaGatherOp,
-             TF::DepthwiseConv2dNativeOp, TF::Conv3DOp, TF::BatchMatMulV2Op,
-             TF::EinsumOp>(op);
+             TF::ResourceGatherOp, TF::DepthwiseConv2dNativeOp, TF::Conv3DOp,
+             TF::BatchMatMulV2Op, TF::EinsumOp>(op);
 }
 
 bool IsOpWithInt8TypeOperand(Operation* op) {
@@ -82,7 +82,7 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
         call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
-    if (!function_name.startswith("composite_")) {
+    if (!function_name.starts_with("composite_")) {
       return spec;
     }
     if (function_name.contains("depthwise_conv2d")) {

@@ -545,7 +545,8 @@ class BenchmarkFactory {
 
  private:
   T* volatile value_;
-  TF_DISALLOW_COPY_AND_ASSIGN(BenchmarkFactory);
+  BenchmarkFactory(const BenchmarkFactory&) = delete;
+  void operator=(const BenchmarkFactory&) = delete;
 };
 
 // A simple type we use with the factory.
@@ -556,7 +557,8 @@ class BenchmarkType {
   virtual void DoWork() TF_ATTRIBUTE_NOINLINE {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BenchmarkType);
+  BenchmarkType(const BenchmarkType&) = delete;
+  void operator=(const BenchmarkType&) = delete;
 };
 
 // Calibrate the amount of time spent just calling DoWork, since each of our

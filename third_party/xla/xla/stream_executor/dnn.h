@@ -35,18 +35,17 @@ limitations under the License.
 #include <vector>
 
 #include "google/protobuf/wrappers.pb.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/dnn.pb.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
 struct half;
@@ -146,15 +145,6 @@ enum class RnnDirectionMode {
   kRnnUnidirectional = 0,
   kRnnBidirectional = 1,
 };
-
-// Relevant to DepthToSpace and SpaceToDepth. This is the write layout when
-// performing depth to space and the read layout when performing space to depth.
-// It's specified with most-major dimension first and most-minor dimension last.
-// In DepthToSpace, the D*M^2 values are read in and then, for DepthHeightWidth,
-// written out to the output patch, by varying first width, then height, then
-// depth. In C array format, it looks like [depth][height][width]. See
-// DepthToSpace comment for more information.
-enum class DepthToSpaceLayout { DepthHeightWidth };
 
 class TensorDescriptor {
  public:
@@ -892,6 +882,9 @@ class AlgorithmDesc {
 
   uint64_t hash() const;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const AlgorithmDesc& algo_desc);
+
   AlgorithmProto ToProto() const { return proto_; }
 
   std::string ToString() const;
@@ -899,6 +892,11 @@ class AlgorithmDesc {
  private:
   AlgorithmProto proto_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const AlgorithmDesc& algo_desc) {
+  return H::combine(std::move(h), algo_desc.hash());
+}
 
 // Describes the result from a perf experiment.
 //
@@ -988,6 +986,9 @@ using FusedMatmulSignature = void(DeviceMemoryBase /* a_data */,
                                   DeviceMemoryBase /* c_data */);
 using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 
+using NormSignature = void(std::vector<DeviceMemoryBase>);
+using NormRunner = OpRunner<NormSignature>;
+
 using FusedMHASignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
                                DeviceMemoryBase /* BMM1_inputB_data */,
                                DeviceMemoryBase /* BMM2_inputA_data */,
@@ -1005,8 +1006,11 @@ using FusedMHABackwardSignature = void(
     DeviceMemoryBase /* d_output_data */,
     DeviceMemoryBase /* d_BMM1_inputA_data */,
     DeviceMemoryBase /* d_BMM1_inputB_data */,
-    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_s_data */,
-    DeviceMemoryBase /* mask_data */, DeviceMemoryBase /* d_bias_data */);
+    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_S_data */,
+    DeviceMemoryBase /* softmax_sum_data */,
+    DeviceMemoryBase /* d_Q_accum_data */, DeviceMemoryBase /* mask_data */,
+    DeviceMemoryBase /* d_bias_data */, DeviceMemoryBase /* fwd_output_data */,
+    DeviceMemoryBase /* bias_data */);
 using FusedMHABackwardRunner = OpRunner<FusedMHABackwardSignature>;
 
 // Describes the configuration for the algorithms that will used.
@@ -1230,6 +1234,10 @@ class VersionInfo {
   }
   friend bool operator!=(const VersionInfo& a, const VersionInfo& b) {
     return a.as_tuple() != b.as_tuple();
+  }
+
+  std::string ToString() const {
+    return absl::StrCat(major_, ".", minor_, ".", patch_);
   }
 
  private:
@@ -1651,6 +1659,16 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode);
 
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+  NormRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+      const dnn::TensorDescriptor& input_descriptor,
+      const dnn::TensorDescriptor& scale_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor);
+
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
   FusedMHARunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
@@ -1663,7 +1681,8 @@ class DnnSupport {
       std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask);
 
   virtual tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
   FusedMHABackwardRunnerFromDesc(
@@ -1677,10 +1696,13 @@ class DnnSupport {
       const TensorDescriptor& d_bmm1_lhs_descriptor,
       const TensorDescriptor& d_bmm1_rhs_descriptor,
       const TensorDescriptor& d_bmm2_rhs_descriptor,
-      const TensorDescriptor& d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_s_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed);
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor,
+      std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
@@ -1695,155 +1717,6 @@ class DnnSupport {
 
   // Returns a list of supported rnn algorithms.
   virtual bool GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms);
-
-  // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
-  // coefficient_scales specifies the scaling of each column of coefficients:
-  // original float coefficient[row * num_columns + column] =
-  //     quantized coefficient[row * num_columns + column] *
-  //     coefficient_scales[column].
-  virtual bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int8_t>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) = 0;
-
-  // Same as DoConvolveQuantized above, but int8 filter coefficients.
-  virtual bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int16>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) = 0;
-
-  // Variation of the above with the weight matrix split into two matrices.
-  // first_weights: Coefficients of the first matrix.
-  // second_weights: Coefficients of the second matrix.
-  // depth_multiplier: specifies the columns of the first matrix and rows
-  // of the second one - first_weights columns = depth_multiplier,
-  // second_weights rows = depth_multiplier *
-  //                       filter_descriptor.input_feature_map_count().
-  // see go/separable for documentation on separable convolutions.
-  virtual bool DoSeparableConvolve(
-      Stream* stream, const BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const FilterDescriptor& filter_descriptor, int depth_multiplier,
-      const DeviceMemory<float>& first_weights,
-      const DeviceMemory<float>& second_weights,
-      const ConvolutionDescriptor& convolution_descriptor,
-      const BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) = 0;
-
-  // Fully connects the "nodes" (float values) in input_data with
-  // shape input_dimensions to output_data with output_dimensions
-  // using provided weights. This is equivalent to computing a matrix
-  // product, hence the name MatMul.
-  //
-  // A BatchDescriptor has four dimensions: batch, y, x, depth. Matrix products
-  // happen in two dimensions. To get down to two dimensions, we consider the
-  // input y, x and depth dimension as one combined dimension T. For now,
-  // assume that the output height and width are 1 and let OD be the output
-  // depth.
-  //
-  // There are three device memory buffers passed in to this
-  // function. We can now view all three as matrices:
-  //
-  //   input_data: A batch x T matrix
-  //   weights: A T x OD matrix
-  //   output_data: A batch x OD matrix
-  //
-  // This function then computes the matrix product of input_data and
-  // weights and writes the result into output_data.
-  //
-  // Here the weights buffer is in row major order, i.e. the first OD
-  // entries in weights are the first row, the second OD entries in
-  // weights are the second row and so on.
-  //
-  // The case for output width*height > 1 is more complicated. Let K =
-  // OY * OX where OY is the output height and OX is the output
-  // width. Then weights is divided into K sub-arrays W_i, for
-  // i=0,...,k-1, that each represent a T x OD matrix. This function
-  // then computes the K matrix multiplications of input_data with
-  // each W_i. This creates K matrices with dimensions batch x
-  // OD. These K matrices are concatenated horizontally to form one
-  // larger matrix with dimensions batch x (K*OD); note that this is
-  // not the same as concatenating the bytes of the matrices. The
-  // combined matrix can then be interpreted as a tensor with
-  // dimensions (batch, OY, OX, OD). If the output tensor format is
-  // not kBatchYXDepth, this function would then need to arrange for
-  // the output to be in the requested layout, if that is
-  // supported. Note that the case K=1 is equivalent to the
-  // description above. It is recommended to prefer the case K=1.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'fully connect' operation
-  //    should be enqueued onto.
-  //  output_data: un-owned device memory region in which to place the
-  //    fully connected result.
-  virtual bool DoMatMul(Stream* stream, const DeviceMemory<float>& input_data,
-                        const DeviceMemory<float>& weights,
-                        const dnn::BatchDescriptor& input_dimensions,
-                        const dnn::BatchDescriptor& output_dimensions,
-                        DeviceMemory<float>* output_data) = 0;
-
-  // Version of DoMatMul that uses pre-quantized 8 bit weights.
-  // weight_scales specifies the scaling of each column of weights:
-  // original float weight[row * num_columns + column] =
-  //     quantized_weight[row * nnum_columns + column] * weight_scales[column].
-  virtual bool DoMatMulQuantized(Stream* stream,
-                                 const DeviceMemory<float>& input_data,
-                                 const DeviceMemory<int8_t>& quantized_weights,
-                                 const DeviceMemory<float>& weight_scales,
-                                 const dnn::BatchDescriptor& input_dimensions,
-                                 const dnn::BatchDescriptor& output_dimensions,
-                                 DeviceMemory<float>* output_data) = 0;
-
-  // Version of DoMatMul that uses pre-quantized 16 bit weights.
-  // weight_scales specifies the scaling of each column of weights:
-  // original float weight[row * num_columns + column] =
-  //     quantized_weight[row * nnum_columns + column] * weight_scales[column].
-  virtual bool DoMatMulQuantized(Stream* stream,
-                                 const DeviceMemory<float>& input_data,
-                                 const DeviceMemory<int16>& quantized_weights,
-                                 const DeviceMemory<float>& weight_scales,
-                                 const dnn::BatchDescriptor& input_dimensions,
-                                 const dnn::BatchDescriptor& output_dimensions,
-                                 DeviceMemory<float>* output_data) = 0;
-
-  // Adds biases to the feature maps in input_data producing
-  // output_data. input_data can equal output_data, but must not
-  // partially overlap it.
-  //
-  // Let K = count() * height() * width() and N = feature_map_count()
-  // on dimensions. Then input_value contains K*N values and biases
-  // contains N values. We can thus logically consider input_value to
-  // contain K vectors of N elements each. This function adds biases
-  // to each of those N vectors.
-  //
-  // TODO(broune): This works differently when width() * height() > 1
-  // and the call to ThenBiasAdd() follows a call to ThenMatMul(). In
-  // that case there should be width() * height() *
-  // feature_map_count() biases, but this is not implemented on all
-  // StreamExecutors.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'bias add' operation
-  //    should be enqueued onto.
-  //  input_data: un-owned device memory region containing the input.
-  //  biases: un-owned device memory region containing biases to add to the
-  //    input.
-  //  dimensions: dimensions of input_data and output_data.
-  //  output_data: un-owned device memory region in which to place the result.
-  virtual bool DoBiasAdd(Stream* stream, const DeviceMemory<float>& input_data,
-                         const DeviceMemory<float>& biases,
-                         const dnn::BatchDescriptor& dimensions,
-                         DeviceMemory<float>* output_data) = 0;
 
   // Performs a forward pooling operation on input_data, writing to
   // output_data. See PoolingDescriptor for how to configure the
@@ -1927,25 +1800,6 @@ class DnnSupport {
     return false;
   }
 
-  // Applies an activation function (see ActivationMode) to all of the values
-  // held on the device in 'input_data', whose dimensions are described by
-  // 'dimensions'.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'activate' operation
-  //    should be enqueued onto.
-  //  activation_mode: Type of activation to perform.
-  //  input_data: un-owned device memory region which contains the
-  //    activate input.
-  //  output_data: un-owned device memory region in which to place the
-  //    activate result.
-  virtual bool DoActivate(Stream* stream, ActivationMode activation_mode,
-                          const BatchDescriptor& dimensions,
-                          const DeviceMemory<float>& input_data,
-                          DeviceMemory<float>* output_data, uint64_t options) {
-    return false;
-  }
-
   // Concatenates several layers into one, by concatenating the depth of each
   // layer at matching x and y coordinates.
   // The inputs must all have the same width and height, the output will have
@@ -1964,304 +1818,6 @@ class DnnSupport {
       Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
       absl::Span<const DeviceMemory<float>* const> input_data,
       DeviceMemory<float>* output_data) = 0;
-
-  // Concatenates several layers into one, by concatenating each in the
-  // x-dimension or y-dimension, based on a user-specified flag.
-  // For x-concatenation, layers are aligned at matching y and depth
-  // coordinates, and for y-concatenation, they are aligned at matching x and
-  // depth coordinates. The inputs must all have the same depth and batch size.
-  // For x-concatenation, the inputs must have the same height (y-size), and the
-  // output will have the same depth and height as the inputs and its width (x-
-  // size) will be the sum of the input widths.  For y-concatenation, the inputs
-  // must have the same width, and the output will have the same depth and width
-  // as the inputs, and its height will be the sum of the input heights.
-  //
-  // Arguments:
-  //  stream: borrowed pointer to the stream that the 'space concatenate'
-  //    operation should be enqueued onto.
-  //  input_dimensions: the dimensions of each input.
-  //  input_data: un-owned device memory region which contains the input data
-  //    for each input layer.
-  //  output_data: un-owned device memory region in which to place the space
-  //    concatenate result.
-  //  concat_direction:  either dnn:SpaceConcatenateMode::XDirection or
-  //    dnn::SpaceConcatenateMode::YDirection.
-  virtual bool DoSpaceConcatenate(
-      Stream* stream, absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      DeviceMemory<float>* output_data,
-      dnn::SpaceConcatenateMode concat_direction) {
-    return false;
-  }
-
-  // Change the layout of the data by shrinking one dimension (or set of
-  // dimensions) and growing another dimension (or set of dimensions), while
-  // keeping the total number of data elements constant, and maintaining the
-  // current data ordering.
-  //
-  // Currently, the only supported operation is depth into space by a power of
-  // 2. E.g. (y, x, z) -> (y*2, x*2, z/4)
-  //
-  // Note that Reshape may not be a no-op, depending on the platform and which
-  // dimensions are being changed.
-  //
-  // Example: forgetting about batch for the moment, let's take a tensor that's
-  // 2x1x8 (y by x by z) and reshape to a tensor that's 4x2x2. The memory layout
-  // is row-major order: y,x,z. I.e. z changes the fastest, then x, then y. The
-  // elements of the tensor range from 0 to 15. The x,y,z indices are below each
-  // element.
-  //
-  //  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15
-  // y0 y0 y0 y0 y0 y0 y0 y0 y1 y1 y1 y1 y1 y1 y1 y1
-  // x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0 x0
-  // z0 z1 z2 z3 z4 z5 z6 z7 z0 z1 z2 z3 z4 z5 z6 z7
-  //
-  // reshape to 4x2x2
-  //
-  //  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15
-  // y0 y0 y0 y0 y1 y1 y1 y1 y2 y2 y2 y2 y3 y3 y3 y3
-  // x0 x0 x1 x1 x0 x0 x1 x1 x0 x0 x1 x1 x0 x0 x1 x1
-  // z0 z1 z0 z1 z0 z1 z0 z1 z0 z1 z0 z1 z0 z1 z0 z1
-  virtual bool DoReshape(Stream* stream,
-                         const dnn::BatchDescriptor& input_dimensions,
-                         const DeviceMemory<float>& input_data,
-                         const dnn::BatchDescriptor& output_dimensions,
-                         DeviceMemory<float>* output_data) {
-    return false;
-  }
-
-  // Depth to space takes an X by Y image with depth D*M^2 and changes it to an
-  // MX x MY image with depth D. Each input location (x,y) with depth D*M^2 in
-  // the input image is changed to an MxM contiguous area in the output image,
-  // with the values being laid out in the raster order by DepthToSpaceLayout,
-  // and will have a new depth of D.
-  //
-  // Example.
-  // M=2, Din =8, Xin=2, Yin=2. Xout=4, Yout=4,  Dout=2
-  // DepthHeightWidth layout
-  // Values within a 'cell' are at different depths and same x & y.
-  // Input:
-  // abcdefgh  ijklmnop
-  // qrstuvwx  yz012345
-  // Output:
-  // ae bf im jn
-  // cg dh ko lp
-  // qu rv y2 z3
-  // sw tx 04 15
-  //
-  // sqrt_depth_reduction: 'M' in the comment above
-  virtual bool DoDepthToSpace(Stream* stream,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              const DeviceMemory<float>& input_data,
-                              const DepthToSpaceLayout& depth_to_space_layout,
-                              const int& sqrt_depth_reduction,
-                              DeviceMemory<float>* output_data) {
-    return false;
-  }
-
-  // Space to depth is the inverse of depth to space. Space to depth takes each
-  // non-overlapping M by M patch (in the X and Y dimensions) with depth D of
-  // the input, and transforms it to a 1 by 1 patch with depth D*M^2. If the
-  // input has size (MX, MY, D), the output has size (X, Y, D*M^2). The number
-  // of data elements is not changed.
-  //
-  // Example.
-  // M=2, Din =2, Xin=4, Yin=4,  Dout=8
-  // DepthHeightWidth layout
-  // Values within a 'cell' are at different depths and same x & y.
-  // Input:
-  // ae bf im jn
-  // cg dh ko lp
-  // qu rv y2 z3
-  // sw tx 04 15
-  // Output:
-  // abcdefgh  ijklmnop
-  // qrstuvwx  yz012345
-  //
-  // sqrt_depth_increase: 'M' in the comment above
-  virtual bool DoSpaceToDepth(Stream* stream,
-                              const dnn::BatchDescriptor& input_dimensions,
-                              const DeviceMemory<float>& input_data,
-                              const DepthToSpaceLayout& space_to_depth_layout,
-                              const int& sqrt_depth_increase,
-                              DeviceMemory<float>* output_data) {
-    return false;
-  }
-
-  // Computes the specified operation (e.g. addition or multiplication)
-  // between corresponding elements in the inputs and stores the result in the
-  // output element.
-  // The inputs and output must all have the same dimensions, but may have
-  // different quantization parameters (min_value and max_value).
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'elementwise operation'
-  // should be enqueued onto.
-  //  operation: The operation to perform.
-  //  input_dimensions: The dimensions of each input.
-  //  input_data: un-owned device memory region which contains the
-  //    input data for each input layer.
-  //  output_dimensions: The dimensions of the output.
-  //  output_data: un-owned device memory region in which to place the
-  //    operation result.
-  virtual bool DoElementwiseOperate(
-      Stream* stream, ElementwiseOperation operation,
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data) = 0;
-
-  // Computes the specified operation (e.g. addition or multiplication)
-  // between corresponding elements in the inputs and stores the result in the
-  // output element. Each input is multiplied by a scalar constant and the
-  // result is divided by a scalar constant.
-  // e.g. To perform Z = 0.9*X + 1.1*Y, set the input multiplicands to 9 and 11
-  // and the output divisor to 10.
-  // The inputs and output must all have the same dimensions, but may have
-  // different quantization parameters (min_value and max_value).
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'elementwise operation'
-  // should be enqueued onto.
-  //  operation: The operation to perform.
-  //  input_multiplicands: Amount to scale each input.
-  //  output_divisor: Amount to divide the output.
-  //  input_dimensions: The dimensions of each input.
-  //  input_data: un-owned device memory region which contains the
-  //    input data for each input layer.
-  //  output_dimensions: The dimensions of the output.
-  //  output_data: un-owned device memory region in which to place the
-  //    operation result.
-  virtual bool DoElementwiseOperateScaledQuantized(
-      Stream* stream, ElementwiseOperation operation,
-      absl::Span<const int> input_multiplicands, int output_divisor,
-      absl::Span<const dnn::BatchDescriptor> input_dimensions,
-      absl::Span<const DeviceMemory<float>* const> input_data,
-      const dnn::BatchDescriptor& output_dimensions,
-      DeviceMemory<float>* output_data) {
-    return false;
-  }
-
-  // Pads the input with zeros in the X and Y dimensions. The feature_map
-  // dimension is unchanged.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'elementwise operation'
-  // should be enqueued onto.
-  //  dimensions: The dimensions of the input.
-  //  input_data: un-owned device memory region which contains the
-  //    input data for the input layer.
-  //  left_pad: Amount to pad the input on the left.
-  //  right_pad: Amount to pad the input on the right.
-  //  top_pad: Amount to pad the input at the top (low Y).
-  //  bottom_pad: Amount to pad the input at the bottom (high Y).
-  //  output_data: un-owned device memory region in which to place the
-  //    padded result.
-  virtual bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
-                       const DeviceMemory<float>& input_data, int64_t left_pad,
-                       int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
-                       DeviceMemory<float>* output_data) = 0;
-
-  // Extracts a slice of the input in the X and Y dimensions. The feature_map
-  // dimension is unchanged.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'elementwise operation'
-  // should be enqueued onto.
-  //  dimensions: The dimensions of the input.
-  //  input_data: un-owned device memory region which contains the
-  //    input data for the input layer.
-  //  left_trim: Amount to cut off the input on the left.
-  //  right_trim: Amount to cut off the input on the right.
-  //  top_trim: Amount to cut off the input at the top (low y).
-  //  bottom_trim: Amount to cut off the input at the bottom (high Y).
-  //  output_data: un-owned device memory region in which to place the
-  //    padded result.
-  virtual bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
-                         const DeviceMemory<float>& input_data,
-                         int64_t left_trim, int64_t right_trim,
-                         int64_t top_trim, int64_t bottom_trim,
-                         DeviceMemory<float>* output_data) = 0;
-
-  // Grows the input tensor by replicating the X and Y dimensions. The batch and
-  // depth/feature_map dimensions are unchanged. Currently, the input tensor is
-  // limited to X=1 and Y=1.
-  //
-  // For example, the input has dimensions x=2, y=3, and replicate_x=3,
-  // replicate_y=2. The diagonal elements of the output would be: [x0y0, x1y1,
-  // x0y2, x1y0, x0y1, x1y2].
-  // Here is the example as a picture. input:
-  // AB
-  // CD
-  // EF
-  // broadcast result:
-  // ABABAB
-  // CDCDCD
-  // EFEFEF
-  // ABABAB
-  // CDCDCD
-  // EFEFEF
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'elementwise operation'
-  // should be enqueued onto.
-  //  dimensions: The dimensions of the input.
-  //  input_data: un-owned device memory region which contains the
-  //    input data for the input layer.
-  //  replicate_x: Amount to replicate the input's X dimension.
-  //  replicate_y: Amount to replicate the input's Y dimension.
-  //  output_data: un-owned device memory region in which to place the
-  //    padded result.
-  virtual bool DoXYBroadcast(Stream* stream,
-                             const dnn::BatchDescriptor& dimensions,
-                             const DeviceMemory<float>& input_data,
-                             int64_t replicate_x, int64_t replicate_y,
-                             DeviceMemory<float>* output_data) {
-    return false;
-  }
-
-  // Enqueues an asynchronous memcpy of the *quantized* output of a layer (that
-  // is, bytes instead of scaled floats) into 'host_dst' if they are available
-  // for the underlying DNN implementation. If this quantized output is not
-  // available, false is returned, which will place 'stream' into an error
-  // state.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'quantized memcpy'
-  //    operation should be enqueued onto.
-  //  gpu_unquantized_src: the device memory that contains the unquantized data
-  //    -- this data should also have a corresponding quantized representation
-  //    on the device for this operation to succeed.
-  //  mode: Type of quantization of the data to write into host_dst.
-  //  host_dst: un-owned host memory region that is mutated in place,
-  //    it is clobbered by the values in 'gpu_unquantized_src' when the enqueued
-  //    (asynchronous) memcpy operation is performed.
-  //  size: size in bytes of the host_dst host memory region.
-  virtual bool DoMemcpyD2HQuantized(
-      Stream* stream, const DeviceMemory<float>& gpu_unquantized_src,
-      QuantizedActivationMode mode, void* host_dst, int64_t size) = 0;
-
-  // Enqueues an asynchronous memcpy of 'host_dst' into the *quantized* input
-  // of a layer (that is, bytes instead of scaled floats) if they are supported
-  // by the underlying DNN implementation. If this quantized input is not
-  // supported, false is returned, which will place 'stream' into an error
-  // state.
-  //
-  // Arguments (all borrowed):
-  //  stream: borrowed pointer to the stream that the 'quantized memcpy'
-  //    operation should be enqueued onto.
-  //  host_src: un-owned host memory region that contains the quantized data.
-  //  size: size in bytes of the host_src host memory region.
-  //  mode: Type of quantization of the data to read from host_src.
-  //  gpu_unquantized_dst: the device memory that is clobbered by the values in
-  //    'host_src' when the enqueued (asynchronous) memcpy operation is
-  //    performed. -- this data should also have a corresponding quantized
-  //    representation on the device for this operation to
-  //    succeed.
-  virtual bool DoMemcpyH2DQuantized(
-      Stream* stream, const void* host_src, int64_t size,
-      QuantizedActivationMode mode,
-      DeviceMemory<float>* gpu_unquantized_dst) = 0;
 
   // Create an RNN descriptor based on model shapes and configurations.
   // The caller retains the ownership of the descriptor.
@@ -2644,220 +2200,6 @@ class DnnSupport {
     return false;
   }
 
-  // Enqueues a fused convolution+bias+activation operation onto the stream.
-  //
-  // Arguments (all borrowed):
-  //
-  //  stream: borrowed pointer to the stream that the 'fusion' operation should
-  //  be enqueued onto.
-  //
-  //  conv_input_descriptor: dimensions of the convolution input layer.
-  //  conv_input_data: device memory which contains the convolution input.
-  //
-  //  filter_descriptor: dimensions of the convolution filter.
-  //  filter_data: device memory which contains the convolution filter weights.
-  //
-  //  convolution_descriptor: stride of the convolution filter.
-  //
-  //  bias_descriptor: dimensions of the bias layer
-  //  biases: device memory region containing biases to add to the convolution
-  //  output
-  //
-  //  activation_mode: Type of activation to perform.
-  //
-  //  output_descriptor: dimensions of the output layer.
-  //  output_data: device memory region in which to place the fusion result.
-  //
-  //  output_profile_result: the output profile result for this call.
-  //         The profiling is only enabled when this is not nullptr.
-  //
-  virtual bool DoFusedConvolutionBiasActivation(
-      Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-      const DeviceMemory<float>& conv_input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<float>& filter_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& bias_descriptor,
-      const DeviceMemory<float>& bias_data, dnn::ActivationMode activation_mode,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data,
-      dnn::ProfileResult* output_profile_result) {
-    return false;
-  }
-
-  // Enqueues a fused batchnorm+activation (inference) operation onto the
-  // stream.
-  //
-  // Arguments (all borrowed):
-  //
-  //  stream: borrowed pointer to the stream that the 'fusion' operation should
-  //  be enqueued onto.
-  //
-  //  x_descriptor: dimensions of the batchnorm input layer.
-  //  x_data: device memory which contains the batchnorm input.
-  //
-  //  scale_offset_mean_variance_descriptor:
-  //      dimensions of the scale/offset/mean/variance tensor.
-  //  scale_data: device memory which contains the scale input.
-  //  offset_data: device memory which contains the offset input.
-  //  mean_data: device memory which contains the mean input.
-  //  variance_data: device memory which contains the variance input.
-  //  epsilon : the epsilon value to use in batchnorm calculation
-  //
-  //  activation_mode: Type of activation to perform.
-  //
-  //  y_data: device memory region in which to place the fusion result.
-  //
-  //  output_profile_result: the output profile result for this call.
-  //         The profiling is only enabled when this is not nullptr.
-  //
-  virtual bool DoFusedBatchNormActivationInference(
-      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
-      const DeviceMemory<float>& x_data,
-      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<float>& scale_data,
-      const DeviceMemory<float>& offset_data,
-      const DeviceMemory<float>& mean_data,
-      const DeviceMemory<float>& variance_data, double epsilon,
-      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
-      dnn::ProfileResult* output_profile_result) {
-    return false;
-  }
-
-  virtual bool DoFusedBatchNormActivationInference(
-      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
-      const DeviceMemory<Eigen::half>& x_data,
-      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<float>& scale_data,
-      const DeviceMemory<float>& offset_data,
-      const DeviceMemory<float>& mean_data,
-      const DeviceMemory<float>& variance_data, double epsilon,
-      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
-      dnn::ProfileResult* output_profile_result) {
-    return false;
-  }
-
-  // Enqueues a fused batchnorm+activation (training-fwd) operation onto the
-  // stream.
-  //
-  // Arguments (all borrowed):
-  //
-  //  stream: borrowed pointer to the stream that the 'fusion' operation should
-  //  be enqueued onto.
-  //
-  //  x_descriptor: dimensions of the batchnorm input layer.
-  //  x_data: device memory which contains the batchnorm input.
-  //
-  //  scale_offset_mean_variance_descriptor:
-  //      dimensions of the scale/offset/mean/variance tensor.
-  //  scale_data: device memory which contains the scale input.
-  //  offset_data: device memory which contains the offset input.
-  //  epsilon : the epsilon value to use in batchnorm calculation
-  //
-  //  activation_mode: Type of activation to perform.
-  //
-  //  y_data: device memory region in which to place the fusion result.
-  //  batch_mean_data: device memory in which to place the batch mean output.
-  //  batch_var_data: device memory in which to place the batch variance output.
-  //  saved_mean_data: device memory in which to save the mean for bwd pass.
-  //  saved_var_data: device memory in which to save the variance for bwd pass.
-  //
-  //  output_profile_result: the output profile result for this call.
-  //         The profiling is only enabled when this is not nullptr.
-  //
-  virtual bool DoFusedBatchNormActivationForward(
-      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
-      const DeviceMemory<float>& x_data,
-      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<float>& scale_data,
-      const DeviceMemory<float>& offset_data, double epsilon,
-      dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
-      DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
-      DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
-      dnn::ProfileResult* output_profile_result) {
-    return false;
-  }
-
-  virtual bool DoFusedBatchNormActivationForward(
-      Stream* stream, const dnn::BatchDescriptor& x_descriptor,
-      const DeviceMemory<Eigen::half>& x_data,
-      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<float>& scale_data,
-      const DeviceMemory<float>& offset_data, double epsilon,
-      dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
-      DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
-      DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
-      dnn::ProfileResult* output_profile_result) {
-    return false;
-  }
-
-  // Enqueues a fused batchnorm+activation (training-bwd) operation onto the
-  // stream.
-  //
-  // Arguments (all borrowed):
-  //
-  //  stream: borrowed pointer to the stream that the 'fusion' operation should
-  //  be enqueued onto.
-  //
-  //  y_act_backprop_descriptor: dimensions of the backprop input from the
-  //  previous layer. y_act_backprop_data: device memory which contains the
-  //  backprop input.
-  //
-  //  y_act_data: device memory which contains the actv-fwd output data.
-  //
-  //  activation_mode: actv-fwd type.
-  //
-  //  scale_offset_mean_variance_descriptor:
-  //      dimensions of the scale/offset/mean/variance tensor.
-  //  scale_data: device memory which contains the scale input.
-  //  offset_data: device memory which contains the offset input.
-  //  saved_mean_data: device memory which contains the saved mean from fwd
-  //  pass. saved_var_data: device memory which contains the saved variance from
-  //  fwd pass.
-  //
-  //  x_bn_backprop_data: device memory region in which to place the backprop
-  //  data from this layer scale_backprop_data: device memory in which to place
-  //  the scale backprop output. offset_backprop_data: device memory in which to
-  //  place the offset backprop output.
-  //
-  //  output_profile_result: the output profile result for this call.
-  //         The profiling is only enabled when this is not nullptr.
-  //
-  virtual bool DoFusedBatchNormActivationBackward(
-      Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
-      const DeviceMemory<float>& y_act_backprop_data,
-      const DeviceMemory<float>& y_act_data,
-      dnn::ActivationMode activation_mode, const DeviceMemory<float>& x_bn_data,
-      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<float>& scale_data,
-      const DeviceMemory<float>& offset_data,
-      const DeviceMemory<float>& saved_mean_data,
-      const DeviceMemory<float>& saved_var_data,
-      DeviceMemory<float>* x_bn_backprop_data,
-      DeviceMemory<float>* scale_backprop_data,
-      DeviceMemory<float>* offset_backprop_data,
-      dnn::ProfileResult* output_profile_result) {
-    return false;
-  }
-
-  virtual bool DoFusedBatchNormActivationBackward(
-      Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
-      const DeviceMemory<Eigen::half>& y_act_backprop_data,
-      const DeviceMemory<Eigen::half>& y_act_data,
-      dnn::ActivationMode activation_mode,
-      const DeviceMemory<Eigen::half>& x_bn_data,
-      const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-      const DeviceMemory<float>& scale_data,
-      const DeviceMemory<float>& offset_data,
-      const DeviceMemory<float>& saved_mean_data,
-      const DeviceMemory<float>& saved_var_data,
-      DeviceMemory<Eigen::half>* x_bn_backprop_data,
-      DeviceMemory<float>* scale_backprop_data,
-      DeviceMemory<float>* offset_backprop_data,
-      dnn::ProfileResult* output_profile_result) {
-    return false;
-  }
-
   // Notifies that a stream is being destroyed and should be invalidated from
   // any internal caching.  This exists to allow the CUDA implementation to
   // avoid redundant cudnnSetStream calls without risking problems when a stream
@@ -2897,7 +2239,8 @@ class DnnSupport {
     return ::tsl::OkStatus();
   }
 
-  SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
+  DnnSupport(const DnnSupport&) = delete;
+  void operator=(const DnnSupport&) = delete;
 };
 
 }  // namespace dnn

@@ -23,3 +23,81 @@ func.func @FuseTransposeFCLhsToBatchMatmul(%arg0: tensor<1024x4xf32>, %arg1: ten
   func.return %2 : tensor<8x256xf32>
   // CHECK: return %[[RES1]] : tensor<8x256xf32>
 }
+
+// CHECK-LABEL: Batchmatmul2Fullyconnected
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @Batchmatmul2Fullyconnected(%arg0: tensor<4x128x2xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = arith.constant dense<[[1.0], [2.0]]> : tensor<2x1xf32>
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %1 : tensor<4x128x1xf32>
+  // CHECK-NEXT: %[[CONST_WEIGHT:.*]] = arith.constant
+  // CHECK-SAME: [1.000000e+00, 2.000000e+00]
+  // CHECK-SAME: tensor<1x2xf32>
+  // CHECK: %[[FC_RES:.*]] = "tfl.fully_connected"(%arg0, %[[CONST_WEIGHT]]
+  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-NEXT: return %[[FC_RES]]
+}
+
+// CHECK-LABEL: Batchmatmul2FullyconnectedAdjy
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @Batchmatmul2FullyconnectedAdjy(%arg0: tensor<4x128x2xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = arith.constant dense<[[1.0, 2.0]]> : tensor<1x2xf32>
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = true, asymmetric_quantize_inputs = false} : (tensor<4x128x2xf32>, tensor<1x2xf32>) -> tensor<4x128x1xf32>
+  func.return %1 : tensor<4x128x1xf32>
+  // CHECK: %[[CONST_WEIGHT:.*]] = arith.constant
+  // CHECK-SAME: [1.000000e+00, 2.000000e+00]
+  // CHECK-SAME: tensor<1x2xf32>
+  // CHECK: %[[FC_RES:.*]] = "tfl.fully_connected"(%arg0, %[[CONST_WEIGHT]]
+  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-NEXT: return %[[FC_RES]]
+}
+
+// CHECK-LABEL: Batchmatmul2FullyconnectedAdjx
+// CHECK-NOT: "tfl.batch_matmul"
+func.func @Batchmatmul2FullyconnectedAdjx(%arg0: tensor<4x2x128xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = arith.constant dense<[[1.0], [2.0]]> : tensor<2x1xf32>
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = true, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x2x128xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %1 : tensor<4x128x1xf32>
+
+  // CHECK: %[[TRANSPOSED_X:.*]] = "tfl.transpose"
+  // CHECK-SAME: (tensor<4x2x128xf32>, tensor<3xi32>) -> tensor<4x128x2xf32>
+  // CHECK-NEXT: %[[FC_RES:.*]] = "tfl.fully_connected"(%[[TRANSPOSED_X]]
+  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-NEXT: return %[[FC_RES]]
+}
+
+// CHECK-LABEL: Batchmatmul2FullyconnectedBatchedY
+// BMM can be converted to FC only if we have constant weight with rank 2.
+// CHECK-NOT: "tfl.fully_connected"
+func.func @Batchmatmul2FullyconnectedBatchedY(%arg0: tensor<4x128x2xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = arith.constant dense<42.> : tensor<4x2x1xf32>
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x128x2xf32>, tensor<4x2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %1 : tensor<4x128x1xf32>
+
+  // CHECK: %[[BMM_RES:.*]] = "tfl.batch_matmul"
+  // CHECK-NEXT: return %[[BMM_RES]]
+}
+
+// CHECK-LABEL: Batchmatmul2FullyconnectedTransposedY
+func.func @Batchmatmul2FullyconnectedTransposedY(%arg0: tensor<4x128x2xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = arith.constant dense<[[1.0], [2.0]]> : tensor<2x1xf32>
+  %1 = "tfl.batch_matmul"(%arg0, %0) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %1 : tensor<4x128x1xf32>
+  // CHECK: %[[CONST_WEIGHT:.*]] = arith.constant
+  // CHECK-SAME: [1.000000e+00, 2.000000e+00]
+  // CHECK-SAME: tensor<1x2xf32>
+  // CHECK: %[[FC_RES:.*]] = "tfl.fully_connected"(%arg0, %[[CONST_WEIGHT]]
+  // CHECK-SAME: {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK-NEXT: return %[[FC_RES]]
+}
+
+// CHECK-LABEL: Batchmatmul2FullyconnectedNonConstY
+// BMM can be converted to FC only if we have constant weight with rank 2.
+// CHECK-NOT: "tfl.fully_connected"
+func.func @Batchmatmul2FullyconnectedNonConstY(%arg0: tensor<4x128x2xf32>, %arg1: tensor<2x1xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = false, asymmetric_quantize_inputs = false} : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %0 : tensor<4x128x1xf32>
+
+  // CHECK: %[[BMM_RES:.*]] = "tfl.batch_matmul"
+  // CHECK-NEXT: return %[[BMM_RES]]
+}

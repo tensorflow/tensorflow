@@ -45,7 +45,8 @@ class XlaFakeParamOp : public XlaOpKernel {
  private:
   xla::Shape shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaFakeParamOp);
+  XlaFakeParamOp(const XlaFakeParamOp&) = delete;
+  void operator=(const XlaFakeParamOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("FakeParam"), XlaFakeParamOp);

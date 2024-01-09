@@ -144,7 +144,8 @@ class Platform {
   Platform() = default;
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(Platform);
+  Platform(const Platform&) = delete;
+  void operator=(const Platform&) = delete;
 };
 
 }  // namespace stream_executor

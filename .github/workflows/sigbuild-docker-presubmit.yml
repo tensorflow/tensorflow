@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [python3.9, python3.10, python3.11]
+        python-version: [python3.9, python3.10, python3.11, python3.12]
     permissions:
       contents: read
       pull-requests: write
@@ -87,6 +87,7 @@ jobs:
           message: |
             I pushed these containers:
             
+            - `gcr.io/tensorflow-sigs/build:${{ github.event.number }}-python3.12`
             - `gcr.io/tensorflow-sigs/build:${{ github.event.number }}-python3.11`
             - `gcr.io/tensorflow-sigs/build:${{ github.event.number }}-python3.10`
             - `gcr.io/tensorflow-sigs/build:${{ github.event.number }}-python3.9`

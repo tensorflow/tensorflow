@@ -127,7 +127,9 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator.h"
@@ -153,13 +155,13 @@ template <typename T>
 std::vector<const AllocationBlock*> SortAllocationBlocks(const T& container) {
   std::vector<const AllocationBlock*> result;
   result.insert(result.end(), container.begin(), container.end());
-  absl::c_sort(result,
-               [](const AllocationBlock* lhs, const AllocationBlock* rhs) {
-                 return std::make_tuple(lhs->start_time, lhs->end_time,
-                                        lhs->initial_offset, lhs->size) <
-                        std::make_tuple(rhs->start_time, rhs->end_time,
-                                        rhs->initial_offset, rhs->size);
-               });
+  absl::c_sort(
+      result, [](const AllocationBlock* lhs, const AllocationBlock* rhs) {
+        return std::make_tuple(lhs->inclusive_start_time, lhs->end_time,
+                               lhs->initial_offset, lhs->size) <
+               std::make_tuple(rhs->inclusive_start_time, rhs->end_time,
+                               rhs->initial_offset, rhs->size);
+      });
 
   return result;
 }
@@ -189,22 +191,26 @@ class BestFitRepacker
     for (AllocationBlock* allocation_block : allocation_blocks_) {
       // Check if any of the colocations are already added to buffer_intervals_.
       bool need_allocation = true;
-      auto aliased_it = absl::c_find_if(
-          allocation_block->colocations, [&](AllocationBlock* search) {
-            return full_buffer_interval_map_.contains(search);
-          });
-      if (aliased_it != allocation_block->colocations.end()) {
-        full_buffer_interval_map_[*aliased_it].colocations.push_back(
-            allocation_block);
-        need_allocation = false;
+      CHECK_NE(allocation_block->next_colocated, nullptr);
+      for (AllocationBlock* colocated = allocation_block->next_colocated;
+           colocated != allocation_block;
+           colocated = colocated->next_colocated) {
+        auto aliased_it = full_buffer_interval_map_.find(colocated);
+        if (aliased_it != full_buffer_interval_map_.end() &&
+            aliased_it->second.need_allocation) {
+          aliased_it->second.colocations.push_back(allocation_block);
+          need_allocation = false;
+          break;
+        }
       }
-      full_buffer_interval_map_.insert(std::make_pair(
-          allocation_block, BufferInterval{allocation_block,
-                                           allocation_block->size,
-                                           allocation_block->start_time,
-                                           allocation_block->end_time,
-                                           {},
-                                           need_allocation}));
+      full_buffer_interval_map_.insert(
+          std::make_pair(allocation_block,
+                         BufferInterval{allocation_block,
+                                        allocation_block->size,
+                                        allocation_block->inclusive_start_time,
+                                        allocation_block->end_time,
+                                        {},
+                                        need_allocation}));
     }
 
     // Now that full_buffer_interval_map_ has full colocation specifications,
@@ -229,8 +235,8 @@ class BestFitRepacker
         CHECK(!original_slice_data.slices_sorted_by_offset.empty());
 
         sliced_buffer_interval.Slice(original_slice_data.SizesSortedByOffset());
-        sliced_buffer_interval.UpdateSliceStartTimes(
-            original_slice_data.SortedStartTimes());
+        sliced_buffer_interval.UpdateInclusiveSliceStartTimes(
+            original_slice_data.SortedInclusiveStartTimes());
       }
 
       // We use buffer_intervals_ to store the minimum buffer interval for
@@ -245,7 +251,7 @@ class BestFitRepacker
     CHECK_EQ(allocation_blocks_.size(), full_buffer_interval_map_.size());
     CHECK_EQ(allocation_blocks_.size(), sliced_buffer_interval_map_.size());
 
-    VLOG(1) << [&]() -> std::string {
+    VLOG(2) << [&]() -> std::string {
       int sliced_blocks = 0;
       int colocation_sets = 0;
       int colocation_sets_with_multiple_sliced_blocks = 0;
@@ -322,7 +328,7 @@ class BestFitRepacker
   // - chunks is sorted in slice time order
   void CommitChunks(const AllocationBlock* allocation_block,
                     const std::vector<Chunk>& chunks) {
-    VLOG(2) << "Committing repack chunks for " << allocation_block->ToString();
+    VLOG(3) << "Committing repack chunks for " << allocation_block->ToString();
 
     int64_t new_offset = -1;
     std::optional<SlicedAllocationData> repacked_slice_data = std::nullopt;
@@ -338,13 +344,13 @@ class BestFitRepacker
       repacked_slice_data->slices_sorted_by_offset.reserve(chunks.size());
 
       // Chunks and start times are sorted in start time order.
-      std::vector<int64_t> sorted_start_times =
-          original_slice_data.SortedStartTimes();
+      std::vector<int64_t> sorted_inclusive_start_times =
+          original_slice_data.SortedInclusiveStartTimes();
       for (int i = 0; i < chunks.size(); ++i) {
         const Chunk& chunk = chunks[i];
-        int64_t start_time = sorted_start_times[i];
+        int64_t start_time = sorted_inclusive_start_times[i];
         result_.heap_size = result_.UpdatedHeapSize(chunk);
-        VLOG(2) << "Adding sliced chunk " << chunk.ToString() << " at ["
+        VLOG(3) << "Adding sliced chunk " << chunk.ToString() << " at ["
                 << start_time << ", " << allocation_block->end_time << "]";
         interval_tree_.Add(start_time, allocation_block->end_time, chunk);
         new_offset = (new_offset == -1 ? chunk.offset
@@ -360,10 +366,10 @@ class BestFitRepacker
       CHECK_EQ(chunks.size(), 1);
       new_offset = chunks.front().offset;
       result_.heap_size = result_.UpdatedHeapSize(chunks.front());
-      VLOG(2) << "Adding unsliced chunk " << chunks.front().ToString()
-              << " at [" << allocation_block->start_time << ", "
+      VLOG(3) << "Adding unsliced chunk " << chunks.front().ToString()
+              << " at [" << allocation_block->inclusive_start_time << ", "
               << allocation_block->end_time << ")";
-      interval_tree_.Add(allocation_block->start_time,
+      interval_tree_.Add(allocation_block->inclusive_start_time,
                          allocation_block->end_time, chunks.front());
     }
 
@@ -407,9 +413,11 @@ class BestFitRepacker
         SlicedBufferInterval& colocation_sliced_buffer_interval =
             sliced_buffer_interval_map_.at(colocation);
         SlicedAllocationFinder sliced_colocation_finder =
-            CreateSlicedAllocationFinder(colocation_sliced_buffer_interval,
-                                         max_colocation_size,
-                                         /*preferred_offset=*/-1);
+            CreateSlicedAllocationFinder(
+                colocation_sliced_buffer_interval, max_colocation_size,
+                /*preferred_offset=*/-1,
+                &SlicedAllocationFinder::AllOffsetsAllowed,
+                CreateIsSliceTimePermutationAllowedFn(colocation));
         sliced_buffer_map.insert(std::make_pair(
             colocation,
             SlicedColocationData{&colocation_sliced_buffer_interval,
@@ -443,7 +451,8 @@ class BestFitRepacker
     // Find chunks for allocation_block and its colocations.
     SlicedAllocationFinder finder = CreateSlicedAllocationFinder(
         sliced_buffer_interval, max_colocation_size, /*preferred_offset=*/-1,
-        is_offset_allowed);
+        is_offset_allowed,
+        CreateIsSliceTimePermutationAllowedFn(allocation_block));
     std::vector<Chunk> chunks = PostProcessFindChunkCandidatesResult(
         sliced_buffer_interval, finder.Find());
     int64_t min_offset =
@@ -522,13 +531,13 @@ class BestFitRepacker
               block->repacked_slice_data->slices_sorted_by_offset[i];
           timed_chunks.push_back(
               TimedChunk{absl::StrCat(((int64_t)block), "_slice_", i), block,
-                         slice.start_time, block->end_time,
+                         slice.inclusive_start_time, block->end_time,
                          Chunk::FromOffsetSize(slice.offset, slice.size)});
         }
       } else {
         timed_chunks.push_back(
-            TimedChunk{absl::StrCat(((int64_t)block)), block, block->start_time,
-                       block->end_time,
+            TimedChunk{absl::StrCat(((int64_t)block)), block,
+                       block->inclusive_start_time, block->end_time,
                        Chunk::FromOffsetSize(block->offset, block->size)});
       }
     }
@@ -554,8 +563,7 @@ class BestFitRepacker
     Finish();
     bool success = result_.heap_size <= max_size_;
     if (!success) {
-      LOG(INFO) << "Repacking unsuccessful with heap size "
-                << result_.heap_size;
+      VLOG(1) << "Repacking unsuccessful with heap size " << result_.heap_size;
       return false;
     }
 
@@ -575,18 +583,91 @@ class BestFitRepacker
       DebuggingValidate();
     }
 
-    if (VLOG_IS_ON(1)) {
+    if (VLOG_IS_ON(2)) {
       for (AllocationBlock* block : allocation_blocks_) {
-        VLOG(1) << "AllocationBlock after repacking: " << block->ToString();
+        VLOG(2) << "AllocationBlock after repacking: " << block->ToString();
       }
     }
 
-    LOG(INFO) << "Repacking successful with heap size " << result_.heap_size;
+    VLOG(1) << "Repacking successful with heap size " << result_.heap_size;
 
     return true;
   }
 
  private:
+  // A slice time permutation is allowed if the original mapping between slice
+  // sizes and slice start times is preserved with the new permutation.
+  static absl::AnyInvocable<bool(const std::vector<int64_t>&) const>
+  CreateIsSliceTimePermutationAllowedFn(
+      const AllocationBlock* allocation_block) {
+    if (!IsSliced(allocation_block)) {
+      return &SlicedAllocationFinder::AllSliceTimePermutationsAllowed;
+    }
+
+    int64_t num_slices =
+        allocation_block->original_slice_data->slices_sorted_by_offset.size();
+
+    // Element slice_time_to_schedule_time_inclusive[i] is the (inclusive)
+    // schedule time corresponding to slice_time i.
+    std::vector<int64_t> slice_time_to_schedule_time_inclusive =
+        allocation_block->original_slice_data->SortedInclusiveStartTimes();
+    absl::c_sort(slice_time_to_schedule_time_inclusive);
+
+    // Compute the original slice size to slice start time mapping.
+    std::vector<std::pair<int64_t, int64_t>>
+        original_slice_sizes_and_start_times_pairwise_sorted;
+    original_slice_sizes_and_start_times_pairwise_sorted.reserve(num_slices);
+    for (const memory_space_assignment::MemorySpaceAssignmentRepacker::Slice&
+             slice :
+         allocation_block->original_slice_data->slices_sorted_by_offset) {
+      original_slice_sizes_and_start_times_pairwise_sorted.push_back(
+          std::make_pair(slice.size, slice.inclusive_start_time));
+    }
+    absl::c_sort(original_slice_sizes_and_start_times_pairwise_sorted);
+
+    std::vector<int64_t> sizes_sorted_by_offset =
+        allocation_block->original_slice_data->SizesSortedByOffset();
+
+    return [original_slice_sizes_and_start_times_pairwise_sorted,
+            sizes_sorted_by_offset, slice_time_to_schedule_time_inclusive,
+            num_slices](const std::vector<int64_t>& slice_time_permutation) {
+      // Compute the slice size to slice start time mapping proposed by the
+      // permutation.
+      std::vector<std::pair<int64_t, int64_t>>
+          proposed_slice_sizes_and_start_times_pairwise_sorted;
+      proposed_slice_sizes_and_start_times_pairwise_sorted.reserve(num_slices);
+      CHECK_EQ(sizes_sorted_by_offset.size(), num_slices);
+      CHECK_EQ(slice_time_permutation.size(), num_slices);
+      for (int i = 0; i < num_slices; ++i) {
+        proposed_slice_sizes_and_start_times_pairwise_sorted.push_back(
+            std::make_pair(sizes_sorted_by_offset[i],
+                           slice_time_to_schedule_time_inclusive
+                               [slice_time_permutation[i]]));
+      }
+      absl::c_sort(proposed_slice_sizes_and_start_times_pairwise_sorted);
+
+      bool allowed = (original_slice_sizes_and_start_times_pairwise_sorted ==
+                      proposed_slice_sizes_and_start_times_pairwise_sorted);
+      VLOG(3) << [&]() {
+        auto export_pair = [](std::string* out,
+                              const std::pair<int64_t, int64_t>& p) {
+          absl::StrAppend(out, "<", p.first, ", ", p.second, ">");
+        };
+        return absl::StrCat(
+            "Slice permutation ", (allowed ? "allowed" : "disallowed"),
+            ". Original slice <size, start_time> mapping: ",
+            absl::StrJoin(original_slice_sizes_and_start_times_pairwise_sorted,
+                          ", ", export_pair),
+            ". Proposed mapping: ",
+            absl::StrJoin(proposed_slice_sizes_and_start_times_pairwise_sorted,
+                          ", ", export_pair),
+            ".");
+      }();
+
+      return allowed;
+    };
+  }
+
   // If true, we run a potentially expensive validation to make sure there are
   // no overlaps in the repacked chunks. Note, there should never be an overlap.
   bool validate_ = false;

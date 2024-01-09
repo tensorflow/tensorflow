@@ -191,7 +191,8 @@ class WhereCPUOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WhereCPUOp);
+  WhereCPUOp(const WhereCPUOp&) = delete;
+  void operator=(const WhereCPUOp&) = delete;
 };
 
 #define REGISTER_WHERE_OP(T) \
@@ -294,20 +295,21 @@ class WhereGPUOp : public AsyncOpKernel {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      {
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
-      // TODO(ebrevdo): Properly copy back found_true value to CPU for
-      // validation checking.  Currently Where<GPUDevice>::Compute()
-      // does not perform this copy back to CPU.
-      Tindex found_true = -1;
+        // TODO(ebrevdo): Properly copy back found_true value to CPU for
+        // validation checking.  Currently Where<GPUDevice>::Compute()
+        // does not perform this copy back to CPU.
+        Tindex found_true = -1;
 
-      // Step 1: Allocate the output and perform the selection/copy.
-      Tensor* output;
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          context->allocate_output(
-              0, TensorShape({*num_true.data(), input_dims}), &output),
-          done);
+        // Step 1: Allocate the output and perform the selection/copy.
+        Tensor* output;
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            context->allocate_output(
+                0, TensorShape({*num_true.data(), input_dims}), &output),
+            done);
 
 #define HANDLE_DIM(NDIM)                                                \
   case NDIM: {                                                          \
@@ -317,35 +319,38 @@ class WhereGPUOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(context, s, done);                             \
   } break;
 
-      switch (input_dims) {
-        HANDLE_DIM(1);
-        HANDLE_DIM(2);
-        HANDLE_DIM(3);
-        HANDLE_DIM(4);
-        HANDLE_DIM(5);
-        HANDLE_DIM(6);
-        HANDLE_DIM(7);
-        HANDLE_DIM(8);
+        switch (input_dims) {
+          HANDLE_DIM(1);
+          HANDLE_DIM(2);
+          HANDLE_DIM(3);
+          HANDLE_DIM(4);
+          HANDLE_DIM(5);
+          HANDLE_DIM(6);
+          HANDLE_DIM(7);
+          HANDLE_DIM(8);
 
-        default:
-          OP_REQUIRES_ASYNC(
-              context, false,
-              errors::InvalidArgument("WhereOp: Unhandled input dimensions: ",
-                                      input_dims),
-              done);
-      }
+          default:
+            OP_REQUIRES_ASYNC(
+                context, false,
+                errors::InvalidArgument("WhereOp: Unhandled input dimensions: ",
+                                        input_dims),
+                done);
+        }
 #undef HANDLE_DIM
 
-      // TODO(ebrevdo): Fix the copy back to host.
+        // TODO(ebrevdo): Fix the copy back to host.
 
-      // OP_REQUIRES_ASYNC(
-      //     context, found_true == num_true,
-      //     errors::InvalidArgument(
-      //         "WhereOp: Race condition between counting the number of true "
-      //         "elements and writing them.  When counting, saw ",
-      //         num_true, " elements; but when writing their indices, saw ",
-      //         found_true, " elements."),
-      //     done);
+        // OP_REQUIRES_ASYNC(
+        //     context, found_true == num_true,
+        //     errors::InvalidArgument(
+        //         "WhereOp: Race condition between counting the number of true
+        //         " "elements and writing them.  When counting, saw ",
+        //         num_true, " elements; but when writing their indices, saw ",
+        //         found_true, " elements."),
+        //     done);
+      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
 
       done();
     };
@@ -357,7 +362,8 @@ class WhereGPUOp : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WhereGPUOp);
+  WhereGPUOp(const WhereGPUOp&) = delete;
+  void operator=(const WhereGPUOp&) = delete;
 };
 
 #define REGISTER_GPU_WHERE_OP(T) \

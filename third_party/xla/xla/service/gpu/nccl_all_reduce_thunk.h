@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 #define XLA_SERVICE_GPU_NCCL_ALL_REDUCE_THUNK_H_
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/status.h"
 
 namespace xla {
 namespace gpu {
@@ -43,9 +47,12 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
                                       std::vector<Buffer> buffers,
                                       bool is_sync);
 
- protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
+  ReductionKind reduction_kind() const { return config_.reduction_kind; }
 
+  absl::Span<const Buffer> buffers() const { return buffers_; }
+
+ protected:
   const NcclAllReduceConfig config_;
   const std::vector<Buffer> buffers_;
 };
@@ -60,15 +67,25 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
                           mlir::lmhlo_gpu::AllReduceStartOp op,
                           std::vector<Buffer> buffers);
 
+  NcclAllReduceStartThunk(ThunkInfo thunk_info,
+                          const HloAllReduceInstruction* inst,
+                          std::vector<Buffer> buffers);
+
   static const char* GetHloOpName() { return "all-reduce-start"; }
 
   static Status CheckImplementable(mlir::lmhlo_gpu::AllReduceStartOp op,
                                    int64_t replica_count,
                                    int64_t partition_count);
-  static bool IsDegenerate(mlir::lmhlo_gpu::AllReduceStartOp op,
-                           int64_t replica_count, int64_t partition_count);
+
+  static Status CheckImplementable(const HloAllReduceInstruction* inst,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
+
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllReduceStartOp op);
+
+  static CollectiveOpGroupMode GetGroupMode(
+      const HloAllReduceInstruction* inst);
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
@@ -84,15 +101,25 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
                               mlir::lmhlo_gpu::ReduceScatterStartOp op,
                               std::vector<Buffer> buffers);
 
+  NcclReduceScatterStartThunk(ThunkInfo thunk_info,
+                              const HloReduceScatterInstruction* inst,
+                              std::vector<Buffer> buffers);
+
   static const char* GetHloOpName() { return "reduce-scatter-start"; }
 
   static Status CheckImplementable(mlir::lmhlo_gpu::ReduceScatterStartOp op,
                                    int64_t replica_count,
                                    int64_t partition_count);
-  static bool IsDegenerate(mlir::lmhlo_gpu::ReduceScatterStartOp op,
-                           int64_t replica_count, int64_t partition_count);
+
+  static Status CheckImplementable(const HloReduceScatterInstruction* inst,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
+
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::ReduceScatterStartOp op);
+
+  static CollectiveOpGroupMode GetGroupMode(
+      const HloReduceScatterInstruction* inst);
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,

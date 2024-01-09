@@ -218,7 +218,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/eager:monitoring",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
     ],
 )
 

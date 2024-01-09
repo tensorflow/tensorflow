@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/literal.h"
 
 #include <algorithm>
-#include <cmath>
 #include <complex>
 #include <cstdint>
 #include <cstring>
@@ -55,9 +54,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/mem.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/util/byte_swap_array.h"
@@ -601,6 +600,43 @@ void LiteralBase::Piece::DeallocateBuffers() {
     tsl::port::AlignedFree(array_rep->data);
     rep_.emplace<Uninitialized>();
   }
+}
+
+template <typename NativeT>
+void LiteralBase::Piece::CopyElementsWithDynamicBound(
+    const LiteralBase::Piece& src) {
+  auto& dest_shape = subshape();
+  auto& src_shape = src.subshape();
+
+  // At least one shape has to be static as bound.
+  CHECK(dest_shape.is_static() || src_shape.is_static());
+  auto& bound_shape = dest_shape.is_static() ? src_shape : dest_shape;
+  if (ShapeUtil::IsZeroElementArray(dest_shape)) {
+    return;
+  }
+  if (dest_shape.rank() == 1) {
+    // Fast path for rank 1 arrays.
+    int64_t count = std::min(GetDynamicSize(0), src.GetDynamicSize(0));
+    std::copy_n(src.data<NativeT>().begin(), count, data<NativeT>().begin());
+    return;
+  }
+  std::vector<int64_t> index(dest_shape.rank());
+  do {
+    bool out_of_bound = false;
+    for (int64_t i = 0; i < index.size(); ++i) {
+      // Do not copy elements beyond dynamic bound.
+      if (index[i] >= GetDynamicSize(i) || index[i] >= src.GetDynamicSize(i)) {
+        out_of_bound = true;
+      }
+    }
+    if (out_of_bound) {
+      continue;
+    }
+    data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape,
+                                                                  index)] =
+        src.data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
+            src_shape, index)];
+  } while (IndexUtil::BumpIndices(bound_shape, absl::MakeSpan(index)));
 }
 
 Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
@@ -1595,7 +1631,7 @@ void LiteralBase::EachCellAsString(
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
-  std::vector<int64_t> indices = IndexUtil::LinearIndexToMultidimensionalIndex(
+  auto indices = IndexUtil::LinearIndexToMultidimensionalIndex(
       shape(), /*linear_index=*/0);
   do {
     per_cell(indices, GetAsString(indices));
@@ -1608,7 +1644,7 @@ template <typename NativeSrcT, typename NativeDestT>
 void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
                                void* dst_base) {
   static_assert(!std::is_same_v<NativeSrcT, NativeDestT>);
-  auto converter = [](NativeSrcT src) {
+  auto converter = [](NativeSrcT src) -> NativeDestT {
     // C++ [conv.bool]p1:
     //   A prvalue of arithmetic [...] type can be converted to a prvalue of
     //   type bool. A zero value [...] is converted to false; any other value is
@@ -1627,10 +1663,14 @@ void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
       if (src != src) {
         return NativeDestT{0};
       }
-      src = std::clamp(
-          src,
-          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::lowest()),
-          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::max()));
+      if (src >=
+          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::max())) {
+        return std::numeric_limits<NativeDestT>::max();
+      }
+      if (src <=
+          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::lowest())) {
+        return std::numeric_limits<NativeDestT>::lowest();
+      }
     }
     return static_cast<NativeDestT>(src);
   };
@@ -1779,43 +1819,6 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
         literal.MoveFrom(std::move(elements[i]), /*dest_shape_index=*/{i}));
   }
   return literal;
-}
-
-template <typename NativeT>
-void LiteralBase::Piece::CopyElementsWithDynamicBound(
-    const LiteralBase::Piece& src) {
-  auto& dest_shape = subshape();
-  auto& src_shape = src.subshape();
-
-  // At least one shape has to be static as bound.
-  CHECK(dest_shape.is_static() || src_shape.is_static());
-  auto& bound_shape = dest_shape.is_static() ? src_shape : dest_shape;
-  if (ShapeUtil::IsZeroElementArray(dest_shape)) {
-    return;
-  }
-  if (dest_shape.rank() == 1) {
-    // Fast path for rank 1 arrays.
-    int64_t count = std::min(GetDynamicSize(0), src.GetDynamicSize(0));
-    std::copy_n(src.data<NativeT>().begin(), count, data<NativeT>().begin());
-    return;
-  }
-  std::vector<int64_t> index(dest_shape.rank());
-  do {
-    bool out_of_bound = false;
-    for (int64_t i = 0; i < index.size(); ++i) {
-      // Do not copy elements beyond dynamic bound.
-      if (index[i] >= GetDynamicSize(i) || index[i] >= src.GetDynamicSize(i)) {
-        out_of_bound = true;
-      }
-    }
-    if (out_of_bound) {
-      continue;
-    }
-    data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape,
-                                                                  index)] =
-        src.data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
-            src_shape, index)];
-  } while (IndexUtil::BumpIndices(bound_shape, absl::MakeSpan(index)));
 }
 
 template <typename NativeT>
@@ -2210,9 +2213,6 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case S4:
       *proto->mutable_s4s() = std::string(
           reinterpret_cast<const char*>(data<s4>().data()), size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_s4s());
-      }
       break;
     case S8:
       proto->set_s8s(static_cast<const signed char*>(data<int8_t>().data()),
@@ -2221,9 +2221,6 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
     case U4:
       *proto->mutable_u4s() = std::string(
           reinterpret_cast<const char*>(data<u4>().data()), size_bytes_dense());
-      if (!kLittleEndian) {
-        ConvertEndianShort(proto->mutable_u4s());
-      }
       break;
     case U8:
       proto->set_u8s(static_cast<const unsigned char*>(data<uint8_t>().data()),
@@ -2371,9 +2368,6 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       const std::string& s(proto.s4s());
       TF_RET_CHECK(data<s4>().size() * sizeof(s4) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
-      if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
-      }
     } break;
     case S8: {
       auto s8_data = data<int8_t>();
@@ -2384,9 +2378,6 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       const std::string& s(proto.u4s());
       TF_RET_CHECK(data<u4>().size() * sizeof(u4) == s.size());
       memcpy(untyped_data(), s.data(), s.size());
-      if (!kLittleEndian) {
-        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
-      }
     } break;
     case U8: {
       auto u8_data = data<uint8_t>();
@@ -2745,6 +2736,109 @@ BorrowingLiteral::BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
     const auto& src_shape = shape_->tuple_shapes(i);
     CHECK(src_shape.IsArray());
     root_piece_.child(i).set_buffer(const_cast<char*>(src_buf_ptrs[i]));
+  }
+}
+
+BorrowingLiteral::BorrowingLiteral(const LiteralProto& proto)
+    : LiteralBase(), shape_(std::make_unique<Shape>(proto.shape())) {
+  root_piece_ = Piece();
+  root_piece_.set_subshape(shape_.get());
+
+  if (shape().IsArray()) {
+    absl::Span<const char> data;
+    switch (shape_->element_type()) {
+#define BORROWING_LITERAL_CAST_DATA_(FIELD)                                   \
+  absl::Span<const char>(reinterpret_cast<const char*>(proto.FIELD().data()), \
+                         proto.FIELD().size() * sizeof *proto.FIELD().data())
+      case PRED:
+        data = BORROWING_LITERAL_CAST_DATA_(preds);
+        break;
+      case S4:
+        data = proto.s4s();
+        break;
+      case S8:
+        data = proto.s8s();
+        break;
+      case S16:
+        data = proto.s16s();
+        break;
+      case S32:
+        data = BORROWING_LITERAL_CAST_DATA_(s32s);
+        break;
+      case S64:
+        data = BORROWING_LITERAL_CAST_DATA_(s64s);
+        break;
+      case U4:
+        data = proto.u4s();
+        break;
+      case U8:
+        data = proto.u8s();
+        break;
+      case U16:
+        data = proto.u16s();
+        break;
+      case U32:
+        data = BORROWING_LITERAL_CAST_DATA_(u32s);
+        break;
+      case U64:
+        data = BORROWING_LITERAL_CAST_DATA_(u64s);
+        break;
+      case F16:
+        data = proto.f16s();
+        break;
+      case F32:
+        data = BORROWING_LITERAL_CAST_DATA_(f32s);
+        break;
+      case BF16:
+        data = proto.bf16s();
+        break;
+      case F64:
+        data = BORROWING_LITERAL_CAST_DATA_(f64s);
+        break;
+      case F8E5M2:
+        data = proto.f8e5m2s();
+        break;
+      case F8E4M3FN:
+        data = proto.f8e4m3fns();
+        break;
+      case F8E4M3B11FNUZ:
+        data = proto.f8e4m3b11fnuzs();
+        break;
+      case F8E5M2FNUZ:
+        data = proto.f8e5m2fnuzs();
+        break;
+      case F8E4M3FNUZ:
+        data = proto.f8e4m3fnuzs();
+        break;
+      case C64:
+        data = BORROWING_LITERAL_CAST_DATA_(c64s);
+        break;
+      case C128:
+        data = BORROWING_LITERAL_CAST_DATA_(c128s);
+        break;
+#undef BORROWING_LITERAL_CAST_DATA_
+      default:
+        LOG(FATAL) << "Invalid element type for array: " << shape();
+    }
+    CHECK_EQ(data.size(), ShapeUtil::ByteSizeOfElements(*shape_));
+    root_piece_.set_buffer(const_cast<char*>(data.data()));
+  } else if (shape_->IsTuple()) {
+    CHECK_EQ(shape().tuple_shapes_size(), proto.tuple_literals_size());
+    BuildPieceSubtree(*shape_, &root_piece_);
+    for (int i = 0; i < shape_->tuple_shapes_size(); ++i) {
+      BorrowingLiteral child(proto.tuple_literals(i));
+      child.root_piece_.ForEachMutableSubpiece(
+          [&](const ShapeIndex& child_index, Piece* child_piece) {
+            if (!child_piece->subshape().IsArray()) {
+              return;
+            }
+            ShapeIndex index = {i};
+            index.insert(index.end(), child_index.begin(), child_index.end());
+            root_piece_.child(index).set_buffer(child_piece->buffer());
+          });
+    }
+  } else {
+    LOG(FATAL) << "Invalid shape: " << *shape_;
   }
 }
 

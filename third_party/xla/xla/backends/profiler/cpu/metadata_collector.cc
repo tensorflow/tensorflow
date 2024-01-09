@@ -77,7 +77,8 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
   std::vector<std::unique_ptr<xla::HloProto>> debug_info_;
   bool trace_active_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MetadataCollector);
+  MetadataCollector(const MetadataCollector&) = delete;
+  void operator=(const MetadataCollector&) = delete;
 };
 
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreatMetadataCollector(

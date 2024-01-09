@@ -31,9 +31,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 //===----------------------------------------------------------------------===//
@@ -46,6 +45,7 @@ namespace {
 
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
+using ::mlir::quant::OpSet;
 
 // Applies prepare quantization on the model in TF dialect for dynamic range
 // quantization case.
@@ -127,7 +127,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
       return failure();
     }
 
-    // 2. Quantize collected ops. It is immediatly quantized by inserting Q-DQ
+    // 2. Quantize collected ops. It is immediately quantized by inserting Q-DQ
     // pair for int8.
     if (!(quantizeOps(rewriter, op, quantizable_ops))) {
       return failure();

@@ -196,7 +196,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
-    const tensorflow::tfrt_stub::FallbackState& fallback_state,
+    tensorflow::tfrt_stub::FallbackState& fallback_state,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
     CostRecorder* cost_recorder) {
@@ -279,7 +279,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
-    const FallbackState& fallback_state,
+    FallbackState& fallback_state,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
@@ -453,13 +453,13 @@ tensorflow::Status GraphExecutionRunOnFunction(
 }
 
 GraphExecutor::GraphExecutor(
-    Options options, const FallbackState& fallback_state,
+    Options options, std::unique_ptr<FallbackState> fallback_state,
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
         graph_execution_state,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry)
     : options_(std::move(options)),
-      fallback_state_(fallback_state),
+      fallback_state_(std::move(fallback_state)),
       graph_execution_state_(std::move(graph_execution_state)),
       req_deadline_tracker_(options_.runtime->core_runtime()->GetHostContext()),
       kernel_registry_(std::move(kernel_registry)),
@@ -469,7 +469,7 @@ GraphExecutor::GraphExecutor(
 }
 
 StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
-    Options options, const FallbackState& fallback_state,
+    Options options, std::unique_ptr<FallbackState> fallback_state,
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     tensorflow::GraphDef graph_def,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry) {
@@ -491,10 +491,11 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,
-                                      std::move(graph_def), fallback_state));
+                                      std::move(graph_def), *fallback_state));
   return std::make_unique<GraphExecutor>(
-      std::move(options), fallback_state, std::move(resource_context),
-      std::move(graph_execution_state), std::move(kernel_registry));
+      std::move(options), std::move(fallback_state),
+      std::move(resource_context), std::move(graph_execution_state),
+      std::move(kernel_registry));
 }
 
 namespace {
@@ -605,7 +606,7 @@ tensorflow::Status GraphExecutor::Run(
       &flat_outputs, resource_context_.get(),
       &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
-      &loaded_client_graph.resource_array(), runtime(), fallback_state_,
+      &loaded_client_graph.resource_array(), runtime(), fallback_state(),
       loaded_client_graph.process_function_library_runtime(),
       &req_deadline_tracker_, loaded_client_graph.stream_callback_id(),
       cost_recorder));

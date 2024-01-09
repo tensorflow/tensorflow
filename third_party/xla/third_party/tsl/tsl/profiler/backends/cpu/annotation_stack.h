@@ -84,7 +84,8 @@ class AnnotationStack {
  private:
   AnnotationStack() = default;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AnnotationStack);
+  AnnotationStack(const AnnotationStack&) = delete;
+  void operator=(const AnnotationStack&) = delete;
 
   // Returns a reference to the annotation for the current thread.
   static string* ThreadAnnotationStack();

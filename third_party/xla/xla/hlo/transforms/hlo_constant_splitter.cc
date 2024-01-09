@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/hlo/ir/hlo_instruction.h"
+
 namespace xla {
 
 namespace {
@@ -42,9 +44,6 @@ bool IsSupportedConstantExpression(const HloInstruction* instruction) {
 StatusOr<bool> DuplicateConstantExpressionPerUser(HloComputation* computation,
                                                   HloInstruction* to_clone,
                                                   HloInstruction* user) {
-  if (to_clone->user_count() == 1) {
-    return false;
-  }
   absl::InlinedVector<std::pair<const HloInstruction*, int>, 8> worklist(
       1, std::make_pair(to_clone, 0));
   absl::InlinedVector<const HloInstruction*, 8> to_clone_vec;
@@ -156,18 +155,33 @@ StatusOr<bool> HloConstantSplitter::Run(
 
     // Perform duplication of the constants/constant expressions.
     for (HloInstruction* instruction : constants_list) {
-      if (instruction->user_count() <= 1) {
+      if (IsSupportedConstant(instruction, split_expressions_) &&
+          instruction->user_count() <= 1) {
         continue;
       }
+      // Constant Expressions (CE) with only 1 user should also be considered,
+      // otherwise we cannot split the manual and other shardings.
+      //
+      //     --> CE2 -> Instruction with manual sharding
+      // CE1
+      //     --> CE3 -> Instruction with tiled sharding
+      //
+      // An example is illustrated above. CE1 has two users CE2 and CE3. CE2 has
+      // only one user with manual sharding, while CE3 has only one user with
+      // tiled sharding. CE1 is ignored since all its users are in the
+      // constants_set. If we ignore the CE2 and CE3 since they have only one
+      // user, the manual sharding and tiled sharding cannot be isolated,
+      // inducing error in SpmdPartitioner.
+      // b/302613851 provides detailed examples.
       absl::InlinedVector<HloInstruction*, 8> users;
       users.reserve(instruction->user_count());
       // Consider for splitting only leaf expressions (not constants in the
       // middle of a constant expression). Also only split for non-constant
       // users for expressions.
-      for (int i = 0; i < instruction->user_count(); ++i) {
+      for (HloInstruction* user : instruction->users()) {
         if (instruction->opcode() == HloOpcode::kConstant ||
-            !constants_set.contains(instruction->users()[i])) {
-          users.push_back(instruction->users()[i]);
+            !constants_set.contains(user)) {
+          users.push_back(user);
         }
       }
       for (auto* u : users) {
@@ -177,6 +191,7 @@ StatusOr<bool> HloConstantSplitter::Run(
       }
     }
   }
+
   return changed;
 }
 

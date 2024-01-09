@@ -103,13 +103,11 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
                              std::function<double(double)> func, double min,
                              double max);
 
-// Create a 32-bit TOSA TABLE constant tensor
-// Output is restricted to [-1.0, 1.0] as s0.31 format
-void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
-                            double input_scale, int32_t input_zp,
-                            std::function<double(double)> func,
-                            Value& first_const, Value& second_const,
-                            Value& third_const, Value& fourth_const);
+// Create a 32-bit TOSA TABLE for Softmax Exp
+void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
+                                      double beta, double input_scale,
+                                      Value& first_const, Value& second_const,
+                                      Value& third_const, Value& fourth_const);
 
 // Create 8 bit TOSA TABLE constant tensor for the RSqrt operator
 Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,

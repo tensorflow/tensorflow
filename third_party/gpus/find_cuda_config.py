@@ -177,6 +177,7 @@ def _header_paths():
       "extras/CUPTI/include",
       "include/cuda/CUPTI",
       "local/cuda/extras/CUPTI/include",
+      "targets/x86_64-linux/include",
   ]
 
 
@@ -282,6 +283,7 @@ def _find_cuda_config(base_paths, required_version):
   ], "libdevice*.10.bc")
 
   cupti_header_path = _find_file(base_paths, _header_paths(), "cupti.h")
+  nvml_header_dir = _find_file(base_paths, _header_paths(), "nvml.h")
   cupti_library_path = _find_library(base_paths, "cupti", required_version)
 
   cuda_binary_dir = os.path.dirname(nvcc_path)
@@ -306,6 +308,7 @@ def _find_cuda_config(base_paths, required_version):
       "cupti_include_dir": os.path.dirname(cupti_header_path),
       "cupti_library_dir": os.path.dirname(cupti_library_path),
       "cuda_toolkit_path": cuda_toolkit_paths[0],
+      "nvml_header_dir": os.path.dirname(nvml_header_dir),
   }
 
 
@@ -574,7 +577,9 @@ def find_cuda_config():
   result = {}
   if "cuda" in libraries:
     cuda_paths = _list_from_env("CUDA_TOOLKIT_PATH", base_paths)
-    result.update(_find_cuda_config(cuda_paths, cuda_version))
+    res = _find_cuda_config(cuda_paths, cuda_version)
+
+    result.update(res)
 
     cuda_version = result["cuda_version"]
     cublas_paths = base_paths

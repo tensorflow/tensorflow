@@ -22,17 +22,6 @@ limitations under the License.
 //    // Note that the memory is accessible via
 //    // temporary_memory->device_memory() and similar.
 //
-//    // Finalize the temporary memory. The underlying device memory may
-//    // be released any time after this program point, as another thread may
-//    // call Stream::BlockHostUntilDone, causing synchronization. This
-//    // finalization also happens automatically for the user if the unique_ptr
-//    // goes out of scope.
-//    temporary_memory.Finalize();
-//
-// WARNING: do NOT hold onto the device memory associated with temporary_memory
-// after finalization. If temporary_memory->device_memory() is used after the
-// temporary memory is finalized, it will cause a DCHECK failure.
-//
 // Note that standard usage takes advantage of the type-safe wrapper,
 // TemporaryDeviceMemory<T>, defined below.
 //
@@ -63,20 +52,6 @@ class TemporaryDeviceMemoryBase {
 
   // Precondition: !IsFinalized()
   const DeviceMemoryBase& device_memory() const;
-
-  // "Finalizes" this temporary memory, making it acceptable to release at the
-  // next stream synchronization point -- the device memory can be reclaimed at
-  // any time after the temporary memory is marked as finalized (e.g. if a
-  // separate thread is calls Stream::BlockHostUntilDone). This may only be
-  // called once -- see the precondition below.
-  //
-  // Precondition: !IsFinalized()
-  void Finalize();
-
-  // Returns true iff the temporary memory is finalized (that is, the user is
-  // done referring to the temporary device memory, and thus it can be released
-  // at the next stream synchronization point).
-  bool IsFinalized() const;
 
   // Returns true iff the temporary memory is still allocated.
   //

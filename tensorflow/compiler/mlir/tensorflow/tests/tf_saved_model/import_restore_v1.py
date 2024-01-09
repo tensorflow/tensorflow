@@ -33,7 +33,7 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 # CHECK-SAME: initializers = [@[[restore:.*]]]
 
 # CHECK: "tf_saved_model.asset"()
-# CHECK-SAME: {filename = [[filename:.*]], sym_name = "[[sym_name:.*]]"} : () -> ()
+# CHECK-SAME: <{filename = [[filename:.*]], sym_name = "[[sym_name:.*]]"}> : () -> ()
 
 # CHECK:      func @[[restore]](
 # CHECK-SAME:   [[variable_path:%.*]]: tensor<!tf_type.string> {tf_saved_model.bound_input = @[[sym_name]]}

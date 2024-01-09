@@ -50,6 +50,13 @@ cc_library(
   name = "nccl",
   visibility = ["//visibility:public"],
 )
+
+cc_library(
+  name = "nccl_config",
+  hdrs = ["nccl_config.h"],
+  include_prefix = "third_party/nccl",
+  visibility = ["//visibility:public"],
+)
 """
 
 _NCCL_ARCHIVE_BUILD_CONTENT = """
@@ -62,6 +69,12 @@ filegroup(
 alias(
   name = "nccl",
   actual = "@nccl_archive//:nccl",
+  visibility = ["//visibility:public"],
+)
+
+alias(
+  name = "nccl_config",
+  actual = "@nccl_archive//:nccl_config",
   visibility = ["//visibility:public"],
 )
 """
@@ -84,6 +97,12 @@ alias(
   actual = "@nccl_archive//:nccl_headers",
   visibility = ["//visibility:public"],
 )
+
+alias(
+  name = "nccl_config",
+  actual = "@nccl_archive//:nccl_config",
+  visibility = ["//visibility:public"],
+)
 """
 
 def _label(file):
@@ -104,6 +123,7 @@ def _create_local_nccl_repository(repository_ctx):
         else:
             repository_ctx.file("BUILD", _NCCL_ARCHIVE_STUB_BUILD_CONTENT)
 
+        repository_ctx.template("generated_names.bzl", _label("generated_names.bzl.tpl"), {})
         repository_ctx.template(
             "build_defs.bzl",
             _label("build_defs.bzl.tpl"),
@@ -121,6 +141,7 @@ def _create_local_nccl_repository(repository_ctx):
             "%{nccl_library_dir}": config["nccl_library_dir"],
         }
         repository_ctx.template("BUILD", _label("system.BUILD.tpl"), config_wrap)
+        repository_ctx.template("generated_names.bzl", _label("generated_names.bzl.tpl"), {})
 
 def _create_remote_nccl_repository(repository_ctx, remote_config_repo):
     repository_ctx.template(
@@ -128,9 +149,13 @@ def _create_remote_nccl_repository(repository_ctx, remote_config_repo):
         config_repo_label(remote_config_repo, ":BUILD"),
         {},
     )
-
     nccl_version = get_host_environ(repository_ctx, _TF_NCCL_VERSION, "")
     if nccl_version == "":
+        repository_ctx.template(
+            "generated_names.bzl",
+            config_repo_label(remote_config_repo, ":generated_names.bzl"),
+            {},
+        )
         repository_ctx.template(
             "build_defs.bzl",
             config_repo_label(remote_config_repo, ":build_defs.bzl"),
@@ -142,6 +167,7 @@ def _nccl_autoconf_impl(repository_ctx):
         get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
+        repository_ctx.file("nccl_config.h", "#define TF_NCCL_VERSION \"\"")
     elif get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO") != None:
         _create_remote_nccl_repository(repository_ctx, get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO"))
     else:

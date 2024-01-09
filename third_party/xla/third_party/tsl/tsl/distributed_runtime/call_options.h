@@ -73,7 +73,8 @@ class CallOptions {
   // RPC operation timeout in milliseconds.
   int64_t timeout_in_ms_ TF_GUARDED_BY(mu_) = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CallOptions);
+  CallOptions(const CallOptions&) = delete;
+  void operator=(const CallOptions&) = delete;
 };
 
 }  // namespace tsl

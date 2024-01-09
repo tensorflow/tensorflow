@@ -75,7 +75,9 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   std::shared_ptr<StatsAggregator> wrapped_;
   string tag_;
   string prefix_;
-  TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorWithTagAndPrefix);
+  StatsAggregatorWithTagAndPrefix(const StatsAggregatorWithTagAndPrefix&) =
+      delete;
+  void operator=(const StatsAggregatorWithTagAndPrefix&) = delete;
 };
 
 class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {

@@ -20,17 +20,25 @@ limitations under the License.
 #define __HIP_DISABLE_CPP_FUNCTIONS__
 #endif
 
+#include <cstddef>
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/executable_run_options.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/lib/gtl/int_type.h"
+#include "tsl/platform/logging.h"
 
 // Common place for all collective thunks to include nccl/rccl headers.
 #if TENSORFLOW_USE_ROCM
@@ -48,6 +56,7 @@ namespace xla {
 namespace gpu {
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind);
+
 StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op);
 
@@ -97,10 +106,9 @@ class Lockable {
 
   Lockable() = default;
   explicit Lockable(T value) : value_(std::move(value)) {}
+
   Lockable(const Lockable&) = delete;
-  Lockable(Lockable&&) = delete;
   Lockable& operator=(const Lockable&) = delete;
-  Lockable& operator=(Lockable&&) = delete;
 
   Lock Acquire() {
     absl::MutexLock lock(&mutex_);
@@ -129,8 +137,8 @@ struct NcclComm : public Lockable<ncclComm_t> {
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
-    bool enable_clique_optimization);
+    const NcclUniqueIdCallback& unique_id_callback, int32_t rank,
+    int64_t stream_id, bool enable_clique_optimization);
 
 }  // namespace gpu
 }  // namespace xla

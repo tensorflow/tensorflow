@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <string>
-
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -39,7 +37,7 @@ class ConvolutionLayoutNormalizationTest : public HloTestBase {
           // We are setting it to false, as the test runner will have it `true`
           // due to the method below.
           opts.set_xla_gpu_normalize_layouts(false);
-          module->config().set_debug_options(opts);
+          module->mutable_config().set_debug_options(opts);
         }));
   }
 

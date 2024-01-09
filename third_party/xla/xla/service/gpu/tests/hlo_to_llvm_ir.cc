@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -64,21 +65,20 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   llvm::LLVMContext llvm_context;
 
-  tensorflow::se::CudaComputeCapability cuda_compute_capability;
+  stream_executor::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.major = sm / 10;
   cuda_compute_capability.minor = sm % 10;
 
 #if GOOGLE_CUDA
-  xla::gpu::GpuDeviceInfo gpu_device_info =
-      xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  gpu_device_info.compute_capability = cuda_compute_capability;
+  stream_executor::DeviceDescription gpu_device_info =
+      xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo(cuda_compute_capability);
   std::string target_triple = xla::gpu::nvptx::TargetTriple();
   std::string data_layout = xla::gpu::nvptx::DataLayout();
   std::string platform_name = "CUDA";
   stream_executor::Platform::Id platform_id =
       stream_executor::cuda::kCudaPlatformId;
 #elif TENSORFLOW_USE_ROCM
-  xla::gpu::GpuDeviceInfo gpu_device_info =
+  stream_executor::DeviceDescription gpu_device_info =
       xla::gpu::TestGpuDeviceInfo::AMDMI210DeviceInfo();
   std::string target_triple = xla::gpu::amdgpu::TargetTriple();
   std::string data_layout = xla::gpu::amdgpu::DataLayout();
@@ -91,20 +91,22 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
     return xla::gpu::GetSizeOfShape(buffer.shape(), /*pointer_size=*/8);
   };
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
-                      xla::gpu::CompileModuleToLlvmIr(
-                          hlo_module.get(), &llvm_context, target_triple,
-                          data_layout, platform_name, platform_id,
-                          gpu_device_info, buffer_size_bytes_function));
+  TF_ASSIGN_OR_RETURN(
+      xla::gpu::CompileModuleResults results,
+      xla::gpu::CompileModuleToLlvmIr(
+          hlo_module.get(), &llvm_context, target_triple, data_layout,
+          platform_name, platform_id, gpu_device_info,
+          &xla::gpu::CanShareBufferHint, buffer_size_bytes_function));
+  llvm::Module* llvm_module = results.llvm_module.get();
 
   if (!generate_ptx) {
     llvm_module->print(llvm::outs(), nullptr);
   } else {
 #if GOOGLE_CUDA
-    TF_ASSIGN_OR_RETURN(std::string ptx,
-                        xla::gpu::nvptx::CompileToPtx(
-                            llvm_module.get(), cuda_compute_capability,
-                            hlo_module->config().debug_options()));
+    TF_ASSIGN_OR_RETURN(
+        std::string ptx,
+        xla::gpu::nvptx::CompileToPtx(llvm_module, cuda_compute_capability,
+                                      hlo_module->config().debug_options()));
     std::cout << ptx << std::endl;
 #elif TENSORFLOW_USE_ROCM
     return {absl::StatusCode::kUnimplemented,

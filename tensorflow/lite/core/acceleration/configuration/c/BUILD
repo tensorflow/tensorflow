@@ -39,6 +39,16 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        "stable_delegate.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 # LINT.IfChange(tflite_acceleration_exported_headers)
 exports_files([
     "delegate_plugin.h",
@@ -150,6 +160,7 @@ tflite_cc_library_with_c_headers_test(
     name = "xnnpack_plugin",
     srcs = ["xnnpack_plugin.cc"],
     hdrs = ["xnnpack_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ] + xnnpack_plugin_visibility_allowlist(),
@@ -169,36 +180,6 @@ cc_test(
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "@com_google_googletest//:gtest_main",
-        "@pthreadpool",
-    ],
-)
-
-tflite_cc_library_with_c_headers_test(
-    name = "xnnpack_plugin_c_test_lib",
-    testonly = True,
-    srcs = ["xnnpack_plugin_c_test_lib.c"],
-    hdrs = ["xnnpack_plugin_c_test_lib.h"],
-    deps = [
-        ":configuration_c_fbs",
-        ":xnnpack_plugin",
-        "//tensorflow/lite/core/c:common",
-        "//third_party/flatcc:runtime",
-        "@pthreadpool",
-    ],
-)
-
-cc_test(
-    name = "xnnpack_plugin_c_test",
-    srcs = ["xnnpack_plugin_c_test.cc"],
-    deps = [
-        ":configuration_c_fbs",
-        ":xnnpack_plugin",
-        ":xnnpack_plugin_c_test_lib",
-        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//third_party/flatcc:runtime",
         "@com_google_googletest//:gtest_main",
         "@pthreadpool",
     ],

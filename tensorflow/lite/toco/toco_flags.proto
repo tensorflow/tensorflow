@@ -40,7 +40,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 60.
+// Next ID to use: 61.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -338,4 +338,9 @@ message TocoFlags {
   // conversions are supported.
   // WARNING: Experimental interface, subject to change.
   optional bool reduce_type_precision = 59 [default = false];
+
+  // Whether to consider this model a quantized model with quantize/dequantize
+  // ops and to convert kernels to quantized kernels wherever appropriate.
+  // WARNING: Experimental interface, subject to change.
+  optional string qdq_conversion_mode = 60 [default = "NONE"];
 }

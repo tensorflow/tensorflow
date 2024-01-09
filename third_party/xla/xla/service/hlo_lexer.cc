@@ -96,6 +96,7 @@ TokKind HloLexer::LexToken() {
     token_state_.token_start = current_ptr_;
 
     int current_char = GetNextChar();
+    TokKind tmp;
     switch (current_char) {
       default:
         // [a-zA-Z_]
@@ -132,7 +133,11 @@ TokKind HloLexer::LexToken() {
           current_ptr_++;
           return TokKind::kArrow;
         }
-        return LexNumberOrPattern();
+        tmp = LexNumberOrPattern();
+        if (tmp == TokKind::kError && current_char == '?') {
+          return TokKind::kQuestionMark;
+        }
+        return tmp;
       case '=':
         return TokKind::kEqual;
       case '<':
@@ -569,6 +574,8 @@ std::string TokKindToString(TokKind kind) {
       return "kColon";
     case TokKind::kAsterisk:
       return "kAsterisk";
+    case TokKind::kQuestionMark:
+      return "kQuestionMark";
     case TokKind::kOctothorp:
       return "kOctothorp";
     case TokKind::kPlus:

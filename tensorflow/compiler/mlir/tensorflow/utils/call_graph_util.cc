@@ -13,18 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
-inline constexpr absl::string_view kEntryFunctionAttr = "tf.entry_function";
-
 namespace mlir {
 
+std::vector<llvm::StringRef> GetEntryFunctionAttributeNames() {
+  return {"tf.entry_function",
+          tf_saved_model::kTfSavedModelInitializerTypeAttr};
+}
+
 bool IsEntryFunction(func::FuncOp func) {
-  return func->hasAttr(kEntryFunctionAttr) ||
-         func->hasAttr(tf_saved_model::kTfSavedModelInitializerTypeAttr);
+  for (const auto &attr : GetEntryFunctionAttributeNames()) {
+    if (func->hasAttr(attr)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 llvm::SmallVector<func::FuncOp> GetEntryFunctions(ModuleOp module) {

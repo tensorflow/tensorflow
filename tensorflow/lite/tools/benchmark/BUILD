@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -186,6 +186,7 @@ cc_test(
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_tflite_model_lib",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/tools:tool_params",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",

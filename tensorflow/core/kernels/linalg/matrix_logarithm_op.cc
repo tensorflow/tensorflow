@@ -46,7 +46,8 @@ class MatrixLogarithmOp : public LinearAlgebraOp<Scalar> {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixLogarithmOp);
+  MatrixLogarithmOp(const MatrixLogarithmOp&) = delete;
+  void operator=(const MatrixLogarithmOp&) = delete;
 };
 
 // For real-valued matrices, this Op would return the real part of the matrix

@@ -694,8 +694,9 @@ Status DirectSession::RunInternal(
           ((measure_step_count + 1) % build_cost_model_every == 0);
     }
   }
-  if (do_trace || update_cost_model ||
-      run_options.report_tensor_allocations_upon_oom()) {
+  if (run_metadata != nullptr &&
+      (do_trace || update_cost_model ||
+       run_options.report_tensor_allocations_upon_oom())) {
     run_state.collector.reset(
         new StepStatsCollector(run_metadata->mutable_step_stats()));
     args.stats_collector = run_state.collector.get();
@@ -781,7 +782,7 @@ Status DirectSession::RunInternal(
     run_status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
-  if (device_profiler_session) {
+  if (run_metadata != nullptr && device_profiler_session) {
     TF_RETURN_IF_ERROR(device_profiler_session->CollectData(
         run_metadata->mutable_step_stats()));
   }
@@ -814,11 +815,13 @@ Status DirectSession::RunInternal(
     mutex_lock l(executor_lock_);
     run_state.collector->BuildCostModel(&cost_model_manager_, device_to_graph);
 
-    // annotate stats onto cost graph.
-    CostGraphDef* cost_graph = run_metadata->mutable_cost_graph();
-    for (const auto& item : executors_and_keys->items) {
-      TF_RETURN_IF_ERROR(
-          cost_model_manager_.AddToCostGraphDef(item.graph.get(), cost_graph));
+    if (run_metadata != nullptr) {
+      // annotate stats onto cost graph.
+      CostGraphDef* cost_graph = run_metadata->mutable_cost_graph();
+      for (const auto& item : executors_and_keys->items) {
+        TF_RETURN_IF_ERROR(cost_model_manager_.AddToCostGraphDef(
+            item.graph.get(), cost_graph));
+      }
     }
   }
 
@@ -828,7 +831,7 @@ Status DirectSession::RunInternal(
       return errors::InvalidArgument(
           "RunOptions.output_partition_graphs() is not supported when "
           "disable_output_partition_graphs is true.");
-    } else {
+    } else if (run_metadata != nullptr) {
       protobuf::RepeatedPtrField<GraphDef>* partition_graph_defs =
           run_metadata->mutable_partition_graphs();
       for (const PerPartitionExecutorsAndLib& exec_and_lib :

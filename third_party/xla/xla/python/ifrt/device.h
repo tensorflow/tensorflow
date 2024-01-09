@@ -17,10 +17,13 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_DEVICE_H_
 
 #include <memory>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/types.pb.h"
 
@@ -64,7 +67,7 @@ class DeviceList {
   // Returns a `DeviceListProto` representation.
   DeviceListProto ToProto() const;
 
-  absl::Span<Device* const> devices() const { return state_->devices; }
+  absl::Span<Device* const> devices() const { return state().devices; }
 
   bool operator==(const DeviceList& other) const {
     return devices() == other.devices();
@@ -73,18 +76,18 @@ class DeviceList {
     return devices() != other.devices();
   }
 
-  int size() const { return state_->devices.size(); }
-  bool empty() const { return state_->devices.empty(); }
+  int size() const { return state().devices.size(); }
+  bool empty() const { return state().devices.empty(); }
 
-  Device* operator[](int i) const { return state_->devices[i]; }
-  Device* at(int i) const { return state_->devices.at(i); }
-  Device* front() const { return state_->devices.front(); }
-  Device* back() const { return state_->devices.back(); }
+  Device* operator[](int i) const { return state().devices[i]; }
+  Device* at(int i) const { return state().devices.at(i); }
+  Device* front() const { return state().devices.front(); }
+  Device* back() const { return state().devices.back(); }
 
-  auto begin() const { return state_->devices.begin(); }
-  auto cbegin() const { return state_->devices.cbegin(); }
-  auto end() const { return state_->devices.end(); }
-  auto cend() const { return state_->devices.cend(); }
+  auto begin() const { return state().devices.begin(); }
+  auto cbegin() const { return state().devices.cbegin(); }
+  auto end() const { return state().devices.end(); }
+  auto cend() const { return state().devices.cend(); }
 
  private:
   // Internal state that may be shared across `DeviceList` instances.
@@ -92,7 +95,33 @@ class DeviceList {
     Devices devices;
   };
 
-  std::shared_ptr<State> state_;
+  State& state() {
+    return std::visit(
+        [](auto& state) -> State& {
+          using T = std::decay_t<decltype(state)>;
+          if constexpr (std::is_same_v<T, State>) {
+            return state;
+          } else if constexpr (std::is_same_v<T, std::shared_ptr<State>>) {
+            return *state;
+          }
+        },
+        state_);
+  }
+
+  const State& state() const {
+    return std::visit(
+        [](auto& state) -> const State& {
+          using T = std::decay_t<decltype(state)>;
+          if constexpr (std::is_same_v<T, State>) {
+            return state;
+          } else if constexpr (std::is_same_v<T, std::shared_ptr<State>>) {
+            return *state;
+          }
+        },
+        state_);
+  }
+
+  std::variant<State, std::shared_ptr<State>> state_;
 };
 
 // Returns the id of each device in `device_list`.

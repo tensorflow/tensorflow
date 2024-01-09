@@ -125,6 +125,8 @@ Status DispatchGrpcDataServer::StartServiceInternal() {
   return service_->Start();
 }
 
+void DispatchGrpcDataServer::StopServiceInternal() { service_->Stop(); }
+
 Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   GetWorkersRequest req;
   GetWorkersResponse resp;

@@ -88,7 +88,8 @@ class AddNOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(AddNOp);
+  AddNOp(const AddNOp&) = delete;
+  void operator=(const AddNOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("AddN").AllowVariantTypes(), AddNOp);

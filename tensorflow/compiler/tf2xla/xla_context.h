@@ -175,7 +175,8 @@ class XlaContext : public ResourceBase {
   // Cached computation to compute Sigmoid of an element, specialized by type.
   ComputationMap sigmoid_func_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaContext);
+  XlaContext(const XlaContext&) = delete;
+  void operator=(const XlaContext&) = delete;
 };
 
 }  // namespace tensorflow

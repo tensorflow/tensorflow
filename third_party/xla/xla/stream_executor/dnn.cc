@@ -217,6 +217,18 @@ DnnSupport::FusedConvolveRunnerFromDesc(
       "FusedConvolveRunnerFromDesc not implemented.");
 }
 
+tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>>
+DnnSupport::NormRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+    const dnn::TensorDescriptor& input_descriptor,
+    const dnn::TensorDescriptor& scale_descriptor,
+    const dnn::TensorDescriptor& bias_descriptor,
+    const dnn::TensorDescriptor& output_descriptor,
+    std::optional<dnn::TensorDescriptor> expectation_descriptor,
+    std::optional<dnn::TensorDescriptor> norm_factor_descriptor) {
+  return absl::UnimplementedError("NormRunnerFromDesc not implemented.");
+}
+
 tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
 DnnSupport::FusedMHARunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
@@ -229,7 +241,8 @@ DnnSupport::FusedMHARunnerFromDesc(
     std::optional<dnn::TensorDescriptor> activation_descriptor,
     std::optional<dnn::TensorDescriptor> mask_descriptor,
     std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    std::optional<double> dropout_rate, std::optional<int64_t> seed,
+    bool is_flash_attention, bool is_causal_mask) {
   return absl::UnimplementedError("FusedMHARunnerFromDesc not implemented.");
 }
 
@@ -245,10 +258,13 @@ DnnSupport::FusedMHABackwardRunnerFromDesc(
     const TensorDescriptor& d_bmm1_lhs_descriptor,
     const TensorDescriptor& d_bmm1_rhs_descriptor,
     const TensorDescriptor& d_bmm2_rhs_descriptor,
-    const TensorDescriptor& d_s_descriptor,
+    std::optional<dnn::TensorDescriptor> d_s_descriptor,
     std::optional<dnn::TensorDescriptor> mask_descriptor,
-    std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed) {
+    std::optional<dnn::TensorDescriptor> d_bias_descriptor,
+    std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
+    std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+    std::optional<double> dropout_rate, std::optional<int64_t> seed,
+    bool is_flash_attention, bool is_causal_mask) {
   return absl::UnimplementedError(
       "FusedMHABackwardRunnerFromDesc not implemented.");
 }

@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
@@ -36,16 +37,22 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tfrt/backend_compiler.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tsl/framework/device_type.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -57,13 +64,17 @@ namespace {
 
 // Exports all XLA functions in the form of XlaLaunch, and their nested
 // functions.
-StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
+StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
+    mlir::ModuleOp module, std::vector<std::string>* added_xla_function_names) {
   // Find all XLA functions.
   std::vector<std::string> xla_functions;
   module.walk([&](mlir::TF::XlaLaunchOp xla_launch_op) {
     std::string func_name =
         xla_launch_op.getFunctionAttr().getRootReference().str();
     xla_functions.push_back(func_name);
+    if (added_xla_function_names != nullptr) {
+      added_xla_function_names->push_back(func_name);
+    }
   });
 
   // Convert all XLA functions and their nested functions.
@@ -205,7 +216,16 @@ Status ConvertTfMlirToRuntimeExecutable(
     }
 
     TF_RETURN_IF_ERROR(
-        mlir::TFTPU::TPUBridge(module, /*enable_logging=*/VLOG_IS_ON(1)));
+        tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+            module, tf2xla::v2::DeviceType::XLA_TPU_JIT,
+            /*is_in_fallback_enabled_mode=*/VLOG_IS_ON(1)));
+
+    TF_RETURN_IF_ERROR(
+        tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
+            module, tsl::DeviceType(DEVICE_TPU_XLA_JIT)));
+
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(module));
   } else if (options.device_target == TfrtDeviceInfraTarget::kTfFallback) {
     auto tpu_partitioned_call_fallback_compat_result =
         tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
@@ -214,7 +234,17 @@ Status ConvertTfMlirToRuntimeExecutable(
           "Failed to process TPUPartitionedCallOp for fallback execution"));
     }
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
-    TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+            module, tf2xla::v2::DeviceType::XLA_GPU_JIT,
+            /*is_in_fallback_enabled_mode=*/false));
+
+    TF_RETURN_IF_ERROR(
+        tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
+            module, tsl::DeviceType(DEVICE_GPU_XLA_JIT)));
+
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(module));
 
     if (options.serialize_mlir_module_to_aot_packages) {
       const std::string mlir_string = SerializeMlirModule(module);
@@ -324,7 +354,6 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
   pipeline_options->cost_threshold = options.cost_threshold;
-  pipeline_options->upper_cost_threshold = options.upper_cost_threshold;
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
 
@@ -335,13 +364,11 @@ tensorflow::Status AddXlaFunctions(
     tfrt_stub::FallbackState* fallback_state, mlir::ModuleOp mlir_module,
     std::vector<std::string>* added_xla_function_names) {
   if (fallback_state != nullptr) {
-    TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
-                        ExportXlaFunctions(mlir_module));
+    TF_ASSIGN_OR_RETURN(
+        const std::vector<FunctionDef> xla_func_defs,
+        ExportXlaFunctions(mlir_module, added_xla_function_names));
     for (const auto& func_def : xla_func_defs) {
       TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
-      if (added_xla_function_names != nullptr) {
-        added_xla_function_names->push_back(func_def.signature().name());
-      }
     }
   }
 

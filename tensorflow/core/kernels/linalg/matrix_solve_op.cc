@@ -111,7 +111,8 @@ class MatrixSolveOp : public LinearAlgebraOp<Scalar> {
  private:
   bool adjoint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSolveOp);
+  MatrixSolveOp(const MatrixSolveOp&) = delete;
+  void operator=(const MatrixSolveOp&) = delete;
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

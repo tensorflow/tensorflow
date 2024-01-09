@@ -32,7 +32,8 @@ class GrpcClientCQTag {
   virtual void OnCompleted(bool ok) = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcClientCQTag);
+  GrpcClientCQTag(const GrpcClientCQTag&) = delete;
+  void operator=(const GrpcClientCQTag&) = delete;
 };
 
 }  // namespace tsl

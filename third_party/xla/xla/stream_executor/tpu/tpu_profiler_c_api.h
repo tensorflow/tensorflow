@@ -61,12 +61,22 @@ TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(TpuProfiler* tpu_profiler,
                                                uint8_t* buffer,
                                                size_t* size_in_bytes);
 
+// Status helpers to create TFStatus for Profiler.
+TF_Status* TpuStatus_New();
+void TpuStatus_Free(TF_Status* status);
+const char* TpuStatus_Message(TF_Status* status);
+int TpuStatus_Code(TF_Status* status);
+
 struct TfTpu_ProfilerApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Destroy);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Start);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Stop);
   TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_CollectData);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_New);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Message);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStatus_Code);
 };
 
 }  // extern "C"

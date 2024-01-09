@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -40,6 +41,7 @@ limitations under the License.
 
 namespace tsl {
 
+class FileAcl;
 class RandomAccessFile;
 class ReadOnlyMemoryRegion;
 class WritableFile;
@@ -531,6 +533,13 @@ class FileSystem {
     return errors::Unimplemented("SetOption");
   }
 
+  /// \brief Set File System ACL checker.
+  ///
+  /// No checks are enforced if a FileAcl is never set.
+  virtual tsl::Status SetFileAcl(std::shared_ptr<FileAcl> file_acl) {
+    return errors::Unimplemented("SetFileAcl");
+  }
+
   FileSystem() {}
 
   virtual ~FileSystem() = default;
@@ -772,7 +781,8 @@ class RandomAccessFile {
 #endif
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
+  RandomAccessFile(const RandomAccessFile&) = delete;
+  void operator=(const RandomAccessFile&) = delete;
 };
 
 /// \brief A file abstraction for sequential writing.
@@ -845,7 +855,8 @@ class WritableFile {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
+  WritableFile(const WritableFile&) = delete;
+  void operator=(const WritableFile&) = delete;
 };
 
 /// \brief A readonly memmapped file abstraction.
@@ -898,6 +909,13 @@ class FileSystemRegistry {
   virtual FileSystem* Lookup(const std::string& scheme) = 0;
   virtual tsl::Status GetRegisteredFileSystemSchemes(
       std::vector<std::string>* schemes) = 0;
+};
+
+/// \brief An abstraction for enforcing ACL checks in FileSystem.
+class FileAcl {
+ public:
+  virtual absl::Status CheckAccess(std::string_view path) = 0;
+  virtual ~FileAcl() = default;
 };
 
 }  // namespace tsl

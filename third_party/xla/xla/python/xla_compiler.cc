@@ -43,10 +43,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/python/exceptions.h"
+#include "xla/pjrt/exceptions.h"
+#include "xla/pjrt/status_casters.h"
 #include "xla/python/py_client.h"
-#include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/computation_placer.h"
@@ -288,6 +289,9 @@ void BuildXlaCompilerSubmodule(py::module& m) {
   // Shapes
   py::class_<Layout> layout_class(m, "Layout");
   layout_class
+      .def(py::init([](absl::Span<const int64_t> minor_to_major) {
+        return std::make_unique<Layout>(minor_to_major);
+      }))
       .def("minor_to_major",
            [](Layout layout) { return SpanToTuple(layout.minor_to_major()); })
       .def("__eq__", [](const Layout& layout,
@@ -296,7 +300,24 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                         const Layout& other) { return layout != other; })
       .def("__hash__",
            [](const Layout& layout) { return absl::HashOf(layout); })
-      .def("to_string", &Layout::ToString);
+      .def("to_string", &Layout::ToString)
+      .def(py::pickle(
+          [](const Layout& self) -> py::tuple {
+            auto proto = self.ToProto();
+            std::string result;
+            if (!tsl::SerializeToStringDeterministic(proto, &result)) {
+              // throw converted by PyBind to a Python RuntimeError.
+              throw XlaRuntimeError(
+                  absl::StrCat("Layout.py_pickle: ",
+                               "SerializeToStringDeterministic failed"));
+            }
+            return py::make_tuple(py::bytes(result));
+          },
+          [](py::tuple t) {
+            LayoutProto result;
+            result.ParseFromString(t[0].cast<std::string>());
+            return Layout::CreateFromProto(result);
+          }));
 
   py::class_<Shape> shape_class(m, "Shape");
   shape_class
@@ -533,6 +554,40 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &HloPrintOptions::is_in_nested_computation,
                     &HloPrintOptions::set_is_in_nested_computation);
 
+  // HloModule.computations() returns raw pointers.
+  // pybind seems to prefer smart pointers.
+  // We give pybind a smart pointer to a wrapper around a raw pointer to satisfy
+  // pybind and avoid double frees.
+  class ComputationWrapper {
+   public:
+    ComputationWrapper(const HloComputation* comp,
+                       const std::shared_ptr<HloModule> module)
+        : comp{comp}, module{module} {}
+    absl::string_view name() const { return comp->name(); }
+    void render_html(const std::string& filename) {
+      std::string html = xla::ValueOrThrow(RenderGraph(
+          *comp, /*label=*/"", comp->parent()->config().debug_options(),
+          RenderedGraphFormat::kHtml, HloRenderOptions()));
+      xla::ThrowIfError(tsl::WriteStringToFile(
+          tsl::Env::Default(), absl::StrCat(filename, ".html"), html));
+    }
+
+   private:
+    const HloComputation* comp;
+    // The module owns the computations: if its destructor is called, the
+    // computations are freed. To prevent that from happening in cases where the
+    // module Python object goes out of scope and gets garbage collected before
+    // the computations, we keep a shared_ptr to the module that originated the
+    // computation.
+    const std::shared_ptr<HloModule> module;
+  };
+
+  py::class_<ComputationWrapper, std::shared_ptr<ComputationWrapper>>
+      hlo_computation_class(m, "HloComputation");
+
+  hlo_computation_class.def_property_readonly("name", &ComputationWrapper::name)
+      .def("render_html", &ComputationWrapper::render_html);
+
   py::class_<HloModule, std::shared_ptr<HloModule>> hlo_module_class(
       m, "HloModule");
   hlo_module_class.def_property_readonly("name", &HloModule::name)
@@ -545,6 +600,15 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            xla::ValueOrThrowWrapper(GetHloModuleSerializedProto))
       .def("from_serialized_hlo_module_proto",
            xla::ValueOrThrowWrapper(HloModuleFromSerializedProto))
+      .def("computations",
+           [](const std::shared_ptr<HloModule> m)
+               -> std::vector<std::shared_ptr<ComputationWrapper>> {
+             std::vector<std::shared_ptr<ComputationWrapper>> computations;
+             for (HloComputation* comp : m->computations())
+               computations.push_back(
+                   std::make_shared<ComputationWrapper>(comp, m));
+             return computations;
+           })
       .def_property_readonly(
           "spmd_output_sharding",
           [](const HloModule& m) -> std::optional<xla::OpSharding> {
@@ -831,9 +895,10 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_property("xla_cpu_fast_math_honor_functions",
                     &DebugOptions::xla_cpu_fast_math_honor_functions,
                     &DebugOptions::set_xla_cpu_fast_math_honor_functions)
-      .def_property("xla_detailed_logging_and_dumping",
-                    &DebugOptions::xla_detailed_logging_and_dumping,
-                    &DebugOptions::set_xla_detailed_logging_and_dumping)
+      .def_property("xla_detailed_logging", &DebugOptions::xla_detailed_logging,
+                    &DebugOptions::set_xla_detailed_logging)
+      .def_property("xla_enable_dumping", &DebugOptions::xla_enable_dumping,
+                    &DebugOptions::set_xla_enable_dumping)
       .def_property("xla_gpu_enable_fast_min_max",
                     &DebugOptions::xla_gpu_enable_fast_min_max,
                     &DebugOptions::set_xla_gpu_enable_fast_min_max)
@@ -924,7 +989,22 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &DebugOptions::xla_dump_hlo_pipeline_re,
                     [](DebugOptions* self, std::string value) {
                       self->set_xla_dump_hlo_pipeline_re(value);
-                    });
+                    })
+      .def_property("xla_gpu_enable_async_all_reduce",
+                    &DebugOptions::xla_gpu_enable_async_all_reduce,
+                    &DebugOptions::set_xla_gpu_enable_async_all_reduce)
+      .def_property("xla_gpu_enable_async_all_gather",
+                    &DebugOptions::xla_gpu_enable_async_all_gather,
+                    &DebugOptions::set_xla_gpu_enable_async_all_gather)
+      .def_property("xla_gpu_enable_async_collective_permute",
+                    &DebugOptions::xla_gpu_enable_async_collective_permute,
+                    &DebugOptions::set_xla_gpu_enable_async_collective_permute)
+      .def_property("xla_gpu_enable_async_all_to_all",
+                    &DebugOptions::xla_gpu_enable_async_all_to_all,
+                    &DebugOptions::set_xla_gpu_enable_async_all_to_all)
+      .def_property("xla_gpu_enable_async_reduce_scatter",
+                    &DebugOptions::xla_gpu_enable_async_reduce_scatter,
+                    &DebugOptions::set_xla_gpu_enable_async_reduce_scatter);
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())

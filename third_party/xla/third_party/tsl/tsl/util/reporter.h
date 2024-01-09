@@ -54,7 +54,8 @@ class TestReportFile {
   string fname_;
   string test_name_;
   std::unique_ptr<WritableFile> log_file_;
-  TF_DISALLOW_COPY_AND_ASSIGN(TestReportFile);
+  TestReportFile(const TestReportFile&) = delete;
+  void operator=(const TestReportFile&) = delete;
 };
 
 // The TestReporter writes test / benchmark output to binary Protobuf files when
@@ -124,7 +125,8 @@ class TestReporter {
   }
   TestReportFile report_file_;
   tensorflow::BenchmarkEntry benchmark_entry_;
-  TF_DISALLOW_COPY_AND_ASSIGN(TestReporter);
+  TestReporter(const TestReporter&) = delete;
+  void operator=(const TestReporter&) = delete;
 };
 
 }  // namespace tsl

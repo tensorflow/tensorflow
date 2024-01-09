@@ -32,6 +32,7 @@ py_strict_test(
     deps = [
         ":function_type",
         ":type_dispatch",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types:trace",
     ],
@@ -60,6 +61,7 @@ py_strict_test(
     visibility = ["//learning/brain/contrib/eager/python/examples:__pkg__"],
     deps = [
         ":function_cache",
+        #internal proto upb dep
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/ops:array_ops",
@@ -116,6 +118,7 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":function_type",
+        #internal proto upb dep
         "//tensorflow/core/function/polymorphism:function_type_proto_py",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/core/function/trace_type:serialization",

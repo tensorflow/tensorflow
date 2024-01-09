@@ -193,6 +193,7 @@ cc_library(
         ":drop_savedmodel_semantics",
         ":fold_broadcast_pass",
         ":fuse_convolution_pass",
+        ":legalize_tf_xla_call_module_to_stablehlo_pass",
         ":optimize",
         ":rename_entrypoint_to_main",
         ":smuggle_disallowed_ops",
@@ -278,6 +279,7 @@ cc_library(
     copts = ["-Ithird_party"],
     deps = [
         ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/stablehlo:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
@@ -453,6 +455,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -486,6 +489,25 @@ gentbl_cc_library(
     ],
 )
 
+gentbl_cc_library(
+    name = "hlo_legalize_tflite_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "transforms/generated_tflite_legalize_hlo.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/tflite_legalize_hlo_patterns.td",
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncTdFiles",
+        "@local_xla//xla/mlir_hlo:hlo_ops_td_files",
+    ],
+)
+
 cc_library(
     name = "tfl_legalize_hlo",
     srcs = [
@@ -498,9 +520,12 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
+        ":hlo_legalize_tflite_inc_gen",
         ":passes_inc_gen",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:pad",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:custom_call",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:dot_general",
+        "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -527,9 +552,12 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
+        ":hlo_legalize_tf_inc_gen",
         ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow/transforms:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_device_pass_inc_gen",
         "//tensorflow/core:framework",

@@ -119,7 +119,8 @@ class TileOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TileOp);
+  TileOp(const TileOp&) = delete;
+  void operator=(const TileOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Tile").CompileTimeConstantInput("multiples"), TileOp);

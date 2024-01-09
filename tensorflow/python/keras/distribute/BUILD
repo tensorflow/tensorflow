@@ -84,7 +84,7 @@ py_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:mode_keys",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/training:checkpoint_management",
     ],
@@ -98,7 +98,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
     ],
 )
 

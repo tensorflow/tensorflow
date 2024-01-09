@@ -43,7 +43,7 @@ struct StripSavedModuleMetadataPass
 
 bool ShouldStripAttr(NamedAttribute &namedAttr) {
   auto name = namedAttr.getName().strref();
-  return name.startswith("tf_saved_model.");
+  return name.starts_with("tf_saved_model.");
 }
 
 void StripModule(Operation *module) {

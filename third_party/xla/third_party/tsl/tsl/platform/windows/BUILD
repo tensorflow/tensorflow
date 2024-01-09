@@ -1,12 +1,11 @@
-load("//tsl:tsl.default.bzl", "filegroup")
-
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//tsl:tsl.bzl",
     "tsl_copts",
 )
+load("//tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -144,7 +143,7 @@ cc_library(
     deps = [
         ":wide_char",
         "//tsl/platform:errors",
-        "//tsl/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 

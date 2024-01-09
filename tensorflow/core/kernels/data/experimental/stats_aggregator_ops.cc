@@ -110,7 +110,8 @@ class StatsAggregatorImpl : public StatsAggregator {
   std::unordered_map<string, histogram::Histogram> histograms_
       TF_GUARDED_BY(mu_);
   std::unordered_map<string, float> scalars_ TF_GUARDED_BY(mu_);
-  TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorImpl);
+  StatsAggregatorImpl(const StatsAggregatorImpl&) = delete;
+  void operator=(const StatsAggregatorImpl&) = delete;
 };
 
 class StatsAggregatorHandleOp
@@ -234,7 +235,8 @@ class StatsAggregatorImplV2 : public StatsAggregator {
   // context
   std::unordered_map<string, histogram::Histogram> histograms_
       TF_GUARDED_BY(mu_);
-  TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorImplV2);
+  StatsAggregatorImplV2(const StatsAggregatorImplV2&) = delete;
+  void operator=(const StatsAggregatorImplV2&) = delete;
 };
 
 class StatsAggregatorHandleOpV2

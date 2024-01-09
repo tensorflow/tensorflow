@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_module_config.h"
@@ -141,10 +143,22 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
-    auto cmp_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
+    // logic: isNaN(lhs) || (!isNan(rhs) && lhs >= rhs) ? lhs : rhs
+    // See also: IEEE Std 754-2008 5.11.
+    //
+    // This also works, but we wanted to make it similar to minimum.
+    // logic: isNaN(lhs) || lhs >= rhs ? lhs : rhs
+    //
+    // b->CreateMaximum() doesn't work on GPU before SM80.
+    //
+    // A test with a strange LLVM version breaks if we use OGT here, so we use
+    // OGE.
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto sel_lhs = b->CreateOr(cmp_ge, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
+    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
+    auto lhs_is_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
+    return b->CreateSelect(
+        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_ge)),
+        lhs_value, rhs_value, name.data());
   }
 }
 
@@ -155,10 +169,23 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
-    auto cmp_le = b->CreateFCmpOLE(lhs_value, rhs_value);
+    // logic: isNaN(lhs) || (!isNan(rhs) && lhs <= rhs) ? lhs : rhs
+    // See also: IEEE Std 754-2008 5.11.
+    //
+    // This should also work, but the tests show that it doesn't work for
+    // minimum(x, NaN) on GPU:
+    // logic: isNaN(lhs) || lhs <= rhs ? lhs : rhs
+    //
+    // b->CreateMaximum() doesn't work on GPU before SM80.
+    //
+    // A test with a strange LLVM version breaks if we use OLT here, so we use
+    // OLE.
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto sel_lhs = b->CreateOr(cmp_le, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
+    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
+    auto lhs_is_le = b->CreateFCmpOLE(lhs_value, rhs_value);
+    return b->CreateSelect(
+        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_le)),
+        lhs_value, rhs_value, name.data());
   }
 }
 
@@ -166,9 +193,6 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
                                    llvm::Value* index, llvm::IRBuilder<>* b) {
   llvm::Type* array_type = array->getType();
   CHECK(array_type->isPointerTy());
-  llvm::PointerType* array_type_as_pointer =
-      llvm::cast<llvm::PointerType>(array_type);
-  CHECK(array_type_as_pointer->isOpaqueOrPointeeTypeMatches(element_type));
   VLOG(2) << "EmitBufferIndexingGEP with type="
           << llvm_ir::DumpToString(array_type)
           << " array=" << llvm_ir::DumpToString(array)
@@ -189,10 +213,10 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
-    case PRED:
-    // Int8 is used as there is no LLVM S4/U4 dtype
     case S4:
     case U4:
+      return llvm::Type::getIntNTy(module->getContext(), 4);
+    case PRED:
     case S8:
     case U8:
       return llvm::Type::getInt8Ty(module->getContext());
@@ -258,11 +282,11 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE_TYPE:
-      return llvm::Type::getInt8PtrTy(module->getContext());
+      return llvm::PointerType::getUnqual(module->getContext());
     case TOKEN:
       // Tokens do not have a physical representation, but the compiler needs
       // some placeholder type, so use int8_t*.
-      return llvm::Type::getInt8PtrTy(module->getContext());
+      return llvm::PointerType::getUnqual(module->getContext());
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
@@ -311,10 +335,18 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
+  int64_t size_bytes = literal.size_bytes();
   CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
-  return llvm::ConstantDataArray::getString(
-      module->getContext(), llvm::StringRef(data, literal.size_bytes()),
-      /*AddNull=*/false);
+  std::vector<char> packed_data;
+  if (primitive_util::Is4BitType(literal.shape().element_type())) {
+    packed_data.resize((size_bytes + 1) / 2);
+    PackInt4(absl::MakeSpan(data, size_bytes), absl::MakeSpan(packed_data));
+    data = packed_data.data();
+    size_bytes = packed_data.size();
+  }
+  return llvm::ConstantDataArray::getString(module->getContext(),
+                                            llvm::StringRef(data, size_bytes),
+                                            /*AddNull=*/false);
 }
 
 llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
@@ -434,7 +466,7 @@ void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
   b->CreateCall(log_function_type,
                 b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64_t>(&LogS64)),
-                                  log_function_type->getPointerTo()),
+                                  b->getPtrTy()),
                 {b->getInt64(absl::bit_cast<int64_t>(tag)), value});
 }
 

@@ -21,12 +21,13 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
-#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -40,41 +41,46 @@ class FusionInterface {
   virtual ~FusionInterface() = default;
 
   virtual StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache,
-      llvm::IRBuilder<>* builder) const = 0;
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion) const = 0;
 };
 
-class KernelFusionEmitterBase : public FusionInterface {
+// Interface for fusions that are implemented using cuda kernels.
+class KernelFusionInterface : public FusionInterface {
  public:
-  // The downstream code that is used by this emitter operates on a mix of MLIR
-  // and HLO classes. Ideally this would not be the case, but it's hard to
-  // change.
-  StatusOr<FusionEmissionResult> Emit(IrEmitterContext& ir_emitter_context,
-                                      ElementalIrEmitter& elemental_emitter,
-                                      mlir::lmhlo::FusionOp fusion_op,
-                                      const HloFusionInstruction& fusion,
-                                      KernelReuseCache& kernel_cache,
-                                      llvm::IRBuilder<>* builder) const final;
-  virtual StatusOr<LaunchDimensions> launch_dimensions(
-      IrEmitterContext& ir_emitter_context, int kernel_index) const = 0;
+  virtual ~KernelFusionInterface() = default;
+
+  // Returns the fusion's launch dimensions.
+  virtual LaunchDimensions launch_dimensions() const = 0;
+};
+
+// Base class for fusions that are implemented using a single kernel, which is
+// generated using LLVM.
+class KernelFusionEmitterBase : public KernelFusionInterface {
+ public:
+  StatusOr<FusionEmissionResult> Emit(
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion) const final;
 
  protected:
+  // Creates initializer thunks that need to run before the main kernel.
+  virtual StatusOr<FusionEmissionResult> EmitInitializers(
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion) const {
+    // No initializers by default.
+    return FusionEmissionResult{};
+  }
+
   virtual Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                            ElementalIrEmitter& elemental_emitter,
-                            mlir::lmhlo::FusionOp fusion_op,
                             const HloFusionInstruction& fusion,
                             const LaunchDimensions& launch_dims,
                             std::vector<llvm_ir::IrArray> inputs,
                             std::vector<llvm_ir::IrArray> outputs,
-                            llvm::IRBuilder<>* builder,
-                            int kernel_index) const = 0;
-  virtual int num_kernels() const { return 1; }
+                            llvm::IRBuilder<>* builder) const = 0;
 };
 
-std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
-           std::vector<llvm_ir::IrArray> /*outputs*/>
+StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
+                    std::vector<llvm_ir::IrArray> /*outputs*/>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const std::string& suggested_name,
                      absl::Span<const KernelArgument> arguments,

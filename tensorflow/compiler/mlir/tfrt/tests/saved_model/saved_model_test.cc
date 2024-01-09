@@ -222,7 +222,7 @@ TEST(SavedModelTest, AddXlaFunctionsOutputFunctionNames) {
   TF_ASSERT_OK(ConvertTfMlirToBef(options.compile_options, module.get(),
                                   &bef_buffer, model_context,
                                   fallback_state.get(), &function_names));
-  EXPECT_THAT(function_names, ::testing::SizeIs(2));
+  EXPECT_THAT(function_names, ::testing::SizeIs(1));
 }
 
 // TODO(b/162442824): Add a SavedModel test that covers the error pass.

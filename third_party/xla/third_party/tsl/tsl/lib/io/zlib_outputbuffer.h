@@ -149,7 +149,8 @@ class ZlibOutputBuffer : public WritableFile {
     return flush_mode == Z_SYNC_FLUSH || flush_mode == Z_FULL_FLUSH;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ZlibOutputBuffer);
+  ZlibOutputBuffer(const ZlibOutputBuffer&) = delete;
+  void operator=(const ZlibOutputBuffer&) = delete;
 };
 
 }  // namespace io

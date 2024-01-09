@@ -88,6 +88,9 @@ bool IsCublasLtMatmul(const HloInstruction& hlo);
 // Scaled matrix multiplication in FP8. Calls into cublasLt.
 bool IsCublasLtMatmulF8(const HloInstruction& hlo);
 
+// Triangular solve that calls into legacy cublas.
+bool IsTriangularSolve(const HloInstruction& hlo);
+
 // A call to cuBLAS general matrix multiplication API.
 extern const absl::string_view kGemmCallTarget;
 
@@ -151,6 +154,12 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 // reordering helper (required for int8x32 convolutions).
 bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 
+// A call to cuDNN for a fused norm.
+extern const absl::string_view kCudnnNormCallTarget;
+
+// Returns true if `hlo` will be implemented as a call to a cuDNN norm kernel.
+bool IsCustomCallToDnnNorm(const HloInstruction& hlo);
+
 // The fused_mha_rewriter phase where each of the MHA signatures are pattern
 // matched and rewritten into a custom-call with specific custom-call target.
 // The custom-call target specifies the MHA signature. For example,  BMM1 - Bias
@@ -199,6 +208,12 @@ std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
 Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 
 bool MHACallHasDropout(absl::string_view fmha_call_name);
+
+// CUB library calls.
+// Reference: https://nvlabs.github.io/cub/
+extern const absl::string_view kCubDeviceRadixSortTarget;
+
+bool IsCubDeviceRadixSort(const HloInstruction& hlo);
 }  // namespace gpu
 }  // namespace xla
 

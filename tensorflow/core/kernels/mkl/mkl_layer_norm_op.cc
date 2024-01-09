@@ -44,21 +44,24 @@ class MklLayerNormOp : public OpKernel {
       const Tensor& scale_tensor = MklGetInput(ctx, kScaleIndex);
       const Tensor& shift_tensor = MklGetInput(ctx, kShiftIndex);
 
-      OP_REQUIRES(ctx, src_tensor.dims() == 2 || src_tensor.dims() == 3,
-                  errors::InvalidArgument("input must be 2D or 3D",
-                                          src_tensor.shape().DebugString()));
-      OP_REQUIRES(ctx, scale_tensor.dims() == 1,
-                  errors::InvalidArgument("scale must be 1D tensor",
-                                          scale_tensor.shape().DebugString()));
-      OP_REQUIRES(ctx, shift_tensor.dims() == 1,
-                  errors::InvalidArgument("offset must be 1D tensor",
-                                          shift_tensor.shape().DebugString()));
+      OP_REQUIRES(
+          ctx, src_tensor.dims() == 2 || src_tensor.dims() == 3,
+          absl::InvalidArgumentError(absl::StrCat(
+              "input must be 2D or 3D", src_tensor.shape().DebugString())));
+      OP_REQUIRES(
+          ctx, scale_tensor.dims() == 1,
+          absl::InvalidArgumentError(absl::StrCat(
+              "scale must be 1D tensor", scale_tensor.shape().DebugString())));
+      OP_REQUIRES(
+          ctx, shift_tensor.dims() == 1,
+          absl::InvalidArgumentError(absl::StrCat(
+              "offset must be 1D tensor", shift_tensor.shape().DebugString())));
       int64_t num_elements_scale = scale_tensor.dim_size(0);
       int64_t num_elements_shift = shift_tensor.dim_size(0);
-      OP_REQUIRES(
-          ctx, num_elements_scale == num_elements_shift,
-          errors::InvalidArgument("Number of elements in scale and shift",
-                                  "tensors are not same."));
+      OP_REQUIRES(ctx, num_elements_scale == num_elements_shift,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Number of elements in scale and shift",
+                                   "tensors are not same.")));
 
       auto cpu_engine = engine(engine::kind::cpu, 0);
       // Create the oneDNN wrapper over Eigen threadpool and set max threads
@@ -201,8 +204,8 @@ class MklLayerNormOp : public OpKernel {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          ctx, errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(ctx, absl::AbortedError(absl::StrCat(
+                              "Operation received an exception:", error_msg)));
     }
   }
 
@@ -220,6 +223,10 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("_MklLayerNorm").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
     MklLayerNormOp<CPUDevice, bfloat16>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklLayerNorm").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    MklLayerNormOp<CPUDevice, Eigen::half>);
 
 }  // namespace tensorflow
 

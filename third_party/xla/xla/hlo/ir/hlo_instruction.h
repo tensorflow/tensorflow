@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/iterator_util.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -541,7 +542,7 @@ class HloInstruction {
   // instruction from each operand's user set and user's operand set.
   void DetachFromOperandsAndUsers();
 
-  // Adds a derived instruciton to the parent computation of this instruction.
+  // Adds a derived instruction to the parent computation of this instruction.
   // Also update setup the new instruction as a derived instruction.
   HloInstruction* AddInstruction(
       std::unique_ptr<HloInstruction> derived_instruction);
@@ -571,11 +572,14 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateIota(const Shape& shape,
                                                     int64_t iota_dimension);
 
-  // Creates a Top-K instruction.
+  // Creates a Top-K instruction returning the top k values along the last
+  // dimension of the input operand.
+  //
+  // - `k` indicates how many elements to return in the last dimension.
+  // - `largest` indicates whether to return the largest or smallest elements.
   static std::unique_ptr<HloInstruction> CreateTopK(const Shape& shape,
                                                     HloInstruction* input,
-                                                    int64_t k,
-                                                    HloComputation* compare);
+                                                    int64_t k, bool largest);
 
   // Creates a get tuple element instruction.
   static std::unique_ptr<HloInstruction> CreateGetTupleElement(
@@ -1268,16 +1272,16 @@ class HloInstruction {
   int64_t user_count() const { return users_.size(); }
 
   // Returns the users of this instruction.
-  const std::vector<HloInstruction*>& users() const { return users_; }
+  const PtrVec<HloInstruction*>& users() const { return users_.vec(); }
 
   // Returns the index of the user in the users() vector.
   //
   // Precondition: `user` is a user of the instruction.
-  int64_t UserId(HloInstruction* user);
+  int64_t UserId(HloInstruction* user) { return users_.UserId(user); }
 
   // Returns true if this instruction is a user of 'instruction'.
   bool IsUserOf(const HloInstruction* instruction) const {
-    return instruction->user_map_.contains(this);
+    return instruction->users_.Contains(this);
   }
 
   // Adds a control dependency from this instruction to the given
@@ -1318,11 +1322,11 @@ class HloInstruction {
   // Returns the set of control predecessors (successors) of this
   // instruction. Control predecessors (successors) must execute before (after)
   // the current instruction.
-  const std::vector<HloInstruction*>& control_predecessors() const {
-    return control_predecessors_;
+  const PtrVec<HloInstruction*>& control_predecessors() const {
+    return rare()->control_predecessors;
   }
-  const std::vector<HloInstruction*>& control_successors() const {
-    return control_successors_;
+  const PtrVec<HloInstruction*>& control_successors() const {
+    return rare()->control_successors;
   }
 
   // Returns true if 'other' performs the same computation as this instruction.
@@ -1432,6 +1436,9 @@ class HloInstruction {
   // Same as ReplaceOperandWith(), but new_operand can have a different shape.
   Status ReplaceOperandWithDifferentShape(int64_t operand_num,
                                           HloInstruction* new_operand);
+
+  // Decomposes fusion back to individual parts.
+  Status Defuse();
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
@@ -1551,7 +1558,7 @@ class HloInstruction {
   // Gets the branch HloComputations for Conditional.
   //
   // Precondition: The instruction is a Conditional instruction.
-  const std::vector<HloComputation*>& branch_computations() const;
+  const PtrVec<HloComputation*>& branch_computations() const;
   int branch_count() const;
   HloComputation* branch_computation(int b) const;
   // Sets a branch HloComputation for Conditional.
@@ -1660,8 +1667,8 @@ class HloInstruction {
   }
   // Sets the sharding of this operator. Should only be called by HloModule or
   // HloComputation methods.
-  void set_sharding(const HloSharding& sharding) {
-    set_sharding(std::make_shared<const HloSharding>(sharding));
+  void set_sharding(HloSharding sharding) {
+    set_sharding(std::make_shared<HloSharding>(std::move(sharding)));
   }
   void set_sharding(std::shared_ptr<const HloSharding> sharding) {
     sharding_ = std::move(sharding);
@@ -1717,9 +1724,17 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> new_operands,
       HloCloneContext* context = nullptr) const;
 
+  // Clones the HLO instruction with new shape, operands and suffix.
+  std::unique_ptr<HloInstruction> CloneWithNewOperands(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      const std::string& suffix, HloCloneContext* context = nullptr) const;
+
   // Returns the computations this instruction directly calls (if any).
-  const std::vector<HloComputation*>& called_computations() const {
-    return called_computations_;
+  const PtrVec<HloComputation*>& called_computations() const {
+    return rare()->called_computations;
+  }
+  bool has_called_computations() const {
+    return has_rare() && !called_computations().empty();
   }
 
   // Replaces all called computations based on a map function. This is needed
@@ -1727,8 +1742,9 @@ class HloInstruction {
   // to the newly cloned nodes.
   void ReplaceCalledComputations(
       absl::FunctionRef<HloComputation*(HloComputation*)> map_function) {
-    for (int64_t i = 0; i < called_computations_.size(); ++i) {
-      called_computations_[i] = map_function(called_computations_[i]);
+    for (int64_t i = 0; i < called_computations().size(); ++i) {
+      mutable_rare()->called_computations[i] =
+          map_function(rare()->called_computations[i]);
     }
   }
 
@@ -1740,7 +1756,11 @@ class HloInstruction {
   // clearing out the computations, we reflect the fact that all side-effecting
   // properties have been reflected in the caller, and make the call HLO
   // removable.
-  virtual void ClearCalledComputations() { called_computations_.clear(); }
+  virtual void ClearCalledComputations() {
+    if (has_rare()) {
+      mutable_rare()->called_computations.clear();
+    }
+  }
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
@@ -1853,44 +1873,49 @@ class HloInstruction {
   }
 
   void set_frontend_attributes(FrontendAttributes frontend_attributes) {
-    frontend_attributes_ = std::move(frontend_attributes);
+    if (!has_rare() && frontend_attributes.map().empty()) {
+      return;
+    }
+    mutable_rare()->frontend_attributes = std::move(frontend_attributes);
   }
 
   void add_frontend_attributes(FrontendAttributes frontend_attributes) {
-    frontend_attributes_.mutable_map()->insert(
-        frontend_attributes.map().begin(), frontend_attributes.map().end());
+    if (!frontend_attributes.map().empty()) {
+      mutable_rare()->frontend_attributes.mutable_map()->insert(
+          frontend_attributes.map().begin(), frontend_attributes.map().end());
+    }
   }
 
   const FrontendAttributes& frontend_attributes() const {
-    return frontend_attributes_;
+    return rare()->frontend_attributes;
   }
 
   void add_single_statistic(Statistic statistic) {
-    *statistics_viz_.add_statistics() = std::move(statistic);
+    *mutable_rare()->statistics_viz.add_statistics() = std::move(statistic);
   }
 
   void set_stat_index_to_visualize(int64_t index) {
-    statistics_viz_.set_stat_index_to_visualize(index);
+    mutable_rare()->statistics_viz.set_stat_index_to_visualize(index);
   }
 
   // Whether this specific instruction has statistics
-  bool has_statistics() const { return !statistics_viz_.statistics().empty(); }
+  bool has_statistics() const { return !statistics_viz().statistics().empty(); }
 
   // Whether any instruction within the same HLO module as this has statistics
   bool module_has_statistics() const {
-    return statistics_viz_.stat_index_to_visualize() == -1;
+    return statistics_viz().stat_index_to_visualize() == -1;
   }
 
   const Statistic& statistic_to_visualize() const {
-    return statistics_viz_.statistics().at(
-        statistics_viz_.stat_index_to_visualize());
+    return statistics_viz().statistics().at(
+        statistics_viz().stat_index_to_visualize());
   }
 
   void set_statistics_viz(StatisticsViz statistics_viz) {
-    statistics_viz_ = std::move(statistics_viz);
+    mutable_rare()->statistics_viz = std::move(statistics_viz);
   }
 
-  const StatisticsViz& statistics_viz() const { return statistics_viz_; }
+  const StatisticsViz& statistics_viz() const { return rare()->statistics_viz; }
 
   // Getter/setter for raw JSON-encoded backend config.  Prefer the
   // functions above that deal in proto Messages where possible.
@@ -1903,6 +1928,26 @@ class HloInstruction {
 
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
+
+  void set_operation_queue_id(int64_t operation_queue_id) {
+    operation_queue_id_ = operation_queue_id;
+  }
+
+  const std::optional<int64_t> operation_queue_id() const {
+    return operation_queue_id_;
+  }
+
+  void set_wait_on_operation_queues(std::vector<int64_t>& operation_queue_ids) {
+    wait_on_operation_queues_ = operation_queue_ids;
+  }
+
+  const std::vector<int64_t> wait_on_operation_queues() const {
+    return wait_on_operation_queues_;
+  }
+
+  void add_wait_on_operation_queues(int64_t operation_queue_id) {
+    wait_on_operation_queues_.push_back(operation_queue_id);
+  }
 
   // Returns a string representation of a proto in the format used by
   // raw_backend_config_string.
@@ -2313,16 +2358,14 @@ class HloInstruction {
   void RemoveOperandsAtAscendingIndices(
       absl::Span<const int> ascending_indices);
 
-  void AppendComputation(HloComputation* computation) {
-    called_computations_.push_back(computation);
-  }
+  void AppendComputation(HloComputation* computation);
 
   void DetachFrom(HloInstruction* usee) { usee->RemoveUser(this); }
 
   void set_called_computation(int index, HloComputation* computation) {
-    called_computations_[index] = computation;
+    mutable_rare()->called_computations[index] = computation;
   }
-  // Indices of computations in called_computations_ for instructions which call
+  // Indices of computations in called_computations for instructions which call
   // multiple computations.
   enum {
     // kWhile computations.
@@ -2337,6 +2380,9 @@ class HloInstruction {
     kTrueComputationIndex = 0,
     kFalseComputationIndex = 1,
   };
+
+  // Change instruction's name to have a given suffix.
+  void AddSuffixToInstructionName(const absl::string_view suffix);
 
  private:
   friend class HloComputation;
@@ -2418,10 +2464,10 @@ class HloInstruction {
       absl::Span<HloInstruction* const> operands);
 
   // Adds a user for this instruction.
-  void AddUser(HloInstruction* user);
+  void AddUser(HloInstruction* user) { users_.AddUser(user); }
 
   // Removes a user for this instruction.
-  void RemoveUser(HloInstruction* user);
+  void RemoveUser(HloInstruction* user) { users_.RemoveUser(user); }
 
   // Helper for implementing backend_config().  Parses backend_config_ into the
   // given proto.
@@ -2434,6 +2480,97 @@ class HloInstruction {
   // HloInstruction.
   bool IsMarkedAsDead() const { return marked_as_dead_; }
 
+  // Rare is allocated lazily, only when any of its constituent fields are
+  // non-empty.  This reduces the memory footprint of HloInstruction objects.
+  struct Rare {
+    // The set of control predecessors of this instruction.
+    // Note that the order of the instructions in the vector influences the
+    // order computed in HloComputation::ComputeInstructionPostOrder, which may
+    // influence the result of the compilation by changing the scheduling. We
+    // are not sure if it matters.
+    PtrVec<HloInstruction*> control_predecessors;
+
+    // The set of control successors of this instruction.
+    PtrVec<HloInstruction*> control_successors;
+
+    // Computations called by this instruction.
+    PtrVec<HloComputation*> called_computations;
+
+    // Attributes passed from the frontend to give hints to the backend about
+    // how to compile this HLO.
+    // HLO -> HLO transforms are expected to preserve these attributes on a
+    // "best effort" basis only.
+    // For example:
+    //    x = const(10, frontend_attributes={x}
+    //    y = const(10, frontend_attributes={y}
+    //    z = add(x,y), frontend_attributes={y}
+    // Could be simplified to:
+    //    z' = const(20), frontend_attributes={?}
+    FrontendAttributes frontend_attributes;
+
+    // Used to render an HLO graph when tracking the propagation desired values
+    // through it.
+    StatisticsViz statistics_viz;
+  };
+
+  static const Rare* kEmptyRare;
+
+  bool has_rare() const { return rare_ != nullptr; }
+
+  // Return the allocated rare state, or the pointer to the static empty rare
+  // state
+  const Rare* rare() const {
+    return (rare_ == nullptr) ? kEmptyRare : rare_.get();
+  }
+
+  // Lazily allocate the Rare struct
+  Rare* mutable_rare() {
+    if (rare_ == nullptr) {
+      rare_ = std::make_unique<Rare>();
+    }
+    return rare_.get();
+  }
+
+  // Users holds the list of users of an HloInstruction, plus it provides a fast
+  // way for checking for presence of a potential user.
+  class Users {
+   public:
+    Users() = default;
+    ~Users();
+
+    // No copying allowed
+    Users(const Users&) = delete;
+    Users& operator=(const Users&) = delete;
+
+    bool empty() const { return users_.empty(); }
+    int64_t size() const { return users_.size(); }
+    const PtrVec<HloInstruction*>& vec() const { return users_; }
+
+    void Clear();
+    bool Contains(const HloInstruction* instruction) const;
+    void AddUser(HloInstruction* user);
+    void MaybeRemoveUser(HloInstruction* user);  // Remove user if present
+    void RemoveUser(HloInstruction* user);       // REQUIRES: Contains(user)
+    int64_t UserId(HloInstruction* user);
+    void SortInstructionUsers(
+        const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
+        const Users& sorted_instruction_users);
+    bool CheckInvariants();
+
+   private:
+    void RebuildMap();
+
+    PtrVec<HloInstruction*> users_;
+
+    // If users_ is big, we also maintain a copy of the elements of users_
+    // in a hash map to enable fast membership tests. The value in the map
+    // contains the index of the instruction in the vector what enables fast
+    // removal.
+    static constexpr size_t kMapThreshold = 16;
+    std::unique_ptr<absl::flat_hash_map<const HloInstruction*, int64_t>>
+        user_map_;
+  };
+
   int unique_id_;  // Unique to this HloInstruction within a HloModule
 
   // Opcode for this instruction.
@@ -2442,23 +2579,13 @@ class HloInstruction {
   // Instruction operands.
   InstructionVector operands_;
 
-  // The set of control predecessors of this instruction.
-  // Note that the order of the instructions in the vector influences the order
-  // computed in HloComputation::ComputeInstructionPostOrder, which may
-  // influence the result of the compilation by changing the scheduling. We are
-  // not sure if it matters.
-  std::vector<HloInstruction*> control_predecessors_;
+  // If needed, points off to allocated struct holding out-of-line info
+  // for things that are rarely filled
+  std::unique_ptr<Rare> rare_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
-  // operand. The vector users_ and the map user_map_ contain identical members.
-  // The map enables fast membership testing and the vector enables fast, stable
-  // iteration. The value in the map contains the index of the instruction in
-  // the vector what enables fast removal.
-  std::vector<HloInstruction*> users_;
-  absl::flat_hash_map<const HloInstruction*, int64_t> user_map_;
-
-  // The set of control successors of this instruction.
-  std::vector<HloInstruction*> control_successors_;
+  // operand.
+  Users users_;
 
   // The computation in which this instruction is contained.
   HloComputation* parent_ = nullptr;
@@ -2472,28 +2599,9 @@ class HloInstruction {
   // many element tuples.
   std::shared_ptr<const HloSharding> sharding_;
 
-  // Computations called by this instruction.
-  std::vector<HloComputation*> called_computations_;
-
   // The backend-specific configuration for how a backend should compile this
   // HLO. See the documentation on backend_config().
   mutable BackendConfigRep backend_config_;
-
-  // Attributes passed from the frontend to give hints to the backend about
-  // how to compile this HLO.
-  // HLO -> HLO transforms are expected to preserve these attributes on a
-  // "best effort" basis only.
-  // For example:
-  //    x = const(10, frontend_attributes={x}
-  //    y = const(10, frontend_attributes={y}
-  //    z = add(x,y), frontend_attributes={y}
-  // Could be simplified to:
-  //    z' = const(20), frontend_attributes={?}
-  FrontendAttributes frontend_attributes_;
-
-  // Used to render an HLO graph when tracking the propagation desired values
-  // through it.
-  StatisticsViz statistics_viz_;
 
   // String identifier for instruction.
   std::string name_;
@@ -2512,6 +2620,12 @@ class HloInstruction {
   // Intrusive flag used by HloComputation, whether this instruction has
   // been marked as dead.
   bool marked_as_dead_;
+
+  // ID of the operation queue to run this instruction.
+  std::optional<int64_t> operation_queue_id_;
+
+  // IDs of operation queues to await before running this instruction.
+  std::vector<int64_t> wait_on_operation_queues_;
 };
 
 // Explicit instantiations in hlo_instruction.cc.

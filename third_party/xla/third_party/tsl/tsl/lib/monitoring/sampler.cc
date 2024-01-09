@@ -60,7 +60,8 @@ class ExplicitBuckets : public Buckets {
  private:
   std::vector<double> bucket_limits_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExplicitBuckets);
+  ExplicitBuckets(const ExplicitBuckets&) = delete;
+  void operator=(const ExplicitBuckets&) = delete;
 };
 
 class ExponentialBuckets : public Buckets {
@@ -91,7 +92,8 @@ class ExponentialBuckets : public Buckets {
 
   ExplicitBuckets explicit_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExponentialBuckets);
+  ExponentialBuckets(const ExponentialBuckets&) = delete;
+  void operator=(const ExponentialBuckets&) = delete;
 };
 
 }  // namespace

@@ -21,10 +21,21 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "tsl/lib/gtl/int_type.h"
+
 namespace xla {
 
+// bool comes before int64_t because when pybind11 tries to convert a Python
+// object to a C++ type, it will try to convert it to the first type in the list
+// of possible types that it can be converted to (b/309163973).
 using PjRtValueType =
-    std::variant<std::string, int64_t, std::vector<int64_t>, float, bool>;
+    std::variant<std::string, bool, int64_t, std::vector<int64_t>, float>;
+
+// The strong-typed integer classes to better disambiguate different IDs for
+// PJRT devices.
+TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtGlobalDeviceId, int32_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtLocalDeviceId, int32_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtLocalHardwareId, int32_t);
 
 }  // namespace xla
 

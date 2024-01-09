@@ -561,7 +561,8 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
   Padding padding_;
   TensorFormat data_format_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv2DUsingGemmOp);
+  Conv2DUsingGemmOp(const Conv2DUsingGemmOp&) = delete;
+  void operator=(const Conv2DUsingGemmOp&) = delete;
 };
 
 #define REGISTER_CPU(T)                                         \

@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "xla/pjrt/metrics.h"
 
-#include "absl/strings/str_cat.h"
+#include <cstdint>
+
 #include "tsl/lib/monitoring/counter.h"
 #include "tsl/lib/monitoring/gauge.h"
 

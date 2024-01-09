@@ -25,10 +25,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/dynamic_annotations.h"
+#include "tsl/concurrency/async_value.h"
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/chain.h"
 #include "tsl/platform/mem.h"
-#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 // -------------------------------------------------------------------------- //
 // Define AsyncToken and AsyncGroup in the mlir::runtime namespace to implement

@@ -24,13 +24,17 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/concurrent_region.h"
 #include "xla/service/gpu/runtime/conv.h"
@@ -38,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/kernel_launch.h"
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/statusor.h"
 #include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
@@ -180,6 +185,8 @@ static void EvictAllGraphs(
     return (diff / (1000 * 1000)) > *eviction_timeout_seconds;
   };
 
+  int64_t num_evicted = 0;
+
   for (auto& weak_ptr : vec) {
     auto ptr = weak_ptr.lock();
     if (!ptr) continue;
@@ -209,6 +216,15 @@ static void EvictAllGraphs(
     }
     ptr->graphs.erase(it);
     ptr->mu.Unlock();
+    ++num_evicted;
+  }
+
+  if (num_evicted > 0) {
+    VLOG(3) << "Evicted " << num_evicted << " graphs from executor "
+            << executor;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    se::gpu::GpuGraphSupport::TrimDeviceMemory(executor);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   }
 }
 
@@ -267,7 +283,10 @@ bool GraphInstances::InstantiatedAllGraphs(
 Status GraphInstances::InstantiateAllGraphs(
     const ServiceExecutableRunOptions* run_options,
     const Executable& executable, const CustomCall::UserData& user_data,
-    void* ptr, std::optional<uint64_t> eviction_timeout_seconds) {
+    const BufferAllocations& buffer_allocations,
+    absl::Span<const int64_t> buffer_sizes,
+    absl::Span<const std::vector<int64_t>> allocation_indices,
+    std::optional<uint64_t> eviction_timeout_seconds) {
   // We have only "main" function in the executable.
   if (executable.num_functions() == 1) return OkStatus();
 
@@ -313,6 +332,12 @@ Status GraphInstances::InstantiateAllGraphs(
     assert(signature.num_results() == 0 && "unexpected number of results");
     Arguments<MemrefDesc> args(signature.num_operands());
 
+    // Mapping from graph capture argument to buffer allocation index.
+    absl::Span<const int64_t> capture_allocs = allocation_indices[ordinal];
+    if (capture_allocs.size() != signature.num_operands())
+      return absl::InternalError(
+          "Invalid number of allocation indices for a graph capture function");
+
     // Prepare arguments for the graph capture function.
     for (size_t j = 0; j < signature.num_operands(); ++j) {
       auto* memref = llvm::dyn_cast<MemrefType>(signature.operand(j));
@@ -329,8 +354,11 @@ Status GraphInstances::InstantiateAllGraphs(
       std::array<int64_t, 1> sizes = {memref->size(0)};
       std::array<int64_t, 1> strides = {1};
 
-      args.emplace_back<MemrefDesc>(memref->element_type(), ptr,
-                                    /*offset=*/0, sizes, strides);
+      int64_t allocation_index = capture_allocs[j];
+      args.emplace_back<MemrefDesc>(
+          memref->element_type(),
+          buffer_allocations.GetDeviceAddress(allocation_index).opaque(),
+          /*offset=*/0, sizes, strides);
     }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -347,6 +375,9 @@ Status GraphInstances::InstantiateAllGraphs(
 
     if (instance.status().code() == absl::StatusCode::kResourceExhausted) {
       if (num_retries == 0) {
+        LOG(WARNING) << "InstantiateAllGraph failed due to insufficient memory."
+                        " Try to evict all graphs and free device memory.";
+
         // Retry on OOM error after evicting all graphs from executor.
         EvictAllGraphs(executor);
         num_retries++;
@@ -354,7 +385,7 @@ Status GraphInstances::InstantiateAllGraphs(
         continue;
       } else {
         LOG(WARNING) << "InstantiateAllGraph failed due to insufficient memory."
-                        " Uninitializd graphs will run in op-by-op mode.";
+                        " Unitialized graphs will run in op-by-op mode.";
         return OkStatus();
       }
     }
@@ -650,25 +681,17 @@ static absl::Status LaunchGraph(
   absl::WriterMutexLock lock(instance->mutex.get());
 
   // Update captured graph executable.
-  TF_ASSIGN_OR_RETURN(se::gpu::OwnedGpuGraphExec::UpdateResult update_result,
-                      instance->exec.Update(std::move(g)));
+  TF_RETURN_IF_ERROR(instance->exec.Update(std::move(g)));
 
-  switch (update_result) {
-    case se::gpu::OwnedGpuGraphExec::UpdateResult::kFallback:
-      LOG(WARNING) << "Fallback to op-by-op mode because memset node breaks "
-                      "graph update";
-      return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
-    case se::gpu::OwnedGpuGraphExec::UpdateResult::kSuccess:
-      // Update captured pointer hash.
-      instance->ptr_hash = ptrs_hash;
+  // Update captured pointer hash.
+  instance->ptr_hash = ptrs_hash;
 
-      TraceMe trace([&] {
-        return TraceMeEncode("gpu.graph.launch_updated",
-                             {{"ordinal", capture.ordinal}});
-      });
+  TraceMe trace([&] {
+    return TraceMeEncode("gpu.graph.launch_updated",
+                         {{"ordinal", capture.ordinal}});
+  });
 
-      return instance->exec.Launch(run_options->stream());
-  }
+  return instance->exec.Launch(run_options->stream());
 
 #else  // #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 
