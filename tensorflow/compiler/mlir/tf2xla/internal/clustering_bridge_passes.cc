@@ -172,9 +172,7 @@ void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addPass(mlir::TFDevice::CreateXlaValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  const llvm::SmallVector<std::string, 4> ops_to_preserve = {
-      "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
-      "tf.TPUReplicatedOutput"};
+  const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<FuncOp>(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
@@ -186,14 +184,6 @@ void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  // The following passe are addded to match TPU pipeline and expected to be
-  // no-op.
-  pm.addNestedPass<FuncOp>(mlir::TFTPU::CreateTPUPartitionedOpConversionPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::TFTPU::CreateTPUReorderReplicateAndPartitionedInputsPass());
-  pm.addNestedPass<FuncOp>(mlir::TF::CreateDecomposeReduceDatasetPass());
-  pm.addPass(mlir::TFDevice::CreateEmbeddingPipeliningPass());
-  pm.addPass(mlir::TFDevice::CreateEmbeddingSequencingPass());
   pm.addPass(
       tensorflow::tf2xla::internal::CreateXlaOutlineEntryFunctionsPass());
   // Encapsulate PartitionedCall ops within a cluster so that the composite

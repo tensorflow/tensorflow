@@ -35,7 +35,7 @@ TEST(ClusteringBridgePassesTest, AddsNonTPUBridgePasses) {
   OpPassManager pass_manager;
   AddNonReplicatedBridgeClusteringPipelinePasses(pass_manager);
 
-  EXPECT_EQ(pass_manager.size(), 21);
+  EXPECT_EQ(pass_manager.size(), 16);
 }
 
 };  // namespace internal
