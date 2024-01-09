@@ -22,7 +22,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/run_handler_util.h"
 #include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -891,7 +890,7 @@ class RunHandlerPool::Impl {
       version = ++version_;
     }
     RecomputePoolStats(num_active_requests, version, *thread_work_sources);
-    return WrapUnique<RunHandler>(new RunHandler(handler_impl));
+    return std::unique_ptr<RunHandler>(new RunHandler(handler_impl));
   }
 
   void ReleaseHandler(RunHandler::Impl* handler) TF_LOCKS_EXCLUDED(mu_) {

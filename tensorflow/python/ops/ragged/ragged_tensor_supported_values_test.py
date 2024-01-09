@@ -20,9 +20,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
@@ -41,7 +40,7 @@ from tensorflow.python.util import dispatch
 
 
 class WrappedTensor(extension_type.BatchableExtensionType):
-  value: ops.Tensor
+  value: tensor.Tensor
 
   @property
   def shape(self):
@@ -295,6 +294,36 @@ class RaggedTensorSupportedValuesTest(test_util.TensorFlowTestCase,
     self.assertAllTensorsEqual(wrapped_res.nested_row_splits,
                                res.nested_row_splits)
 
+  @parameterized.parameters(
+      (lambda x: x[1:], True),
+      (lambda x: x[0], False),
+      (lambda x: x[:], True),
+      (lambda x: x[0, :], False),
+      (lambda x: x[...], True),
+      (lambda x: x[1:2, ...], True),
+      (lambda x: x[..., 1:2], True),
+      (lambda x: x[0:2, ::2], True),
+  )
+  def testSlicing(self, slice_fn, is_ragged_output):
+    tensor_values = constant_op.constant([[1.0, 2], [3, 4], [5, 6], [7, 8]])
+    row_splits = constant_op.constant([0, 2, 3, 4], dtypes.int32)
+    raw_rt = RaggedTensor.from_row_splits(tensor_values, row_splits)
+
+    values = WrappedTensor(tensor_values)
+    rt = RaggedTensor.from_row_splits(values, row_splits)
+
+    res = slice_fn(rt)
+    raw_res = slice_fn(raw_rt)
+    if is_ragged_output:
+      self.assertIsInstance(res, RaggedTensor)
+      self.assertIsInstance(res.flat_values, WrappedTensor)
+      self.assertAllEqual(res.flat_values.value, raw_res.flat_values)
+      self.assertAllTensorsEqual(res.nested_row_splits,
+                                 raw_res.nested_row_splits)
+    else:
+      self.assertIsInstance(res, WrappedTensor)
+      self.assertAllEqual(res.value, raw_res)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
@@ -307,7 +336,7 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
 
   def testConstruction(self):
     flat_values_spec = WrappedTensor.Spec(
-        tensor_spec.TensorSpec(shape=(None, 5), dtype=dtypes.float32))
+        tensor.TensorSpec(shape=(None, 5), dtype=dtypes.float32))
     spec1 = RaggedTensorSpec(
         shape=None,
         dtype=dtypes.float32,
@@ -327,29 +356,45 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
     self.assertEqual(spec1.flat_values_spec, flat_values_spec)
 
     with self.assertRaisesRegex(
-        ValueError, 'dtype must be the same as flat_values_spec.dtype'):
+        ValueError, 'dtype must be the same as flat_values_spec.dtype'
+    ):
       spec1 = RaggedTensorSpec(
           shape=None,
           dtype=dtypes.float64,
           ragged_rank=1,
           row_splits_dtype=dtypes.int64,
-          flat_values_spec=flat_values_spec)
+          flat_values_spec=flat_values_spec,
+      )
 
   @parameterized.parameters([
-      (RaggedTensorSpec(
-          ragged_rank=1,
-          flat_values_spec=tensor_spec.TensorSpec(None, dtypes.float32)),
-       (tensor_shape.TensorShape(None), dtypes.float32, 1, dtypes.int64,
-        tensor_spec.TensorSpec(None, dtypes.float32))),
-      (RaggedTensorSpec(
-          shape=(5, None, 5),
-          ragged_rank=1,
-          dtype=dtypes.float64,
-          flat_values_spec=tensor_spec.TensorSpec(
-              (5,), dtypes.float64)), (tensor_shape.TensorShape(
-                  (5, None, 5)), dtypes.float64, 1, dtypes.int64,
-                                       tensor_spec.TensorSpec((5,),
-                                                              dtypes.float64))),
+      (
+          RaggedTensorSpec(
+              ragged_rank=1,
+              flat_values_spec=tensor.TensorSpec(None, dtypes.float32),
+          ),
+          (
+              tensor_shape.TensorShape(None),
+              dtypes.float32,
+              1,
+              dtypes.int64,
+              tensor.TensorSpec(None, dtypes.float32),
+          ),
+      ),
+      (
+          RaggedTensorSpec(
+              shape=(5, None, 5),
+              ragged_rank=1,
+              dtype=dtypes.float64,
+              flat_values_spec=tensor.TensorSpec((5,), dtypes.float64),
+          ),
+          (
+              tensor_shape.TensorShape((5, None, 5)),
+              dtypes.float64,
+              1,
+              dtypes.int64,
+              tensor.TensorSpec((5,), dtypes.float64),
+          ),
+      ),
   ])
   def testSerialize(self, rt_spec, expected):
     serialization = rt_spec._serialize()
@@ -363,37 +408,37 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
           ragged_rank=0,
           shape=[5, 3],
           flat_values_spec=WrappedTensor.Spec(
-              tensor_spec.TensorSpec([5, 3], dtypes.float32))),
-       [WrappedTensor.Spec(tensor_spec.TensorSpec([5, 3], dtypes.float32))]),
+              tensor.TensorSpec([5, 3], dtypes.float32))),
+       [WrappedTensor.Spec(tensor.TensorSpec([5, 3], dtypes.float32))]),
       (RaggedTensorSpec(
           ragged_rank=1,
           flat_values_spec=WrappedTensor.Spec(
-              tensor_spec.TensorSpec([None, 3], dtypes.float32))),
+              tensor.TensorSpec([None, 3], dtypes.float32))),
        [
            WrappedTensor.Spec(
-               tensor_spec.TensorSpec([None, 3], dtypes.float32)),
-           tensor_spec.TensorSpec([None], dtypes.int64),
+               tensor.TensorSpec([None, 3], dtypes.float32)),
+           tensor.TensorSpec([None], dtypes.int64),
        ]),
       (RaggedTensorSpec(
           ragged_rank=2,
           dtype=dtypes.float64,
           flat_values_spec=WrappedTensor.Spec(
-              tensor_spec.TensorSpec([None, 3], dtypes.float64))),
+              tensor.TensorSpec([None, 3], dtypes.float64))),
        [
            WrappedTensor.Spec(
-               tensor_spec.TensorSpec([None, 3], dtypes.float64)),
-           tensor_spec.TensorSpec([None], dtypes.int64),
-           tensor_spec.TensorSpec([None], dtypes.int64),
+               tensor.TensorSpec([None, 3], dtypes.float64)),
+           tensor.TensorSpec([None], dtypes.int64),
+           tensor.TensorSpec([None], dtypes.int64),
        ]),
       (RaggedTensorSpec(
           shape=[5, None, None],
           dtype=dtypes.string,
           flat_values_spec=WrappedTensor.Spec(
-              tensor_spec.TensorSpec([None, 3], dtypes.string))),
+              tensor.TensorSpec([None, 3], dtypes.string))),
        [
-           WrappedTensor.Spec(tensor_spec.TensorSpec([None, 3], dtypes.string)),
-           tensor_spec.TensorSpec([6], dtypes.int64),
-           tensor_spec.TensorSpec([None], dtypes.int64),
+           WrappedTensor.Spec(tensor.TensorSpec([None, 3], dtypes.string)),
+           tensor.TensorSpec([6], dtypes.int64),
+           tensor.TensorSpec([None], dtypes.int64),
        ]),
   ])
   def testComponentSpecs(self, rt_spec, expected):
@@ -406,7 +451,7 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
                   shape=[3, None, None],
                   ragged_rank=1,
                   flat_values_spec=WrappedTensor.Spec(
-                      tensor_spec.TensorSpec(None, dtype=dtypes.float32))),
+                      tensor.TensorSpec(None, dtype=dtypes.float32))),
           'flat_values': [[1.0, 2.0], [3.0, 4.0]],
           'nested_row_splits': [[0, 1, 1, 2]],
       },
@@ -415,7 +460,7 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
               RaggedTensorSpec(
                   shape=[2, None, None],
                   flat_values_spec=WrappedTensor.Spec(
-                      tensor_spec.TensorSpec(None, dtype=dtypes.float32))),
+                      tensor.TensorSpec(None, dtype=dtypes.float32))),
           'flat_values': [1.0, 2.0, 3.0, 4.0],
           'nested_row_splits': [[0, 2, 4], [0, 2, 3, 3, 4]],
       },
@@ -429,36 +474,47 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
     self.assertAllTensorsEqual(components[1:], nested_row_splits)
     rt_reconstructed = rt_spec._from_components(components)
     self.assertIsInstance(rt_reconstructed.flat_values, WrappedTensor)
-    self.assertAllEqual(rt_reconstructed.flat_values.value,
-                        wrapped_tensor.value)
-    self.assertAllTensorsEqual(rt_reconstructed.nested_row_splits,
-                               rt.nested_row_splits)
+    self.assertAllEqual(
+        rt_reconstructed.flat_values.value, wrapped_tensor.value
+    )
+    self.assertAllTensorsEqual(
+        rt_reconstructed.nested_row_splits, rt.nested_row_splits
+    )
     self.assertEqual(rt_reconstructed.dtype, rt.dtype)
 
   def testIsCompatibleWith(self):
-    spec1 = RaggedTensorSpec([32, None, None],
-                             dtypes.float32,
-                             2,
-                             flat_values_spec=WrappedTensor.Spec(
-                                 tensor_spec.TensorSpec([None, None],
-                                                        dtypes.float32)))
+    spec1 = RaggedTensorSpec(
+        [32, None, None],
+        dtypes.float32,
+        2,
+        flat_values_spec=WrappedTensor.Spec(
+            tensor.TensorSpec([None, None], dtypes.float32)
+        ),
+    )
     spec2 = RaggedTensorSpec(
         None,
         dtypes.float32,
         2,
         flat_values_spec=WrappedTensor.Spec(
-            tensor_spec.TensorSpec(None, dtypes.float32)))
+            tensor.TensorSpec(None, dtypes.float32)
+        ),
+    )
     spec3 = RaggedTensorSpec(
         None,
         dtypes.int32,
         1,
         flat_values_spec=WrappedTensor.Spec(
-            tensor_spec.TensorSpec(None, dtypes.int32)))
-    spec4 = RaggedTensorSpec([None],
-                             dtypes.int32,
-                             0,
-                             flat_values_spec=WrappedTensor.Spec(
-                                 tensor_spec.TensorSpec(None, dtypes.int32)))
+            tensor.TensorSpec(None, dtypes.int32)
+        ),
+    )
+    spec4 = RaggedTensorSpec(
+        [None],
+        dtypes.int32,
+        0,
+        flat_values_spec=WrappedTensor.Spec(
+            tensor.TensorSpec(None, dtypes.int32)
+        ),
+    )
     spec5 = RaggedTensorSpec([None], dtypes.int32, 0)
 
     self.assertTrue(spec1.is_compatible_with(spec2))
@@ -527,7 +583,7 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
             ragged_rank=1,
             row_splits_dtype=dtypes.int32,
             flat_values_spec=WrappedTensor.Spec(
-                tensor_spec.TensorSpec([None, 2], dtypes.float32))))
+                tensor.TensorSpec([None, 2], dtypes.float32))))
     # Ensure the shape of flat_values_spec being consistent with the shape
     # of the RaggedTensor.
     self.assertEqual(rt_spec.shape[rt_spec.ragged_rank:],

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"

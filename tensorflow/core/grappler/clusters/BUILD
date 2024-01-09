@@ -8,6 +8,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -24,7 +25,7 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -70,6 +71,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core/grappler:grappler_item",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -127,6 +129,8 @@ cc_library(
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

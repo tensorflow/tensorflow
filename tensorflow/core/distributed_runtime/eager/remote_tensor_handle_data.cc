@@ -64,7 +64,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
           << "Unable to destroy remote tensor handles. If you are "
              "running a tf.function, it usually indicates some op in "
              "the graph gets an error: "
-          << status.error_message();
+          << status.message();
     }
   } else {
     // This thread may still hold tensorflow::StreamingRPCState::mu_. We need
@@ -78,7 +78,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
             << "Unable to destroy remote tensor handles. If you are "
                "running a tf.function, it usually indicates some op in "
                "the graph gets an error: "
-            << status.error_message();
+            << status.message();
       }
     });
   }
@@ -204,10 +204,10 @@ string RemoteTensorHandleData::DebugString() const {
                       " output_num: ", output_num_);
 }
 
-Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_util_ready,
+Status RemoteTensorHandleData::OpIdAndOutputNum(const bool wait_until_ready,
                                                 int64_t* op_id,
                                                 int32* output_num) const {
-  if (wait_util_ready) {
+  if (wait_until_ready) {
     TF_RETURN_IF_ERROR(WaitReady("OpIdAndOutputNumUntilReady"));
   }
   *op_id = op_id_;

@@ -99,7 +99,8 @@ class HipSparseHandles {
   hipStream_t stream_;
   hipsparseHandle_t hipsparse_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HipSparseHandles);
+  HipSparseHandles(const HipSparseHandles&) = delete;
+  void operator=(const HipSparseHandles&) = delete;
 };
 
 // TODO(ebrevdo): Replace global mutex guarding CudaSparseHandles
@@ -124,13 +125,11 @@ HandleMap* GetHandleMapSingleton() {
 
 GpuSparse::GpuSparse(OpKernelContext* context)
     : initialized_(false), context_(context) {
-  auto hip_stream_ptr =
-      reinterpret_cast<const hipStream_t*>(context->op_device_context()
-                                               ->stream()
-                                               ->implementation()
-                                               ->GpuStreamMemberHack());
-  DCHECK(hip_stream_ptr);
-  gpu_stream_ = *hip_stream_ptr;
+  gpu_stream_ = reinterpret_cast<hipStream_t>(
+      CHECK_NOTNULL(context->op_device_context()
+                        ->stream()
+                        ->platform_specific_handle()
+                        .stream));
 }
 
 Status GpuSparse::Initialize() {
@@ -152,9 +151,9 @@ Status GpuSparse::Initialize() {
   return OkStatus();
 }
 
-#define TF_CALL_HIPSPARSE_DTYPES(m)          \
-  m(float, ROCM_R_32F) m(double, ROCM_R_64F) \
-      m(std::complex<float>, ROCM_C_32F) m(std::complex<double>, ROCM_C_64F)
+#define TF_CALL_HIPSPARSE_DTYPES(m)                                          \
+  m(float, HIP_R_32F) m(double, HIP_R_64F) m(std::complex<float>, HIP_C_32F) \
+      m(std::complex<double>, HIP_C_64F)
 
 // Macro that specializes a sparse method for all 4 standard
 // numeric types.
@@ -357,14 +356,13 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
                                   const hipsparseMatDescr_t descrA,
                                   Scalar* csrVal, const int* csrRowPtr,
                                   int* csrColInd) {
-  GpuSparseCsrSortingConversionInfo info;
-  TF_RETURN_IF_ERROR(info.Initialize());
+  csru2csrInfo_t info;
 
   size_t pBufferSizeInBytes = 0;
 
   TF_RETURN_IF_GPUSPARSE_ERROR(
       buffer_size_op(hipsparse_handle, m, n, nnz, AsHipComplex(csrVal),
-                     csrRowPtr, csrColInd, info.info(), &pBufferSizeInBytes));
+                     csrRowPtr, csrColInd, info, &pBufferSizeInBytes));
 
   Tensor pBuffer_t;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -375,7 +373,7 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
 
   TF_RETURN_IF_GPUSPARSE_ERROR(op(hipsparse_handle, m, n, nnz, descrA,
                                   AsHipComplex(csrVal), csrRowPtr, csrColInd,
-                                  info.info(), pBuffer.data()));
+                                  info, pBuffer.data()));
 
   return OkStatus();
 }

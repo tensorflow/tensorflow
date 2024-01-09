@@ -15,7 +15,7 @@
 """Utilities related to distributed training."""
 # pylint:disable=protected-access
 
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import variables
@@ -48,12 +48,12 @@ def call_replica_local_fn(fn, *args, **kwargs):
   if 'strategy' in kwargs:
     strategy = kwargs.pop('strategy')
   else:
-    if ds_context.has_strategy():
-      strategy = ds_context.get_strategy()
+    if distribute_lib.has_strategy():
+      strategy = distribute_lib.get_strategy()
 
   # TODO(b/120571621): TPUStrategy does not implement replica-local variables.
   is_tpu = backend.is_tpu_strategy(strategy)
-  if ((not is_tpu) and strategy and ds_context.in_cross_replica_context()):
+  if ((not is_tpu) and strategy and distribute_lib.in_cross_replica_context()):
     with strategy.scope():
       return strategy.extended.call_for_each_replica(fn, args, kwargs)
   return fn(*args, **kwargs)

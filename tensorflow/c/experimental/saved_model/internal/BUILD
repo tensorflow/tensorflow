@@ -20,7 +20,10 @@ load(
     "tf_copts",
 )
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 cc_library(
     name = "concrete_function",
@@ -341,7 +344,7 @@ cc_library(
 
 tf_cc_test(
     name = "saved_model_api_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "saved_model_api_test.cc",
     ],

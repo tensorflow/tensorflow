@@ -18,25 +18,26 @@ import functools
 import os
 
 from google.protobuf.any_pb2 import Any
-
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import fingerprinting_utils
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
-from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
-
+# Placeholder for protosplitter import.  # copybara:comment
 # API label for SavedModel metrics.
 _SAVE_BUILDER_LABEL = "save_v1_builder"
 
@@ -362,8 +363,8 @@ class _SavedModelBuilder(object):
     _add_op_to_signature_def_map(signature_def_map, train_op,
                                  constants.TRAIN_OP_SIGNATURE_KEY)
 
-    saved_model_utils.get_or_create_variables_dir(self._export_dir)
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    path_helpers.get_or_create_variables_dir(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
 
     saver = self._maybe_create_saver(saver)
 
@@ -395,19 +396,29 @@ class _SavedModelBuilder(object):
     # subsequent attempts to save variables will fail.
     self._has_saved_variables = True
 
-  def save(self, as_text=False):
+  def save(self, as_text=False, experimental_image_format=False):
     """Writes a `SavedModel` protocol buffer to disk.
 
     The function writes the SavedModel protocol buffer to the export directory
     in a serialized format.
 
     Args:
-      as_text: Writes the SavedModel protocol buffer in text format to
-        disk. Protocol buffers in text format are useful for debugging, but
-        parsing fails when it encounters an unknown field and so is not forward
+      as_text: Writes the SavedModel protocol buffer in text format to disk.
+        Protocol buffers in text format are useful for debugging, but parsing
+        fails when it encounters an unknown field and so is not forward
         compatible. This means changes to TensorFlow may prevent deployment of
         new text format SavedModels to existing serving binaries. Do not deploy
         `as_text` SavedModels to production.
+      experimental_image_format: Writes the SavedModel protobuf in the
+        experimental image format. See
+      https://www.tensorflow.org/api_docs/python/tf/saved_model/SaveOptions for
+        more details. This allows `SavedModelBuilder` to save models larger than
+        2 GiB.
+    
+    Raises:
+       RuntimeError: When trying to use `proto_splitter` but `proto_splitter` is
+         not imported. This check is here because `proto_splitter` is not 
+         available in OSS at the moment. 
 
     Returns:
       The path to which the SavedModel protocol buffer was written.
@@ -422,13 +433,34 @@ class _SavedModelBuilder(object):
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
       file_io.write_string_to_file(path, str(self._saved_model))
     else:
-      path = file_io.join(
-          compat.as_bytes(self._export_dir),
-          compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
-      file_io.write_string_to_file(
-          path, self._saved_model.SerializeToString(deterministic=True))
+      if experimental_image_format:
+        path = file_io.join(
+            self._export_dir,
+            constants.SAVED_MODEL_FILENAME_PREFIX,
+        )
+        if (
+            locals().get("proto_splitter", globals().get("proto_splitter"))
+            is None
+        ):
+          raise RuntimeError(
+              "No proto_splitter is provided, cannot use"
+              " experimental_image_format."
+          )
+        # Overwrites path to record whether the saved_model is split, i.e.,
+        # whether the suffix is `.pb` or `.cpb`.
+        path = proto_splitter.SavedModelSplitter(self._saved_model).write(path)
+      else:
+        path = file_io.join(
+            compat.as_bytes(self._export_dir),
+            compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB),
+        )
+        file_io.write_string_to_file(
+            path, self._saved_model.SerializeToString(deterministic=True)
+        )
+      # Placeholder for internal TF1 model fingerprint write
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
+
     return path
 
 
@@ -511,7 +543,7 @@ class SavedModelBuilder(_SavedModelBuilder):
       TypeError if Train op is not of type `Operation`.
     """
     if train_op is not None:
-      if (not isinstance(train_op, ops.Tensor) and
+      if (not isinstance(train_op, tensor.Tensor) and
           not isinstance(train_op, ops.Operation)):
         raise TypeError(f"`train_op` {train_op} needs to be a Tensor or Op.")
       ops.add_to_collection(constants.TRAIN_OP_KEY, train_op)
@@ -590,8 +622,8 @@ class SavedModelBuilder(_SavedModelBuilder):
     # Add assets and ops
     self._add_collections(assets_collection, main_op, None)
 
-    saved_model_utils.get_or_create_variables_dir(self._export_dir)
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    path_helpers.get_or_create_variables_dir(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
 
     saver = self._maybe_create_saver(saver)
 
@@ -734,7 +766,7 @@ def _asset_path_from_tensor(path_tensor):
   Raises:
     TypeError if tensor does not match expected op type, dtype or value.
   """
-  if not isinstance(path_tensor, ops.Tensor):
+  if not isinstance(path_tensor, tensor.Tensor):
     raise TypeError(f"Asset path tensor {path_tensor} must be a Tensor.")
   if path_tensor.op.type != "Const":
     raise TypeError(f"Asset path tensor {path_tensor} must be of type constant."
@@ -776,7 +808,7 @@ def copy_assets_to_destination_dir(asset_filename_map, destination_dir,
   if saved_files is None:
     saved_files = set()
 
-  assets_destination_dir = saved_model_utils.get_or_create_assets_dir(
+  assets_destination_dir = path_helpers.get_or_create_assets_dir(
       destination_dir)
 
   # Copy each asset from source path to destination path.

@@ -304,7 +304,8 @@ void ConvGeneric::GenerateCode(const GpuInfo& gpu_info) {
   if (gpu_info.IsMali()) {
     compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
-  if (conv_params_.IsPrivateMemBroadcast() && gpu_info.IsCL20OrHigher()) {
+  if (conv_params_.IsPrivateMemBroadcast() &&
+      (gpu_info.IsCL20OrHigher() || gpu_info.opencl_info.IsCLVK())) {
     compiler_options_.push_back(CompilerOptions::kCl20);
   }
   bool kernel_is_trivial =
@@ -885,7 +886,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
                       std::to_string(s * 4 + ch + shared_offset);
                   std::string w_val;
                   if (conv_params.AreWeightsBuffer()) {
-                    if (gpu_info.SupportsPointersInKernels()) {
+                    if (need_local_mem ||
+                        gpu_info.SupportsPointersInKernels()) {
                       w_val = "weights_cache[" + weight_id + "]";
                     } else {
                       w_val = "args.weights.Read(filters_offset + " +
@@ -925,7 +927,7 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
                 std::string weight_id =
                     std::to_string(s * 4 + i + shared_offset);
                 if (conv_params.AreWeightsBuffer()) {
-                  if (gpu_info.SupportsPointersInKernels()) {
+                  if (need_local_mem || gpu_info.SupportsPointersInKernels()) {
                     F[i] = "weights_cache[" + weight_id + "]";
                   } else {
                     F[i] =
@@ -1112,7 +1114,7 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
     c += "  if (DST_S + " + sind + " >= args.dst_tensor.Slices()) return;\n";
     c += "  {\n";
     if (conv_params.AreWeightsBuffer() &&
-        gpu_info.SupportsPointersInKernels()) {
+        (need_local_mem || gpu_info.SupportsPointersInKernels())) {
       c += "    FLT4 bias_val = TO_FLT4(weights_cache[" + sind + "]);\n";
     } else {
       c += "    FLT4 bias_val = args.biases.Read(DST_S + " + sind + ");\n";
@@ -1772,7 +1774,8 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
         definition.precision != CalculationsPrecision::F32_F16) {
       const bool supports_subgroups =
           gpu_info.SupportsExtension("cl_khr_subgroups") ||
-          gpu_info.SupportsExtension("cl_intel_subgroups");
+          gpu_info.SupportsExtension("cl_intel_subgroups") ||
+          gpu_info.opencl_info.IsCLVK();
       if (supports_subgroups) {
         const int kSubGroupSize = 16;
         const bool supports_subgroup_size_control =
@@ -1782,7 +1785,7 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
           conv_params.weights_upload_type =
               WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
           conv_params.simd_size = kSubGroupSize;
-        } else if (gpu_info.opencl_info.platform_version.find("clvk")) {
+        } else if (gpu_info.opencl_info.IsCLVK()) {
           // It will work because of specific driver using subgroup size 16
           conv_params.weights_upload_type =
               WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;

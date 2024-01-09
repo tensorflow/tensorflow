@@ -18,26 +18,31 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
 
-Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
+Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
+    TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   if (!dispatcher_) {
     dispatcher_ =
         std::make_unique<DataServiceDispatcherClient>(address_, protocol_);
   }
   TF_RETURN_IF_ERROR(grpc_util::Retry(
-      [this, split, end_of_splits] {
+      [this, split, end_of_splits]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         return dispatcher_->GetSplit(iteration_id_, repetition_,
                                      split_provider_index_, *split,
                                      *end_of_splits);
@@ -56,7 +61,7 @@ Status DataServiceSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   return OkStatus();
 }
 
-Status DataServiceSplitProvider::Reset() {
+Status DataServiceSplitProvider::Reset() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   repetition_++;
   return OkStatus();
@@ -74,6 +79,17 @@ Status DataServiceSplitProvider::Restore(
     IteratorStateReader* reader) {
   return errors::Unimplemented(
       "Restore is not implemented for DataServiceSplitProvider");
+}
+
+Status CreateSplitProviders(
+    const DatasetDef& dataset_def,
+    std::vector<std::unique_ptr<SplitProvider>>& split_providers) {
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> standalone_dataset;
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(params, dataset_def.graph(),
+                                                    &standalone_dataset));
+  TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProviders(&split_providers));
+  return OkStatus();
 }
 
 }  // namespace data

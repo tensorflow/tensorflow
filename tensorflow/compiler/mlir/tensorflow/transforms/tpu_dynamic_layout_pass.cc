@@ -78,7 +78,7 @@ bool IsSupportedInputOp(
   TF::IteratorGetNextOp iterator_op = llvm::dyn_cast<TF::IteratorGetNextOp>(op);
   if (!iterator_op) return false;
 
-  Value resource_iterator = iterator_op.iterator();
+  Value resource_iterator = iterator_op.getIterator();
 
   if (resource_alias_analysis.IsUnknownResource(resource_iterator))
     return false;
@@ -127,7 +127,7 @@ TF::TPUGetLayoutOp BuildGetLayout(const int64_t execute_arg_index,
                                   OpBuilder* builder) {
   return builder->create<TF::TPUGetLayoutOp>(
       compile_launch.getLoc(),
-      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamicSize},
+      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamic},
                                                  builder->getIntegerType(64))},
       llvm::ArrayRef<Value>{compilation_key},
       llvm::ArrayRef<NamedAttribute>{
@@ -143,7 +143,7 @@ TF::TPUCopyWithLayoutOp BuildCopyWithLayout(tf_device::LaunchOp execute_launch,
                                             Value input, OpBuilder* builder) {
   return builder->create<TF::TPUCopyWithLayoutOp>(
       execute_launch.getLoc(), llvm::ArrayRef<Type>{input.getType()},
-      llvm::ArrayRef<Value>{input, get_layout.layout()});
+      llvm::ArrayRef<Value>{input, get_layout.getLayout()});
 }
 
 // Performs transformation for a non-replicated input.
@@ -151,7 +151,7 @@ void HandleInput(Value input, const int64_t execute_arg_index,
                  TF::TPUExecuteOp execute, tf_device::LaunchOp execute_launch,
                  tf_device::LaunchOp compile_launch) {
   OpBuilder builder = CreateBuilderAfterOp(compile_launch);
-  auto get_layout = BuildGetLayout(execute_arg_index, execute.key(),
+  auto get_layout = BuildGetLayout(execute_arg_index, execute.getKey(),
                                    compile_launch, &builder);
   builder.setInsertionPoint(execute_launch);
   auto copy_with_layout = BuildCopyWithLayout(execute_launch, compile_launch,
@@ -172,7 +172,7 @@ bool HandleReplicatedInputs(
 
   MutableArrayRef<OpOperand> inputs =
       replicate.GetOperandsForBlockArgument(replicate_arg);
-  for (auto entry : llvm::enumerate(inputs)) {
+  for (const auto& entry : llvm::enumerate(inputs)) {
     auto input_op = entry.value().get().getDefiningOp();
     if (!input_op || !IsSupportedInputOp(input_op, resource_alias_analysis))
       return false;
@@ -181,13 +181,13 @@ bool HandleReplicatedInputs(
   auto get_layout = BuildGetLayout(execute_arg_index, compilation_key,
                                    compile_launch, &builder);
   builder.setInsertionPoint(replicate);
-  for (auto entry : llvm::enumerate(inputs)) {
+  for (const auto& entry : llvm::enumerate(inputs)) {
     auto copy_with_layout =
         BuildCopyWithLayout(execute_launch, compile_launch, get_layout,
                             entry.value().get(), &builder);
 
     auto device_list = replicate.getDevices()
-                           .getValue()
+                           .value()
                            .get(execute_launch.getDevice())
                            .cast<ArrayAttr>();
     copy_with_layout->setAttr(kDeviceAttr,
@@ -207,7 +207,7 @@ void HandleCompileAndExecutes(
   auto compile =
       llvm::cast<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front());
   tensorflow::tpu::TPUCompileMetadataProto metadata;
-  metadata.ParseFromString(compile.metadata().str());
+  metadata.ParseFromString(compile.getMetadata().str());
   llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> input_mappings =
       tensorflow::GetMetadataArgumentMapping(metadata);
 
@@ -222,14 +222,14 @@ void HandleCompileAndExecutes(
         llvm::cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
     const auto& input_mapping = std::get<1>(execute_and_input_mapping);
 
-    for (auto& input_and_idx : llvm::enumerate(execute.args())) {
+    for (const auto& input_and_idx : llvm::enumerate(execute.getArgs())) {
       Value input = input_and_idx.value();
       const int64_t execute_arg_index = input_and_idx.index();
       if (auto block_arg = input.dyn_cast<BlockArgument>()) {
         // For a block argument, consider transforms only when it is a
         // replicated input (defining ops will be outside the replicate node).
         if (maybe_replicate != block_arg.getParentRegion()->getParentOp() ||
-            !HandleReplicatedInputs(execute_arg_index, execute.key(),
+            !HandleReplicatedInputs(execute_arg_index, execute.getKey(),
                                     execute_launch, compile_launch, block_arg,
                                     maybe_replicate, resource_alias_analysis)) {
           continue;

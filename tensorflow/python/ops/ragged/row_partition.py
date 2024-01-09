@@ -21,25 +21,29 @@
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util.tf_export import tf_export
 
-#===============================================================================
+# ===============================================================================
 # RowPartition
-#===============================================================================
+# ===============================================================================
 # TODO(edloper): Consider removing row_starts and row_limits factory methods
 # and accessors from RowPartition.  In particular, these two encodings are
 # "second-class citizens": we never cache them, and if you do construct a
@@ -108,9 +112,9 @@ class RowPartition(composite_tensor.CompositeTensor):
   encoding, use `RowPartition.with_precomputed_<encoding>`.
   """
 
-  #=============================================================================
+  # =============================================================================
   # Constructor (private)
-  #=============================================================================
+  # =============================================================================
   def __init__(self,
                row_splits,
                row_lengths=None,
@@ -157,7 +161,7 @@ class RowPartition(composite_tensor.CompositeTensor):
                        "RowPartition.from_row_lengths())")
 
     # Validate the arguments.
-    if not isinstance(row_splits, ops.Tensor):
+    if not isinstance(row_splits, tensor_lib.Tensor):
       raise TypeError("Row-partitioning argument must be a Tensor, got %r" %
                       row_splits)
     if row_splits.dtype not in (dtypes.int32, dtypes.int64):
@@ -173,7 +177,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     # lengths or rowids, and we later want those lengths/rowids back.
     for tensor in [row_lengths, value_rowids, nrows, uniform_row_length, nvals]:
       if tensor is not None:
-        if not isinstance(tensor, ops.Tensor):
+        if not isinstance(tensor, tensor_lib.Tensor):
           raise TypeError("Cached value must be a Tensor or None.")
         elif tensor.dtype != row_splits.dtype:
           raise ValueError(f"Inconsistent dtype for encoding tensors: "
@@ -184,9 +188,9 @@ class RowPartition(composite_tensor.CompositeTensor):
     self._uniform_row_length = uniform_row_length
     self._nvals = nvals
 
-  #=============================================================================
+  # =============================================================================
   # Factory Methods
-  #=============================================================================
+  # =============================================================================
 
   @classmethod
   def from_value_rowids(cls,
@@ -204,7 +208,7 @@ class RowPartition(composite_tensor.CompositeTensor):
     partitioned_rows = [[] for _ in nrows]
     for (value, rowid) in zip(values, value_rowids):
       partitioned_rows[rowid].append(value)
-    ``
+    ```
 
     Args:
       value_rowids: A 1-D integer tensor with shape `[nvals]`, which corresponds
@@ -351,7 +355,7 @@ class RowPartition(composite_tensor.CompositeTensor):
       raise TypeError("validate must have type bool")
     if isinstance(row_splits, (list, tuple)) and not row_splits:
       raise ValueError("row_splits tensor may not be empty.")
-    if isinstance(row_splits, tensor_spec.TensorSpec):
+    if isinstance(row_splits, tensor_lib.TensorSpec):
       return cls(row_splits=row_splits, internal=_row_partition_factory_key)
 
     with ops.name_scope(None, "RowPartitionFromRowSplits", [row_splits]):
@@ -692,8 +696,9 @@ class RowPartition(composite_tensor.CompositeTensor):
         partition.dtype == np.int32 and dtype is None):
       partition = ops.convert_to_tensor(partition, name=name)
     else:
-      partition = ops.convert_to_tensor_v2(
-          partition, dtype_hint=dtype_hint, dtype=dtype, name=name)
+      partition = tensor_conversion.convert_to_tensor_v2(
+          partition, dtype_hint=dtype_hint, dtype=dtype, name=name
+      )
     if partition.dtype not in (dtypes.int32, dtypes.int64):
       raise ValueError("%s must have dtype int32 or int64" % name)
 
@@ -721,9 +726,9 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  #=============================================================================
+  # =============================================================================
   # Accessors
-  #=============================================================================
+  # =============================================================================
 
   @property
   def dtype(self):
@@ -956,9 +961,9 @@ class RowPartition(composite_tensor.CompositeTensor):
       raise ValueError("_nrows.dtype=" + str(self._nrows.dtype) + ", not " +
                        str(my_dtype))
 
-  #=============================================================================
+  # =============================================================================
   # Transformation
-  #=============================================================================
+  # =============================================================================
 
   def with_dtype(self, dtype):
     """Returns a copy of this RowPartition with the given encoding dtype.
@@ -985,9 +990,9 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=_cast_if_not_none(self._uniform_row_length, dtype),
         internal=_row_partition_factory_key)
 
-  #=============================================================================
+  # =============================================================================
   # String Encoding
-  #=============================================================================
+  # =============================================================================
 
   def __repr__(self):
     if self._uniform_row_length is not None:
@@ -996,9 +1001,9 @@ class RowPartition(composite_tensor.CompositeTensor):
     else:
       return f"tf.RowPartition(row_splits={self._row_splits})"
 
-  #=============================================================================
+  # =============================================================================
   # Precomputed Encodings
-  #=============================================================================
+  # =============================================================================
 
   def _has_precomputed_row_splits(self):
     """Returns true if `row_splits` has already been computed.
@@ -1189,23 +1194,23 @@ class RowPartition(composite_tensor.CompositeTensor):
         nvals=nvals,
         internal=_row_partition_factory_key)
 
-  #=============================================================================
+  # =============================================================================
   # Composite Tensor
-  #=============================================================================
+  # =============================================================================
 
   @property
   def _type_spec(self):
     return RowPartitionSpec.from_value(self)
 
 
-#===============================================================================
+# ===============================================================================
 # RowPartitionSpec
-#===============================================================================
+# ===============================================================================
 # TODO(edloper): Consider refactoring RowPartitionSpec to allow any combination
 # of precomputed row-partition encodings (rather than always using row_splits).
 
 
-@type_spec.register("tf.RowPartitionSpec")
+@type_spec_registry.register("tf.RowPartitionSpec")
 class RowPartitionSpec(type_spec.TypeSpec):
   """Type specification for a `tf.RowPartition`."""
 
@@ -1312,7 +1317,7 @@ class RowPartitionSpec(type_spec.TypeSpec):
   def _component_specs(self):
     row_splits_shape = tensor_shape.TensorShape(
         [tensor_shape.dimension_at_index(self._nrows, 0) + 1])
-    return tensor_spec.TensorSpec(row_splits_shape, self._dtype)
+    return tensor_lib.TensorSpec(row_splits_shape, self._dtype)
 
   def _to_components(self, value):
     return value.row_splits()
@@ -1383,9 +1388,16 @@ class RowPartitionSpec(type_spec.TypeSpec):
     return RowPartitionSpec(nrows, nvals, uniform_row_length, dtype)
 
 
-#===============================================================================
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        RowPartitionSpec, struct_pb2.TypeSpecProto.ROW_PARTITION_SPEC
+    )
+)
+
+
+# ===============================================================================
 # Helper Functions
-#===============================================================================
+# ===============================================================================
 
 
 def _assert_monotonic_increasing(tensor, message=None):
@@ -1439,7 +1451,7 @@ _row_partition_factory_key = object()  # unique private object
 
 
 def _get_dtype_or_none(value):
-  if isinstance(value, ops.Tensor):
+  if isinstance(value, tensor_lib.Tensor):
     return value.dtype
   return None
 
@@ -1450,7 +1462,7 @@ def _get_target_dtype(values, dtype=None, dtype_hint=None):
     return dtype
 
   for value in values:
-    if isinstance(value, ops.Tensor):
+    if isinstance(value, tensor_lib.Tensor):
       return value.dtype
 
   for value in values:

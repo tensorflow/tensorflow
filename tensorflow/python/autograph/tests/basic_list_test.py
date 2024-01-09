@@ -16,7 +16,8 @@
 
 import tensorflow as tf
 
-from tensorflow.python import autograph as ag
+from tensorflow.python.autograph.lang import directives
+from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.tests import reference_test_base
 
 
@@ -25,7 +26,7 @@ def type_not_annotated(n):
   # TODO(mdan): Here, we ought to infer the dtype and shape when i is staged.
   for i in range(n):
     l.append(i)
-  return ag.stack(l, strict=False)
+  return special_functions.stack(l, strict=False)
 
 
 def element_access():
@@ -33,7 +34,7 @@ def element_access():
   l.append(1)
   l.append(2)
   l.append(3)
-  ag.set_element_type(l, tf.int32)
+  directives.set_element_type(l, tf.int32)
   return 2 * l[1]
 
 
@@ -42,40 +43,40 @@ def element_update():
   l.append(1)
   l.append(2)
   l.append(3)
-  ag.set_element_type(l, tf.int32)
+  directives.set_element_type(l, tf.int32)
   l[1] = 5
-  return ag.stack(l, strict=False)
+  return special_functions.stack(l, strict=False)
 
 
 def simple_fill(n):
   l = []
-  ag.set_element_type(l, tf.int32)
+  directives.set_element_type(l, tf.int32)
   for i in range(n):
     l.append(i)
-  return ag.stack(l, strict=False)
+  return special_functions.stack(l, strict=False)
 
 
 def nested_fill(m, n):
   mat = []
-  ag.set_element_type(mat, tf.int32)
+  directives.set_element_type(mat, tf.int32)
   for _ in range(m):
     l = []
-    ag.set_element_type(l, tf.int32)
+    directives.set_element_type(l, tf.int32)
     for j in range(n):
       l.append(j)
-    mat.append(ag.stack(l, strict=False))
-  return ag.stack(mat, strict=False)
+    mat.append(special_functions.stack(l, strict=False))
+  return special_functions.stack(mat, strict=False)
 
 
 def read_write_loop(n):
   l = []
   l.append(1)
   l.append(1)
-  ag.set_element_type(l, tf.int32)
+  directives.set_element_type(l, tf.int32)
   for i in range(2, n):
     l.append(l[i-1] + l[i-2])
     l[i-2] = -l[i-2]
-  return ag.stack(l, strict=False)
+  return special_functions.stack(l, strict=False)
 
 
 def simple_empty(n):
@@ -84,11 +85,11 @@ def simple_empty(n):
   l.append(2)
   l.append(3)
   l.append(4)
-  ag.set_element_type(l, tf.int32, ())
+  directives.set_element_type(l, tf.int32, ())
   s = 0
   for _ in range(n):
     s += l.pop()
-  return ag.stack(l, strict=False), s
+  return special_functions.stack(l, strict=False), s
 
 
 def mutation(t, n):

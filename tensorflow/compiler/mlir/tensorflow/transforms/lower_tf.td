@@ -218,9 +218,22 @@ def LowerMulNoNanOp : BinaryNoNanPat<TF_MulNoNanOp, TF_MulOp>;
 // TruncateDiv op patterns.
 //===----------------------------------------------------------------------===//
 
-def LowerTruncateDivOp : Pat<
-  (TF_TruncateDivOp $lhs, $rhs),
+def LowerTruncateDivOpOnIntTensors : Pat<
+  (TF_TruncateDivOp TF_IntTensor:$lhs, $rhs),
   (TF_DivOp $lhs, $rhs)>;
+
+// Note: truncation could also be implemented as sign(x) * floor(abs(x)) or
+//       (-1 & x) || floor(abs(x)), based on performance benchmarks.
+def LowerTruncateDivOpOnFloatTensors : Pat<
+  (TF_TruncateDivOp TF_FloatTensor:$lhs, $rhs),
+  (TF_SelectV2Op
+    (TF_LessOp
+      (TF_DivOp:$div $lhs, $rhs),
+      (TF_ConstOp:$zero (GetScalarOfFloatType<"0.0"> $lhs))
+    ),
+    (TF_CeilOp $div),
+    (TF_FloorOp $div)
+  )>;
 
 //===----------------------------------------------------------------------===//
 // Fill op patterns.

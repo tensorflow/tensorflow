@@ -245,6 +245,12 @@ template struct functor::SpaceToDepthOpFunctor<GPUDevice, Eigen::half,
 template struct functor::SpaceToDepthOpFunctor<GPUDevice, Eigen::half,
                                                FORMAT_NHWC>;
 
+// Instantiate the GPU implementations for Eigen::bfloat16.
+template struct functor::SpaceToDepthOpFunctor<GPUDevice, Eigen::bfloat16,
+                                               FORMAT_NCHW>;
+template struct functor::SpaceToDepthOpFunctor<GPUDevice, Eigen::bfloat16,
+                                               FORMAT_NHWC>;
+
 // Instantiate the GPU implementations for uint8.
 template struct functor::SpaceToDepthOpFunctor<GPUDevice, uint8, FORMAT_NCHW>;
 template struct functor::SpaceToDepthOpFunctor<GPUDevice, uint8, FORMAT_NHWC>;

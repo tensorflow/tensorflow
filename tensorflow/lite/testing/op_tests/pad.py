@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for pad."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -30,55 +30,67 @@ def make_pad_tests(options):
       {
           "dtype": [tf.int32, tf.int64, tf.float32],
           "input_shape": [[1, 1, 2, 1, 1], [2, 1, 1, 1, 1]],
-          "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0], [1, 0]],
-                       [[0, 1], [0, 0], [0, 0], [2, 3], [1, 0]]],
+          "padding_dtype": [tf.int32, tf.int64],
+          "paddings": [
+              [[0, 0], [0, 1], [2, 3], [0, 0], [1, 0]],
+              [[0, 1], [0, 0], [0, 0], [2, 3], [1, 0]],
+          ],
           "constant_paddings": [True, False],
           "fully_quantize": [False],
-          "quant_16x8": [False]
+          "quant_16x8": [False],
       },
       # 4D:
       {
           "dtype": [tf.int32, tf.int64, tf.float32],
           "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
-          "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]],
-                       [[0, 1], [0, 0], [0, 0], [2, 3]]],
+          "padding_dtype": [tf.int32, tf.int64],
+          "paddings": [
+              [[0, 0], [0, 1], [2, 3], [0, 0]],
+              [[0, 1], [0, 0], [0, 0], [2, 3]],
+          ],
           "constant_paddings": [True, False],
           "fully_quantize": [False],
-          "quant_16x8": [False]
+          "quant_16x8": [False],
       },
       # 2D:
       {
           "dtype": [tf.int32, tf.int64, tf.float32],
           "input_shape": [[1, 2]],
+          "padding_dtype": [tf.int32, tf.int64],
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True, False],
           "fully_quantize": [False],
-          "quant_16x8": [False]
+          "quant_16x8": [False],
       },
       # 1D:
       {
           "dtype": [tf.int32],
           "input_shape": [[1]],
+          "padding_dtype": [tf.int32, tf.int64],
           "paddings": [[[1, 2]]],
           "constant_paddings": [False],
           "fully_quantize": [False],
-          "quant_16x8": [False]
+          "quant_16x8": [False],
       },
       # 4D:
       {
           "dtype": [tf.float32],
           "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
-          "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]],
-                       [[0, 1], [0, 0], [0, 0], [2, 3]],
-                       [[0, 0], [0, 0], [0, 0], [0, 0]]],
+          "padding_dtype": [tf.int32, tf.int64],
+          "paddings": [
+              [[0, 0], [0, 1], [2, 3], [0, 0]],
+              [[0, 1], [0, 0], [0, 0], [2, 3]],
+              [[0, 0], [0, 0], [0, 0], [0, 0]],
+          ],
           "constant_paddings": [True],
           "fully_quantize": [True],
-          "quant_16x8": [False, True]
+          "quant_16x8": [False, True],
       },
       # 2D:
       {
           "dtype": [tf.float32],
           "input_shape": [[1, 2]],
+          "padding_dtype": [tf.int32, tf.int64],
           "paddings": [[[0, 1], [2, 3]]],
           "constant_paddings": [True],
           "fully_quantize": [True],
@@ -88,6 +100,7 @@ def make_pad_tests(options):
       {
           "dtype": [tf.float32],
           "input_shape": [[1]],
+          "padding_dtype": [tf.int32, tf.int64],
           "paddings": [[[1, 2]]],
           "constant_paddings": [True],
           "fully_quantize": [True],
@@ -109,10 +122,11 @@ def make_pad_tests(options):
     else:
       shape = [len(parameters["paddings"]), 2]
       paddings = tf.compat.v1.placeholder(
-          dtype=tf.int32, name="padding", shape=shape)
+          dtype=parameters["padding_dtype"], name="padding", shape=shape
+      )
       input_tensors = [input_tensor, paddings]
 
-    out = tf.pad(input_tensor, paddings=paddings)
+    out = tf.pad(tensor=input_tensor, paddings=paddings)
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

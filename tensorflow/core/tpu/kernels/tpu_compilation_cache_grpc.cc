@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_grpc.h"
 
 #include <functional>
+#include <memory>
 
 #include "grpcpp/impl/codegen/async_stream.h"
 #include "grpcpp/impl/codegen/async_unary_call.h"
@@ -93,7 +94,7 @@ grpc::TpuCompilationCacheService::Service::Service() {
           this)));
 }
 
-grpc::TpuCompilationCacheService::Service::~Service() {}
+grpc::TpuCompilationCacheService::Service::~Service() = default;
 
 ::grpc::Status grpc::TpuCompilationCacheService::Service::GetTpuProgram(
     ::grpc::ServerContext* context, const RequestType* request,

@@ -5,6 +5,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
@@ -24,7 +25,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/histogram",
+        "@local_tsl//tsl/lib/histogram",
     ],
     alwayslink = True,
 )
@@ -34,7 +35,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "histogram.h",
-        "//tensorflow/tsl/lib/histogram:mobile_srcs_only_runtime",
+        "@local_tsl//tsl/lib/histogram:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -43,7 +44,7 @@ filegroup(
     name = "legacy_lib_histogram_all_headers",
     srcs = [
         "histogram.h",
-        "//tensorflow/tsl/lib/histogram:legacy_lib_histogram_all_headers",
+        "@local_tsl//tsl/lib/histogram:legacy_lib_histogram_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

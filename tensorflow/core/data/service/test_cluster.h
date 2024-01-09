@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -53,6 +54,7 @@ class TestCluster {
     int64_t worker_heartbeat_interval_ms = 0;
     int64_t job_gc_check_interval_ms = 0;
     int64_t job_gc_timeout_ms = 0;
+    std::string work_dir;
   };
 
   // Creates a new test cluster with a dispatcher and `num_workers` workers.
@@ -63,9 +65,13 @@ class TestCluster {
   // the cluster. Initialize should be called only once.
   Status Initialize();
   // Adds a new worker to the cluster.
-  Status AddWorker();
+  Status AddWorker(std::optional<int> port = std::nullopt);
   // Returns the number of workers in this cluster.
   size_t NumWorkers() const { return workers_.size(); }
+  // Returns the port number of a worker.
+  int WorkerBoundPort(size_t worker_index) const {
+    return workers_[worker_index]->BoundPort();
+  }
   // Returns the number of active iterations.
   StatusOr<size_t> NumActiveIterations() const {
     return dispatcher_->NumActiveIterations();
@@ -239,7 +245,7 @@ DatasetClient<T>::ReadFromTasks(const std::vector<TaskInfo>& tasks) {
       StatusOr<GetElementResult> element_result = ReadFromTask(task);
       // A task may be cancelled when it has finished but other workers are
       // still producing data.
-      if (errors::IsCancelled(element_result.status())) {
+      if (absl::IsCancelled(element_result.status())) {
         continue;
       }
       TF_RETURN_IF_ERROR(element_result.status());

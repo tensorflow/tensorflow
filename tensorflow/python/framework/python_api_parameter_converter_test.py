@@ -23,7 +23,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import _pywrap_python_api_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework._pywrap_python_api_parameter_converter import Convert
@@ -82,7 +82,7 @@ class PythonAPIWrapperTest(test_util.TensorFlowTestCase,
         self.assertParamEqual(actual, expected)
 
   def assertParamEqual(self, actual, expected):
-    if isinstance(actual, ops.Tensor):
+    if isinstance(actual, tensor.Tensor):
       self.assertAllEqual(actual, expected)
     else:
       self.assertEqual(actual, expected)

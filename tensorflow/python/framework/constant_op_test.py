@@ -15,6 +15,7 @@
 """Tests for tensorflow.python.framework.constant_op."""
 
 from absl.testing import parameterized
+import numpy as np
 
 from google.protobuf import text_format
 
@@ -82,6 +83,15 @@ class ConstantOpTest(test.TestCase, parameterized.TestCase):
       return x_id
 
     self.assertAllClose(3.14, f_using_eagerconst(constant_op.constant(3.14)))
+
+  def test_np_array_memory_not_shared(self):
+    # An arbitrarily large loop number to test memory sharing
+    for _ in range(10000):
+      x = np.arange(10)
+      xt = constant_op.constant(x)
+      x[3] = 42
+      # Changing the input array after `xt` is created should not affect `xt`
+      self.assertEqual(xt.numpy()[3], 3)
 
   def test_eager_const_grad_error(self):
 

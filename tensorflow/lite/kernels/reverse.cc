@@ -15,7 +15,11 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include <algorithm>
+#include <array>
+#include <cstring>
+
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -40,6 +44,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* axis;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kAxisTensor, &axis));
   TF_LITE_ENSURE_EQ(context, NumDimensions(axis), 1);
+  TF_LITE_ENSURE(context, NumDimensions(input) <= 8);
   TF_LITE_ENSURE(context, NumDimensions(input) >= NumElements(axis));
 
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
@@ -57,11 +62,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  // TODO(b/186320180): support multi-axis case.
-  if (NumElements(axis) > 1) {
-    TF_LITE_KERNEL_LOG(context, "Current does not support more than 1 axis.");
-  }
-
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
@@ -77,53 +77,75 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* axis_tensor;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kAxisTensor, &axis_tensor));
-  int axis = GetTensorData<int32_t>(axis_tensor)[0];
+  TF_LITE_ENSURE_EQ(context, axis_tensor->type, kTfLiteInt32);
+  const int num_axes = NumElements(axis_tensor);
+  TF_LITE_ENSURE(context, num_axes <= 8);
+
+  std::array<int32_t, 8> axes;
+  memcpy(axes.data(), GetTensorData<int32_t>(axis_tensor),
+         num_axes * sizeof(int32_t));
   const int rank = NumDimensions(input);
-  if (axis < 0) {
-    axis += rank;
+  for (int i = 0; i < num_axes; ++i) {
+    if (axes[i] < 0) {
+      axes[i] += rank;
+    }
+    TF_LITE_ENSURE(context, axes[i] >= 0 && axes[i] < rank);
   }
 
-  TF_LITE_ENSURE(context, axis >= 0 && axis < rank);
+  std::sort(axes.begin(), axes.begin() + num_axes);
+
+  bool is_contiguous = true;
+  for (int i = 1; i < num_axes; ++i) {
+    if (axes[i - 1] + 1 != axes[i]) {
+      is_contiguous = false;
+      break;
+    }
+  }
+  if (!is_contiguous) {
+    TF_LITE_KERNEL_LOG(context, "Non-contiguous `axes` not supported");
+    return kTfLiteError;
+  }
+
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (output->type) {
     case kTfLiteFloat32: {
-      reference_ops::Reverse<float>(
-          axis, GetTensorShape(input), GetTensorData<float>(input),
-          GetTensorShape(output), GetTensorData<float>(output));
+      reference_ops::Reverse<float>(axes, num_axes, GetTensorShape(input),
+                                    GetTensorData<float>(input),
+                                    GetTensorData<float>(output));
       break;
     }
     case kTfLiteUInt8:
     case kTfLiteInt8: {
-      reference_ops::Reverse<uint8_t>(
-          axis, GetTensorShape(input), GetTensorData<uint8_t>(input),
-          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      reference_ops::Reverse<uint8_t>(axes, num_axes, GetTensorShape(input),
+                                      GetTensorData<uint8_t>(input),
+                                      GetTensorData<uint8_t>(output));
       break;
     }
     case kTfLiteInt16: {
-      reference_ops::Reverse<int16_t>(
-          axis, GetTensorShape(input), GetTensorData<int16_t>(input),
-          GetTensorShape(output), GetTensorData<int16_t>(output));
+      reference_ops::Reverse<int16_t>(axes, num_axes, GetTensorShape(input),
+                                      GetTensorData<int16_t>(input),
+                                      GetTensorData<int16_t>(output));
       break;
     }
     case kTfLiteInt32: {
-      reference_ops::Reverse<int32_t>(
-          axis, GetTensorShape(input), GetTensorData<int32_t>(input),
-          GetTensorShape(output), GetTensorData<int32_t>(output));
+      reference_ops::Reverse<int32_t>(axes, num_axes, GetTensorShape(input),
+                                      GetTensorData<int32_t>(input),
+                                      GetTensorData<int32_t>(output));
       break;
     }
     case kTfLiteInt64: {
-      reference_ops::Reverse<int64_t>(
-          axis, GetTensorShape(input), GetTensorData<int64_t>(input),
-          GetTensorShape(output), GetTensorData<int64_t>(output));
+      reference_ops::Reverse<int64_t>(axes, num_axes, GetTensorShape(input),
+                                      GetTensorData<int64_t>(input),
+                                      GetTensorData<int64_t>(output));
       break;
     }
     case kTfLiteBool: {
-      reference_ops::Reverse<bool>(
-          axis, GetTensorShape(input), GetTensorData<bool>(input),
-          GetTensorShape(output), GetTensorData<bool>(output));
+      reference_ops::Reverse<bool>(axes, num_axes, GetTensorShape(input),
+                                   GetTensorData<bool>(input),
+                                   GetTensorData<bool>(output));
       break;
     }
     default: {

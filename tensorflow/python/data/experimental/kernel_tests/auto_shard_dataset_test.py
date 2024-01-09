@@ -587,14 +587,20 @@ class AutoShardDatasetTest(tf_record_test_base.TFRecordTestBase,
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              auto_shard_policy=list(options_lib.AutoShardPolicy))))
+              auto_shard_policy=list(
+                  policy.name for policy in options_lib.AutoShardPolicy
+              )
+          ),
+      )
+  )
   def testEnumerateAutoShardPolicies(self, auto_shard_policy):
     """Verifies tf.data handles every auto-shard policy with no errors."""
+    policy_enum = options_lib.AutoShardPolicy[auto_shard_policy]
     dataset = dataset_ops.Dataset.list_files(self._filenames, shuffle=False)
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
     dataset = dataset.batch(5)
     options = options_lib.Options()
-    options.experimental_distribute.auto_shard_policy = auto_shard_policy
+    options.experimental_distribute.auto_shard_policy = policy_enum
     dataset = dataset.with_options(options)
     dataset = distribute._AutoShardDataset(dataset, 5, 3)
     self.getDatasetOutput(dataset, requires_initialization=True)

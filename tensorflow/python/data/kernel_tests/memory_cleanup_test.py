@@ -16,6 +16,7 @@
 
 import gc
 import time
+import weakref
 
 from absl.testing import parameterized
 
@@ -70,8 +71,16 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
       run()
 
     gc.collect()
+
+    def is_native_object(o):
+      # First check if `o` is a weakref proxy. Calling
+      # `isinstance(o, internal.NativeObject)` on an expired weak reference
+      # proxy will raise a ReferenceError.
+      if isinstance(o, weakref.ProxyTypes): return False
+      return isinstance(o, internal.NativeObject)
+
     tensors = [
-        o for o in gc.get_objects() if isinstance(o, internal.NativeObject)
+        o for o in gc.get_objects() if is_native_object(o)
     ]
     self.assertEmpty(tensors, "%d Tensors are still alive." % len(tensors))
 

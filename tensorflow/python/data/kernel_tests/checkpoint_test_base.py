@@ -19,6 +19,7 @@ import os
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
@@ -28,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor_value
@@ -42,7 +44,7 @@ def remove_variants(get_next_op):
   """Remove variants from a nest structure, so sess.run will execute."""
 
   def _remove_variant(x):
-    if isinstance(x, ops.Tensor) and x.dtype == dtypes.variant:
+    if isinstance(x, tensor.Tensor) and x.dtype == dtypes.variant:
       return ()
     else:
       return x
@@ -62,58 +64,65 @@ def default_test_combinations():
 
     return ds_fn_no_opt
 
-  def verify_unused_iterator(obj, ds_fn, num_outputs, sparse_tensors=False):
+  def verify_unused_iterator(
+      obj, ds_fn, num_outputs, sparse_tensors=False, assert_items_equal=False):
     obj.verify_unused_iterator(
         ds_fn=disable_optimizations(ds_fn=ds_fn),
         num_outputs=num_outputs,
-        sparse_tensors=sparse_tensors)
+        sparse_tensors=sparse_tensors,
+        assert_items_equal=assert_items_equal)
 
   verify_unused_iterator_combination = combinations.combine(
-      verify_fn=combinations.NamedObject("verify_unused_iterator",
-                                         verify_unused_iterator))
+      verify_fn=combinations.NamedObject(
+          "verify_unused_iterator", verify_unused_iterator))
 
-  def verify_fully_used_iterator(obj, ds_fn, num_outputs, sparse_tensors=False):
+  def verify_fully_used_iterator(
+      obj, ds_fn, num_outputs, sparse_tensors=False, assert_items_equal=False):
     obj.verify_fully_used_iterator(
         ds_fn=disable_optimizations(ds_fn=ds_fn),
         num_outputs=num_outputs,
-        sparse_tensors=sparse_tensors)
+        sparse_tensors=sparse_tensors,
+        assert_items_equal=assert_items_equal)
 
   verify_fully_used_iterator_combination = combinations.combine(
-      verify_fn=combinations.NamedObject("verify_fully_used_iterator",
-                                         verify_fully_used_iterator))
+      verify_fn=combinations.NamedObject(
+          "verify_fully_used_iterator", verify_fully_used_iterator))
 
-  def verify_exhausted_iterator(obj, ds_fn, num_outputs, sparse_tensors=False):
+  def verify_exhausted_iterator(
+      obj, ds_fn, num_outputs, sparse_tensors=False, assert_items_equal=False):
     obj.verify_exhausted_iterator(
         ds_fn=disable_optimizations(ds_fn=ds_fn),
         num_outputs=num_outputs,
-        sparse_tensors=sparse_tensors)
+        sparse_tensors=sparse_tensors,
+        assert_items_equal=assert_items_equal)
 
   verify_exhausted_iterator_combination = combinations.combine(
-      verify_fn=combinations.NamedObject("verify_exhausted_iterator",
-                                         verify_exhausted_iterator))
+      verify_fn=combinations.NamedObject(
+          "verify_exhausted_iterator", verify_exhausted_iterator))
 
-  def verify_multiple_breaks(obj, ds_fn, num_outputs, sparse_tensors=False):
+  def verify_multiple_breaks(
+      obj, ds_fn, num_outputs, sparse_tensors=False, assert_items_equal=False):
     obj.verify_multiple_breaks(
         ds_fn=disable_optimizations(ds_fn=ds_fn),
         num_outputs=num_outputs,
-        sparse_tensors=sparse_tensors)
+        sparse_tensors=sparse_tensors,
+        assert_items_equal=assert_items_equal)
 
   verify_multiple_breaks_combination = combinations.combine(
-      verify_fn=combinations.NamedObject("verify_multiple_breaks",
-                                         verify_multiple_breaks))
+      verify_fn=combinations.NamedObject(
+          "verify_multiple_breaks", verify_multiple_breaks))
 
-  def verify_reset_restored_iterator(obj,
-                                     ds_fn,
-                                     num_outputs,
-                                     sparse_tensors=False):
+  def verify_reset_restored_iterator(
+      obj, ds_fn, num_outputs, sparse_tensors=False, assert_items_equal=False):
     obj.verify_reset_restored_iterator(
         ds_fn=disable_optimizations(ds_fn=ds_fn),
         num_outputs=num_outputs,
-        sparse_tensors=sparse_tensors)
+        sparse_tensors=sparse_tensors,
+        assert_items_equal=assert_items_equal)
 
   verify_reset_restored_iterator_combination = combinations.combine(
-      verify_fn=combinations.NamedObject("verify_reset_restored_iterator",
-                                         verify_reset_restored_iterator))
+      verify_fn=combinations.NamedObject(
+          "verify_reset_restored_iterator", verify_reset_restored_iterator))
 
   return (verify_unused_iterator_combination +
           verify_fully_used_iterator_combination +
@@ -136,7 +145,8 @@ class CheckpointTestBase(test.TestCase):
                              ds_fn,
                              num_outputs,
                              sparse_tensors=False,
-                             verify_exhausted=True):
+                             verify_exhausted=True,
+                             assert_items_equal=False):
     """Verifies that saving and restoring an unused iterator works.
 
     Args:
@@ -145,6 +155,8 @@ class CheckpointTestBase(test.TestCase):
       sparse_tensors: Whether dataset is built from SparseTensor(s).
       verify_exhausted: Whether to verify that the iterator has been exhausted
         after producing `num_outputs` elements.
+      assert_items_equal: Tests the output has the expected elements regardless
+        of order.
 
     Raises:
       AssertionError if any test fails.
@@ -153,12 +165,14 @@ class CheckpointTestBase(test.TestCase):
         ds_fn, [0],
         num_outputs,
         sparse_tensors=sparse_tensors,
-        verify_exhausted=verify_exhausted)
+        verify_exhausted=verify_exhausted,
+        assert_items_equal=assert_items_equal)
 
   def verify_fully_used_iterator(self,
                                  ds_fn,
                                  num_outputs,
-                                 sparse_tensors=False):
+                                 sparse_tensors=False,
+                                 assert_items_equal=False):
     """Verifies that saving and restoring a fully used iterator works.
 
     Note that this only checks saving and restoring an iterator from which
@@ -170,14 +184,21 @@ class CheckpointTestBase(test.TestCase):
       ds_fn: 0-argument function that returns a Dataset.
       num_outputs: Total number of outputs expected from this Dataset.
       sparse_tensors: Whether dataset is built from SparseTensor(s).
+      assert_items_equal: Tests the output has the expected elements regardless
+        of order.
 
     Raises:
       AssertionError if test fails.
     """
     self.verify_run_with_breaks(
-        ds_fn, [num_outputs], num_outputs, sparse_tensors=sparse_tensors)
+        ds_fn,
+        [num_outputs],
+        num_outputs,
+        sparse_tensors=sparse_tensors,
+        assert_items_equal=assert_items_equal)
 
-  def verify_exhausted_iterator(self, ds_fn, num_outputs, sparse_tensors=False):
+  def verify_exhausted_iterator(
+      self, ds_fn, num_outputs, sparse_tensors=False, assert_items_equal=False):
     """Verifies that saving and restoring an exhausted iterator works.
 
     An exhausted iterator is one which has returned an OutOfRange error.
@@ -186,10 +207,13 @@ class CheckpointTestBase(test.TestCase):
       ds_fn: 0-argument function that returns a Dataset.
       num_outputs: Total number of outputs expected from this Dataset.
       sparse_tensors: Whether dataset is built from SparseTensor(s).
+      assert_items_equal: Tests the output has the expected elements regardless
+        of order.
 
     Raises:
       AssertionError if any test fails.
     """
+    del assert_items_equal
     self.gen_outputs(
         ds_fn, [],
         num_outputs,
@@ -208,7 +232,8 @@ class CheckpointTestBase(test.TestCase):
                              num_outputs,
                              num_breaks=10,
                              sparse_tensors=False,
-                             verify_exhausted=True):
+                             verify_exhausted=True,
+                             assert_items_equal=False):
     """Attempts to save/restore at multiple break points.
 
     Args:
@@ -219,6 +244,8 @@ class CheckpointTestBase(test.TestCase):
       sparse_tensors: Whether dataset is built from SparseTensor(s).
       verify_exhausted: Whether to verify that the iterator has been exhausted
         after producing `num_outputs` elements.
+      assert_items_equal: Tests the output has the expected elements regardless
+        of order.
 
     Raises:
       AssertionError if any test fails.
@@ -228,14 +255,16 @@ class CheckpointTestBase(test.TestCase):
         self.gen_break_points(num_outputs, num_breaks),
         num_outputs,
         sparse_tensors=sparse_tensors,
-        verify_exhausted=verify_exhausted)
+        verify_exhausted=verify_exhausted,
+        assert_items_equal=assert_items_equal)
 
   def verify_reset_restored_iterator(self,
                                      ds_fn,
                                      num_outputs,
                                      break_point=None,
                                      sparse_tensors=False,
-                                     verify_exhausted=True):
+                                     verify_exhausted=True,
+                                     assert_items_equal=False):
     """Attempts to re-initialize a restored iterator.
 
     This is useful when restoring a training checkpoint during validation.
@@ -247,6 +276,8 @@ class CheckpointTestBase(test.TestCase):
       sparse_tensors: Whether dataset is built from SparseTensor(s).
       verify_exhausted: Whether to verify that the iterator has been exhausted
         after producing `num_outputs` elements.
+      assert_items_equal: Tests the output has the expected elements regardless
+        of order.
 
     Raises:
       AssertionError if any test fails.
@@ -286,14 +317,15 @@ class CheckpointTestBase(test.TestCase):
         if verify_exhausted:
           with self.assertRaises(errors.OutOfRangeError):
             sess.run(get_next_op)
-    self.match(expected, actual)
+    self.match(expected, actual, assert_items_equal=assert_items_equal)
 
   def verify_error_on_save(self,
                            ds_fn,
                            num_outputs,
                            error,
                            break_point=None,
-                           sparse_tensors=False):
+                           sparse_tensors=False,
+                           assert_items_equal=False):
     """Attempts to save a non-saveable iterator.
 
     Args:
@@ -302,10 +334,13 @@ class CheckpointTestBase(test.TestCase):
       error: Declared error when trying to save iterator.
       break_point: Break point. Optional. Defaults to num_outputs/2.
       sparse_tensors: Whether dataset is built from SparseTensor(s).
+      assert_items_equal: Tests the output has the expected elements regardless
+        of order.
 
     Raises:
       AssertionError if any test fails.
     """
+    del assert_items_equal
     break_point = num_outputs // 2 if not break_point else break_point
     if context.executing_eagerly():
       iterator = iter(ds_fn())
@@ -331,7 +366,8 @@ class CheckpointTestBase(test.TestCase):
                              break_points,
                              num_outputs,
                              sparse_tensors=False,
-                             verify_exhausted=True):
+                             verify_exhausted=True,
+                             assert_items_equal=False):
     """Verifies that ds_fn() produces the same outputs with and without breaks.
 
     1. Builds a Dataset using `ds_fn` and produces `num_outputs` items from it
@@ -353,6 +389,8 @@ class CheckpointTestBase(test.TestCase):
       sparse_tensors: Whether dataset is built from SparseTensor(s).
       verify_exhausted: Whether to verify that the iterator has been exhausted
         after producing `num_outputs` elements.
+      assert_items_equal: Tests the output has the expected elements regardless
+        of order.
 
     Raises:
       AssertionError if any test fails.
@@ -370,7 +408,7 @@ class CheckpointTestBase(test.TestCase):
         sparse_tensors=sparse_tensors,
         verify_exhausted=verify_exhausted)
 
-    self.match(expected, actual)
+    self.match(expected, actual, assert_items_equal=assert_items_equal)
 
   def gen_outputs(self,
                   ds_fn,
@@ -424,7 +462,11 @@ class CheckpointTestBase(test.TestCase):
           with self.assertRaises(StopIteration):
             next(iterator)
         if save_checkpoint_at_end or i < len(break_points):
-          ckpt_path = ckpt.save(self._ckpt_path())
+          # TODO(b/275117275): Verify if TF2 async checkpoint works.
+          ckpt_options = checkpoint_options.CheckpointOptions()
+          ckpt_options.experimental_enable_async_checkpoint = False
+          ckpt_options.enable_async = False
+          ckpt_path = ckpt.save(self._ckpt_path(), options=ckpt_options)
           ckpt_saved = True
     else:
       def get_ops():
@@ -461,7 +503,7 @@ class CheckpointTestBase(test.TestCase):
 
     return outputs
 
-  def match(self, expected, actual):
+  def match(self, expected, actual, assert_items_equal=False):
     """Matches nested structures.
 
     Recursively matches shape and values of `expected` and `actual`.
@@ -471,6 +513,8 @@ class CheckpointTestBase(test.TestCase):
     Args:
       expected: Nested structure 1.
       actual: Nested structure 2.
+      assert_items_equal: Tests the output has the expected elements regardless
+        of order.
 
     Raises:
       AssertionError if matching fails.
@@ -487,6 +531,9 @@ class CheckpointTestBase(test.TestCase):
         for key1, key2 in zip(sorted(expected), sorted(actual)):
           self.assertEqual(key1, key2)
           self.match(expected[key1], actual[key2])
+      elif assert_items_equal:
+        for item1, item2 in zip(sorted(expected), sorted(actual)):
+          self.match(item1, item2)
       else:
         for item1, item2 in zip(expected, actual):
           self.match(item1, item2)
@@ -504,8 +551,8 @@ class CheckpointTestBase(test.TestCase):
       self.match(expected, actual)
 
   def gen_break_points(self, num_outputs, num_samples=10):
-    """Generates `num_samples` breaks points in [0, num_outputs]."""
-    return np.linspace(0, num_outputs, num_samples, dtype=int)
+    """Generates `num_samples` unique break points in [0, num_outputs]."""
+    return np.unique(np.linspace(0, num_outputs, num_samples, dtype=int))
 
   def _build_graph(self, ds_fn, sparse_tensors=False):
     dataset = ds_fn()

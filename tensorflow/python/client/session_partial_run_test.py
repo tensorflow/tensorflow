@@ -26,7 +26,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 
-
 class PartialRunTest(test_util.TensorFlowTestCase):
 
   def RunTestPartialRun(self, sess):
@@ -265,6 +264,7 @@ class PartialRunTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testPartialRunMissingPlaceholderFeedExceptionDist(self):
+    self.skipTest('Flaky test. Short term b/278768411, long term b/280102873')
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunMissingPlaceholderFeedException(
         session.Session(server.target))

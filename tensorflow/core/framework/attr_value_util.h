@@ -30,6 +30,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace attr_value_util_internal {
+// Return the size of the tensor represented by this TensorProto. If shape is
+// not fully defined return -1.
+int64_t TensorByteSize(const TensorProto& t);
+}  // namespace attr_value_util_internal
+
 // Forward declare protos so their symbols can be removed from .so exports
 class AttrValue;
 class NameAttrList;

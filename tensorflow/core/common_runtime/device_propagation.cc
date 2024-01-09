@@ -34,11 +34,11 @@ const std::string& AssignedOrRequestedDevice(const Node& node) {
   return node.requested_device();
 }
 
-void UpdateDeviceFromInputs(
+bool UpdateDeviceFromInputs(
     const device_propagation::NodeFilter& node_filter,
     const device_propagation::DeviceFilter& device_filter, Node* node) {
   if (!AssignedOrRequestedDevice(*node).empty() || !node_filter(*node)) {
-    return;
+    return false;
   }
   string proposed_device = "";
   Node* proposed_src = nullptr;
@@ -63,19 +63,22 @@ void UpdateDeviceFromInputs(
     }
 
     // If a source device is not propagatable, stop.
-    if (!device_filter(src_device)) return;
+    if (!device_filter(src_device)) return false;
 
     if (proposed_src == nullptr) {
       proposed_device = src_device;
       proposed_src = src;
     } else if (proposed_device != src_device) {
       // The device assignments of some input nodes are not the same. Stop.
-      return;
+      return false;
     }
   }
   if (proposed_src) {
     node->set_assigned_device_name(proposed_src->assigned_device_name());
     node->set_requested_device(proposed_src->requested_device());
+    return true;
+  } else {
+    return false;
   }
 }
 
@@ -84,9 +87,15 @@ void UpdateDeviceFromInputs(
 void PropagateDevices(const device_propagation::NodeFilter& node_filter,
                       const device_propagation::DeviceFilter& device_filter,
                       Graph* graph) {
-  ReverseDFS(*graph, {}, [&node_filter, &device_filter](Node* node) {
-    UpdateDeviceFromInputs(node_filter, device_filter, node);
-  });
+  bool nodes_changed = true;
+  while (nodes_changed) {
+    nodes_changed = false;
+    BreadthFirstTraversal(
+        *graph, {}, [&nodes_changed, &node_filter, &device_filter](Node* node) {
+          nodes_changed |=
+              UpdateDeviceFromInputs(node_filter, device_filter, node);
+        });
+  }
 }
 
 }  // namespace tensorflow

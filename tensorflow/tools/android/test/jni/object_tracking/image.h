@@ -322,7 +322,8 @@ class Image {
   // TODO(andrewharp): Make sure that stride is honored in all code.
   const int stride_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Image);
+  Image(const Image&) = delete;
+  void operator=(const Image&) = delete;
 };
 
 template <typename t>

@@ -71,7 +71,7 @@ class CollectiveParamResolverDistributed : public CollectiveParamResolverLocal {
 
   // Returns true iff there's an entry for this instance_key in the
   // local instance_table_.
-  bool InstanceIsCached(int32_t group_key, int32_t instance_key)
+  bool InstanceIsCached(int32_t group_key, const CollInstanceParams& instance)
       TF_LOCKS_EXCLUDED(instance_mu_);
 
   // Updates instance_table_ with contents of resp.

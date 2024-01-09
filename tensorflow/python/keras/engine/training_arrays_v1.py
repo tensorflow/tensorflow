@@ -19,7 +19,6 @@ import functools
 
 import numpy as np
 
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
@@ -31,6 +30,7 @@ from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 
 try:
@@ -128,7 +128,7 @@ def model_iteration(model,
   reset_dataset_after_each_epoch = False
   input_iterator = None
   is_dataset = isinstance(inputs,
-                          (dataset_ops.DatasetV1, dataset_ops.DatasetV2))
+                          (data_types.DatasetV1, data_types.DatasetV2))
   # TODO(fchollet): consider moving `steps_per_epoch` inference to
   # _standardize_user_data and set reset_dataset_after_each_epoch as an
   # attribute on the dataset instance.
@@ -183,7 +183,7 @@ def model_iteration(model,
   # Prepare validation data. Hold references to the iterator and the input list
   # to properly reinitialize and reuse in multiple validation passes.
   val_iterator = None
-  if isinstance(val_inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+  if isinstance(val_inputs, (data_types.DatasetV1, data_types.DatasetV2)):
     if validation_steps is None:
       # Because we pass an iterator feed instead of a Dataset to the eval
       # model_iteration() call, it will not trigger the dataset-input path
@@ -493,7 +493,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     Feed values for the model in the given mode.
   """
   if model._distribution_strategy:
-    if isinstance(inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    if isinstance(inputs, (data_types.DatasetV1, data_types.DatasetV2)):
       inputs = distributed_training_utils_v1.get_iterator(
           inputs, model._distribution_strategy)
 
@@ -513,7 +513,7 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
     else:
       return get_distributed_inputs()
 
-  if isinstance(inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+  if isinstance(inputs, (data_types.DatasetV1, data_types.DatasetV2,
                          iterator_ops.Iterator)):
     inputs, targets, sample_weights = model._standardize_user_data(
         inputs,

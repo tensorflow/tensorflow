@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/scan_ops.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -109,7 +109,7 @@ DECLARE_FOR_ALL_REDUCERS(int64_t);
 #undef DECLARE_FOR_ALL_REDUCERS
 
 #define DECLARE_FOR_LOGSUMEXP_REDUCER(T) DECLARE(LogSumExpReducer<T>, T);
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_LOGSUMEXP_REDUCER)
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_FOR_LOGSUMEXP_REDUCER);
 #undef DECLARE_FOR_LOGSUMEXP_REDUCER
 
 #undef DECLARE
@@ -150,7 +150,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .TypeConstraint<int64_t>("Tidx")                               \
           .HostMemory("axis"),                                           \
       ScanOp<GPUDevice, type, Eigen::internal::SumReducer<type>, int64>)
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 REGISTER_GPU_KERNELS(int32);
 REGISTER_GPU_KERNELS(int64_t);
 #undef REGISTER_GPU_KERNELS
@@ -189,7 +189,7 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
           .TypeConstraint<int64_t>("Tidx")                                \
           .HostMemory("axis"),                                            \
       ScanOp<GPUDevice, type, Eigen::internal::ProdReducer<type>, int64>)
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS)
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 REGISTER_GPU_KERNELS(int32);
 REGISTER_GPU_KERNELS(int64_t);
 #undef REGISTER_GPU_KERNELS
@@ -208,7 +208,7 @@ REGISTER_GPU_KERNELS(int64_t);
   REGISTER_CUMLOGSUMEXP_KERNEL(DEVICE_CPU, CPUDevice, type, int32) \
   REGISTER_CUMLOGSUMEXP_KERNEL(DEVICE_CPU, CPUDevice, type, int64_t)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_CPU_KERNELS);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

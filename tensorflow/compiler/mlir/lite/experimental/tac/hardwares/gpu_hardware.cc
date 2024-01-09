@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/gpu_hardware.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform_patterns.h"

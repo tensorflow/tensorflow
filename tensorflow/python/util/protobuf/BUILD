@@ -1,6 +1,9 @@
 # Tensorflow protobuf utility package
 
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 
 visibility = [
@@ -19,10 +22,10 @@ visibility = [
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
-    "//third_party/py/keras:__subpackages__",
 ]
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = visibility,
     licenses = ["notice"],
 )
@@ -34,7 +37,7 @@ tf_proto_library(
     cc_api_version = 2,
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "protobuf_compare_test",
     size = "small",
     srcs = ["compare_test.py"],
@@ -43,9 +46,8 @@ tf_py_test(
     tags = ["no_pip"],  # compare_test_pb2 proto is not available in pip.
     deps = [
         ":compare_test_proto_py",
-        "@six_archive//:six",
-        "//tensorflow/python:platform_test",
-        #"//tensorflow/python/util",
+        ":protobuf",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -64,7 +66,7 @@ filegroup(
 # )
 # copybara:uncomment_end
 
-py_library(
+py_strict_library(
     name = "protobuf",
     srcs = glob(
         ["*.py"],
@@ -75,6 +77,7 @@ py_library(
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
+        "//third_party/py/tensorflow_data_validation:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
         "//third_party/py/tfx:__subpackages__",
     ],
@@ -84,6 +87,6 @@ py_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "@com_google_protobuf//:protobuf_python",
-        "@six_archive//:six",
+        "//tensorflow/python/util:compat",
     ],
 )

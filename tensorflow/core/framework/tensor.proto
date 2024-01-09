@@ -83,6 +83,10 @@ message TensorProto {
 
   // DT_UINT64
   repeated uint64 uint64_val = 17 [packed = true];
+
+  // DT_FLOAT8_*, use variable-sized set of bytes
+  // (i.e. the equivalent of repeated uint8, if such a thing existed).
+  bytes float8_val = 18;
 }
 
 // Protocol buffer representing the serialization format of DT_VARIANT tensors.

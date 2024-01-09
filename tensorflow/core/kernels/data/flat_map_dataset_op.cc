@@ -125,7 +125,11 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
+      mutex_lock l(mu_);
+      input_ckpt_ = std::make_unique<MemoryCheckpoint>(ctx->id_registry());
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
@@ -135,6 +139,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      // LINT.IfChange(GetNextInternal)
       mutex_lock l(mu_);
       do {
         if (!input_impl_) {
@@ -145,23 +150,40 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
+          // Create a new context so that we have a separate `checkpoint`
+          // different from `ctx->checkpoint()`
+          auto nested_ctx = MakeNestedIteratorContext(ctx);
           TF_RETURN_IF_ERROR(current_element_iterator_->GetNext(
-              MakeNestedIteratorContext(ctx), out_tensors, &end_of_element));
+              &nested_ctx, out_tensors, &end_of_element));
+
+          // Merge the checkpoint so that the changes made to
+          // `current_element_iterator_` is propagated
+          ctx->MergeCheckpoint(nested_ctx.checkpoint());
           if (!end_of_element) {
             // Produce the subelement as output.
             *end_of_sequence = false;
             return OkStatus();
           }
+          // Since this sub-iterator is done,
+          // we can commit `input_ckpt_` to `ctx->checkpoint()`
+          ctx->MergeCheckpoint(input_ckpt_.get());
 
+          // Also clean up this sub-iterator's checkpoint inside of
+          // `ctx->checkpoint()` since it has been consumed.
+          ctx->PurgeCheckpoint(current_element_iterator_->prefix());
           // We have reached the end of the current element, so maybe move on
           // to the next element.
           current_element_iterator_.reset();
         }
-
         // Get the next element from the input dataset.
         inputs_.clear();
+        auto input_ctx = std::make_unique<IteratorContext>(*ctx);
         TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, &inputs_, end_of_sequence));
+            input_impl_->GetNext(input_ctx.get(), &inputs_, end_of_sequence));
+        // Merge the checkpoint to `input_ckpt_` but do not commit to
+        // `ctx->checkpoint()` yet until the sub-iterator created from
+        // this `inputs_` is consumed.
+        input_ckpt_->Merge(input_ctx->checkpoint());
         if (*end_of_sequence) {
           input_impl_.reset();
           return OkStatus();
@@ -170,10 +192,12 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/true));
       } while (true);
+      // LINT.ThenChange(:SkipInternal)
     }
 
     Status SkipInternal(IteratorContext* ctx, int num_to_skip,
                         bool* end_of_sequence, int* num_skipped) override {
+      // LINT.IfChange(SkipInternal)
       mutex_lock l(mu_);
       *num_skipped = 0;
       while (*num_skipped < num_to_skip) {
@@ -181,33 +205,65 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           *end_of_sequence = true;
           return OkStatus();
         }
-        if (!current_element_iterator_) {
-          // Get the next element from the input dataset.
-          inputs_.clear();
-          TF_RETURN_IF_ERROR(
-              input_impl_->GetNext(ctx, &inputs_, end_of_sequence));
-          if (*end_of_sequence) {
-            input_impl_.reset();
-            *end_of_sequence = true;
-            return OkStatus();
+        if (current_element_iterator_) {
+          // We are currently processing a mapped element, so try to get the
+          // next subelement.
+
+          bool end_of_element;
+          // Create a new context so that we have a separate `checkpoint`
+          // different from `ctx->checkpoint()`
+          auto nested_ctx = MakeNestedIteratorContext(ctx);
+
+          // `last_num_skipped` stores how many elements
+          // we have actually skipped.
+          int last_num_skipped;
+          TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
+              &nested_ctx, num_to_skip - *num_skipped, &end_of_element,
+              &last_num_skipped));
+          *num_skipped += last_num_skipped;
+
+          // Merge the checkpoint so that the changes made to
+          // `current_element_iterator_` is propagated
+          ctx->MergeCheckpoint(nested_ctx.checkpoint());
+          if (!end_of_element) {
+            if (*num_skipped != num_to_skip) {
+              return absl::InternalError(absl::StrFormat(
+                  "Expected `num_skipped` and `num_to_skip` to be the same. Got"
+                  " %d(num_skipped) and %d(num_to_skip)",
+                  *num_skipped, num_to_skip));
+            }
+            continue;
           }
-          TF_RETURN_IF_ERROR(
-              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
-        }
-        bool end_of_element;
-        int last_num_skipped;
-        TF_RETURN_IF_ERROR(current_element_iterator_->Skip(
-            MakeNestedIteratorContext(ctx), num_to_skip - *num_skipped,
-            &end_of_element, &last_num_skipped));
-        *num_skipped += last_num_skipped;
-        if (end_of_element) {
+          // Since this sub-iterator is done,
+          // we can commit `input_ckpt_` to `ctx->checkpoint()`
+          ctx->MergeCheckpoint(input_ckpt_.get());
+          // Also clean up this sub-iterator's checkpoint inside of
+          // `ctx->checkpoint()` since it has been consumed.
+          ctx->PurgeCheckpoint(current_element_iterator_->prefix());
           // We have reached the end of the current element, so maybe move on
           // to the next element.
           current_element_iterator_.reset();
         }
+        // Get the next element from the input dataset.
+        inputs_.clear();
+        auto input_ctx = std::make_unique<IteratorContext>(*ctx);
+        TF_RETURN_IF_ERROR(
+            input_impl_->GetNext(input_ctx.get(), &inputs_, end_of_sequence));
+        // Merge the checkpoint to `input_ckpt_` but do not commit to
+        // `ctx->checkpoint()` yet until the sub-iterator created from
+        // this `inputs_` is consumed.
+        input_ckpt_->Merge(input_ctx->checkpoint());
+        if (*end_of_sequence) {
+          input_impl_.reset();
+          *end_of_sequence = true;
+          return OkStatus();
+        }
+        TF_RETURN_IF_ERROR(
+            BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
       }
       *end_of_sequence = false;
       return OkStatus();
+      // LINT.ThenChange(:GetNextInternal)
     }
 
    protected:
@@ -223,24 +279,24 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          prefix(), kExhausted, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kElementIndex), element_index_));
-        if (current_element_iterator_) {
+            writer->WriteScalar(prefix(), kElementIndex, element_index_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            prefix(), kCurrentElementIteratorUninitialized,
+            static_cast<int64_t>(!current_element_iterator_)));
+        if (current_element_iterator_ && !ctx->symbolic_checkpoint()) {
           TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(kInputsSize), inputs_.size()));
+              writer->WriteScalar(prefix(), kInputsSize, inputs_.size()));
           for (int i = 0; i < inputs_.size(); i++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat(kInputs, "[", i, "]")), inputs_[i]));
+                prefix(), strings::StrCat(kInputs, "[", i, "]"), inputs_[i]));
           }
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_element_iterator_));
-        } else {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(kCurrentElementIteratorUninitialized), ""));
         }
-      } else {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
       }
       return OkStatus();
     }
@@ -252,38 +308,25 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       element_index_ = 0;
       current_element_iterator_.reset();
       inputs_.clear();
-      if (!reader->Contains(full_name(kExhausted))) {
+      int64_t input_exhausted;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kExhausted, &input_exhausted));
+      if (!static_cast<bool>(input_exhausted)) {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         {
           int64_t temp;
           TF_RETURN_IF_ERROR(
-              reader->ReadScalar(full_name(kElementIndex), &temp));
+              reader->ReadScalar(prefix(), kElementIndex, &temp));
           element_index_ = temp;
         }
-        if (!reader->Contains(
-                full_name(kCurrentElementIteratorUninitialized))) {
-          size_t inputs_size;
-          {
-            int64_t temp;
-            TF_RETURN_IF_ERROR(
-                reader->ReadScalar(full_name(kInputsSize), &temp));
-            inputs_size = static_cast<size_t>(temp);
-          }
-          inputs_.reserve(inputs_size);
-          for (int i = 0; i < inputs_size; i++) {
-            inputs_.emplace_back();
-            TF_RETURN_IF_ERROR(reader->ReadTensor(
-                ctx->flr(), full_name(strings::StrCat(kInputs, "[", i, "]")),
-                &inputs_.back()));
-          }
-
-          element_index_--;
-          TF_RETURN_IF_ERROR(
-              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
-          TF_RETURN_IF_ERROR(
-              RestoreInput(ctx, reader, current_element_iterator_));
+        int64_t current_element_iterator_uninitialized;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(prefix(), kCurrentElementIteratorUninitialized,
+                               &current_element_iterator_uninitialized));
+        if (!static_cast<bool>(current_element_iterator_uninitialized)) {
+          TF_RETURN_IF_ERROR(RestoreCurrentElementIterator(ctx, reader));
         }
       }
       return OkStatus();
@@ -293,21 +336,71 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     Status BuildCurrentElementIteratorLocked(IteratorContext* ctx,
                                              bool is_get_next)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      if (is_get_next) {
-        return MakeIteratorFromInputElement(
-            ctx, this, inputs_, element_index_++, *instantiated_captured_func_,
-            prefix(), &current_element_iterator_, model_node());
-      } else {
-        // NOTE: We intentionally ignore resource modeling outside GetNext().
-        return MakeIteratorFromInputElement(
-            ctx, this, inputs_, element_index_++, *instantiated_captured_func_,
-            prefix(), &current_element_iterator_,
-            /*node=*/nullptr);
+      // NOTE: We intentionally ignore resource modeling outside GetNext().
+      std::shared_ptr<model::Node> node = is_get_next ? model_node() : nullptr;
+      return MakeIteratorFromInputElement(
+          ctx, this, inputs_, element_index_++, *instantiated_captured_func_,
+          prefix(), &current_element_iterator_, node);
+    }
+
+    Status RestoreCurrentElementIterator(IteratorContext* ctx,
+                                         IteratorStateReader* reader)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (ctx->symbolic_checkpoint()) {
+        return RestoreCurrentElementIteratorSymbolic(ctx, reader);
       }
+      size_t inputs_size;
+      {
+        int64_t temp;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kInputsSize, &temp));
+        inputs_size = static_cast<size_t>(temp);
+      }
+      inputs_.reserve(inputs_size);
+      for (int i = 0; i < inputs_size; i++) {
+        inputs_.emplace_back();
+        TF_RETURN_IF_ERROR(reader->ReadTensor(
+            ctx->flr(), prefix(), strings::StrCat(kInputs, "[", i, "]"),
+            &inputs_.back()));
+      }
+
+      element_index_--;
+      TF_RETURN_IF_ERROR(
+          BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_element_iterator_));
+      return OkStatus();
+    }
+
+    Status RestoreCurrentElementIteratorSymbolic(IteratorContext* ctx,
+                                                 IteratorStateReader* reader)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      bool end_of_sequence;
+      auto input_ctx = std::make_unique<IteratorContext>(*ctx);
+      TF_RETURN_IF_ERROR(
+          input_impl_->GetNext(input_ctx.get(), &inputs_, &end_of_sequence));
+      if (end_of_sequence) {
+        return absl::FailedPreconditionError(
+            "Unexpected end of sequence while symbolically restoring "
+            "FlatMapDataset. Please verify that the input produces data "
+            "deterministically.");
+      }
+      input_ckpt_->Merge(input_ctx->checkpoint());
+      element_index_--;
+      TF_RETURN_IF_ERROR(
+          BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_element_iterator_));
+      return OkStatus();
     }
 
     mutex mu_;
     size_t element_index_ TF_GUARDED_BY(mu_) = 0;
+    // Checkpoint to use for operations on input_impl_. We maintain a
+    // separate checkpoint from the one passed to flat_map so that we can
+    // control when symbolic checkpoint state will be propagated. In
+    // particular, we wait to propagate input checkpoint state until the
+    // tensors being flat_mapped have been fully consumed, so that if we need
+    // to restore the partially-flat-mapped dataset, we can do so by
+    // re-generating the input.
+    std::unique_ptr<MemoryCheckpoint> input_ckpt_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> current_element_iterator_ TF_GUARDED_BY(mu_);
     std::vector<Tensor> inputs_ TF_GUARDED_BY(mu_);

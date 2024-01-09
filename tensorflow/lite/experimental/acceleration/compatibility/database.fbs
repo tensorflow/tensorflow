@@ -17,6 +17,7 @@ namespace tflite.acceleration;
 enum Comparison : byte {
   EQUAL = 0,
   MINIMUM = 1,
+  MAXIMUM = 2,
 }
 
 // Mapping from available device features to compatibility decisions. Basic usage is to:

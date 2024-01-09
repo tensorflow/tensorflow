@@ -29,6 +29,7 @@ def tpu_py_test(
         disable_mlir_bridge = True,
         disable_tfrt = None,
         args = [],
+        test_rule = native.py_test,
         **kwargs):
     """Generates identical unit test variants for various Cloud TPU versions.
 
@@ -47,7 +48,7 @@ def tpu_py_test(
         **kwargs: Additional named arguments to apply to tests.
     """
 
-    native.py_test(
+    test_rule(
         **_get_kwargs_for_wrapping(
             name,
             tags,
@@ -55,3 +56,10 @@ def tpu_py_test(
             **kwargs
         )
     )
+
+def tpu_py_strict_test(**kwargs):
+    tpu_py_test(**kwargs)
+
+def internal_create_sanitizer_settings():
+    """Stub definition for an external rule."""
+    pass

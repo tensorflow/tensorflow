@@ -142,11 +142,11 @@ void ResourceMgr::Clear() {
   {
     mutex_lock l(mu_);
     tmp_containers = std::move(containers_);
+    containers_.clear();  // reinitialize after move.
   }
   for (const auto& p : tmp_containers) {
     delete p.second;
   }
-  tmp_containers.clear();
 }
 
 string ResourceMgr::DebugString() const {
@@ -380,14 +380,28 @@ string ContainerInfo::DebugString() const {
                          "]");
 }
 
+// TODO(b/228388547) users of this method should be migrated to the ones below.
 const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input) {
   return ctx->input(input).flat<ResourceHandle>()(0);
+}
+
+Status HandleFromInput(OpKernelContext* ctx, int input,
+                       ResourceHandle* handle) {
+  TF_ASSIGN_OR_RETURN(const Tensor* tensor, ctx->get_input(input));
+  if (tensor->NumElements() == 0) {
+    return absl::InvalidArgumentError("Empty resource handle");
+  }
+  *handle = tensor->flat<ResourceHandle>()(0);
+  return OkStatus();
 }
 
 Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle) {
   const Tensor* tensor;
   TF_RETURN_IF_ERROR(ctx->input(input, &tensor));
+  if (tensor->NumElements() == 0) {
+    return absl::InvalidArgumentError("Empty resource handle");
+  }
   *handle = tensor->flat<ResourceHandle>()(0);
   return OkStatus();
 }

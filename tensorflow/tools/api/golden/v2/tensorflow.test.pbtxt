@@ -8,6 +8,10 @@ tf_module {
     name: "TestCase"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "assert_equal_graph_def"
     argspec: "args=[\'expected\', \'actual\'], varargs=None, keywords=None, defaults=None"

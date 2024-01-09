@@ -16,15 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_PLATFORM_INFO_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_PLATFORM_INFO_H_
 
-#include "tensorflow/compiler/jit/xla_compilation_cache.h"
+#include <memory>
+#include <optional>
+#include <string>
+
+#include "tensorflow/compiler/jit/device_compiler.h"
+#include "tensorflow/compiler/jit/pjrt_base_device.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
 // Holds some information about the platform on which an
 // XlaLaunch/_XlaCompile/_XlaRun op must run on. Provides a common layer of
-// abstraction for normal and XLA devices.
+// abstraction for normal, XLA devices and devices inheriting from
+// PjRtBaseDevice.
 class XlaPlatformInfo {
  public:
   XlaPlatformInfo() : device_type_("") {}
@@ -32,10 +39,12 @@ class XlaPlatformInfo {
   explicit XlaPlatformInfo(
       const DeviceType device_type, se::Platform::Id platform_id,
       const XlaDevice::Metadata* xla_device_metadata,
+      const PjRtBaseDevice::Metadata* pjrt_device_metadata,
       std::shared_ptr<se::DeviceMemoryAllocator> device_allocator)
       : device_type_(device_type),
         platform_id_(platform_id),
         xla_device_metadata_(xla_device_metadata),
+        pjrt_device_metadata_(pjrt_device_metadata),
         device_allocator_(device_allocator) {}
 
   XlaPlatformInfo& operator=(XlaPlatformInfo&& other) = default;
@@ -62,6 +71,10 @@ class XlaPlatformInfo {
   }
   bool is_on_xla_device() const { return xla_device_metadata() != nullptr; }
 
+  const PjRtBaseDevice::Metadata* pjrt_device_metadata() const {
+    return pjrt_device_metadata_;
+  }
+
  private:
   DeviceType device_type_;
   se::Platform::Id platform_id_;
@@ -71,6 +84,11 @@ class XlaPlatformInfo {
   // XlaLaunch/_XlaCompile/_XlaRun OpKernel.
   const XlaDevice::Metadata* xla_device_metadata_;
 
+  // pjrt_device_metadata_ lives in tensorflow::PjRtBaseDevice in which the
+  // XlaLaunch/XlaCompileOnDemand op is placed and thus does not die before the
+  // op kernel.
+  const PjRtBaseDevice::Metadata* pjrt_device_metadata_;
+
   // If the op associated with this XlaPlatformInfo is placed on an XLA device
   // then device_allocator_ is the xla::Backend's memory allocator.  If the op
   // is placed on a regular CPU or GPU device then device_allocator_ is null.
@@ -78,7 +96,8 @@ class XlaPlatformInfo {
   // set an artificial refcount of one.
   std::shared_ptr<se::DeviceMemoryAllocator> device_allocator_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaPlatformInfo);
+  XlaPlatformInfo(const XlaPlatformInfo&) = delete;
+  void operator=(const XlaPlatformInfo&) = delete;
 };
 
 // Returns a set containing the device ids contained in visible_device_list or
@@ -87,13 +106,49 @@ class XlaPlatformInfo {
 StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list);
 
-// Returns created XLA compilation cache.
-Status BuildXlaCompilationCache(DeviceBase* dev, FunctionLibraryRuntime* flr,
-                                const XlaPlatformInfo& platform_info,
-                                XlaCompilationCache** cache);
+// Builds a DeviceCompiler that uses xla::LocalClient using `platform_info` and
+// sets *xla_device_compiler to point to it. Uses flags from
+// `MarkForCompilationPassFlags` for configuring the persistor used in the
+// DeviceCompiler.
+Status BuildXlaDeviceCompiler(
+    DeviceBase* dev, FunctionLibraryRuntime* flr,
+    const XlaPlatformInfo& platform_info,
+    DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
+        xla_device_compiler);
+
+// Fetches a DeviceCompiler from the tfrt_global resource manager (or creates
+// one there if not found) that uses xla::PjRtClient using an appropriate
+// PjRtClient for `platform_info.device_type()` and sets *pjrt_device_compiler
+// to point to it. Also fetches/creates a DeviceCompilationProfiler from/in the
+// tfrt_global resource manager for `platform_info.device_type()` and sets
+// *profiler to point to it.  Uses flags from `MarkForCompilationPassFlags` for
+// configuring the persistor used in the DeviceCompiler. Please note that
+// non-XLA devices aren't supported yet. This is because:
+// 1. PjRtClient doesn't support data transfer for non-XLA devices yet
+// 2. Fetching the PjRtClient for non-XLA devices is also not supported yet
+Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
+    FunctionLibraryRuntime* flr,
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
+        pjrt_device_compiler,
+    DeviceCompilationProfiler** profiler);
+
+// Same as the above function but takes the resource manager `rm` instead of an
+// OpKernelContext.
+Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+    const XlaPlatformInfo& platform_info, ResourceMgr* rm,
+    FunctionLibraryRuntime* flr,
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
+        pjrt_device_compiler,
+    DeviceCompilationProfiler** profiler);
 
 // Returns information about the platform from kernel context.
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
+
+// Obtains persistent cache directory for executables that target a given device
+// based off xla flags. If you shouldn't use persistent caching, returns "".
+std::string GetPersistentCacheDirectory(
+    const DeviceType& compilation_device_type);
 
 // Returns allocator from platform info if non-null, or populate and return a
 // pointer to the allocator adapter with allocator from context.
@@ -105,19 +160,6 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
 std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(
     DeviceBase* device, se::Stream* stream,
     const XlaPlatformInfo& platform_info);
-
-// Returns created options for the XLA compiler, and writes the used allocator
-// into `tf_allocator_adapter`.
-XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache,
-    const FunctionLibraryRuntime& function_library, DeviceBase* device,
-    se::Stream* stream, const XlaPlatformInfo& platform_info,
-    bool has_ref_vars);
-
-// Returns created options for XLA compiler when TFRT-TPU is used.
-XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
-    const XlaCompilationCache& cache,
-    const FunctionLibraryRuntime& function_library);
 
 }  // namespace tensorflow
 

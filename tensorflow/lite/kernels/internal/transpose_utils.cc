@@ -143,18 +143,8 @@ size_t Flatten(const RuntimeShape& input_shape,
   for (int i = skip_dims_cnt; i < params.perm_count; ++i) {
     non_flatten_input_shape->SetDim(i - skip_dims_cnt, input_shape.Dims(i));
     non_flatten_output_shape->SetDim(i - skip_dims_cnt, output_shape.Dims(i));
-    non_flatten_params->perm[i - skip_dims_cnt] = params.perm[i];
-  }
-  for (int i = 0; i < new_dims_cnt; ++i) {
-    int min_val_idx = -1;
-    for (int j = 0; j < new_dims_cnt; ++j) {
-      if (non_flatten_params->perm[j] >= i &&
-          (min_val_idx == -1 || non_flatten_params->perm[min_val_idx] >
-                                    non_flatten_params->perm[j])) {
-        min_val_idx = j;
-      }
-    }
-    non_flatten_params->perm[min_val_idx] = i;
+    non_flatten_params->perm[i - skip_dims_cnt] =
+        params.perm[i] - skip_dims_cnt;
   }
 
   return flat_size;

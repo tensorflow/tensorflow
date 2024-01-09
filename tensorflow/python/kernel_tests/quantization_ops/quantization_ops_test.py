@@ -432,7 +432,7 @@ class QuantizeAndDequantizeV3OpTest(test_util.TensorFlowTestCase):
           input_value[0].numpy(), quantized.numpy()[0], delta=0.05)
 
   @test_util.run_in_graph_and_eager_modes
-  def test_invalid_inputs(self):
+  def test_invalid_num_bits(self):
     input_value = constant_op.constant([-0.8, -0.5, 0, 0.3, 0.8, -2.0],
                                        shape=(6,),
                                        dtype=dtypes.float32),
@@ -455,12 +455,37 @@ class QuantizeAndDequantizeV3OpTest(test_util.TensorFlowTestCase):
       else:
         self.fail(
             "Raised exception other than expected: %s. "
-            "Expected exceptions are errors.InvalidArgumentError or ValueError",
-            ex.__name__)
+            "Expected exceptions are errors.InvalidArgumentError or ValueError"
+            % ex.__name__
+        )
     else:
       self.fail(
           "Did not raise an exception where it is expected to raise either "
           "a ValueError or errors.InvalidArgumentError.")
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_input_min_max_with_axis_specified(self):
+    input_value = (
+        constant_op.constant([1.8], shape=(1,), dtype=dtypes.float32),
+    )
+    input_min = constant_op.constant(1.0, shape=(), dtype=dtypes.float32)
+    input_max = constant_op.constant([2.0], shape=(1,), dtype=dtypes.float32)
+    num_bits = 8
+
+    # Test that running the op raises error. It raises different errors
+    # depending on whether the shape inference is run first or the op's
+    # Compute() is run first.
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError),
+        "Shape must be rank 1"):
+      array_ops.quantize_and_dequantize_v3(
+          input_value,
+          input_min,
+          input_max,
+          num_bits=num_bits,
+          axis=0,
+          range_given=True,
+      )
 
 
 if __name__ == "__main__":

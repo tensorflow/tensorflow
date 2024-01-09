@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
@@ -50,12 +50,15 @@ absl::Status InterpreterInvokeWithOpResolver(
     return absl::InternalError("Unable to allocate TfLite tensors");
   }
   for (int i = 0; i < inputs.size(); ++i) {
-    DCHECK_EQ(interpreter->tensor(interpreter->inputs()[i])->type,
-              kTfLiteFloat32);
+    if (interpreter->tensor(interpreter->inputs()[i])->type != kTfLiteFloat32) {
+      return absl::InternalError("input data_type is not float32");
+    }
     float* tflite_data =
         interpreter->typed_tensor<float>(interpreter->inputs()[i]);
-    DCHECK_EQ(inputs[i].data.size() * sizeof(float),
-              interpreter->tensor(interpreter->inputs()[i])->bytes);
+    if (inputs[i].data.size() * sizeof(float) >
+        interpreter->tensor(interpreter->inputs()[i])->bytes) {
+      return absl::InternalError("too big input data");
+    }
     std::memcpy(tflite_data, inputs[i].data.data(),
                 inputs[i].data.size() * sizeof(float));
   }

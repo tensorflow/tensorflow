@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Logging and Summary Operations."""
+"""Logging and Summary Operations.
+
+API docstring: tensorflow.logging
+"""
 # pylint: disable=protected-access
 import collections as py_collections
 import os

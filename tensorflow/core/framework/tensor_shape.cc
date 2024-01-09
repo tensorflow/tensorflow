@@ -353,8 +353,8 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
 template <class Shape>
 int64_t TensorShapeBase<Shape>::dim_size(int d) const {
   if (unknown_rank()) return -1;
-  DCHECK_GE(d, 0);
-  DCHECK_LT(d, dims());
+  CHECK_GE(d, 0);                  // Crash OK
+  if (d > 0) CHECK_LT(d, dims());  // Crash OK
   if (tag() == REP16) {
     uint16 dim = as16()->dims_[d];
     if (kIsPartial && dim == kUnknownRep16) return -1;
@@ -881,7 +881,7 @@ PartialTensorShape PartialTensorShape::Concatenate(int64_t size) const {
 
 Status PartialTensorShape::ConcatenateWithStatus(
     int64_t size, PartialTensorShape* out) const {
-  out = const_cast<PartialTensorShape*>(this);
+  *out = *this;
   return out->AddDimWithStatus(size);
 }
 
@@ -901,7 +901,7 @@ Status PartialTensorShape::ConcatenateWithStatus(
     *out = PartialTensorShape();
     return OkStatus();
   }
-  out = const_cast<PartialTensorShape*>(this);
+  *out = *this;
   for (auto dim : shape) {
     Status s = out->AddDimWithStatus(dim.size);
     if (!s.ok()) return s;
@@ -929,7 +929,7 @@ Status PartialTensorShape::MergeWith(const PartialTensorShape& shape,
 
   if (result == this) {
     return errors::Internal(
-        "PartialTensorShape::MergeWith: cannot merge shape with itself");
+        "PartialTensorShape::MergeWith: Cannot output result to itself");
   }
 
   result->Clear();

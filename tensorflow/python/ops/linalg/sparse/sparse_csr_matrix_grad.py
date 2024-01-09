@@ -17,13 +17,14 @@
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_ops
 
 
 @ops.RegisterGradient("DenseToCSRSparseMatrix")
-def _DenseToCSRSparseMatrixGrad(op, grad):
+def _DenseToCSRSparseMatrixGrad(op: ops.Operation, grad):
   """Gradient for dense_to_csr_sparse_matrix op."""
   grad_values = (
       sparse_csr_matrix_ops.csr_sparse_matrix_to_dense(
@@ -33,7 +34,7 @@ def _DenseToCSRSparseMatrixGrad(op, grad):
 
 
 @ops.RegisterGradient("CSRSparseMatrixToDense")
-def _CSRSparseMatrixToDenseGrad(op, grad):
+def _CSRSparseMatrixToDenseGrad(op: ops.Operation, grad):
   """Gradient for csr_sparse_matrix_to_dense op."""
   coo_sparse_tensor = sparse_csr_matrix_ops.csr_sparse_matrix_to_sparse_tensor(
       op.inputs[0], type=grad.dtype)
@@ -44,7 +45,7 @@ def _CSRSparseMatrixToDenseGrad(op, grad):
 
 
 @ops.RegisterGradient("SparseTensorToCSRSparseMatrix")
-def _SparseTensorToCSRSparseMatrixGrad(op, grad):
+def _SparseTensorToCSRSparseMatrixGrad(op: ops.Operation, grad):
   """Gradient for sparse_tensor_to_csr_sparse_matrix op."""
   grad_values = sparse_csr_matrix_ops.csr_sparse_matrix_to_sparse_tensor(
       grad, type=op.get_attr("T")).values
@@ -52,7 +53,7 @@ def _SparseTensorToCSRSparseMatrixGrad(op, grad):
 
 
 @ops.RegisterGradient("CSRSparseMatrixToSparseTensor")
-def _CSRSparseMatrixToSparseTensorGrad(op, *grads):
+def _CSRSparseMatrixToSparseTensorGrad(op: ops.Operation, *grads):
   """Gradient for csr_sparse_matrix_to_sparse_tensor op."""
   return sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
       indices=op.outputs[0], values=grads[1], dense_shape=op.outputs[2])
@@ -108,7 +109,7 @@ def _PruneCSRMatrix(unpruned, pruned_pattern):
 
 
 @ops.RegisterGradient("SparseMatrixAdd")
-def _SparseMatrixAddGrad(op, grad):
+def _SparseMatrixAddGrad(op: ops.Operation, grad):
   """Gradient for sparse_matrix_add op."""
   # input to sparse_matrix_add is (a, b, alpha, beta)
   # with a, b CSR and alpha beta scalars.
@@ -177,7 +178,7 @@ def _PrunedDenseMatrixMultiplication(a,
   elif rank == 3:
     dense_shape = (a.shape[0],) + dense_shape
     rows = indices[:, :2]
-    cols = array_ops.stack([indices[:, 0], indices[:, 2]], axis=1)
+    cols = array_ops_stack.stack([indices[:, 0], indices[:, 2]], axis=1)
     transpose = lambda x: array_ops.transpose(x, perm=[0, 2, 1])
     gather_op = array_ops.gather_nd
 
@@ -190,14 +191,14 @@ def _PrunedDenseMatrixMultiplication(a,
 
 
 @ops.RegisterGradient("SparseMatrixTranspose")
-def _SparseMatrixTransposeGrad(op, grad):
+def _SparseMatrixTransposeGrad(op: ops.Operation, grad):
   """Gradient for sparse_matrix_transpose op."""
   return sparse_csr_matrix_ops.sparse_matrix_transpose(
       grad, type=op.get_attr("type"), conjugate=op.get_attr("conjugate"))
 
 
 @ops.RegisterGradient("SparseMatrixSoftmax")
-def _SparseMatrixSoftmaxGrad(op, grad_softmax):
+def _SparseMatrixSoftmaxGrad(op: ops.Operation, grad_softmax):
   """Gradient for sparse_matrix_softmax op."""
   softmax = op.outputs[0]
   return sparse_csr_matrix_ops.sparse_matrix_softmax_grad(
@@ -205,7 +206,7 @@ def _SparseMatrixSoftmaxGrad(op, grad_softmax):
 
 
 @ops.RegisterGradient("SparseMatrixMatMul")
-def _SparseMatrixMatMulGrad(op, grad):
+def _SparseMatrixMatMulGrad(op: ops.Operation, grad):
   """Gradient for sparse_matrix_mat_mul op."""
   # input to sparse_matrix_mat_mul is (A, B) with CSR A and dense B.
   # Output is dense:
@@ -297,7 +298,7 @@ def _SparseMatrixMatMulGrad(op, grad):
 
 
 @ops.RegisterGradient("SparseMatrixSparseMatMul")
-def _SparseMatrixSparseMatMulGrad(op, grad):
+def _SparseMatrixSparseMatMulGrad(op: ops.Operation, grad):
   """Gradient for sparse_matrix_sparse_mat_mul op."""
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")
@@ -353,7 +354,7 @@ def _SparseMatrixSparseMatMulGrad(op, grad):
 
 
 @ops.RegisterGradient("SparseMatrixMul")
-def _SparseMatrixMulGrad(op, grad):
+def _SparseMatrixMulGrad(op: ops.Operation, grad):
   """Gradient for sparse_matrix_mul op."""
   # input to sparse_matrix_mul is (A, B) with CSR A and dense B.
   # Output is CSR:

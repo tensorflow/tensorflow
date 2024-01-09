@@ -137,6 +137,49 @@ FunctionDef XTimesTwo() {
       });
 }
 
+FunctionDef XTimesTwoWithControlInput() {
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  return FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"scale"}, {{"T", "$T"}}, /*dep=*/{"x"}},
+      });
+}
+
+FunctionDef XTimesTwoWithControlOutput() {
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  return FDH::Create(
+      // function_name
+      "XTimesTwo",
+      // in_def
+      {"x: T"},
+      // out_def
+      {"y: T"},
+      // attr_def
+      {"T: {float, double, int32, int64}"},
+      // node_def
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+          {{"dummy"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+      },
+      // ret_def
+      {{"y", "y"}},
+      // control_ret_def
+      {{"dummy", "dummy"}});
+}
+
 FunctionDef TwoDeviceMult() {
   const Tensor kTwo = test::AsScalar<int64_t>(2);
   const Tensor kThree = test::AsScalar<int64_t>(3);
@@ -311,6 +354,24 @@ FunctionDef XTimesFour() {
       {
           {{"x2"}, "XTimesTwo", {"x"}, {{"T", "$T"}}},
           {{"y"}, "XTimesTwo", {"x2:y:0"}, {{"T", "$T"}}},
+      },
+      {{"y", "y:y:0"}});
+}
+
+FunctionDef XTimesFourInt32() {
+  return FDH::Create(
+      // Name
+      "XTimesFourInt32",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"y: int32"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"x2"}, "XTimesTwoInt32", {"x"}},
+          {{"y"}, "XTimesTwoInt32", {"x2:y:0"}},
       },
       {{"y", "y:y:0"}});
 }

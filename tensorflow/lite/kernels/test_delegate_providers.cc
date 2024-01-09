@@ -15,12 +15,14 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/tool_params.h"
 
 namespace tflite {
+constexpr char KernelTestDelegateProviders::kAccelerationTestConfigPath[];
 constexpr char KernelTestDelegateProviders::kUseSimpleAllocator[];
 
 /*static*/ KernelTestDelegateProviders* KernelTestDelegateProviders::Get() {
@@ -32,17 +34,29 @@ constexpr char KernelTestDelegateProviders::kUseSimpleAllocator[];
 KernelTestDelegateProviders::KernelTestDelegateProviders()
     : delegate_list_util_(&params_) {
   delegate_list_util_.AddAllDelegateParams();
+  params_.AddParam(kAccelerationTestConfigPath,
+                   tools::ToolParam::Create<std::string>(""));
   params_.AddParam(kUseSimpleAllocator, tools::ToolParam::Create<bool>(false));
 }
 
 bool KernelTestDelegateProviders::InitFromCmdlineArgs(int* argc,
                                                       const char** argv) {
-  std::vector<tflite::Flag> flags = {Flag(
-      kUseSimpleAllocator,
-      [this](const bool& val, int argv_position) {  // NOLINT
-        this->params_.Set<bool>(kUseSimpleAllocator, val, argv_position);
-      },
-      false, "Use Simple Memory Allocator for SingleOpModel", Flag::kOptional)};
+  std::vector<tflite::Flag> flags = {
+      Flag(
+          kAccelerationTestConfigPath,
+          [this](const std::string& val, int argv_position) {  // NOLINT
+            this->params_.Set<std::string>(kAccelerationTestConfigPath, val,
+                                           argv_position);
+          },
+          "", "Acceleration test config file for SingleOpModel",
+          Flag::kOptional),
+      Flag(
+          kUseSimpleAllocator,
+          [this](const bool& val, int argv_position) {  // NOLINT
+            this->params_.Set<bool>(kUseSimpleAllocator, val, argv_position);
+          },
+          false, "Use Simple Memory Allocator for SingleOpModel",
+          Flag::kOptional)};
   delegate_list_util_.AppendCmdlineFlags(flags);
 
   bool parse_result = tflite::Flags::Parse(argc, argv, flags);

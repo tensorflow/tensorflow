@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstring>
 
 namespace tflite {
 namespace reduce_utils {

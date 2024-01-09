@@ -3,6 +3,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -21,10 +22,9 @@ tf_cc_test(
         ":saved_model_test_files",
     ],
     deps = [
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
+        "//tensorflow/core/framework:graph_debug_info_proto_cc",
         "//tensorflow/core/ir/importexport:savedmodel_export",
         "//tensorflow/core/ir/importexport:savedmodel_import",
         "//tensorflow/core/ir/importexport/tests/roundtrip",
@@ -32,9 +32,5 @@ tf_cc_test(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
     ],
 )

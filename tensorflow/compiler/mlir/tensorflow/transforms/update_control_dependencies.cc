@@ -13,19 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <memory>
-#include <utility>
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
@@ -34,12 +38,16 @@ namespace mlir {
 namespace tf_executor {
 namespace {
 
+// Comparator for `OpsInReverseProgramOrder`.
+struct IsAfterInBlock {
+  bool operator()(Operation* op, Operation* other_op) const {
+    // This function has an average complexity of O(1).
+    return other_op->isBeforeInBlock(op);
+  }
+};
+
 #define GEN_PASS_DEF_EXECUTORUPDATECONTROLDEPENDENCIESPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
-
-// Note that `SetVector` provides efficient lookup and deletion as well as
-// deterministic iteration order which we need here.
-using OpToIslandsMap = llvm::DenseMap<Operation*, llvm::SetVector<IslandOp>>;
 
 class UpdateControlDependenciesPass
     : public impl::ExecutorUpdateControlDependenciesPassBase<
@@ -48,163 +56,148 @@ class UpdateControlDependenciesPass
   void runOnOperation() override;
 };
 
-// Returns true iff the islands are guaranteed to have different devices
-// assigned.
-bool HaveDifferentDevices(IslandOp first_island, IslandOp second_island) {
-  Operation& first_op = first_island.GetBody().front();
-  Operation& second_op = second_island.GetBody().front();
-  llvm::SmallVector<tensorflow::DeviceNameUtils::ParsedName, 2> parsed_names;
-
-  for (Operation* op : {&first_op, &second_op}) {
-    auto device_attr = op->getAttrOfType<StringAttr>(tensorflow::kDeviceAttr);
-    // For empty device we can't guarantee that devices are different.
-    if (!device_attr || device_attr.getValue().empty()) return false;
-
-    tensorflow::DeviceNameUtils::ParsedName parsed_name;
-    bool success = tensorflow::DeviceNameUtils::ParseFullOrLocalName(
-        device_attr.getValue(), &parsed_name);
-    // If parsing was not successful, then we can't guarantee that devices are
-    // different.
-    if (!success) return false;
-    parsed_names.push_back(parsed_name);
-  }
-  // If device names are not compatible, then corresponding devices must be
-  // different.
-  return !tensorflow::DeviceNameUtils::AreCompatibleDevNames(parsed_names[0],
-                                                             parsed_names[1]);
-}
-
-// Returns true iff we should ignore a dependency between both islands.
-bool ShouldIgnoreDependency(IslandOp first_island, IslandOp second_island) {
-  return HaveDifferentDevices(first_island, second_island);
-}
-
-// Collects direct control predecessors per op by querying side effect analysis.
-//
-// We only collect control predecessor that are islands, others (if any) are
-// irrelevant for this pass.
-void CollectDirectControlPredecessors(
-    Operation* op, const TF::SideEffectAnalysis::Info& analysis_for_func,
-    OpToIslandsMap& control_predecessors_map) {
-  for (Operation* control_predecessor :
-       analysis_for_func.DirectControlPredecessors(op)) {
-    if (auto control_pred_island =
-            dyn_cast<mlir::tf_executor::IslandOp>(control_predecessor)) {
-      control_predecessors_map[op].insert(control_pred_island);
+void ClearControlInputs(Operation* op, int& num_control_inputs_removed) {
+  // We only call this function for island or fetch ops. The second pair of
+  // parentheses is needed for successful compilation.
+  assert((isa<IslandOp, FetchOp>(op)));
+  if (auto island = dyn_cast<IslandOp>(op)) {
+    num_control_inputs_removed += island.getControlInputs().size();
+    island.getControlInputsMutable().clear();
+  } else if (auto fetch = dyn_cast<FetchOp>(op)) {
+    GraphOp graph = fetch->getParentOfType<GraphOp>();
+    int num_control_fetches = fetch.getNumOperands() - graph.getNumResults();
+    if (num_control_fetches > 0) {
+      fetch.getFetchesMutable().erase(graph.getNumResults(),
+                                      num_control_fetches);
+      num_control_inputs_removed += num_control_fetches;
     }
   }
 }
 
-// Propagates control predecessors for cases where we don't want to create a
-// control dependency even though side effect analysis sees a dependency.
-//
-// Currently, this is the case for ops with different assigned devices: It can
-// happen that side effect analysis sees a dependency because the ops may use
-// the same resource (which is basically a modeling issue we have to work
-// around here). In such a case, we ignore the dependency, but we have to make
-// sure that we don't lose any indirect dependencies we want to keep.
-// For example, say side effect analysis sees dependencies A -> B -> C, and A
-// and C have the same assigned device and B has a different assigned device.
-// Then we want to ignore the dependencies A -> B and B -> C but keep the
-// transitive dependency A -> C.
-// This function updates `control_predecessors_map` such that this is always the
-// case.
-void PropagateControlPredecessors(
-    IslandOp island, const TF::SideEffectAnalysis::Info& analysis_for_func,
-    OpToIslandsMap& control_predecessors_map) {
-  // Find control predecessors we want to ignore and mark them for propagation.
-  llvm::SmallVector<IslandOp, 8> control_predecessors_to_propagate;
-  for (IslandOp control_pred_island : control_predecessors_map[island]) {
-    if (ShouldIgnoreDependency(island, control_pred_island)) {
-      control_predecessors_to_propagate.push_back(control_pred_island);
+void SetControlInputs(
+    Operation* op,
+    const llvm::SmallVector<Operation*, 8>& preds_in_reverse_program_order,
+    int& num_control_inputs_added) {
+  // We only call this function for island or fetch ops. The second pair of
+  // parentheses is needed for successful compilation.
+  assert((isa<IslandOp, FetchOp>(op)));
+  mlir::MutableOperandRange mutable_control_inputs =
+      isa<IslandOp>(op) ? cast<IslandOp>(op).getControlInputsMutable()
+                        : cast<FetchOp>(op).getFetchesMutable();
+  // Add control inputs in program order of the defining ops.
+  for (auto iter = preds_in_reverse_program_order.rbegin();
+       iter != preds_in_reverse_program_order.rend();
+       ++iter) {
+    Operation* pred = *iter;
+    if (auto pred_island = dyn_cast<mlir::tf_executor::IslandOp>(pred)) {
+      mutable_control_inputs.append(pred_island.getControl());
     }
   }
-  // For all control predecessors to propagate, remove them from island's
-  // control predecessors and add them as control predecessors for all control
-  // successors of island (this is to make sure we don't lose any transitive
-  // dependencies).
-  for (IslandOp control_pred_island : control_predecessors_to_propagate) {
-    control_predecessors_map[island].remove(control_pred_island);
-    for (Operation* control_successor :
-         analysis_for_func.DirectControlSuccessors(island)) {
-      control_predecessors_map[control_successor].insert(control_pred_island);
-    }
-  }
+  num_control_inputs_added += preds_in_reverse_program_order.size();
 }
 
-void UpdateAllControlDependencies(
-    func::FuncOp func, const TF::SideEffectAnalysis::Info& analysis_for_func) {
-  int control_inputs_added = 0;
-  llvm::SmallVector<Value, 8> new_control_inputs;
-  llvm::SmallVector<Operation*, 8> fetch_control_predecessors;
+// Fills `op_to_parallel_ids_map` from parallel execution attributes in `graph`.
+// Returns `failure` iff any attribute is malformed.
+LogicalResult FillOpToParallelIdsMap(
+    GraphOp graph, TF::OpToParallelIdsMap& op_to_parallel_ids_map) {
+  for (Operation& op : graph.GetBody()) {
+    auto island = dyn_cast<IslandOp>(&op);
+    if (!island) continue;
 
-  OpToIslandsMap control_predecessors_map;
-  auto graph_op = cast<GraphOp>(func.front().front());
-  graph_op.walk([&](Operation* op) {
-    if (!isa<IslandOp, FetchOp>(op)) return WalkResult::advance();
-    CollectDirectControlPredecessors(op, analysis_for_func,
-                                     control_predecessors_map);
-    if (auto island = dyn_cast<mlir::tf_executor::IslandOp>(op)) {
-      PropagateControlPredecessors(island, analysis_for_func,
-                                   control_predecessors_map);
+    // We call `VerifyExportSuitable` in the beginning of the pass, so every
+    // island wraps a single op.
+    Operation& wrapped_op = island.GetBody().front();
+    TF::ParallelExecutionIdPairs id_pairs;
+    if (failed(TF::ParseParallelExecutionIds(&wrapped_op, id_pairs))) {
+      wrapped_op.emitError()
+          << "Malformed " << TF::kParallelExecAnnotation << " attribute";
+      return failure();
     }
+    if (id_pairs.empty()) continue;
+
+    TF::ParallelIdsMap& ids_map = op_to_parallel_ids_map[island];
+    for (auto [group_id, branch_id] : id_pairs) ids_map[group_id] = branch_id;
+  }
+  return success();
+}
+
+// Fills `op_to_parallel_ids_map` from parallel execution attributes in
+// `module_op`. Returns `failure` iff any attribute is malformed.
+LogicalResult FillOpToParallelIdsMap(
+    ModuleOp module_op, TF::OpToParallelIdsMap& op_to_parallel_ids_map) {
+  auto result = module_op->walk([&](GraphOp graph) {
+    if (failed(FillOpToParallelIdsMap(graph, op_to_parallel_ids_map)))
+      return WalkResult::interrupt();
     return WalkResult::advance();
   });
+  if (result.wasInterrupted()) return failure();
+  return success();
+}
 
-  graph_op.walk([&](IslandOp island) {
-    // Update control inputs for island.
-    for (Operation* control_predecessor : control_predecessors_map[island]) {
-      if (auto control_pred_island =
-              dyn_cast<mlir::tf_executor::IslandOp>(control_predecessor)) {
-        new_control_inputs.push_back(control_pred_island.getControl());
-      }
-    }
-    // None of the originally given control deps are necessary.
-    island.getControlInputsMutable().clear();
-    island.getControlInputsMutable().append(new_control_inputs);
-    control_inputs_added += new_control_inputs.size();
-    new_control_inputs.clear();
-  });
+// Computes and sets direct control inputs for `op`.
+void UpdateControlDependenciesForOp(
+    Operation* op, const TF::SideEffectAnalysis::Info& analysis_for_func,
+    int& num_control_inputs_removed, int& num_control_inputs_added) {
+  llvm::SmallVector<Operation*, 4> control_deps =
+      analysis_for_func.DirectControlPredecessors(op);
+  ClearControlInputs(op, num_control_inputs_removed);
+  llvm::SmallVector<Operation*, 8> preds_in_reverse_program_order(
+      control_deps.begin(), control_deps.end());
+  std::sort(preds_in_reverse_program_order.begin(),
+            preds_in_reverse_program_order.end(), IsAfterInBlock());
+  SetControlInputs(op, preds_in_reverse_program_order,
+                   num_control_inputs_added);
+}
 
-  // Update control inputs for fetch op.
-  FetchOp fetch_op = graph_op.GetFetch();
+// This function updates all control dependencies in `func`, represented as
+// control inputs for island and fetch ops of the graph body in `func`.
+// We rely on side effect analysis and propagate the queried dependencies to
+// the island and fetch ops.
+LogicalResult UpdateAllControlDependencies(
+    func::FuncOp func, const TF::SideEffectAnalysis::Info& analysis_for_func) {
+  int num_control_inputs_removed = 0;
+  int num_control_inputs_added = 0;
 
-  // None of the originally given control deps are necessary.
-  int num_control_fetches =
-      fetch_op.getNumOperands() - graph_op.getNumResults();
-  if (num_control_fetches > 0) {
-    fetch_op.getFetchesMutable().erase(graph_op.getNumResults(),
-                                       num_control_fetches);
+  // We call `VerifyExportSuitable` in the beginning of the pass, so every
+  // function has a single graph op.
+  auto graph = cast<GraphOp>(func.front().front());
+  for (Operation& op_ref : graph.GetBody()) {
+    Operation* op = &op_ref;
+    // We only represent control dependencies between island and fetch ops.
+    if (!isa<IslandOp, FetchOp>(op)) continue;
+    UpdateControlDependenciesForOp(op, analysis_for_func,
+                                   num_control_inputs_removed,
+                                   num_control_inputs_added);
   }
-  for (Operation* control_predecessor : control_predecessors_map[fetch_op]) {
-    if (auto control_pred_island =
-            dyn_cast<tf_executor::IslandOp>(control_predecessor)) {
-      new_control_inputs.push_back(control_pred_island.getControl());
-    }
-  }
-  control_inputs_added += new_control_inputs.size();
-  fetch_op.getFetchesMutable().append(new_control_inputs);
-
-  VLOG(2) << "Number of control inputs added: " << control_inputs_added;
+  VLOG(2) << "Number of control inputs removed: " << num_control_inputs_removed;
+  VLOG(2) << "Number of control inputs added: " << num_control_inputs_added;
+  return success();
 }
 
 void UpdateControlDependenciesPass::runOnOperation() {
-  ModuleOp module = getOperation();
+  ModuleOp module_op = getOperation();
   // This pass assumes that all functions are suitable for export, i.e., each
   // function has a single tf_executor.graph op and all islands wrap single
   // ops.
-  if (failed(tensorflow::VerifyExportSuitable(module))) {
+  if (failed(tensorflow::VerifyExportSuitable(module_op))) {
     signalPassFailure();
     return;
   }
-  TF::SideEffectAnalysis side_effect_analysis(module);
-
-  // Recompute control dependencies between all islands.
-  for (auto func : module.getOps<func::FuncOp>()) {
+  TF::OpToParallelIdsMap op_to_parallel_ids_map;
+  if (failed(FillOpToParallelIdsMap(module_op, op_to_parallel_ids_map))) {
+    signalPassFailure();
+    return;
+  }
+  TF::SideEffectAnalysis side_effect_analysis(module_op,
+                                              op_to_parallel_ids_map);
+  for (auto func : module_op.getOps<func::FuncOp>()) {
     if (func.isExternal()) continue;
     const auto& analysis_for_func =
         side_effect_analysis.GetAnalysisForFunc(func);
-    UpdateAllControlDependencies(func, analysis_for_func);
+    if (failed(UpdateAllControlDependencies(func, analysis_for_func))) {
+      signalPassFailure();
+      return;
+    }
   }
 }
 

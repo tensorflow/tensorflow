@@ -18,6 +18,7 @@ from tensorflow.core.protobuf import composite_tensor_variant_pb2
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import gen_composite_tensor_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import nest
@@ -74,7 +75,7 @@ def composite_tensor_from_variant(encoded, type_spec, name=None):
     TypeError: If `encoded` is not a Tensor with dtype=variant.
     InvalidArgumentError: If `encoded` is not compatible with `type_spec`.
   """
-  if not isinstance(encoded, ops.Tensor):
+  if not isinstance(encoded, tensor.Tensor):
     raise TypeError(f"Expected `encoded` to be a Tensor, got {encoded!r}.")
   if encoded.dtype != dtypes.variant:
     raise TypeError("Expected `encoded` to have dtype=variant, got "

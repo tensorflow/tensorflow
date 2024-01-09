@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/tfprof_show_multi.h"
 
+#include <algorithm>
+#include <map>
 #include <memory>
 #include <set>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"

@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DEBUG_EVENTS_WRITER_H_
 #define TENSORFLOW_CORE_UTIL_DEBUG_EVENTS_WRITER_H_
 
+#include <atomic>
 #include <deque>
+#include <memory>
+#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -260,7 +263,8 @@ class DebugEventsWriter {
   std::unique_ptr<SingleDebugEventFileWriter> execution_writer_;
   std::unique_ptr<SingleDebugEventFileWriter> graph_execution_traces_writer_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DebugEventsWriter);
+  DebugEventsWriter(const DebugEventsWriter&) = delete;
+  void operator=(const DebugEventsWriter&) = delete;
 
   friend class DebugEventsWriterTest;
 };

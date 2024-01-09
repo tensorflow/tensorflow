@@ -64,21 +64,46 @@ def _get_ops_from_graphdef(graph_def):
   return ops
 
 
+def get_ops_from_nodedef(node_def):
+  """Gets the op and kernel needed from the given NodeDef.
+
+  Args:
+    node_def: TF NodeDef to get op/kernel information.
+
+  Returns:
+    A tuple of (op_name, kernel_name). If the op is not in the allowlist of ops
+    without kernel and there is no kernel found, then return None.
+  """
+  if not node_def.device:
+    node_def.device = '/cpu:0'
+  kernel_class = _pywrap_kernel_registry.TryFindKernelClass(
+      node_def.SerializeToString())
+  op = str(node_def.op)
+  if kernel_class or op in OPS_WITHOUT_KERNEL_ALLOWLIST:
+    return (op, str(kernel_class.decode('utf-8')) if kernel_class else None)
+  else:
+    tf_logging.warning('Warning: no kernel found for op %s', op)
+    return None
+
+
 def _get_ops_from_nodedefs(node_defs):
-  """Gets the ops and kernels needed from the list of NodeDef."""
+  """Gets the ops and kernels needed from the list of NodeDef.
+
+  If a NodeDef's op is not in the allowlist of ops without kernel and there is
+  no kernel found for this NodeDef, then skip that NodeDef and proceed to the
+  next one.
+
+  Args:
+    node_defs: list of NodeDef's to get op/kernel information.
+
+  Returns:
+    A set of (op_name, kernel_name) tuples.
+  """
   ops = set()
   for node_def in node_defs:
-    if not node_def.device:
-      node_def.device = '/cpu:0'
-    kernel_class = _pywrap_kernel_registry.TryFindKernelClass(
-        node_def.SerializeToString())
-    op = str(node_def.op)
-    if kernel_class or op in OPS_WITHOUT_KERNEL_ALLOWLIST:
-      op_and_kernel = (op, str(kernel_class.decode('utf-8'))
-                       if kernel_class else None)
+    op_and_kernel = get_ops_from_nodedef(node_def)
+    if op_and_kernel:
       ops.add(op_and_kernel)
-    else:
-      tf_logging.warning('Warning: no kernel found for op %s', op)
   return ops
 
 
@@ -110,7 +135,7 @@ def get_ops_and_kernels(proto_fileformat, proto_files, default_ops_str):
       if op_and_kernel not in ops:
         ops.add(op_and_kernel)
 
-  return list(sorted(ops))
+  return sorted(ops)
 
 
 def get_header_from_ops_and_kernels(ops_and_kernels,
@@ -125,6 +150,7 @@ def get_header_from_ops_and_kernels(ops_and_kernels,
   Returns:
     the string of the header that should be written as ops_to_register.h.
   """
+  ops_and_kernels = sorted(ops_and_kernels)
   ops = set(op for op, _ in ops_and_kernels)
   result_list = []
 

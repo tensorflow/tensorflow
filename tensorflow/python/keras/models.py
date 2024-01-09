@@ -34,7 +34,6 @@ from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 # API entries importable from `keras.models`:
@@ -381,7 +380,6 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
   return cloned_model
 
 
-@keras_export('keras.models.clone_model')
 def clone_model(model, input_tensors=None, clone_function=None):
   """Clone a Functional or Sequential `Model` instance.
 
@@ -578,9 +576,6 @@ def _reset_build_compile_trackers(model):
   model.optimizer = None
 
 
-@keras_export(
-    'keras.__internal__.models.in_place_subclassed_model_state_restoration',
-    v1=[])
 def in_place_subclassed_model_state_restoration(model):
   """Restores the original state of a model after it was "reset".
 
@@ -613,7 +608,6 @@ def in_place_subclassed_model_state_restoration(model):
     _reset_build_compile_trackers(model)
 
 
-@keras_export('keras.__internal__.models.clone_and_build_model', v1=[])
 def clone_and_build_model(
     model, input_tensors=None, target_tensors=None, custom_objects=None,
     compile_clone=True, in_place_reset=False, optimizer_iterations=None,

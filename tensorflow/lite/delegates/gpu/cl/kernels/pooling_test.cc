@@ -29,22 +29,22 @@ namespace {
 
 TEST_F(OpenCLOperationTest, AveragePooling) {
   auto status = AveragePoolingTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, AveragePoolingNonEmptyPadding) {
   auto status = AveragePoolingNonEmptyPaddingTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, MaxPooling) {
   auto status = MaxPoolingTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, MaxPoolingIndices) {
   auto status = MaxPoolingIndicesTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

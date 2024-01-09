@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <numeric>
 #include <vector>
+
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -165,8 +168,33 @@ TEST(AttrValueUtil, SummarizeAttrValueElidesLongLists) {
 
   AttrValue attr_value;
   SetAttrValue(alist, &attr_value);
-  EXPECT_EQ("[0, 1, 2, 3, 4, 2587181569776227444, 105, 106, 107, 108, 109]",
-            SummarizeAttrValue(attr_value));
+  EXPECT_EQ(
+      "[0, 1, 2, 3, 4, ..., 105, 106, 107, 108, "
+      "109]{attr_hash=14506120815048308275}",
+      SummarizeAttrValue(attr_value));
+}
+
+TEST(AttrValueUtil, TensorByteSizeNumElementsOverflows) {
+  TensorProto proto;
+  proto.mutable_tensor_shape()->add_dim()->set_size(9223372036854775807L);
+  proto.mutable_tensor_shape()->add_dim()->set_size(2092026309338556617L);
+  proto.set_dtype(DT_INT32);
+  EXPECT_EQ(attr_value_util_internal::TensorByteSize(proto), -1);
+}
+
+TEST(AttrValueUtil, TensorByteSizeShouldNotOverflow) {
+  {
+    TensorProto proto;
+    proto.mutable_tensor_shape()->add_dim()->set_size(4611686018427387904L);
+    proto.set_dtype(DT_INT32);
+    EXPECT_EQ(attr_value_util_internal::TensorByteSize(proto), -1);
+  }
+  {
+    TensorProto proto;
+    proto.mutable_tensor_shape()->add_dim()->set_size(46123445412334L);
+    proto.set_dtype(DT_INT32);
+    EXPECT_NE(attr_value_util_internal::TensorByteSize(proto), -1);
+  }
 }
 
 AttrValue FromText(const string& text) {

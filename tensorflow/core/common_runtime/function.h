@@ -56,7 +56,7 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator* c);
 // The "parent" is a pointer to the ProcessFunctionLibraryRuntime object that
 // typically owns the created FunctionLibraryRuntime object. The parent pointer
 // is not owned by the FunctionLibraryRuntime object.
-std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
+core::RefCountPtr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
     Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,

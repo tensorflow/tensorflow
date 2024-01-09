@@ -9,7 +9,7 @@ op 	 {
     type_attr: "T"
   }
   attr {
-    name: "layout"
+    name: "mesh"
     type: "string"
   }
   attr {

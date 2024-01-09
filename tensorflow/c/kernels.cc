@@ -15,37 +15,71 @@ limitations under the License.
 
 #include "tensorflow/c/kernels.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <functional>
 #include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/experimental/stream_executor/stream_executor.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/resource_handle.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/c/tsl_status_internal.h"  // IWYU pragma: keep
+
 // Required for IS_MOBILE_PLATFORM definition
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/platform.h"  // IWYU pragma: keep
+
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream.h"
+#include "tensorflow/core/framework/device.h"
+#include "tsl/framework/device_id_utils.h"
+#include "tsl/platform/statusor.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
-using tensorflow::errors::InvalidArgument;
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
 // and with a focus on maintaining both source and binary compatibility.
+
+typedef std::function<void()> AsyncOpKernelDoneCallback;
+void TF_RunAsyncOpKernelDoneCallback(TF_AsyncOpKernelDoneCallback* done) {
+  (*reinterpret_cast<AsyncOpKernelDoneCallback*>(done))();
+}
 
 struct TF_KernelBuilder {
   ::tensorflow::KernelDefBuilder* cc_builder;
 
   void* (*create_function)(TF_OpKernelConstruction*);
   void (*compute_function)(void*, TF_OpKernelContext*);
+  void (*compute_async_function)(void*, TF_OpKernelContext*,
+                                 TF_AsyncOpKernelDoneCallback* done);
   void (*delete_function)(void*);
 };
 
@@ -59,6 +93,23 @@ TF_KernelBuilder* TF_NewKernelBuilder(
   result->cc_builder->Device(device_name);
   result->create_function = create_func;
   result->compute_function = compute_func;
+  result->compute_async_function = nullptr;
+  result->delete_function = delete_func;
+  return result;
+}
+
+TF_KernelBuilder* TF_NewAsyncKernelBuilder(
+    const char* op_name, const char* device_name,
+    void* (*create_func)(TF_OpKernelConstruction*),
+    void (*compute_async_func)(void*, TF_OpKernelContext*,
+                               TF_AsyncOpKernelDoneCallback* done),
+    void (*delete_func)(void*)) {
+  TF_KernelBuilder* result = new TF_KernelBuilder;
+  result->cc_builder = new ::tensorflow::KernelDefBuilder(op_name);
+  result->cc_builder->Device(device_name);
+  result->create_function = create_func;
+  result->compute_function = nullptr;
+  result->compute_async_function = compute_async_func;
   result->delete_function = delete_func;
   return result;
 }
@@ -89,7 +140,8 @@ void AddTypeConstraint(TF_KernelBuilder* kernel_builder, const char* attr_name,
     TF_CALL_quint16(CASE);
     TF_CALL_qint16(CASE);
     default:
-      status->status = errors::Unimplemented("Unexpected type ", dtype);
+      status->status =
+          absl::UnimplementedError(absl::StrCat("Unexpected type ", dtype));
       return;
   }
   TF_SetStatus(status, TF_OK, "");
@@ -107,8 +159,9 @@ const tensorflow::AttrValue* GetAttrValue(TF_OpKernelConstruction* ctx,
   const tensorflow::AttrValue* attr =
       ::tensorflow::AttrSlice(cc_ctx->def()).Find(attr_name);
   if (attr == nullptr) {
-    status->status = InvalidArgument("Operation '", cc_ctx->def().name(),
-                                     "' has no attr named '", attr_name, "'.");
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("Operation '", cc_ctx->def().name(),
+                     "' has no attr named '", attr_name, "'."));
   }
   return attr;
 }
@@ -172,6 +225,52 @@ class COpKernel : public OpKernel {
   void* c_kernel_;
 };
 
+class CAsyncOpKernel : public AsyncOpKernel {
+ public:
+  explicit CAsyncOpKernel(
+      OpKernelConstruction* ctx, void* (*create_func)(TF_OpKernelConstruction*),
+      void (*compute_async_func)(void*, TF_OpKernelContext*,
+                                 TF_AsyncOpKernelDoneCallback*),
+      void (*delete_func)(void*))
+      : AsyncOpKernel(ctx),
+        compute_async_func_(compute_async_func),
+        delete_func_(delete_func) {
+    if (create_func != nullptr) {
+      c_kernel_ =
+          (*create_func)(reinterpret_cast<TF_OpKernelConstruction*>(ctx));
+    } else {
+      c_kernel_ = nullptr;
+    }
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    Notification n;
+    ComputeAsync(ctx, [&n]() { n.Notify(); });
+    n.WaitForNotification();
+  }
+
+  void ComputeAsync(OpKernelContext* ctx,
+                    AsyncOpKernelDoneCallback done) override {
+    (*compute_async_func_)(
+        c_kernel_, reinterpret_cast<TF_OpKernelContext*>(ctx),
+        reinterpret_cast<TF_AsyncOpKernelDoneCallback*>(&done));
+  }
+
+  CAsyncOpKernel* AsAsync() override { return this; }
+
+  ~CAsyncOpKernel() override {
+    if (delete_func_ != nullptr) {
+      (*delete_func_)(c_kernel_);
+    }
+  }
+
+ private:
+  void (*compute_async_func_)(void*, TF_OpKernelContext* context,
+                              TF_AsyncOpKernelDoneCallback* done);
+  void (*delete_func_)(void*);
+  void* c_kernel_;
+};
+
 // A KernelFactory that returns COpKernel instances.
 class KernelBuilderFactory
     : public ::tensorflow::kernel_factory::OpKernelFactory {
@@ -180,9 +279,14 @@ class KernelBuilderFactory
       : builder_(builder) {}
   ::tensorflow::OpKernel* Create(
       ::tensorflow::OpKernelConstruction* context) override {
-    return new ::tensorflow::COpKernel(context, builder_->create_function,
-                                       builder_->compute_function,
-                                       builder_->delete_function);
+    if (builder_->compute_function)
+      return new ::tensorflow::COpKernel(context, builder_->create_function,
+                                         builder_->compute_function,
+                                         builder_->delete_function);
+    else
+      return new ::tensorflow::CAsyncOpKernel(
+          context, builder_->create_function, builder_->compute_async_function,
+          builder_->delete_function);
   }
   ~KernelBuilderFactory() override { TF_DeleteKernelBuilder(builder_); }
 
@@ -236,7 +340,7 @@ void TF_RegisterKernelBuilderWithKernelDef(const char* serialized_kernel_def,
 // This function is experimental and subject to change.
 SP_Stream TF_GetStream(TF_OpKernelContext* ctx, TF_Status* status) {
 #if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
-  status->status = tensorflow::errors::Unimplemented(
+  status->status = absl::UnimplementedError(
       "Accessing device stream is not supported on mobile. File a bug at "
       "https://github.com/tensorflow/tensorflow/issues if this feature is "
       "important to you");
@@ -244,11 +348,11 @@ SP_Stream TF_GetStream(TF_OpKernelContext* ctx, TF_Status* status) {
 #else
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (cc_ctx->op_device_context() == nullptr) {  // CPU Device
-    status->status = tensorflow::errors::FailedPrecondition(
+    status->status = absl::FailedPreconditionError(
         "Accessing device stream is not supported for a CPU device.");
     return nullptr;
   } else if (!cc_ctx->op_device_context()->IsPluggableDevice()) {
-    status->status = tensorflow::errors::FailedPrecondition(
+    status->status = absl::FailedPreconditionError(
         "Accessing device stream is only supported for pluggable devices.");
     return nullptr;
   } else {  // Is a PluggableDevice
@@ -278,6 +382,10 @@ void TF_GetInput(TF_OpKernelContext* ctx, int i, TF_Tensor** tensor,
     return;
   }
   const ::tensorflow::Tensor& cc_tensor(cc_ctx->input(i));
+  if ((&cc_tensor) == nullptr) {  // NOLINT: Error observed in OSS.
+    *tensor = nullptr;
+    return;
+  }
   TF_Tensor* result =
       ::tensorflow::TF_TensorFromTensor(cc_tensor, &status->status);
   if (TF_GetCode(status) == TF_OK) {
@@ -295,6 +403,13 @@ void TF_InputRange(TF_OpKernelContext* ctx, const char* name,
   tensorflow::Set_TF_Status_from_Status(args->status, status);
 }
 
+TF_DataType TF_InputDatatype(TF_OpKernelContext* ctx, int index) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  CHECK_GE(index, 0);                     // Crash OK
+  CHECK_LT(index, cc_ctx->num_inputs());  // Crash OK
+  return static_cast<TF_DataType>(cc_ctx->input_dtype(index));
+}
+
 void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
                   TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
@@ -303,8 +418,7 @@ void TF_SetOutput(TF_OpKernelContext* ctx, int i, const TF_Tensor* tensor,
     return;
   }
   ::tensorflow::Tensor cc_tensor;
-  ::tensorflow::Status s = ::tensorflow::TF_TensorToTensor(tensor, &cc_tensor);
-  TF_SetStatus(status, TF_OK, "");
+  absl::Status s = ::tensorflow::TF_TensorToTensor(tensor, &cc_tensor);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
   if (s.ok()) {
     cc_ctx->set_output(i, cc_tensor);
@@ -354,16 +468,28 @@ void TF_GetSerializedConfigProto(TF_OpKernelContext* ctx,
   tensorflow::Set_TF_Status_from_Status(status, cc_status);
 }
 
+void TF_GetSerializedResourceHandleProto(
+    TF_OpKernelContext* ctx, int i, TF_Buffer* serialized_resource_handle_proto,
+    TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  const tensorflow::ResourceHandle& handle = HandleFromInput(cc_ctx, i);
+  tensorflow::ResourceHandleProto handle_proto;
+  handle.AsProto(&handle_proto);
+  auto cc_status = tensorflow::MessageToBuffer(
+      handle_proto, serialized_resource_handle_proto);
+  tensorflow::Set_TF_Status_from_Status(status, cc_status);
+}
+
 void TF_OpKernelConstruction_Failure(TF_OpKernelConstruction* ctx,
                                      TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  ::tensorflow::Status s(::tensorflow::StatusFromTF_Status(status));
+  absl::Status s(tsl::StatusFromTF_Status(status));
   cc_ctx->CtxFailure(s);
 }
 
 void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
-  ::tensorflow::Status s(::tensorflow::StatusFromTF_Status(status));
+  absl::Status s(tsl::StatusFromTF_Status(status));
   cc_ctx->CtxFailure(s);
 }
 
@@ -435,8 +561,8 @@ void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
       break;
 
     case tensorflow::AttrValue::VALUE_NOT_SET:
-      status->status =
-          InvalidArgument("Attribute '", attr_name, "' has no value set");
+      status->status = absl::InvalidArgumentError(
+          absl::StrCat("Attribute '", attr_name, "' has no value set"));
       break;
   }
 }
@@ -448,7 +574,7 @@ void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
     TF_SetStatus(status, TF_OK, "");                                           \
     cc_type v;                                                                 \
     auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx); \
-    ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);                   \
+    absl::Status s = cc_ctx->GetAttr(attr_name, &v);                           \
     ::tensorflow::Set_TF_Status_from_Status(status, s);                        \
     if (s.ok()) {                                                              \
       *val = static_cast<c_type>(v);                                           \
@@ -461,8 +587,8 @@ void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
     const tensorflow::AttrValue* attr = GetAttrValue(ctx, attr_name, status);  \
     if (!status->status.ok()) return;                                          \
     if (attr->value_case() != tensorflow::AttrValue::kList) {                  \
-      status->status =                                                         \
-          InvalidArgument("Value for '", attr_name, "' is not a list.");       \
+      status->status = absl::InvalidArgumentError(                             \
+          absl::StrCat("Attribute '", attr_name, "' is not a list."));         \
       return;                                                                  \
     }                                                                          \
     status->status =                                                           \
@@ -486,7 +612,7 @@ void TF_OpKernelConstruction_GetAttrString(TF_OpKernelConstruction* ctx,
                                            TF_Status* status) {
   std::string v;
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
+  absl::Status s = cc_ctx->GetAttr(attr_name, &v);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
 
   if (!status->status.ok()) return;
@@ -505,7 +631,7 @@ void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
                                                TF_Status* status) {
   std::vector<std::string> v;
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
+  absl::Status s = cc_ctx->GetAttr(attr_name, &v);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
 
   if (!status->status.ok()) return;
@@ -517,11 +643,11 @@ void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
     values[i] = p;
     lengths[i] = s.size();
     if ((p + s.size()) > (static_cast<char*>(storage) + storage_size)) {
-      status->status = InvalidArgument(
+      status->status = absl::InvalidArgumentError(
           "Not enough storage to hold the requested list of strings");
       return;
     }
-    memcpy(values[i], s.data(), s.size());
+    std::memcpy(values[i], s.data(), s.size());
     p += s.size();
   }
 }
@@ -532,7 +658,7 @@ void TF_OpKernelConstruction_GetAttrTensor(TF_OpKernelConstruction* ctx,
   *val = nullptr;
   ::tensorflow::Tensor t;
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &t);
+  absl::Status s = cc_ctx->GetAttr(attr_name, &t);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
 
   if (!status->status.ok()) return;
@@ -546,7 +672,7 @@ void TF_OpKernelConstruction_GetAttrTensorList(TF_OpKernelConstruction* ctx,
                                                TF_Status* status) {
   std::vector<::tensorflow::Tensor> v;
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
+  absl::Status s = cc_ctx->GetAttr(attr_name, &v);
   ::tensorflow::Set_TF_Status_from_Status(status, s);
 
   if (!status->status.ok()) return;
@@ -565,12 +691,12 @@ TF_Buffer* TF_OpKernelConstruction_GetAttrFunction(TF_OpKernelConstruction* ctx,
   tensorflow::NameAttrList function;
   auto cc_status = cc_ctx->GetAttr(attr_name, &function);
   if (!cc_status.ok()) {
-    Set_TF_Status_from_Status(status, cc_status);
+    tsl::Set_TF_Status_from_Status(status, cc_status);
     return nullptr;
   }
   TF_Buffer* buffer = TF_NewBuffer();
   cc_status = tensorflow::MessageToBuffer(function, buffer);
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
   if (!cc_status.ok())
     return nullptr;
   else
@@ -652,6 +778,27 @@ int64_t TF_GetIterId(TF_OpKernelContext* ctx) {
       .iter_id;
 }
 
+int64_t TF_GetStepId(TF_OpKernelContext* ctx) {
+  return reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->step_id();
+}
+
+int TF_GetDeviceId(TF_OpKernelContext* ctx) {
+  // TensorFlow always sets device in OpKernelContext.
+  const tensorflow::DeviceBase* device_base =
+      reinterpret_cast<tensorflow::OpKernelContext*>(ctx)->device();
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  if (!device_base->parsed_name().has_id) return -1;
+  return device_base->parsed_name().id;
+#else
+  const auto* device = reinterpret_cast<const tensorflow::Device*>(
+      device_base->UnderlyingDevice());
+  const tsl::StatusOr<int> id = tsl::GetDeviceIdFromDeviceParsedName(
+      device->parsed_name(), tensorflow::DeviceType(device->device_type()));
+  if (!id.ok()) return -1;
+  return *id;
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+}
+
 TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {
   auto cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   TF_StringView opkernel_name_sv;
@@ -684,12 +831,10 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              int num_dims, size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  static_assert(sizeof(int64_t) == sizeof(int64_t),
-                "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<const int64_t> dimarray(
       reinterpret_cast<const int64_t*>(dims), num_dims);
   tensorflow::Tensor* tensor;
-  tensorflow::Status s = cc_ctx->allocate_output(
+  absl::Status s = cc_ctx->allocate_output(
       index, tensorflow::TensorShape(dimarray), &tensor);
   if (!s.ok()) {
     ::tensorflow::Set_TF_Status_from_Status(status, s);
@@ -711,14 +856,12 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
 
-  static_assert(sizeof(int64_t) == sizeof(int64_t),
-                "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<int> input_indices_array(
       candidate_input_indices, num_candidate_input_indices);
   tensorflow::gtl::ArraySlice<const int64_t> output_dimarray(
       reinterpret_cast<const int64_t*>(output_dims), output_num_dims);
   tensorflow::Tensor* output_tensor_pointer;
-  tensorflow::Status s = cc_ctx->forward_input_or_allocate_output(
+  absl::Status s = cc_ctx->forward_input_or_allocate_output(
       input_indices_array, output_index,
       tensorflow::TensorShape(output_dimarray), &output_tensor_pointer,
       forwarded_input);
@@ -736,15 +879,13 @@ TF_Tensor* TF_ForwardInputOrAllocateOutput(
 
 TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
                            const int64_t* dims, int num_dims,
-                           TF_AllocatorAttributes* attributes,
+                           TF_AllocatorAttributes* alloc_attrs,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
   TF_SetStatus(status, TF_OK, "");
-  static_assert(sizeof(int64_t) == sizeof(int64_t),
-                "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<const int64_t> dimarray(
       reinterpret_cast<const int64_t*>(dims), num_dims);
-  if (attributes && !attributes->struct_size) {
+  if (alloc_attrs && !alloc_attrs->struct_size) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
         "TF_AllocatorAttributes struct "
@@ -752,10 +893,10 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
     return nullptr;
   }
   tensorflow::AllocatorAttributes allocator_attr;
-  if (attributes && attributes->on_host) {
+  if (alloc_attrs && alloc_attrs->on_host) {
     allocator_attr.set_on_host(true);
   }
-  tensorflow::Status s;
+  absl::Status s;
   tensorflow::Tensor tensor;
   s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype),
                             tensorflow::TensorShape(dimarray), &tensor,
@@ -771,4 +912,16 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
     return nullptr;
   }
   return tf_tensor;
+}
+
+void TF_IncNumDeferredOps(TF_OpKernelContext* context) {
+  tensorflow::OpKernelContext* cc_ctx =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  cc_ctx->inc_num_deferred_ops_function()();
+}
+
+void TF_DecNumDeferredOps(TF_OpKernelContext* context) {
+  tensorflow::OpKernelContext* cc_ctx =
+      reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  cc_ctx->dec_num_deferred_ops_function()();
 }

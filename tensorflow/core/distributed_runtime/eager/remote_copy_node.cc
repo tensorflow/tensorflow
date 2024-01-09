@@ -60,7 +60,8 @@ Status CreateUncachedKernelAndDeviceOp(
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
   return kernel->get()->Init(ctx.LogDevicePlacement(), ndef,
-                             /*graph_collector=*/nullptr);
+                             /*graph_collector=*/nullptr,
+                             /*eager_func_params=*/std::nullopt);
 }
 
 // This gets a unique wire ID. We add a random identifier so that if the
@@ -108,7 +109,7 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   EagerKernelArgs args(1);
   Device* d = ctx_->CanonicalDevice(std::get<Device*>(op->Device()));
   TF_RETURN_IF_ERROR(src_->TensorValue(d, args.MutableInput(0)));
-  CoordinationServiceAgent* coord_agent = nullptr;
+  tsl::CoordinationServiceAgent* coord_agent = nullptr;
   if (ctx_->GetDistributedManager() != nullptr)
     coord_agent = ctx_->GetDistributedManager()->GetCoordinationServiceAgent();
 
@@ -199,7 +200,7 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
 
   EagerKernelArgs args;
   std::vector<EagerKernelRet> rets;
-  CoordinationServiceAgent* coord_agent = nullptr;
+  tsl::CoordinationServiceAgent* coord_agent = nullptr;
   if (ctx_->GetDistributedManager() != nullptr)
     coord_agent = ctx_->GetDistributedManager()->GetCoordinationServiceAgent();
   TF_RETURN_IF_ERROR(kernel->Run(/*step_container*/ nullptr, args, &rets,

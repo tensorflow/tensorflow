@@ -15,13 +15,16 @@ limitations under the License.
 
 // XLA-specific Ops for FFT.
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal_util.h"
+#include "xla/util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -106,7 +109,8 @@ class GenericFftOp : public XlaOpKernel {
   const int fft_rank_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GenericFftOp);
+  GenericFftOp(const GenericFftOp&) = delete;
+  void operator=(const GenericFftOp&) = delete;
 };
 
 template <int FFTRank>

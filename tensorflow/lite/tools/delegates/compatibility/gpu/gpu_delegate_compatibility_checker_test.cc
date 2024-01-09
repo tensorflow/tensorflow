@@ -26,6 +26,10 @@ limitations under the License.
 namespace tflite {
 namespace tools {
 
+#ifndef EXPECT_OK
+#define EXPECT_OK(x) EXPECT_TRUE(x.ok());
+#endif
+
 namespace {
 
 class AddOpModel : public SingleOpModel {
@@ -59,9 +63,11 @@ TEST(GpuDelegateCompatibilityCheckerTest, CheckOnlineMode) {
 
   GpuDelegateCompatibilityChecker gpu_dcc;
   // Online mode is not supported by GPU DCC
-  EXPECT_THAT(gpu_dcc.checkModelCompatibilityOnline(fb_model.get(),
-                                                    &compatibility_result),
-              testing::status::StatusIs(absl::StatusCode::kUnimplemented));
+  EXPECT_EQ(
+      gpu_dcc
+          .checkModelCompatibilityOnline(fb_model.get(), &compatibility_result)
+          .code(),
+      absl::StatusCode::kUnimplemented);
 }
 
 TEST(GpuDelegateCompatibilityCheckerTest, CompatibleModelOfflineMode) {

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/graph_view.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -39,6 +40,7 @@ namespace grappler {
 
 using ::tensorflow::Scope;
 using ::tensorflow::ops::Conv2D;
+using ::tensorflow::ops::Conv3D;
 using ::tensorflow::ops::Identity;
 using ::tensorflow::ops::RandomUniform;
 
@@ -68,6 +70,10 @@ constexpr int kDepthOut = 16;
   { 0, 3, 1, 2 }
 #define PERMUTATION_DST_TO_SRC \
   { 0, 2, 3, 1 }
+#define DIMS_5D(n, d, h, w, c) \
+  { n, d, h, w, c }
+#define SRC_DATA_FORMAT_5D "NDHWC"
+#define DST_DATA_FORMAT_5D "NCDHW"
 #else
 #define DIMS(n, h, w, c) \
   { n, c, h, w }
@@ -79,6 +85,10 @@ constexpr int kDepthOut = 16;
   { 0, 2, 3, 1 }
 #define PERMUTATION_DST_TO_SRC \
   { 0, 3, 1, 2 }
+#define DIMS_5D(n, d, h, w, c) \
+  { n, c, d, h, w }
+#define SRC_DATA_FORMAT_5D "NCDHW"
+#define DST_DATA_FORMAT_5D "NDHWC"
 #endif  // (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 
 template <typename T = float>
@@ -159,6 +169,37 @@ Output SimpleConv2DBackpropInput(tensorflow::Scope* s, int input_size,
   return conv_backprop_input;
 }
 
+template <typename T = float>
+Output SimpleConv3D(tensorflow::Scope* s, int input_size, int filter_size,
+                    const string& padding, const string& device) {
+  int batch_size = 8;
+  int input_height = input_size;
+  int input_width = input_size;
+  int input_depth = 4;
+  int input_channel = 3;
+  int filter_count = 6;
+  int stride = 1;
+  TensorShape input_shape(DIMS_5D(batch_size, input_depth, input_height,
+                                  input_width, input_channel));
+  Tensor input_data(DataTypeToEnum<T>::value, input_shape);
+  test::FillIota<T>(&input_data, static_cast<T>(1));
+  Output input =
+      ops::Const(s->WithOpName("Input"), Input::Initializer(input_data));
+
+  TensorShape filter_shape(
+      {filter_size, filter_size, filter_size, input_channel, filter_count});
+  Tensor filter_data(DataTypeToEnum<T>::value, filter_shape);
+  test::FillIota<T>(&filter_data, static_cast<T>(1));
+  Output filter =
+      ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
+
+  Output conv =
+      ops::Conv3D(s->WithOpName("Conv3D").WithDevice(device), input, filter,
+                  DIMS_5D(1, stride, stride, stride, 1), padding,
+                  ops::Conv3D::Attrs().DataFormat(SRC_DATA_FORMAT_5D));
+  return conv;
+}
+
 class GenericLayoutOptimizerTest : public GrapplerTest {
  protected:
   void SetUp() override {
@@ -193,7 +234,11 @@ class GenericLayoutOptimizerTest : public GrapplerTest {
     TF_ASSERT_OK(virtual_cluster_->Provision());
   }
 
-  void TearDown() override { TF_ASSERT_OK(virtual_cluster_->Shutdown()); }
+  void TearDown() override {
+    TF_ASSERT_OK(virtual_cluster_->Shutdown());
+    // Turn TensorFloat-32 back on since some tests disable it
+    tsl::enable_tensor_float_32_execution(true);
+  }
 
   std::unique_ptr<Cluster> virtual_cluster_;
 };
@@ -297,6 +342,7 @@ TEST_F(GenericLayoutOptimizerTest, GPUDevice) {
 #if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
 #endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  tsl::enable_tensor_float_32_execution(false);  // NOLINT
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv =
       SimpleConv2D(&s, 4, 2, "VALID", "/job:w/replica:0/task:0/device:GPU:0");
@@ -417,6 +463,7 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {
+  tsl::enable_tensor_float_32_execution(false);
   Scope scope =
       Scope::NewRootScope().WithDevice(absl::StrCat("/device:", DEVICE, ":0"));
   auto conv = SimpleConv2D(&scope, 4, 2, "VALID",
@@ -672,6 +719,60 @@ TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
   EXPECT_TRUE(arg->HasAttr("_output_shapes"));
   EXPECT_EQ(arg->GetAttr("_output_shapes")->DebugString(),
             output_shapes.DebugString());
+}
+
+TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv3DGraph_CPU) {
+  // A simple graph contains 1 Conv3D node, 2 input and 1 output nodes.
+  // Data format is NCDHW on CPU.
+  Scope scope = Scope::NewRootScope();
+
+  auto conv3d = SimpleConv3D(&scope, 32, 1, "VALID", "/CPU:0");
+  auto identity = Identity(scope.WithOpName("Output"), conv3d);
+  GrapplerItem item;
+  TF_ASSERT_OK(scope.ToGraphDef(&item.graph));
+
+  GenericLayoutOptimizer optimizer(REWRITER_CONFIG);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  Status status;
+  utils::GraphView graph_view(&output, &status);
+  TF_ASSERT_OK(status);
+
+  auto* conv3d_node = graph_view.GetNode("Conv3D");
+  ASSERT_NE(conv3d_node, nullptr);
+  ASSERT_EQ(conv3d_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(conv3d_node, 1, "Filter", 0);
+
+  auto* output_node = graph_view.GetNode("Output");
+  ASSERT_NE(output_node, nullptr);
+  ASSERT_EQ(output_node->NumRegularFanins(), 1);
+
+#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  VerifyDataFormatAttributeMatch(conv3d_node, SRC_DATA_FORMAT_5D);
+#else
+  // The expected optimized graph contains 2 extra sets of Transpose nodes and
+  // has the Conv3D's data_format set "NDHWC" on CPU.
+  auto* input_transpose_node = graph_view.GetNode(
+      absl::StrCat("Conv3D-0-Transpose", SRC_DATA_FORMAT_5D, "To",
+                   DST_DATA_FORMAT_5D, "-LayoutOptimizer"));
+
+  ASSERT_NE(input_transpose_node, nullptr);
+  ASSERT_EQ(input_transpose_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(input_transpose_node, 0, "Input", 0);
+
+  VerifyRegularFaninMatch(conv3d_node, 0, input_transpose_node->GetName(), 0);
+  VerifyDataFormatAttributeMatch(conv3d_node, DST_DATA_FORMAT_5D);
+
+  auto* output_transpose_node = graph_view.GetNode(
+      absl::StrCat("Conv3D-0-0-Transpose", DST_DATA_FORMAT_5D, "To",
+                   SRC_DATA_FORMAT_5D, "-LayoutOptimizer"));
+  ASSERT_NE(output_transpose_node, nullptr);
+  ASSERT_EQ(output_transpose_node->NumRegularFanins(), 2);
+  VerifyRegularFaninMatch(output_transpose_node, 0, conv3d_node->GetName(), 0);
+
+  VerifyRegularFaninMatch(output_node, 0, output_transpose_node->GetName(), 0);
+#endif
 }
 
 // TODO(yanzha): Add more complex Graph for test.

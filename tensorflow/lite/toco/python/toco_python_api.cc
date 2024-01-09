@@ -15,12 +15,12 @@ limitations under the License.
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 
 #include <fstream>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "google/protobuf/text_format.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector.h"
 #include "tensorflow/compiler/mlir/lite/python/flatbuffer_to_mlir.h"
@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -51,13 +51,12 @@ limitations under the License.
 #include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {
-using mlir::lite::StringSet;
 
 void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
                                  toco::TocoFlags* toco_flags,
                                  const std::string& input_contents_txt,
                                  const std::string& output_file_contents_txt,
-                                 const std::string& error_message,
+                                 absl::string_view error_message,
                                  GraphVizDumpOptions* dump_options) {
   // Make sure the graphviz file will be dumped under the same folder.
   dump_options->dump_graphviz = toco_flags->conversion_summary_dir();
@@ -212,7 +211,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
       if (!toco_flags.conversion_summary_dir().empty()) {
         PopulateConversionLogHelper(
             model_flags, &toco_flags, input_contents_txt,
-            output_file_contents_txt, status.error_message(), &dump_options);
+            output_file_contents_txt, status.message(), &dump_options);
       }
     }
   } else {
@@ -221,7 +220,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_Exception, status.error_message().c_str());
+    PyErr_SetString(PyExc_Exception, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
   if (extended_return && !enable_mlir_converter) {
@@ -256,7 +255,8 @@ tflite::TensorType FromTocoDataTypeToTflitToTensorType(int inference_type) {
   }
 }
 
-int ToStringSet(PyObject* py_denylist, StringSet* string_set) {
+int ToStringSet(PyObject* py_denylist,
+                absl::flat_hash_set<std::string>* string_set) {
   using tflite::python_utils::ConvertFromPyString;
   // Ensure op_denylist is non null
   if (!py_denylist) {
@@ -293,7 +293,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             int input_data_type, int output_data_type,
                             bool enable_numeric_verify,
                             bool enable_whole_model_verify,
-                            PyObject* op_denylist, PyObject* node_denylist) {
+                            PyObject* op_denylist, PyObject* node_denylist,
+                            bool enable_variable_quantization) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -304,8 +305,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
     return nullptr;
   }
 
-  StringSet denylisted_ops;
-  StringSet denylisted_nodes;
+  absl::flat_hash_set<std::string> denylisted_ops;
+  absl::flat_hash_set<std::string> denylisted_nodes;
   if (ToStringSet(op_denylist, &denylisted_ops) == -1) {
     PyErr_Format(PyExc_ValueError, "Failed to convert op denylist PyObject");
     return nullptr;
@@ -325,27 +326,28 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto tflite_model = std::make_unique<tflite::ModelT>();
   model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
 
-  tflite::TensorType inference_tensor_type =
+  const tflite::TensorType inference_tensor_type =
       FromTocoDataTypeToTflitToTensorType(inference_type);
-  tflite::TensorType input_type =
+  const tflite::TensorType input_type =
       FromTocoDataTypeToTflitToTensorType(input_data_type);
-  tflite::TensorType output_type =
+  const tflite::TensorType output_type =
       FromTocoDataTypeToTflitToTensorType(output_data_type);
 
-  flatbuffers::FlatBufferBuilder builder;
+  std::string output_model;
+  const absl::string_view input_model_buffer(buf, length);
   auto status = mlir::lite::QuantizeModel(
-      *tflite_model, input_type, output_type, inference_tensor_type, {},
-      disable_per_channel, fully_quantize, &builder, error_reporter.get(),
-      enable_numeric_verify, enable_whole_model_verify,
-      /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes);
-
+      input_model_buffer, input_type, output_type, inference_tensor_type,
+      /*operator_names=*/{}, disable_per_channel, fully_quantize, output_model,
+      error_reporter.get(), enable_numeric_verify, enable_whole_model_verify,
+      /*legacy_float_scale=*/true, denylisted_ops, denylisted_nodes,
+      enable_variable_quantization);
   if (status != kTfLiteOk) {
     error_reporter->exception();
     return nullptr;
   }
-  return tflite::python_utils::ConvertToPyString(
-      reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
-      builder.GetSize());
+
+  return tflite::python_utils::ConvertToPyString(output_model.data(),
+                                                 output_model.size());
 }
 
 PyObject* MlirSparsifyModel(PyObject* data) {

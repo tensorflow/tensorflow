@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
-#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -36,20 +35,24 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/table_builder.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
+#include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
+#include "tsl/lib/io/buffered_file.h"
+#include "tsl/util/byte_swap_array.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
@@ -240,7 +243,7 @@ Status ParseEntryProto(StringPiece key, StringPiece value,
 // original content of "bytes_written", and on OK updates it with number of
 // bytes written.
 // REQUIRES: val.dtype() != DT_STRING
-Status WriteTensor(const Tensor& val, FileOutputBuffer* out,
+Status WriteTensor(const Tensor& val, tsl::BufferedWritableFile* out,
                    size_t* bytes_written) {
   DCHECK_NE(val.dtype(), DT_STRING);
   DCHECK_NE(val.dtype(), DT_VARIANT);
@@ -255,7 +258,7 @@ Status WriteTensor(const Tensor& val, FileOutputBuffer* out,
 //
 // Checksums all bytes written and stores it into "crc32c".
 // REQUIRES: val.dtype() == DT_STRING
-Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
+Status WriteStringTensor(const Tensor& val, tsl::BufferedWritableFile* out,
                          size_t* bytes_written, uint32* crc32c) {
   // On-disk format:
   //   [varint64 len0]..[varint64 lenL][4 byte cksum on lengths][string bytes]
@@ -307,7 +310,7 @@ Status WriteStringTensor(const Tensor& val, FileOutputBuffer* out,
   return OkStatus();
 }
 
-Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
+Status WriteVariantTensor(const Tensor& val, tsl::BufferedWritableFile* out,
                           size_t* bytes_written, uint32* crc32c) {
   // On-disk format:
   //   [varint64 len1][bytes variant1][4 byte checksum]
@@ -389,7 +392,7 @@ Status CorruptFileError(const Status& in_status, const string& filename,
       strings::StrCat("Unable to read file (", filename,
                       "). Perhaps the file is corrupt or was produced by a "
                       "newer version of TensorFlow with format changes (",
-                      detail, "): ", in_status.error_message()));
+                      detail, "): ", in_status.message()));
 }
 
 table::Options TableBuilderOptions() {
@@ -405,7 +408,8 @@ table::Options TableBuilderOptions() {
 // Writes zeros to output buffer to align the next write to the requested
 // alignment. "size" is the current size of the buffer and is updated to the
 // new size.
-Status PadAlignment(FileOutputBuffer* out, int alignment, int64_t* size) {
+Status PadAlignment(tsl::BufferedWritableFile* out, int alignment,
+                    int64_t* size) {
   int bytes_over = *size % alignment;
   if (bytes_over == 0) {
     return OkStatus();
@@ -441,8 +445,8 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
   std::unique_ptr<WritableFile> wrapper;
   status_ = env_->NewWritableFile(data_path_, &wrapper);
   if (!status_.ok()) return;
-  out_ = std::unique_ptr<FileOutputBuffer>(
-      new FileOutputBuffer(wrapper.release(), 8 << 20 /* 8MB write buffer */));
+  out_ = std::make_unique<tsl::BufferedWritableFile>(
+      std::move(wrapper), 8 << 20 /* 8MB write buffer */);
 
   VLOG(1) << "Writing to file " << data_path_;
 }
@@ -465,14 +469,14 @@ Status BundleWriter::Add(StringPiece key, const Tensor& val) {
   // Updates the data file.
   size_t data_bytes_written = 0;
   uint32 crc32c = 0;
-  out_->clear_crc32c();
+  out_->reset_crc32();
   if (val.dtype() == DT_STRING) {
     status_ = WriteStringTensor(val, out_.get(), &data_bytes_written, &crc32c);
   } else if (val.dtype() == DT_VARIANT) {
     status_ = WriteVariantTensor(val, out_.get(), &data_bytes_written, &crc32c);
   } else {
     status_ = WriteTensor(val, out_.get(), &data_bytes_written);
-    crc32c = out_->crc32c();
+    crc32c = out_->crc32();
   }
 
   if (status_.ok()) {
@@ -1164,6 +1168,8 @@ Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
       HANDLE_COPY(quint8)
       HANDLE_COPY(qint8)
       HANDLE_COPY(bfloat16)
+      HANDLE_COPY(int4)
+      HANDLE_COPY(uint4)
       default:
         return errors::InvalidArgument("Dtype ", DataTypeString(common_dtype),
                                        " not supported.");
@@ -1215,64 +1221,5 @@ inline char* AlignedMalloc(size_t size) {
   return buffer;
 }
 }  // namespace
-
-FileOutputBuffer::FileOutputBuffer(WritableFile* file, size_t buffer_size)
-    : file_(file), position_(0), buffer_size_(buffer_size) {
-  DCHECK_GT(buffer_size, 0);
-  buffer_ptr_ = AlignedMalloc(buffer_size);
-}
-
-FileOutputBuffer::~FileOutputBuffer() {
-  if (buffer_ptr_) port::AlignedFree(buffer_ptr_);
-  delete file_;
-}
-
-Status FileOutputBuffer::Append(StringPiece data) {
-  // In the below, it is critical to calculate the checksum on the actually
-  // copied bytes, not the source bytes.  This is because "data" typically
-  // points to tensor buffers, which may be concurrently written.
-  if (data.size() + position_ <= buffer_size_) {
-    // Can fit into the current buffer.
-    memcpy(buffer_ptr_ + position_, data.data(), data.size());
-    crc32c_ = crc32c::Extend(crc32c_, buffer_ptr_ + position_, data.size());
-  } else if (data.size() <= buffer_size_) {
-    // Cannot fit, but can fit after flushing.
-    TF_RETURN_IF_ERROR(FlushBuffer(false));
-    memcpy(buffer_ptr_, data.data(), data.size());
-    crc32c_ = crc32c::Extend(crc32c_, buffer_ptr_, data.size());
-  } else {
-    // Cannot fit even after flushing.  So we break down "data" by chunk, and
-    // flush/checksum each chunk.
-    TF_RETURN_IF_ERROR(FlushBuffer(false));
-    for (size_t i = 0; i < data.size(); i += buffer_size_) {
-      const size_t nbytes = std::min(data.size() - i, buffer_size_);
-      memcpy(buffer_ptr_, data.data() + i, nbytes);
-      crc32c_ = crc32c::Extend(crc32c_, buffer_ptr_, nbytes);
-      position_ = nbytes;
-      TF_RETURN_IF_ERROR(FlushBuffer(false));
-    }
-    return OkStatus();
-  }
-  position_ += data.size();
-  return OkStatus();
-}
-
-Status FileOutputBuffer::Close() {
-  TF_RETURN_IF_ERROR(FlushBuffer(true));
-  return file_->Close();
-}
-
-Status FileOutputBuffer::FlushBuffer(bool closing) {
-  if (position_ > 0) {
-    // Use Cord to avoid extra data copy for some WritableFile implementations.
-    absl::Cord buffer = absl::MakeCordFromExternal(
-        StringPiece(buffer_ptr_, position_),
-        [ptr = buffer_ptr_](StringPiece) { port::AlignedFree(ptr); });
-    buffer_ptr_ = closing ? nullptr : AlignedMalloc(buffer_size_);
-    TF_RETURN_IF_ERROR(file_->Append(buffer));
-    position_ = 0;
-  }
-  return OkStatus();
-}
 
 }  // namespace tensorflow

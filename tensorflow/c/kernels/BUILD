@@ -3,6 +3,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -32,7 +33,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -46,7 +47,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 

@@ -14,7 +14,7 @@
 # ==============================================================================
 """The Counter Dataset."""
 from tensorflow.python import tf2
-from tensorflow.python.data.ops import counter_op
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.util import deprecation
@@ -56,7 +56,7 @@ def CounterV2(start=0, step=1, dtype=dtypes.int64):
   Returns:
     A `Dataset` of scalar `dtype` elements.
   """
-  return counter_op.counter(start, step, dtype)
+  return dataset_ops.Dataset.counter(start, step, dtype)
 
 
 @tf_export(v1=["data.experimental.Counter"])
@@ -71,3 +71,14 @@ if tf2.enabled():
   Counter = CounterV2
 else:
   Counter = CounterV1
+
+
+def _tf2_callback():  # pylint: disable=invalid-name
+  global Counter
+  if tf2.enabled():
+    Counter = CounterV2
+  else:
+    Counter = CounterV1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)

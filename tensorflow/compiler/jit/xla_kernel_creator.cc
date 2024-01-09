@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
+#include <memory>
+#include <vector>
+
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -25,10 +28,18 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -68,7 +79,8 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   Device* dev = flr->device();
   Status s;
   auto props = std::make_shared<NodeProperties>(
-      &fbody->fdef.signature(), node_def, fbody->arg_types, fbody->ret_types);
+      &fbody->record->fdef().signature(), node_def, fbody->arg_types,
+      fbody->ret_types);
   OpKernelConstruction construction(DeviceType(dev->device_type()), dev,
                                     dev->GetAllocator(AllocatorAttributes()),
                                     flr, dev->resource_manager(), props,
@@ -88,7 +100,7 @@ Status XlaKernelCreator::CreateKernel(
   return CreateXlaKernel(flr, props->node_def, kernel);
 }
 
-static bool RegisterLaunchOpCreator() {
+bool RegisterLaunchOpCreator() {
   XlaKernelCreator* xla_kernel_creator = new XlaKernelCreator();
   RegisterDefaultCustomKernelCreator(xla_kernel_creator);
   return true;

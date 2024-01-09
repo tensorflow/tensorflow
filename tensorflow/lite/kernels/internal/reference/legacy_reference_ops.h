@@ -389,6 +389,10 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   op_params.stride_width = stride_width;
   op_params.stride_height = stride_height;
 
+  GetActivationMinMax(FusedActivationFunctionType::kNone,
+                      &op_params.float_activation_min,
+                      &op_params.float_activation_max);
+
   TransposeConv(op_params, DimsToShape(input_dims), input_data,
                 DimsToShape(filter_dims), filter_data,
                 /*bias_shape*/ RuntimeShape(), /*bias*/ nullptr,

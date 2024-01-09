@@ -12,29 +12,54 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/core/tpu/tpu_compile.h"
 
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/literal_util.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
 namespace tpu {
 namespace {
+
+// For stateless RNGs ops, they are pure but device-dependent. Those ops are not
+// constant-foldable.
+// TODO(b/305092010) Use the operations' TF_NoConstantFold attribute instead.
+static absl::flat_hash_set<std::string>* kBlockList =
+    new absl::flat_hash_set<std::string>({
+        "StatelessRandomUniform",
+        "StatelessRandomNormal",
+        "StatelessTruncatedNormal",
+    });
 
 std::string CoreDevice(int core) {
   return strings::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
@@ -159,6 +184,15 @@ void ConvertGraphShapeInfoToShapeMap(
   }
 }
 
+bool DoNotConsiderOpsInBlockList(const Node* n) {
+  if (kBlockList->contains(n->type_string())) {
+    VLOG(2) << "Skip node [" << n->DebugString()
+            << "] for constant folding, it is in constant folding block list";
+    return false;
+  }
+  return true;
+}
+
 // Optimizes `graph`, given the argument descriptions in `metadata` and
 // `arg_shapes`.
 Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
@@ -184,6 +218,7 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
     optimizer_opts.inline_multi_device_functions = true;
     optimizer_opts.inline_impl_selection_group_functions = true;
     optimizer_opts.inline_with_single_device_body_placer = true;
+    optimizer_opts.cf_consider_fn = DoNotConsiderOpsInBlockList;
     // Infer shapes for each node in the computation. Shape inference can help
     // skip constant folding of large shapes.
     GraphShapeInfo shape_info;
@@ -206,6 +241,7 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
     ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
     GraphOptimizer::Options optimizer_opts;
     optimizer_opts.shape_map = &shape_map;
+    optimizer_opts.cf_consider_fn = DoNotConsiderOpsInBlockList;
     optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
   }
 
@@ -247,6 +283,28 @@ Status AssignReturnValueToCore(
   return OkStatus();
 }
 
+// If the metadata specifies any bounded dynamic shapes in the arg then create
+// the matching Tensor values for the Argument.
+Status MaybeBuildBoundedDynamicArgValues(
+    const tpu::TPUCompileMetadataProto::Arg& proto_arg,
+    const TensorShape& shape, XlaCompiler::Argument& arg) {
+  // If any entry in the is_bounded_dynamic_dim list is true then we update the
+  // value_bound and value_dynamism fields to indicate that there is dynamism,
+  // the bounds, and which dimensions are dynamic.
+  auto is_dynamic_dim = absl::MakeConstSpan(proto_arg.is_bounded_dynamic_dim());
+  if (std::any_of(is_dynamic_dim.begin(), is_dynamic_dim.end(),
+                  [](bool v) { return v; })) {
+    // Assume that the values in the shape are the maximums.
+    arg.value_bound = Tensor(arg.type, shape);
+    // Build a literal tensor of Bools to hold which Dims are dynamic.
+    auto literal = xla::LiteralUtil::CreateR1(is_dynamic_dim);
+    Tensor dynamism_tensor(DT_BOOL);
+    TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, DT_BOOL, &dynamism_tensor));
+    arg.value_dynamism = dynamism_tensor;
+  }
+  return OkStatus();
+}
+
 // Populates the arguments, core mapping and per core argument shape for the
 // computation.
 Status BuildComputationArgumentDescriptions(
@@ -275,6 +333,10 @@ Status BuildComputationArgumentDescriptions(
     switch (proto_arg.kind()) {
       case tpu::TPUCompileMetadataProto::Arg::PARAMETER:
         arg.kind = XlaCompiler::Argument::kParameter;
+        // TODO(b/308845592) Maybe do this with the XlaCompileOnDemand version
+        // of this method and maybe move whole method to a shared location.
+        TF_RETURN_IF_ERROR(
+            MaybeBuildBoundedDynamicArgValues(proto_arg, arg_shapes[i], arg));
         break;
       case tpu::TPUCompileMetadataProto::Arg::VARIABLE:
         arg.kind = XlaCompiler::Argument::kResource;
@@ -286,8 +348,8 @@ Status BuildComputationArgumentDescriptions(
         arg.kind = XlaCompiler::Argument::kConstant;
         guaranteed_constants_size =
             guaranteed_constants.index() == 0
-                ? absl::get<0>(guaranteed_constants).size()
-                : absl::get<1>(guaranteed_constants)->size();
+                ? std::get<0>(guaranteed_constants).size()
+                : std::get<1>(guaranteed_constants)->size();
         TF_RET_CHECK(constant_count < guaranteed_constants_size)
             << "More constant args in TPUCompileMetadataProto than constant "
                "tensors.";
@@ -296,13 +358,13 @@ Status BuildComputationArgumentDescriptions(
           // const>`.
           Tensor tensor;
           CHECK(tensor.FromProto(
-              *absl::get<0>(guaranteed_constants)[constant_count++]))
+              *std::get<0>(guaranteed_constants)[constant_count++]))
               << "Failed to deserialize invalid `TensorProto` into `Tensor`.";
           arg.constant_value = tensor;
         } else {
           // `guaranteed_constants` is of type `const OpInputList* const`.
           arg.constant_value =
-              (*absl::get<1>(guaranteed_constants))[constant_count++];
+              (*std::get<1>(guaranteed_constants))[constant_count++];
         }
         break;
       case tpu::TPUCompileMetadataProto::Arg::INVALID:
@@ -466,7 +528,7 @@ Status GetShardingInfo(
     TF_ASSIGN_OR_RETURN(auto arg_sharding,
                         xla::HloSharding::FromProto(proto_arg.sharding()));
     auto layout_preference = shape_determination_fns.layout_preference_fn(
-        arg_shapes[i], proto_arg.dtype(), absl::nullopt);
+        arg_shapes[i], proto_arg.dtype(), std::nullopt);
     TF_ASSIGN_OR_RETURN(auto xla_arg_shape,
                         shape_determination_fns.shape_representation_fn(
                             arg_shapes[i], proto_arg.dtype(),

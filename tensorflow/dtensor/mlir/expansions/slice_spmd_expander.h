@@ -35,44 +35,6 @@ class SliceSPMDExpander : public SPMDExpanderBase {
       const llvm::DenseMap<int, Layout>& output_layouts) override;
 };
 
-class StridedSliceSPMDExpander : public SPMDExpanderBase {
- public:
-  StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
-
-  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& input_layouts) override;
-
-  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& output_layouts) override;
-};
-
-class TensorStridedSliceUpdateSPMDExpander : public SPMDExpanderBase {
- public:
-  StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
-
-  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& input_layouts) override;
-
-  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& output_layouts) override;
-};
-
-class StridedSliceGradSPMDExpander : public SliceSPMDExpander {
- public:
-  StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
-
-  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& input_layouts) override;
-
-  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& output_layouts) override;
-};
 
 }  // namespace dtensor
 }  // namespace tensorflow

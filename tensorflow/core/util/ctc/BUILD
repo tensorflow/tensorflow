@@ -7,6 +7,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -53,7 +54,7 @@ cc_library(
         ":ctc_loss_util_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -83,7 +84,7 @@ cc_library(
         ":ctc_loss_util_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 

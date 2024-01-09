@@ -1,0 +1,23 @@
+op 	 {
+  name: "DistributedSave"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "directory"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}

@@ -20,6 +20,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -78,7 +79,7 @@ def histogram_fixed_width_bins(values,
     values = array_ops.reshape(values, [-1])
     value_range = ops.convert_to_tensor(value_range, name='value_range')
     nbins = ops.convert_to_tensor(nbins, dtype=dtypes.int32, name='nbins')
-    check = control_flow_ops.Assert(
+    check = control_flow_assert.Assert(
         math_ops.greater(nbins, 0), ['nbins %s must > 0' % nbins])
     nbins = control_flow_ops.with_dependencies([check], nbins)
     nbins_float = math_ops.cast(nbins, values.dtype)

@@ -26,13 +26,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/types.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
@@ -90,8 +90,8 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
 
 Status XlaHelpers::OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
                           DataType index_type, const TensorShape& indices_shape,
-                          const xla::XlaOp& indices, const xla::XlaOp& on_value,
-                          const xla::XlaOp& off_value, xla::XlaOp* one_hot) {
+                          const xla::XlaOp indices, const xla::XlaOp on_value,
+                          const xla::XlaOp off_value, xla::XlaOp* one_hot) {
   // Broadcast the linspace constant across the indices along the new axis,
   // and test equality at each position.
   std::vector<int64_t> broadcast_dims(indices_shape.dims());
@@ -128,7 +128,7 @@ DataType XlaHelpers::SumAccumulationType(const DataType& dtype) {
   return dtype;
 }
 
-xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp& operand,
+xla::XlaOp XlaHelpers::ConvertElementType(const xla::XlaOp operand,
                                           const DataType new_element_type) {
   xla::PrimitiveType convert_to;
   TF_CHECK_OK(DataTypeToPrimitiveType(new_element_type, &convert_to));

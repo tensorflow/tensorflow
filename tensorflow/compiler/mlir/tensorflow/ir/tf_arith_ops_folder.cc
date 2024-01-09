@@ -59,7 +59,8 @@ LogicalResult VerifyTypeRangesAreCompatible(Operation *op,
            << "s (size = " << range1.first.size() << ")";
   }
 
-  for (auto it : llvm::enumerate(llvm::zip(range0.first, range1.first))) {
+  for (const auto &it :
+       llvm::enumerate(llvm::zip(range0.first, range1.first))) {
     int index = it.index();
     Type type0 = std::get<0>(it.value());
     Type type1 = std::get<1>(it.value());

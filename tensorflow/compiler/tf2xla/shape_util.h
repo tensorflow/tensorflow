@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -57,6 +57,11 @@ Status TensorShapeToXLAShape(DataType dtype,
 // with unknown rank is represented by an r1 with empty dimension.
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const PartialTensorShape& tensor_shape);
+
+Status TensorShapeToBoundedXLAShape(DataType dtype,
+                                    const PartialTensorShape& tensor_shape,
+                                    const TensorShape& bound,
+                                    xla::Shape* shape);
 
 // Given an XLA shape with layouts, builds a layout vector in the form able to
 // be fed to ops like InfeedEnqueue/InfeedEnqueueTuple/XRTAllocateV2/....

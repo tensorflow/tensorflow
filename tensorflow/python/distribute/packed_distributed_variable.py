@@ -17,6 +17,7 @@
 from tensorflow.python.distribute import device_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 
@@ -299,7 +300,7 @@ class PackedVarAndDevice(object):
       return self._var.get_var_on_current_device().handle
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     with ops.device(self._device):
       return self._var.op
 
@@ -361,5 +362,5 @@ def _tensor_conversion_packed_var_and_device(var,
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     PackedVarAndDevice, _tensor_conversion_packed_var_and_device)

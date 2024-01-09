@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -121,6 +122,12 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     # Disable layout optimizer, since it will convert BiasAdd with NHWC
     # format to NCHW format under four dimentional input.
     self.DisableNonTrtOptimizers()
+
+  def ShouldRunTest(self, run_params):
+    return (
+        trt_utils.is_linked_tensorrt_version_greater_equal(8),
+        "Test is non-hermetic with TensorRT 7",
+    )
 
 
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):

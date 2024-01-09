@@ -22,7 +22,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -42,7 +42,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -882,15 +882,19 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
   TensorReference isvalid_dev_ref(isvalid_dev_tensor);
   auto wrapped_callback = [context, isvalid_host_tensor, isvalid_dev_ref,
                            compute, done]() {
-    auto stream = context->op_device_context()->stream();
-    ScopedActivateExecutorContext scoped_activation{stream->parent()};
-    const bool isvalid = isvalid_host_tensor.scalar<bool>()();
-    isvalid_dev_ref.Unref();
-    OP_REQUIRES_ASYNC(
-        context, isvalid,
-        errors::OutOfRange("box_index has values outside [0, batch_size)"),
-        done);
-    compute();
+    {
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      const bool isvalid = isvalid_host_tensor.scalar<bool>()();
+      isvalid_dev_ref.Unref();
+      OP_REQUIRES_ASYNC(
+          context, isvalid,
+          errors::OutOfRange("box_index has values outside [0, batch_size)"),
+          done);
+      compute();
+    }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+       // inlines another Op kernel, which may assume the original cuda Context.
+
     done();
   };
 
@@ -919,7 +923,9 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
                               .TypeConstraint<T>("T"),             \
                           CropAndResizeGradBoxesOp<GPUDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
+TF_CALL_half(REGISTER_KERNEL);
+TF_CALL_float(REGISTER_KERNEL);
+TF_CALL_double(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 

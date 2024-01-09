@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
@@ -57,10 +58,14 @@ class TridiagonalMulOpTest(test.TestCase):
     diags_matrix = constant_op.constant(diags_matrix, dtype)
     rhs = constant_op.constant(rhs, dtype)
 
-    rhs_batch = array_ops.stack([rhs, 2 * rhs])
-    diags_compact_batch = array_ops.stack([diags_compact, 2 * diags_compact])
-    diags_matrix_batch = array_ops.stack([diags_matrix, 2 * diags_matrix])
-    diags_sequence_batch = [array_ops.stack([x, 2 * x]) for x in diags_sequence]
+    rhs_batch = array_ops_stack.stack(
+        [rhs, 2 * rhs])
+    diags_compact_batch = array_ops_stack.stack(
+        [diags_compact, 2 * diags_compact])
+    diags_matrix_batch = array_ops_stack.stack(
+        [diags_matrix, 2 * diags_matrix])
+    diags_sequence_batch = [array_ops_stack.stack(
+        [x, 2 * x]) for x in diags_sequence]
 
     results = [
         linalg_impl.tridiagonal_matmul(

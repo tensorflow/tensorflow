@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/io/block_builder.h"
+#include "tsl/lib/io/block_builder.h"
 
 namespace tensorflow {
 namespace table {

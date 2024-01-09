@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -24,12 +25,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/data/service/common.h"
+#include "tensorflow/core/data/service/auto_scaler.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/data/service/export.pb.h"
+#include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 #include "tensorflow/core/data/service/task_remover.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -41,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace data {
@@ -140,6 +141,9 @@ class DataServiceDispatcherImpl {
   // journal to restore the dispatcher's state.
   Status Start();
 
+  // Stops the dispatcher. After stopping, RPCs should return without blocking.
+  void Stop();
+
   // Returns the number of active iterations.
   size_t NumActiveIterations() TF_LOCKS_EXCLUDED(mu_);
 
@@ -175,11 +179,23 @@ class DataServiceDispatcherImpl {
                          ClientHeartbeatResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
+  Status Snapshot(const SnapshotRequest* request, SnapshotResponse* response);
+  Status GetSnapshotSplit(const GetSnapshotSplitRequest* request,
+                          GetSnapshotSplitResponse* response);
+  Status GetSnapshotStreams(const GetSnapshotStreamsRequest* request,
+                            GetSnapshotStreamsResponse* response);
+  Status DisableCompressionAtRuntime(
+      const DisableCompressionAtRuntimeRequest* request,
+      DisableCompressionAtRuntimeResponse* response);
 
   // Exports the dispatcher state for debugging.
   DispatcherStateExport ExportState() const;
 
  private:
+  // A thread which periodically checks for iterations to clean up, clients to
+  // release, workers to consider missing, and snapshot streams to reassign.
+  void MaintenanceThread();
+
   // Restores split providers from the state in `iteration` and stores them in
   // `restored`.
   Status RestoreSplitProviders(
@@ -192,18 +208,16 @@ class DataServiceDispatcherImpl {
       const std::string& dataset_id,
       std::vector<std::unique_ptr<SplitProvider>>& split_providers)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Registers a dataset with the given fingerprint, storing the new dataset's
-  // id in `dataset_id`.
-  Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
+  // Registers a dataset, storing the new dataset's id in `dataset_id`.
+  Status RegisterDataset(const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
                          const std::string& requested_dataset_id,
                          std::string& dataset_id)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Finds the dataset ID with the requested dataset ID, or with the matching
-  // fingerprint if the ID does not exist. Returns nullptr if no such dataset
-  // exists.
+  // Finds the dataset ID with the requested dataset ID.
+  // Returns nullptr if no such dataset exists.
   StatusOr<std::optional<std::string>> FindDataset(
-      const GetOrRegisterDatasetRequest& request, uint64 fingerprint);
+      const GetOrRegisterDatasetRequest& request);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
@@ -229,7 +243,7 @@ class DataServiceDispatcherImpl {
   // response.
   Status FindTasksToDelete(
       const absl::flat_hash_set<int64_t>& current_tasks,
-      const std::vector<std::shared_ptr<const DispatcherState::Task>>
+      const std::vector<std::shared_ptr<const DispatcherState::Task>>&
           assigned_tasks,
       WorkerHeartbeatResponse* response);
   // Finds new tasks that should be assigned to a worker and adds them to
@@ -239,6 +253,10 @@ class DataServiceDispatcherImpl {
       const absl::flat_hash_set<int64_t>& current_tasks,
       std::vector<std::shared_ptr<const DispatcherState::Task>>& assigned_tasks,
       WorkerHeartbeatResponse* response);
+  // Reports the processing time of each active task to `auto_scaler_`.
+  void ReportProcessingTimesFromActiveTasks(
+      const std::vector<ActiveTask>& active_tasks,
+      const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Acquires an iteration client id to read from the given iteration and sets
   // `iteration_client_id`.
   Status AcquireIterationClientId(
@@ -252,8 +270,8 @@ class DataServiceDispatcherImpl {
       std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Creates a new task for an iteration. The created task may be either pending
-  // or active.
+  // Creates a new task for an iteration. The created task may be either
+  // pending or active.
   Status CreateTask(std::shared_ptr<const DispatcherState::Iteration> iteration,
                     const std::string& worker_address,
                     std::shared_ptr<const DispatcherState::Task>& task)
@@ -292,19 +310,30 @@ class DataServiceDispatcherImpl {
   // Records that a split was produced by a call to `GetSplit`.
   Status RecordSplitProduced(int64_t iteration_id, int64_t repetition,
                              int64_t split_provider_index, bool finished)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
   // Applies a state update, updating both the journal and the in-memory state.
   Status Apply(const Update& update) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Applies a state update, but doesn't update the journal. Only meant to be
   // used when recovering state when the dispatcher starts.
   Status ApplyWithoutJournaling(const Update& update)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // A thread which periodically checks for iterations to clean up.
-  void IterationGcThread();
+  // Removes the client with `client_id` from `auto_scaler_`
+  void RemoveClientFromAutoScaler(int64_t client_id)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Releases iteration clients that haven't heartbeated recently.
   Status ReleaseMissingClients() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Removes the worker with `worker_address` from `auto_scaler_`, which is
+  // potentially associated with multiple iterations.
+  void RemoveWorkerFromAutoScaler(const std::string& worker_address)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Checks for workers that haven't heartbeated recently and alerts the
+  // snapshot managers.
+  void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
   Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Returns true if an iteration should be garbage collected.
+  bool ShouldGcIteration(const DispatcherState::Iteration& iteration,
+                         int64_t now_us) const;
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(const std::string& dataset_id,
@@ -320,6 +349,9 @@ class DataServiceDispatcherImpl {
   Env* env_;
 
   mutable mutex mu_;
+  // Uses a separate mutex for `GetSplit` requests. `GetSplit` may be blocking.
+  // Locking `mu_` in `GetSplit` could block all other RPCs.
+  mutable mutex get_split_mu_;
   bool started_ TF_GUARDED_BY(mu_) = false;
   bool cancelled_ TF_GUARDED_BY(mu_) = false;
 
@@ -332,8 +364,8 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<SplitProvider>>>
       split_providers_ TF_GUARDED_BY(mu_);
   // Mapping from round robin iteration id to the round the iteration is
-  // currently on. This is based on the data provided by client heartbeats, and
-  // may be stale.
+  // currently on. This is based on the data provided by client heartbeats,
+  // and may be stale.
   absl::flat_hash_map<int64_t, int64_t> round_robin_rounds_ TF_GUARDED_BY(mu_);
   // Map from task id to a TaskRemover which determines when to remove the task.
   absl::flat_hash_map<int64_t, std::shared_ptr<TaskRemover>>
@@ -341,15 +373,29 @@ class DataServiceDispatcherImpl {
   // Map from client id to the time of the client's last heartbeat.
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
+  // Map from worker address to the time of the worker's last heartbeat.
+  absl::flat_hash_map<std::string, absl::Time> latest_worker_heartbeats_time_
+      TF_GUARDED_BY(mu_);
+
+  // TODO(mpcallanan): Don't recover completed snapshots.
+  // TODO(mpcallanan): Garbage collect completed snapshots.
+  // A manager for each snapshot resumed or started during the lifetime of this
+  // dispatcher instance.
+  absl::flat_hash_map<std::string, std::unique_ptr<SnapshotManager>> snapshots_
+      TF_GUARDED_BY(mu_);
+  // A single stream assignment manager shared by all managers in `snapshots_`.
+  SnapshotAssignmentManager snapshot_assignment_manager_;
 
   std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
-  // Condition variable for waking up the iteration gc thread.
-  condition_variable iteration_gc_thread_cv_;
-  std::unique_ptr<Thread> iteration_gc_thread_;
+  // Condition variable for waking up the gc thread.
+  condition_variable maintenance_thread_cv_;
+  std::unique_ptr<Thread> maintenance_thread_;
+  MultipleIterationsAutoScaler auto_scaler_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
+  DataServiceDispatcherImpl(const DataServiceDispatcherImpl&) = delete;
+  void operator=(const DataServiceDispatcherImpl&) = delete;
 };
 
 }  // namespace data

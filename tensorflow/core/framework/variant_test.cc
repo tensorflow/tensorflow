@@ -677,4 +677,16 @@ TEST(VariantTest, EncodeDecodeTensor) {
   EXPECT_EQ(x.get<Tensor>()->flat<int>()(0), y.get<Tensor>()->flat<int>()(0));
 }
 
+TEST(BoolVariantTest, DecodeNonBool) {
+  Tensor parsed(DT_VARIANT);
+  TensorProto tensor_proto;
+  tensor_proto.set_dtype(DT_VARIANT);
+  VariantTensorDataProto* variant = tensor_proto.add_variant_val();
+  variant->set_type_name("bool");
+  variant->set_metadata("-");  // 42
+  EXPECT_TRUE(parsed.FromProto(tensor_proto));
+  EXPECT_EQ(parsed.NumElements(), 1);
+  EXPECT_TRUE(parsed.flat<Variant>()(0).get<bool>());
+}
+
 }  // end namespace tensorflow

@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallSet.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -41,12 +42,12 @@ void GetTransposeSettings(mlir::Operation* op, bool* left_transposed,
   if (mlir::isa<mlir::TF::BatchMatMulV2Op>(op)) {
     mlir::TF::BatchMatMulV2Op mm = mlir::cast<mlir::TF::BatchMatMulV2Op>(op);
     // Adjoint is just conjugate transpose.
-    *left_transposed = mm.adj_x();
-    *right_transposed = mm.adj_y();
+    *left_transposed = mm.getAdjX();
+    *right_transposed = mm.getAdjY();
   } else if (mlir::isa<mlir::TF::MatMulOp>(op)) {
     mlir::TF::MatMulOp mm = mlir::cast<mlir::TF::MatMulOp>(op);
-    *left_transposed = mm.transpose_a();
-    *right_transposed = mm.transpose_b();
+    *left_transposed = mm.getTransposeA();
+    *right_transposed = mm.getTransposeB();
   }
 }
 
@@ -75,7 +76,7 @@ StatusOr<mlir::Operation*> MatMulSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   mlir::OpBuilder builder(op);
 
-  mlir::BlockAndValueMapping mapping;
+  mlir::IRMapping mapping;
   mapping.map(op->getOperand(0), left);
   mapping.map(op->getOperand(1), right);
   mlir::Operation* new_op = builder.clone(*op, mapping);
@@ -101,8 +102,8 @@ StatusOr<mlir::Operation*> MatMulSPMDExpander::ExpandOp(mlir::Operation* op) {
 
 StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
     bool allow_unknown_layouts, mlir::Operation* op,
-    absl::flat_hash_set<std::string>* reduced_dims,
-    absl::optional<Layout>* left, absl::optional<Layout>* right) {
+    absl::flat_hash_set<std::string>* reduced_dims, std::optional<Layout>* left,
+    std::optional<Layout>* right) {
   // These layouts are 2d layouts for the non-batch dimensions.
   Layout left_layout;
   Layout right_layout;
@@ -124,8 +125,8 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 
     // Note that it doesn't matter if we pass the global or local shape to
     // GetBroadcastLayoutForElementWise, it will return the same result.
-    TF_ASSIGN_OR_RETURN(const auto left_shape, GetShapeOfValue(mm.x()));
-    TF_ASSIGN_OR_RETURN(const auto right_shape, GetShapeOfValue(mm.y()));
+    TF_ASSIGN_OR_RETURN(const auto left_shape, GetShapeOfValue(mm.getX()));
+    TF_ASSIGN_OR_RETURN(const auto right_shape, GetShapeOfValue(mm.getY()));
     std::vector<std::string> left_splits;
     std::vector<std::string> right_splits;
     TF_ASSIGN_OR_RETURN(
@@ -156,21 +157,19 @@ StatusOr<Layout> MatMulSPMDExpander::OutputLayoutAndReducedDims(
 
   // Input layouts are [batch...],a,b;[batch...],b,c
   // Output layout is [batch...],a,c
-  const auto& batch_sharding_specs = batch_layout.sharding_specs();
-  std::vector<ShardingSpec> output_dims(batch_sharding_specs.begin(),
-                                        batch_sharding_specs.end());
+  const auto& batch_sharding_specs = batch_layout.sharding_spec_strs();
+  std::vector<std::string> output_dims(batch_sharding_specs.begin(),
+                                       batch_sharding_specs.end());
   if (Layout::IsShardedDimension(left_layout.sharding_spec(0)) &&
       left_layout.sharding_spec(0) == right_layout.sharding_spec(1)) {
     // If a and c above are the same and sharded, we should output a replicated
     // layout during propagation. This is so we don't create an illegal layout.
     output_dims.resize(output_dims.size() + 2);
-    output_dims[output_dims.size() - 2].set_sharding_spec(
-        Layout::kUnshardedDim);
-    output_dims[output_dims.size() - 1].set_sharding_spec(
-        Layout::kUnshardedDim);
+    output_dims[output_dims.size() - 2] = Layout::kUnshardedDim;
+    output_dims[output_dims.size() - 1] = Layout::kUnshardedDim;
   } else {
-    output_dims.emplace_back(left_layout.dim(0));
-    output_dims.emplace_back(right_layout.dim(1));
+    output_dims.emplace_back(left_layout.sharding_spec(0));
+    output_dims.emplace_back(right_layout.sharding_spec(1));
   }
 
   return Layout::GetLayout(output_dims, left_layout.mesh());
@@ -376,7 +375,7 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutForward(
                       GetShapeOfValue(op->getOperand(1)));
 
   // At least one input is set, calculate an output layout.
-  absl::optional<Layout> left, right;
+  std::optional<Layout> left, right;
   if (input_layouts.find(0) != input_layouts.end())
     left.emplace(input_layouts.lookup(0));
   else
@@ -416,8 +415,9 @@ StatusOr<llvm::DenseMap<int, Layout>> MatMulSPMDExpander::ComputeLayoutBackward(
   // other may be shorter.
   Layout left = output_layout.Truncate(output_layout.rank() - left_shape.size(),
                                        /*end=*/true);
-  Layout right = output_layout.Truncate(
-      output_layout.rank() - right_shape.size(), /*end=*/true);
+  Layout right =
+      output_layout.Truncate(output_layout.rank() - right_shape.size(),
+                             /*end=*/true);
 
   // Make sure necessary dimensions are replicated.
   //

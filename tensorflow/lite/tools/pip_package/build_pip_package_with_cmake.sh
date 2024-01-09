@@ -104,6 +104,7 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+      -DXNNPACK_ENABLE_ARM_I8MM=OFF \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   native)

@@ -30,7 +30,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
+from tensorflow.python.framework import none_tensor  # pylint: disable=unused-import
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -38,8 +40,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import default_gradient
-from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import gen_optional_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import handle_data_util
 from tensorflow.python.ops import math_ops
@@ -190,6 +192,32 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   return [None] + outputs
 
 
+def _is_op_stateful(op):
+  """Check whether an op is stateful.
+
+  This helper function handles two special cases to make the stateful analysis
+  consistent with the mlir side effect analysis.
+  1. GlobalIterIdOp should be stateless.
+  2. CollectiveGatherV2 with attribute is_stateless to be True should be
+     stateless.
+
+  Args:
+   op: Operation
+
+  Returns:
+    Boolean indicates whether the operation is stateless or not.
+  """
+  # TODO(pineapplejuice233): Remove these hardcode op names once they can be marked as
+  # stateless in TF.
+  if op.type == "GlobalIterId":
+    return False
+  if op.type == "UpdateFdoWithGlobalMinibatchStatistics":
+    return False
+  if op.type == "CollectiveGatherV2" and op.get_attr("is_stateless"):
+    return False
+  return op._is_stateful
+
+
 def _build_cond(pred,
                 true_graph,
                 false_graph,
@@ -254,12 +282,17 @@ def _build_cond(pred,
 
   # Create the If op.
   with ops.control_dependencies(
-      list(true_graph.control_captures) + list(false_graph.control_captures)):
+      list(true_graph.function_captures.control) + list(
+          false_graph.function_captures.control)):
     true_stateful_ops = [
-        op for op in true_graph.get_operations() if op._is_stateful
+        op
+        for op in true_graph.get_operations()
+        if _is_op_stateful(op)
     ]
     false_stateful_ops = [
-        op for op in false_graph.get_operations() if op._is_stateful
+        op
+        for op in false_graph.get_operations()
+        if _is_op_stateful(op)
     ]
     if (true_stateful_ops or false_stateful_ops):
       op_fn = gen_functional_ops._if
@@ -332,7 +365,7 @@ def get_func_graphs(op):
       func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       handle_data_util.copy_handle_data(external_t, internal_t)
-    func_graph.reset_captures(zip(inputs, func_graph.inputs))
+    func_graph.function_captures.reset_captures(inputs, func_graph.inputs)
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op
     return func_graph
@@ -583,7 +616,8 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph.inputs = input_list
 
     # Rewrite the FuncGraphs' state to reflect the new inputs.
-    branch_graph.reset_captures(zip(new_inputs, branch_graph.inputs))
+    branch_graph.function_captures.reset_captures(
+        new_inputs, branch_graph.inputs)
 
   return new_inputs
 
@@ -648,7 +682,7 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
     for branch_idx, branch_out in enumerate(branch_outs):
       if isinstance(branch_out, indexed_slices.IndexedSlices):
         continue
-      elif isinstance(branch_out, ops.Tensor):
+      elif isinstance(branch_out, tensor_lib.Tensor):
         with branch_graphs[branch_idx].as_default():
           branch_outputs[branch_idx][output_idx] = math_ops._as_indexed_slices(
               branch_out)
@@ -763,7 +797,7 @@ def _pack_sequence_as(structured_outputs, op_outputs):
 
 def _wrap_intermediates(func_graph, intermediates):
   with func_graph.as_default():
-    return [gen_dataset_ops.optional_from_value([t]) for t in intermediates]
+    return [gen_optional_ops.optional_from_value([t]) for t in intermediates]
 
 
 def _create_dummy_input(func_graph, template_tensor):
@@ -792,14 +826,45 @@ def _create_none_optionals(func_graph, n):
     A list of tensors in func_graph.
   """
   with func_graph.as_default():
-    return [gen_dataset_ops.optional_none() for _ in range(n)]
+    return [gen_optional_ops.optional_none() for _ in range(n)]
+
+
+# TODO(b/265317139): remove this function and move this dynamic dimension
+# handling logic to XLA once XLA shape is ready for dynamic dimensions.
+def _convert_dynamic_dimension_to_zero(shape):
+  """Converts dynamic dimensions in `shape` to zero.
+
+  The fake params created to match the intermediates captured in other branches
+  could have dynamic dimensions. But the XLA shape is not able to handle
+  dynamic dimensions in TF TensorShape. Setting the dynamic dimensions to
+  size zero will help avoid failing safety checks in bridge. When XLA
+  DynamicConditional op reconciles branch differences, XLA will replace the
+  dimension size 0 with a bounded dimension determined from the shape of
+  real argument in the other branch.
+
+  Note: Rank unknown shapes are returned as they are.
+
+  Args:
+    shape: The TensorShape of fake param.
+
+  Returns:
+    The new TensorShape with dynamic dimensions set to zero.
+  """
+  if shape.rank is None:
+    return shape
+
+  return tensor_shape.TensorShape(
+      [0 if d is None else d for d in shape.as_list()]
+  )
 
 
 def _create_fakeparams(func_graph, template_tensors):
-  """Create FakeParams for the XLA case."""
+  """Creates FakeParams for the XLA case."""
   with func_graph.as_default():
-    return [gen_functional_ops.fake_param(dtype=t.dtype, shape=t.shape)
-            for t in template_tensors]
+    return [
+        gen_functional_ops.fake_param(
+            dtype=t.dtype, shape=_convert_dynamic_dimension_to_zero(t.shape))
+        for t in template_tensors]
 
 
 def _check_same_outputs(op_type, graphs):
@@ -1007,15 +1072,16 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
         else:
           # 'tensor' hasn't been wrapped, do it now.
           with self._forward_graph.as_default():
-            optional = gen_dataset_ops.optional_from_value([tensor])
+            optional = gen_optional_ops.optional_from_value([tensor])
           self.op_needs_rewrite = True
         self._wrapped_intermediates[tensor_id] = optional
 
       optional = self._wrapped_intermediates[tensor_id]
       captured_optional = super(_CondGradFuncGraph,
                                 self)._capture_helper(optional, name)
-      captured_tensor = gen_dataset_ops.optional_get_value(
-          captured_optional, [tensor.dtype], [tensor.shape])[0]
+      captured_tensor = gen_optional_ops.optional_get_value(
+          captured_optional, [tensor.dtype], [tensor.shape]
+      )[0]
 
     self._indirect_captures[tensor_id] = captured_tensor
     return captured_tensor
@@ -1203,7 +1269,7 @@ def _build_case(branch_index,
 
   # Create the Case op.
   with ops.control_dependencies(
-      sum((list(bg.control_captures) for bg in branch_graphs), [])):
+      sum((list(bg.function_captures.control) for bg in branch_graphs), [])):
 
     def _make_op(inputs):
       case_op, tensors = util.get_op_and_outputs(op_fn(

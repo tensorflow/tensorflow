@@ -24,8 +24,8 @@ from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
@@ -39,11 +39,11 @@ from tensorflow.python.platform import test
 def _test_any_sparse_combinations():
 
   cases = [("TestCase_0", lambda: (), False),
-           ("TestCase_1", lambda: (ops.Tensor), False),
-           ("TestCase_2", lambda: (((ops.Tensor))), False),
-           ("TestCase_3", lambda: (ops.Tensor, ops.Tensor), False),
+           ("TestCase_1", lambda: (tensor.Tensor), False),
+           ("TestCase_2", lambda: (((tensor.Tensor))), False),
+           ("TestCase_3", lambda: (tensor.Tensor, tensor.Tensor), False),
            ("TestCase_4", lambda:
-            (ops.Tensor, sparse_tensor.SparseTensor), True),
+            (tensor.Tensor, sparse_tensor.SparseTensor), True),
            ("TestCase_5", lambda:
             (sparse_tensor.SparseTensor, sparse_tensor.SparseTensor), True),
            ("TestCase_6", lambda: (((sparse_tensor.SparseTensor))), True)]
@@ -62,7 +62,8 @@ def _test_as_dense_shapes_combinations():
 
   cases = [
       ("TestCase_0", lambda: (), lambda: (), lambda: ()),
-      ("TestCase_1", lambda: tensor_shape.TensorShape([]), lambda: ops.Tensor,
+      ("TestCase_1", lambda: tensor_shape.TensorShape([]),
+       lambda: tensor.Tensor,
        lambda: tensor_shape.TensorShape([])),
       (
           "TestCase_2",
@@ -71,7 +72,7 @@ def _test_as_dense_shapes_combinations():
           lambda: tensor_shape.unknown_shape()  # pylint: disable=unnecessary-lambda
       ),
       ("TestCase_3", lambda: (tensor_shape.TensorShape([])), lambda:
-       (ops.Tensor), lambda: (tensor_shape.TensorShape([]))),
+       (tensor.Tensor), lambda: (tensor_shape.TensorShape([]))),
       (
           "TestCase_4",
           lambda: (tensor_shape.TensorShape([])),
@@ -79,9 +80,9 @@ def _test_as_dense_shapes_combinations():
           lambda: (tensor_shape.unknown_shape())  # pylint: disable=unnecessary-lambda
       ),
       ("TestCase_5", lambda: (tensor_shape.TensorShape([]), ()), lambda:
-       (ops.Tensor, ()), lambda: (tensor_shape.TensorShape([]), ())),
+       (tensor.Tensor, ()), lambda: (tensor_shape.TensorShape([]), ())),
       ("TestCase_6", lambda: ((), tensor_shape.TensorShape([])), lambda:
-       ((), ops.Tensor), lambda: ((), tensor_shape.TensorShape([]))),
+       ((), tensor.Tensor), lambda: ((), tensor_shape.TensorShape([]))),
       ("TestCase_7", lambda: (tensor_shape.TensorShape([]), ()), lambda:
        (sparse_tensor.SparseTensor, ()), lambda: (tensor_shape.unknown_shape(),
                                                   ())),
@@ -90,14 +91,14 @@ def _test_as_dense_shapes_combinations():
            (), tensor_shape.unknown_shape())),
       ("TestCase_9", lambda: (tensor_shape.TensorShape([]),
                               (), tensor_shape.TensorShape([])), lambda:
-       (ops.Tensor, (), ops.Tensor), lambda:
+       (tensor.Tensor, (), tensor.Tensor), lambda:
        (tensor_shape.TensorShape([]), (), tensor_shape.TensorShape([]))),
       ("TestCase_10", lambda: (tensor_shape.TensorShape([]),
                                (), tensor_shape.TensorShape([])), lambda:
        (sparse_tensor.SparseTensor, (), sparse_tensor.SparseTensor), lambda:
        (tensor_shape.unknown_shape(), (), tensor_shape.unknown_shape())),
       ("TestCase_11", lambda: ((), tensor_shape.TensorShape([]), ()), lambda:
-       ((), ops.Tensor, ()), lambda: ((), tensor_shape.TensorShape([]), ())),
+       ((), tensor.Tensor, ()), lambda: ((), tensor_shape.TensorShape([]), ())),
       ("TestCase_12", lambda: ((), tensor_shape.TensorShape([]), ()), lambda:
        ((), sparse_tensor.SparseTensor,
         ()), lambda: ((), tensor_shape.unknown_shape(), ()))
@@ -118,29 +119,30 @@ def _test_as_dense_shapes_combinations():
 def _test_as_dense_types_combinations():
   cases = [
       ("TestCase_0", lambda: (), lambda: (), lambda: ()),
-      ("TestCase_1", lambda: dtypes.int32, lambda: ops.Tensor,
+      ("TestCase_1", lambda: dtypes.int32, lambda: tensor.Tensor,
        lambda: dtypes.int32),
       ("TestCase_2", lambda: dtypes.int32, lambda: sparse_tensor.SparseTensor,
        lambda: dtypes.variant),
-      ("TestCase_3", lambda: (dtypes.int32), lambda: (ops.Tensor), lambda:
+      ("TestCase_3", lambda: (dtypes.int32), lambda: (tensor.Tensor), lambda:
        (dtypes.int32)),
       ("TestCase_4", lambda: (dtypes.int32), lambda:
        (sparse_tensor.SparseTensor), lambda: (dtypes.variant)),
       ("TestCase_5", lambda: (dtypes.int32, ()), lambda:
-       (ops.Tensor, ()), lambda: (dtypes.int32, ())),
+       (tensor.Tensor, ()), lambda: (dtypes.int32, ())),
       ("TestCase_6", lambda: ((), dtypes.int32), lambda:
-       ((), ops.Tensor), lambda: ((), dtypes.int32)),
+       ((), tensor.Tensor), lambda: ((), dtypes.int32)),
       ("TestCase_7", lambda: (dtypes.int32, ()), lambda:
        (sparse_tensor.SparseTensor, ()), lambda: (dtypes.variant, ())),
       ("TestCase_8", lambda: ((), dtypes.int32), lambda:
        ((), sparse_tensor.SparseTensor), lambda: ((), dtypes.variant)),
       ("TestCase_9", lambda: (dtypes.int32, (), dtypes.int32), lambda:
-       (ops.Tensor, (), ops.Tensor), lambda: (dtypes.int32, (), dtypes.int32)),
+       (tensor.Tensor, (), tensor.Tensor),
+       lambda: (dtypes.int32, (), dtypes.int32)),
       ("TestCase_10", lambda: (dtypes.int32, (), dtypes.int32), lambda:
        (sparse_tensor.SparseTensor, (), sparse_tensor.SparseTensor), lambda:
        (dtypes.variant, (), dtypes.variant)),
       ("TestCase_11", lambda: ((), dtypes.int32, ()), lambda:
-       ((), ops.Tensor, ()), lambda: ((), dtypes.int32, ())),
+       ((), tensor.Tensor, ()), lambda: ((), dtypes.int32, ())),
       ("TestCase_12", lambda: ((), dtypes.int32, ()), lambda:
        ((), sparse_tensor.SparseTensor, ()), lambda: ((), dtypes.variant, ())),
   ]
@@ -163,11 +165,12 @@ def _test_get_classes_combinations():
       ("TestCase_1", lambda: sparse_tensor.SparseTensor(
           indices=[[0]], values=[1], dense_shape=[1]),
        lambda: sparse_tensor.SparseTensor),
-      ("TestCase_2", lambda: constant_op.constant([1]), lambda: ops.Tensor),
+      ("TestCase_2", lambda: constant_op.constant([1]), lambda: tensor.Tensor),
       ("TestCase_3", lambda:
        (sparse_tensor.SparseTensor(indices=[[0]], values=[1], dense_shape=[1])),
        lambda: (sparse_tensor.SparseTensor)),
-      ("TestCase_4", lambda: (constant_op.constant([1])), lambda: (ops.Tensor)),
+      ("TestCase_4", lambda: (constant_op.constant([1])),
+       lambda: (tensor.Tensor)),
       ("TestCase_5", lambda:
        (sparse_tensor.SparseTensor(indices=[[0]], values=[1], dense_shape=[1]),
         ()), lambda: (sparse_tensor.SparseTensor, ())),
@@ -176,19 +179,19 @@ def _test_get_classes_combinations():
         sparse_tensor.SparseTensor(indices=[[0]], values=[1], dense_shape=[1])),
        lambda: ((), sparse_tensor.SparseTensor)),
       ("TestCase_7", lambda: (constant_op.constant([1]), ()), lambda:
-       (ops.Tensor, ())),
+       (tensor.Tensor, ())),
       ("TestCase_8", lambda: ((), constant_op.constant([1])), lambda:
-       ((), ops.Tensor)),
+       ((), tensor.Tensor)),
       ("TestCase_9", lambda:
        (sparse_tensor.SparseTensor(indices=[[0]], values=[1], dense_shape=[1]),
         (), constant_op.constant([1])), lambda: (sparse_tensor.SparseTensor,
-                                                 (), ops.Tensor)),
+                                                 (), tensor.Tensor)),
       ("TestCase_10", lambda:
        ((),
         sparse_tensor.SparseTensor(indices=[[0]], values=[1], dense_shape=[1]),
         ()), lambda: ((), sparse_tensor.SparseTensor, ())),
       ("TestCase_11", lambda: ((), constant_op.constant([1]), ()), lambda:
-       ((), ops.Tensor, ())),
+       ((), tensor.Tensor, ())),
   ]
 
   def reduce_fn(x, y):

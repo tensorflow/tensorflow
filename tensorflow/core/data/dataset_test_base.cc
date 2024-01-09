@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include <cstdint>
 #include <functional>
+#include <iterator>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -44,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op.h"
@@ -78,7 +82,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
-#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
+#include "tsl/framework/fixedpoint/FixedPoint.h"
 
 namespace tensorflow {
 namespace data {
@@ -209,15 +213,37 @@ DatasetOpsTestBase::~DatasetOpsTestBase() {
 }
 
 Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
+  if (a.dtype() != b.dtype()) {
+    return errors::Internal("Tensor dtypes don't match:\n", a.DebugString(),
+                            "\n", b.DebugString());
+  }
   switch (a.dtype()) {
 #define CASE(DT)                           \
   case DataTypeToEnum<DT>::value:          \
     TF_RETURN_IF_ERROR(IsEqual<DT>(a, b)); \
     break;
-    TF_CALL_NUMBER_TYPES(CASE);
+    TF_CALL_POD_TYPES(CASE);
     TF_CALL_tstring(CASE);
-    // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
+    case DT_VARIANT: {
+      if (!TensorShapeUtils::IsScalar(a.shape()) ||
+          !TensorShapeUtils::IsScalar(b.shape())) {
+        return errors::Internal("Variant tensors must be scalars:\n",
+                                a.DebugString(), "\n", b.DebugString());
+      }
+      const TestVariant* a_object = a.scalar<Variant>()().get<TestVariant>();
+      const TestVariant* b_object = b.scalar<Variant>()().get<TestVariant>();
+      if (a_object == nullptr || b_object == nullptr) {
+        return errors::Internal("Variant types must be `TestVariant`:\n",
+                                a.scalar<Variant>()().TypeName(), "\n",
+                                b.scalar<Variant>()().TypeName());
+      }
+      if (*a_object != *b_object) {
+        return errors::Internal("Variant tensors aren't equal:\n",
+                                a.DebugString(), "\n", b.DebugString());
+      }
+      break;
+    }
     default:
       return errors::Internal("Unsupported dtype: ", a.dtype());
   }
@@ -327,7 +353,7 @@ Status DatasetOpsTestBase::CreateDatasetContext(
     std::unique_ptr<OpKernelContext>* dataset_context) {
   Status status = CheckOpKernelInput(*dateset_kernel, *inputs);
   if (!status.ok()) {
-    VLOG(0) << "WARNING: " << status.ToString();
+    VLOG(0) << "WARNING: " << status;
   }
   TF_RETURN_IF_ERROR(CreateOpKernelContext(
       dateset_kernel, inputs, dataset_context_params, dataset_context));
@@ -360,6 +386,8 @@ Status DatasetOpsTestBase::CreateIteratorContext(
   function_handle_cache_ = std::make_unique<FunctionHandleCache>(flr_);
   params.function_handle_cache = function_handle_cache_.get();
   params.cancellation_manager = cancellation_manager_.get();
+  params.ram_budget_manager = std::make_shared<model::RamBudgetManager>(
+      /*budget*/ std::numeric_limits<int64_t>::max());
   *iterator_context = std::make_unique<IteratorContext>(params);
   return OkStatus();
 }
@@ -409,11 +437,12 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
       /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
-      Rendezvous::Factory{
-          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-            *r = new IntraProcessRendezvous(device_mgr);
-            return OkStatus();
-          }});
+      Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                             tsl::core::RefCountPtr<Rendezvous>* r) {
+        *r = tsl::core::RefCountPtr<Rendezvous>(
+            new IntraProcessRendezvous(device_mgr));
+        return OkStatus();
+      }});
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
     runner_ = [](const std::function<void()>& fn) { fn(); };
@@ -834,6 +863,7 @@ Status DatasetOpsTestBase::RunDatasetOp(
     created_tensors->push_back(std::move(t));
   }
   gtl::InlinedVector<TensorValue, 4> inputs;
+  inputs.reserve(input_datasets.size());
   for (auto input_dataset : input_datasets) {
     inputs.emplace_back(TensorValue(input_dataset));
   }
@@ -1202,6 +1232,10 @@ Status OptionsDatasetParams::GetAttributes(AttributeVector* attr_vector) const {
 }
 
 string OptionsDatasetParams::dataset_type() const { return "Options"; }
+
+REGISTER_UNARY_VARIANT_DECODE_FUNCTION(
+    DatasetOpsTestBase::TestVariant,
+    DatasetOpsTestBase::TestVariant::kTypeName);
 
 }  // namespace data
 }  // namespace tensorflow

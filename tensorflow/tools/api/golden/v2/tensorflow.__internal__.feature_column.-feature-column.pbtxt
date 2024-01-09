@@ -1,6 +1,6 @@
 path: "tensorflow.__internal__.feature_column.FeatureColumn"
 tf_class {
-  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2.FeatureColumn\'>"
+  is_instance: "<class \'tensorflow.python.feature_column.feature_column_v2_types.FeatureColumn\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "name"

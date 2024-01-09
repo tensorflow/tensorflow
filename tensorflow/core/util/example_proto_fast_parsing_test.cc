@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <utility>
-
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
+
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"

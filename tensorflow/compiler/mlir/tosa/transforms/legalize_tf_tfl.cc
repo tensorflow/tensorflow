@@ -15,6 +15,9 @@ limitations under the License.
 
 // Legalize TensorFlow and TensorFlow Lite to TOSA
 
+#include <memory>
+#include <utility>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -38,7 +41,7 @@ namespace {
 // Performs lowering to TOSA dialect
 class LegalizeTFTFL : public impl::TosaLegalizeTFTFLPassBase<LegalizeTFTFL> {
  public:
-  explicit LegalizeTFTFL() {}
+  explicit LegalizeTFTFL() = default;
   void runOnOperation() override;
 };
 

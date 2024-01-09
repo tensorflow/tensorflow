@@ -99,9 +99,18 @@ class CPUFeatureGuard {
 #ifdef __AVX512BF16__
     CheckFeatureOrDie(CPUFeature::AVX512_BF16, "AVX512_BF16");
 #endif  // __AVX512BF16__
+#ifdef __AVX512FP16__
+    CheckFeatureOrDie(CPUFeature::AVX512_FP16, "AVX512_FP16");
+#endif  // __AVX512FP16__
 #ifdef __AVXVNNI__
     CheckFeatureOrDie(CPUFeature::AVX_VNNI, "AVX_VNNI");
 #endif  // __AVXVNNI__
+#ifdef __AVXVNNIINT8__
+    CheckFeatureOrDie(CPUFeature::AVX_VNNI_INT8, "AVX_VNNI_INT8");
+#endif  // __AVXVNNIINT8__
+#ifdef __AVXNECONVERT__
+    CheckFeatureOrDie(CPUFeature::AVX_NE_CONVERT, "AVX_NE_CONVERT");
+#endif  // __AVXNECONVERT__
 #ifdef __AMXTILE__
     CheckFeatureOrDie(CPUFeature::AMX_TILE, "AMX_TILE");
 #endif  // __AMXTILE__
@@ -111,6 +120,9 @@ class CPUFeatureGuard {
 #ifdef __AMXBF16__
     CheckFeatureOrDie(CPUFeature::AMX_BF16, "AMX_BF16");
 #endif  // __AMXBF16__
+#ifdef __AMXFP16__
+    CheckFeatureOrDie(CPUFeature::AMX_FP16, "AMX_FP16");
+#endif  // __AMXFP16__
 #ifdef __FMA__
     CheckFeatureOrDie(CPUFeature::FMA, "FMA");
 #endif  // __FMA__
@@ -126,16 +138,6 @@ absl::once_flag g_cpu_feature_guard_warn_once_flag;
 void InfoAboutUnusedCPUFeatures() {
   absl::call_once(g_cpu_feature_guard_warn_once_flag, [] {
     std::string missing_instructions;
-#if defined(_MSC_VER) && !defined(__clang__)
-
-#ifndef __AVX__
-    CheckIfFeatureUnused(CPUFeature::AVX, "AVX", missing_instructions);
-#endif  // __AVX__
-#ifndef __AVX2__
-    CheckIfFeatureUnused(CPUFeature::AVX2, "AVX2", missing_instructions);
-#endif  // __AVX2__
-
-#else  // if defined(_MSC_VER) && !defined(__clang__)
 
 #ifndef __SSE__
     CheckIfFeatureUnused(CPUFeature::SSE, "SSE", missing_instructions);
@@ -168,11 +170,23 @@ void InfoAboutUnusedCPUFeatures() {
 #ifndef __AVX512BF16__
     CheckIfFeatureUnused(CPUFeature::AVX512_BF16, "AVX512_BF16",
                          missing_instructions);
-#endif  // __AVX512BF16___
+#endif  // __AVX512BF16__
+#ifndef __AVX512FP16__
+    CheckIfFeatureUnused(CPUFeature::AVX512_FP16, "AVX512_FP16",
+                         missing_instructions);
+#endif  // __AVX512FP16__
 #ifndef __AVXVNNI__
     CheckIfFeatureUnused(CPUFeature::AVX_VNNI, "AVX_VNNI",
                          missing_instructions);
 #endif  // __AVXVNNI__
+#ifndef __AVXVNNIINT8__
+    CheckIfFeatureUnused(CPUFeature::AVX_VNNI_INT8, "AVX_VNNI_INT8",
+                         missing_instructions);
+#endif  // __AVXVNNIINT8__
+#ifndef __AVXNECONVERT__
+    CheckIfFeatureUnused(CPUFeature::AVX_NE_CONVERT, "AVX_NE_CONVERT",
+                         missing_instructions);
+#endif  // __AVXNECONVERT__
 #ifndef __AMXTILE__
     CheckIfFeatureUnused(CPUFeature::AMX_TILE, "AMX_TILE",
                          missing_instructions);
@@ -185,17 +199,20 @@ void InfoAboutUnusedCPUFeatures() {
     CheckIfFeatureUnused(CPUFeature::AMX_BF16, "AMX_BF16",
                          missing_instructions);
 #endif  // __AMXBF16__
+#ifndef __AMXFP16__
+    CheckIfFeatureUnused(CPUFeature::AMX_FP16, "AMX_FP16",
+                         missing_instructions);
+#endif  // __AMXFP16__
 #ifndef __FMA__
     CheckIfFeatureUnused(CPUFeature::FMA, "FMA", missing_instructions);
 #endif  // __FMA__
-#endif  // else of if defined(_MSC_VER) && !defined(__clang__)
     if (!missing_instructions.empty()) {
-      LOG(INFO) << "This TensorFlow binary is optimized with "
-                << "oneAPI Deep Neural Network Library (oneDNN) "
-                << "to use the following CPU instructions in performance-"
-                << "critical operations: " << missing_instructions << std::endl
-                << "To enable them in other operations, rebuild TensorFlow "
-                << "with the appropriate compiler flags.";
+      LOG(INFO) << "This TensorFlow binary is optimized "
+                << "to use available CPU instructions in performance-"
+                << "critical operations." << std::endl
+                << "To enable the following instructions:"
+                << missing_instructions << ", in other operations, rebuild "
+                << "TensorFlow with the appropriate compiler flags.";
     }
   });
 }

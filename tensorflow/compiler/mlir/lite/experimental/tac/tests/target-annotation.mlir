@@ -80,3 +80,12 @@ func.func @annotateInferenceType(%arg0: tensor<1x1x384x!quant.uniform<i8:f32, 0.
   %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>, tensor<1x384x1x!quant.uniform<i8:f32, 0.003:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 0.003:-128>>
   func.return %1 : tensor<1x384x384x!quant.uniform<i8:f32, 0.003:-128>>
 }
+
+// -----
+
+// CHECK-LABEL: testSkipAnnotation
+func.func @testSkipAnnotation(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x30x30x16xf32> {
+  // CHECK-NOT: tac.device
+  %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32, tac.skip_target_annotation } : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
+  func.return %0 : tensor<256x30x30x16xf32>
+}

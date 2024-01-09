@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_THROTTLE_H_
 
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/tsl/platform/cloud/gcs_throttle.h"
+#include "tsl/platform/cloud/gcs_throttle.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

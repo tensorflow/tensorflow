@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_BLOCK_H_
 
 #include "tensorflow/core/lib/io/iterator.h"
-#include "tensorflow/tsl/lib/io/block.h"
+#include "tsl/lib/io/block.h"
 
 namespace tensorflow {
 namespace table {

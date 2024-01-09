@@ -29,7 +29,8 @@ import wrapt
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
+from tensorflow.python.types import internal
 
 
 class Encoder(json.JSONEncoder):
@@ -68,7 +69,7 @@ def _decode_helper(obj):
     if obj['class_name'] == 'TensorShape':
       return tensor_shape.TensorShape(obj['items'])
     elif obj['class_name'] == 'TypeSpec':
-      return type_spec.lookup(obj['type_spec'])._deserialize(  # pylint: disable=protected-access
+      return type_spec_registry.lookup(obj['type_spec'])._deserialize(  # pylint: disable=protected-access
           _decode_helper(obj['serialized']))
     elif obj['class_name'] == '__tuple__':
       return tuple(_decode_helper(i) for i in obj['items'])
@@ -127,9 +128,9 @@ def get_json_type(obj):
   if isinstance(obj, wrapt.ObjectProxy):
     return obj.__wrapped__
 
-  if isinstance(obj, type_spec.TypeSpec):
+  if isinstance(obj, internal.TypeSpec):
     try:
-      type_spec_name = type_spec.get_name(type(obj))
+      type_spec_name = type_spec_registry.get_name(type(obj))
       return {'class_name': 'TypeSpec', 'type_spec': type_spec_name,
               'serialized': obj._serialize()}  # pylint: disable=protected-access
     except ValueError:

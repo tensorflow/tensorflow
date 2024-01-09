@@ -141,7 +141,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
 
           # Restore "v0" from that checkpoint.
           save.restore(sess, name)
-          self.assertEqual(v0.eval(), 2.0)
+          self.assertEqual(self.evaluate(v0), 2.0)
 
 
 class CheckpointStateTest(test.TestCase):

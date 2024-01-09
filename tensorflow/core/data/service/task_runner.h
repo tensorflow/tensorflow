@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_TASK_RUNNER_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/core/data/service/common.pb.h"
@@ -24,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -45,6 +48,23 @@ class TaskIterator {
                          bool& end_of_sequence) = 0;
   // Reports the cardinality of the dataset that created this iterator.
   virtual int64_t Cardinality() const = 0;
+
+  // Saves a checkpoint of the iterator. Returns Tensors that can be called with
+  // `Restore()`.
+  virtual StatusOr<std::vector<Tensor>> Save() {
+    return errors::Unimplemented(
+        "Serializing a tf.data service task iterator is unsupported.");
+  }
+
+  // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
+  // iterator saved by calling `Save()`.
+  virtual Status Restore(const std::vector<Tensor>& saved_iterator) {
+    return errors::Unimplemented(
+        "Restoring from a tf.data service task iterator is unsupported.");
+  }
+
+  // Returns the dataset model for performance analysis.
+  virtual std::shared_ptr<model::Model> model() const { return nullptr; }
 };
 
 // Implementation of TaskIterator wrapping a standalone iterator.
@@ -57,6 +77,9 @@ class StandaloneTaskIterator : public TaskIterator {
                          std::unique_ptr<standalone::Iterator> iterator);
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override;
   int64_t Cardinality() const override;
+  StatusOr<std::vector<Tensor>> Save() override;
+  Status Restore(const std::vector<Tensor>& saved_iterator) override;
+  std::shared_ptr<model::Model> model() const override;
 
  private:
   std::unique_ptr<standalone::Dataset> dataset_;
@@ -77,6 +100,8 @@ class TaskRunner {
                          GetElementResult& result) = 0;
   // Cancels in-progress `GetNext` requests.
   virtual void Cancel() = 0;
+  // Returns the dataset model for performance analysis.
+  virtual std::shared_ptr<model::Model> model() const = 0;
 };
 
 // A task runner which provides elements on a first-come first-served basis.
@@ -94,6 +119,8 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
 
   void Cancel() override;
 
+  std::shared_ptr<model::Model> model() const override;
+
  private:
   // Function to continually prefetch the next element. Returns an error if the
   // task has been cancelled.
@@ -105,6 +132,7 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   // Gets the next element from the input iterator.
   StatusOr<GetElementResult> GetNextFromInputIterator() TF_LOCKS_EXCLUDED(mu_);
 
+  const std::shared_ptr<model::Model> model_;
   mutex mu_;
   std::unique_ptr<TaskIterator> iterator_ TF_GUARDED_BY(mu_);
   int64_t element_index_ TF_GUARDED_BY(mu_) = 0;
@@ -112,7 +140,9 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   ThreadSafeBuffer<GetElementResult> buffer_;
   std::unique_ptr<Thread> prefetch_thread_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FirstComeFirstServedTaskRunner);
+  FirstComeFirstServedTaskRunner(const FirstComeFirstServedTaskRunner&) =
+      delete;
+  void operator=(const FirstComeFirstServedTaskRunner&) = delete;
 };
 
 // A task runner which prefetches elements on a first-come first-served basis
@@ -136,6 +166,9 @@ class CachingTaskRunner : public TaskRunner {
   // return a Cancelled status.
   void Cancel() override;
 
+  // Returns the dataset model for performance analysis.
+  std::shared_ptr<model::Model> model() const override;
+
  private:
   // The `GetElementResultSequence` generates a sequence of elements from the
   // `FirstComeFirstServedTaskRunner`. It is used for the `CrossTrainerCache` to
@@ -154,7 +187,8 @@ class CachingTaskRunner : public TaskRunner {
   FirstComeFirstServedTaskRunner fcfs_task_runner_;
   CrossTrainerCache<GetElementResult> cache_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CachingTaskRunner);
+  CachingTaskRunner(const CachingTaskRunner&) = delete;
+  void operator=(const CachingTaskRunner&) = delete;
 };
 
 // An element produced by a task.
@@ -184,6 +218,8 @@ class PrefetchThread {
                     std::vector<std::unique_ptr<Element>>& out);
   // Returns the status for any failures encountered by the prefetch thread.
   Status GetStatus();
+  // Returns the dataset model for performance analysis.
+  std::shared_ptr<model::Model> model() const;
 
  private:
   const std::unique_ptr<TaskIterator> iterator_;
@@ -228,6 +264,7 @@ class RoundRobinTaskRunner : public TaskRunner {
   Status GetNext(const GetElementRequest& req,
                  GetElementResult& result) override;
   void Cancel() override;
+  std::shared_ptr<model::Model> model() const override;
 
  private:
   // Prepares a full round of data. `wait_us` indicates how long to wait before

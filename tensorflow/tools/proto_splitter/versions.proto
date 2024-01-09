@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package proto_splitter;
+
+option cc_enable_arenas = true;
+
+// Version information for Chunked protos.
+message VersionDef {
+  // Information about the Splitter used to split and write this data.
+  int32 splitter_version = 1;
+
+  // The version of the Join implemention required to consume this data.
+  int32 join_version = 2;
+
+  // Specific consumer versions which are disallowed (e.g. due to bugs).
+  repeated int32 bad_consumers = 3;
+}

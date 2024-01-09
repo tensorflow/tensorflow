@@ -19,7 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/assign_op.h"
@@ -112,7 +112,6 @@ TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 
 #define REGISTER_KERNELS(type)                                        \
   REGISTER_KERNEL_BUILDER(                                            \

@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/numbers.h"
+#include "tsl/platform/numbers.h"
 
 namespace tensorflow {
 namespace strings {

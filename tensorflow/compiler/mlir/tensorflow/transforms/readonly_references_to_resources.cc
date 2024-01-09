@@ -92,7 +92,7 @@ StringRef GetNodeNameFromClassAttrOrSharedNameAttr(Operation *op) {
   StringRef result;
   for (Attribute class_attr : classes_attr) {
     StringRef node_name = class_attr.cast<StringAttr>().getValue();
-    if (!node_name.startswith(kLocationPrefix)) {
+    if (!node_name.starts_with(kLocationPrefix)) {
       continue;
     }
     if (!result.empty()) {
@@ -168,7 +168,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
         ArrayRef<Value>{},
         ArrayRef<NamedAttribute>{
             builder.getNamedAttr("device", device_attr),
-            builder.getNamedAttr("container", variable_v2_op.containerAttr()),
+            builder.getNamedAttr("container",
+                                 variable_v2_op.getContainerAttr()),
             builder.getNamedAttr("shared_name",
                                  builder.getStringAttr(variable_name))});
     for (Operation *user :

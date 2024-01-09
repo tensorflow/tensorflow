@@ -16,21 +16,21 @@ limitations under the License.
 
 #include <memory>
 #include <unordered_map>
+#include <utility>
 
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/c/registration_external.h"
 #include "tensorflow/lite/core/subgraph.h"
 
 namespace tflite {
 namespace internal {
 
-static constexpr char kDataNullLog[] =
-    "The supplied 'data' argument must not be null.";
+namespace {
 
-TfLiteRegistrationExternal*
-CommonOpaqueConversionUtil::ObtainRegistrationExternal(
-    TfLiteContext* context, TfLiteRegistration* registration) {
+// Returns a dynamically allocated object; the caller is responsible for
+// deallocating it using TfLiteRegistrationExternalDelete.
+TfLiteRegistrationExternal* MakeRegistrationExternal(
+    const TfLiteRegistration* registration, int node_index) {
   // We need to allocate a new TfLiteRegistrationExternal object and then
   // populate its state correctly, based on the contents in 'registration'.
 
@@ -38,83 +38,43 @@ CommonOpaqueConversionUtil::ObtainRegistrationExternal(
       static_cast<TfLiteBuiltinOperator>(registration->builtin_code),
       registration->custom_name, registration->version);
 
-  if (registration->prepare) {
-    TfLiteRegistrationExternalSetPrepareWithData(
-        registration_external, registration,
-        [](void* data, TfLiteOpaqueContext* opaque_context,
-           TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
-          TfLiteContext* context =
-              reinterpret_cast<TfLiteContext*>(opaque_context);
-          TfLiteNode* node = reinterpret_cast<TfLiteNode*>(opaque_node);
+  registration_external->node_index = node_index;
 
-          if (data == nullptr) {
-            TF_LITE_KERNEL_LOG(context, kDataNullLog);
-            return kTfLiteError;
-          }
-          TfLiteRegistration* local_registration =
-              static_cast<TfLiteRegistration*>(data);
-
-          return local_registration->prepare(context, node);
-        });
-  }
-  if (registration->invoke) {
-    TfLiteRegistrationExternalSetInvokeWithData(
-        registration_external, registration,
-        [](void* data, TfLiteOpaqueContext* opaque_context,
-           TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
-          TfLiteContext* context =
-              reinterpret_cast<TfLiteContext*>(opaque_context);
-          TfLiteNode* node = reinterpret_cast<TfLiteNode*>(opaque_node);
-          if (data == nullptr) {
-            TF_LITE_KERNEL_LOG(context, kDataNullLog);
-            return kTfLiteError;
-          }
-
-          TfLiteRegistration* local_registration =
-              static_cast<TfLiteRegistration*>(data);
-          return local_registration->invoke(context, node);
-        });
-  }
-  if (registration->init) {
-    TfLiteRegistrationExternalSetInitWithData(
-        registration_external, registration,
-        [](void* data, TfLiteOpaqueContext* opaque_context, const char* buffer,
-           size_t length) -> void* {
-          TfLiteContext* context =
-              reinterpret_cast<TfLiteContext*>(opaque_context);
-          if (data == nullptr) {
-            TF_LITE_KERNEL_LOG(context, kDataNullLog);
-            return nullptr;
-          }
-          TfLiteRegistration* local_registration =
-              static_cast<TfLiteRegistration*>(data);
-
-          return local_registration->init(context, buffer, length);
-        });
-  }
-  if (registration->free) {
-    TfLiteRegistrationExternalSetFreeWithData(
-        registration_external, registration,
-        [](void* data, TfLiteOpaqueContext* opaque_context,
-           void* buffer) -> void {
-          TfLiteContext* context =
-              reinterpret_cast<TfLiteContext*>(opaque_context);
-          if (data == nullptr) {
-            TF_LITE_KERNEL_LOG(context, kDataNullLog);
-            return;
-          }
-          TfLiteRegistration* local_registration =
-              static_cast<TfLiteRegistration*>(data);
-          local_registration->free(context, buffer);
-        });
-  }
-
-  registration->registration_external = registration_external;
-
-  auto* subgraph = static_cast<tflite::Subgraph*>(context->impl_);
-  subgraph->registration_externals_.insert(
-      std::unique_ptr<TfLiteRegistrationExternal>(registration_external));
   return registration_external;
 }
+
+}  // anonymous namespace
+
+TfLiteRegistrationExternal*
+CommonOpaqueConversionUtil::CachedObtainRegistrationExternal(
+    RegistrationExternalsCache* registration_externals_cache,
+    const TfLiteRegistration* registration, int node_index) {
+  OpResolver::OpId op_id{registration->builtin_code, registration->custom_name,
+                         registration->version};
+  auto it = registration_externals_cache->find(op_id);
+  if (it != registration_externals_cache->end()) {
+    return it->second.get();
+  }
+  auto* registration_external =
+      MakeRegistrationExternal(registration, node_index);
+  registration_externals_cache->insert(
+      it, std::make_pair(op_id, registration_external));
+
+  return registration_external;
+}
+
+TfLiteRegistrationExternal*
+CommonOpaqueConversionUtil::ObtainRegistrationExternal(
+    TfLiteContext* context, const TfLiteRegistration* registration,
+    int node_index) {
+  auto* subgraph = static_cast<tflite::Subgraph*>(context->impl_);
+  if (!subgraph->registration_externals_) {
+    subgraph->registration_externals_ =
+        std::make_shared<RegistrationExternalsCache>();
+  }
+  return CachedObtainRegistrationExternal(
+      subgraph->registration_externals_.get(), registration, node_index);
+}
+
 }  // namespace internal
 }  // namespace tflite

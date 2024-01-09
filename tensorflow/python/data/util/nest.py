@@ -31,52 +31,15 @@ The motivation for this change is twofold:
    arrays.
 """
 
-from tensorflow.python.framework import sparse_tensor as _sparse_tensor
-from tensorflow.python.util import _pywrap_utils
-from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc as _collections_abc
+from tensorflow.python.util import nest_util
 
 
-def _sorted(dict_):
-  """Returns a sorted list of the dict keys, with error if keys not sortable."""
-  try:
-    return sorted(list(dict_))
-  except TypeError as e:
-    raise TypeError("nest only supports dicts with sortable keys. Error: "
-                    f"{e.message}")
+def is_nested(structure):
+  return nest_util.is_nested(nest_util.Modality.DATA, structure)
 
 
-def _yield_value(iterable):
-  """Yield elements of `iterable` in a deterministic order.
-
-  Args:
-    iterable: an iterable.
-
-  Yields:
-    The iterable elements in a deterministic order.
-  """
-  # pylint: disable=protected-access
-  if isinstance(iterable, _collections_abc.Mapping):
-    # Iterate through dictionaries in a deterministic order by sorting the
-    # keys. Notice this means that we ignore the original order of `OrderedDict`
-    # instances. This is intentional, to avoid potential bugs caused by mixing
-    # ordered and plain dicts (e.g., flattening a dict but using a
-    # corresponding `OrderedDict` to pack it back).
-    for key in _sorted(iterable):
-      yield iterable[key]
-  elif isinstance(iterable, _sparse_tensor.SparseTensorValue):
-    yield iterable
-  elif nest._is_attrs(iterable):
-    for _, attr in nest._get_attrs_items(iterable):
-      yield attr
-  else:
-    for value in iterable:
-      yield value
-
-
-is_nested = _pywrap_utils.IsNestedForData
-
-flatten = _pywrap_utils.FlattenForData
+def flatten(structure):
+  return nest_util.flatten(nest_util.Modality.DATA, structure)
 
 
 def assert_same_structure(nest1, nest2, check_types=True):
@@ -98,38 +61,9 @@ def assert_same_structure(nest1, nest2, check_types=True):
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
-  _pywrap_utils.AssertSameStructureForData(nest1, nest2, check_types)
-
-
-def _packed_nest_with_indices(structure, flat, index):
-  """Helper function for pack_nest_as.
-
-  Args:
-    structure: Substructure (tuple of elements and/or tuples) to mimic
-    flat: Flattened values to output substructure for.
-    index: Index at which to start reading from flat.
-
-  Returns:
-    The tuple (new_index, child), where:
-      * new_index - the updated index into `flat` having processed `structure`.
-      * packed - the subset of `flat` corresponding to `structure`,
-                 having started at `index`, and packed into the same nested
-                 format.
-
-  Raises:
-    ValueError: if `structure` contains more elements than `flat`
-      (assuming indexing starts from `index`).
-  """
-  packed = []
-  for s in _yield_value(structure):
-    if is_nested(s):
-      new_index, child = _packed_nest_with_indices(s, flat, index)
-      packed.append(nest._sequence_like(s, child))  # pylint: disable=protected-access
-      index = new_index
-    else:
-      packed.append(flat[index])
-      index += 1
-  return index, packed
+  nest_util.assert_same_structure(
+      nest_util.Modality.DATA, nest1, nest2, check_types
+  )
 
 
 def pack_sequence_as(structure, flat_sequence):
@@ -150,26 +84,9 @@ def pack_sequence_as(structure, flat_sequence):
   Raises:
     ValueError: If nest and structure have different element counts.
   """
-  if not (is_nested(flat_sequence) or isinstance(flat_sequence, list)):
-    raise TypeError("Argument `flat_sequence` must be a sequence. Got "
-                    f"'{type(flat_sequence).__name__}'.")
-
-  if not is_nested(structure):
-    if len(flat_sequence) != 1:
-      raise ValueError("Argument `structure` is a scalar but "
-                       f"`len(flat_sequence)`={len(flat_sequence)} > 1")
-    return flat_sequence[0]
-
-  flat_structure = flatten(structure)
-  if len(flat_structure) != len(flat_sequence):
-    raise ValueError(
-        "Could not pack sequence. Argument `structure` had "
-        f"{len(flat_structure)} elements, but argument `flat_sequence` had "
-        f"{len(flat_sequence)} elements. Received structure: "
-        f"{structure}, flat_sequence: {flat_sequence}.")
-
-  _, packed = _packed_nest_with_indices(structure, flat_sequence, 0)
-  return nest._sequence_like(structure, packed)  # pylint: disable=protected-access
+  return nest_util.pack_sequence_as(
+      nest_util.Modality.DATA, structure, flat_sequence, expand_composites=False
+  )
 
 
 def map_structure(func, *structure, **check_types_dict):
@@ -202,39 +119,9 @@ def map_structure(func, *structure, **check_types_dict):
       each other by type.
     ValueError: If wrong keyword arguments are provided.
   """
-  if not callable(func):
-    raise TypeError(f"Argument `func` must be callable, got: {func}")
-
-  if not structure:
-    raise ValueError("Must provide at least one structure")
-
-  if check_types_dict:
-    if "check_types" not in check_types_dict or len(check_types_dict) > 1:
-      raise ValueError("Only valid keyword argument for `check_types_dict` is "
-                       f"'check_types'. Got {check_types_dict}.")
-    check_types = check_types_dict["check_types"]
-  else:
-    check_types = True
-
-  for other in structure[1:]:
-    assert_same_structure(structure[0], other, check_types=check_types)
-
-  flat_structure = (flatten(s) for s in structure)
-  entries = zip(*flat_structure)
-
-  return pack_sequence_as(
-      structure[0], [func(*x) for x in entries])
-
-
-def _yield_flat_up_to(shallow_tree, input_tree):
-  """Yields elements `input_tree` partially flattened up to `shallow_tree`."""
-  if is_nested(shallow_tree):
-    for shallow_branch, input_branch in zip(_yield_value(shallow_tree),
-                                            _yield_value(input_tree)):
-      for input_leaf in _yield_flat_up_to(shallow_branch, input_branch):
-        yield input_leaf
-  else:
-    yield input_tree
+  return nest_util.map_structure(
+      nest_util.Modality.DATA, func, *structure, **check_types_dict
+  )
 
 
 def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
@@ -273,36 +160,9 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     ValueError: If the sequence lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  if is_nested(shallow_tree):
-    if not is_nested(input_tree):
-      raise TypeError(
-          "If shallow structure is a sequence, input must also be a sequence. "
-          f"Input has type: '{type(input_tree).__name__}'.")
-
-    if check_types and not isinstance(input_tree, type(shallow_tree)):
-      raise TypeError(
-          "The two structures don't have the same sequence type. Input "
-          f"structure has type '{type(input_tree).__name__}', while shallow "
-          f"structure has type '{type(shallow_tree).__name__}'.")
-
-    if len(input_tree) != len(shallow_tree):
-      raise ValueError(
-          "The two structures don't have the same sequence length. Input "
-          f"structure has length {len(input_tree)}, while shallow structure "
-          f"has length {len(shallow_tree)}.")
-
-    if check_types and isinstance(shallow_tree, _collections_abc.Mapping):
-      if set(input_tree) != set(shallow_tree):
-        raise ValueError(
-            "The two structures don't have the same keys. Input "
-            f"structure has keys {list(input_tree)}, while shallow structure "
-            f"has keys {list(shallow_tree)}.")
-      input_tree = sorted(input_tree.items())
-      shallow_tree = sorted(shallow_tree.items())
-
-    for shallow_branch, input_branch in zip(shallow_tree, input_tree):
-      assert_shallow_structure(shallow_branch, input_branch,
-                               check_types=check_types)
+  nest_util.assert_shallow_structure(
+      nest_util.Modality.DATA, shallow_tree, input_tree, check_types
+  )
 
 
 def flatten_up_to(shallow_tree, input_tree):
@@ -374,8 +234,9 @@ def flatten_up_to(shallow_tree, input_tree):
     ValueError: If the sequence lengths of `shallow_tree` are different from
       `input_tree`.
   """
-  assert_shallow_structure(shallow_tree, input_tree)
-  return list(_yield_flat_up_to(shallow_tree, input_tree))
+  return nest_util.flatten_up_to(
+      nest_util.Modality.DATA, shallow_tree, input_tree
+  )
 
 
 def map_structure_up_to(shallow_tree, func, *inputs):
@@ -439,16 +300,6 @@ def map_structure_up_to(shallow_tree, func, *inputs):
     result of repeatedly applying `func`, with same structure as
     `shallow_tree`.
   """
-  if not inputs:
-    raise ValueError("Argument `inputs` is empty. Cannot map over no "
-                     "sequences.")
-  for input_tree in inputs:
-    assert_shallow_structure(shallow_tree, input_tree)
-
-  # Flatten each input separately, apply the function to corresponding elements,
-  # then repack based on the structure of the first input.
-  all_flattened_up_to = (
-      flatten_up_to(shallow_tree, input_tree) for input_tree in inputs)
-
-  results = [func(*tensors) for tensors in zip(*all_flattened_up_to)]
-  return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
+  return nest_util.map_structure_up_to(
+      nest_util.Modality.DATA, shallow_tree, func, *inputs
+  )

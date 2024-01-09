@@ -21,6 +21,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -44,7 +45,6 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
       self._deterministic = "false"
     # pylint: disable=protected-access
     self._features = parsing_ops._prepend_none_dimension(features)
-    # TODO(b/112859642): Pass sparse_index and sparse_values for SparseFeature
     params = parsing_ops._ParseOpParams.from_features(self._features, [
         parsing_ops.VarLenFeature, parsing_ops.SparseFeature,
         parsing_ops.FixedLenFeature, parsing_ops.FixedLenSequenceFeature,
@@ -102,8 +102,9 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     return self._element_spec
 
 
-# TODO(b/111553342): add arguments names and example names as well.
 @tf_export("data.experimental.parse_example_dataset")
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.map(tf.io.parse_example(...))` instead.")
 def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
   """A transformation that parses `Example` protos into a `dict` of tensors.
 

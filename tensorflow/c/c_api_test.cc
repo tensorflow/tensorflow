@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
@@ -243,7 +244,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
       src.flat<tstring>()(i) = data[i];
     }
     TF_Tensor* dst = TF_TensorFromTensor(src, &status);
-    ASSERT_TRUE(status.ok()) << status.error_message();
+    ASSERT_TRUE(status.ok()) << status.message();
 
     // Convert back to a C++ Tensor and ensure we get expected output.
     Tensor output;
@@ -329,7 +330,7 @@ TEST(CAPI, StatusEnum) {
   EXPECT_EQ(TF_CANCELLED, static_cast<TF_Code>(tensorflow::error::CANCELLED));
   EXPECT_EQ(TF_UNKNOWN, static_cast<TF_Code>(tensorflow::error::UNKNOWN));
   EXPECT_EQ(TF_INVALID_ARGUMENT,
-            static_cast<TF_Code>(tensorflow::error::INVALID_ARGUMENT));
+            static_cast<TF_Code>(absl::StatusCode::kInvalidArgument));
   EXPECT_EQ(TF_DEADLINE_EXCEEDED,
             static_cast<TF_Code>(tensorflow::error::DEADLINE_EXCEEDED));
   EXPECT_EQ(TF_NOT_FOUND, static_cast<TF_Code>(tensorflow::error::NOT_FOUND));
@@ -764,8 +765,15 @@ TEST(CAPI, ImportGraphDef) {
   EXPECT_EQ(2, TF_ImportGraphDefOptionsNumReturnOutputs(opts));
   TF_ImportGraphDefOptionsAddReturnOperation(opts, "scalar");
   EXPECT_EQ(1, TF_ImportGraphDefOptionsNumReturnOperations(opts));
+  tensorflow::GraphDef graph_def_proto;
+  ASSERT_TRUE(tensorflow::ParseProtoUnlimited(&graph_def_proto, graph_def->data,
+                                              graph_def->length));
+  TF_Buffer graph_def_buffer;
+  graph_def_buffer.data = reinterpret_cast<const void*>(&graph_def_proto);
+  graph_def_buffer.length = sizeof(tensorflow::GraphDef*);
   TF_ImportGraphDefResults* results =
-      TF_GraphImportGraphDefWithResults(graph, graph_def, opts, s);
+      TF_GraphImportGraphDefWithResultsNoSerialization(graph, &graph_def_buffer,
+                                                       opts, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   TF_Operation* scalar2 = TF_GraphOperationByName(graph, "imported2/scalar");
@@ -956,8 +964,16 @@ TEST(CAPI, ImportGraphDef_MissingUnusedInputMappings) {
   TF_ImportGraphDefOptionsSetPrefix(opts, "imported");
   TF_ImportGraphDefOptionsAddInputMapping(opts, "scalar", 0, {scalar, 0});
   TF_ImportGraphDefOptionsAddInputMapping(opts, "fake", 0, {scalar, 0});
+
+  tensorflow::GraphDef graph_def_proto;
+  ASSERT_TRUE(tensorflow::ParseProtoUnlimited(&graph_def_proto, graph_def->data,
+                                              graph_def->length));
+  TF_Buffer graph_def_buffer;
+  graph_def_buffer.data = reinterpret_cast<const void*>(&graph_def_proto);
+  graph_def_buffer.length = sizeof(tensorflow::GraphDef*);
   TF_ImportGraphDefResults* results =
-      TF_GraphImportGraphDefWithResults(graph, graph_def, opts, s);
+      TF_GraphImportGraphDefWithResultsNoSerialization(graph, &graph_def_buffer,
+                                                       opts, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Check unused input mappings
@@ -1435,7 +1451,7 @@ TEST(CAPI, SavedModel) {
   ASSERT_TRUE(input_op != nullptr);
   Status status;
   csession.SetInputs({{input_op, TF_TensorFromTensor(input, &status)}});
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 
   const tensorflow::string output_op_name(
       tensorflow::ParseTensorName(output_name).first);

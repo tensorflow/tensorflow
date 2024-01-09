@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
@@ -65,7 +65,7 @@ Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
 // Graph:
 // x = array_ops.placeholder(dtypes.int32)
 // y = array_ops.placeholder(dtypes.int32)
-// z = control_flow_ops.cond(
+// z = cond.cond(
 //     math_ops.less(y, x), lambda: math_ops.multiply(y, 17),
 //     lambda: math_ops.add(x, 23))
 //
@@ -375,7 +375,7 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     }
   }
 
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  FunctionLibraryDefinition library(OpRegistry::Global(), FunctionDefLibrary());
   GraphDef optimized_graph_def;
   graph.ToGraphDef(&optimized_graph_def);
   TF_ASSERT_OK(
@@ -643,7 +643,7 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
     TF_EXPECT_OK(scope.ToGraph(&graph));
   }
 
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  FunctionLibraryDefinition library(OpRegistry::Global(), FunctionDefLibrary());
   GraphDef optimized_graph_def;
   graph.ToGraphDef(&optimized_graph_def);
   TF_ASSERT_OK(
@@ -791,7 +791,7 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
     TF_EXPECT_OK(scope.ToGraph(&graph));
   }
 
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  FunctionLibraryDefinition library(OpRegistry::Global(), FunctionDefLibrary());
   GraphDef optimized_graph_def;
   graph.ToGraphDef(&optimized_graph_def);
   TF_ASSERT_OK(
@@ -1094,7 +1094,7 @@ void ComplexTestFixture::RunTest() {
     }
   }
 
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
+  FunctionLibraryDefinition library(OpRegistry::Global(), FunctionDefLibrary());
   GraphDef orig_graph_def, optimized_graph_def;
   graph.ToGraphDef(&orig_graph_def);
   optimized_graph_def = orig_graph_def;

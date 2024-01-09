@@ -16,10 +16,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/lower_while_op.h"
 
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -128,8 +133,9 @@ class LowerWhileHelper {
   // (name_), infix and a suffix to ensure it is unique within the graph.
   string NewName(const string& infix);
 
-  // Returns whether the While op's input/output at `index` is a `DT_RESOURCE`.
-  bool IsResource(int index);
+  // Returns true if the input at index is a resource and the same resource is
+  // returned as an output.
+  bool IsLoopCarriedResource(int index);
 
   // The original While op.
   Node* while_op_;
@@ -174,6 +180,10 @@ class LowerWhileHelper {
   // in which case the mapping contains -1.
   std::vector<int> op_input_output_to_lowered_node_;
 
+  // Indicates whether to propagate colocation key attribute during the
+  // lowering.
+  bool propagate_colocation_key_;
+
   size_t num_loop_inputs_;
 };
 
@@ -210,6 +220,9 @@ LowerWhileHelper::LowerWhileHelper(Node* while_op, const NameAttrList& cond_fn,
   exit_nodes_.reserve(num_loop_inputs_);
   next_iterations_nodes_.reserve(num_loop_inputs_);
   op_input_output_to_lowered_node_.resize(num_loop_inputs_, -1);
+  propagate_colocation_key_ =
+      flags::Global()
+          .enable_colocation_key_propagation_in_while_op_lowering.value();
 }
 
 Status LowerWhileHelper::RunInternal() {
@@ -229,7 +242,7 @@ Status LowerWhileHelper::RunInternal() {
 void LowerWhileHelper::InitializeInputOutputToLoweredNodeMap() {
   int counter = 0;
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (!IsResource(i)) {
+    if (!IsLoopCarriedResource(i)) {
       op_input_output_to_lowered_node_[i] = counter++;
     }
   }
@@ -250,7 +263,14 @@ Status LowerWhileHelper::CreateEnterNodes() {
             .Attr("parallel_iterations", parallel_iterations_)
             .Device(edge->src()->requested_device())
             .AssignedDevice(edge->src()->assigned_device_name());
-    if (IsResource(edge->dst_input())) {
+    if (propagate_colocation_key_) {
+      auto colocation_attr = edge->src()->attrs().Find(kColocationAttrName);
+      if (colocation_attr) {
+        builder.Attr(kColocationAttrName, *colocation_attr);
+      }
+    }
+
+    if (IsLoopCarriedResource(edge->dst_input())) {
       builder.Attr("is_constant", true);
     }
     TF_RETURN_IF_ERROR(builder.Finalize(graph_, &enter_node));
@@ -266,11 +286,17 @@ Status LowerWhileHelper::CreateEnterNodes() {
   }
   if (!control_inputs.empty()) {
     Node* incoming_control_node;
-    TF_RETURN_IF_ERROR(NodeBuilder(NewName("LoopControlInputs"), "NoOp",
-                                   flib_def_, &debug_info_)
-                           .ControlInputs(control_inputs)
-                           .Device(while_op_->requested_device())
-                           .Finalize(graph_, &incoming_control_node));
+    NodeBuilder builder = NodeBuilder(NewName("LoopControlInputs"), "NoOp",
+                                      flib_def_, &debug_info_)
+                              .ControlInputs(control_inputs)
+                              .Device(while_op_->requested_device());
+    if (propagate_colocation_key_) {
+      auto colocation_attr = while_op_->attrs().Find(kColocationAttrName);
+      if (colocation_attr) {
+        builder.Attr(kColocationAttrName, *colocation_attr);
+      }
+    }
+    TF_RETURN_IF_ERROR(builder.Finalize(graph_, &incoming_control_node));
     for (Node* n : enter_nodes_) {
       graph_->AddControlEdge(incoming_control_node, n);
     }
@@ -280,16 +306,23 @@ Status LowerWhileHelper::CreateEnterNodes() {
 
 Status LowerWhileHelper::CreateMergeNodes() {
   for (Node* enter_node : enter_nodes_) {
-    if (enter_node->output_type(0) == DT_RESOURCE) {
+    bool is_constant = enter_node->attrs().FindByString("is_constant")->b();
+    if (is_constant && enter_node->output_type(0) == DT_RESOURCE) {
       continue;
     }
     Node* merge_node;
-    TF_RETURN_IF_ERROR(
+    NodeBuilder builder =
         NodeBuilder(NewName("merge"), "Merge", flib_def_, &debug_info_)
             .Input({NodeOut(enter_node, 0), NodeOut(enter_node, 0)})
             .Device(enter_node->requested_device())
-            .AssignedDevice(enter_node->assigned_device_name())
-            .Finalize(graph_, &merge_node));
+            .AssignedDevice(enter_node->assigned_device_name());
+    if (propagate_colocation_key_) {
+      auto colocation_attr = enter_node->attrs().Find(kColocationAttrName);
+      if (colocation_attr) {
+        builder.Attr(kColocationAttrName, *colocation_attr);
+      }
+    }
+    TF_RETURN_IF_ERROR(builder.Finalize(graph_, &merge_node));
     merge_nodes_.emplace_back(merge_node);
   }
   return OkStatus();
@@ -297,7 +330,7 @@ Status LowerWhileHelper::CreateMergeNodes() {
 
 Status LowerWhileHelper::CreateCondFuncCallNode() {
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       cond_call_builder_.Input(NodeOut(enter_nodes_[i], 0));
     } else {
       cond_call_builder_.Input(
@@ -310,17 +343,23 @@ Status LowerWhileHelper::CreateCondFuncCallNode() {
   // are in the same frame as the rest of the function, otherwise
   // `BuildControlFlowInfo` throws an error.
   graph_->AddControlEdge(merge_nodes_[0], cond_call_node_);
-  TF_RETURN_IF_ERROR(
+  NodeBuilder builder =
       NodeBuilder(NewName("LoopCond"), "LoopCond", flib_def_, &debug_info_)
           .Input(NodeOut(cond_call_node_, 0))
-          .Device(while_op_->requested_device())
-          .Finalize(graph_, &loop_cond_node_));
+          .Device(while_op_->requested_device());
+  if (propagate_colocation_key_) {
+    auto colocation_attr = while_op_->attrs().Find(kColocationAttrName);
+    if (colocation_attr) {
+      builder.Attr(kColocationAttrName, *colocation_attr);
+    }
+  }
+  TF_RETURN_IF_ERROR(builder.Finalize(graph_, &loop_cond_node_));
   return OkStatus();
 }
 
 Status LowerWhileHelper::CreateSwitchNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       continue;
     }
     string op_name;
@@ -335,13 +374,20 @@ Status LowerWhileHelper::CreateSwitchNodes() {
     if (IsRefType(merge_node->output_type(0))) {
       op_type = "RefSwitch";
     }
-    TF_RETURN_IF_ERROR(
+    NodeBuilder builder =
         NodeBuilder(NewName(op_name), op_type, flib_def_, &debug_info_)
             .Input(NodeOut(merge_node, 0))
             .Input(NodeOut(loop_cond_node_, 0))
             .Device(merge_node->requested_device())
-            .AssignedDevice(merge_node->assigned_device_name())
-            .Finalize(graph_, &switch_node));
+            .AssignedDevice(merge_node->assigned_device_name());
+
+    if (propagate_colocation_key_) {
+      auto colocation_attr = merge_node->attrs().Find(kColocationAttrName);
+      if (colocation_attr) {
+        builder.Attr(kColocationAttrName, *colocation_attr);
+      }
+    }
+    TF_RETURN_IF_ERROR(builder.Finalize(graph_, &switch_node));
     switch_nodes_.emplace_back(switch_node);
   }
   return OkStatus();
@@ -349,7 +395,7 @@ Status LowerWhileHelper::CreateSwitchNodes() {
 
 Status LowerWhileHelper::CreateBodyFuncCallNode() {
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       body_call_builder_.Input(NodeOut(enter_nodes_[i], 0));
     } else {
       body_call_builder_.Input(
@@ -370,11 +416,17 @@ Status LowerWhileHelper::CreateBodyFuncCallNode() {
   if (IsRefType(switch_nodes_[0]->output_type(1))) {
     op_type = "RefIdentity";
   }
-  TF_RETURN_IF_ERROR(NodeBuilder(NewName("loop_body_control"), op_type,
-                                 flib_def_, &debug_info_)
-                         .Input(NodeOut(switch_nodes_[0], 1))
-                         .Device(while_op_->requested_device())
-                         .Finalize(graph_, &body_control_node_));
+  NodeBuilder builder = NodeBuilder(NewName("loop_body_control"), op_type,
+                                    flib_def_, &debug_info_)
+                            .Input(NodeOut(switch_nodes_[0], 1))
+                            .Device(while_op_->requested_device());
+  if (propagate_colocation_key_) {
+    auto colocation_attr = while_op_->attrs().Find(kColocationAttrName);
+    if (colocation_attr) {
+      builder.Attr(kColocationAttrName, *colocation_attr);
+    }
+  }
+  TF_RETURN_IF_ERROR(builder.Finalize(graph_, &body_control_node_));
   graph_->AddControlEdge(body_control_node_, body_call_node_);
   return OkStatus();
 }
@@ -383,7 +435,7 @@ Status LowerWhileHelper::CreateExitNodes() {
   std::vector<NodeOut> outputs;
   outputs.reserve(num_loop_inputs_);
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       // Note(srbs): A resource output of this While should never be used but we
       // need this for the IdentityN node below.
       OutputTensor resource_tensor;
@@ -391,15 +443,24 @@ Status LowerWhileHelper::CreateExitNodes() {
       outputs.emplace_back(resource_tensor);
     } else {
       Node* exit_node;
-      TF_RETURN_IF_ERROR(
+      NodeBuilder builder =
           NodeBuilder(NewName("exit"), "Exit", flib_def_, &debug_info_)
               .Input(NodeOut(switch_nodes_[op_input_output_to_lowered_node_[i]],
                              0))
               .Device(switch_nodes_[op_input_output_to_lowered_node_[i]]
                           ->requested_device())
               .AssignedDevice(switch_nodes_[op_input_output_to_lowered_node_[i]]
-                                  ->assigned_device_name())
-              .Finalize(graph_, &exit_node));
+                                  ->assigned_device_name());
+
+      if (propagate_colocation_key_) {
+        auto colocation_attr =
+            switch_nodes_[op_input_output_to_lowered_node_[i]]->attrs().Find(
+                kColocationAttrName);
+        if (colocation_attr) {
+          builder.Attr(kColocationAttrName, *colocation_attr);
+        }
+      }
+      TF_RETURN_IF_ERROR(builder.Finalize(graph_, &exit_node));
       exit_nodes_.emplace_back(exit_node);
       outputs.emplace_back(NodeOut(exit_node, 0));
     }
@@ -411,11 +472,17 @@ Status LowerWhileHelper::CreateExitNodes() {
 
   // Add a NoOp node that has control edges from all Exit nodes. This node is
   // used for rewriting control edges with the original while op as src.
-  TF_RETURN_IF_ERROR(NodeBuilder(NewName("LoopExecuted"), "NoOp",
-                                 OpRegistry::Global(), &debug_info_)
-                         .ControlInputs(exit_nodes_)
-                         .Device(while_op_->requested_device())
-                         .Finalize(graph_, &lowered_while_executed_));
+  NodeBuilder builder = NodeBuilder(NewName("LoopExecuted"), "NoOp",
+                                    OpRegistry::Global(), &debug_info_)
+                            .ControlInputs(exit_nodes_)
+                            .Device(while_op_->requested_device());
+  if (propagate_colocation_key_) {
+    auto colocation_attr = while_op_->attrs().Find(kColocationAttrName);
+    if (colocation_attr) {
+      builder.Attr(kColocationAttrName, *colocation_attr);
+    }
+  }
+  TF_RETURN_IF_ERROR(builder.Finalize(graph_, &lowered_while_executed_));
 
   if (keep_node_fetchable_) {
     // Add an IdentityN node that has the same outputs and same name as the
@@ -443,17 +510,24 @@ Status LowerWhileHelper::CreateExitNodes() {
 Status LowerWhileHelper::CreateNextIterationNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
     Node* next_iteration;
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       continue;
     }
     Node* merge_node = merge_nodes_[op_input_output_to_lowered_node_[i]];
-    TF_RETURN_IF_ERROR(NodeBuilder(NewName("next_iteration"), "NextIteration",
-                                   flib_def_, &debug_info_)
-                           .Input(NodeOut(body_call_node_, i))
-                           .ControlInput(body_call_node_)
-                           .Device(merge_node->requested_device())
-                           .AssignedDevice(merge_node->assigned_device_name())
-                           .Finalize(graph_, &next_iteration));
+    NodeBuilder builder =
+        NodeBuilder(NewName("next_iteration"), "NextIteration", flib_def_,
+                    &debug_info_)
+            .Input(NodeOut(body_call_node_, i))
+            .ControlInput(body_call_node_)
+            .Device(merge_node->requested_device())
+            .AssignedDevice(merge_node->assigned_device_name());
+    if (propagate_colocation_key_) {
+      auto colocation_attr = merge_node->attrs().Find(kColocationAttrName);
+      if (colocation_attr) {
+        builder.Attr(kColocationAttrName, *colocation_attr);
+      }
+    }
+    TF_RETURN_IF_ERROR(builder.Finalize(graph_, &next_iteration));
     next_iterations_nodes_.emplace_back(next_iteration);
   }
   return OkStatus();
@@ -472,7 +546,7 @@ Status LowerWhileHelper::UpdateConsumers() {
     if (e->IsControlEdge()) {
       graph_->AddControlEdge(lowered_while_executed_, e->dst());
     } else {
-      if (IsResource(e->src_output())) {
+      if (IsLoopCarriedResource(e->src_output())) {
         OutputTensor resource;
         TF_RETURN_IF_ERROR(
             enter_nodes_[e->src_output()]->input_tensor(0, &resource));
@@ -498,8 +572,17 @@ string LowerWhileHelper::NewName(const string& infix) {
   return graph_->NewName(strings::StrCat(name_, "/", infix));
 }
 
-bool LowerWhileHelper::IsResource(int index) {
-  return while_op_->input_type(index) == DT_RESOURCE;
+bool LowerWhileHelper::IsLoopCarriedResource(int index) {
+  if (while_op_->input_type(index) != DT_RESOURCE) return false;
+
+  auto body_func_name = while_op_->attrs().Find("body")->func().name();
+  auto body_func = flib_def_->Find(body_func_name);
+  auto arg_name = body_func->signature().input_arg(index).name();
+  // Technically, we should check that the position in the return matches
+  // 'index' but proto2 maps have undefined order.
+  for (auto& ret : body_func->ret())
+    if (ret.second == arg_name) return true;
+  return false;
 }
 
 }  // namespace

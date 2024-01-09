@@ -26,8 +26,8 @@ limitations under the License.
 #include "ruy/mul_params.h"  // from @ruy
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
@@ -91,7 +91,10 @@ void ComputeRowSums(
     const int8_t* recurrent_to_cell_weights_ptr,
     const int8_t* recurrent_to_output_weights_ptr,
     const int8_t* projection_weights_ptr, bool use_cifg,
-    const float* aux_input_ptr) {
+    const float* aux_input_ptr, bool recurrent_to_input_is_diag = false,
+    bool recurrent_to_forget_is_diag = false,
+    bool recurrent_to_cell_is_diag = false,
+    bool recurrent_to_output_is_diag = false) {
   // Compute the row sums for dequantization
   if (!use_cifg) {
     tensor_utils::ReductionSumVector(input_to_input_weights_ptr,
@@ -121,19 +124,27 @@ void ComputeRowSums(
                                      n_aux_input);
   }
   if (!use_cifg) {
-    tensor_utils::ReductionSumVector(recurrent_to_input_weights_ptr,
-                                     recurrent_to_input_row_sums, n_cell,
+    if (!recurrent_to_input_is_diag) {
+      tensor_utils::ReductionSumVector(recurrent_to_input_weights_ptr,
+                                       recurrent_to_input_row_sums, n_cell,
+                                       n_output);
+    }
+  }
+  if (!recurrent_to_forget_is_diag) {
+    tensor_utils::ReductionSumVector(recurrent_to_forget_weights_ptr,
+                                     recurrent_to_forget_row_sums, n_cell,
                                      n_output);
   }
-  tensor_utils::ReductionSumVector(recurrent_to_forget_weights_ptr,
-                                   recurrent_to_forget_row_sums, n_cell,
-                                   n_output);
-  tensor_utils::ReductionSumVector(recurrent_to_cell_weights_ptr,
-                                   recurrent_to_cell_row_sums, n_cell,
-                                   n_output);
-  tensor_utils::ReductionSumVector(recurrent_to_output_weights_ptr,
-                                   recurrent_to_output_row_sums, n_cell,
-                                   n_output);
+  if (!recurrent_to_cell_is_diag) {
+    tensor_utils::ReductionSumVector(recurrent_to_cell_weights_ptr,
+                                     recurrent_to_cell_row_sums, n_cell,
+                                     n_output);
+  }
+  if (!recurrent_to_output_is_diag) {
+    tensor_utils::ReductionSumVector(recurrent_to_output_weights_ptr,
+                                     recurrent_to_output_row_sums, n_cell,
+                                     n_output);
+  }
 
   if (projection_weights_ptr != nullptr) {
     tensor_utils::ReductionSumVector(
@@ -188,7 +199,7 @@ inline void CalculateLstmGateFloat(
     const int n_output, const int n_cell,
     const TfLiteFusedActivation activation, float* gate,
     const bool is_input_all_zeros, const bool is_aux_input_all_zeros,
-    float* output, CpuBackendContext* context) {
+    float* output, bool recurrent_is_diag, CpuBackendContext* context) {
   const bool use_peephole = (cell_to_gate_weights != nullptr);
   const bool use_layer_norm = (layer_norm_coefficients != nullptr);
 
@@ -217,9 +228,16 @@ inline void CalculateLstmGateFloat(
     std::swap(accumulation_buffer, output);
   }
   // For each batch and cell: compute recurrent_weight * output_state.
-  MatrixBatchVectorMultiplyAccumulate(recurrent_to_gate_weights, output_state,
-                                      accumulation_buffer, output, n_cell,
-                                      n_output, n_batch, context);
+  if (recurrent_is_diag) {
+    tflite::tensor_utils::VectorBatchVectorCwiseProductAccumulate(
+        recurrent_to_gate_weights, n_cell, output_state, n_batch,
+        accumulation_buffer);
+    std::swap(accumulation_buffer, output);
+  } else {
+    MatrixBatchVectorMultiplyAccumulate(recurrent_to_gate_weights, output_state,
+                                        accumulation_buffer, output, n_cell,
+                                        n_output, n_batch, context);
+  }
   // For each batch and cell: compute cell_weight .* cell_state (peephole LSTM)
   if (use_peephole) {
     tensor_utils::VectorBatchVectorCwiseProductAccumulate(
@@ -349,8 +367,10 @@ void CalculateLstmGateHybrid(
     const float aux_input_to_gate_weights_scale,
     int32_t* aux_input_to_gate_row_sums,
     // Output state and weights
-    const int8_t* output_state, const float* output_state_sf,
-    const int32_t* output_state_zp, const int8_t* recurrent_to_gate_weights,
+    const int8_t* output_state, const float* output_state_float,
+    const float* output_state_sf, const int32_t* output_state_zp,
+    const int8_t* recurrent_to_gate_weights,
+    const float* recurrent_to_gate_diag,
     const uint8_t* recurrent_to_gate_weights_ledger,
     const float recurrent_to_gate_weights_scale,
     int32_t* recurrent_to_gate_row_sums,
@@ -370,10 +390,10 @@ void CalculateLstmGateHybrid(
     const bool is_output_state_all_zeros, bool* compute_row_sums,
     CpuBackendContext* context,
     // Scratch arrays
-    float* scratch0,        // size: n_batch
-    float* scratch1,        // size: n_cell, only used if peephole LSTM
-    int32_t* accum_scratch  // For MatrixBatchVectorMultiplyAccumulate
-) {
+    float* scratch0,         // size: n_batch
+    float* scratch1,         // size: n_cell, only used if peephole LSTM
+    int32_t* accum_scratch,  // For MatrixBatchVectorMultiplyAccumulate
+    bool recurrent_is_diag) {
   const bool use_peephole = (cell_to_gate_weights != nullptr);
   const bool use_layer_norm = (layer_norm_coefficients != nullptr);
 
@@ -425,11 +445,16 @@ void CalculateLstmGateHybrid(
           recurrent_to_gate_weights, recurrent_to_gate_weights_ledger, n_cell,
           n_output, output_state, scales.data(), n_batch, gate);
     } else {
-      tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-          recurrent_to_gate_weights, n_cell, n_output, output_state,
-          recurrent_to_gate_weights_scale, output_state_sf, n_batch, gate,
-          /*per_channel_scale=*/nullptr, output_state_zp, accum_scratch,
-          recurrent_to_gate_row_sums, compute_row_sums, scratch0, context);
+      if (recurrent_is_diag) {
+        tflite::tensor_utils::VectorBatchVectorCwiseProductAccumulate(
+            recurrent_to_gate_diag, n_cell, output_state_float, n_batch, gate);
+      } else {
+        tensor_utils::MatrixBatchVectorMultiplyAccumulate(
+            recurrent_to_gate_weights, n_cell, n_output, output_state,
+            recurrent_to_gate_weights_scale, output_state_sf, n_batch, gate,
+            /*per_channel_scale=*/nullptr, output_state_zp, accum_scratch,
+            recurrent_to_gate_row_sums, compute_row_sums, scratch0, context);
+      }
     }
   }
   // For each batch and cell: compute cell_weight .* cell_state (peephole LSTM)
@@ -667,12 +692,13 @@ void CalculateLstmOutputInteger8x8_16(
   // Note: unlike float/hybrid, the activation is always Tanh.
   tensor_utils::ApplyTanh(15 + cell_state_scale, cell_state, n_batch, n_cell,
                           scratch0);
-  tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a, hidden_scale_b,
-                         n_batch, n_cell, hidden_zp, scratch1);
-
   const bool use_projection = (projection_weights != nullptr);
 
   if (use_projection) {
+    // b/246629213 the projection operation assumes -hidden_zp in CwiseMul
+    tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a,
+                           hidden_scale_b, n_batch, n_cell, -hidden_zp,
+                           scratch1);
     // Note: no bias like in float/hybrid
     std::fill_n(output_state, n_batch * n_output, 0);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -684,7 +710,9 @@ void CalculateLstmOutputInteger8x8_16(
                                   quantized_proj_clip);
     }
   } else {
-    std::copy_n(scratch1, n_batch * n_output, output_state);
+    tensor_utils::CwiseMul(output_gate, scratch0, hidden_scale_a,
+                           hidden_scale_b, n_batch, n_cell, hidden_zp,
+                           output_state);
   }
 }
 
@@ -875,7 +903,9 @@ inline void LstmStepFloat(
     int n_aux_input, int n_output, int output_batch_leading_dim,
     float* output_state_ptr, float* cell_state_ptr, float* scratch0,
     float* scratch1, float* scratch2, float* scratch3, float* scratch4,
-    float* output_ptr, CpuBackendContext* context) {
+    float* output_ptr, bool recurrent_to_input_is_diag,
+    bool recurrent_to_forget_is_diag, bool recurrent_to_cell_is_diag,
+    bool recurrent_to_output_is_diag, CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("LstmStepFloat");
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
@@ -897,17 +927,17 @@ inline void LstmStepFloat(
 
   if (!use_cifg) {
     // Calculate the input gate. (If not CIFG.)
-    CalculateLstmGateFloat(input_ptr, input_to_input_weights_ptr, aux_input_ptr,
-                           aux_input_to_input_weights_ptr, output_state_ptr,
-                           recurrent_to_input_weights_ptr,
+    CalculateLstmGateFloat(
+        input_ptr, input_to_input_weights_ptr, aux_input_ptr,
+        aux_input_to_input_weights_ptr, output_state_ptr,
+        recurrent_to_input_weights_ptr,
 
-                           cell_state_ptr, cell_to_input_weights_ptr,
-                           input_layer_norm_coefficients_ptr,
-                           input_gate_bias_ptr, n_batch, n_input, n_aux_input,
-                           n_output, n_cell,
-                           /*activation=*/kTfLiteActSigmoid, input_gate_scratch,
-                           is_input_all_zeros, is_aux_input_all_zeros,
-                           accumulation_scratch_buffer, context);
+        cell_state_ptr, cell_to_input_weights_ptr,
+        input_layer_norm_coefficients_ptr, input_gate_bias_ptr, n_batch,
+        n_input, n_aux_input, n_output, n_cell,
+        /*activation=*/kTfLiteActSigmoid, input_gate_scratch,
+        is_input_all_zeros, is_aux_input_all_zeros, accumulation_scratch_buffer,
+        recurrent_to_input_is_diag, context);
   }
   // Calculate the forget gate.
   CalculateLstmGateFloat(
@@ -919,7 +949,8 @@ inline void LstmStepFloat(
       forget_layer_norm_coefficients_ptr, forget_gate_bias_ptr, n_batch,
       n_input, n_aux_input, n_output, n_cell,
       /*activation=*/kTfLiteActSigmoid, forget_gate_scratch, is_input_all_zeros,
-      is_aux_input_all_zeros, accumulation_scratch_buffer, context);
+      is_aux_input_all_zeros, accumulation_scratch_buffer,
+      recurrent_to_forget_is_diag, context);
   // Calculate the cell update gate.
   CalculateLstmGateFloat(
       input_ptr, input_to_cell_weights_ptr, aux_input_ptr,
@@ -930,7 +961,8 @@ inline void LstmStepFloat(
       /*cell_to_gate_weights=*/nullptr, cell_layer_norm_coefficients_ptr,
       cell_gate_bias_ptr, n_batch, n_input, n_aux_input, n_output, n_cell,
       params->activation, cell_gate_scratch, is_input_all_zeros,
-      is_aux_input_all_zeros, accumulation_scratch_buffer, context);
+      is_aux_input_all_zeros, accumulation_scratch_buffer,
+      recurrent_to_cell_is_diag, context);
   // Update the cell state.
   UpdateLstmCellFloat(n_batch, n_cell, cell_state_ptr, input_gate_scratch,
                       forget_gate_scratch, cell_gate_scratch, use_cifg,
@@ -945,7 +977,8 @@ inline void LstmStepFloat(
       output_layer_norm_coefficients_ptr, output_gate_bias_ptr, n_batch,
       n_input, n_aux_input, n_output, n_cell,
       /*activation=*/kTfLiteActSigmoid, output_gate_scratch, is_input_all_zeros,
-      is_aux_input_all_zeros, accumulation_scratch_buffer, context);
+      is_aux_input_all_zeros, accumulation_scratch_buffer,
+      recurrent_to_output_is_diag, context);
   // Update the output state.
   CalculateLstmOutputFloat(n_batch, n_cell, n_output, cell_state_ptr,
                            output_gate_scratch, params->activation,
@@ -1052,15 +1085,19 @@ inline void LstmStepHybrid(
     const int8_t* aux_input_to_output_weights_ptr,
     float aux_input_to_output_weights_scale,
     const int8_t* recurrent_to_input_weights_ptr,
+    const float* recurrent_to_input_diag,
     const uint8_t* recurrent_to_input_weights_ledger_ptr,
     float recurrent_to_input_weights_scale,
     const int8_t* recurrent_to_forget_weights_ptr,
+    const float* recurrent_to_forget_diag,
     const uint8_t* recurrent_to_forget_weights_ledger_ptr,
     float recurrent_to_forget_weights_scale,
     const int8_t* recurrent_to_cell_weights_ptr,
+    const float* recurrent_to_cell_diag,
     const uint8_t* recurrent_to_cell_weights_ledger_ptr,
     float recurrent_to_cell_weights_scale,
     const int8_t* recurrent_to_output_weights_ptr,
+    const float* recurrent_to_output_diag,
     const uint8_t* recurrent_to_output_weights_ledger_ptr,
     float recurrent_to_output_weights_scale,
     const int8_t* cell_to_input_weights_ptr, float cell_to_input_weights_scale,
@@ -1088,6 +1125,8 @@ inline void LstmStepHybrid(
     float* output_ptr, int32_t* input_zp, int32_t* aux_input_zp,
     int32_t* output_state_zp, int32_t* row_sums, int row_sums_size,
     bool* compute_row_sums, bool asymmetric_quantize_inputs,
+    bool recurrent_to_input_is_diag, bool recurrent_to_forget_is_diag,
+    bool recurrent_to_cell_is_diag, bool recurrent_to_output_is_diag,
     CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("LstmStepHybrid");
   // Since we have already checked that weights are all there or none, we
@@ -1161,7 +1200,9 @@ inline void LstmStepHybrid(
           aux_input_to_cell_weights_ptr, aux_input_to_output_weights_ptr,
           recurrent_to_input_weights_ptr, recurrent_to_forget_weights_ptr,
           recurrent_to_cell_weights_ptr, recurrent_to_output_weights_ptr,
-          projection_weights_ptr, use_cifg, aux_input_ptr);
+          projection_weights_ptr, use_cifg, aux_input_ptr,
+          recurrent_to_input_is_diag, recurrent_to_forget_is_diag,
+          recurrent_to_cell_is_diag, recurrent_to_output_is_diag);
       *compute_row_sums = false;
     }
   }
@@ -1198,15 +1239,17 @@ inline void LstmStepHybrid(
         input_to_input_row_sums, quantized_aux_input_ptr, aux_input_sf,
         aux_input_zp, aux_input_to_input_weights_ptr,
         aux_input_to_input_weights_scale, aux_input_to_input_row_sums,
-        quantized_output_state_ptr, output_state_sf, output_state_zp,
-        recurrent_to_input_weights_ptr, recurrent_to_input_weights_ledger_ptr,
+        quantized_output_state_ptr, output_state_ptr, output_state_sf,
+        output_state_zp, recurrent_to_input_weights_ptr,
+        recurrent_to_input_diag, recurrent_to_input_weights_ledger_ptr,
         recurrent_to_input_weights_scale, recurrent_to_input_row_sums,
         cell_state_ptr, cell_to_input_weights_ptr, cell_to_input_weights_scale,
         input_layer_norm_coefficients_ptr, input_gate_bias_ptr, n_batch,
         n_input, n_aux_input, n_output, n_cell, kTfLiteActSigmoid,
         input_gate_scratch, is_input_all_zeros, is_aux_input_all_zeros,
         is_output_state_all_zeros, compute_row_sums, context,
-        scaling_factors_scratch, recovered_cell_weights, accum_scratch_ptr);
+        scaling_factors_scratch, recovered_cell_weights, accum_scratch_ptr,
+        recurrent_to_input_is_diag);
   }
   // Calculate the forget gate.
   CalculateLstmGateHybrid(
@@ -1215,15 +1258,17 @@ inline void LstmStepHybrid(
       input_to_forget_row_sums, quantized_aux_input_ptr, aux_input_sf,
       aux_input_zp, aux_input_to_forget_weights_ptr,
       aux_input_to_forget_weights_scale, aux_input_to_forget_row_sums,
-      quantized_output_state_ptr, output_state_sf, output_state_zp,
-      recurrent_to_forget_weights_ptr, recurrent_to_forget_weights_ledger_ptr,
+      quantized_output_state_ptr, output_state_ptr, output_state_sf,
+      output_state_zp, recurrent_to_forget_weights_ptr,
+      recurrent_to_forget_diag, recurrent_to_forget_weights_ledger_ptr,
       recurrent_to_forget_weights_scale, recurrent_to_forget_row_sums,
       cell_state_ptr, cell_to_forget_weights_ptr, cell_to_forget_weights_scale,
       forget_layer_norm_coefficients_ptr, forget_gate_bias_ptr, n_batch,
       n_input, n_aux_input, n_output, n_cell, kTfLiteActSigmoid,
       forget_gate_scratch, is_input_all_zeros, is_aux_input_all_zeros,
       is_output_state_all_zeros, compute_row_sums, context,
-      scaling_factors_scratch, recovered_cell_weights, accum_scratch_ptr);
+      scaling_factors_scratch, recovered_cell_weights, accum_scratch_ptr,
+      recurrent_to_forget_is_diag);
   // Calculate the cell update gate.
   CalculateLstmGateHybrid(
       quantized_input_ptr, input_sf, input_zp, input_to_cell_weights_ptr,
@@ -1231,16 +1276,17 @@ inline void LstmStepHybrid(
       input_to_cell_row_sums, quantized_aux_input_ptr, aux_input_sf,
       aux_input_zp, aux_input_to_cell_weights_ptr,
       aux_input_to_cell_weights_scale, aux_input_to_cell_row_sums,
-      quantized_output_state_ptr, output_state_sf, output_state_zp,
-      recurrent_to_cell_weights_ptr, recurrent_to_cell_weights_ledger_ptr,
-      recurrent_to_cell_weights_scale, recurrent_to_cell_row_sums,
+      quantized_output_state_ptr, output_state_ptr, output_state_sf,
+      output_state_zp, recurrent_to_cell_weights_ptr, recurrent_to_cell_diag,
+      recurrent_to_cell_weights_ledger_ptr, recurrent_to_cell_weights_scale,
+      recurrent_to_cell_row_sums,
       /*cell_state=*/nullptr, /*cell_to_gate_weights=*/nullptr,
       /*cell_to_gate_weights_scale=*/0.0f, cell_layer_norm_coefficients_ptr,
       cell_gate_bias_ptr, n_batch, n_input, n_aux_input, n_output, n_cell,
       params->activation, cell_gate_scratch, is_input_all_zeros,
       is_aux_input_all_zeros, is_output_state_all_zeros, compute_row_sums,
       context, scaling_factors_scratch, recovered_cell_weights,
-      accum_scratch_ptr);
+      accum_scratch_ptr, recurrent_to_cell_is_diag);
   // Update the cell state.
   UpdateLstmCellFloat(n_batch, n_cell, cell_state_ptr, input_gate_scratch,
                       forget_gate_scratch, cell_gate_scratch, use_cifg,
@@ -1252,15 +1298,17 @@ inline void LstmStepHybrid(
       input_to_output_row_sums, quantized_aux_input_ptr, aux_input_sf,
       aux_input_zp, aux_input_to_output_weights_ptr,
       aux_input_to_output_weights_scale, aux_input_to_output_row_sums,
-      quantized_output_state_ptr, output_state_sf, output_state_zp,
-      recurrent_to_output_weights_ptr, recurrent_to_output_weights_ledger_ptr,
+      quantized_output_state_ptr, output_state_ptr, output_state_sf,
+      output_state_zp, recurrent_to_output_weights_ptr,
+      recurrent_to_output_diag, recurrent_to_output_weights_ledger_ptr,
       recurrent_to_output_weights_scale, recurrent_to_output_row_sums,
       cell_state_ptr, cell_to_output_weights_ptr, cell_to_output_weights_scale,
       output_layer_norm_coefficients_ptr, output_gate_bias_ptr, n_batch,
       n_input, n_aux_input, n_output, n_cell, kTfLiteActSigmoid,
       output_gate_scratch, is_input_all_zeros, is_aux_input_all_zeros,
       is_output_state_all_zeros, compute_row_sums, context,
-      scaling_factors_scratch, recovered_cell_weights, accum_scratch_ptr);
+      scaling_factors_scratch, recovered_cell_weights, accum_scratch_ptr,
+      recurrent_to_output_is_diag);
   // Update the output state.
   CalculateLstmOutputHybrid(
       n_batch, n_cell, n_output, cell_state_ptr, output_gate_scratch,
@@ -1769,8 +1817,11 @@ TfLiteStatus EvalFloat(
     const TfLiteLSTMParams* params, bool forward_sequence, bool time_major,
     int output_offset, TfLiteTensor* scratch_buffer, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output,
+    bool recurrent_to_input_is_diag, bool recurrent_to_forget_is_diag,
+    bool recurrent_to_cell_is_diag, bool recurrent_to_output_is_diag,
     CpuBackendContext* context) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
+
   int max_time, n_batch;
   if (input->dims->size == 3) {
     max_time = (time_major) ? input->dims->data[0] : input->dims->data[1];
@@ -1785,7 +1836,9 @@ TfLiteStatus EvalFloat(
 
   // n_cell and n_output will be the same size when there is no projection.
   const int n_cell = input_to_output_weights->dims->data[0];
-  const int n_output = recurrent_to_output_weights->dims->data[1];
+  const int n_output = recurrent_to_output_is_diag
+                           ? recurrent_to_output_weights->dims->data[0]
+                           : recurrent_to_output_weights->dims->data[1];
 
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to the get the condition.
@@ -1859,7 +1912,8 @@ TfLiteStatus EvalFloat(
           GetTensorData<float>(output_state), GetTensorData<float>(cell_state),
           input_gate_scratch, forget_gate_scratch, cell_gate_scratch,
           output_gate_scratch, accumulation_scratch_buffer, output_ptr,
-          context);
+          recurrent_to_input_is_diag, recurrent_to_forget_is_diag,
+          recurrent_to_cell_is_diag, recurrent_to_output_is_diag, context);
     }
   } else {
     for (int b = 0; b < n_batch; b++) {
@@ -1921,7 +1975,8 @@ TfLiteStatus EvalFloat(
             output_state_ptr, cell_state_ptr, input_gate_scratch_ptr,
             forget_gate_scratch_ptr, cell_gate_scratch_ptr,
             output_gate_scratch_ptr, accumulation_scratch_buffer, output_ptr,
-            context);
+            recurrent_to_input_is_diag, recurrent_to_forget_is_diag,
+            recurrent_to_cell_is_diag, recurrent_to_output_is_diag, context);
       }
     }
   }
@@ -1973,7 +2028,9 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* output_scratch_buffer, TfLiteTensor* output,
     TfLiteTensor* input_zp, TfLiteTensor* aux_input_zp,
     TfLiteTensor* output_state_zp, TfLiteTensor* row_sums, int row_sums_size,
-    bool* compute_row_sums, CpuBackendContext* context) {
+    bool* compute_row_sums, bool recurrent_to_input_is_diag,
+    bool recurrent_to_forget_is_diag, bool recurrent_to_cell_is_diag,
+    bool recurrent_to_output_is_diag, CpuBackendContext* context) {
   TF_LITE_ASSERT(input->dims->size >= 2 && input->dims->size <= 3);
   const int n_input = input->dims->data[input->dims->size - 1];
   int max_time, n_batch;
@@ -1988,7 +2045,9 @@ TfLiteStatus EvalHybrid(
       (aux_input) ? aux_input->dims->data[aux_input->dims->size - 1] : 0;
   // n_cell and n_output will be the same size when there is no projection.
   const int n_cell = input_to_output_weights->dims->data[0];
-  const int n_output = recurrent_to_output_weights->dims->data[1];
+  const int n_output = recurrent_to_output_is_diag
+                           ? recurrent_to_output_weights->dims->data[0]
+                           : recurrent_to_output_weights->dims->data[1];
 
   // Since we have already checked that weights are all there or none, we can
   // check the existence of only one to get the condition.
@@ -2061,15 +2120,19 @@ TfLiteStatus EvalHybrid(
           GetTensorData<int8_t>(aux_input_to_output_weights),
           GetTensorScale(aux_input_to_output_weights),
           GetTensorData<int8_t>(recurrent_to_input_weights),
+          GetTensorData<float>(recurrent_to_input_weights),
           GetTensorData<uint8_t>(recurrent_to_input_weights_ledger),
           GetTensorScale(recurrent_to_input_weights),
           GetTensorData<int8_t>(recurrent_to_forget_weights),
+          GetTensorData<float>(recurrent_to_forget_weights),
           GetTensorData<uint8_t>(recurrent_to_forget_weights_ledger),
           GetTensorScale(recurrent_to_forget_weights),
           GetTensorData<int8_t>(recurrent_to_cell_weights),
+          GetTensorData<float>(recurrent_to_cell_weights),
           GetTensorData<uint8_t>(recurrent_to_cell_weights_ledger),
           GetTensorScale(recurrent_to_cell_weights),
           GetTensorData<int8_t>(recurrent_to_output_weights),
+          GetTensorData<float>(recurrent_to_output_weights),
           GetTensorData<uint8_t>(recurrent_to_output_weights_ledger),
           GetTensorScale(recurrent_to_output_weights),
           GetTensorData<int8_t>(cell_to_input_weights),
@@ -2105,7 +2168,8 @@ TfLiteStatus EvalHybrid(
           GetTensorData<int32_t>(output_scratch_buffer), output_ptr,
           input_zp_ptr, aux_input_zp_ptr, output_state_zp_ptr, row_sums_ptr,
           row_sums_size, compute_row_sums, params->asymmetric_quantize_inputs,
-          context);
+          recurrent_to_input_is_diag, recurrent_to_forget_is_diag,
+          recurrent_to_cell_is_diag, recurrent_to_output_is_diag, context);
     }
   } else {
     for (int b = 0; b < n_batch; b++) {
@@ -2159,15 +2223,19 @@ TfLiteStatus EvalHybrid(
             GetTensorData<int8_t>(aux_input_to_output_weights),
             GetTensorScale(aux_input_to_output_weights),
             GetTensorData<int8_t>(recurrent_to_input_weights),
+            GetTensorData<float>(recurrent_to_input_weights),
             GetTensorData<uint8_t>(recurrent_to_input_weights_ledger),
             GetTensorScale(recurrent_to_input_weights),
             GetTensorData<int8_t>(recurrent_to_forget_weights),
+            GetTensorData<float>(recurrent_to_forget_weights),
             GetTensorData<uint8_t>(recurrent_to_forget_weights_ledger),
             GetTensorScale(recurrent_to_forget_weights),
             GetTensorData<int8_t>(recurrent_to_cell_weights),
+            GetTensorData<float>(recurrent_to_cell_weights),
             GetTensorData<uint8_t>(recurrent_to_cell_weights_ledger),
             GetTensorScale(recurrent_to_cell_weights),
             GetTensorData<int8_t>(recurrent_to_output_weights),
+            GetTensorData<float>(recurrent_to_output_weights),
             GetTensorData<uint8_t>(recurrent_to_output_weights_ledger),
             GetTensorScale(recurrent_to_output_weights),
             GetTensorData<int8_t>(cell_to_input_weights),
@@ -2203,7 +2271,9 @@ TfLiteStatus EvalHybrid(
             cell_state_ptr, GetTensorData<int32_t>(output_scratch_buffer),
             output_ptr, input_zp_ptr, aux_input_zp_ptr, output_state_zp_ptr,
             row_sums_ptr, row_sums_size, compute_row_sums,
-            params->asymmetric_quantize_inputs, context);
+            params->asymmetric_quantize_inputs, recurrent_to_input_is_diag,
+            recurrent_to_forget_is_diag, recurrent_to_cell_is_diag,
+            recurrent_to_output_is_diag, context);
       }
     }
   }

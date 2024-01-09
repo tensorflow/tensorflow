@@ -72,7 +72,8 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
                                        const std::vector<float>& scales_inv,
                                        const std::vector<int32_t>& dimension,
                                        int32_t channel_dim_index,
-                                       std::vector<int8_t>* output_value);
+                                       std::vector<int8_t>* output_value,
+                                       TfLiteType type = kTfLiteNoType);
 
 // Quantizes tensor using symmetric quantization with the min and max elements
 // of the tensor.

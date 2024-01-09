@@ -470,7 +470,7 @@ TEST(OpGenLibTest, ApiDefInvalidSyntax) {
   ApiDefMap api_map(op_list);
   // Loading with invalid syntax (e.g. unrecognized field name) should fail.
   auto status = api_map.LoadApiDef(api_def);
-  ASSERT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
+  ASSERT_EQ(absl::StatusCode::kInvalidArgument, status.code());
 }
 
 TEST(OpGenLibTest, ApiDefUpdateDocs) {

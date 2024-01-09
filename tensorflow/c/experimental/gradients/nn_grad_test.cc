@@ -67,13 +67,13 @@ class CppGradients
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     status_ = StatusFromTF_Status(status.get());
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
     {
       AbstractContext* ctx_raw = nullptr;
       status_ =
           BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-      ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+      ASSERT_EQ(errors::OK, status_.code()) << status_.message();
       immediate_execution_ctx_.reset(ctx_raw);
     }
 
@@ -94,7 +94,7 @@ class CppGradients
 
 TEST_P(CppGradients, TestReluGrad) {
   status_ = registry_.Register("Relu", ReluRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   auto ReluGradModel = BuildGradModel(ReluModel, registry_);
 
@@ -105,7 +105,7 @@ TEST_P(CppGradients, TestReluGrad) {
     AbstractTensorHandle* X_raw;
     status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), X_vals, X_dims, 2, &X_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     X.reset(X_raw);
   }
 
@@ -120,14 +120,14 @@ TEST_P(CppGradients, TestReluGrad) {
     AbstractTensorHandle* Y_raw;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 0.0f, &Y_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     Y.reset(Y_raw);
   }
 
   std::vector<AbstractTensorHandle*> outputs(1);
   status_ = RunModel(ReluGradModel, immediate_execution_ctx_.get(), {Y.get()},
                      absl::MakeSpan(outputs), UseFunction());
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
   ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[0], {0.0f}, /*dims*/ {},
                                            /*abs_error*/ 0));
   outputs[0]->Unref();
@@ -148,7 +148,7 @@ TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
     AbstractTensorHandle* X_raw;
     status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), X_vals, X_dims, 2, &X_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     X.reset(X_raw);
   }
   // Label
@@ -159,13 +159,13 @@ TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
     AbstractTensorHandle* Y_raw;
     status_ = TestTensorHandleWithDims<int32_t, TF_INT32>(
         immediate_execution_ctx_.get(), Y_vals, Y_dims, 1, &Y_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     Y.reset(Y_raw);
   }
 
   status_ = registry_.Register("SparseSoftmaxCrossEntropyWithLogits",
                                SparseSoftmaxCrossEntropyWithLogitsRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       SparseSoftmaxCrossEntropyWithLogitsModel,
@@ -186,7 +186,7 @@ TEST_P(CppGradients, TestBiasAddGrad) {
     AbstractTensorHandle* A_raw;
     status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), A_vals, A_dims, 2, &A_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     A.reset(A_raw);
   }
   // Bias
@@ -197,12 +197,12 @@ TEST_P(CppGradients, TestBiasAddGrad) {
     AbstractTensorHandle* Bias_raw;
     status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), Bias_vals, Bias_dims, 1, &Bias_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     Bias.reset(Bias_raw);
   }
 
   status_ = registry_.Register("BiasAdd", BiasAddRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       BiasAddModel, BuildGradModel(BiasAddModel, registry_),

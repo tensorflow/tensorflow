@@ -440,6 +440,12 @@ Status MaybeUpdateColocationConstraintsWithMap(
     const std::map<absl::string_view, absl::string_view>& node_name_map,
     NodeDef* node_def);
 
+// For replacing a existing node with a NoOp, change the op and clear full type
+// information (since a NoOp has no output). Note that (duplicate control or
+// all) inputs, (regular, output or all) attributes and output properperties are
+// NOT cleared (and should be cleared if appropriate elsewhere).
+void ChangeToNoOp(NodeDef* node_def);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_NODE_DEF_UTIL_H_

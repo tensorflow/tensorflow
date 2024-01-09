@@ -15,7 +15,9 @@
 """`LinearOperator` acting like a tridiagonal matrix."""
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
@@ -253,7 +255,9 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           self.diagonals, linalg.adjoint(self.diagonals),
           message='Matrix was not equal to its adjoint.')]
     elif self.diagonals_format == _COMPACT:
-      diagonals = ops.convert_to_tensor_v2_with_dispatch(self.diagonals)
+      diagonals = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self.diagonals
+      )
       asserts += [linear_operator_util.assert_zero_imag_part(
           diagonals[..., 1, :], message=diag_message)]
       # Roll the subdiagonal so the shifted argument is at the end.
@@ -285,13 +289,13 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
       return linalg.adjoint(diagonals)
     else:
       diagonals = math_ops.conj(diagonals)
-      superdiag, diag, subdiag = array_ops.unstack(
+      superdiag, diag, subdiag = array_ops_stack.unstack(
           diagonals, num=3, axis=-2)
       # The subdiag and the superdiag swap places, so we need
       # to shift all arguments.
       new_superdiag = manip_ops.roll(subdiag, shift=-1, axis=-1)
       new_subdiag = manip_ops.roll(superdiag, shift=1, axis=-1)
-      return array_ops.stack([new_superdiag, diag, new_subdiag], axis=-2)
+      return array_ops_stack.stack([new_superdiag, diag, new_subdiag], axis=-2)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     diagonals = self.diagonals
@@ -361,9 +365,10 @@ class LinearOperatorTridiag(linear_operator.LinearOperator):
           padding_value=0.)
 
     diagonals = [
-        ops.convert_to_tensor_v2_with_dispatch(d) for d in self.diagonals
+        tensor_conversion.convert_to_tensor_v2_with_dispatch(d)
+        for d in self.diagonals
     ]
-    diagonals = array_ops.stack(diagonals, axis=-2)
+    diagonals = array_ops_stack.stack(diagonals, axis=-2)
 
     return gen_array_ops.matrix_diag_v3(
         diagonals,

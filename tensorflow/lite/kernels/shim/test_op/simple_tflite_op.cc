@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/shim/test_op/simple_tflite_op.h"
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/shim/test_op/simple_op.h"
 #include "tensorflow/lite/kernels/shim/tflite_op_shim.h"
 

@@ -14,447 +14,511 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/quantize_model.h"
 
-#include <cstdlib>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/constants.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/protobuf/saver.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace quantization {
-namespace internal {
 namespace {
 
-void AddExportPasses(mlir::PassManager &pm) {
-  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::CreateFunctionalToExecutorDialectConversionPass());
-  pm.addPass(mlir::CreateBreakUpIslandsPass());
-  pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
-}
+using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
+using ::mlir::quant::stablehlo::PostCalibrationComponent;
+using ::mlir::quant::stablehlo::PreCalibrationComponent;
+using ::stablehlo::quantization::AddExportPasses;
+using ::stablehlo::quantization::ConvertMlirModuleToExportedModel;
+using ::stablehlo::quantization::ExportOptions;
+using ::stablehlo::quantization::kExportStepSuffix;
+using ::stablehlo::quantization::QuantizationConfig;
+using ::stablehlo::quantization::io::GetLocalTmpFileName;
 
-// Returns the name of the initializer node from a set of control return nodes.
-// Returns an empty string if no initializer node exists. This assumes that
-// there is only one node for initialization.
-std::string GetInitNodeName(
-    const absl::flat_hash_set<Node *> &control_ret_nodes) {
-  for (Node *control_ret_node : control_ret_nodes) {
-    if (absl::StrContains(control_ret_node->name(), kInitOpNamePrefix)) {
-      VLOG(1) << "Init node found: " << control_ret_node->name();
-      return control_ret_node->name();
+// Returns the updated function aliases. `module_op` may have different function
+// names from the original model, so it re-associates the aliases with the new
+// function names. Both the input `function_aliases` and the returned value
+// are function name -> alias mappings. `function_aliases` is the function alias
+// mapping of the original function.
+absl::flat_hash_map<std::string, std::string> UpdateFunctionAliases(
+    const absl::flat_hash_map<std::string, std::string> function_aliases,
+    mlir::ModuleOp module_op) {
+  absl::flat_hash_map<std::string, std::string> updated_function_aliases;
+
+  module_op->walk([&](mlir::func::FuncOp func_op) {
+    // We may retrieve the original function's name from the attribute.
+    // Functions without this attribute are ignored.
+    auto original_func_name =
+        func_op->getAttrOfType<mlir::StringAttr>("tf._original_func_name");
+    if (original_func_name) {
+      if (auto alias_itr = function_aliases.find(original_func_name.str());
+          alias_itr != function_aliases.end()) {
+        const std::string alias = alias_itr->second;
+        const std::string new_func_name = func_op.getSymName().str();
+
+        updated_function_aliases[new_func_name] = alias;
+
+        VLOG(1) << "Updated function alias. Alias: " << alias
+                << ", New function name: " << new_func_name
+                << ", Old function name: " << original_func_name.str();
+      }
     }
-  }
-  return "";
+  });
+
+  return updated_function_aliases;
 }
 
-// Converts MLIR ModuleOp to ExportedModel. Returns InternalError status
-// when the GraphDef conversion fails.
-absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
-    const mlir::ModuleOp module_op) {
-  const GraphExportConfig config{};
-  FunctionLibraryDefinition flib_def{OpRegistry::Global(),
-                                     FunctionDefLibrary()};
-  std::unique_ptr<Graph> graph;
-  absl::flat_hash_set<Node *> control_ret_nodes{};
-  if (const auto status = ConvertMlirToGraph(module_op, config, &graph,
-                                             &flib_def, &control_ret_nodes);
-      !status.ok()) {
-    return absl::InternalError("Failed to convert MLIR to GraphDef. " +
-                               status.error_message());
+// Sets up and runs the passes for exporting `module_op`. The behavior of the
+// exporting passes is controlled by `export_opts`. Returns `AssetFileDef`s that
+// associate the input arguments of @main and the asset file names. Asset file
+// names will be used to feed the corresponding tensors during initialization
+// upon model loading.
+absl::StatusOr<llvm::SmallVector<AssetFileDef>> RunExportPasses(
+    const ExportOptions &export_opts, mlir::MLIRContext &ctx,
+    mlir::ModuleOp module_op) {
+  if (export_opts.unfreeze_constants) {
+    TF_RETURN_IF_ERROR(UnfreezeConstantsAndSaveVariables(
+        export_opts.checkpoint_dir, ctx, module_op));
+    LOG(INFO) << "Unfrozen constants and saved variables to checkpoint file: "
+              << export_opts.checkpoint_dir;
   }
 
-  auto graph_def = std::make_unique<GraphDef>();
-  graph->ToGraphDef(graph_def.get());
-
-  return ExportedModel{*graph_def, GetInitNodeName(control_ret_nodes)};
-}
-
-// Creates a new file to dump the intermediate MLIRs by prefixing the
-// `dump_file_name` with the value of the TF_QUANT_MLIR_DUMP_PREFIX env
-// variable. Returns absl::FailedPreconditionError if the env variable is not
-// set or set to an empty string.
-[[nodiscard]] absl::StatusOr<std::unique_ptr<llvm::raw_fd_ostream>>
-CreateMlirDumpFile(const absl::string_view dump_file_name) {
-  const auto prefix =
-      absl::NullSafeStringView(std::getenv("TF_QUANT_MLIR_DUMP_PREFIX"));
-  if (prefix.empty()) {
-    return absl::FailedPreconditionError(
-        "Environment variable not set: TF_QUANT_MLIR_DUMP_PREFIX, "
-        "IR dump file for TF quantization is not created.");
+  if (absl::Status pass_run_status = RunPasses(
+          /*name=*/export_opts.debug_name,
+          /*add_passes_func=*/
+          [dup_constants = export_opts.duplicate_shape_determining_constants](
+              mlir::PassManager &pm) { AddExportPasses(pm, dup_constants); },
+          ctx, module_op);
+      !pass_run_status.ok()) {
+    return pass_run_status;
   }
 
-  Env *env = Env::Default();
-  const Status status = env->RecursivelyCreateDir(std::string(prefix));
-  if (!status.ok()) {
-    return ToAbslStatus(status);
+  mlir::FailureOr<llvm::SmallVector<AssetFileDef>> asset_file_defs =
+      mlir::quant::ConvertAssetArgs(module_op);
+  if (failed(asset_file_defs)) {
+    return absl::InternalError("Failed to convert asset args.");
   }
 
-  std::error_code ec{};  // NOLINT: Required to create llvm::raw_fd_ostream
-  const std::string dump_file_path = tsl::io::JoinPath(prefix, dump_file_name);
-  auto dump_file = std::make_unique<llvm::raw_fd_ostream>(dump_file_path, ec);
-  if (ec) {
-    return absl::InternalError(absl::StrFormat(
-        "Unable to open file: %s, error: %s", dump_file_path, ec.message()));
-  }
-
-  LOG(INFO) << "IR dump file created: " << dump_file_path;
-  return dump_file;
-}
-
-// If verbosity level >= 1, this will dump intermediate IRs of passes to a file.
-// The file path is given by prefixing `name`.mlir with the value of the
-// TF_QUANT_MLIR_DUMP_PREFIX env variable. Returns `nullptr` iff the verbosity
-// level < 1 or TF_QUANT_MLIR_DUMP_PREFIX is not set or set to an empty string.
-// The returned ostream instance should live until the pass run is complete.
-[[nodiscard]] absl::StatusOr<std::unique_ptr<llvm::raw_ostream>>
-MaybeEnableIrPrinting(mlir::PassManager &pm, const absl::string_view name) {
-  if (!VLOG_IS_ON(1)) {
-    // Verbosity level is too low to enable IR printing.
-    return nullptr;
-  }
-
-  absl::StatusOr<std::unique_ptr<llvm::raw_fd_ostream>> dump_file =
-      CreateMlirDumpFile(/*dump_file_name=*/absl::StrCat(name, ".mlir"));
-  if (absl::IsFailedPrecondition(dump_file.status())) {
-    // The env variable TF_QUANT_MLIR_DUMP_PREFIX is not set. IR printing will
-    // not be enabled.
-    LOG(WARNING) << dump_file.status();
-    return nullptr;
-  } else if (!dump_file.ok()) {
-    return dump_file.status();
-  }
-
-  mlir::OpPrintingFlags flag{};
-  flag.useLocalScope().elideLargeElementsAttrs().enableDebugInfo();
-
-  // IR printing requires multithreading disabled.
-  pm.getContext()->disableMultithreading();
-
-  // The configuration uses the default parameter values for
-  // `PassManager::enableIRPrinting`, except for the `printModuleScope`
-  // parameter, which is true by default. It is set to false to avoid the dump
-  // file size becoming too large when the passes are running on a large model.
-  pm.enableIRPrinting(
-      /*shouldPrintBeforePass=*/[](mlir::Pass *,
-                                   mlir::Operation *) { return true; },
-      /*shouldPrintAfterPass=*/
-      [](mlir::Pass *, mlir::Operation *) { return true; },
-      /*printModuleScope=*/false, /*printAfterOnlyOnChange=*/true,
-      /*printAfterOnlyOnFailure=*/false, **dump_file, flag);
-
-  LOG(INFO) << "IR dump for TensorFlow quantization pipeline enabled. ";
-  return dump_file;
+  return *asset_file_defs;
 }
 
 }  // namespace
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
-  QuantizationOptions quantization_options;
-  if (!quantization_options.ParseFromString(
-          // NOLINTNEXTLINE: std::string conversion required.
-          std::string(quant_opts_serialized))) {
-    return absl::InternalError(
-        "Failed to parse QuantizationOptions from string.");
-  }
-
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::MLIRContext context(registry);
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
+  import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
-                                          &context, import_options,
-                                          /*lift_variables=*/false, &bundle);
-
+                                          &context, import_options, &bundle);
   if (!module.status().ok()) {
-    return absl::InternalError("Failed to import SavedModel: " +
-                               module.status().error_message());
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const Status status = PreprocessAndFreezeGraph(
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
-  if (!status.ok()) {
-    return absl::InternalError("Failed to preprocess graph: " +
-                               status.error_message());
-  }
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
 
-  mlir::PassManager pm(&context);
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, /*name=*/"tf_quantize_qat");
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
-  }
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
 
-  AddQuantizeQatPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
+      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/false));
 
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  if (failed(pm.run(*module_ref))) {
-    return absl::InternalError(
-        "failed to apply the quantization: " +
-        diagnostic_handler.ConsumeStatus().error_message());
-  }
+  TF_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantQatStepName, /*add_passes_func=*/
+      [&quantization_options](mlir::PassManager &pm) {
+        AddQuantizeQatPasses(pm, quantization_options, kTfQuantQatStepName);
+      },
+      context, *module_ref));
 
-  return ConvertMlirModuleToExportedModel(*module_ref);
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
+
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
+
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
+      checkpoint_dir,
+      /*debug_name=*/absl::StrCat(kTfQuantQatStepName, kExportStepSuffix)};
+
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
+
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir, updated_function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
-  QuantizationOptions quantization_options;
-  if (!quantization_options.ParseFromString(
-          // NOLINTNEXTLINE: std::string conversion required.
-          std::string(quant_opts_serialized))) {
-    return absl::InternalError(
-        "Failed to parse QuantizationOptions from string.");
-  }
-
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::MLIRContext context(registry);
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
+  import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
-                                          &context, import_options,
-                                          /*lift_variables=*/false, &bundle);
+                                          &context, import_options, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("Failed to import SavedModel: " +
-                               module.status().error_message());
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
   }
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const Status status = PreprocessAndFreezeGraph(
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
-  if (!status.ok()) {
-    return absl::InternalError("Failed to preprocess graph: " +
-                               status.error_message());
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
+
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
+
+  const bool is_stablehlo = quantization_options.op_set() == OpSet::STABLEHLO;
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
+      /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
+      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      /*run_tf_to_stablehlo=*/is_stablehlo,
+      /*deserialize_xla_call_module=*/false));
+
+  // Use StableHLO Quantizer option if opset is specified.
+  if (is_stablehlo) {
+    PreCalibrationComponent pre_calibration_component(
+        &context, quantization_options.calibration_options());
+    TF_ASSIGN_OR_RETURN(*module_ref, pre_calibration_component.Run(
+                                         *module_ref, QuantizationConfig()));
+  } else {
+    TF_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPreCalibrationStepName, /*add_passes_func=*/
+        [&quantization_options](mlir::PassManager &pm) {
+          AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
+        },
+        context, *module_ref));
   }
 
-  mlir::PassManager pm(&context);
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, /*name=*/"tf_quantize_ptq_pre_calibration");
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
-  }
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
-  AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  // `duplicate_shape_determining_constants = false` because the
+  // resulting graph of this step is not expected to be loaded on TPU.
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/false, unfreeze_constants,
+      checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(kTfQuantPtqPreCalibrationStepName, kExportStepSuffix)};
 
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  if (failed(pm.run(*module_ref))) {
-    return absl::InternalError(
-        "Failed to apply the quantization at the pre-calibration stage: " +
-        diagnostic_handler.ConsumeStatus().error_message());
-  }
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
 
-  return ConvertMlirModuleToExportedModel(*module_ref);
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir, updated_function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
-  QuantizationOptions quantization_options;
-  if (!quantization_options.ParseFromString(
-          // NOLINTNEXTLINE: std::string conversion required.
-          std::string(quant_opts_serialized))) {
-    return absl::InternalError(
-        "Failed to parse QuantizationOptions from string.");
-  }
-
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::MLIRContext context(registry);
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
+  import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
-                                          &context, import_options,
-                                          /*lift_variables=*/true, &bundle);
+                                          &context, import_options, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("Failed to import SavedModel: " +
-                               module.status().error_message());
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  mlir::PassManager pm(&context);
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, /*name=*/"tf_quantize_ptq_post_calibration");
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
+
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
+
+  const bool is_stablehlo = quantization_options.op_set() == OpSet::STABLEHLO;
+
+  // Freezing is required again since variables might have been produced during
+  // the pre-calibration step. `is_inliner_run = false` to prevent the functions
+  // lifted for quantization from being inlined.
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
+      /*is_inliner_run=*/false, /*noinline_functions=*/aliased_function_names,
+      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/is_stablehlo));
+
+  // Use StableHLO Quantizer option if opset is specified.
+  if (is_stablehlo) {
+    PostCalibrationComponent post_calibration_component(&context);
+    TF_ASSIGN_OR_RETURN(*module_ref, post_calibration_component.Run(
+                                         *module_ref, QuantizationConfig()));
+  } else {
+    TF_RETURN_IF_ERROR(RunPasses(
+        /*name=*/kTfQuantPtqPostCalibrationStepName, /*add_passes_func=*/
+        [&quantization_options](mlir::PassManager &pm) {
+          AddQuantizePtqPostCalibrationPasses(
+              pm, quantization_options, kTfQuantPtqPostCalibrationStepName);
+        },
+        context, *module_ref));
   }
 
-  AddQuantizePtqPostCalibrationPasses(pm, quantization_options);
-  AddExportPasses(pm);
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
 
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  if (failed(pm.run(*module_ref))) {
-    return absl::InternalError(
-        "Failed to apply the quantization at the post-calibation stage: " +
-        diagnostic_handler.ConsumeStatus().error_message());
-  }
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
+      checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(kTfQuantPtqPostCalibrationStepName, kExportStepSuffix)};
 
-  return ConvertMlirModuleToExportedModel(*module_ref);
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
+
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir, updated_function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags,
-    const absl::string_view quant_opts_serialized) {
-  const std::unordered_set<std::string> tag_set =
-      absl::StrSplit(tags, ',', absl::SkipEmpty());
-  std::vector<std::string> exported_names =
-      absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
-  QuantizationOptions quantization_options;
-  if (!quantization_options.ParseFromString(
-          // NOLINTNEXTLINE: std::string conversion required.
-          std::string(quant_opts_serialized))) {
-    return absl::InternalError(
-        "Failed to parse QuantizationOptions from string.");
-  }
-
+    const std::vector<std::string> &signature_keys,
+    const std::unordered_set<std::string> &tags,
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::DialectRegistry registry;
-  registry.insert<mlir::func::FuncDialect, mlir::scf::SCFDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect,
-                  mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
-                  mlir::quant::QuantizationDialect>();
-  mlir::MLIRContext context(registry);
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
+  import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
   // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tag_set,
+      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
                                           absl::MakeSpan(exported_names),
-                                          &context, import_options,
-                                          /*lift_variables=*/false, &bundle);
+                                          &context, import_options, &bundle);
 
   if (!module.status().ok()) {
-    return absl::InternalError("Failed to import SavedModel: " +
-                               module.status().error_message());
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
 
-  const Status status = PreprocessAndFreezeGraph(
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr);
-  if (!status.ok()) {
-    return absl::InternalError("Failed to preprocess graph: " +
-                               status.error_message());
-  }
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
 
-  mlir::PassManager pm(&context);
-  const absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> out_dump_file =
-      MaybeEnableIrPrinting(pm, /*name=*/"tf_quantize_drq");
-  if (!out_dump_file.ok()) {
-    return absl::InternalError(out_dump_file.status().message());
-  }
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined. The mapping is mlir function name - user defined function
+  // alias for each value in the set.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
 
-  AddQuantizePtqDynamicRangePasses(pm, quantization_options);
-  AddExportPasses(pm);
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
+      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      /*run_tf_to_stablehlo=*/false, /*deserialize_xla_call_module=*/false));
 
-  mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
-  if (failed(pm.run(*module_ref))) {
-    return absl::InternalError(
-        "Failed to apply the quantization: " +
-        diagnostic_handler.ConsumeStatus().error_message());
-  }
+  TF_RETURN_IF_ERROR(RunPasses(
+      /*name=*/kTfQuantPtqDynamicRangeStepName, /*add_passes_func=*/
+      [&quantization_options](mlir::PassManager &pm) {
+        AddQuantizePtqDynamicRangePasses(pm, quantization_options,
+                                         kTfQuantPtqDynamicRangeStepName);
+      },
+      context, *module_ref));
 
-  return ConvertMlirModuleToExportedModel(*module_ref);
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
+
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
+      checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(kTfQuantPtqDynamicRangeStepName, kExportStepSuffix)};
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
+
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir, updated_function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
 }
 
-}  // namespace internal
+// TODO: b/297626257 - [Converter Component][TF-Quantizer] Clean up
+// quantize_model.cc by factoring out repeated codes
+absl::StatusOr<ExportedModel> QuantizeWeightOnly(
+    const absl::string_view saved_model_path,
+    const QuantizationOptions &quantization_options,
+    const absl::flat_hash_map<std::string, std::string> &function_aliases) {
+  // Convert the SavedModelBundle to an MLIR module.
+  mlir::MLIRContext context = CreateMlirContextForQuantization();
+
+  MLIRImportOptions import_options;
+  import_options.upgrade_legacy = true;
+  import_options.lift_variables = false;
+  import_options.include_variables_in_initializers = true;
+  auto bundle = std::make_unique<SavedModelBundle>();
+
+  // TODO(b/213406917): Add support for the object graph based saved model input
+  std::vector<std::string> exported_names{
+      quantization_options.signature_keys().begin(),
+      quantization_options.signature_keys().end()};
+  StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
+      SavedModelSignatureDefsToMlirImport(saved_model_path,
+                                          {quantization_options.tags().begin(),
+                                           quantization_options.tags().end()},
+                                          absl::MakeSpan(exported_names),
+                                          &context, import_options, &bundle);
+
+  if (!module.status().ok()) {
+    return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
+                                            module.status().message()));
+  }
+
+  mlir::OwningOpRef<mlir::ModuleOp> module_ref = std::move(module).value();
+
+  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
+      UpdateFunctionAliases(function_aliases, *module_ref);
+
+  // Collect the names of the functions that have aliases so that they may not
+  // be inlined. The mapping is mlir function name - user defined function
+  // alias for each value in the set.
+  absl::flat_hash_set<std::string> aliased_function_names;
+  absl::c_for_each(updated_function_aliases, [&](const auto &aliases) {
+    return aliased_function_names.insert(aliases.first);
+  });
+
+  TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
+      /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
+      /*is_inliner_run=*/true,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
+      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false,
+      /*deserialize_xla_call_module=*/false));
+
+  TF_RETURN_IF_ERROR(
+      RunPasses(/*name=*/kTfQuantWeightOnlyStepName, /*add_passes_func=*/
+                [&quantization_options](mlir::PassManager &pm) {
+                  AddQuantizeWeightOnlyPasses(pm, quantization_options,
+                                              kTfQuantWeightOnlyStepName);
+                },
+                context, *module_ref));
+
+  const bool unfreeze_constants = !quantization_options.freeze_all_variables();
+  TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
+
+  const auto export_opts = ExportOptions{
+      /*duplicate_shape_determining_constants=*/true, unfreeze_constants,
+      checkpoint_dir,
+      /*debug_name=*/
+      absl::StrCat(kTfQuantWeightOnlyStepName, kExportStepSuffix)};
+  TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
+                      RunExportPasses(export_opts, context, *module_ref));
+
+  return ConvertMlirModuleToExportedModel(
+      *module_ref, checkpoint_dir, updated_function_aliases,
+      {asset_file_defs.begin(), asset_file_defs.end()});
+}
+
 }  // namespace quantization
 }  // namespace tensorflow

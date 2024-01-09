@@ -72,6 +72,26 @@ REGISTER_OP("IFFT3D")
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     });
 
+REGISTER_OP("FFTND")
+    .Input("input: Tcomplex")
+    .Input("fft_length: int32")
+    .Input("axes: int32")
+    .Output("output: Tcomplex")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
+    });
+
+REGISTER_OP("IFFTND")
+    .Input("input: Tcomplex")
+    .Input("fft_length: int32")
+    .Input("axes: int32")
+    .Output("output: Tcomplex")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
+    });
+
 Status RFFTShape(InferenceContext* c, const bool forward, const int rank) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), rank, &out));
@@ -155,6 +175,28 @@ REGISTER_OP("IRFFT3D")
     .Attr("Treal: {float32, float64} = DT_FLOAT")
     .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, false, 3); });
+
+REGISTER_OP("RFFTND")
+    .Input("input: Treal")
+    .Input("fft_length: int32")
+    .Input("axes: int32")
+    .Output("output: Tcomplex")
+    .Attr("Treal: {float32, float64} = DT_FLOAT")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
+    });
+
+REGISTER_OP("IRFFTND")
+    .Input("input: Tcomplex")
+    .Input("fft_length: int32")
+    .Input("axes: int32")
+    .Output("output: Treal")
+    .Attr("Treal: {float32, float64} = DT_FLOAT")
+    .Attr("Tcomplex: {complex64, complex128} = DT_COMPLEX64")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
+    });
 
 // Deprecated ops:
 REGISTER_OP("BatchFFT")

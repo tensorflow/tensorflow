@@ -15,6 +15,21 @@ def gen_saved_model(model_name = "", script = "", **kwargs):
             "$(location " + script + ") --saved_model_path=$(RULEDIR)/" + model_name,
             "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
         ),
-        exec_tools = [script],
+        tools = [script],
+        **kwargs
+    )
+
+def gen_variableless_saved_model(model_name = "", script = "", **kwargs):
+    native.genrule(
+        name = "saved_model_gen_" + model_name,
+        srcs = [],
+        outs = [
+            model_name + "/saved_model.pb",
+        ],
+        cmd = if_google(
+            "$(location " + script + ") --saved_model_path=$(RULEDIR)/" + model_name,
+            "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
+        ),
+        tools = [script],
         **kwargs
     )

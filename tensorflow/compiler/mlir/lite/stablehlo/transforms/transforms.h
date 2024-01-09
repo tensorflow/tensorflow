@@ -29,10 +29,14 @@ namespace odml {
 void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
                             bool smuggle_disallowed_ops);
 
-// Adds all the backend-agonstic stableHLO optimization passes
-// this function is a common entry point for all graph optimizations that are
-// not specific to any hardware
+// This function is a common entry point for all graph optimizations that are
+// not specific to any hardware. It legalizes SHLO->MHLO, does MHLO->MHLO
+// optimizations by calling `AddMhloOptimizationPasses` internally, and
+// legalizes MHLO->SHLO
 void AddStablehloOptimizationPasses(OpPassManager& pm);
+
+// Adds all the backend-agonstic stableHLO optimization passes
+void AddMhloOptimizationPasses(OpPassManager& pm);
 
 }  // namespace odml
 }  // namespace mlir

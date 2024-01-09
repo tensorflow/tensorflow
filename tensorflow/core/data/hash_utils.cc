@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/hash_utils.h"
 
+#include <array>
+#include <memory>
 #include <queue>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

@@ -15,6 +15,7 @@
 """Implementation of image ops."""
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -24,20 +25,27 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.ops import control_flow_assert
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import ref_variable  # pylint: disable=unused-import
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -76,7 +84,7 @@ def _assert(cond, ex_type, msg):
     A list, containing at most one assert op.
   """
   if _is_tensor(cond):
-    return [control_flow_ops.Assert(cond, [msg])]
+    return [control_flow_assert.Assert(cond, [msg])]
   else:
     if not cond:
       raise ex_type(msg)
@@ -93,7 +101,7 @@ def _is_tensor(x):
   Returns:
     `True` if `x` is a `tf.Tensor` or `tf.Variable`, otherwise `False`.
   """
-  return isinstance(x, (ops.Tensor, variables.Variable))
+  return isinstance(x, (tensor_lib.Tensor, variables.Variable))
 
 
 def _ImageDimensions(image, rank):
@@ -112,7 +120,7 @@ def _ImageDimensions(image, rank):
     return image.get_shape().as_list()
   else:
     static_shape = image.get_shape().with_rank(rank).as_list()
-    dynamic_shape = array_ops.unstack(array_ops.shape(image), rank)
+    dynamic_shape = array_ops_stack.unstack(array_ops.shape(image), rank)
     return [
         s if s is not None else d for s, d in zip(static_shape, dynamic_shape)
     ]
@@ -508,7 +516,7 @@ def _random_flip(image, flip_index, random_func, scope_name):
     def f_rank3():
       uniform_random = random_func(shape=[], minval=0, maxval=1.0)
       mirror_cond = math_ops.less(uniform_random, .5)
-      result = control_flow_ops.cond(
+      result = tf_cond.cond(
           mirror_cond,
           lambda: array_ops.reverse(image, [flip_index]),
           lambda: image,
@@ -526,7 +534,7 @@ def _random_flip(image, flip_index, random_func, scope_name):
 
     if shape.ndims is None:
       rank = array_ops.rank(image)
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     if shape.ndims == 3:
       return f_rank3()
     elif shape.ndims == 4:
@@ -638,7 +646,7 @@ def _flip(image, flip_index, scope_name):
 
     if shape.ndims is None:
       rank = array_ops.rank(image)
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return f_rank3()
     elif shape.ndims == 4:
@@ -704,7 +712,7 @@ def rot90(image, k=1, name=None):
       def f_rank4():
         return _rot90_4D(image, k, scope)
 
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return _rot90_3D(image, k, scope)
     elif shape.ndims == 4:
@@ -739,7 +747,7 @@ def _rot90_3D(image, k, name_scope):
   cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
-  result = control_flow_ops.case(
+  result = control_flow_case.case(
       cases, default=lambda: image, exclusive=True, name=name_scope)
   result.set_shape([None, None, image.get_shape()[2]])
   return result
@@ -770,7 +778,7 @@ def _rot90_4D(images, k, name_scope):
   cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
-  result = control_flow_ops.case(
+  result = control_flow_case.case(
       cases, default=lambda: images, exclusive=True, name=name_scope)
   shape = result.get_shape()
   result.set_shape([shape[0], None, None, shape[3]])
@@ -837,7 +845,7 @@ def transpose(image, name=None):
       def f_rank4():
         return array_ops.transpose(image, [0, 2, 1, 3], name=name)
 
-      return control_flow_ops.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
+      return tf_cond.cond(math_ops.equal(rank, 3), f_rank3, f_rank4)
     elif shape.ndims == 3:
       return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
@@ -972,11 +980,11 @@ def central_crop(image, central_fraction):
     bbox_w_size = img_w - bbox_w_start * 2
 
     if rank == 3:
-      bbox_begin = array_ops.stack([bbox_h_start, bbox_w_start, 0])
-      bbox_size = array_ops.stack([bbox_h_size, bbox_w_size, -1])
+      bbox_begin = array_ops_stack.stack([bbox_h_start, bbox_w_start, 0])
+      bbox_size = array_ops_stack.stack([bbox_h_size, bbox_w_size, -1])
     else:
-      bbox_begin = array_ops.stack([0, bbox_h_start, bbox_w_start, 0])
-      bbox_size = array_ops.stack([-1, bbox_h_size, bbox_w_size, -1])
+      bbox_begin = array_ops_stack.stack([0, bbox_h_start, bbox_w_start, 0])
+      bbox_size = array_ops_stack.stack([-1, bbox_h_size, bbox_w_size, -1])
 
     image = array_ops.slice(image, bbox_begin, bbox_size)
 
@@ -1078,10 +1086,14 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    offset_height: Number of rows of zeros to add on top.
-    offset_width: Number of columns of zeros to add on the left.
-    target_height: Height of output image.
-    target_width: Width of output image.
+    offset_height: Number of rows of zeros to add on top.Must be 0-D `Tensor` of
+      dtype int32 or int64. Can also a python integer.
+    offset_width: Number of columns of zeros to add on the left.Must be 0-D
+      `Tensor` of dtype int32 or int64. Can also a python integer.
+    target_height: Height of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
+    target_width: Width of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
     check_dims: If True, assert that dimensions are non-negative and in range.
       In multi-GPU distributed settings, assertions can cause program slowdown.
       Setting this parameter to `False` avoids this, resulting in faster speed
@@ -1136,7 +1148,7 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
 
     # Do not pad on the depth dimensions.
     paddings = array_ops.reshape(
-        array_ops.stack([
+        array_ops_stack.stack([
             0, 0, offset_height, after_padding_height, offset_width,
             after_padding_width, 0, 0
         ]), [4, 2])
@@ -1183,11 +1195,13 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D
       `Tensor` of shape `[height, width, channels]`.
     offset_height: Vertical coordinate of the top-left corner of the bounding
-      box in `image`.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
     offset_width: Horizontal coordinate of the top-left corner of the bounding
-      box in `image`.
-    target_height: Height of the bounding box.
-    target_width: Width of the bounding box.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
+    target_height: Height of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
+    target_width: Width of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
 
   Returns:
     If `image` was 4-D, a 4-D `Tensor` of shape
@@ -1239,9 +1253,13 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image = control_flow_ops.with_dependencies(assert_ops, image)
 
     cropped = array_ops.slice(
-        image, array_ops.stack([0, offset_height, offset_width, 0]),
-        array_ops.stack([array_ops.shape(image)[0], target_height, target_width,
-                         array_ops.shape(image)[3]]))
+        image,
+        array_ops_stack.stack([0, offset_height, offset_width, 0]),
+        array_ops_stack.stack([
+            array_ops.shape(image)[0],
+            target_height,
+            target_width,
+            array_ops.shape(image)[3]]))
 
     cropped_shape = [
         None if _is_tensor(i) else i
@@ -2012,7 +2030,8 @@ def random_brightness(image, max_delta, seed=None):
 
   Args:
     image: An image or images to adjust.
-    max_delta: float, must be non-negative.
+    max_delta: float, must be non-negative. This parameter controls the maximum
+      relative change in brightness.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
 
@@ -2490,6 +2509,8 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
   dtype = dtypes.as_dtype(dtype)
   if not dtype.is_floating and not dtype.is_integer:
     raise AttributeError('dtype must be either floating point or integer')
+  if not image.dtype.is_floating and not image.dtype.is_integer:
+    raise AttributeError('image dtype must be either floating point or integer')
   if dtype == image.dtype:
     return array_ops.identity(image, name=name)
 
@@ -2693,7 +2714,7 @@ def stateless_random_hue(image, max_delta, seed):
     image: RGB image or images. The size of the last dimension must be 3.
     max_delta: float. The maximum value for the random delta.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
-      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+      dtype `int32` or `int64`.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -2900,7 +2921,7 @@ def stateless_random_jpeg_quality(image,
 
 @tf_export('image.adjust_jpeg_quality')
 @dispatch.add_dispatch_support
-def adjust_jpeg_quality(image, jpeg_quality, name=None):
+def adjust_jpeg_quality(image, jpeg_quality, dct_method='', name=None):
   """Adjust jpeg encoding quality of an image.
 
   This is a convenience method that converts an image to uint8 representation,
@@ -2936,7 +2957,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
          [[1., 1., 1.],
           [1., 1., 1.]]], dtype=float32)>
 
-  Note that `jpeg_quality` 100 is still lossy compresson.
+  Note that `jpeg_quality` 100 is still lossy compression.
 
   >>> x = tf.constant([[[1, 2, 3],
   ...                   [4, 5, 6]],
@@ -2952,6 +2973,10 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
     jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
+    dct_method: An optional string. Specifies the DCT method to use for JPEG
+      decompression. Currently available options are ["INTEGER_FAST",
+      "INTEGER_ACCURATE"]. Defaults to "" which maps to "INTEGER_FAST",
+      sacrificing image quality for speed.
     name: A name for this operation (optional).
 
   Returns:
@@ -2972,7 +2997,9 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
       jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
     image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
 
-    image = gen_image_ops.decode_jpeg(image, channels=channels)
+    image = gen_image_ops.decode_jpeg(
+        image, channels=channels, dct_method=dct_method
+    )
     return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
@@ -3169,39 +3196,39 @@ def _is_png(contents, name=None):
     return math_ops.equal(substr, b'\211PN', name=name)
 
 
-tf_export(
+decode_and_crop_jpeg = tf_export(
     'io.decode_and_crop_jpeg',
     'image.decode_and_crop_jpeg',
     v1=['io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_and_crop_jpeg))
 
-tf_export(
+decode_bmp = tf_export(
     'io.decode_bmp',
     'image.decode_bmp',
     v1=['io.decode_bmp', 'image.decode_bmp'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_bmp))
-tf_export(
+decode_gif = tf_export(
     'io.decode_gif',
     'image.decode_gif',
     v1=['io.decode_gif', 'image.decode_gif'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_gif))
-tf_export(
+decode_jpeg = tf_export(
     'io.decode_jpeg',
     'image.decode_jpeg',
     v1=['io.decode_jpeg', 'image.decode_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_jpeg))
-tf_export(
+decode_png = tf_export(
     'io.decode_png',
     'image.decode_png',
     v1=['io.decode_png', 'image.decode_png'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_png))
 
-tf_export(
+encode_jpeg = tf_export(
     'io.encode_jpeg',
     'image.encode_jpeg',
     v1=['io.encode_jpeg', 'image.encode_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.encode_jpeg))
-tf_export(
+extract_jpeg_shape = tf_export(
     'io.extract_jpeg_shape',
     'image.extract_jpeg_shape',
     v1=['io.extract_jpeg_shape', 'image.extract_jpeg_shape'])(
@@ -3213,8 +3240,8 @@ tf_export(
 def encode_png(image, compression=-1, name=None):
   r"""PNG-encode an image.
 
-  `image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
-  where `channels` is:
+  `image` is a rank-N Tensor of type uint8 or uint16 with shape `batch_dims +
+  [height, width, channels]`, where `channels` is:
 
   *   1: for grayscale.
   *   2: for grayscale + alpha.
@@ -3227,7 +3254,7 @@ def encode_png(image, compression=-1, name=None):
 
   Args:
     image: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
-      3-D with shape `[height, width, channels]`.
+      Rank N >= 3 with shape `batch_dims + [height, width, channels]`.
     compression: An optional `int`. Defaults to `-1`. Compression level.
     name: A name for the operation (optional).
 
@@ -4126,11 +4153,11 @@ def _verify_compatible_image_shapes(img1, img2):
   # TODO(sjhwang): Check if shape1[:-3] and shape2[:-3] are broadcastable.
   checks = []
   checks.append(
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.greater_equal(array_ops.size(shape1), 3), [shape1, shape2],
           summarize=10))
   checks.append(
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(math_ops.equal(shape1[-3:], shape2[-3:])),
           [shape1, shape2],
           summarize=10))
@@ -4307,12 +4334,12 @@ def _ssim_per_channel(img1,
 
   shape1, shape2 = array_ops.shape_n([img1, img2])
   checks = [
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(
               math_ops.greater_equal(shape1[-3:-1], filter_size)),
           [shape1, filter_size],
           summarize=8),
-      control_flow_ops.Assert(
+      control_flow_assert.Assert(
           math_ops.reduce_all(
               math_ops.greater_equal(shape2[-3:-1], filter_size)),
           [shape2, filter_size],
@@ -4337,7 +4364,8 @@ def _ssim_per_channel(img1,
   def reducer(x):
     shape = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))
-    y = nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+    y = nn_impl.depthwise_conv2d(
+        x, kernel, strides=[1, 1, 1, 1], padding='VALID')
     return array_ops.reshape(
         y, array_ops.concat([shape[:-3], array_ops.shape(y)[1:]], 0))
 
@@ -4543,9 +4571,9 @@ def ssim_multiscale(img1,
           remainder = tails[0] % divisor_tensor
           need_padding = math_ops.reduce_any(math_ops.not_equal(remainder, 0))
           # pylint: disable=cell-var-from-loop
-          padded = control_flow_ops.cond(need_padding,
-                                         lambda: do_pad(flat_imgs, remainder),
-                                         lambda: flat_imgs)
+          padded = tf_cond.cond(need_padding,
+                                lambda: do_pad(flat_imgs, remainder),
+                                lambda: flat_imgs)
           # pylint: enable=cell-var-from-loop
 
           downscaled = [
@@ -4572,7 +4600,7 @@ def ssim_multiscale(img1,
     # Remove the cs score for the last scale. In the MS-SSIM calculation,
     # we use the l(p) at the highest scale. l(p) * cs(p) is ssim(p).
     mcs.pop()  # Remove the cs score for the last scale.
-    mcs_and_ssim = array_ops.stack(
+    mcs_and_ssim = array_ops_stack.stack(
         mcs + [nn_ops.relu(ssim_per_channel)], axis=-1)
     # Take weighted geometric mean across the scale axis.
     ms_ssim = math_ops.reduce_prod(
@@ -4638,17 +4666,17 @@ def image_gradients(image):
     raise ValueError('image_gradients expects a 4D tensor '
                      '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
   image_shape = array_ops.shape(image)
-  batch_size, height, width, depth = array_ops.unstack(image_shape)
+  batch_size, height, width, depth = array_ops_stack.unstack(image_shape)
   dy = image[:, 1:, :, :] - image[:, :-1, :, :]
   dx = image[:, :, 1:, :] - image[:, :, :-1, :]
 
   # Return tensors with same size as original image by concatenating
   # zeros. Place the gradient [I(x+1,y) - I(x,y)] on the base pixel (x, y).
-  shape = array_ops.stack([batch_size, 1, width, depth])
+  shape = array_ops_stack.stack([batch_size, 1, width, depth])
   dy = array_ops.concat([dy, array_ops.zeros(shape, image.dtype)], 1)
   dy = array_ops.reshape(dy, image_shape)
 
-  shape = array_ops.stack([batch_size, height, 1, depth])
+  shape = array_ops_stack.stack([batch_size, height, 1, depth])
   dx = array_ops.concat([dx, array_ops.zeros(shape, image.dtype)], 2)
   dx = array_ops.reshape(dx, image_shape)
 
@@ -4715,7 +4743,7 @@ def sobel_edges(image):
 
   # Output tensor has shape [batch_size, h, w, d * num_kernels].
   strides = [1, 1, 1, 1]
-  output = nn.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
+  output = nn_impl.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
 
   # Reshape to [batch_size, h, w, d, num_kernels].
   shape = array_ops.concat([image_shape, [num_kernels]], 0)
@@ -4724,6 +4752,14 @@ def sobel_edges(image):
   return output
 
 
+@tf_export(v1=['image.resize_bicubic'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'
+    ),
+)
 def resize_bicubic(images,
                    size,
                    align_corners=False,
@@ -4737,6 +4773,14 @@ def resize_bicubic(images,
       name=name)
 
 
+@tf_export(v1=['image.resize_bilinear'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'
+    ),
+)
 def resize_bilinear(images,
                     size,
                     align_corners=False,
@@ -4750,6 +4794,15 @@ def resize_bilinear(images,
       name=name)
 
 
+@tf_export(v1=['image.resize_nearest_neighbor'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
+        'instead.'
+    ),
+)
 def resize_nearest_neighbor(images,
                             size,
                             align_corners=False,
@@ -4767,32 +4820,11 @@ resize_area_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
-tf_export(v1=['image.resize_area'])(
+resize_area = tf_export(v1=['image.resize_area'])(
     resize_area_deprecation(
-        dispatch.add_dispatch_support(gen_image_ops.resize_area)))
-
-resize_bicubic_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
-tf_export(v1=['image.resize_bicubic'])(
-    dispatch.add_dispatch_support(resize_bicubic_deprecation(resize_bicubic)))
-
-resize_bilinear_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
-tf_export(v1=['image.resize_bilinear'])(
-    dispatch.add_dispatch_support(resize_bilinear_deprecation(resize_bilinear)))
-
-resize_nearest_neighbor_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
-        'instead.'))
-tf_export(v1=['image.resize_nearest_neighbor'])(
-    dispatch.add_dispatch_support(
-        resize_nearest_neighbor_deprecation(resize_nearest_neighbor)))
+        dispatch.add_dispatch_support(gen_image_ops.resize_area)
+    )
+)
 
 
 @tf_export('image.crop_and_resize', v1=[])
@@ -4810,7 +4842,8 @@ def crop_and_resize_v2(image,
   sampling or nearest neighbor sampling (possibly with aspect ratio change) to a
   common output size specified by `crop_size`. This is more general than the
   `crop_to_bounding_box` op which extracts a fixed size slice from the input
-  image and does not allow resizing or aspect ratio change.
+  image and does not allow resizing or aspect ratio change. The crops occur
+  first and then the resize.
 
   Returns a tensor with `crops` from the input `image` at positions defined at
   the bounding box locations in `boxes`. The cropped boxes are all resized (with
@@ -4855,25 +4888,49 @@ def crop_and_resize_v2(image,
   Returns:
     A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
 
-  Example:
+  Usage example:
 
-  ```python
-  import tensorflow as tf
-  BATCH_SIZE = 1
-  NUM_BOXES = 5
-  IMAGE_HEIGHT = 256
-  IMAGE_WIDTH = 256
-  CHANNELS = 3
-  CROP_SIZE = (24, 24)
+  >>> BATCH_SIZE = 1
+  >>> NUM_BOXES = 5
+  >>> IMAGE_HEIGHT = 256
+  >>> IMAGE_WIDTH = 256
+  >>> CHANNELS = 3
+  >>> CROP_SIZE = (24, 24)
 
-  image = tf.random.normal(shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH,
-  CHANNELS) )
-  boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
-  box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0,
-  maxval=BATCH_SIZE, dtype=tf.int32)
-  output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
-  output.shape  #=> (5, 24, 24, 3)
-  ```
+  >>> image = tf.random.normal(shape=(
+  ...   BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS) )
+  >>> boxes = tf.random.uniform(shape=(NUM_BOXES, 4))
+  >>> box_indices = tf.random.uniform(shape=(NUM_BOXES,), minval=0,
+  ...   maxval=BATCH_SIZE, dtype=tf.int32)
+  >>> output = tf.image.crop_and_resize(image, boxes, box_indices, CROP_SIZE)
+  >>> output.shape
+  TensorShape([5, 24, 24, 3])
+
+  Example with linear interpolation:
+
+  >>> image = np.arange(0, 18, 2).astype('float32').reshape(3, 3)
+  >>> result = tf.image.crop_and_resize(
+  ...   image[None, :, :, None],
+  ...   np.asarray([[0.5,0.5,1,1]]), [0], [3, 3], method='bilinear')
+  >>> result[0][:, :, 0]
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+    array([[ 8.,  9., 10.],
+           [11., 12., 13.],
+           [14., 15., 16.]], dtype=float32)>
+
+  Example with nearest interpolation:
+
+  >>> image = np.arange(0, 18, 2).astype('float32').reshape(3, 3)
+  >>> result = tf.image.crop_and_resize(
+  ...   image[None, :, :, None],
+  ...   np.asarray([[0.5,0.5,1,1]]), [0], [3, 3], method='nearest')
+  >>> result[0][:, :, 0]
+  <tf.Tensor: shape=(3, 3), dtype=float32, numpy=
+    array([[ 8., 10., 10.],
+           [14., 16., 16.],
+           [14., 16., 16.]], dtype=float32)>
+
+
   """
   return gen_image_ops.crop_and_resize(image, boxes, box_indices, crop_size,
                                        method, extrapolation_value, name)
@@ -5301,10 +5358,11 @@ def _suppression_loop_body(boxes, iou_threshold, output_size, idx, tile_size):
     # Iterates over tiles that can possibly suppress the current tile.
     box_slice = array_ops.slice(boxes, [0, idx * tile_size, 0],
                                 [batch_size, tile_size, 4])
-    _, box_slice, _, _ = control_flow_ops.while_loop(
+    _, box_slice, _, _ = while_loop.while_loop(
         lambda _boxes, _box_slice, _threshold, inner_idx: inner_idx < idx,
         cross_suppression_func,
-        [boxes, box_slice, iou_threshold, constant_op.constant(0)])
+        [boxes, box_slice, iou_threshold,
+         constant_op.constant(0)])
 
     # Iterates over the current tile to compute self-suppression.
     iou = _bbox_overlap(box_slice, box_slice)
@@ -5314,11 +5372,13 @@ def _suppression_loop_body(boxes, iou_threshold, output_size, idx, tile_size):
                 math_ops.range(tile_size), [-1, 1]), 0)
     iou *= math_ops.cast(
         math_ops.logical_and(mask, iou >= iou_threshold), iou.dtype)
-    suppressed_iou, _, _, _ = control_flow_ops.while_loop(
+    suppressed_iou, _, _, _ = while_loop.while_loop(
         lambda _iou, loop_condition, _iou_sum, _: loop_condition,
-        _self_suppression,
-        [iou, constant_op.constant(True), math_ops.reduce_sum(iou, [1, 2]),
-         iou_threshold])
+        _self_suppression, [
+            iou,
+            constant_op.constant(True),
+            math_ops.reduce_sum(iou, [1, 2]), iou_threshold
+        ])
     suppressed_box = math_ops.reduce_sum(suppressed_iou, 1) > 0
     box_slice *= array_ops.expand_dims(
         1.0 - math_ops.cast(suppressed_box, box_slice.dtype), 2)
@@ -5562,19 +5622,14 @@ def non_max_suppression_padded_v2(boxes,
         representing the index of the scores in a sorted descending order.
     """
     with ops.name_scope('sort_scores_and_boxes'):
-      batch_size = array_ops.shape(boxes)[0]
-      num_boxes = array_ops.shape(boxes)[1]
       sorted_scores_indices = sort_ops.argsort(
           scores, axis=1, direction='DESCENDING')
-      index_offsets = math_ops.range(batch_size) * num_boxes
-      indices = array_ops.reshape(
-          sorted_scores_indices + array_ops.expand_dims(index_offsets, 1), [-1])
-      sorted_scores = array_ops.reshape(
-          array_ops.gather(array_ops.reshape(scores, [-1]), indices),
-          [batch_size, -1])
-      sorted_boxes = array_ops.reshape(
-          array_ops.gather(array_ops.reshape(boxes, [-1, 4]), indices),
-          [batch_size, -1, 4])
+      sorted_scores = array_ops.gather(
+          scores, sorted_scores_indices, axis=1, batch_dims=1
+      )
+      sorted_boxes = array_ops.gather(
+          boxes, sorted_scores_indices, axis=1, batch_dims=1
+      )
     return sorted_scores, sorted_boxes, sorted_scores_indices
 
   batch_dims = array_ops.shape(boxes)[:-2]
@@ -5596,11 +5651,11 @@ def non_max_suppression_padded_v2(boxes,
           value=boxes, num_or_size_splits=4, axis=2)
       y_1_is_min = math_ops.reduce_all(
           math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
-      y_min, y_max = control_flow_ops.cond(
+      y_min, y_max = tf_cond.cond(
           y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
       x_1_is_min = math_ops.reduce_all(
           math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
-      x_min, x_max = control_flow_ops.cond(
+      x_min, x_max = tf_cond.cond(
           x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
       boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
   # TODO(@bhack): https://github.com/tensorflow/tensorflow/issues/56089
@@ -5636,7 +5691,7 @@ def non_max_suppression_padded_v2(boxes,
     return _suppression_loop_body(
         boxes, iou_threshold, output_size, idx, tile_size)
 
-  selected_boxes, _, output_size, _ = control_flow_ops.while_loop(
+  selected_boxes, _, output_size, _ = while_loop.while_loop(
       _loop_cond,
       suppression_loop_body,
       [

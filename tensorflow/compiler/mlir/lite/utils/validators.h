@@ -50,8 +50,11 @@ inline bool TFDataFormatIsNDHWC(Operation *op) {
 bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
                      IntegerAttr *y);
 
-// Returns true if the attribute is an integer list of the form [1, X, Y, 1],
-bool TFIntListIs1XY1(const Attribute attr);
+// Returns true if the attribute is an integer list of the form [1, X, Y, 1].
+bool TFIntListIs1XY1(Attribute attr);
+
+// Returns true if the attribute is an integer list of the form [1, 1, X, Y].
+bool TFIntListIs11XY(Attribute attr);
 
 // Returns true if the given `op`
 //   * has an attribute with the given `name`,
@@ -62,7 +65,7 @@ bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
 
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
-bool TFIntListIsAllOnes(const Attribute attr);
+bool TFIntListIsAllOnes(Attribute attr);
 
 // Returns true iff the given value is a float32 tensor.
 // is "DT_FLOAT".

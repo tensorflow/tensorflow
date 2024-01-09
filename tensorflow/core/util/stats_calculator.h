@@ -27,7 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/util/stat_summarizer_options.h"
-#include "tensorflow/tsl/util/stats_calculator.h"
+#include "tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 

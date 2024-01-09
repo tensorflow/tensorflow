@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/allocator.h"
+#include "tsl/framework/allocator.h"
 
 namespace tensorflow {
 

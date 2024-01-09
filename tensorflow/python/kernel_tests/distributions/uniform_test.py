@@ -23,7 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import uniform as uniform_lib
 from tensorflow.python.platform import test
@@ -234,7 +234,7 @@ class UniformTest(test.TestCase):
     no_nans = constant_op.constant(1.0)
     nans = constant_op.constant(0.0) / constant_op.constant(0.0)
     self.assertTrue(self.evaluate(math_ops.is_nan(nans)))
-    with_nans = array_ops.stack([no_nans, nans])
+    with_nans = array_ops_stack.stack([no_nans, nans])
 
     pdf = uniform.prob(with_nans)
 

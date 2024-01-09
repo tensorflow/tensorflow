@@ -19,17 +19,27 @@ from six.moves import range
 
 
 def ConvertBetweenDataFormats(x, data_format_src, data_format_dst):
-  """Converts 4D tensor between data formats."""
+  """Converts 4D/5D tensor between data formats."""
 
-  valid_data_formats = ["NHWC", "NCHW", "HWNC", "HWCN"]
+  valid_data_formats = ["NHWC", "NCHW", "HWNC", "HWCN", "NDHWC", "NCDHW"]
+  if len(data_format_src) != len(data_format_dst):
+    raise ValueError(
+        "data_format_src and data_format_dst must have the same dimension, got"
+        " %s and %s." % (len(data_format_src), len(data_format_dst))
+    )
   if data_format_src not in valid_data_formats:
     raise ValueError("data_format_src must be of %s, got %s." %
                      (valid_data_formats, data_format_src))
   if data_format_dst not in valid_data_formats:
     raise ValueError("data_format_dst must be of %s, got %s." %
                      (valid_data_formats, data_format_dst))
-  if len(x.shape) != 4:
-    raise ValueError("x must be 4D, got shape %s." % x.shape)
+  if len(x.shape) != 4 and len(x.shape) != 5:
+    raise ValueError("x must be 4D or 5D, got shape %s." % x.shape)
+  if len(x.shape) != len(data_format_src):
+    raise ValueError(
+        "x must be the same dimensions as data_format_src (%s), got shape %s."
+        % (len(data_format_src), x.shape)
+    )
 
   if data_format_src == data_format_dst:
     return x
@@ -42,15 +52,25 @@ def ConvertBetweenDataFormats(x, data_format_src, data_format_dst):
 def PermuteDimsBetweenDataFormats(dims, data_format_src, data_format_dst):
   """Get new shape for converting between data formats."""
 
-  valid_data_formats = ["NHWC", "NCHW", "HWNC", "HWCN"]
+  valid_data_formats = ["NHWC", "NCHW", "HWNC", "HWCN", "NDHWC", "NCDHW"]
+  if len(data_format_src) != len(data_format_dst):
+    raise ValueError(
+        "data_format_src and data_format_dst must have the same dimension, got"
+        " %s and %s." % (len(data_format_src), len(data_format_dst))
+    )
   if data_format_src not in valid_data_formats:
     raise ValueError("data_format_src must be of %s, got %s." %
                      (valid_data_formats, data_format_src))
   if data_format_dst not in valid_data_formats:
     raise ValueError("data_format_dst must be of %s, got %s." %
                      (valid_data_formats, data_format_dst))
-  if len(dims) != 4:
-    raise ValueError("dims must be of length 4, got %s." % dims)
+  if len(dims) != 4 and len(dims) != 5:
+    raise ValueError("dims must be of length 4 or 5, got %s." % dims)
+  if len(dims) != len(data_format_src):
+    raise ValueError(
+        "dims must be the same dimensions as data_format_src (%s), got %s."
+        % (len(data_format_src), dims)
+    )
 
   if data_format_src == data_format_dst:
     return dims

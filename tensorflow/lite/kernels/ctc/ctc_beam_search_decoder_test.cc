@@ -20,9 +20,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 
 namespace tflite {
 namespace ops {

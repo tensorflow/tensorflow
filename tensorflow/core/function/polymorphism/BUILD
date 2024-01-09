@@ -1,7 +1,13 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -11,7 +17,9 @@ pytype_strict_library(
         "type_dispatch.py",
     ],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         ":function_type",
     ],
@@ -24,8 +32,9 @@ py_strict_test(
     deps = [
         ":function_type",
         ":type_dispatch",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
     ],
 )
 
@@ -40,7 +49,6 @@ pytype_strict_library(
         ":function_type",
         "//tensorflow/core/function/polymorphism:type_dispatch",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python/types",
     ],
 )
 
@@ -53,11 +61,12 @@ py_strict_test(
     visibility = ["//learning/brain/contrib/eager/python/examples:__pkg__"],
     deps = [
         ":function_cache",
+        #internal proto upb dep
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
     ],
 )
 
@@ -69,10 +78,39 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core/function/polymorphism:function_type_proto_py",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python/types",
+        "//tensorflow/core/function/trace_type:serialization",
+        "//tensorflow/python/types:core",
+        "//tensorflow/python/types:trace",
+        "@absl_py//absl/logging",
     ],
 )
+
+tf_proto_library(
+    name = "function_type_proto",
+    srcs = [
+        "function_type.proto",
+    ],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/core/function/trace_type:serialization_proto",
+    ],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "function_type_py_pb2",
+#     api_version = 2,
+#     visibility = [
+#         "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+#     ],
+#     deps = [":function_type_proto"],
+# )
+# copybara:uncomment_end
 
 py_strict_test(
     name = "function_type_test",
@@ -80,9 +118,13 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":function_type",
+        #internal proto upb dep
+        "//tensorflow/core/function/polymorphism:function_type_proto_py",
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/core/function/trace_type:serialization",
+        "//tensorflow/python/framework:func_graph",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
         "@absl_py//absl/testing:parameterized",
     ],
 )

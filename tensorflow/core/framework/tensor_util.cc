@@ -182,7 +182,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
 }
 
 namespace internal {
-void SetTensorProtoShape(std::vector<size_t> shape,
+void SetTensorProtoShape(const absl::Span<const size_t> shape,
                          TensorShapeProto* shape_proto) {
   for (auto dim : shape) {
     shape_proto->mutable_dim()->Add()->set_size(dim);
@@ -304,10 +304,10 @@ static bool IsNegativeZero(Eigen::QUInt16 value) { return false; }
 static bool IsNegativeZero(Eigen::QInt16 value) { return false; }
 static bool IsNegativeZero(Eigen::QInt32 value) { return false; }
 static bool IsNegativeZero(Eigen::half value) {
-  return IsNegativeZero<float>(value);
+  return IsNegativeZero<float>(static_cast<float>(value));
 }
 static bool IsNegativeZero(Eigen::bfloat16 value) {
-  return IsNegativeZero<float>(value);
+  return IsNegativeZero<float>(static_cast<float>(value));
 }
 
 template <typename T>

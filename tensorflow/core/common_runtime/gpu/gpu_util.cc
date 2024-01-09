@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
+#include <algorithm>
+#include <cstring>
+
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_reference.h"
@@ -148,7 +152,8 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   const int64_t total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
     profiler::ScopedAnnotation annotation("SetProtoFromGPU");
-    alloc = GPUProcessState::singleton()->GetGpuHostAllocator(0);
+    alloc =
+        GPUProcessState::singleton()->GetGpuHostAllocator(/*options=*/{}, 0);
     buf = static_cast<char*>(
         alloc->AllocateRaw(Allocator::kAllocatorAlignment, total_bytes));
     if (LogMemory::IsEnabled()) {
@@ -214,8 +219,13 @@ void GPUUtil::DeviceToDeviceCopy(
     DeviceMemoryBase gpu_src_ptr(src_ptr, total_bytes);
     void* dst_ptr = GetBase(output);
     DeviceMemoryBase gpu_dst_ptr(dst_ptr, total_bytes);
-    auto recv_stream =
-        static_cast<const GPUDeviceContext*>(recv_dev_context)->stream();
+    // For GpuDevice, always gets receive stream from
+    // dst->tensorflow_accelerator_device_info()->default_context which is
+    // GPUDeviceContext.
+    stream_executor::Stream* recv_stream =
+        static_cast<const GPUDeviceContext*>(
+            dst->tensorflow_accelerator_device_info()->default_context)
+            ->stream();
     if (recv_stream == nullptr) {
       done(errors::Internal("No recv gpu stream is available."));
       return;

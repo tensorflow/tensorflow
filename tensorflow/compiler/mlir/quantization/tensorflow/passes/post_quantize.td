@@ -18,9 +18,9 @@ include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.td"
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
 
 // Re-orders the Identity op following a quantized composite function. This
 // allows the QuantizeCompositeFunctionsPass to merge the DequantizeCast with
@@ -31,5 +31,5 @@ def ReorderIdentityFollowingQuantizedFunction : Pat<
       (TF_IdentityOp
         (quantfork_StorageCastOp $value)))),
   (TF_IdentityOp
-    (CreateOpWithOutputType<"quantfork::DequantizeCastOp">
-      (GetValueType $output), $value))>;
+    (quantfork_DequantizeCastOp
+      $value, (returnType (GetValueType $output))))>;

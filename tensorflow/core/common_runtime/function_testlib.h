@@ -24,6 +24,7 @@ namespace function {
 
 // {} -> y:DT_STRING (device where this op runs).
 FunctionDef FindDevice();
+FunctionDef FindDeviceWithUuid();
 
 class BlockingOpState {
  public:

@@ -20,11 +20,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
+#include "tensorflow/lite/delegates/gpu/gl/object.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -61,6 +68,15 @@ class ElementwiseOneArgument : public NodeShader {
         break;
       case tflite::gpu::OperationType::FLOOR:
         source = "value_0 = floor(value_0);";
+        break;
+      case tflite::gpu::OperationType::GELU:
+        // Matches the approximate implementation of the cpu reference op.
+        // There's no gpu implementation of erfc so we can't match the accurate
+        // version.
+        // gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+        source =
+            "value_0 = 0.5 * value_0 * (1.0 + tanh(0.7978845608 * (value_0 + "
+            "0.044715 * value_0 * value_0 * value_0)));";
         break;
       case OperationType::HARD_SWISH:
         source =
@@ -176,6 +192,10 @@ class ElementwiseTwoArguments : public NodeShader {
         argument1 = "vec4($const_data$)";
         parameters.push_back({"const_data", *scalar});
       }
+      if (attr.runtime_tensor_is_second) {
+        argument0 = argument1;
+        argument1 = "value_0";
+      }
     }
 
     std::string source;
@@ -243,6 +263,7 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
     case OperationType::ELU:
     case OperationType::EXP:
     case OperationType::FLOOR:
+    case OperationType::GELU:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::NEG:

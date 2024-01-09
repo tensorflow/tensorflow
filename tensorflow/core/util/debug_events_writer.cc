@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/util/debug_events_writer.h"
 
+#include <deque>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -52,7 +58,7 @@ Status SingleDebugEventFileWriter::Init() {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       env_->NewWritableFile(file_path_, &writable_file_),
       "Creating writable file ", file_path_);
-  record_writer_.reset(new io::RecordWriter(writable_file_.get()));
+  record_writer_ = std::make_unique<io::RecordWriter>(writable_file_.get());
   if (record_writer_ == nullptr) {
     return errors::Unknown("Could not create record writer at path: ",
                            file_path_);
@@ -177,7 +183,8 @@ Status DebugEventsWriter::Init() {
 
   // The metadata file should be created.
   string metadata_filename = GetFileNameInternal(METADATA);
-  metadata_writer_.reset(new SingleDebugEventFileWriter(metadata_filename));
+  metadata_writer_ =
+      std::make_unique<SingleDebugEventFileWriter>(metadata_filename);
   if (metadata_writer_ == nullptr) {
     return errors::Unknown("Could not create debug event metadata file writer");
   }
@@ -494,7 +501,7 @@ Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
   const string filename = GetFileNameInternal(type);
   writer->reset();
 
-  writer->reset(new SingleDebugEventFileWriter(filename));
+  *writer = std::make_unique<SingleDebugEventFileWriter>(filename);
   if (*writer == nullptr) {
     return errors::Unknown("Could not create debug event file writer for ",
                            filename);

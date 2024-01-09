@@ -15,18 +15,29 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATOR_SINGLETON_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_CALIBRATOR_CALIBRATOR_SINGLETON_H_
 
-#include <map>
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
-#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_base.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 namespace calibrator {
 
+using tensorflow::quantization::CalibrationOptions;
+
+// TODO: b/315084876 - Move to stablehlo quantizer directory.
 class CalibratorSingleton {
  public:
   // Clears the collected information.
@@ -35,18 +46,45 @@ class CalibratorSingleton {
   // Clears the collected data of the given node id.
   static void ClearData(absl::string_view id);
 
-  // Collects min and max values from the TensorFlow operator executions.
-  static void ReportMinMax(absl::string_view id, float min_val, float max_val);
+  // Reports data to singleton using float vector.
+  // Only calculates the required statistics from CalibrationMethod based
+  // on CalibrationOptions.
+  static void Report(absl::string_view id, const std::vector<float>& data_vec,
+                     const CalibrationOptions& calib_opts);
 
-  // Returns the min and max values of the given id.
-  static std::optional<std::pair<float, float>> GetMinMax(absl::string_view id);
+  // Reports data to singleton using absl::Span
+  // Only calculates the required statistics from CalibrationMethod based
+  // on CalibrationOptions.
+  static void Report(absl::string_view id, absl::Span<float> data_span,
+                     const CalibrationOptions& calib_opts);
+
+  // Reports data to singleton using absl::Span
+  // Only calculates the required statistics from CalibrationMethod based
+  // on CalibrationOptions.
+  static void Report(absl::string_view id, const Tensor& data_tensor,
+                     const CalibrationOptions& calib_opts);
+
+  // Returns the calibration statistics of the given id.
+  static std::optional<CalibrationStatistics> GetStatistics(
+      absl::string_view id);
+
+  // Issues a new node ID that uniquely identifies a set of calibration
+  // statistics.
+  static int64_t IssueNewId();
 
  private:
   static CalibratorSingleton& GetInstance();
   static absl::Mutex lock_;
+  static void AssignIfNotExists(std::string id_str,
+                                const CalibrationOptions& calib_opts);
 
-  absl::flat_hash_map<std::string, float> id_to_min_;
-  absl::flat_hash_map<std::string, float> id_to_max_;
+  // Indicates the next id for a set of calibration statistics. For every new ID
+  // issued this will be incremented atomically.
+  std::atomic<int64_t> next_id_{0};
+
+  absl::flat_hash_map<std::string,
+                      std::unique_ptr<CalibrationStatisticsCollectorBase>>
+      id_to_collector_;
 
   CalibratorSingleton() = default;
   ~CalibratorSingleton() = default;

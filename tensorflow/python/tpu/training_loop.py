@@ -21,6 +21,7 @@ from tensorflow.python.compiler.xla import xla
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import while_loop as while_loop_tf
 from tensorflow.python.tpu import tensor_tracer
 from tensorflow.python.tpu import tpu_feed
 from tensorflow.python.tpu import tpu_function
@@ -174,7 +175,7 @@ def while_loop(condition: Callable[..., Any],
   # control dependencies from any side-effecting operations.
   if input_arity == 0:
     inputs = [array_ops.constant(0)]
-  return control_flow_ops.while_loop(
+  return while_loop_tf.while_loop(
       condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
 
 

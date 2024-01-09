@@ -20,7 +20,10 @@ limitations under the License.
 #include <queue>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -39,7 +42,7 @@ StatSummarizer::StatSummarizer(const StatSummarizerOptions& options)
 StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
     : stats_calculator_(new StatsCalculator(StatSummarizerOptions())) {}
 
-StatSummarizer::~StatSummarizer() {}
+StatSummarizer::~StatSummarizer() = default;
 
 void StatSummarizer::Validate(const std::vector<TensorDescription>* outputs,
                               const NodeExecStats& ns) const {
@@ -109,8 +112,8 @@ std::string OpType(const DeviceStepStats& ds, const NodeExecStats& ns) {
   // gracefully. Till then, duplicate what is done by:
   // https://www.tensorflow.org/code/tensorflow/python/client/timeline.py
   // and rely on the unittest.
-  if (ds.device().find("/stream") != std::string::npos ||
-      ds.device().find("/memcpy") != std::string::npos) {
+  if (absl::StrContains(ds.device(), "/stream") ||
+      absl::StrContains(ds.device(), "/memcpy")) {
     // Stats from the GPUTracer, does not correspond to TensorFlow ops.
     return "<>";
   }
@@ -139,8 +142,8 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       // /stream:$index. GPU memcpys are duplicated both in /memcpy and their
       // /stream:$index. So only keep /stream:all and /memcpy and ignore all
       // /stream:$index to only count GPU executions once.
-      if (ds.device().find("/stream") != std::string::npos &&
-          ds.device().find("/stream:all") == std::string::npos) {
+      if (absl::StrContains(ds.device(), "/stream") &&
+          !absl::StrContains(ds.device(), "/stream:all")) {
         continue;
       }
       // NOTE(fishx): We will record ops execution time twice: one as CPU
@@ -149,7 +152,7 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       // CPU activities here.
       // TODO(b/138729463): Read ops execution time from CPU activities instead
       // of runtime activities.
-      if (ds.device().find("/host:CPU") != std::string::npos) {
+      if (absl::StrContains(ds.device(), "/host:CPU")) {
         continue;
       }
 
@@ -159,14 +162,14 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       // are unique, so we add [Kernel] or [MemCpy] as a suffix to the name.
       // To make the node type summary work better, we prefix "gpu:" to
       // the op type when the info is from a /gpu/stream or /memcpy channel.
-      if (ds.device().find("/stream") != std::string::npos) {
+      if (absl::StrContains(ds.device(), "/stream")) {
         // node_name: name ":" opType
         auto parts = str_util::Split(ns.node_name(), ':');
         if (parts.size() == 2) {
           name = parts[0] + " [Kernel]";
           op_type = "gpu:" + parts[1];
         }
-      } else if (ds.device().find("/memcpy") != std::string::npos) {
+      } else if (absl::StrContains(ds.device(), "/memcpy")) {
         // node_name: name (":" opType)? ":" memCpyType
         auto parts = str_util::Split(ns.node_name(), ':');
         if (parts.size() == 2 || parts.size() == 3) {

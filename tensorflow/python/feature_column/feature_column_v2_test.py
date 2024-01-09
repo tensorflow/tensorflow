@@ -29,6 +29,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import feature_column_v2_types
 from tensorflow.python.feature_column import serialization
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -62,7 +63,7 @@ def get_linear_model_column_var(column, name='linear_model'):
                             name + '/' + column.name)[0]
 
 
-class BaseFeatureColumnForTests(fc.FeatureColumn):
+class BaseFeatureColumnForTests(feature_column_v2_types.FeatureColumn):
   """A base FeatureColumn useful to avoid boiler-plate in tests.
 
   Provides dummy implementations for abstract methods that raise ValueError in
@@ -1413,8 +1414,11 @@ class OldLinearModelTest(test.TestCase):
 
   def test_should_be_dense_or_categorical_column(self):
 
-    class NotSupportedColumn(BaseFeatureColumnForTests, fc.FeatureColumn,
-                             fc_old._FeatureColumn):
+    class NotSupportedColumn(
+        BaseFeatureColumnForTests,
+        feature_column_v2_types.FeatureColumn,
+        fc_old._FeatureColumn,
+    ):
 
       @property
       def _is_v2_column(self):
@@ -2516,7 +2520,7 @@ class FunctionalInputLayerTest(test.TestCase):
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
       self.assertIsInstance(cols_to_vars[some_embedding_column][0],
-                            variables_lib.VariableV1)
+                            variables_lib.Variable)
       self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [5, 10])
 
   def test_fills_cols_to_vars_shared_embedding(self):
@@ -5758,16 +5762,19 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
       )
 
       def _initializer(shape, dtype, partition_info=None):
+        self.assertEqual(dtypes.float32, dtype)
         if partition_variables:
+          assert partition_info is not None
           self.assertEqual([vocabulary_size, embedding_dimension],
                            partition_info.full_shape)
           self.assertAllEqual((2, embedding_dimension), shape)
+          return array_ops.slice(
+              embedding_values, partition_info.var_offset, shape
+          )
         else:
           self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
           self.assertIsNone(partition_info)
-
-        self.assertEqual(dtypes.float32, dtype)
-        return embedding_values
+          return embedding_values
 
       # Expected lookup result, using combiner='mean'.
       expected_lookups_a = (
@@ -5817,10 +5824,11 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         self.assertCountEqual(('vars/aaa_bbb_shared_embedding/part_0:0',
                                'vars/aaa_bbb_shared_embedding/part_1:0'),
                               tuple([v.name for v in global_vars]))
+        embedding_var = array_ops.concat(global_vars, axis=0)
       else:
         self.assertCountEqual(('vars/aaa_bbb_shared_embedding:0',),
                               tuple([v.name for v in global_vars]))
-      embedding_var = global_vars[0]
+        embedding_var = global_vars[0]
 
       self.evaluate(variables_lib.global_variables_initializer())
       self.evaluate(lookup_ops.tables_initializer())

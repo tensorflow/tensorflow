@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/equal_graph_def.h"
 
+#include <map>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"

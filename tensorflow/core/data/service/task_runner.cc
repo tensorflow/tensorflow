@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
@@ -60,6 +63,19 @@ Status StandaloneTaskIterator::GetNext(std::vector<Tensor>& element,
 
 int64_t StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
+}
+
+StatusOr<std::vector<Tensor>> StandaloneTaskIterator::Save() {
+  return iterator_->Save();
+}
+
+Status StandaloneTaskIterator::Restore(
+    const std::vector<Tensor>& saved_iterator) {
+  return iterator_->Restore(saved_iterator);
+}
+
+std::shared_ptr<model::Model> StandaloneTaskIterator::model() const {
+  return iterator_->model();
 }
 
 Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
@@ -153,6 +169,10 @@ void FirstComeFirstServedTaskRunner::Cancel() {
   buffer_.Cancel(errors::Cancelled("tf.data service FCFS task is cancelled."));
 }
 
+std::shared_ptr<model::Model> FirstComeFirstServedTaskRunner::model() const {
+  return model_;
+}
+
 CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
                                      size_t max_cache_size_bytes)
     : fcfs_task_runner_(std::move(iterator)),
@@ -200,6 +220,10 @@ void CachingTaskRunner::Cancel() {
         "tf.data service cross-trainer cache task is cancelled."));
   }
   fcfs_task_runner_.Cancel();
+}
+
+std::shared_ptr<model::Model> CachingTaskRunner::model() const {
+  return fcfs_task_runner_.model();
 }
 
 RoundRobinTaskRunner::RoundRobinTaskRunner(
@@ -336,6 +360,10 @@ void RoundRobinTaskRunner::Cancel() {
   new_round_cv_.notify_all();
 }
 
+std::shared_ptr<model::Model> RoundRobinTaskRunner::model() const {
+  return prefetch_thread_.model();
+}
+
 PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,
                                int64_t round_size)
     : iterator_(std::move(iterator)), round_size_(round_size) {
@@ -416,6 +444,10 @@ Status PrefetchThread::FillBuffer(int64_t wait_us,
 Status PrefetchThread::GetStatus() {
   mutex_lock l(mu_);
   return status_;
+}
+
+std::shared_ptr<model::Model> PrefetchThread::model() const {
+  return iterator_->model();
 }
 }  // namespace data
 }  // namespace tensorflow

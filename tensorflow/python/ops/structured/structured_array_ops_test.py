@@ -17,8 +17,8 @@ from absl.testing import parameterized
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -57,11 +57,11 @@ class StructuredArrayOpsTest(test_util.TensorFlowTestCase,
       self.assertIsNone(e, (msg + ": " if msg else "") + str(e))
     a_tensors = [
         x for x in nest.flatten(a, expand_composites=True)
-        if isinstance(x, ops.Tensor)
+        if isinstance(x, tensor.Tensor)
     ]
     b_tensors = [
         x for x in nest.flatten(b, expand_composites=True)
-        if isinstance(x, ops.Tensor)
+        if isinstance(x, tensor.Tensor)
     ]
     self.assertLen(a_tensors, len(b_tensors))
     a_arrays, b_arrays = self.evaluate((a_tensors, b_tensors))

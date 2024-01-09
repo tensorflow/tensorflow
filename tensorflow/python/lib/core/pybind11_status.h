@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <Python.h>
 
-#include "pybind11/cast.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -45,7 +45,7 @@ inline PyObject* CodeToPyExc(const int code) {
 }
 
 inline PyObject* StatusToPyExc(const Status& status) {
-  return CodeToPyExc(status.code());
+  return CodeToPyExc(status.raw_code());
 }
 
 inline PyObject* TFStatusToPyExc(const TF_Status* status) {
@@ -71,17 +71,17 @@ inline pybind11::dict TFStatusPayloadToDict(TF_Status* status) {
 inline void MaybeRaiseFromStatus(const Status& status) {
   if (!status.ok()) {
     PyErr_SetString(internal::StatusToPyExc(status),
-                    status.error_message().c_str());
+                    tsl::NullTerminatedMessage(status));
     throw pybind11::error_already_set();
   }
 }
 
 inline void SetRegisteredErrFromStatus(const tensorflow::Status& status) {
-  PyErr_SetObject(tensorflow::PyExceptionRegistry::Lookup(status.code()),
-                  pybind11::make_tuple(pybind11::none(), pybind11::none(),
-                                       status.error_message(),
-                                       internal::StatusPayloadToDict(status))
-                      .ptr());
+  PyErr_SetObject(
+      tensorflow::PyExceptionRegistry::Lookup(status.raw_code()),
+      pybind11::make_tuple(pybind11::none(), pybind11::none(), status.message(),
+                           internal::StatusPayloadToDict(status))
+          .ptr());
 }
 
 inline void SetRegisteredErrFromTFStatus(TF_Status* status) {

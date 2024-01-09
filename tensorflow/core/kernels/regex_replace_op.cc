@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -116,7 +115,8 @@ class RegexReplaceOp : public OpKernel {
   mutex mu_;
   std::shared_ptr<RE2> regex_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RegexReplaceOp);
+  RegexReplaceOp(const RegexReplaceOp&) = delete;
+  void operator=(const RegexReplaceOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("RegexReplace").Device(DEVICE_CPU),
@@ -127,7 +127,7 @@ class StaticRegexReplaceOp : public OpKernel {
   explicit StaticRegexReplaceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string pattern;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("pattern", &pattern));
-    re_ = MakeUnique<RE2>(pattern);
+    re_ = std::make_unique<RE2>(pattern);
     OP_REQUIRES(ctx, re_->ok(),
                 errors::InvalidArgument("Invalid pattern: ", pattern,
                                         ", error: ", re_->error()));

@@ -1,0 +1,53 @@
+op {
+  graph_op_name: "StochasticCastToInt"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+The operand to stochastically cast to int.
+END
+  }
+  in_arg {
+    name: "key"
+    description: <<END
+Key for the counter-based RNG algorithm (shape uint64[1]).
+END
+  }
+  in_arg {
+    name: "counter"
+    description: <<END
+Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.
+END
+  }
+  in_arg {
+    name: "alg"
+    description: <<END
+The RNG algorithm (shape int32[]).
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The cast result with the same shape as the input.
+END
+  }
+  attr {
+    name: "Tin"
+    description: <<END
+The type of the input.
+END
+  }
+  attr {
+    name: "Tout"
+    description: <<END
+The type of the output.
+END
+  }
+  summary: "Stochastically cast a given tensor from floats to ints."
+  description: <<END
+The values are cast with a deterministic pseudo-random tensor from a uniform distribution generated from user given key, counter, algorithm. Values will saturate if out of the specified integer type range, and will become zero if inputs are NaN.  
+
+The outputs are a deterministic function of `input`, `key`, `counter`, `alg`.
+
+END
+}

@@ -90,7 +90,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -229,7 +228,8 @@ class ResourceOpSet {
   // to this set expect the contents of this set to be stable.
   mutable bool frozen_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceOpSet);
+  ResourceOpSet(const ResourceOpSet&) = delete;
+  void operator=(const ResourceOpSet&) = delete;
 };
 
 string ResourceOpSetToString(const ResourceOpSet& resource_op_set) {

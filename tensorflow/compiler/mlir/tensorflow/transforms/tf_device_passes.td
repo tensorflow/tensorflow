@@ -154,41 +154,16 @@ def DeviceAttributeToLaunchPass : Pass<"tf-device-attribute-to-launch", "mlir::f
   let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
 }
 
-def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
-  let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
+def VerifyNoOutsideCompilationMarkersPass : Pass<"verify-no-outside-compilation-markers", "mlir::func::FuncOp"> {
+  let summary = "Verifies that after Outside Compilation passes complete, there are no more _xla_outside_compilation attributes and no tf_device.launch ops.";
 
   let description = [{
-    This pass takes ops wrapped in a tf_device.launch op with host device
-    assignment extracts them from launch and adds an `_xla_outside_compilation`
-    attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
-
-    A simple example:
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf_device.launch"() {
-          "tf.B"()
-          tf_device.return
-        } {device = "TPU_REPLICATED_HOST"} : () -> ()
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-
-    Would become the following ops (unimportant attribute, type are omitted):
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf.B"() {_xla_outside_compilation = "cluster1"}
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
+    This pass takes iterates over ops and ensures that _xla_outside_compilation
+    and tf_device.launch ops no longer exist and have been removed. This happens
+    after Outside Compilation passes have completed.
   }];
 
-  let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
+  let constructor = "TFDevice::CreateVerifyNoOutsideCompilationMarkersPass()";
 }
 
 def DecomposeResourceOpsPass : Pass<"tf-device-decompose-resource-ops", "mlir::func::FuncOp"> {
@@ -273,13 +248,19 @@ def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::f
     ```
   }];
 
-  let constructor = "TFDevice::CreateLaunchToDeviceAttributePass()";
-}
+  let options = [
+    Option<"legacy_graph_export_", "legacy-graph-export", "bool",
+           /*default=*/"true",
+           "Determines whether or not this pass should execute logic that is "
+           "reserved for the legacy graph export pipeline to maintain expected "
+           "invariants. In the case of this pass, that means manually propagating "
+           "controls to lifted parallel execute regions to the graph fetch to "
+           "ensure the ops execute, as well as determining whether or not the "
+           "islands created by this pass should be split after the replicated "
+           "ops have been lifted.">
+  ];
 
-def XlaClusterFormationPass : Pass<"tf-xla-cluster-formation", "ModuleOp"> {
-  let summary = "Encapsulate StatefulPartitionedCallOp within a Cluster op";
-  let constructor = "TFDevice::CreateXlaClusterFormationPass()";
-  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+  let constructor = "TFDevice::CreateLaunchToDeviceAttributePass()";
 }
 
 def XlaInlineDeviceOpsPass : Pass<"tf-xla-inline-device-ops", "ModuleOp"> {
@@ -288,34 +269,115 @@ def XlaInlineDeviceOpsPass : Pass<"tf-xla-inline-device-ops", "ModuleOp"> {
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
 }
 
-def XlaRewritePass : Pass<"tf-xla-rewrite", "mlir::func::FuncOp"> {
-  let summary = "Rewrites stateful parition calls into Xla launch ops to make the attached function run on XLA.";
+def XlaRewritePass : Pass<"tf-xla-rewrite", "mlir::ModuleOp"> {
+  let summary = "Rewrites partition calls into Xla launch ops to make the attached function run on XLA.";
 
   let description = [{
-    This pass rewrites `tf.StatefulPartitionedCall` operations with
-    `_xla_compile_device_type` attribute into `tf.XlaLaunch` operations. This
-    makes the attached function execute with XLA.
+    This pass rewrites `tf.PartitionedCall` and `tf.StatefulPartitionedCall`
+    operations with `_xla_compile_device_type` attribute in a
+    `tf_device.cluster` into `tf.XlaLaunch` operations. This makes the attached
+    function execute with XLA. `tf.XlaLaunch` requires resource-type arguments
+    come at the end, so this pass rewrites the called function if necessary.
+    This pass assumes there are no nested `tf_device.cluster`s so we don't end
+    up creating nested XLA launch ops.
 
-    For example, the `tf.StatefulPartitionedCall` operation in the following
-    code
+    For example, the `tf.PartitionedCall` operation in the following code
 
     ```mlir
-    func.func @convert_stateful_partitioned_call(%arg0: tensor<i32>) -> tensor<i32> {
-      %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+    func.func @convert_partitioned_call_with_resources(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      %0 = "tf.PartitionedCall"(%arg0, %arg1) {_xla_compile_device_type = "CPU", f = @pcall_func_with_resources} : (tensor<!tf_type.resource>, tensor<i32>) -> (tensor<i32>)
+      %0 = "tf_device.cluster"() ({
+        %1 = "tf.StatefulPartitionedCall"() {_xla_compile_device_type = "CPU", f = @stateful_pcall_func} : () -> tensor<i32>
+        tf_device.return %1 : tensor<i32>
+      }) : () -> tensor<i32>
+
       func.return %0 : tensor<i32>
+    }
+
+    func.func @pcall_func_with_resources(%arg0 : tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      func.return %arg1 : tensor<i32>
     }
     ```
 
-    wll be replaced by a `tf.XlaLaunch` operation.
+    will be replaced by a `tf.XlaLaunch` operation.
 
     ```mlir
-    func.func @convert_stateful_partitioned_call(%arg0: tensor<i32>) -> tensor<i32> {
-      %0 = "tf.XlaLaunch"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", function = @stateful_pcall_func, operand_segment_sizes = array<i32: 0, 1, 0>} : (tensor<i32>) -> tensor<i32>
-      func.return %0 : tensor<i32>
+    func.func @convert_partitioned_call_with_resources(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      %0 = "tf_device.cluster"() ({
+        %1 = "tf.XlaLaunch"(%arg1, %arg0) {_xla_compile_device_type = "CPU", function = @pcall_func_with_resources_0, operand_segment_sizes = array<i32: 0, 1, 1>} : (tensor<i32>, tensor<!tf_type.resource>) -> tensor<i32>
+        tf_device.return %1 : tensor<i32>
+      }) : () -> tensor<i32>
+
+      return %0 : tensor<i32>
+    }
+
+    func.func @pcall_func_with_resources_0(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource>) -> tensor<i32> {
+      return %arg0 : tensor<i32>
     }
     ```
+    Notice that the called function is rewritten, with the order of its parameters changed.
   }];
 
   let constructor = "TFDevice::CreateXlaRewritePass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
 }
+
+def XlaValidateInputsPass : Pass<"tf-xla-validate-inputs", "ModuleOp"> {
+  let summary = "Validtes inputs to the TF CPU/GPU bridge";
+  let description = [{
+    This pass checks that the IR has valid input to CPU/GPU TF/XLA bridge.
+  }];
+  let constructor = "TFDevice::CreateXlaValidateInputsPass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}
+
+def XlaRewriteV2Pass : Pass<"tf-xla-rewrite-v2", "mlir::ModuleOp"> {
+  let summary = "Rewrites `tf_device.cluster_func op` into `_XlaCompile` and `_XlaRun` ops to make the attached function run on XLA.";
+
+  let description = [{
+    This pass rewrites `tf_device.cluster_func` op into 
+    `tf._XlaCompile` op and `tf._XlaRun` op. This makes the attached
+    function execute with XLA. `tf.XlaCompile` requires resource-type arguments
+    come at the end, so this pass rewrites the called function if necessary.
+    This pass assumes there are no nested `tf_device.cluster`s so we don't end
+    up creating nested `tf._XlaCompile` and `tf._XlaRun` ops.
+
+    For example, the `tf_device.cluster_func` operation in the following code
+
+    ```mlir
+    func.func @convert_cluster_func_with_resources(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      %0 = "tf_device.cluster_func"(%arg0, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0", func = @func_with_resources} : (tensor<!tf_type.resource>, tensor<i32>) -> tensor<i32>
+      return %0 : tensor<i32>
+    }
+
+    func.func @func_with_resources(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      return %arg1 : tensor<i32>
+    }
+    ```
+
+    will be replaced by a `tf._XlaCompile` and `tf._XlaRun` operation.
+
+    ```mlir
+    func.func @convert_cluster_func_with_resources(%arg0: tensor<!tf_type.resource>, %arg1: tensor<i32>) -> tensor<i32> {
+      %0:2 = "tf_device.launch"() ({
+        %key, %compilation_successful = "tf._XlaCompile"(%arg1, %arg0) {function = @func_with_resources, must_compile = true, operand_segment_sizes = array<i32: 0, 1, 1>} : (tensor<i32>, tensor<!tf_type.resource>) -> (tensor<3x!tf_type.string>, tensor<!tf_type.boolref>)
+        tf_device.return %key, %compilation_successful : tensor<3x!tf_type.string>, tensor<!tf_type.boolref>
+      }) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : () -> (tensor<3x!tf_type.string>, tensor<!tf_type.boolref>)
+      %1 = "tf_device.launch"() ({
+        %2 = "tf._XlaRun"(%arg1, %arg0, %0#0) : (tensor<i32>, tensor<!tf_type.resource>, tensor<3x!tf_type.string>) -> tensor<i32>
+        tf_device.return %2 : tensor<i32>
+      }) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : () -> tensor<i32>
+      return %1 : tensor<i32>
+    }
+
+    func.func @func_with_resources(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource>) -> tensor<i32> {
+      return %arg0 : tensor<i32>
+    }
+    ```
+    Notice that the called function is rewritten, with the order of its parameters changed.
+  }];
+
+  let constructor = "TFDevice::CreateXlaRewriteV2Pass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}
+

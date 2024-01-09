@@ -16,10 +16,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -61,7 +64,7 @@ struct CallNodeInputInfo {
 
 struct OutputNodeInfo {
   absl::flat_hash_map<std::string, NodeInfo> output_nodes;
-  absl::optional<std::pair<std::string, NodeInfo>> auxiliary_output_node;
+  std::optional<std::pair<std::string, NodeInfo>> auxiliary_output_node;
 };
 
 // Prepares the `subgraph` for the conversion to a function by adding
@@ -75,7 +78,7 @@ Status PrepareSubgraphForFunctionConversion(
     const std::string& func_name,
     absl::flat_hash_map<std::string, NodeInfo>& input_nodes,
     absl::flat_hash_map<std::string, NodeInfo>& output_nodes,
-    absl::optional<std::pair<std::string, NodeInfo>>& auxiliary_output_node,
+    std::optional<std::pair<std::string, NodeInfo>>& auxiliary_output_node,
     Graph* subgraph, Graph* graph) {
   std::unordered_map<std::string, Node*> name_to_node_map =
       subgraph->BuildNodeNameIndex();
@@ -272,7 +275,7 @@ StatusOr<Node*> BuildPartitionedCallOp(
     if (control_ret_names.contains(node->name())) {
       return node->name();
     }
-    return absl::nullopt;
+    return std::nullopt;
   };
 
   FunctionDef new_fdef;
@@ -381,7 +384,7 @@ StatusOr<Node*> BuildStatefulPartitionedCallOp(
 // Returns true if nodes in the `graph` are assigned to multiple devices.
 bool HasMultipleDevices(const Graph* graph) {
   bool has_multiple_devices = false;
-  absl::optional<std::string> location;
+  std::optional<std::string> location;
   for (const Node* node : graph->op_nodes()) {
     if (location) {
       if (*location != node->assigned_device_name()) {
@@ -460,7 +463,7 @@ StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     OutputNodeInfo& output_node_info = device_to_output_info_map[device];
     absl::flat_hash_map<std::string, NodeInfo>& output_nodes =
         output_node_info.output_nodes;
-    absl::optional<std::pair<std::string, NodeInfo>>& auxiliary_output_node =
+    std::optional<std::pair<std::string, NodeInfo>>& auxiliary_output_node =
         output_node_info.auxiliary_output_node;
 
     // Add _Arg and _Retval nodes to the subgraph to prepare for converting it

@@ -17,6 +17,10 @@ import abc
 import threading
 import warnings
 
+from tensorflow.core.protobuf import struct_pb2
+from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
+from tensorflow.python.checkpoint import saveable_compat
+from tensorflow.python.data.ops import iterator_autograph
 from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import nest
@@ -26,15 +30,16 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saver import BaseSaverBuilder
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
@@ -73,18 +78,6 @@ GET_NEXT_CALL_ERROR_MESSAGE = (
 GLOBAL_ITERATORS = "iterators"
 
 
-autograph_ctx = lazy_loader.LazyLoader(
-    "autograph_ctx", globals(),
-    "tensorflow.python.autograph.core.ag_ctx")
-
-
-# Avoid circular dependency for `type_utils` which transitively depends
-# on Autograph which in turn depends on tf.data.
-type_utils = lazy_loader.LazyLoader(
-    "type_utils", globals(),
-    "tensorflow.python.framework.type_utils")
-
-
 def _device_stack_is_empty():
   if context.executing_eagerly():
     return context.context().device_name is None
@@ -94,6 +87,7 @@ def _device_stack_is_empty():
   return not bool(device_stack)
 
 
+@saveable_compat.legacy_saveable_name("ITERATOR")
 @tf_export(v1=["data.Iterator"])
 class Iterator(trackable.Trackable):
   """Represents the state of iterating through a `Dataset`."""
@@ -224,7 +218,7 @@ class Iterator(trackable.Trackable):
                                                tensor_shape.as_shape,
                                                output_shapes)
     if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+      output_classes = nest.map_structure(lambda _: tensor.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -298,7 +292,7 @@ class Iterator(trackable.Trackable):
                                                tensor_shape.as_shape,
                                                output_shapes)
     if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+      output_classes = nest.map_structure(lambda _: tensor.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     output_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -533,12 +527,18 @@ class Iterator(trackable.Trackable):
 
     return self._element_spec
 
-  def _gather_saveables_for_checkpoint(self):
+  # override
+  def _serialize_to_tensors(self):
+    serialized_iterator = gen_dataset_ops.serialize_iterator(
+        self._iterator_resource,
+        options_lib.ExternalStatePolicy.FAIL.value)
+    return {"_STATE": serialized_iterator}
 
-    def _saveable_factory(name):
-      return _IteratorSaveable(self._iterator_resource, name)
-
-    return {"ITERATOR": _saveable_factory}
+  # override
+  def _restore_from_tensors(self, restored_tensors):
+    with ops.colocate_with(self._iterator_resource):
+      return [gen_dataset_ops.deserialize_iterator(
+          self._iterator_resource, restored_tensors["_STATE"])]
 
 
 _uid_counter = 0
@@ -653,6 +653,7 @@ class IteratorBase(
     raise NotImplementedError("Iterator.get_next_as_optional()")
 
 
+@saveable_compat.legacy_saveable_name("ITERATOR")
 class OwnedIterator(IteratorBase):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
@@ -694,6 +695,7 @@ class OwnedIterator(IteratorBase):
           self._element_spec)
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
+      self._components = components
       self._iterator_resource, = components
     else:
       if (components is not None or element_spec is not None):
@@ -778,6 +780,26 @@ class OwnedIterator(IteratorBase):
       except AttributeError:
         return structure.from_compatible_tensor_list(self._element_spec, ret)
 
+  def _save(self):
+    external_state_policy = None
+    if (
+        self._dataset
+        and self._dataset.options().experimental_external_state_policy
+    ):
+      external_state_policy = (
+          self._dataset.options().experimental_external_state_policy.value
+      )
+    state_variant = gen_dataset_ops.serialize_iterator(
+        self._iterator_resource, external_state_policy
+    )
+    return parsing_ops.serialize_tensor(state_variant)
+
+  def _restore(self, state):
+    state_variant = parsing_ops.parse_tensor(state, dtypes.variant)
+    return gen_dataset_ops.deserialize_iterator(
+        self._iterator_resource, state_variant
+    )
+
   @property
   def _type_spec(self):
     return IteratorSpec(self.element_spec)
@@ -850,22 +872,38 @@ class OwnedIterator(IteratorBase):
               output_shapes=structure.get_flat_tensor_shapes(
                   self.element_spec)), self.element_spec)
 
-  def _gather_saveables_for_checkpoint(self):
+  def _serialize_to_tensors(self):
+    serialized_iterator = None
+    if (self._dataset and
+        self._dataset.options().experimental_external_state_policy):
+      serialized_iterator = gen_dataset_ops.serialize_iterator(
+          self._iterator_resource,
+          self._dataset.options().experimental_external_state_policy.value)
+    else:
+      serialized_iterator = gen_dataset_ops.serialize_iterator(
+          self._iterator_resource,
+          options_lib.ExternalStatePolicy.FAIL.value)
+    return {"_STATE": serialized_iterator}
 
-    def _saveable_factory(name):
-      """Returns a SaveableObject for serialization/deserialization."""
-      policy = None
-      if self._dataset:
-        policy = self._dataset.options().experimental_external_state_policy
-      if policy:
-        return _IteratorSaveable(
-            self._iterator_resource,
-            name,
-            external_state_policy=policy)
+  def _restore_from_tensors(self, restored_tensors):
+    with ops.colocate_with(self._iterator_resource):
+      return [gen_dataset_ops.deserialize_iterator(
+          self._iterator_resource, restored_tensors["_STATE"])]
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """Implements checkpointing protocols for `Trackable`."""
+    # Generate values to copy over
+    if self not in object_map:
+      # If self is not populated in object_map yet, instantiate the copy
+      if self._dataset is None:
+        object_map[self] = OwnedIterator(components=self._components,
+                                         element_spec=self._element_spec)
       else:
-        return _IteratorSaveable(self._iterator_resource, name)
+        object_map[self] = OwnedIterator(dataset=self._dataset)
 
-    return {"ITERATOR": _saveable_factory}
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
 
   def __tf_tracing_type__(self, _):
     return self._type_spec
@@ -907,7 +945,7 @@ class IteratorSpec(type_spec.TypeSpec):
 
   @property
   def _component_specs(self):
-    return (tensor_spec.TensorSpec([], dtypes.resource),)
+    return (tensor.TensorSpec([], dtypes.resource),)
 
   def _to_components(self, value):
     return (value._iterator_resource,)  # pylint: disable=protected-access
@@ -948,6 +986,13 @@ class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
       return gen_dataset_ops.deserialize_iterator(self.op, restored_tensors[0])
 
 
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        IteratorSpec, struct_pb2.TypeSpecProto.DATA_ITERATOR_SPEC
+    )
+)
+
+
 @deprecation.deprecated(
     None, "Use `tf.data.Iterator.get_next_as_optional()` instead.")
 @tf_export("data.experimental.get_next_as_optional")
@@ -967,4 +1012,4 @@ def get_next_as_optional(iterator):
   return iterator.get_next_as_optional()
 
 
-_pywrap_utils.RegisterType("OwnedIterator", OwnedIterator)
+iterator_autograph.register_overrides()

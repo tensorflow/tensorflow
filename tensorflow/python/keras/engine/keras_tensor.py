@@ -16,10 +16,9 @@
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec as type_spec_module
 from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.ops import array_ops
@@ -143,7 +142,7 @@ class KerasTensor(object):
   @classmethod
   def from_tensor(cls, tensor):
     """Convert a traced (composite)tensor to a representative KerasTensor."""
-    if isinstance(tensor, ops.Tensor):
+    if isinstance(tensor, tensor_lib.Tensor):
       name = getattr(tensor, 'name', None)
       type_spec = type_spec_module.type_spec_from_value(tensor)
       inferred_value = None
@@ -214,7 +213,7 @@ class KerasTensor(object):
     return nest.map_structure(
         component_to_placeholder, self.type_spec, expand_composites=True)
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     return self.shape
 
   def __len__(self):
@@ -304,7 +303,7 @@ class KerasTensor(object):
   def __repr__(self):
     symbolic_description = ''
     inferred_value_string = ''
-    if isinstance(self.type_spec, tensor_spec.TensorSpec):
+    if isinstance(self.type_spec, tensor_lib.TensorSpec):
       type_spec_string = 'shape=%s dtype=%s' % (self.shape, self.dtype.name)
     else:
       type_spec_string = 'type_spec=%s' % self.type_spec
@@ -361,7 +360,7 @@ class KerasTensor(object):
   @classmethod
   def _overload_all_operators(cls, tensor_class):  # pylint: disable=invalid-name
     """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+    for operator in tensor_lib.Tensor.OVERLOADABLE_OPERATORS:
       cls._overload_operator(tensor_class, operator)
 
     # We include `experimental_ref` for versions of TensorFlow that
@@ -389,7 +388,7 @@ class KerasTensor(object):
     setattr(cls, operator, tensor_oper)
 
 
-KerasTensor._overload_all_operators(ops.Tensor)  # pylint: disable=protected-access
+KerasTensor._overload_all_operators(tensor_lib.Tensor)  # pylint: disable=protected-access
 
 
 class SparseKerasTensor(KerasTensor):
@@ -556,11 +555,11 @@ class _KerasTensorIterator(object):
 # 1. we do a check w/ isinstance because a key lookup based on class
 #    would miss subclasses
 # 2. a list allows us to control lookup ordering
-# We include ops.Tensor -> KerasTensor in the first position as a fastpath,
+# We include tensor.Tensor -> KerasTensor in the first position as a fastpath,
 # *and* include object -> KerasTensor at the end as a catch-all.
 # We can re-visit these choices in the future as needed.
 keras_tensor_classes = [
-    (ops.Tensor, KerasTensor),
+    (tensor_lib.Tensor, KerasTensor),
     (sparse_tensor.SparseTensor, SparseKerasTensor),
     (ragged_tensor.RaggedTensor, RaggedKerasTensor),
     (object, KerasTensor)

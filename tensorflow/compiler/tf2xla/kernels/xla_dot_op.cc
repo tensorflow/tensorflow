@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -63,7 +65,8 @@ class XlaDotOp : public XlaOpKernel {
  private:
   xla::DotDimensionNumbers dnums_;
   xla::PrecisionConfig precision_config_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaDotOp);
+  XlaDotOp(const XlaDotOp&) = delete;
+  void operator=(const XlaDotOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaDot"), MlirXlaOpKernel);
@@ -81,7 +84,8 @@ class XlaDotV2Op : public XlaDotOp {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaDotV2Op);
+  XlaDotV2Op(const XlaDotV2Op&) = delete;
+  void operator=(const XlaDotV2Op&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaDotV2"), MlirXlaOpKernel);

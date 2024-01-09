@@ -24,11 +24,12 @@ limitations under the License.
 
 #include "ruy/denormal.h"  // from @ruy
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/async/async_signature_runner.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
@@ -37,6 +38,10 @@ limitations under the License.
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
+
+namespace {
+static constexpr char kDefaultServingSignatureDefKey[] = "serving_default";
+}  // namespace
 
 TfLiteStatus Interpreter::SetCustomAllocationForTensor(
     int tensor_index, const TfLiteCustomAllocation& allocation, int64_t flags) {
@@ -79,6 +84,12 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return ModifyGraphWithDelegateImpl(delegate);
 }
 
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(
+    TfLiteOpaqueDelegateStruct* delegate) {
+  return ModifyGraphWithDelegateImpl(
+      reinterpret_cast<TfLiteDelegate*>(delegate));
+}
+
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
@@ -86,7 +97,13 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteDelegate* delegate) {
   TF_LITE_ENSURE(context_, tensor_index < tensors_size());
   TfLiteTensor* tensor = primary_subgraph().tensor(tensor_index);
+  return SetBufferHandle(tensor, buffer_handle, delegate);
+}
 
+TfLiteStatus Interpreter::SetBufferHandle(TfLiteTensor* tensor,
+                                          TfLiteBufferHandle buffer_handle,
+                                          TfLiteDelegate* delegate) {
+  TF_LITE_ENSURE(context_, tensor != nullptr);
   TF_LITE_ENSURE(context_,
                  tensor->delegate == nullptr || tensor->delegate == delegate);
   tensor->delegate = delegate;
@@ -141,27 +158,51 @@ TfLiteStatus Interpreter::ApplyOptions(InterpreterOptions* options) {
   return ApplyOptionsImpl(options);
 }
 
-SignatureRunner* Interpreter::GetSignatureRunner(const char* signature_key) {
-  auto iter = signature_runner_map_.find(signature_key);
-  if (iter != signature_runner_map_.end()) {
-    return &(iter->second);
+async::AsyncSignatureRunner* Interpreter::GetAsyncSignatureRunner(
+    const char* signature_key) {
+  // Handles nullptr signature key.
+  // If the model does not have signature def, use default name as placeholder.
+  // Otherwise use the first signature key that points to primary subgraph.
+  bool empty_signature_fallback = false;
+  if (signature_key == nullptr) {
+    if (signature_defs_.empty()) {
+      signature_key = kDefaultServingSignatureDefKey;
+      empty_signature_fallback = true;
+    } else {
+      for (const auto& signature : signature_defs_) {
+        if (signature.subgraph_index == 0) {
+          signature_key = signature.signature_key.c_str();
+          break;
+        }
+      }
+    }
   }
 
-  // Default delegates are applied once for all subgraphs. Only returns error
-  // when the status is kTfLiteError. For other statuses, it will fall back to
-  // the default implementation.
-  if (ApplyLazyDelegateProviders() == kTfLiteError) {
+  if (signature_key == nullptr) {
+    // The model has signature def but none of those points to primary subgraph.
     return nullptr;
   }
 
+  auto iter = async_signature_runner_map_.find(signature_key);
+  if (iter != async_signature_runner_map_.end()) {
+    return &(iter->second);
+  }
+
+  if (empty_signature_fallback) {
+    auto status = async_signature_runner_map_.insert(
+        {signature_key,
+         async::AsyncSignatureRunner(nullptr, &primary_subgraph())});
+    return &(status.first->second);
+  }
   for (const auto& signature : signature_defs_) {
     if (signature.signature_key == signature_key) {
-      auto status = signature_runner_map_.insert(
-          {signature_key,
-           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
+      auto status = async_signature_runner_map_.insert(
+          {signature_key, async::AsyncSignatureRunner(
+                              &signature, subgraph(signature.subgraph_index))});
       return &(status.first->second);
     }
   }
+
   return nullptr;
 }
 

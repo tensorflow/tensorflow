@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -35,18 +36,24 @@ from tensorflow.python.platform import test
 
 class TopKTest(test.TestCase):
 
-  def _validateTopK(self,
-                    inputs,
-                    k,
-                    expected_values,
-                    expected_indices,
-                    sorted=True):  # pylint: disable=redefined-builtin
+  def _validateTopK(
+      self,
+      inputs,
+      k,
+      expected_values,
+      expected_indices,
+      sorted=True,
+      index_type=dtypes.int32,
+  ):  # pylint: disable=redefined-builtin
     np_expected_values = np.array(expected_values)
     np_expected_indices = np.array(expected_indices)
     with self.cached_session():
-      values_op, indices_op = nn_ops.top_k(inputs, k, sorted=sorted)
+      values_op, indices_op = nn_ops.top_k(
+          inputs, k, sorted=sorted, index_type=index_type
+      )
       values, indices = self.evaluate([values_op, indices_op])
 
+      self.assertEqual(indices.dtype, index_type)
       self.assertShapeEqual(np_expected_values, values_op)
       self.assertShapeEqual(np_expected_indices, indices_op)
 
@@ -55,7 +62,8 @@ class TopKTest(test.TestCase):
         # Do some special casing of equality of indices: if indices
         # are not the same, but values are floating type, ensure that
         # the values are within epsilon of each other.
-        if not np.issubdtype(np_expected_values.dtype, np.floating):
+        if not np.issubdtype(np_expected_values.dtype, np.floating) and \
+            np_expected_values.dtype != dtypes.bfloat16.as_numpy_dtype:
           # Values are not floating point type; check indices exactly
           self.assertAllEqual(np_expected_indices, indices)
         else:
@@ -97,6 +105,27 @@ class TopKTest(test.TestCase):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.4, 0.2]]
     self._validateTopK(inputs, 2, [[0.4, 0.3], [0.4, 0.3]], [[3, 1], [2, 1]])
 
+  def testOutputIndexType(self):
+    for index_type in [dtypes.int16, dtypes.int32, dtypes.int64]:
+      inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.4, 0.2]]
+      self._validateTopK(
+          inputs,
+          2,
+          [[0.4, 0.3], [0.4, 0.3]],
+          [[3, 1], [2, 1]],
+          index_type=index_type,
+      )
+
+  def testKType(self):
+    for ktype in [dtypes.int32, dtypes.int64, dtypes.int16]:
+      inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.4, 0.2]]
+      self._validateTopK(
+          inputs,
+          constant_op.constant(2, dtype=ktype),
+          [[0.4, 0.3], [0.4, 0.3]],
+          [[3, 1], [2, 1]],
+      )
+
   def testTop3(self):
     for k in range(3, 11, 2):
       for dim in range(512, 12288, 512):
@@ -122,6 +151,7 @@ class TopKTest(test.TestCase):
   def testLargeSort(self):
     self._testLargeSort(np.float32)
     self._testLargeSort(np.float16)
+    self._testLargeSort(dtypes.bfloat16.as_numpy_dtype)
 
   def _testLargeTopK(self, dtype):
     b = 10
@@ -136,6 +166,7 @@ class TopKTest(test.TestCase):
   def testLargeTopK(self):
     self._testLargeTopK(np.float32)
     self._testLargeTopK(np.float16)
+    self._testLargeTopK(dtypes.bfloat16.as_numpy_dtype)
 
   def _testMediumTopK(self, dtype):
     b = 5
@@ -150,6 +181,7 @@ class TopKTest(test.TestCase):
   def testMediumTopK(self):
     self._testMediumTopK(np.float32)
     self._testMediumTopK(np.float16)
+    self._testMediumTopK(dtypes.bfloat16.as_numpy_dtype)
 
   def testStableSort(self):
     b = 5
@@ -189,21 +221,20 @@ class TopKTest(test.TestCase):
     self._validateTopK(inputs, 3, np.zeros([0, 3], dtype=np.float32),
                        np.zeros([0, 3], dtype=np.int32))
 
-  @test_util.run_deprecated_v1
   def testKNegative(self):
-    inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.session():
-      k = array_ops.placeholder(dtypes.int32)
-      values, _ = nn_ops.top_k(inputs, k)
-      with self.assertRaisesOpError("Need k >= 0, got -7"):
-        values.eval(feed_dict={k: -7})
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Need k >= 0, got -7|non-negative",
+    ):
+      self.evaluate(nn_ops.top_k([[0.1, 0.2], [0.3, 0.4]], -7))
 
-  @test_util.run_deprecated_v1
   def testKTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.assertRaisesRegex(ValueError,
-                                r"must have last dimension >= k = 4"):
-      nn_ops.top_k(inputs, 4)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r"must have last dimension >= k = 4|must have at least k",
+    ):
+      self.evaluate(nn_ops.top_k(inputs, 4))
 
   @test_util.run_deprecated_v1
   def testTopKGradients(self):

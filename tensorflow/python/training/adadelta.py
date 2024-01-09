@@ -15,9 +15,9 @@
 
 """Adadelta for TensorFlow."""
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
-from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -146,7 +146,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
   def _apply_dense(self, grad, var):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
-    return training_ops.apply_adadelta(
+    return gen_training_ops.apply_adadelta(
         var,
         accum,
         accum_update,
@@ -159,7 +159,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
   def _resource_apply_dense(self, grad, var):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
-    return training_ops.resource_apply_adadelta(
+    return gen_training_ops.resource_apply_adadelta(
         var.handle,
         accum.handle,
         accum_update.handle,
@@ -172,7 +172,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
   def _apply_sparse(self, grad, var):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
-    return training_ops.sparse_apply_adadelta(
+    return gen_training_ops.sparse_apply_adadelta(
         var,
         accum,
         accum_update,
@@ -186,7 +186,7 @@ class AdadeltaOptimizer(optimizer.Optimizer):
   def _resource_apply_sparse(self, grad, var, indices):
     accum = self.get_slot(var, "accum")
     accum_update = self.get_slot(var, "accum_update")
-    return training_ops.resource_sparse_apply_adadelta(
+    return gen_training_ops.resource_sparse_apply_adadelta(
         var.handle,
         accum.handle,
         accum_update.handle,

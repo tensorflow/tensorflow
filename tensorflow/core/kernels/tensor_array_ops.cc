@@ -17,12 +17,18 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) &&                       \
+    (!defined(TARGET_OS_IOS) || !TARGET_OS_IOS)
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include <limits>
 #include <vector>
 // TODO(b/31496047): Fix non-standard include order.
 #include <numeric>  // clang-format off
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -41,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -80,8 +85,9 @@ Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
     TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &ta_handle));
     ResourceMgr* rm = ctx->resource_manager();
     if (rm == nullptr) return errors::Internal("No resource manager.");
-    TF_RETURN_IF_ERROR(
-        ctx->step_container()->Lookup(rm, container + ta_handle, tensor_array));
+    ScopedStepContainer* sc = ctx->step_container();
+    if (sc == nullptr) return errors::Internal("No step container.");
+    TF_RETURN_IF_ERROR(sc->Lookup(rm, container + ta_handle, tensor_array));
     return OkStatus();
   } else {
     return LookupResource(ctx, HandleFromInput(ctx, 0), tensor_array);
@@ -225,7 +231,8 @@ class TensorArrayOp : public TensorArrayCreationOp {
   bool clear_after_read_;
   string tensor_array_name_;  // The name used to create the TensorArray.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
+  TensorArrayOp(const TensorArrayOp&) = delete;
+  void operator=(const TensorArrayOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorArray").Device(DEVICE_CPU), TensorArrayOp);
@@ -257,12 +264,39 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayV3").Device(DEVICE_CPU),
                           TensorArrayOp);
 
 TF_CALL_int64(REGISTER_GPU);
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+#define REGISTER_DEVICE_DEFAULT(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("TensorArray")                \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("size")            \
+                              .HostMemory("handle"),         \
+                          TensorArrayOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayV2")              \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("size")            \
+                              .HostMemory("handle"),         \
+                          TensorArrayOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayV3")              \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("size")            \
+                              .HostMemory("handle"),         \
+                          TensorArrayOp);
+
+TF_CALL_int64(REGISTER_DEVICE_DEFAULT);
+TF_CALL_bfloat16(REGISTER_DEVICE_DEFAULT);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_DEVICE_DEFAULT);
+TF_CALL_COMPLEX_TYPES(REGISTER_DEVICE_DEFAULT);
+#undef REGISTER_DEVICE_DEFAULT
+#endif
 
 // GRADIENT *******************************************************************
 // Note that this op may have an optional third input. If present, it represents
@@ -374,7 +408,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
   // call.  Typical values look like "gradients", "gradients_1", ...
   string source_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayGradOp);
+  TensorArrayGradOp(const TensorArrayGradOp&) = delete;
+  void operator=(const TensorArrayGradOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad").Device(DEVICE_CPU),
@@ -406,6 +441,29 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
                             .HostMemory("shape_to_prepend")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV2")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("handle")
+                            .HostMemory("shape_to_prepend")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+#endif
 
 // WRITE **********************************************************************
 
@@ -481,7 +539,6 @@ TF_CALL_ALL_TYPES(REGISTER_WRITE);
                               .HostMemory("index"),             \
                           TensorArrayWriteOp<GPUDevice, type>);
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
@@ -570,7 +627,6 @@ TF_CALL_ALL_TYPES(REGISTER_READ)
                           TensorArrayReadOp<GPUDevice, type>);
 
 TF_CALL_int64(REGISTER_GPU);
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
@@ -679,7 +735,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
         output_tensor->shaped<T, 2>({1, output_shape.num_elements()});
 
     // Insert the first value
-    input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
+    input_tensors_flat.push_back(std::make_unique<ConstMatrix>(
         value_0_t->shaped<T, 2>({1, value_0_t->NumElements()})));
 
     for (int i = 1; i < num_indices; ++i) {
@@ -690,7 +746,7 @@ class TensorArrayPackOrGatherOp : public OpKernel {
               "TensorArray has inconsistent shapes.  Index 0 has shape: ",
               value_0_t->shape().DebugString(), " but index ", i,
               " has shape: ", value_t->shape().DebugString()));
-      input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
+      input_tensors_flat.push_back(std::make_unique<ConstMatrix>(
           value_t->shaped<T, 2>({1, value_t->NumElements()})));
     }
 
@@ -769,7 +825,6 @@ REGISTER_GATHER_AND_PACK(qint32);
           .HostMemory("handle"),                                            \
       TensorArrayPackOrGatherOp<GPUDevice, type, false /* LEGACY_PACK */>);
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
@@ -913,7 +968,7 @@ class TensorArrayConcatOp : public OpKernel {
     for (size_t i = 0; i < values.size(); ++i) {
       const Tensor* value_t = &values[i];
       if (value_t->NumElements() > 0) {
-        input_tensors_flat.push_back(MakeUnique<ConstMatrix>(
+        input_tensors_flat.push_back(std::make_unique<ConstMatrix>(
             value_t->shaped<T, 2>({1, value_t->NumElements()})));
       }
     }
@@ -985,7 +1040,6 @@ REGISTER_CONCAT(qint32);
                               .HostMemory("handle"),             \
                           TensorArrayConcatOp<GPUDevice, type>)
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
@@ -1013,6 +1067,27 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
                         TensorArrayConcatOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("lengths")
+                            .HostMemory("handle"),
+                        TensorArrayConcatOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("lengths")
+                            .HostMemory("handle"),
+                        TensorArrayConcatOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("lengths")
+                            .HostMemory("handle"),
+                        TensorArrayConcatOp<CPUDevice, int32>);
+#endif
 
 // UNPACK and SCATTER *********************************************************
 

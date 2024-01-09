@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/error_reporter.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
@@ -128,7 +128,7 @@ class TfLiteFlatbufferModelBuilder {
 
   flatbuffers::FlatBufferBuilder builder_;
   MutableOpResolver resolver_;
-  TfLiteRegistration fake_op_;
+  TfLiteRegistration fake_op_{};
   std::vector<flatbuffers::Offset<Operator>> operators_;
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes_;
   std::vector<flatbuffers::Offset<Tensor>> tensors_;

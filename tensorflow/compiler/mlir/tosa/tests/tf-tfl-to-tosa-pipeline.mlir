@@ -13,7 +13,7 @@
 // CHECK-LABEL: func @test_flex_shape
 // CHECK-SAME: tensor<?x2x64xf32>
 func.func @test_flex_shape(%arg0: tensor<?x2x64xf32>, %arg1: tensor<1x1x64xf32>) -> tensor<*xf32> {
-  // CHECK: %[[ADD:.+]] = "tosa.add"(%arg0, %arg1) : (tensor<?x2x64xf32>, tensor<1x1x64xf32>) -> tensor<?x2x64xf32>
+  // CHECK: %[[ADD:.+]] = tosa.add %arg0, %arg1 : (tensor<?x2x64xf32>, tensor<1x1x64xf32>) -> tensor<?x2x64xf32>
   // CHECK: return %[[ADD]]
   %0 = "tfl.custom"(%arg0, %arg1) {custom_code = "FlexAddV2", custom_option = #tfl<const_bytes : "0x054164645632002E120541646456321A001A002A070A01541202300132180A16726573696475616C5F626C6F636B5F2E5F302F616464000237311414042801">} : (tensor<?x2x64xf32>, tensor<1x1x64xf32>) -> tensor<*xf32>
   func.return %0: tensor<*xf32>

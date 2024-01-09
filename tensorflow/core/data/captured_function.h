@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 #define TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/cancellation.h"
@@ -57,11 +59,6 @@ Status MakeIteratorFromInputElement(
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
     const std::shared_ptr<model::Node>& node);
-
-// Creates an iterator context appropriate for a nested dataset's iterator. A
-// nested dataset is a dataset created within another dataset, e.g. by the
-// function passed to `interleave` or `flat_map`.
-IteratorContext MakeNestedIteratorContext(IteratorContext* ctx);
 
 struct ShortCircuitInfo {
   std::vector<int> indices;
@@ -220,7 +217,8 @@ class CapturedFunction {
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
+  CapturedFunction(const CapturedFunction&) = delete;
+  void operator=(const CapturedFunction&) = delete;
 };
 
 // `InstantiatedCapturedFunction` encapsulates all the runtime support needed
@@ -292,6 +290,8 @@ class InstantiatedCapturedFunction {
                 FunctionLibraryRuntime::DoneCallback done,
                 const std::shared_ptr<model::Node>& node) const;
 
+  std::string func_name() const { return captured_func_->func().name(); }
+
  private:
   friend class CapturedFunction;
 
@@ -314,7 +314,8 @@ class InstantiatedCapturedFunction {
   CapturedFunction* const captured_func_;  // Not owned.
   const bool is_multi_device_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
+  InstantiatedCapturedFunction(const InstantiatedCapturedFunction&) = delete;
+  void operator=(const InstantiatedCapturedFunction&) = delete;
 };
 
 }  // namespace data

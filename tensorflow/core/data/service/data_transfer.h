@@ -23,10 +23,11 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -69,7 +70,7 @@ class DataTransferClient {
     absl::string_view protocol;
     std::string address;
   };
-  using FactoryT =
+  using ClientFactoryT =
       std::function<Status(Config, std::unique_ptr<DataTransferClient>*)>;
   virtual ~DataTransferClient() = default;
 
@@ -82,11 +83,27 @@ class DataTransferClient {
   virtual void TryCancel() = 0;
 
   // Registers a DataTransferClient factory under `name`.
-  static void Register(std::string name, FactoryT factory);
+  static void Register(std::string name, ClientFactoryT factory);
 
   // Builds a DataTransferClient from the factory registered under `name`.
   static Status Build(std::string name, Config config,
                       std::unique_ptr<DataTransferClient>* out);
+
+  // Returns a string describing properties of the client relevant for checking
+  // compatibility with a server for a given protocol.
+  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+    return std::string();
+  }
+
+  // Returns an error if the client is incompatible with a server which has the
+  // properties described in `server_compatibility_info`.
+  virtual Status CheckCompatibility(
+      const std::string& server_compatibility_info) const {
+    return OkStatus();
+  }
+
+ protected:
+  Env* const env_ = Env::Default();
 };
 
 // Server for communicating with the tf.data service transfer client.
@@ -94,22 +111,28 @@ class DataTransferServer {
  public:
   using GetElementT =
       std::function<Status(const GetElementRequest*, GetElementResult*)>;
+  using ServerFactoryT =
+      std::function<Status(GetElementT, std::shared_ptr<DataTransferServer>*)>;
   virtual ~DataTransferServer() = default;
 
   // Starts DataTransferServer, it should be available for requests afterwards.
   virtual Status Start() = 0;
 
   // Return the port that this server is listening on.
-  virtual int get_port() = 0;
+  virtual int Port() const = 0;
 
   // Register a DataTransferServer factory under `name`.
-  static void Register(
-      std::string name,
-      std::function<std::shared_ptr<DataTransferServer>(GetElementT)> factory);
+  static void Register(std::string name, ServerFactoryT factory);
 
   // Builds a DataTransferServer from the factory registered with `name`.
   static Status Build(std::string name, GetElementT get_element,
                       std::shared_ptr<DataTransferServer>* out);
+
+  // Returns a string describing properties of the server relevant for checking
+  // compatibility with a client for a given protocol.
+  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+    return std::string();
+  }
 };
 
 }  // namespace data

@@ -17,10 +17,14 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
+#include "xla/layout_util.h"
+#include "xla/shape_util.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -94,7 +98,7 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
   }
   *tensor_shape = TensorShape();
   for (int i = 0; i < shape.rank(); ++i) {
-    tensor_shape->AddDim(shape.dimensions(i));
+    TF_RETURN_IF_ERROR(tensor_shape->AddDimWithStatus(shape.dimensions(i)));
   }
   return OkStatus();
 }
@@ -109,11 +113,58 @@ Status TensorShapeToXLAShape(DataType dtype,
   return OkStatus();
 }
 
+Status TensorShapeToBoundedXLAShape(DataType dtype,
+                                    const PartialTensorShape& tensor_shape,
+                                    const TensorShape& bound,
+                                    xla::Shape* shape) {
+  xla::PrimitiveType type;
+  TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
+  if (tensor_shape.unknown_rank()) {
+    // For unknown shape, create a rank 1 size 0 tensor.
+    *shape = xla::ShapeUtil::MakeShapeWithDenseLayout(type, {0}, {0});
+    return OkStatus();
+  }
+
+  if (tensor_shape.dims() != bound.dims()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "`tensor_shape` and `bound` have different ranks. tensor_shape=",
+        tensor_shape.dims(), "vs bound=", bound.dims()));
+  }
+
+  int rank = tensor_shape.dims();
+  std::vector<int64_t> dimensions(rank);
+  std::vector<int64_t> layout(rank);
+  for (int d = 0; d < rank; ++d) {
+    if (bound.dim_size(d) < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Bound dimension ", d, " has unknown size."));
+    }
+    if (tensor_shape.dim_size(d) > 0 &&
+        bound.dim_size(d) != tensor_shape.dim_size(d)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Bounding shape does not match dynamic shape for known dimension ", d,
+          tensor_shape.dim_size(d), " vs ", bound.dim_size(d)));
+    }
+    dimensions[d] = bound.dim_size(d);
+  }
+  // XLA uses minor-to-major; Tensorflow uses major-to-minor.
+  std::iota(layout.rbegin(), layout.rend(), 0);
+  xla::Shape result =
+      xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
+  for (int d = 0; d < rank; ++d) {
+    if (tensor_shape.dim_size(d) < 0) {
+      result.set_dynamic_dimension(d, true);
+    }
+  }
+  *shape = result;
+  return OkStatus();
+}
+
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const PartialTensorShape& tensor_shape) {
   if (tensor_shape.unknown_rank()) {
     // For unknown shape, create a rank 1 size 0 tensor.
-    return xla::ShapeUtil::MakeShapeWithLayout(type, {0}, {0});
+    return xla::ShapeUtil::MakeShapeWithDenseLayout(type, {0}, {0});
   }
   int rank = tensor_shape.dims();
   std::vector<int64_t> dimensions(rank);
@@ -123,13 +174,13 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
     if (dimensions[d] < 0) {
       LOG(WARNING) << "Unable to convert TF shape with dynamic size to XLA "
                       "shape; returning unknown sentinel value";
-      return xla::ShapeUtil::MakeShapeWithLayout(type, {0}, {0});
+      return xla::ShapeUtil::MakeShapeWithDenseLayout(type, {0}, {0});
     }
   }
   // XLA uses minor-to-major; Tensorflow uses major-to-minor.
   std::iota(layout.rbegin(), layout.rend(), 0);
   xla::Shape result =
-      xla::ShapeUtil::MakeShapeWithLayout(type, dimensions, layout);
+      xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
   return result;
 }
 
@@ -160,7 +211,7 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
   // XLA uses minor-to-major; Tensorflow uses major-to-minor.
   std::iota(layout.rbegin(), layout.rend(), 0);
 
-  return xla::ShapeUtil::MakeShapeWithLayout(type, dimensions, layout);
+  return xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
 }
 
 StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {

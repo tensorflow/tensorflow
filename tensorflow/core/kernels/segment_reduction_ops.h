@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -152,6 +153,17 @@ struct SparseSegmentGradFunctor {
                   typename TTypes<Index>::ConstVec indices_vec,
                   typename TTypes<SegmentId>::ConstVec segment_vec,
                   typename TTypes<T>::Matrix output_flat);
+};
+
+template <class Device, typename T, typename Index, typename SegmentId>
+struct SparseSegmentGradV2Functor {
+  void operator()(OpKernelContext* context,
+                  SparseSegmentReductionOperation operation,
+                  typename TTypes<T>::ConstMatrix input_flat,
+                  typename TTypes<Index>::ConstVec indices_vec,
+                  typename TTypes<SegmentId>::ConstVec segment_vec,
+                  const TensorShape& dense_output_shape,
+                  typename AsyncOpKernel::DoneCallback done);
 };
 
 }  // namespace functor

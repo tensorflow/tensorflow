@@ -17,20 +17,19 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 
 GPUcudaMallocAllocator::GPUcudaMallocAllocator(
     tsl::PlatformDeviceId platform_device_id) {
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_device_id)
+  stream_exec_ = se::GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
 }
 

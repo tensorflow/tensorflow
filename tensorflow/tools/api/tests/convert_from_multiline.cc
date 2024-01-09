@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 // Converts all *.pbtxt files in a directory from Multiline to proto format.
+#include <iostream>
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"

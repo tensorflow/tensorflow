@@ -20,8 +20,8 @@ namespace mlir {
 namespace TFL {
 
 FloatAttr ExtractSingleElementAsFloat(ElementsAttr attr) {
-  if (attr.getType().getNumElements() != 1 ||
-      !attr.getType().getElementType().isa<FloatType>()) {
+  if (attr.getShapedType().getNumElements() != 1 ||
+      !attr.getShapedType().getElementType().isa<FloatType>()) {
     return {};
   }
   return attr.getSplatValue<FloatAttr>();
@@ -36,8 +36,8 @@ FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr) {
 }
 
 IntegerAttr ExtractSingleElementAsInteger(ElementsAttr attr) {
-  if (attr.getType().getNumElements() != 1 ||
-      !attr.getType().getElementType().isSignlessInteger()) {
+  if (attr.getShapedType().getNumElements() != 1 ||
+      !attr.getShapedType().getElementType().isSignlessInteger()) {
     return {};
   }
   return attr.getSplatValue<IntegerAttr>();

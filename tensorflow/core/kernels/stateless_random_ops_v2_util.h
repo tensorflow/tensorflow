@@ -21,7 +21,9 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
+#include "tensorflow/core/lib/random/random_distributions.h"
 
 namespace tensorflow {
 
@@ -61,6 +63,24 @@ GetKeyCounterAlgFromInputs(OpKernelContext* ctx, int key_input_idx,
   return std::make_tuple(key_t, counter_t, alg);
 }
 
+template <typename Device, typename Distribution>
+void FillRandomTensor(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
+                      const Tensor& counter, Distribution dist,
+                      Tensor* tensor) {
+  typedef typename Distribution::ResultElementType T;
+  auto flat = tensor->flat<T>();
+  if (alg == RNG_ALG_PHILOX) {
+    // Reuse the compute kernels from the stateful random ops
+    auto key_data = key.flat<uint64>().data();
+    auto counter_data = counter.flat<uint64>().data();
+    functor::FillPhiloxRandom<Device, Distribution>()(
+        ctx, ctx->eigen_device<Device>(), key_data, counter_data,
+        random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(), dist);
+  } else {
+    OP_REQUIRES(ctx, false,
+                errors::InvalidArgument("Unsupported algorithm id: ", alg));
+  }
+}
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_STATELESS_RANDOM_OPS_V2_UTIL_H_

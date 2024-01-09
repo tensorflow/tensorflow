@@ -123,8 +123,9 @@ class MergeV2CheckpointsOpTest : public OpsTestBase {
     for (int i = 0; i < 2; ++i) {
       // If we allow missing files, the first checkpoint file did not exist.
       if (allow_missing_files && i == 0) continue;
-      int directory_found =
-          Env::Default()->IsDirectory(string(io::Dirname(prefixes[i]))).code();
+      int directory_found = Env::Default()
+                                ->IsDirectory(string(io::Dirname(prefixes[i])))
+                                .raw_code();
       if (delete_old_dirs) {
         EXPECT_EQ(error::NOT_FOUND, directory_found);
       } else {

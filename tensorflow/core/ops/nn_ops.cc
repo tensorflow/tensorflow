@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -60,6 +61,13 @@ Status FractionalPoolShapeFn(InferenceContext* c) {
       output_dims.push_back(c->MakeDim(val));
     } else {
       output_dims.push_back(c->UnknownDim());
+    }
+  }
+
+  for (std::size_t i = 0; i < pooling_ratio.size(); ++i) {
+    if (pooling_ratio[i] < 1) {
+      return errors::InvalidArgument(
+          "pooling_ratio cannot be smaller than 1, got: ", pooling_ratio[i]);
     }
   }
 
@@ -360,6 +368,24 @@ REGISTER_OP("BiasAddV1")
     .Input("bias: T")
     .Output("output: T")
     .SetShapeFn(shape_inference::BiasAddShape);
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Conv")
+    .Input("input: T")
+    .Input("filter: T")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, double, int32}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(
+        "data_format: { 'CHANNELS_FIRST', 'CHANNELS_LAST' } = 'CHANNELS_LAST' ")
+    .Attr("dilations: list(int) = []")
+    .Attr("batch_dims: int = 1")
+    .Attr("groups: int = 1")
+    .SetShapeFn(shape_inference::ConvShape);
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("Conv2D")
@@ -389,6 +415,22 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv2DBackpropInputShape);
 
+REGISTER_OP("Conv2DBackpropInputV2")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, double, int32}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      return UnchangedShapeWithRank(c, 4);
+    });
+
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
 // more general string attribute ('kernel_impl'?) that can be used to
 // select among several possible implementations.
@@ -409,6 +451,25 @@ REGISTER_OP("Conv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
+      return OkStatus();
+    });
+
+REGISTER_OP("Conv2DBackpropFilterV2")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &out));
+      c->set_output(0, out);
       return OkStatus();
     });
 
@@ -589,7 +650,7 @@ REGISTER_OP("FusedPadConv2D")
     .Input("paddings: int32")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {half, float, double}")
+    .Attr("T: {half, bfloat16, float, double}")
     .Attr(GetMirrorPadModeAttrString())
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
@@ -965,6 +1026,14 @@ REGISTER_OP("MaxPoolWithArgmax")
     .Output("argmax: Targmax")
     .Attr("T: realnumbertype")
     .SetShapeFn([](InferenceContext* c) {
+      std::vector<int32> ksize;
+      TF_RETURN_IF_ERROR(c->GetAttr("ksize", &ksize));
+      for (int i = 0; i < ksize.size(); ++i) {
+        if (ksize[i] <= 0) {
+          return errors::InvalidArgument(
+              "ksize must be a postive int32 value, got:", ksize[i]);
+        }
+      }
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
       c->set_output(1, c->output(0));
       return OkStatus();
@@ -1078,11 +1147,11 @@ REGISTER_OP("Dilation2D")
       int64_t output_rows, output_cols;
       int64_t padding_before, padding_after;
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_rows, filter_rows_eff, stride_rows, padding, &output_rows,
-          &padding_before, &padding_after));
+          in_rows, filter_rows_eff, /*dilation_rate=*/1, stride_rows, padding,
+          &output_rows, &padding_before, &padding_after));
       TF_RETURN_IF_ERROR(GetWindowedOutputSizeVerbose(
-          in_cols, filter_cols_eff, stride_cols, padding, &output_cols,
-          &padding_before, &padding_after));
+          in_cols, filter_cols_eff, /*dilation_rate=*/1, stride_cols, padding,
+          &output_cols, &padding_before, &padding_after));
 
       ShapeHandle output_shape = c->MakeShape(
           {batch_size_dim, output_rows, output_cols, output_depth_dim});
@@ -1388,9 +1457,16 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("aggregate_to_topk", &aggregate_to_topk));
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input_shape));
+  int64_t r_dim_copy = reduction_dimension;
+  int64_t rank = c->Rank(input_shape);
   if (reduction_dimension < 0) {
     // Reverse index
     reduction_dimension += c->Rank(input_shape);
+  }
+  if (reduction_dimension >= c->Rank(input_shape) || reduction_dimension < 0) {
+    return errors::InvalidArgument("Invalid reduction dimension: ", r_dim_copy,
+                                   ". Must be within the range of [", -rank,
+                                   ", ", rank - 1, "]");
   }
   int64_t reduction_dim_value =
       c->Value(c->Dim(input_shape, reduction_dimension));
@@ -1398,6 +1474,10 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   if (reduction_dim_value < k) {
     return errors::InvalidArgument("input must have last dimension >= k = ", k,
                                    " but was ", reduction_dim_value);
+  }
+  if (recall_target > 1.0 || recall_target <= 0.) {
+    return errors::InvalidArgument("Invalid recall target: ", recall_target,
+                                   ". Valid value range in : [0, 1.0].");
   }
 
   int64_t output_dim_value = [&] {
@@ -1459,11 +1539,13 @@ REGISTER_OP("TopK")
 // This is the same as `TopK`, but takes `k` as in input rather than an attr.
 REGISTER_OP("TopKV2")
     .Input("input: T")
-    .Input("k: int32")
+    .Input("k: Tk")
     .Output("values: T")
-    .Output("indices: int32")
+    .Output("indices: index_type")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
+    .Attr("Tk: {int16, int32, int64} = DT_INT32")
+    .Attr("index_type: {int16, int32, int64} = DT_INT32")
     .SetShapeFn(TopKShapeFn);
 
 REGISTER_OP("ApproxTopK")
@@ -1782,7 +1864,7 @@ REGISTER_OP("_MklConv2D")
     .Output("filter_output: T")
     .Output("mkl_output: uint8")
     .Output("mkl_filter_output: uint8")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
@@ -1802,7 +1884,7 @@ REGISTER_OP("_MklNativeConv2D")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
@@ -1823,7 +1905,7 @@ REGISTER_OP("__MklDummyConv2DWithBias")
     .Input("filter: T")
     .Input("bias: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
@@ -1852,7 +1934,7 @@ REGISTER_OP("_MklConv2DWithBias")
     .Output("filter_output: T")
     .Output("mkl_output: uint8")
     .Output("mkl_filter_output: uint8")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
@@ -1874,7 +1956,7 @@ REGISTER_OP("__MklDummyPadWithConv2D")
     .Input("filter: T")
     .Input("paddings: Tpaddings")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -1902,7 +1984,7 @@ REGISTER_OP("_MklPadWithConv2D")
     .Output("filter_output: T")
     .Output("mkl_output: uint8")
     .Output("mkl_filter_output: uint8")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
@@ -1955,7 +2037,7 @@ REGISTER_OP("_MklNativeConv2DBackpropFilter")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrStringWithExplicit())
@@ -2098,7 +2180,7 @@ REGISTER_OP("_MklNativeConv2DBackpropInput")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrStringWithExplicit())
@@ -2129,7 +2211,7 @@ REGISTER_OP("_MklConv3D")
     .Output("filter_output: T")
     .Output("mkl_output: uint8")
     .Output("mkl_filter_output: uint8")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int) >= 5")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
@@ -2152,7 +2234,7 @@ REGISTER_OP("_MklConv3DBackpropInputV2")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int) >= 5")
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .Attr("Tshape: {int32, int64} = DT_INT32")
@@ -2182,7 +2264,7 @@ REGISTER_OP("_MklConv3DBackpropFilterV2")
     .Input("mkl_out_backprop: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
@@ -2325,20 +2407,6 @@ MKL version of EluGrad operator. Uses MKL DNN APIs to compute Elu
 gradients for Elu operation.
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
-)doc");
-
-REGISTER_OP("_MklSoftmax")
-    .Input("logits: T")
-    .Input("mkl_logits: uint8")
-    .Output("softmax: T")
-    .Output("mkl_softmax: uint8")
-    .Attr("T: {bfloat16, half, float, double}")
-    .SetShapeFn([](InferenceContext* c) {
-      return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
-    })
-    .Doc(R"doc(
-MKL version of ReluGrad operator. Uses MKL DNN APIs to compute rectified
-linear gradients for Relu operation.
 )doc");
 
 REGISTER_OP("_MklTanh")
@@ -2704,7 +2772,7 @@ REGISTER_OP("_MklFusedBatchNormV2")
     .Output("mkl_batch_variance: uint8")
     .Output("mkl_reserve_space_1: uint8")
     .Output("mkl_reserve_space_2: uint8")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr(GetConvnetDataFormatAttrString())
@@ -2733,7 +2801,7 @@ REGISTER_OP("_MklFusedBatchNormGradV2")
     .Output("mkl_offset_backprop: uint8")
     .Output("mkl_reserve_space_3: uint8")
     .Output("mkl_reserve_space_4: uint8")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr(GetConvnetDataFormatAttrString())

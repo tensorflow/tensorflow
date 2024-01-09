@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/detail/common.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 
@@ -71,6 +71,8 @@ PYBIND11_MODULE(_dtypes, m) {
             py::str("{} does not correspond to a valid tensorflow::DataType")
                 .format(id));
       }))
+      .def("__int__",
+           [](tensorflow::DataType self) { return DataTypeId(self); })
       // For compatibility with pure-Python DType.
       .def_property_readonly("_type_enum", &DataTypeId)
       .def_property_readonly(
@@ -121,6 +123,12 @@ PYBIND11_MODULE(_dtypes, m) {
           },
           "Returns whether this is a boolean data type.")
       .def_property_readonly(
+          "is_numeric",
+          [](tensorflow::DataType self) {
+            return tensorflow::DataTypeIsNumeric(tensorflow::BaseType(self));
+          },
+          "Returns whether this is a numeric data type.")
+      .def_property_readonly(
           "is_complex",
           [](tensorflow::DataType self) {
             return tensorflow::DataTypeIsComplex(tensorflow::BaseType(self));
@@ -154,4 +162,6 @@ PYBIND11_MODULE(_dtypes, m) {
 
 Non-numeric, unordered, and quantized types are not considered unsigned, and
 this function returns `False`.)doc");
+
+  py::implicitly_convertible<py::int_, tensorflow::DataType>();
 }

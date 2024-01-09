@@ -97,12 +97,12 @@ func.func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x32x32
   // CHECK-DAG: %[[VAL1:.+]] = "tfl.pseudo_qconst"() {qtype = tensor<16x{{.+}}>, value = dense<2> : tensor<16xi32>}
   // CHECK-DAG: %[[VAL2:.+]] = "tfl.dequantize"(%[[VAL0]])
   // CHECK-DAG: %[[VAL3:.+]] = "tfl.dequantize"(%[[VAL1]])
-  // CHECK-DAG: %[[VAL4:.+]] = "tfl.transpose_conv"(%[[SHAPE]], %[[VAL2]], %arg0, %[[VAL3]]) {padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}
+  // CHECK-DAG: %[[VAL4:.+]] = "tfl.transpose_conv"(%[[SHAPE]], %[[VAL2]], %arg0, %[[VAL3]]) {fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}
   // CHECK: return %[[VAL4]]
   %0 = "tfl.pseudo_const"() { value = dense<[1, 32, 32, 16]> : tensor<4xi32> } : () -> tensor<4xi32>
   %1 = "tfl.pseudo_qconst"() {qtype = tensor<16x!quant.uniform<i32:f32, 1.0>>, value = dense<1> : tensor<16xi32>} : () -> tensor<16x1x1x8x!quant.uniform<i32:f32, 1.0>>
   %2 = "tfl.pseudo_qconst"() {qtype = tensor<16x!quant.uniform<i32:f32, 1.0>>, value = dense<2> : tensor<16xi32>} : () -> tensor<16x!quant.uniform<i32:f32, 1.0>>
-  %3 = "tfl.transpose_conv"(%0, %1, %arg0, %2)  {padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<4xi32>, tensor<16x1x1x8x!quant.uniform<i32:f32, 1.0>>, tensor<1x32x32x8xf32>, tensor<16x!quant.uniform<i32:f32, 1.0>>) -> tensor<1x32x32x16xf32>
+  %3 = "tfl.transpose_conv"(%0, %1, %arg0, %2)  {fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}  : (tensor<4xi32>, tensor<16x1x1x8x!quant.uniform<i32:f32, 1.0>>, tensor<1x32x32x8xf32>, tensor<16x!quant.uniform<i32:f32, 1.0>>) -> tensor<1x32x32x16xf32>
   func.return %3 : tensor<1x32x32x16xf32>
 }
 

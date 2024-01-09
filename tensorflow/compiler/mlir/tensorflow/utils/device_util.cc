@@ -64,7 +64,7 @@ mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
                                      mlir::TF::RuntimeDevices* devices) {
   DeviceNameUtils::ParsedName device;
 
-  for (auto& kv : llvm::enumerate(array_attr)) {
+  for (const auto& kv : llvm::enumerate(array_attr)) {
     const int idx = kv.index();
 
     auto string_attr = kv.value().dyn_cast<mlir::StringAttr>();

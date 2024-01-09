@@ -4,8 +4,7 @@ load(
 )
 
 package(
-    # To suppress build cleaner error about inclusion of schema_generate.h.
-    features = ["-layering_check"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -27,7 +26,7 @@ cc_library(
         ":types",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:ptr_util",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:graph_transformations",
@@ -47,6 +46,7 @@ tf_cc_test(
         ":operator",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -92,7 +92,10 @@ cc_library(
     deps = [
         ":operator",
         ":types",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/lite:context",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:model",
@@ -112,7 +115,10 @@ tf_cc_test(
     deps = [
         ":export",
         ":operator",
+        ":types",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_googletest//:gtest_main",
@@ -133,11 +139,12 @@ cc_library(
         ":operator",
         ":types",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/tools:verifier",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
-        "//tensorflow/lite/tools:verifier",
         "@flatbuffers",
     ],
 )
@@ -146,6 +153,9 @@ tf_cc_test(
     name = "import_test",
     srcs = [
         "import_test.cc",
+    ],
+    tags = [
+        "no_oss",  # TODO(b/273558651): Enable after updating flatbuffer version.
     ],
     deps = [
         ":import",

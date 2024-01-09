@@ -21,9 +21,9 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.util.tf_export import keras_export
 
 
 class _Merge(Layer):
@@ -144,7 +144,7 @@ class _Merge(Layer):
                  array_ops.expand_dims(batch_size, axis=-1)])
             x_transposed = array_ops.reshape(
                 x,
-                array_ops.stack(
+                array_ops_stack.stack(
                     [batch_size, math_ops.reduce_prod(x_shape[1:])], axis=0))
             x_transposed = array_ops.transpose(x_transposed, perm=(1, 0))
             x_transposed = array_ops.reshape(x_transposed, new_shape)
@@ -214,7 +214,6 @@ class _Merge(Layer):
         backend.concatenate(masks, axis=0), axis=0, keepdims=False)
 
 
-@keras_export('keras.layers.Add')
 class Add(_Merge):
   """Layer that adds a list of inputs.
 
@@ -251,7 +250,6 @@ class Add(_Merge):
     return output
 
 
-@keras_export('keras.layers.Subtract')
 class Subtract(_Merge):
   """Layer that subtracts two inputs.
 
@@ -290,7 +288,6 @@ class Subtract(_Merge):
     return inputs[0] - inputs[1]
 
 
-@keras_export('keras.layers.Multiply')
 class Multiply(_Merge):
   """Layer that multiplies (element-wise) a list of inputs.
 
@@ -320,7 +317,6 @@ class Multiply(_Merge):
     return output
 
 
-@keras_export('keras.layers.Average')
 class Average(_Merge):
   """Layer that averages a list of inputs element-wise.
 
@@ -357,7 +353,6 @@ class Average(_Merge):
     return output / len(inputs)
 
 
-@keras_export('keras.layers.Maximum')
 class Maximum(_Merge):
   """Layer that computes the maximum (element-wise) a list of inputs.
 
@@ -387,7 +382,6 @@ class Maximum(_Merge):
     return output
 
 
-@keras_export('keras.layers.Minimum')
 class Minimum(_Merge):
   """Layer that computes the minimum (element-wise) a list of inputs.
 
@@ -417,7 +411,6 @@ class Minimum(_Merge):
     return output
 
 
-@keras_export('keras.layers.Concatenate')
 class Concatenate(_Merge):
   """Layer that concatenates a list of inputs.
 
@@ -572,7 +565,6 @@ class Concatenate(_Merge):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Dot')
 class Dot(_Merge):
   """Layer that computes a dot product between samples in two tensors.
 
@@ -734,7 +726,6 @@ class Dot(_Merge):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.add')
 def add(inputs, **kwargs):
   """Functional interface to the `tf.keras.layers.Add` layer.
 
@@ -768,7 +759,6 @@ def add(inputs, **kwargs):
   return Add(**kwargs)(inputs)
 
 
-@keras_export('keras.layers.subtract')
 def subtract(inputs, **kwargs):
   """Functional interface to the `Subtract` layer.
 
@@ -797,7 +787,6 @@ def subtract(inputs, **kwargs):
   return Subtract(**kwargs)(inputs)
 
 
-@keras_export('keras.layers.multiply')
 def multiply(inputs, **kwargs):
   """Functional interface to the `Multiply` layer.
 
@@ -828,7 +817,6 @@ def multiply(inputs, **kwargs):
   return Multiply(**kwargs)(inputs)
 
 
-@keras_export('keras.layers.average')
 def average(inputs, **kwargs):
   """Functional interface to the `tf.keras.layers.Average` layer.
 
@@ -864,7 +852,6 @@ def average(inputs, **kwargs):
   return Average(**kwargs)(inputs)
 
 
-@keras_export('keras.layers.maximum')
 def maximum(inputs, **kwargs):
   """Functional interface to compute maximum (element-wise) list of `inputs`.
 
@@ -896,7 +883,6 @@ def maximum(inputs, **kwargs):
   return Maximum(**kwargs)(inputs)
 
 
-@keras_export('keras.layers.minimum')
 def minimum(inputs, **kwargs):
   """Functional interface to the `Minimum` layer.
 
@@ -910,7 +896,6 @@ def minimum(inputs, **kwargs):
   return Minimum(**kwargs)(inputs)
 
 
-@keras_export('keras.layers.concatenate')
 def concatenate(inputs, axis=-1, **kwargs):
   """Functional interface to the `Concatenate` layer.
 
@@ -945,7 +930,6 @@ def concatenate(inputs, axis=-1, **kwargs):
   return Concatenate(axis=axis, **kwargs)(inputs)
 
 
-@keras_export('keras.layers.dot')
 def dot(inputs, axes, normalize=False, **kwargs):
   """Functional interface to the `Dot` layer.
 

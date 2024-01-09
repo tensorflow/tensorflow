@@ -19,16 +19,16 @@ import math
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export("keras.optimizers.schedules.LearningRateSchedule")
 class LearningRateSchedule(object):
   """The learning rate schedule base class.
 
@@ -93,7 +93,6 @@ class LearningRateSchedule(object):
     return cls(**config)
 
 
-@keras_export("keras.optimizers.schedules.ExponentialDecay")
 class ExponentialDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses an exponential decay schedule.
 
@@ -175,8 +174,11 @@ class ExponentialDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "ExponentialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
       decay_rate = math_ops.cast(self.decay_rate, dtype)
@@ -198,7 +200,6 @@ class ExponentialDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.optimizers.schedules.PiecewiseConstantDecay")
 class PiecewiseConstantDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses a piecewise constant decay schedule.
 
@@ -269,11 +270,15 @@ class PiecewiseConstantDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "PiecewiseConstant"):
-      boundaries = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch,
-                                      nest.flatten(self.boundaries))
-      values = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch,
-                                  nest.flatten(self.values))
-      x_recomp = ops.convert_to_tensor_v2_with_dispatch(step)
+      boundaries = nest.map_structure(
+          tensor_conversion.convert_to_tensor_v2_with_dispatch,
+          nest.flatten(self.boundaries),
+      )
+      values = nest.map_structure(
+          tensor_conversion.convert_to_tensor_v2_with_dispatch,
+          nest.flatten(self.values),
+      )
+      x_recomp = tensor_conversion.convert_to_tensor_v2_with_dispatch(step)
       for i, b in enumerate(boundaries):
         if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
           # We cast the boundaries to have the same type as the step
@@ -290,7 +295,7 @@ class PiecewiseConstantDecay(LearningRateSchedule):
       # The default isn't needed here because our conditions are mutually
       # exclusive and exhaustive, but tf.case requires it.
       default = lambda: values[0]
-      return control_flow_ops.case(pred_fn_pairs, default, exclusive=True)
+      return control_flow_case.case(pred_fn_pairs, default, exclusive=True)
 
   def get_config(self):
     return {
@@ -300,7 +305,6 @@ class PiecewiseConstantDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.optimizers.schedules.PolynomialDecay")
 class PolynomialDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses a polynomial decay schedule.
 
@@ -406,8 +410,11 @@ class PolynomialDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "PolynomialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       end_learning_rate = math_ops.cast(self.end_learning_rate, dtype)
       power = math_ops.cast(self.power, dtype)
@@ -444,7 +451,6 @@ class PolynomialDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.optimizers.schedules.InverseTimeDecay")
 class InverseTimeDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses an inverse time decay schedule.
 
@@ -526,8 +532,11 @@ class InverseTimeDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "InverseTimeDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
       decay_rate = math_ops.cast(self.decay_rate, dtype)
@@ -550,8 +559,6 @@ class InverseTimeDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.optimizers.schedules.CosineDecay",
-              "keras.experimental.CosineDecay")
 class CosineDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses a cosine decay schedule.
 
@@ -621,8 +628,11 @@ class CosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "CosineDecay"):
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
 
@@ -644,8 +654,6 @@ class CosineDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.optimizers.schedules.CosineDecayRestarts",
-              "keras.experimental.CosineDecayRestarts")
 class CosineDecayRestarts(LearningRateSchedule):
   """A LearningRateSchedule that uses a cosine decay schedule with restarts.
 
@@ -721,8 +729,11 @@ class CosineDecayRestarts(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "SGDRDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       first_decay_steps = math_ops.cast(self.first_decay_steps, dtype)
       alpha = math_ops.cast(self.alpha, dtype)
@@ -748,7 +759,7 @@ class CosineDecayRestarts(LearningRateSchedule):
 
         return i_restart, completed_fraction
 
-      i_restart, completed_fraction = control_flow_ops.cond(
+      i_restart, completed_fraction = cond.cond(
           math_ops.equal(t_mul, 1.0),
           lambda: compute_step(completed_fraction, geometric=False),
           lambda: compute_step(completed_fraction, geometric=True))
@@ -858,8 +869,11 @@ class LinearCosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
       num_periods = math_ops.cast(self.num_periods, dtype)
@@ -984,8 +998,11 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "NoisyLinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor_v2_with_dispatch(
-          self.initial_learning_rate, name="initial_learning_rate")
+      initial_learning_rate = (
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(
+              self.initial_learning_rate, name="initial_learning_rate"
+          )
+      )
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
       initial_variance = math_ops.cast(self.initial_variance, dtype)
@@ -1027,12 +1044,10 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.optimizers.schedules.serialize")
 def serialize(learning_rate_schedule):
   return generic_utils.serialize_keras_object(learning_rate_schedule)
 
 
-@keras_export("keras.optimizers.schedules.deserialize")
 def deserialize(config, custom_objects=None):
   return generic_utils.deserialize_keras_object(
       config,

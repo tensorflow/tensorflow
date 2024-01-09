@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_partition.h"
 
 #include <deque>
+#include <memory>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -31,13 +32,12 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/costmodel.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -155,18 +155,6 @@ bool IsDstInputOnHost(const Edge* edge, const GraphInfo& info) {
     return dst_it->second == HOST_MEMORY;
   }
   return true;
-}
-
-// Add an input to dst that comes from the "src_slot" output of the
-// node named by "src_name".
-void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
-  if (src_slot == Graph::kControlSlot) {
-    dst->add_input(strings::StrCat("^", src_name));
-  } else if (src_slot == 0) {
-    dst->add_input(src_name.data(), src_name.size());
-  } else {
-    dst->add_input(strings::StrCat(src_name, ":", src_slot));
-  }
 }
 
 // Add a control edge from each input to each recv.
@@ -339,7 +327,8 @@ NodeDef* AddDummyConst(const PartitionOptions& opts, GraphDef* gdef,
   const Node* src = edge->src();
   Tensor tensor(DT_FLOAT, TensorShape({0}));
   NodeDef* result = gdef->add_node();
-  *status = NodeDefBuilder(opts.new_name(src->name()), "Const")
+  *status = NodeDefBuilder(opts.new_name(strings::StrCat(src->name(), "/ctrl")),
+                           "Const")
                 .Device(src->assigned_device_name())
                 .Attr("dtype", DT_FLOAT)
                 .Attr("value", tensor)
@@ -921,7 +910,7 @@ Status AddControlEdges(const PartitionOptions& opts,
         dummys.push_back(dummy);
         if (j > 0) {
           string src_name = start_times[j - 1].first->name();
-          AddInput(dummy, src_name, Graph::kControlSlot);
+          Graph::AddInput(dummy, src_name, Graph::kControlSlot);
         }
         i++;
       }
@@ -935,7 +924,7 @@ Status AddControlEdges(const PartitionOptions& opts,
         const int recv_epoch = start_time / resolution;
         if (recv_epoch >= prefetch) {
           NodeDef* dummy = dummys[recv_epoch - prefetch];
-          AddInput(ndef, dummy->name(), Graph::kControlSlot);
+          Graph::AddInput(ndef, dummy->name(), Graph::kControlSlot);
         }
       }
     }
@@ -980,7 +969,10 @@ void SetIncarnation(const PartitionOptions& opts, GraphDef* gdef) {
 
 Status Partition(const PartitionOptions& opts, Graph* g,
                  std::unordered_map<string, GraphDef>* partitions) {
+  // TODO(b/290689453) Refactor this into smaller functions
   Status status;
+  absl::flat_hash_map<string, std::unique_ptr<GraphDebugInfoBuilder>>
+      debug_info_builders;
   partitions->clear();
 
   GraphInfo g_info;
@@ -1073,7 +1065,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       GraphDef* src_graph = &(*partitions)[opts.node_to_loc(src)];
       if (src_graph == dst_graph && !NeedSameDeviceSendRecv(edge, g_info)) {
         // Same partition and compatible memory types:
-        AddInput(dst_def, src->name(), edge->src_output());
+        Graph::AddInput(dst_def, src->name(), edge->src_output());
         if (edge->IsControlEdge() ||
             !IsRefType(src->output_type(edge->src_output()))) {
           ref_control_inputs.push_back(src->name());
@@ -1108,9 +1100,9 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         // We found one. Reuse the data/control transferred already.
         const string& recv_node_name = iter->second.recv->name();
         if (edge->IsControlEdge()) {
-          AddInput(dst_def, recv_node_name, Graph::kControlSlot);
+          Graph::AddInput(dst_def, recv_node_name, Graph::kControlSlot);
         } else {
-          AddInput(dst_def, recv_node_name, 0);
+          Graph::AddInput(dst_def, recv_node_name, 0);
         }
         ref_control_inputs.push_back(recv_node_name);
 
@@ -1136,7 +1128,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         if (opts.scheduling_for_recvs) {
           AddNodeAttr("_start_time", send_start_time, dummy);
         }
-        AddInput(dummy, src->name(), Graph::kControlSlot);
+        Graph::AddInput(dummy, src->name(), Graph::kControlSlot);
         send_from.Reset(dummy->name(), 0, DT_FLOAT);
       } else {
         send_from.Reset(src->name(), edge->src_output(), EdgeType(edge));
@@ -1148,6 +1140,12 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       } else {
         tensor_name_attr =
             strings::StrCat("edge_", edge->id(), "_", edge->src()->name());
+      }
+
+      if (VLOG_IS_ON(1) && IsConstant(edge->src())) {
+        LOG(WARNING) << "Send/Recv constant: " << edge->src()->name() << " ["
+                     << edge->src()->assigned_device_name() << "] -> ["
+                     << edge->dst()->assigned_device_name() << "]";
       }
 
       // Need to split edge by placing matching send/recv nodes on
@@ -1167,13 +1165,13 @@ Status Partition(const PartitionOptions& opts, Graph* g,
         // For same device send/recv, add a control edge from send to recv.
         // This prevents the asynchronous recv kernel from being scheduled
         // before the data is available.
-        AddInput(real_recv, send->name(), Graph::kControlSlot);
+        Graph::AddInput(real_recv, send->name(), Graph::kControlSlot);
       } else if (control_flow_edge != nullptr) {
         // Redirect control edge to the real recv since this is not the same
         // device send/recv.
         --num_control_flow_edges;
-        AddInput(real_recv, control_flow_edge->src()->name(),
-                 Graph::kControlSlot);
+        Graph::AddInput(real_recv, control_flow_edge->src()->name(),
+                        Graph::kControlSlot);
       }
 
       if (!edge->IsControlEdge() &&
@@ -1195,10 +1193,10 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
       if (edge->IsControlEdge()) {
         ++num_control;
-        AddInput(dst_def, recv->name(), Graph::kControlSlot);
+        Graph::AddInput(dst_def, recv->name(), Graph::kControlSlot);
       } else {
         ++num_data;
-        AddInput(dst_def, recv->name(), 0);
+        Graph::AddInput(dst_def, recv->name(), 0);
       }
     }
 
@@ -1215,9 +1213,22 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     // Add back the control edges for control flow that are not used.
     if (control_flow_edge != nullptr) {
       for (int i = 0; i < num_control_flow_edges; ++i) {
-        AddInput(dst_def, control_flow_edge->src()->name(),
-                 Graph::kControlSlot);
+        Graph::AddInput(dst_def, control_flow_edge->src()->name(),
+                        Graph::kControlSlot);
       }
+    }
+
+    // For each partition, lazily create a GraphDebugInfoBuilder. Gather stack
+    // traces for the nodes in that partition into the builder.
+    const std::shared_ptr<AbstractStackTrace>& stack_trace =
+        dst->GetStackTrace();
+    if (stack_trace != nullptr) {
+      std::unique_ptr<GraphDebugInfoBuilder>& builder =
+          debug_info_builders[dstp];
+      if (!builder) {
+        builder = std::make_unique<GraphDebugInfoBuilder>();
+      }
+      builder->AccumulateStackTrace(stack_trace, dst->name());
     }
   }
 
@@ -1250,6 +1261,15 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   VLOG(1) << "Added send/recv: controls=" << num_control
           << ", data=" << num_data;
+  // For each partition, build the GraphDebugInfo for all of its nodes' stack
+  // traces, and add it to the GraphDef for that partition.
+  for (auto& it : *partitions) {
+    const auto& builder_iter = debug_info_builders.find(it.first);
+    if (builder_iter != debug_info_builders.end()) {
+      GraphDef& gdef = it.second;
+      *gdef.mutable_debug_info() = builder_iter->second->Build();
+    }
+  }
   if (VLOG_IS_ON(2)) {
     for (auto& it : *partitions) {
       GraphDef* gdef = &it.second;

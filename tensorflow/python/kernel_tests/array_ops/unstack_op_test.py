@@ -17,9 +17,11 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
@@ -63,8 +65,15 @@ class UnstackOpTest(test.TestCase):
       rank = len(shape)
       for axis in range(-rank, rank):
         for dtype in [
-            np.bool_, np.float16, np.float32, np.float64, np.uint8, np.int32,
-            np.int64
+            np.bool_,
+            np.float16,
+            np.float32,
+            np.float64,
+            np.uint8,
+            np.int32,
+            np.int64,
+            dtypes.float8_e5m2.as_numpy_dtype,
+            dtypes.float8_e4m3fn.as_numpy_dtype,
         ]:
           data = self.randn(shape, dtype)
           # Convert data to a single tensorflow tensor
@@ -72,7 +81,7 @@ class UnstackOpTest(test.TestCase):
 
           # Unstack into a list of tensors
           ref = self.unstackReference(data, axis)
-          cs = array_ops.unstack(x, axis=axis)
+          cs = array_ops_stack.unstack(x, axis=axis)
           self.assertEqual(type(cs), list)
           self.assertEqual(len(cs), shape[axis])
           for k, c in enumerate(cs):
@@ -97,7 +106,7 @@ class UnstackOpTest(test.TestCase):
             x = constant_op.constant(data)
             # Unstack into a list of tensors
             ref = self.unstackReference(data, axis)
-            cs = array_ops.unstack(x, axis=axis)
+            cs = array_ops_stack.unstack(x, axis=axis)
             self.assertEqual(type(cs), list)
             self.assertEqual(len(cs), shape[axis])
             for k, c in enumerate(cs):
@@ -112,7 +121,7 @@ class UnstackOpTest(test.TestCase):
 
       for i in range(shape[0]):
         def func(x, shape=shape, i=i):
-          return array_ops.unstack(x, num=shape[0])[i]
+          return array_ops_stack.unstack(x, num=shape[0])[i]
 
         with self.cached_session():
           err = gradient_checker_v2.max_error(
@@ -126,7 +135,7 @@ class UnstackOpTest(test.TestCase):
 
       for i in range(shape[1]):
         def func(x, shape=shape, i=i):
-          return array_ops.unstack(x, num=shape[1], axis=1)[i]
+          return array_ops_stack.unstack(x, num=shape[1], axis=1)[i]
 
         with self.cached_session():
           err = gradient_checker_v2.max_error(
@@ -136,7 +145,7 @@ class UnstackOpTest(test.TestCase):
   def testInferNum(self):
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
       x = array_ops.ones(shape, dtype=np.float32)
-      cs = array_ops.unstack(x)
+      cs = array_ops_stack.unstack(x)
       self.assertEqual(type(cs), list)
       self.assertEqual(len(cs), shape[0])
 
@@ -146,13 +155,13 @@ class UnstackOpTest(test.TestCase):
       x = array_ops.placeholder(np.float32)
       with self.assertRaisesRegex(
           ValueError, r'Cannot infer argument `num` from shape <unknown>'):
-        array_ops.unstack(x)
+        array_ops_stack.unstack(x)
 
   def testUnknownShapeOkWithNum(self):
     # Testing unknown shape in graph mode.
     with ops.Graph().as_default():
       x = array_ops.placeholder(np.float32)
-      array_ops.unstack(x, num=2)
+      array_ops_stack.unstack(x, num=2)
 
   def testCannotInferNumFromNoneShape(self):
     # Testing unknown shape in graph mode.
@@ -160,7 +169,7 @@ class UnstackOpTest(test.TestCase):
       x = array_ops.placeholder(np.float32, shape=(None,))
       with self.assertRaisesRegex(
           ValueError, r'Cannot infer argument `num` from shape \((\?|None),\)'):
-        array_ops.unstack(x)
+        array_ops_stack.unstack(x)
 
   def testAgainstNumpy(self):
     # For 1 to 5 dimensions.
@@ -171,13 +180,13 @@ class UnstackOpTest(test.TestCase):
       for j in range(-i, i):
         expected = np_split_squeeze(a, j)
 
-        actual_unstack = self.evaluate(array_ops.unstack(a, axis=j))
+        actual_unstack = self.evaluate(array_ops_stack.unstack(a, axis=j))
 
         self.assertAllEqual(expected, actual_unstack)
 
   def testAxis0Default(self):
     a = constant_op.constant([[1, 2, 3], [4, 5, 6]], name='a')
-    unstacked = self.evaluate(array_ops.unstack(a))
+    unstacked = self.evaluate(array_ops_stack.unstack(a))
 
     self.assertEqual(len(unstacked), 2)
     self.assertAllEqual(unstacked[0], [1, 2, 3])
@@ -187,17 +196,17 @@ class UnstackOpTest(test.TestCase):
     a = constant_op.constant([[1, 2, 3], [4, 5, 6]], name='a')
     with self.assertRaisesRegex(ValueError,
                                 r'Argument `axis` = 2 not in range \[-2, 2\)'):
-      array_ops.unstack(a, axis=2)
+      array_ops_stack.unstack(a, axis=2)
 
   def testAxisOutOfNegativeRange(self):
     a = constant_op.constant([[1, 2, 3], [4, 5, 6]], name='a')
     with self.assertRaisesRegex(ValueError,
                                 r'Argument `axis` = -3 not in range \[-2, 2\)'):
-      array_ops.unstack(a, axis=-3)
+      array_ops_stack.unstack(a, axis=-3)
 
   def testZeroLengthDim(self):
     x = array_ops.zeros(shape=(0, 1, 2))
-    y = self.evaluate(array_ops.unstack(x, axis=1)[0])
+    y = self.evaluate(array_ops_stack.unstack(x, axis=1)[0])
     self.assertEqual(y.shape, (0, 2))
 
   def testComplexGpu(self):
@@ -212,7 +221,7 @@ class UnstackOpTest(test.TestCase):
           # Convert data to a single tensorflow tensor
           x = constant_op.constant(data)
           # Unstack into a list of tensors
-          cs = array_ops.unstack(x, num=shape[0])
+          cs = array_ops_stack.unstack(x, num=shape[0])
           self.assertEqual(type(cs), list)
           self.assertEqual(len(cs), shape[0])
           cs = [self.evaluate(c) for c in cs]

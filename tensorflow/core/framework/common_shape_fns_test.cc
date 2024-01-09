@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/common_shape_fns.h"
 
+#include <string>
+
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -143,8 +146,8 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                  "Shape must be rank 2 but is rank 1"));
+    EXPECT_TRUE(
+        absl::StrContains(s.message(), "Shape must be rank 2 but is rank 1"));
   }
 
   {
@@ -164,7 +167,7 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
     auto s = MatMulShape(&c);
     EXPECT_FALSE(s.ok());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(absl::StrContains(s.error_message(),
+    EXPECT_TRUE(absl::StrContains(s.message(),
                                   "Dimensions must be equal, but are 5 and 3"));
   }
 
@@ -174,8 +177,8 @@ TEST(CommonShapeFnsTest, MatMulShapeTest) {
                        {S({2, 5, 3}), S({3, 5, 4})}, {}, {}, {});
     auto s = MatMulShape(&c);
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                  "Shape must be rank 2 but is rank 3"));
+    EXPECT_TRUE(
+        absl::StrContains(s.message(), "Shape must be rank 2 but is rank 3"));
   }
 
   {
@@ -624,12 +627,98 @@ TEST(CommonShapeFnsTest, BiasAddGradShapeTest) {
   }
 }
 
-TEST(CommonShapeFnsTest, Conv2DShapeTest) {
+TEST(CommonShapeFnsTest, ConvTest) {
+  ShapeInferenceTestOp op("Conv");
+  auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
+                      string data_format, int batch_dims, int groups) {
+    TF_CHECK_OK(NodeDefBuilder("test", op.name)
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("filter", 0, DT_FLOAT)
+                    .Attr("strides", strides)
+                    .Attr("padding", padding)
+                    .Attr("data_format", data_format)
+                    .Attr("batch_dims", batch_dims)
+                    .Attr("groups", groups)
+                    .Finalize(&op.node_def));
+  };
+
+  // Different input and filter ranks.
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/1);
+  INFER_ERROR("Input tensor rank must be the same as filter rank.", op,
+              "[2,2,1,1,1];[2,1,1,1]");
+
+  // Negative batch dimension.
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/-1, /*groups=*/1);
+  INFER_ERROR("must be non-negative", op, "[1,2,2,1];[1,1,1,1]");
+
+  // Too large batch dimension.
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/5, /*groups=*/1);
+  INFER_ERROR(
+      "Input tensor must be rank 4 or 5, excluding extra "
+      "batch dimensions, but got: 0",
+      op, "[1,2,2,1];[1,1,1,1]");
+
+  // Invalid batch dimension (default 1 but should be 0).
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/1);
+  INFER_ERROR("extra batch dimensions", op, "[1,2,3];[1,1,1,1]");
+
+  // Invalid batch dimension (default 1 but should be 2).
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/1);
+  INFER_ERROR("extra batch dimensions", op, "[1,2,3,4,5,6];[1,1,1,1,1]");
+
+  // Negative groups number.
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/0);
+  INFER_ERROR("should be a positive integer", op, "[1,2,3,4,5];[1,1,1,1,1]");
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/-1);
+  INFER_ERROR("should be a positive integer", op, "[1,2,3,4,5];[1,1,1,1,1]");
+
+  // Groups number doesn't divide input depth.
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/3);
+  INFER_ERROR("should divide input depth", op, "[1,1,1,1,13];[3,3,3,13,3]");
+
+  // Groups number doesn't divide output depth.
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/3);
+  INFER_ERROR("should divide output depth", op, "[3,3,3,3,3];[1,1,1,3,13]");
+
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"SAME",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/2);
+  // 4x4 input of depth 10, 2x2 filter with depth 5, 1x1 stride.
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,5,2]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // Test output multiple of group size is ok:
+  // 4x4 input of depth 10, 2x2 filter with depth 5, 1x1 stride.
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,5,2]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // Input depth / filter input depth != groups.
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"SAME",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/1);
+  INFER_ERROR(
+      "Input depth divided by filter input depth does not match with groups "
+      "parameter (1)",
+      op, "[1,4,4,4,10];[2,2,2,5,2]");
+
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"SAME",
+         /*data_format=*/"CHANNELS_LAST", /*batch_dims=*/1, /*groups=*/10);
+  // Depthwise convolution first step:
+  // 4x4 input of depth 10, 2x2 filter with depth 1, 1x1 stride.
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,1,10]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+}
+
+TEST(CommonShapeFnsTest, Conv2DFormatsTest) {
   ShapeInferenceTestOp op("Conv2D");
   auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
                       const string& data_format, const string& filter_format,
                       const std::vector<int32>& explicit_paddings = {}) {
-    TF_CHECK_OK(NodeDefBuilder("test", "Conv2D")
+    TF_CHECK_OK(NodeDefBuilder("test", op.name)
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
                     .Attr("strides", strides)
@@ -640,33 +729,97 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
                     .Finalize(&op.node_def));
   };
 
+  // Tests for NCHW_VECT_C.
+  // 1x1 filter.
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW_VECT_C", /*filter_format=*/"OIHW_VECT_I");
+  INFER_OK(op, "[1,1,2,2,4];[4,1,1,1,4]", "[d0_0,1,2,2,d0_4]");
+
+  // 2x2 filter.
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW_VECT_C", /*filter_format=*/"OIHW_VECT_I");
+  INFER_OK(op, "[1,1,2,2,4];[4,1,2,2,4]", "[d0_0,1,1,1,d0_4]");
+
+  // 3x3 input, 1x1 filter, 2x2 stride.
+  set_op(/*strides=*/{{1, 1, 2, 2}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW_VECT_C", /*filter_format=*/"OIHW_VECT_I");
+  INFER_OK(op, "[1,1,3,3,4];[8,1,1,1,4]", "[d0_0,2,2,2,d0_4]");
+
+  // 3x3 input, 1x1 filter, 2x1 stride.
+  set_op(/*strides=*/{{1, 1, 2, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW_VECT_C", /*filter_format=*/"OIHW_VECT_I");
+  INFER_OK(op, "[1,1,3,3,4];[4,1,1,1,4]", "[d0_0,1,2,3,d0_4]");
+
+  // 4x4 input, 2x1 filter, 1x2 stride.
+  set_op(/*strides=*/{{1, 1, 1, 2}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW_VECT_C", /*filter_format=*/"OIHW_VECT_I");
+  INFER_OK(op, "[1,1,4,4,4];[4,1,2,1,4]", "[d0_0,1,3,2,d0_4]");
+
+  // int8x32 input.
+  set_op(/*strides=*/{{1, 1, 1, 2}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW_VECT_C", /*filter_format=*/"OIHW_VECT_I");
+  INFER_OK(op, "[1,1,4,4,32];[32,1,2,1,32]", "[d0_0,1,3,2,d0_4]");
+}
+
+class Conv2DShapeTest : public ::testing::TestWithParam<string> {};
+
+TEST_P(Conv2DShapeTest, Conv2DShapeTest) {
+  const string op_name = GetParam();
+  ShapeInferenceTestOp op(op_name);
+  auto set_op = [&op](const std::vector<int32>& strides, const string& padding,
+                      const string& data_format, const string& filter_format,
+                      const std::vector<int32>& explicit_paddings = {}) {
+    string format;
+    if (op.name == "Conv")
+      format = (data_format == "NHWC") ? "CHANNELS_LAST" : "CHANNELS_FIRST";
+    else
+      format = data_format;
+    TF_CHECK_OK(NodeDefBuilder("test", op.name)
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("filter", 0, DT_FLOAT)
+                    .Attr("strides", strides)
+                    .Attr("padding", padding)
+                    .Attr("explicit_paddings", explicit_paddings)
+                    .Attr("data_format", format)
+                    .Attr("filter_format", filter_format)
+                    .Finalize(&op.node_def));
+  };
+
+  set_op(/*strides=*/{{1, 1, 0, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
   // Invalid rank for input
   INFER_ERROR("must be rank 4", op, "[4,4];[2,1,1,1]");
   // Invalid rank for filter
   INFER_ERROR("must be rank 4", op, "[1,4,4,1];[2,1,1]");
 
   // Invalid value for strides
-  set_op({{1, 1, 0, 1}}, "VALID", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 1, 0, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
   INFER_ERROR("must be > 0", op, "[1,2,2,1];[1,1,1,1]");
 
   // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,2,2,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
 
   // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,2,2,1];[2,2,1,1]", "[d0_0,1,1,d1_3]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 2, 2, 1}}, "VALID", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 2, 2, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,3,3,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 2, 1, 1}}, "VALID", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 2, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,3,3,1];[1,1,1,1]", "[d0_0,2,3,d1_3]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 1, 2, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
 
   // Unknown dims in the critical fields lead to partial inference.
@@ -684,72 +837,57 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // Tests for NCHW
   // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,1,2,2];[1,1,1,1]", "[d0_0,d1_3,2,2]");
 
   // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,1,2,2];[2,2,1,1]", "[d0_0,d1_3,1,1]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 1, 2, 2}}, "VALID", "NCHW", "HWIO");
+  set_op(/*strides=*/{{1, 1, 2, 2}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,1,3,3];[1,1,1,1]", "[d0_0,d1_3,2,2]");
 
   // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NCHW", "HWIO");
+  set_op(/*strides=*/{{1, 1, 2, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,1,3,3];[1,1,1,1]", "[d0_0,d1_3,2,3]");
 
   // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 1, 2}}, "VALID", "NCHW", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 2}}, /*padding=*/"VALID",
+         /*data_format=*/"NCHW", /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,1,4,4];[2,1,1,1]", "[d0_0,d1_3,3,2]");
-
-  // Tests for NCHW_VECT_C
-  // 1x1 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,2,2,4];[4,1,1,1,4]", "[d0_0,1,2,2,d0_4]");
-
-  // 2x2 filter
-  set_op({{1, 1, 1, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,2,2,4];[4,1,2,2,4]", "[d0_0,1,1,1,d0_4]");
-
-  // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 1, 2, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,3,3,4];[8,1,1,1,4]", "[d0_0,2,2,2,d0_4]");
-
-  // 3x3 input, 1x1 filter, 2x1 stride
-  set_op({{1, 1, 2, 1}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,3,3,4];[4,1,1,1,4]", "[d0_0,1,2,3,d0_4]");
-
-  // 4x4 input, 2x1 filter, 1x2 stride
-  set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,4,4,4];[4,1,2,1,4]", "[d0_0,1,3,2,d0_4]");
-
-  // int8x32 input.
-  set_op({{1, 1, 1, 2}}, "VALID", "NCHW_VECT_C", "OIHW_VECT_I");
-  INFER_OK(op, "[1,1,4,4,32];[32,1,2,1,32]", "[d0_0,1,3,2,d0_4]");
 
   // Some tests for "SAME" padding
 
   // 4x4 input, 1x1 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"SAME", /*data_format=*/"NHWC",
+         /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 3x3 input, 2x2 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"SAME", /*data_format=*/"NHWC",
+         /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 stride
-  set_op({{1, 2, 2, 1}}, "SAME", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 2, 2, 1}}, /*padding=*/"SAME", /*data_format=*/"NHWC",
+         /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,2,2,d1_3]");
 
   // 4x4 input, 2x2 filter, 1x1 stride
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"SAME", /*data_format=*/"NHWC",
+         /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // With stride 1x1 and SAME, unknown dims don't matter - filter dims except
   // for output channels are ignored for output, so all inputs are carried
   // through to output.
-  set_op({{1, 1, 1, 1}}, "SAME", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"SAME", /*data_format=*/"NHWC",
+         /*filter_format=*/"HWIO");
   INFER_OK(op, "[1,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
   INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
   INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
@@ -757,7 +895,8 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // With stride != 1, the input HW dims are divided to produce output dims.
-  set_op({{1, 2, 2, 1}}, "SAME", "NHWC", "HWIO");
+  set_op(/*strides=*/{{1, 2, 2, 1}}, /*padding=*/"SAME", /*data_format=*/"NHWC",
+         /*filter_format=*/"HWIO");
   INFER_OK(op, "[?,4,4,1];[?,?,?,?]", "[d0_0,2,2,d1_3]");
   INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,?,2,d1_3]");
   INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,2,?,d1_3]");
@@ -766,19 +905,27 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   // Some tests for "EXPLICIT" padding
 
   // 4x4 input, 1x1 filter, 1x1 stride, [0, 2, 1, 4] padding
-  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 0, 2, 1, 4, 0, 0});
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"EXPLICIT",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{0, 0, 0, 2, 1, 4, 0, 0});
   INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,6,9,d1_3]");
 
   // 3x3 input, 2x2 filter, 1x1 stride, [1, 0, 1, 2] padding
-  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 1, 0, 1, 2, 0, 0});
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"EXPLICIT",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{0, 0, 1, 0, 1, 2, 0, 0});
   INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,3,5,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 stride, [3, 2, 1, 0] padding
-  set_op({{1, 2, 2, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 3, 2, 1, 0, 0, 0});
+  set_op(/*strides=*/{{1, 2, 2, 1}}, /*padding=*/"EXPLICIT",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{0, 0, 3, 2, 1, 0, 0, 0});
   INFER_OK(op, "[1,4,4,2];[2,2,2,3]", "[d0_0,4,2,d1_3]");
 
   // 2x2 input, 2x1 filter, 1x2 stride, [1, 1, 2, 2] padding
-  set_op({{1, 1, 2, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 1, 1, 2, 2, 0, 0});
+  set_op(/*strides=*/{{1, 1, 2, 1}}, /*padding=*/"EXPLICIT",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{0, 0, 1, 1, 2, 2, 0, 0});
   INFER_OK(op, "[1,2,2,1];[2,1,1,1]", "[d0_0,3,3,d1_3]");
 
   // Unknown dims in the critical fields lead to partial inference.
@@ -791,11 +938,15 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
 
   // Explicit padding errors
   // Negative padding
-  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 0, -1, 0, 0, 0, 0});
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"EXPLICIT",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{0, 0, 0, -1, 0, 0, 0, 0});
   INFER_ERROR("must be nonnegative", op, "[1,2,2,1];[1,1,1,1]");
 
   // Too little padding (7 explicit paddings instead of 8)
-  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 0, 0, 0, 0, 0});
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"EXPLICIT",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{0, 0, 0, 0, 0, 0, 0});
   INFER_ERROR("must contain 8 values", op, "[1,2,2,1];[1,1,1,1]");
 
   // Too much padding (9 explicit paddings instead of 8)
@@ -804,24 +955,36 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   INFER_ERROR("must contain 8 values", op, "[1,2,2,1];[1,1,1,1]");
 
   // Padding in batch dimension
-  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {1, 0, 0, 0, 0, 0, 0, 0});
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"EXPLICIT",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{1, 0, 0, 0, 0, 0, 0, 0});
   INFER_ERROR("batch or depth dimensions", op, "[1,2,2,1];[1,1,1,1]");
 
   // Padding in depth dimension
-  set_op({{1, 1, 1, 1}}, "EXPLICIT", "NHWC", "HWIO", {0, 0, 0, 0, 0, 0, 1, 0});
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"EXPLICIT",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{0, 0, 0, 0, 0, 0, 1, 0});
   INFER_ERROR("batch or depth dimensions", op, "[1,2,2,1];[1,1,1,1]");
 
   // Padding explicit_paddings when padding is not EXPLICIT
-  set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO", {0, 0, 0, 0, 0, 0, 0, 0});
+  set_op(/*strides=*/{{1, 1, 1, 1}}, /*padding=*/"VALID",
+         /*data_format=*/"NHWC", /*filter_format=*/"HWIO",
+         /*explicit_paddings=*/{0, 0, 0, 0, 0, 0, 0, 0});
   INFER_ERROR("must be empty", op, "[1,2,2,1];[1,1,1,1]");
 }
 
-TEST(CommonShapeFnsTest, Conv2DDilatedShapeTest) {
-  ShapeInferenceTestOp op("Conv2D");
+TEST_P(Conv2DShapeTest, Conv2DDilatedShapeTest) {
+  const string op_name = GetParam();
+  ShapeInferenceTestOp op(op_name);
   auto set_op = [&op](const std::vector<int32>& dilations,
                       const std::vector<int32>& strides, const string& padding,
                       const string& data_format,
                       const std::vector<int32>& explicit_paddings = {}) {
+    string format;
+    if (op.name == "Conv")
+      format = (data_format == "NHWC") ? "CHANNELS_LAST" : "CHANNELS_FIRST";
+    else
+      format = data_format;
     TF_CHECK_OK(NodeDefBuilder("test", "Conv2D")
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
@@ -829,110 +992,142 @@ TEST(CommonShapeFnsTest, Conv2DDilatedShapeTest) {
                     .Attr("strides", strides)
                     .Attr("padding", padding)
                     .Attr("explicit_paddings", explicit_paddings)
-                    .Attr("data_format", data_format)
+                    .Attr("data_format", format)
+                    .Attr("batch_dims", 1)
+                    .Attr("groups", 1)
                     .Finalize(&op.node_def));
   };
 
   // Invalid rank for dilation
-  set_op({{1, 2, 1}}, {{1, 1, 1, 1}}, "VALID", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NHWC");
   INFER_ERROR("contain 4 values", op, "[1,2,2,1];[1,1,1,1]");
 
   // Invalid value for dilation
-  set_op({{1, 0, 1, 1}}, {{1, 1, 1, 1}}, "VALID", "NHWC");
+  set_op(/*dilations=*/{{1, 0, 1, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NHWC");
   INFER_ERROR("must be >= 1", op, "[1,2,2,1];[1,1,1,1]");
 
   // Tests for NHWC
   // 1x1 filter, 2x1 dilations, 1x1 strides
-  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1}}, "VALID", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 1, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,2,2,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
 
   // 1x1 filter, 2x1 dilations, 2x1 strides
-  set_op({{1, 2, 1, 1}}, {{1, 2, 1, 1}}, "VALID", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 1, 1}}, /*strides=*/{{1, 2, 1, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,2,4,d1_3]");
 
   // 1x1 filter, 2x1 dilations, 2x2 strides
-  set_op({{1, 2, 1, 1}}, {{1, 2, 2, 1}}, "VALID", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 1, 1}}, /*strides=*/{{1, 2, 2, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
 
   // 3x3 filter, 2x1 dilations, 1x1 strides
-  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1}}, "VALID", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 1, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,5,5,1];[3,3,1,1]", "[d0_0,1,3,d1_3]");
 
   // 3x3 filter, 2x1 dilations, 2x1 strides
-  set_op({{1, 2, 1, 1}}, {{1, 2, 1, 1}}, "VALID", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 1, 1}}, /*strides=*/{{1, 2, 1, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,5,5,1];[3,3,1,1]", "[d0_0,1,3,d1_3]");
 
   // 3x3 filter, 1x2 dilations, 2x2 strides
-  set_op({{1, 1, 2, 1}}, {{1, 2, 2, 1}}, "VALID", "NHWC");
+  set_op(/*dilations=*/{{1, 1, 2, 1}}, /*strides=*/{{1, 2, 2, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,5,5,1];[3,3,1,1]", "[d0_0,2,1,d1_3]");
 
   // Tests for NCHW
   // 1x1 filter, 2x1 dilations, 1x1 strides
-  set_op({{1, 1, 2, 1}}, {{1, 1, 1, 1}}, "VALID", "NCHW");
+  set_op(/*dilations=*/{{1, 1, 2, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NCHW");
   INFER_OK(op, "[1,1,2,2];[1,1,1,1]", "[d0_0,d1_3,2,2]");
 
   // 1x1 filter, 2x1 dilations, 2x1 strides
-  set_op({{1, 1, 2, 1}}, {{1, 1, 2, 1}}, "VALID", "NCHW");
+  set_op(/*dilations=*/{{1, 1, 2, 1}}, /*strides=*/{{1, 1, 2, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NCHW");
   INFER_OK(op, "[1,1,4,4];[1,1,1,1]", "[d0_0,d1_3,2,4]");
 
   // 1x1 filter, 2x1 dilations, 2x2 strides
-  set_op({{1, 1, 2, 1}}, {{1, 1, 2, 2}}, "VALID", "NCHW");
+  set_op(/*dilations=*/{{1, 1, 2, 1}}, /*strides=*/{{1, 1, 2, 2}},
+         /*padding=*/"VALID", /*data_format=*/"NCHW");
   INFER_OK(op, "[1,1,4,4];[1,1,1,1]", "[d0_0,d1_3,2,2]");
 
   // 3x3 filter, 2x1 dilations, 1x1 strides
-  set_op({{1, 1, 2, 1}}, {{1, 1, 1, 1}}, "VALID", "NCHW");
+  set_op(/*dilations=*/{{1, 1, 2, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NCHW");
   INFER_OK(op, "[1,1,5,5];[3,3,1,1]", "[d0_0,d1_3,1,3]");
 
   // 3x3 filter, 2x1 dilations, 2x1 strides
-  set_op({{1, 1, 2, 1}}, {{1, 1, 2, 1}}, "VALID", "NCHW");
+  set_op(/*dilations=*/{{1, 1, 2, 1}}, /*strides=*/{{1, 1, 2, 1}},
+         /*padding=*/"VALID", /*data_format=*/"NCHW");
   INFER_OK(op, "[1,1,5,5];[3,3,1,1]", "[d0_0,d1_3,1,3]");
 
   // 3x3 filter, 1x2 dilations, 2x2 strides
-  set_op({{1, 1, 1, 2}}, {{1, 1, 2, 2}}, "VALID", "NCHW");
+  set_op(/*dilations=*/{{1, 1, 1, 2}}, /*strides=*/{{1, 1, 2, 2}},
+         /*padding=*/"VALID", /*data_format=*/"NCHW");
   INFER_OK(op, "[1,1,5,5];[3,3,1,1]", "[d0_0,d1_3,2,1]");
 
   // Some tests for "SAME" padding
 
   // 4x4 input, 1x1 filter, 2x1 dilations, 1x1 stride
-  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1}}, "SAME", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 1, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"SAME", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 3x3 input, 2x2 filter, 2x2 dilations, 1x1 stride
-  set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "SAME", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 2, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"SAME", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // 4x4 input, 2x2 filter, 1x2 dilations, 2x2 stride
-  set_op({{1, 1, 2, 1}}, {{1, 2, 2, 1}}, "SAME", "NHWC");
+  set_op(/*dilations=*/{{1, 1, 2, 1}}, /*strides=*/{{1, 2, 2, 1}},
+         /*padding=*/"SAME", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,2,2,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 dilations, 1x1 stride
-  set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "SAME", "NHWC");
+  set_op(/*dilations=*/{{1, 2, 2, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"SAME", /*data_format=*/"NHWC");
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 
   // Some tests for "EXPLICIT" padding
 
   // 4x4 input, 1x1 filter, 2x1 dilations, 1x1 stride, [0, 2, 1, 4] padding
-  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1}}, "EXPLICIT", "NHWC",
-         {0, 0, 0, 2, 1, 4, 0, 0});
+  set_op(/*dilations=*/{{1, 2, 1, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"EXPLICIT", /*data_format=*/"NHWC",
+         /*explicit_paddings=*/{0, 0, 0, 2, 1, 4, 0, 0});
   INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,6,9,d1_3]");
 
   // 3x3 input, 2x2 filter, 2x2 dilations, 1x1 stride, [1, 0, 1, 2] padding
-  set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "EXPLICIT", "NHWC",
-         {0, 0, 1, 0, 1, 2, 0, 0});
+  set_op(/*dilations=*/{{1, 2, 2, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"EXPLICIT", /*data_format=*/"NHWC",
+         /*explicit_paddings=*/{0, 0, 1, 0, 1, 2, 0, 0});
   INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,2,4,d1_3]");
 
   // 4x4 input, 2x2 filter, 1x2 dilations, 2x2 stride, [3, 2, 1, 0] padding
-  set_op({{1, 1, 2, 1}}, {{1, 2, 2, 1}}, "EXPLICIT", "NHWC",
-         {0, 0, 3, 2, 1, 0, 0, 0});
+  set_op(/*dilations=*/{{1, 1, 2, 1}}, /*strides=*/{{1, 2, 2, 1}},
+         /*padding=*/"EXPLICIT", /*data_format=*/"NHWC",
+         /*explicit_paddings=*/{0, 0, 3, 2, 1, 0, 0, 0});
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,2,d1_3]");
 
   // 4x4 input, 2x2 filter, 2x2 dilations, 1x1 stride, [1, 1, 2, 2] padding
-  set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "EXPLICIT", "NHWC",
-         {0, 0, 1, 1, 2, 2, 0, 0});
+  set_op(/*dilations=*/{{1, 2, 2, 1}}, /*strides=*/{{1, 1, 1, 1}},
+         /*padding=*/"EXPLICIT", /*data_format=*/"NHWC",
+         /*explicit_paddings=*/{0, 0, 1, 1, 2, 2, 0, 0});
   INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,4,6,d1_3]");
 }
 
-TEST(CommonShapeFnsTest, Conv3DShapeTest) {
+TEST(CommonShapeFnsTest, Conv3DShapeRankTest) {
+  ShapeInferenceTestOp op("Conv3D");
+  // Invalid rank for input.
+  INFER_ERROR("must be rank 5", op, "[4,4];[2,1,1,1]");
+  // Invalid rank for filter.
+  INFER_ERROR("must be rank 5", op, "[1,4,4,1];[2,1,1]");
+}
+
+TEST(CommonShapeFnsTest, Conv3DGroupsTest) {
   ShapeInferenceTestOp op("Conv3D");
   auto set_op = [&op](const std::vector<int32>& strides,
                       const string& padding) {
@@ -944,17 +1139,54 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
                     .Finalize(&op.node_def));
   };
 
-  // Invalid rank for input
-  INFER_ERROR("must be rank 5", op, "[4,4];[2,1,1,1]");
-  // Invalid rank for filter
-  INFER_ERROR("must be rank 5", op, "[1,4,4,1];[2,1,1]");
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"VALID");
+  // Input depth must be multiple of filter depth for group convolutions.
+  INFER_ERROR(
+      "Depth of input (10) is not a multiple of input depth of filter (6)", op,
+      "[1,2,2,2,10];[1,1,1,6,20]");
+
+  // Output dimensions must be multiple of group number.
+  INFER_ERROR(
+      "Depth of output (1) is not a multiple of the number of groups (2)", op,
+      "[1,2,2,2,10];[1,1,1,5,1]");
+
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"SAME");
+  // 4x4 input of depth 10, 2x2 filter with depth 5, 1x1 stride.
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,5,2]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // Test output multiple of group size is ok:
+  // 4x4 input of depth 10, 2x2 filter with depth 5, 1x1 stride.
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,5,2]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+
+  // Depthwise convolution first step:
+  // 4x4 input of depth 10, 2x2 filter with depth 1, 1x1 stride.
+  INFER_OK(op, "[1,4,4,4,10];[2,2,2,1,10]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
+}
+
+INSTANTIATE_TEST_SUITE_P(CommonShapeFnsTest, Conv2DShapeTest,
+                         ::testing::Values("Conv2D", "Conv"));
+
+class Conv3DShapeTest : public ::testing::TestWithParam<string> {};
+
+TEST_P(Conv3DShapeTest, Conv3DShapeTest) {
+  const string op_name = GetParam();
+  ShapeInferenceTestOp op(op_name);
+  auto set_op = [&op](const std::vector<int32>& strides,
+                      const string& padding) {
+    TF_CHECK_OK(NodeDefBuilder("test", op.name)
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("filter", 0, DT_FLOAT)
+                    .Attr("strides", strides)
+                    .Attr("padding", padding)
+                    .Finalize(&op.node_def));
+  };
 
   // Invalid value for strides
-  set_op({{1, 1, 1, 0, 1}}, "VALID");
+  set_op(/*strides=*/{{1, 1, 1, 0, 1}}, /*padding=*/"VALID");
   INFER_ERROR("must be > 0", op, "[1,2,2,2,1];[1,1,1,1,1]");
 
   // 1x1x1 filter
-  set_op({{1, 1, 1, 1, 1}}, "VALID");
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"VALID");
   INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
 
   // unknown dims in the critical fields give partial inference.
@@ -968,45 +1200,24 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   INFER_OK(op, "[1,2,2,2,1];[1,1,1,?,1]", "[d0_0,2,2,2,d1_4]");
   INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,?]", "[d0_0,2,2,2,d1_4]");
 
-  // input depth must be multiple of filter depth for group convolutions
-  INFER_ERROR(
-      "Depth of input (10) is not a multiple of input depth of filter (6)", op,
-      "[1,2,2,2,10];[1,1,1,6,20]");
-
-  // Output dimensions must be multiple of group number
-  INFER_ERROR(
-      "Depth of output (1) is not a multiple of the number of groups (2)", op,
-      "[1,2,2,2,10];[1,1,1,5,1]");
-
   // 2x2x2 filter
-  set_op({{1, 1, 1, 1, 1}}, "VALID");
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"VALID");
   INFER_OK(op, "[1,2,2,2,1];[2,2,2,1,1]", "[d0_0,1,1,1,d1_4]");
 
   // 3x3 input, 1x1 filter, 2x2 stride
-  set_op({{1, 2, 2, 2, 1}}, "VALID");
+  set_op(/*strides=*/{{1, 2, 2, 2, 1}}, /*padding=*/"VALID");
   INFER_OK(op, "[1,3,3,3,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
 
   // 3x3 input, 1x1 filter, 2x1x1 stride
-  set_op({{1, 2, 1, 1, 1}}, "VALID");
+  set_op(/*strides=*/{{1, 2, 1, 1, 1}}, /*padding=*/"VALID");
   INFER_OK(op, "[1,3,3,3,1];[1,1,1,1,1]", "[d0_0,2,3,3,d1_4]");
 
   // 4x4 input, 2x2 filter, 1x1 stride
-  set_op({{1, 1, 1, 1, 1}}, "SAME");
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"SAME");
   INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
 
-  // 4x4 input of depth 10, 2x2 filter with depth 5, 1x1 stride
-  INFER_OK(op, "[1,4,4,4,10];[2,2,2,5,2]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
-
-  // test output multiple of group size is ok
-  // 4x4 input of depth 10, 2x2 filter with depth 5, 1x1 stride
-  INFER_OK(op, "[1,4,4,4,10];[2,2,2,5,2]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
-
-  // Depthwise convolution first step
-  // 4x4 input of depth 10, 2x2 filter with depth 1, 1x1 stride
-  INFER_OK(op, "[1,4,4,4,10];[2,2,2,1,10]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
-
   // with SAME, filter doesn't matter except for last dim.
-  set_op({{1, 1, 1, 1, 1}}, "SAME");
+  set_op(/*strides=*/{{1, 1, 1, 1, 1}}, /*padding=*/"SAME");
   INFER_OK(op, "[?,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
   INFER_OK(op, "[1,?,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
   INFER_OK(op, "[1,4,?,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
@@ -1019,7 +1230,7 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,?]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
 
   // with SAME, and stride != 1, division happens to produce output.
-  set_op({{1, 2, 3, 4, 1}}, "SAME");
+  set_op(/*strides=*/{{1, 2, 3, 4, 1}}, /*padding=*/"SAME");
   INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
   INFER_OK(op, "[?,4,9,4,1];[2,2,2,1,1]", "[d0_0,2,3,1,d1_4]");
   INFER_OK(op, "[1,?,9,4,1];[2,2,2,1,1]", "[d0_0,?,3,1,d1_4]");
@@ -1033,12 +1244,13 @@ TEST(CommonShapeFnsTest, Conv3DShapeTest) {
   INFER_OK(op, "[1,4,9,4,1];[2,2,2,1,?]", "[d0_0,2,3,1,d1_4]");
 }
 
-TEST(CommonShapeFnsTest, Conv3DDilatedShapeTest) {
-  ShapeInferenceTestOp op("Conv3D");
+TEST_P(Conv3DShapeTest, Conv3DDilatedShapeTest) {
+  const string op_name = GetParam();
+  ShapeInferenceTestOp op(op_name);
   auto set_op = [&op](const std::vector<int32>& dilations,
                       const std::vector<int32>& strides,
                       const string& padding) {
-    TF_CHECK_OK(NodeDefBuilder("test", "Conv3D")
+    TF_CHECK_OK(NodeDefBuilder("test", op.name)
                     .Input("input", 0, DT_FLOAT)
                     .Input("filter", 0, DT_FLOAT)
                     .Attr("dilations", dilations)
@@ -1048,33 +1260,43 @@ TEST(CommonShapeFnsTest, Conv3DDilatedShapeTest) {
   };
 
   // Invalid rank for dilation
-  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1, 1}}, "VALID");
+  set_op(/*dilations=*/{{1, 2, 1, 1}}, /*strides=*/{{1, 1, 1, 1, 1}},
+         /*padding=*/"VALID");
   INFER_ERROR("contain 5 values", op, "[1,2,2,2,1];[1,1,1,1,1]");
 
   // Invalid value for dilation
-  set_op({{1, 2, 0, 1, 1}}, {{1, 1, 1, 1, 1}}, "VALID");
+  set_op(/*dilations=*/{{1, 2, 0, 1, 1}}, /*strides=*/{{1, 1, 1, 1, 1}},
+         /*padding=*/"VALID");
   INFER_ERROR("must be >= 1", op, "[1,2,2,2,1];[1,1,1,1,1]");
 
   // 2x1x1 dilation 1x1x1 filter
-  set_op({{1, 2, 1, 1, 1}}, {{1, 1, 1, 1, 1}}, "VALID");
+  set_op(/*dilations=*/{{1, 2, 1, 1, 1}}, /*strides=*/{{1, 1, 1, 1, 1}},
+         /*padding=*/"VALID");
   INFER_OK(op, "[1,2,2,2,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
 
   // 2x1x1 dilation 2x2x2 filter
-  set_op({{1, 2, 1, 1, 1}}, {{1, 1, 1, 1, 1}}, "VALID");
+  set_op(/*dilations=*/{{1, 2, 1, 1, 1}}, /*strides=*/{{1, 1, 1, 1, 1}},
+         /*padding=*/"VALID");
   INFER_OK(op, "[1,3,2,2,1];[2,2,2,1,1]", "[d0_0,1,1,1,d1_4]");
 
   // 2x1x1 dilation 3x3x3 input, 1x1x1 filter, 2x2x2 stride
-  set_op({{1, 2, 1, 1, 1}}, {{1, 2, 2, 2, 1}}, "VALID");
+  set_op(/*dilations=*/{{1, 2, 1, 1, 1}}, /*strides=*/{{1, 2, 2, 2, 1}},
+         /*padding=*/"VALID");
   INFER_OK(op, "[1,3,3,3,1];[1,1,1,1,1]", "[d0_0,2,2,2,d1_4]");
 
   // 2x1x1 dilation 3x3x3 input, 1x1x1 filter, 2x1x1 stride
-  set_op({{1, 2, 1, 1, 1}}, {{1, 2, 1, 1, 1}}, "VALID");
+  set_op(/*dilations=*/{{1, 2, 1, 1, 1}}, /*strides=*/{{1, 2, 1, 1, 1}},
+         /*padding=*/"VALID");
   INFER_OK(op, "[1,3,3,3,1];[1,1,1,1,1]", "[d0_0,2,3,3,d1_4]");
 
   // 2x1x1 dilation 4x4x4 input, 2x2x2 filter, 1x1x1 stride
-  set_op({{1, 2, 1, 1, 1}}, {{1, 1, 1, 1, 1}}, "SAME");
+  set_op(/*dilations=*/{{1, 2, 1, 1, 1}}, /*strides=*/{{1, 1, 1, 1, 1}},
+         /*padding=*/"SAME");
   INFER_OK(op, "[1,4,4,4,1];[2,2,2,1,1]", "[d0_0,d0_1,d0_2,d0_3,d1_4]");
 }
+
+INSTANTIATE_TEST_SUITE_P(CommonShapeFnsTest, Conv3DShapeTest,
+                         ::testing::Values("Conv3D", "Conv"));
 
 TEST(CommonShapeFnsTest, DepthwiseConv2DShapeTest) {
   ShapeInferenceTestOp op("DepthwiseConv2dNative");

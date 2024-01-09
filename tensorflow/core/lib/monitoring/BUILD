@@ -5,17 +5,18 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
         # tensorflow/core/platform:monitoring depends on this package
         "//tensorflow/core/platform:__subpackages__",
         # tensorflow/compiler/xla/pjrt:metrics depends on this package
-        "//tensorflow/compiler/xla/pjrt:__subpackages__",
-        "//tensorflow/compiler/xla/service/gpu:__subpackages__",
+        "@local_xla//xla/pjrt:__subpackages__",
+        "@local_xla//xla/service/gpu:__subpackages__",
         # tensorflow/compiler/mlir/tfrt:tf_jitrt depends on this package
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "//tensorflow/tsl/lib/monitoring:__subpackages__",
+        "@local_tsl//tsl/lib/monitoring:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -29,7 +30,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/monitoring:types",
+        "@local_tsl//tsl/lib/monitoring:types",
     ],
 )
 
@@ -41,7 +42,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/monitoring:timed",
+        "@local_tsl//tsl/lib/monitoring:timed",
     ],
 )
 
@@ -54,8 +55,8 @@ cc_library(
         ":cell_reader-inl",
         ":collected_metrics",
         ":metric_def",
-        "//tensorflow/tsl/lib/monitoring:cell_reader",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@local_tsl//tsl/lib/monitoring:cell_reader",
     ],
 )
 
@@ -73,8 +74,8 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/lib/monitoring:cell_reader-inl",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/lib/monitoring:cell_reader-inl",
     ],
 )
 
@@ -87,7 +88,7 @@ cc_library(
         ":metric_def",
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
-        "//tensorflow/tsl/lib/monitoring:collected_metrics",
+        "@local_tsl//tsl/lib/monitoring:collected_metrics",
     ],
 )
 
@@ -97,7 +98,7 @@ cc_library(
     visibility = [
         "//learning/brain/google/monitoring:__subpackages__",
         "//tensorflow/core:__subpackages__",
-        "//tensorflow/tsl:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
     ],
     deps = [
         ":collected_metrics",
@@ -112,7 +113,7 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/monitoring:collection_registry",
+        "@local_tsl//tsl/lib/monitoring:collection_registry",
     ],
 )
 
@@ -129,7 +130,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/monitoring:counter",
+        "@local_tsl//tsl/lib/monitoring:counter",
     ],
 )
 
@@ -140,7 +141,7 @@ cc_library(
         ":collection_registry",
         ":metric_def",
         "//tensorflow/core/lib/core:status",
-        "//tensorflow/tsl/lib/monitoring:gauge",
+        "@local_tsl//tsl/lib/monitoring:gauge",
     ],
 )
 
@@ -150,14 +151,14 @@ cc_library(
     visibility = [
         "//learning/brain/google/monitoring:__subpackages__",
         "//tensorflow/core:__subpackages__",
-        "//tensorflow/tsl/lib/monitoring:__subpackages__",
+        "@local_tsl//tsl/lib/monitoring:__subpackages__",
     ],
     deps = [
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/monitoring:metric_def",
+        "@local_tsl//tsl/lib/monitoring:metric_def",
     ],
 )
 
@@ -175,7 +176,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
-        "//tensorflow/tsl/lib/monitoring:sampler",
+        "@local_tsl//tsl/lib/monitoring:sampler",
     ],
 )
 
@@ -191,7 +192,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
-        "//tensorflow/tsl/lib/monitoring:percentile_sampler",
+        "@local_tsl//tsl/lib/monitoring:percentile_sampler",
     ],
 )
 
@@ -205,9 +206,9 @@ cc_library(
         "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/tsl/lib/monitoring:test_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/lib/monitoring:test_utils",
     ],
 )
 
@@ -225,7 +226,7 @@ filegroup(
         "test_utils.h",
         "timed.h",
         "types.h",
-        "//tensorflow/tsl/lib/monitoring:mobile_srcs_only_runtime",
+        "@local_tsl//tsl/lib/monitoring:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -244,7 +245,7 @@ filegroup(
         "test_utils.h",
         "timed.h",
         "types.h",
-        "//tensorflow/tsl/lib/monitoring:legacy_lib_monitoring_lib_headers",
+        "@local_tsl//tsl/lib/monitoring:legacy_lib_monitoring_lib_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -262,7 +263,7 @@ filegroup(
         "sampler.h",
         "test_utils.h",
         "types.h",
-        "//tensorflow/tsl/lib/monitoring:legacy_lib_monitoring_all_headers",
+        "@local_tsl//tsl/lib/monitoring:legacy_lib_monitoring_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

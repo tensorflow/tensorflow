@@ -17,14 +17,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/ragged_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -386,14 +389,15 @@ class RaggedCrossOp : public OpKernel {
 
     // Validate tensor shapes.
     for (int i = 0; i < num_ragged; ++i) {
-      if (!TensorShapeUtils::IsVector(ragged_values_list[i].shape())) {
-        return errors::InvalidArgument(
+      if (!TensorShapeUtils::IsVector(ragged_values_list[i].shape()) ||
+          !TensorShapeUtils::IsVector(ragged_splits_list[i].shape())) {
+        return absl::InvalidArgumentError(
             "tf.ragged.cross only supports inputs with rank=2.");
       }
-      if (!TensorShapeUtils::IsVector(ragged_splits_list[i].shape()) ||
-          (ragged_splits_list[i].NumElements() == 0)) {
-        return errors::InvalidArgument("Invalid RaggedTensor");
-      }
+
+      int64_t num_values = ragged_values_list[i].NumElements();
+      TF_RETURN_IF_ERROR(RaggedTensorVerifySplits<SplitsType>(
+          ragged_splits_list[i], true, num_values));
     }
     for (int i = 0; i < num_sparse; ++i) {
       if (!TensorShapeUtils::IsMatrix(sparse_indices_list[i].shape()) ||
@@ -596,7 +600,11 @@ class RaggedCrossOp : public OpKernel {
     int64_t cross_count_total = 0;
     flat_row_splits(0) = 0;
     for (int64_t b = 0; b < batch_size; b++) {
-      cross_count_total += CrossCountByBatchIndex(features, b);
+      int64_t cross_count_by_batch_index = CrossCountByBatchIndex(features, b);
+      if (cross_count_by_batch_index < 0) {
+        return errors::InvalidArgument("Invalid RaggedTensor");
+      }
+      cross_count_total += cross_count_by_batch_index;
       flat_row_splits(b + 1) = cross_count_total;
     }
 
@@ -613,6 +621,8 @@ class RaggedCrossOp : public OpKernel {
     int64_t cross_count = 1;
     for (int i = 0; i < features.size(); ++i) {
       const auto feature_count = features[i]->FeatureCount(batch_index);
+      // If feature_count is invalid, return -1 to let caller know.
+      if (feature_count < 0) return -1;
       if (feature_count == 0) return 0;
       cross_count *= feature_count;
     }

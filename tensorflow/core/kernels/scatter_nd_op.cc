@@ -1052,7 +1052,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
                    bool allocate) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (std::is_same<Device, GPUDevice>::value &&
-      tensorflow::OpDeterminismRequired()) {
+      tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
     return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
                                           allocate);
   }

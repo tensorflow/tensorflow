@@ -24,8 +24,8 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
@@ -91,7 +91,11 @@ std::string MultiRunStatsRecorder::PerfOptionName(
 
   // Handle cases run on CPU w/ the xnnpack delegate
   if (params.Get<bool>("use_xnnpack")) {
-    sstm << " (xnnpack)";
+    if (params.Get<bool>("xnnpack_force_fp16")) {
+      sstm << " (xnnpack-fp16)";
+    } else {
+      sstm << " (xnnpack)";
+    }
   }
 
   return sstm.str();
@@ -256,6 +260,7 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
 #endif
   single_option_run_params_->Set<bool>("use_xnnpack", false);
+  single_option_run_params_->Set<bool>("xnnpack_force_fp16", false);
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
@@ -282,6 +287,8 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
       BenchmarkParams xnnpack_params;
       xnnpack_params.AddParam("use_xnnpack",
                               BenchmarkParam::Create<bool>(true));
+      xnnpack_params.AddParam("xnnpack_force_fp16",
+                              BenchmarkParam::Create<bool>(false));
       xnnpack_params.AddParam("num_threads",
                               BenchmarkParam::Create<int32_t>(count));
       all_run_params_.emplace_back(std::move(xnnpack_params));

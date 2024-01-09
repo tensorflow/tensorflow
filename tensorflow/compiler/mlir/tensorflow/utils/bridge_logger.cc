@@ -16,11 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 
 #include <atomic>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 
@@ -30,9 +34,11 @@ namespace tensorflow {
 static std::atomic<int> log_counter(0);
 
 BridgeLoggerConfig::BridgeLoggerConfig(bool print_module_scope,
-                                       bool print_after_only_on_change)
-    : mlir::PassManager::IRPrinterConfig(print_module_scope,
-                                         print_after_only_on_change),
+                                       bool print_after_only_on_change,
+                                       mlir::OpPrintingFlags op_printing_flags)
+    : mlir::PassManager::IRPrinterConfig(
+          print_module_scope, print_after_only_on_change,
+          /*printAfterOnlyOnFailure=*/false, op_printing_flags),
       pass_filter_(GetFilter("MLIR_BRIDGE_LOG_PASS_FILTER")),
       string_filter_(GetFilter("MLIR_BRIDGE_LOG_STRING_FILTER")) {}
 

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -90,6 +92,7 @@ class SparseToDenseOp : public XlaOpKernel {
     }
     auto result = XlaScatter(buffer, sparse_values, indices,
                              /*indices_are_vectors=*/indices_shape.dims() > 1,
+                             /*indices_are_sorted=*/false,
                              /*combiner=*/{}, builder);
     context->SetOutput(0, builder->ReportErrorOrReturn(result));
   }

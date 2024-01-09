@@ -77,6 +77,12 @@ TFLITE_ATTRIBUTE_WEAK void OnTfLiteArenaAlloc(int subgraph_index, int arena_id,
 TFLITE_ATTRIBUTE_WEAK void OnTfLiteArenaDealloc(int subgraph_index,
                                                 int arena_id, size_t num_bytes);
 
+// Pause / resume heap monitoring via malloc/free hooks.
+TFLITE_ATTRIBUTE_WEAK void PauseHeapMonitoring(bool pause);
+
+// Records end of Interpreter so logger can report saved heap allocations.
+TFLITE_ATTRIBUTE_WEAK void OnTfLiteInterpreterEnd();
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_TENSORFLOW_PROFILER_LOGGER_H_

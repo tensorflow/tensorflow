@@ -92,6 +92,13 @@ tensorflow::Status SerializeProto(T model_proto,
   return ::tensorflow::OkStatus();
 }
 
+// Read and write to the experimental SavedModel Image format.
+tensorflow::Status ReadSavedModelImageFormat(
+    const std::string& input_file, tensorflow::SavedModel& model_proto);
+tensorflow::Status WriteSavedModelImageFormat(
+    tensorflow::SavedModel* model_proto, const std::string& output_file,
+    int debug_max_size);
+
 }  // namespace graph_transforms
 }  // namespace tfg
 }  // namespace mlir

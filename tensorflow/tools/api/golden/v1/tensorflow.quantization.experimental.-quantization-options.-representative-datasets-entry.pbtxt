@@ -1,0 +1,22 @@
+path: "tensorflow.quantization.experimental.QuantizationOptions.RepresentativeDatasetsEntry"
+tf_proto {
+  descriptor {
+    name: "RepresentativeDatasetsEntry"
+    field {
+      name: "key"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "value"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.quantization.RepresentativeDatasetFile"
+    }
+    options {
+      map_entry: true
+    }
+  }
+}

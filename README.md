@@ -2,14 +2,17 @@
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
 </div>
 
-[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=plastic)](https://badge.fury.io/py/tensorflow)
+[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://securityscorecards.dev/viewer/?uri=github.com/tensorflow/tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
+[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
+[![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
+[![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
 **`Documentation`** |
 ------------------- |
@@ -23,13 +26,13 @@ for machine learning. It has a comprehensive, flexible ecosystem of
 researchers push the state-of-the-art in ML and developers easily build and
 deploy ML-powered applications.
 
-TensorFlow was originally developed by researchers and engineers working on the
-Google Brain team within Google's Machine Intelligence Research organization to
-conduct machine learning and deep neural networks research. The system is
-general enough to be applicable in a wide variety of other domains, as well.
+TensorFlow was originally developed by researchers and engineers working within
+the Machine Intelligence team at Google Brain to conduct research in machine
+learning and neural networks. However, the framework is versatile enough to be
+used in other areas as well.
 
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
-and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as
+and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as a
 non-guaranteed backward compatible API for
 [other languages](https://www.tensorflow.org/api_docs).
 
@@ -97,12 +100,25 @@ uphold this code.**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, please see
-[TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss)
-for general questions and discussion, and please direct specific questions to
+[TensorFlow Forum](https://discuss.tensorflow.org/) for general questions and
+discussion, and please direct specific questions to
 [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
 
 The TensorFlow project strives to abide by generally accepted best practices in
 open-source software development.
+
+## Patching guidelines
+
+Follow these steps to patch a specific version of TensorFlow, for example, to
+apply fixes to bugs or security vulnerabilities:
+
+*   Clone the TensorFlow repo and switch to the corresponding branch for your
+    desired TensorFlow version, for example, branch `r2.8` for version 2.8.
+*   Apply (that is, cherry-pick) the desired changes and resolve any code
+    conflicts.
+*   Run TensorFlow tests and ensure they pass.
+*   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
+    package from source.
 
 ## Continuous build status
 
@@ -150,16 +166,9 @@ Learn more about the
 
 ## Courses
 
-*   [Deep Learning with Tensorflow from Edx](https://www.edx.org/course/deep-learning-with-tensorflow)
-*   [DeepLearning.AI TensorFlow Developer Professional Certificate from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
-*   [TensorFlow: Data and Deployment from Coursera](https://www.coursera.org/specializations/tensorflow-data-and-deployment)
-*   [Getting Started with TensorFlow 2 from Coursera](https://www.coursera.org/learn/getting-started-with-tensor-flow2)
-*   [TensorFlow: Advanced Techniques from Coursera](https://www.coursera.org/specializations/tensorflow-advanced-techniques)
-*   [TensorFlow 2 for Deep Learning Specialization from Coursera](https://www.coursera.org/specializations/tensorflow2-deeplearning)
-*   [Intro to TensorFlow for A.I, M.L, and D.L from Coursera](https://www.coursera.org/learn/introduction-tensorflow)
-*   [Machine Learning with TensorFlow on GCP from Coursera](https://www.coursera.org/specializations/machine-learning-tensorflow-gcp)
-*   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
-*   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
+* [Coursera](https://www.coursera.org/search?query=TensorFlow)
+* [Udacity](https://www.udacity.com/courses/all?search=TensorFlow)
+* [Edx](https://www.edx.org/search?q=TensorFlow)
 
 ## License
 

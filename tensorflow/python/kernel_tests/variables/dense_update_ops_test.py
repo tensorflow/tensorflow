@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -53,7 +54,10 @@ class AssignOpTest(test.TestCase):
       return self.evaluate(p), new_value
 
   def _testTypes(self, vals):
-    for dtype in [np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [
+        np.float32, np.float64, np.int32, np.int64,
+        dtypes.bfloat16.as_numpy_dtype
+    ]:
       x = np.zeros(vals.shape).astype(dtype)
       y = vals.astype(dtype)
       var_value, op_value = self._initAssignFetch(x, y, use_gpu=False)

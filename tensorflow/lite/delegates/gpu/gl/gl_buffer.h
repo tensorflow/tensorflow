@@ -120,6 +120,7 @@ absl::Status GetSSBOSize(GLuint id, int64_t* size_bytes);
 
 // Creates new shader storage buffer that will be modified and used many
 // times.
+// Buffer will be initialized with 0's.
 //
 // See https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object for
 // details.
@@ -248,9 +249,9 @@ absl::Status CreateReadWriteShaderStorageBuffer(uint32_t num_elements,
   gl_buffer_internal::BufferId id;
   gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id.id());
   // TODO(akulik): benchmark DYNAMIC vs STREAM buffer
-  RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glBufferData, GL_SHADER_STORAGE_BUFFER,
-                                     num_elements * sizeof(T), nullptr,
-                                     GL_STREAM_COPY));
+  RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(
+      glBufferData, GL_SHADER_STORAGE_BUFFER, num_elements * sizeof(T),
+      std::vector<T>(num_elements).data(), GL_STREAM_COPY));
   *gl_buffer = GlBuffer{GL_SHADER_STORAGE_BUFFER, id.Release(),
                         num_elements * sizeof(T), 0, true};
   return absl::OkStatus();

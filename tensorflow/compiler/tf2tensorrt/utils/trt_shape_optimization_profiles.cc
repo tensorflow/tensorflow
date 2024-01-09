@@ -94,7 +94,8 @@ Status ShapeProfileBinaryOp(std::vector<nvinfer1::Dims>* x,
   for (int i = 0; i < x->size(); i++) {
     if (x->at(i).nbDims != y[i].nbDims)
       return errors::InvalidArgument(
-          "Number of input dimensions differ during profile creation");
+          "Number of input dimensions differ during profile creation at dim ",
+          i, ", values ", x->at(i).nbDims, y[i].nbDims);
     for (int j = 0; j < x->at(i).nbDims; j++) {
       x->at(i).d[j] = op(x->at(i).d[j], y[i].d[j]);
     }
@@ -143,11 +144,8 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
   tensorflow::profiler::TraceMe activity(
       "TrtShapeOptimizationProfile::CollectShapeValues",
       tensorflow::profiler::TraceMeLevel::kInfo);
-  const cudaStream_t* stream = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack()));
+  cudaStream_t stream = reinterpret_cast<cudaStream_t>(CHECK_NOTNULL(
+      ctx->op_device_context()->stream()->platform_specific_handle().stream));
   actual_shape_values_.resize(ctx->num_inputs());
   if (is_shape_tensor_.empty()) {
     is_shape_tensor_.resize(ctx->num_inputs());
@@ -165,6 +163,12 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
         is_shape_tensor_[i] = false;
         continue;
       }
+      if (input_shape_values_.size() > 0 &&
+          input_shape_values_[0][i].nbDims != ctx->input(i).NumElements()) {
+        // Shape tensor dims should not change. It must be a value tensor.
+        is_shape_tensor_[i] = false;
+        continue;
+      }
       // We have to copy the shape values to the host, because TRT's
       // ExecutionContext::setInputShapeBinding expects a host pointer.
       n_shape_val++;
@@ -172,7 +176,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
       actual_shape_values_[i].nbDims = input.NumElements();
       auto ret = cudaMemcpyAsync(
           actual_shape_values_[i].d, input.flat<int32>().data(),
-          input.NumElements() * sizeof(int32), cudaMemcpyDeviceToHost, *stream);
+          input.NumElements() * sizeof(int32), cudaMemcpyDeviceToHost, stream);
       if (ret != 0) {
         return errors::Internal("Could not copy shape tensor values");
       }
@@ -185,7 +189,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
   if (n_shape_val > 0) {
     // If we have any shape values candidates, then wait until data is copied
     // to host.
-    cudaStreamSynchronize(*stream);
+    cudaStreamSynchronize(stream);
   }
   return OkStatus();
 }
@@ -271,6 +275,11 @@ void TrtShapeOptimizationProfile::InitProfiles(
     auto shape_vec = input_shapes_[i];
     VLOG(2) << "Initprofiles, processing shape " << i;
     if (!shape_vec.empty()) {
+      // Correct for values that are mistakenly used as shape values
+      for (int k = 0; k < input_shape_values_[i].size(); k++) {
+        if (!is_shape_tensor_[k])
+          input_shape_values_[i][k] = nvinfer1::Dims{0, {}};
+      }
       std::vector<nvinfer1::Dims> dimvec = GetDimVec(shape_vec);
       dimvec.insert(dimvec.end(), input_shape_values_[i].begin(),
                     input_shape_values_[i].end());
@@ -481,12 +490,13 @@ int TrtShapeOptimizationProfile::GetProfileNumber(
   // TODO(tfeher): Return the best profile not just the first compatible.
   for (int i = 0; i < profiles_.size(); i++) {
     if (profiles_[i].IncludesShapes(shapes, HasShapeTensor(),
-                                    actual_shape_values_, is_pruned_input_)) {
+                                    actual_shape_values_, is_pruned_input_,
+                                    is_shape_tensor_)) {
       return i;
     }
   }
-  VLOG(1) << "Profile not found for input shapes " << DebugString(shapes)
-          << ".";
+  VLOG(1) << "Profile not found for input shapes " << DebugString(shapes);
+  VLOG(2) << "  and shape values " << DebugString(actual_shape_values_);
   return -1;
 }
 

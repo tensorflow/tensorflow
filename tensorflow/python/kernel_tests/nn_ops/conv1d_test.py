@@ -18,6 +18,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
@@ -57,7 +58,7 @@ class Conv1DTest(test.TestCase):
     x = constant_op.constant([1, 2, 3, 4], dtype=dtypes.float32)
     x = array_ops.expand_dims(x, 0)  # Add batch dimension
     x = array_ops.expand_dims(x, 2)  # And depth dimension
-    x = array_ops.stack([x, x])  # Make batch shape [2, 1]
+    x = array_ops_stack.stack([x, x])  # Make batch shape [2, 1]
     filters = constant_op.constant([2, 1], dtype=dtypes.float32)
     filters = array_ops.expand_dims(filters, 1)  # in_channels
     filters = array_ops.expand_dims(filters, 2)  # out_channels

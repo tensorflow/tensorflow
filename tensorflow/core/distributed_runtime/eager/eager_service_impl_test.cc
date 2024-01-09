@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/test_utils.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -51,7 +54,7 @@ namespace {
 
 class TestEagerServiceImpl : public EagerServiceImpl {
  public:
-  explicit TestEagerServiceImpl(const WorkerEnv* env) : EagerServiceImpl(env) {}
+  explicit TestEagerServiceImpl(WorkerEnv* env) : EagerServiceImpl(env) {}
   Status GetEagerContext(const uint64 context_id, EagerContext** ctx) {
     ServerContext* context = nullptr;
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
@@ -91,6 +94,17 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
+
+#define CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(method)                   \
+  void method##Async(const method##Request* request,                     \
+                     method##Response* response, StatusCallback done,    \
+                     int64_t init_timeout_in_ms, int retries) override { \
+    done(impl_->method(request, response));                              \
+  }
+
+  CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES
 
   void EnqueueAsync(CallOptions* call_opts, const EnqueueRequest* request,
                     EnqueueResponse* response, StatusCallback done) override {
@@ -155,7 +169,8 @@ class EagerServiceImplTest : public ::testing::Test {
                WorkerCacheInterface** worker_cache) {
               *worker_cache = new FakeCache;
               return OkStatus();
-            })) {
+            },
+            /*coordination_handler=*/nullptr)) {
     worker_env_.env = Env::Default();
 
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;
@@ -163,7 +178,6 @@ class EagerServiceImplTest : public ::testing::Test {
 
     device_mgr_ = std::make_unique<StaticDeviceMgr>(
         DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
-    worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
   }
 
@@ -171,7 +185,7 @@ class EagerServiceImplTest : public ::testing::Test {
   WorkerEnv worker_env_;
   tensorflow::RpcRendezvousMgr rendezvous_mgr_;
   std::unique_ptr<SessionMgr> session_mgr_;
-  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<DynamicDeviceMgr> device_mgr_;
 };
 
 void SetTensorProto(TensorProto* tensor_proto) {
@@ -284,6 +298,46 @@ tensorflow::FunctionDef MatMulFunction() {
       "        key: 'transpose_a'"
       "        value {"
       "          b: false"
+      "        }"
+      "      }"
+      "    }"
+      "    ret {"
+      "      key: 'm'"
+      "      value: 'matmul:product'"
+      "    }",
+      &def));
+  return def;
+}
+
+tensorflow::FunctionDef MatMulTransposeFunction() {
+  tensorflow::FunctionDef def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      "    signature {"
+      "      name: 'MatMulFunction'"
+      "      input_arg {"
+      "        name: 'a'"
+      "        type: DT_FLOAT"
+      "      }"
+      "      output_arg {"
+      "        name: 'm'"
+      "        type: DT_FLOAT"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'matmul'"
+      "      op: 'MatMul'"
+      "      input: 'a'"
+      "      input: 'a'"
+      "      attr {"
+      "        key: 'T'"
+      "        value {"
+      "          type: DT_FLOAT"
+      "        }"
+      "      }"
+      "      attr {"
+      "        key: 'transpose_a'"
+      "        value {"
+      "          b: true"
       "        }"
       "      }"
       "    }"
@@ -545,7 +599,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       Env::Default()->SleepForMicroseconds(500000);
       call_opts.StartCancel();
       n.WaitForNotification();
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+      EXPECT_TRUE(absl::IsCancelled(status)) << status.message();
     } else {
       n.WaitForNotification();
       TF_ASSERT_OK(status);
@@ -638,7 +692,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     }
     n.WaitForNotification();
     if (test_cancel) {
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+      EXPECT_TRUE(absl::IsCancelled(status)) << status.message();
     } else {
       TF_ASSERT_OK(status);
       // Retrieve the output.
@@ -696,13 +750,176 @@ TEST_F(EagerServiceImplFunctionTest, FunctionCancellationTest) {
 TEST_F(EagerServiceImplFunctionTest, ComponentFunctionTest) {
   RegisterFunctionOp register_op;
   *register_op.mutable_function_def() = MatMulFunction();
+  register_op.set_is_component_function(true);
   TestComponentFunction(register_op, "MatMulFunction", false);
 }
 
 TEST_F(EagerServiceImplFunctionTest, ComponentFunctionCancellationTest) {
   RegisterFunctionOp register_op;
   *register_op.mutable_function_def() = SingleRecvNodeFunction();
+  register_op.set_is_component_function(true);
   TestComponentFunction(register_op, "SingleRecvNodeFunction", true);
+}
+
+TEST_F(EagerServiceImplFunctionTest, ComponentNestedFunctionTest) {
+  RegisterFunctionOp register_op;
+  *register_op.mutable_function_def() = MatMulNestedFunction();
+  *register_op.mutable_library()->add_function() = MatMulFunction();
+  register_op.set_is_component_function(true);
+  TestComponentFunction(register_op, "MatMulNestedFunction", false);
+}
+
+TEST_F(EagerServiceImplFunctionTest, ComponentNestedFunctionWithNameClashTest) {
+  TestEagerServiceImpl eager_service_impl(&worker_env_);
+  uint64 context_id = random::New64();
+
+  // Create context.
+  CreateContextRequest request;
+  request.mutable_server_def()->set_job_name("localhost");
+  request.mutable_server_def()->set_task_index(0);
+  request.set_context_id(context_id);
+  CreateContextResponse response;
+  TF_ASSERT_OK(eager_service_impl.CreateContext(&request, &response));
+
+  // Register first function.
+  {
+    EnqueueRequest enqueue_request;
+    enqueue_request.set_context_id(context_id);
+    RegisterFunctionOp* register_op =
+        enqueue_request.add_queue()->mutable_register_function();
+    *register_op->mutable_function_def() = MatMulNestedFunction();
+    *register_op->mutable_library()->add_function() = MatMulFunction();
+    register_op->set_is_component_function(true);
+    EnqueueResponse enqueue_response;
+    TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &enqueue_request,
+                                            &enqueue_response));
+  }
+
+  // Register second function.
+  // In the second registration, the library contains a function named
+  // "MatMulFunction" but a different body.
+  {
+    EnqueueRequest enqueue_request;
+    enqueue_request.set_context_id(context_id);
+    RegisterFunctionOp* register_op =
+        enqueue_request.add_queue()->mutable_register_function();
+
+    *register_op->mutable_function_def() = MatMulNestedFunction();
+    register_op->mutable_function_def()->mutable_signature()->set_name(
+        "MatMulNestedTransposeFunction");
+    *register_op->mutable_library()->add_function() = MatMulTransposeFunction();
+    register_op->set_is_component_function(true);
+    EnqueueResponse enqueue_response;
+    TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &enqueue_request,
+                                            &enqueue_response));
+  }
+
+  // First run an op to generate input for the functions.
+  EnqueueRequest remote_enqueue_request;
+  remote_enqueue_request.set_context_id(context_id);
+  EnqueueResponse remote_enqueue_response;
+
+  std::unordered_map<string, AttrValue> const_attrs;
+  AttrValue val;
+  val.set_type(tensorflow::DataType::DT_FLOAT);
+  const_attrs.insert({"dtype", val});
+  val.Clear();
+  SetTensorProto(val.mutable_tensor());
+  const_attrs.insert({"value", val});
+  AddOperationToEnqueueRequest(1, "Const", {}, const_attrs,
+                               "/job:localhost/replica:0/task:0/device:CPU:0",
+                               &remote_enqueue_request);
+  TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
+                                          &remote_enqueue_response));
+
+  {
+    // Run first function with input from the previous op.
+    RunComponentFunctionRequest run_comp_func_request;
+    run_comp_func_request.set_context_id(context_id);
+    RunComponentFunctionResponse run_comp_func_response;
+    const int output_num = 5;
+    AddOperationToRunComponentFunctionRequest(
+        2, "MatMulNestedFunction", {std::make_pair(1, 0)},
+        std::unordered_map<string, AttrValue>(),
+        "/job:localhost/replica:0/task:0/device:CPU:0", output_num,
+        &run_comp_func_request);
+
+    CallOptions call_opts;
+    Notification n;
+    Status status;
+    eager_service_impl.RunComponentFunction(&call_opts, &run_comp_func_request,
+                                            &run_comp_func_response,
+                                            [&status, &n](const Status& s) {
+                                              status.Update(s);
+                                              n.Notify();
+                                            });
+    n.WaitForNotification();
+
+    TF_ASSERT_OK(status);
+    // Retrieve the output.
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* tensor_handle;
+    TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
+        context_id, RemoteTensorHandleInternal(2, output_num), &tensor_handle));
+    TF_ASSERT_OK(tensor_handle->Tensor(&t));
+
+    auto actual = t->flat<float>();
+    EXPECT_EQ(4, actual.size());
+
+    EXPECT_EQ(7, actual(0));
+    EXPECT_EQ(10, actual(1));
+    EXPECT_EQ(15, actual(2));
+    EXPECT_EQ(22, actual(3));
+  }
+
+  {
+    // Run second function with input from the constant op. The result should
+    // be different, because we are using the transposed implementation of
+    // MatMulFunction in the second function's library.
+    RunComponentFunctionRequest run_comp_func_request;
+    run_comp_func_request.set_context_id(context_id);
+    RunComponentFunctionResponse run_comp_func_response;
+    const int output_num = 5;
+    AddOperationToRunComponentFunctionRequest(
+        3, "MatMulNestedTransposeFunction", {std::make_pair(1, 0)},
+        std::unordered_map<string, AttrValue>(),
+        "/job:localhost/replica:0/task:0/device:CPU:0", output_num,
+        &run_comp_func_request);
+
+    CallOptions call_opts;
+    Notification n;
+    Status status;
+    eager_service_impl.RunComponentFunction(&call_opts, &run_comp_func_request,
+                                            &run_comp_func_response,
+                                            [&status, &n](const Status& s) {
+                                              status.Update(s);
+                                              n.Notify();
+                                            });
+    n.WaitForNotification();
+
+    TF_ASSERT_OK(status);
+    // Retrieve the output.
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* tensor_handle;
+    TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
+        context_id, RemoteTensorHandleInternal(3, output_num), &tensor_handle));
+    TF_ASSERT_OK(tensor_handle->Tensor(&t));
+
+    auto actual = t->flat<float>();
+    EXPECT_EQ(4, actual.size());
+
+    EXPECT_EQ(10, actual(0));
+    EXPECT_EQ(14, actual(1));
+    EXPECT_EQ(14, actual(2));
+    EXPECT_EQ(20, actual(3));
+  }
+
+  CloseContextRequest close_context_request;
+  close_context_request.set_context_id(context_id);
+  close_context_request.set_context_view_id(0);
+  CloseContextResponse close_context_response;
+  TF_ASSERT_OK(eager_service_impl.CloseContext(&close_context_request,
+                                               &close_context_response));
 }
 
 class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
@@ -789,8 +1006,9 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         /*session_metadata=*/nullptr,
         Rendezvous::Factory{[this](const int64_t step_id,
                                    const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-          *r = worker_env_.rendezvous_mgr->Find(step_id);
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = tsl::core::RefCountPtr<Rendezvous>(
+              worker_env_.rendezvous_mgr->Find(step_id).release());
           return OkStatus();
         }});
   }
@@ -834,7 +1052,8 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
   tensorflow::FunctionDef fdef_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> eager_pflr_;
   std::unique_ptr<EagerClusterFunctionLibraryRuntime> eager_cluster_flr_;
-  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(),
+                                          FunctionDefLibrary()};
 };
 
 // Test executes a remote function through
@@ -965,12 +1184,13 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt,
+      /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
   const NodeDef node_def = MatMulFunctionNodeDef();
-  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr));
+  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr, std::nullopt));
 
   // Run MatMulFunction on remote_device.
   gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
@@ -1019,12 +1239,13 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/std::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt,
+      /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
   const NodeDef node_def = MatMulFunctionNodeDef();
-  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr));
+  TF_ASSERT_OK(kernel->InstantiateFunc({}, node_def, nullptr, std::nullopt));
 
   // Run MatMulFunction on remote_device.
   gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
@@ -1229,13 +1450,16 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
 
 // Test requests sent to the eager service on master.
 TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
-  tensorflow::Rendezvous* rendezvous =
-      new tensorflow::IntraProcessRendezvous(device_mgr_.get());
+  tsl::core::RefCountPtr<tensorflow::Rendezvous> rendezvous =
+      tsl::core::RefCountPtr<tensorflow::Rendezvous>(
+          new tensorflow::IntraProcessRendezvous(device_mgr_.get()));
   // Create a master eager context.
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, device_mgr_.get(), false, rendezvous);
+      /*async=*/false, device_mgr_.get(), false, std::move(rendezvous), nullptr,
+      nullptr,
+      /*run_eager_op_as_function=*/true);
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.
@@ -1263,7 +1487,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
                                              &remote_enqueue_response);
   EXPECT_EQ(error::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "Unable to find a context_id matching the specified one"));
 
   // The request can be handled after adding the master eager context to
@@ -1300,7 +1524,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
 
   EXPECT_EQ(status.code(), error::ABORTED);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
-                      status.error_message());
+                      std::string(status.message()));
 
   uint64 new_context_id = random::New64();
   // Create a new context.

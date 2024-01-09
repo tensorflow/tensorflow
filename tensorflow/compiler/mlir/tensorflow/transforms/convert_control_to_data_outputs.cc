@@ -146,8 +146,12 @@ bool IsNoOpControlBarrier(Value control) {
 
 // Remove all control outputs of the function. Traverses NoOp control barrier
 // chains from FetchOp to all NoOp control barriers. Returns true
-// iff at least one control output is deleted.
-bool RemoveAllControlOutputs(func::FuncOp func) {
+// iff at least one control output is deleted. The ops_connected_to_fetch
+// set is populated with all operations that had a direct (or indirect, through
+// Identity ops) control connection to the fetch. That set will contain nullptr
+// if an arg is connected to the fetch.
+bool RemoveAllControlOutputs(
+    func::FuncOp func, SmallPtrSet<Operation*, 4>* ops_connected_to_fetch) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
   FetchOp fetch = graph_op.GetFetch();
@@ -155,10 +159,11 @@ bool RemoveAllControlOutputs(func::FuncOp func) {
   if (fetch.getNumOperands() == graph_op->getNumResults()) return false;
 
   std::queue<Value> control_barrier_worklist;
-  for (Value control_output :
+  for (Value control_input :
        fetch.getFetches().drop_front(graph_op->getNumResults())) {
-    if (IsNoOpControlBarrier(control_output))
-      control_barrier_worklist.push(control_output);
+    ops_connected_to_fetch->insert(control_input.getDefiningOp());
+    if (IsNoOpControlBarrier(control_input))
+      control_barrier_worklist.push(control_input);
   }
 
   // Erase all control outputs at the end from fetch.
@@ -179,10 +184,12 @@ bool RemoveAllControlOutputs(func::FuncOp func) {
     IslandOp current_island = cast<IslandOp>(control_barrier.getDefiningOp());
 
     for (auto control_input : current_island.getControlInputs()) {
+      ops_connected_to_fetch->insert(control_input.getDefiningOp());
       if (IsNoOpControlBarrier(control_input))
         control_barrier_worklist.push(control_input);
     }
     current_island.erase();
+    ops_connected_to_fetch->erase(current_island);
   }
   return true;
 }
@@ -232,10 +239,9 @@ void AppendFunctionResults(func::FuncOp func, int num_resources,
   graph_op.erase();
   func::ReturnOp return_op = cast<func::ReturnOp>(block.getTerminator());
   int num_old_arguments = return_op.getNumOperands();
-  for (int i = 0; i < num_resources; ++i) {
-    return_op.operandsMutable().append(
-        new_graph_op.getResult(num_old_arguments + i));
-  }
+  return_op->insertOperands(
+      num_old_arguments,
+      new_graph_op.getResults().slice(num_old_arguments, num_resources));
 }
 
 // Creates a wrapper island enclosing the `sub_op` dependent on
@@ -264,7 +270,7 @@ IslandOp CreateIsland(Operation* sub_op, ValueRange control_inputs,
 void ChainResourceOps(
     func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
-    int num_old_outputs) {
+    SmallPtrSet<Operation*, 4> ops_connected_to_fetch, int num_old_outputs) {
   assert(num_old_outputs + resource_equivalence_classes.getNumClasses() ==
          func.getNumArguments());
   auto graph_op = cast<GraphOp>(func.front().front());
@@ -294,7 +300,7 @@ void ChainResourceOps(
     auto chain_sink_island =
         CreateIsland(sink_identity, {}, builder_chain_sink);
 
-    // Add the chain sink data output to fetch.
+    // Add the chain sink data output to fetch. These might stay empty.
     fetch.getFetchesMutable().append(chain_sink_island.getOutputs().front());
 
     // Iterate over all members of the current equivalence class (represented
@@ -317,8 +323,10 @@ void ChainResourceOps(
         IslandOp wrapper = op->getParentOfType<IslandOp>();
         assert(wrapper);
         wrapper.getControlInputsMutable().append(chain_src_island.getControl());
-        chain_sink_island.getControlInputsMutable().append(
-            wrapper.getControl());
+        if (ops_connected_to_fetch.contains(wrapper)) {
+          chain_sink_island.getControlInputsMutable().append(
+              wrapper.getControl());
+        }
         processed_ops.insert(op);
       }
     }
@@ -347,7 +355,7 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
   // Get the dummy constant.
   OpBuilder builder(while_wrapper);
   auto loc = NameLoc::get(
-      builder.getStringAttr("chain_control_outputs@" + while_op.body()));
+      builder.getStringAttr("chain_control_outputs@" + while_op.getBody()));
   IslandOp const_wrapper = GetDummyConstant(builder, const_type, loc);
 
   // Get new operand and result types.
@@ -398,19 +406,21 @@ void ConvertControlToDataOutputs(
     for (Operation* op : chain_resource_to_ops_map[kUnknownResourceId]) {
       std::string op_name = op->getName().getStringRef().str();
       if (blocking_ops.insert(op_name).second) {
-        LOG(INFO) << "[`tf-executor-convert-control-to-data-outputs` disabled] "
-                     "Op type '"
-                  << op_name
-                  << "' has unknown side effects and blocks inter iteration "
-                     "parallelism for the while loop. Consider modeling side "
-                     "effects of this op.";
+        LOG(WARNING)
+            << "[`tf-executor-convert-control-to-data-outputs` disabled] "
+               "Op type '"
+            << op_name
+            << "' has unknown side effects and blocks inter iteration "
+               "parallelism for the while loop. Consider modeling side "
+               "effects of this op.";
       }
     }
     return;
   }
 
   // First remove all control outputs of while loop body.
-  bool changed = RemoveAllControlOutputs(while_body);
+  SmallPtrSet<Operation*, 4> ops_connected_to_fetch;
+  bool changed = RemoveAllControlOutputs(while_body, &ops_connected_to_fetch);
 
   // If there was no control output to be removed, return early.
   if (!changed) return;
@@ -425,7 +435,8 @@ void ConvertControlToDataOutputs(
 
   // Insert identity ops with control dep
   ChainResourceOps(while_body, chain_resource_to_ops_map,
-                   resource_equivalence_classes, num_old_outputs);
+                   resource_equivalence_classes, ops_connected_to_fetch,
+                   num_old_outputs);
   // Modify all the while ops referencing the body function and the
   // corresponding while condition functions. Note that each while condition
   // needs to be modified only once.
@@ -470,6 +481,8 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
     SmallVector<TF::WhileOp> while_callers = GetWhileCallers(func, symbol_map);
     if (while_callers.empty()) continue;
     while_body_func_to_while_ops[func] = while_callers;
+    // TODO(b/295892728): verify while body sanity. This pass expects a 1:1
+    // correspondence between function results and tf_executor.graph results.
   }
   // Keep track of functions whose side effect analysis is invalidated because
   // of modifications to that function.

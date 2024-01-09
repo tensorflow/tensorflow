@@ -53,7 +53,9 @@ class SparseConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
     ctx->set_output_ref(0, &mu_, &accumulator_);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseConditionalAccumulatorOp);
+  SparseConditionalAccumulatorOp(const SparseConditionalAccumulatorOp&) =
+      delete;
+  void operator=(const SparseConditionalAccumulatorOp&) = delete;
 };
 
 #define REGISTER_KERNELS(type, dev)                            \
@@ -91,7 +93,9 @@ class SparseAccumulatorApplyGradientOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseAccumulatorApplyGradientOp);
+  SparseAccumulatorApplyGradientOp(const SparseAccumulatorApplyGradientOp&) =
+      delete;
+  void operator=(const SparseAccumulatorApplyGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -126,7 +130,9 @@ class SparseAccumulatorTakeGradientOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseAccumulatorTakeGradientOp);
+  SparseAccumulatorTakeGradientOp(const SparseAccumulatorTakeGradientOp&) =
+      delete;
+  void operator=(const SparseAccumulatorTakeGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(

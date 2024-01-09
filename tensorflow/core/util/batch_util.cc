@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/batch_util.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"

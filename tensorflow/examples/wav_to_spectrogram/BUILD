@@ -3,7 +3,10 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 cc_library(
     name = "wav_to_spectrogram_lib",

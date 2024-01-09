@@ -44,6 +44,9 @@ bool GpuSupportsHalfMatMulAndConv();
 // Returns true if INTEL_MKL is defined
 bool IsMklEnabled();
 
+// Returns true if TF_ENABLE_ZENDNN_OPTS is set to 1
+bool IsZenDnnEnabled();
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_PORT_H_

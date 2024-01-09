@@ -1,21 +1,21 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -92,7 +92,7 @@ cc_library(
 
 LINALG_DEPS = [
     ":linalg_ops_common",
-    "//third_party/eigen3",
+    "@eigen_archive//:eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core/kernels:cast_op",
@@ -126,6 +126,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cholesky_op",
+    gpu_deps = ["//tensorflow/core/platform:stream_executor"],
     prefix = "cholesky_op",
     deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
@@ -211,17 +212,17 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "matrix_triangular_solve_op",
-    hdrs = ["matrix_triangular_solve_op_impl.h"],
     prefix = "matrix_triangular_solve_op",
+    textual_hdrs = ["matrix_triangular_solve_op_impl.h"],
     deps = [
         ":linalg_ops_common",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:fill_functor",
         "//tensorflow/core/platform:stream_executor",
+        "@eigen_archive//:eigen3",
     ] + if_cuda([
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
+        "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
@@ -260,6 +261,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "svd_op",
+    gpu_deps = ["//tensorflow/core/platform:stream_executor"],
     prefix = "svd_op",
     deps = LINALG_DEPS,
 )
@@ -274,9 +276,9 @@ tf_kernel_library(
     ]) + if_rocm([
         "//tensorflow/core/util:rocm_solvers",
     ]) + [
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -288,12 +290,13 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:batch_matmul_op",
         "//tensorflow/core/kernels:fill_functor",
+        "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/profiler/lib:traceme",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -305,7 +308,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -354,7 +357,7 @@ tf_kernel_library(
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 0,
 )

@@ -15,7 +15,7 @@
 """Optimizer utilities."""
 
 from tensorflow.python.distribute import central_storage_strategy
-from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -35,11 +35,11 @@ def all_reduce_sum_gradients(grads_and_vars):
   if filtered_grads_and_vars:
     if strategy_supports_no_merge_call():
       grads = [pair[0] for pair in filtered_grads_and_vars]
-      reduced = distribute_ctx.get_strategy().extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
+      reduced = distribute_lib.get_strategy().extended._replica_ctx_all_reduce(  # pylint: disable=protected-access
           ds_reduce_util.ReduceOp.SUM, grads)
     else:
       # TODO(b/183257003): Remove this branch
-      reduced = distribute_ctx.get_replica_context().merge_call(
+      reduced = distribute_lib.get_replica_context().merge_call(
           _all_reduce_sum_fn, args=(filtered_grads_and_vars,))
   else:
     reduced = []
@@ -88,7 +88,7 @@ def make_gradient_clipnorm_fn(clipnorm):
 
   def gradient_clipnorm_fn(grads_and_vars):
 
-    if isinstance(distribute_ctx.get_strategy(),
+    if isinstance(distribute_lib.get_strategy(),
                   (central_storage_strategy.CentralStorageStrategy,
                    central_storage_strategy.CentralStorageStrategyV1)):
       raise ValueError(
@@ -109,7 +109,7 @@ def make_global_gradient_clipnorm_fn(clipnorm):
 
   def gradient_clipnorm_fn(grads_and_vars):
 
-    if isinstance(distribute_ctx.get_strategy(),
+    if isinstance(distribute_lib.get_strategy(),
                   (central_storage_strategy.CentralStorageStrategy,
                    central_storage_strategy.CentralStorageStrategyV1)):
       raise ValueError(
@@ -130,7 +130,7 @@ def make_gradient_clipvalue_fn(clipvalue):
 
   def gradient_clipvalue_fn(grads_and_vars):
 
-    if isinstance(distribute_ctx.get_strategy(),
+    if isinstance(distribute_lib.get_strategy(),
                   (central_storage_strategy.CentralStorageStrategy,
                    central_storage_strategy.CentralStorageStrategyV1)):
       raise ValueError(
@@ -151,7 +151,7 @@ def _all_reduce_sum_fn(distribution, grads_and_vars):
 
 def strategy_supports_no_merge_call():
   """Returns if the current Strategy can operate in pure replica context."""
-  if not distribute_ctx.has_strategy():
+  if not distribute_lib.has_strategy():
     return True
-  strategy = distribute_ctx.get_strategy()
+  strategy = distribute_lib.get_strategy()
   return not strategy.extended._use_merge_call()  # pylint: disable=protected-access

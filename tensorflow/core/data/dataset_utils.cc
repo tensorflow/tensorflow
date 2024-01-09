@@ -16,21 +16,26 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <memory>
 #include <queue>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -42,10 +47,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -55,6 +62,8 @@ namespace {
 
 constexpr char kOutputSize[] = "output_size";
 constexpr char kCode[] = "code";
+constexpr char kExperimentOptAll[] = "all";
+constexpr char kExperimentOptOutAllExceptOptIn[] = "all_except_opt_in";
 constexpr char kMessage[] = "msg";
 constexpr char kOutput[] = "output";
 
@@ -87,15 +96,17 @@ constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
 constexpr char kMakeSloppyOpt[] = "make_sloppy";
-constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
+constexpr char kInjectIoPrefetchEligibleOpt[] = "inject_io_prefetch_eligible";
+constexpr char kInjectIoPrefetchOpt[] = "inject_io_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
 constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
+constexpr char kWarmStartOpt[] = "warm_start";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -493,45 +504,57 @@ absl::flat_hash_set<string> GetExperiments(
     opt_outs_raw = string(opt_outs_raw_cs);
   }
 
-  // Identify opted out experiments.
   auto live_experiments = DatasetExperimentRegistry::Experiments();
+  for (const auto& [experiment, unused] : live_experiments) {
+    metrics::RecordTFDataExperimentLive(experiment);
+  }
+
+  // Identify opted out experiments.
   absl::flat_hash_set<string> opt_outs;
-  if (opt_outs_raw == "all") {
+  if (opt_outs_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       opt_outs.insert(pair.first);
     }
+    metrics::RecordTFDataExperimentOptOut(kExperimentOptAll);
   } else {
     for (const auto& experiment :
          str_util::Split(opt_outs_raw, ',', str_util::SkipEmpty())) {
       opt_outs.insert(experiment);
+      metrics::RecordTFDataExperimentOptOut(experiment);
     }
   }
 
   // Include opted in experiments unless they are opted out.
-  if (opt_ins_raw == "all") {
+  if (opt_ins_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       auto experiment = pair.first;
       if (!opt_outs.contains(experiment)) {
         experiments.insert(experiment);
       }
     }
+    metrics::RecordTFDataExperimentOptIn(kExperimentOptAll);
   } else {
     for (const auto& experiment :
          str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty())) {
       if (!opt_outs.contains(experiment)) {
         experiments.insert(experiment);
       }
+      metrics::RecordTFDataExperimentOptIn(experiment);
     }
   }
 
-  if (opt_outs_raw == "all_except_opt_in") {
+  if (opt_outs_raw == kExperimentOptOutAllExceptOptIn) {
+    metrics::RecordTFDataExperimentOptOut(kExperimentOptOutAllExceptOptIn);
     return experiments;
   }
   // Stochastically include live experiments unless they are opted out.
   for (const auto& [experiment_name, experiment_selector] : live_experiments) {
-    if (experiment_selector.job_selector(hash_func, experiment_name,
-                                         job_name) &&
-        experiment_selector.task_selector(task_id) &&
+    uint64_t name_hash = hash_func(strings::StrCat(job_name, experiment_name));
+    std::mt19937_64 rng{name_hash};
+    std::bernoulli_distribution d{0.5};
+    bool evens = d(rng);
+    if (experiment_selector.job_selector(name_hash) &&
+        experiment_selector.task_selector(task_id, evens) &&
         !opt_outs.contains(experiment_name)) {
       experiments.insert(experiment_name);
     }
@@ -570,6 +593,13 @@ void GetOptimizations(const Options& options,
       optimizations_enabled->insert(kSlackOpt);
     } else {
       optimizations_disabled->insert(kSlackOpt);
+    }
+  }
+  if (options.optional_warm_start_case() == Options::kWarmStart) {
+    if (options.warm_start()) {
+      optimizations_enabled->insert(kWarmStartOpt);
+    } else {
+      optimizations_disabled->insert(kWarmStartOpt);
     }
   }
 }
@@ -678,9 +708,9 @@ Status ReadStatus(const string& iterator_prefix, const string& prefix,
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       &code_int));
-  error::Code code = static_cast<error::Code>(code_int);
+  absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-  if (code != error::Code::OK) {
+  if (code != absl::StatusCode::kOk) {
     tstring error_message;
     TF_RETURN_IF_ERROR(reader->ReadScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
@@ -700,7 +730,7 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
-        status.error_message()));
+        std::string(status.message())));
   }
   return OkStatus();
 }
@@ -710,7 +740,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
-    if (status.ok() || errors::IsOutOfRange(status)) {
+    if (status.ok() || absl::IsOutOfRange(status)) {
       *end_of_sequence = true;
       return OkStatus();
     } else {
@@ -718,7 +748,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
       return status;
     }
   }
-  if (!status.ok() && !errors::IsOutOfRange(status)) {
+  if (!status.ok() && !absl::IsOutOfRange(status)) {
     *end_of_sequence = false;
     return status;
   }
@@ -841,14 +871,17 @@ Status CopyBatch(CopyBatchParams params,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::vector<tstring> autotune_only_optimizations = {
+  std::array<tstring, 10> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
       kFilterParallelizationOpt,
       kMapParallelizationOpt,
-      kInjectPrefetchOpt};
+      kMapFusionOpt,
+      kInjectPrefetchOpt,
+      kInjectIoPrefetchEligibleOpt,
+      kInjectIoPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -905,6 +938,16 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
   return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
 }
 
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strips out any split providers so that they don't apply to sub-iterators.
+  if (ctx->split_providers().empty()) {
+    return *ctx;
+  }
+  IteratorContext::Params params(ctx);
+  params.split_providers.clear();
+  return IteratorContext(std::move(params));
+}
+
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
                                          JobSelector job_selector,
@@ -922,28 +965,24 @@ DatasetExperimentRegistry::Experiments() {
   return *get_dataset_experiments();
 }
 
+bool AllTasks(int64_t unused_task_id, bool unused_evens) { return true; }
+
+bool IndependentHostTasks(int64_t task_id, bool evens) {
+  int64_t lhs = task_id & 0x2;
+  int64_t rhs = 0x2;
+  return evens ? lhs != rhs : lhs == rhs;
+}
+
 namespace {
 
-// Select `rollout_pct` percent of jobs at random. `hash_func` takes a string
-// and returns a uint64 between 0 and 1.
-template <int64_t rollout_pct>
-bool RandomJobSamplePercentage(std::function<uint64_t(const string&)> hash_func,
-                               const std::string& experiment_name,
-                               const std::string& job_name) {
-  return hash_func(strings::StrCat(job_name, experiment_name)) % 100 <
-         rollout_pct;
-}
-bool AllTasks(int64_t task_id) { return true; }
-// Typically 2 tasks run on a single TPU host. This selector assigns every 2
-// other tasks in the experiment such that control and experiment do not run on
-// the same hosts. For example, if a job has 4 tasks, then task 0 and 1 are
-// assigned to control and tasks 2 and 3 experiment.
-bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
-
+REGISTER_DATASET_EXPERIMENT("noop_task_level", RandomJobSamplePercentage<50>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("noop_job_level", RandomJobSamplePercentage<50>,
+                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<0>, AllTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
@@ -953,7 +992,23 @@ REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
 REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
-                            RandomJobSamplePercentage<5>, IndependentHostTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<50>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
+                            RandomJobSamplePercentage<50>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<0>,
+                            AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

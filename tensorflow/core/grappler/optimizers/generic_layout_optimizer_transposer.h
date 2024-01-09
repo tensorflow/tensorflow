@@ -308,6 +308,14 @@ class MaxPoolV2Transposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class MaxPool3DTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit MaxPool3DTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class MaxPoolGradTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit MaxPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
@@ -574,7 +582,7 @@ Status PermuteSingle(absl::string_view location,
   DCHECK(values != nullptr);
   int permutation_size = permutation.size();
   if (values->size() != permutation_size) {
-    return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match size of permutation ",
                                permutation_size, " @ ", location));
@@ -596,7 +604,7 @@ Status PermuteDouble(absl::string_view location,
   DCHECK(values != nullptr);
   int permutation_size = permutation.size();
   if (values->size() != permutation_size * 2) {
-    return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match twice the size of permutation ",
                                permutation_size, " @ ", location));
@@ -626,6 +634,8 @@ bool IsTernaryOp(const NodeDef& node);
 bool IsUnaryGrad(const NodeDef& node);
 
 bool IsMaxPoolV2(const NodeDef& node);
+
+bool IsMaxPool3D(const NodeDef& node);
 
 bool IsMaxPoolGradV2(const NodeDef& node);
 

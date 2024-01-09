@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "llvm/ADT/None.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -34,15 +35,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
@@ -58,9 +59,9 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   // Parse input arrays.
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
-  std::vector<llvm::Optional<double>> node_mins;
-  std::vector<llvm::Optional<double>> node_maxs;
+  std::vector<std::optional<std::vector<int>>> node_shapes;
+  std::vector<std::optional<double>> node_mins;
+  std::vector<std::optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
@@ -101,6 +102,8 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.unfold_batch_matmul = toco_flags.unfold_batchmatmul();
   pass_config.lower_tensor_list_ops = toco_flags.lower_tensor_list_ops();
+  pass_config.legalize_custom_tensor_list_ops =
+      toco_flags.legalize_custom_tensor_list_ops();
   // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
   // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
   if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
@@ -113,11 +116,12 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.preserve_assert_op = toco_flags.preserve_assert_op();
   pass_config.guarantee_all_funcs_one_use =
       toco_flags.guarantee_all_funcs_one_use();
+  pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
 
   return internal::ConvertMLIRToTFLiteFlatBuffer(
       model_flags, toco_flags, std::move(module), pass_config,
       /*saved_model_tags=*/{}, result,
-      /*session=*/llvm::None);
+      /*session=*/std::nullopt);
 }
 
 }  // namespace tensorflow

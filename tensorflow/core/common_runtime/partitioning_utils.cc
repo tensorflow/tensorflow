@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
@@ -244,32 +245,18 @@ Status UpdateArgAndRetvalMetadata(
   for (int i = 0; i < arg_nodes.size(); ++i) {
     Node* arg = arg_nodes[i].first;
     arg->AddAttr("index", i);
-    TF_RETURN_IF_ERROR(arg->attrs().Find("T", &attr_value));
-    if (arg_alloc_attrs != nullptr) {
-      AllocatorAttributes alloc_attr;
-      DataType type = attr_value->type();
-      MemoryType mtype = ints_on_device ? MTypeFromDTypeIntsOnDevice(type)
-                                        : MTypeFromDType(type);
-      if (mtype == HOST_MEMORY) {
-        alloc_attr.set_on_host(true);
-      }
-      arg_alloc_attrs->push_back(alloc_attr);
-    }
+  }
+  if (arg_alloc_attrs != nullptr) {
+    TF_RETURN_IF_ERROR(full_type::SingleDeviceSetAllocAttrsForArgs(
+        arg_nodes, ints_on_device, *arg_alloc_attrs));
   }
   for (int i = 0; i < ret_nodes.size(); ++i) {
     Node* ret = ret_nodes[i].first;
     ret->AddAttr("index", i);
-    TF_RETURN_IF_ERROR(ret->attrs().Find("T", &attr_value));
-    if (ret_alloc_attrs) {
-      AllocatorAttributes alloc_attr;
-      DataType type = attr_value->type();
-      MemoryType mtype = ints_on_device ? MTypeFromDTypeIntsOnDevice(type)
-                                        : MTypeFromDType(type);
-      if (mtype == HOST_MEMORY) {
-        alloc_attr.set_on_host(true);
-      }
-      ret_alloc_attrs->push_back(alloc_attr);
-    }
+  }
+  if (ret_alloc_attrs) {
+    TF_RETURN_IF_ERROR(full_type::SingleDeviceSetAllocAttrsForRets(
+        ret_nodes, ints_on_device, *ret_alloc_attrs));
   }
 
   return OkStatus();

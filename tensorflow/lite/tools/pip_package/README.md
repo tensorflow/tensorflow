@@ -24,36 +24,36 @@ the following command will cross-compile tflite-runtime package for python2.7
 and python3.7 (from Debian Buster) on Raspberry Pi:
 
 ```sh
-make BASE_IMAGE=debian:buster PYTHON=python TENSORFLOW_TARGET=rpi docker-build
-make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi docker-build
+make BASE_IMAGE=debian:buster PYTHON_VERSION=2.7 TENSORFLOW_TARGET=rpi docker-build
+make BASE_IMAGE=debian:buster PYTHON_VERSION=3.7 TENSORFLOW_TARGET=rpi docker-build
 ```
 
 Another option is to cross-compile for python3.5 (from Debian Stretch) on ARM64
 board:
 
 ```sh
-make BASE_IMAGE=debian:stretch PYTHON=python3 TENSORFLOW_TARGET=aarch64 docker-build
+make BASE_IMAGE=debian:stretch PYTHON_VERSION=3.5 TENSORFLOW_TARGET=aarch64 docker-build
 ```
 
 To build for python3.6 (from Ubuntu 18.04) on x86_64 (native to the docker
 image) run:
 
 ```sh
-make BASE_IMAGE=ubuntu:18.04 PYTHON=python3 TENSORFLOW_TARGET=native docker-build
+make BASE_IMAGE=ubuntu:18.04 PYTHON_VERSION=3.6 TENSORFLOW_TARGET=native docker-build
 ```
 
 In addition to the wheel there is a way to build Debian package by adding
-BUILD_DEB=y to the make command (only for python3):
+`BUILD_DEB=y` to the make command (only for python3):
 
 ```sh
-make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi BUILD_DEB=y docker-build
+make BASE_IMAGE=debian:buster PYTHON_VERSION=3.6 TENSORFLOW_TARGET=rpi BUILD_DEB=y docker-build
 ```
 
 ## Alternative build with Bazel (experimental)
 
 There is another build steps to build a binary wheel which uses Bazel instead of
 Makefile. You don't need to install additional dependencies.
-This approach can leverage TF's ci_build.sh for ARM cross builds.
+This approach can leverage TF's `ci_build.sh` for ARM cross builds.
 
 ### Normal build for your workstation
 
@@ -114,7 +114,7 @@ bash tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh windows
 
 If you want to use TF ops with Python API, you need to enable flex support.
 You can build TFLite interpreter with flex ops support by providing
-"--define=tflite_pip_with_flex=true" to Bazel.
+`--define=tflite_pip_with_flex=true` to Bazel.
 
 Here are some examples.
 
@@ -135,7 +135,7 @@ CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true
 
 ## Usage
 
-Note, unlike tensorflow this will be installed to a tflite_runtime namespace.
+Note, unlike tensorflow this will be installed to a `tflite_runtime` namespace.
 You can then use the Tensorflow Lite interpreter as.
 
 ```python
@@ -151,4 +151,3 @@ bigger host will be supported.
 
 * You cannot use TensorFlow Select ops, only TensorFlow Lite builtins.
 * Currently custom ops and delegates cannot be registered.
-

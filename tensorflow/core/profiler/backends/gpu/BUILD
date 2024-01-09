@@ -1,5 +1,4 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_copts",
@@ -7,56 +6,20 @@ load(
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_device_tracer_srcs",
-    "tf_kernel_tests_linkstatic",
-)
-load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load(
-    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
-    "tf_additional_cupti_deps",
-)
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
-    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-    ],
     licenses = ["notice"],
-)
-
-tf_cuda_library(
-    name = "device_tracer",
-    srcs = tf_additional_device_tracer_srcs(),
-    copts = tf_profiler_copts() + tf_copts(),
-    cuda_deps = [
-        ":cupti_tracer",
-        ":cupti_wrapper",
-        ":rocm_tracer",
-    ],
-    deps = [
-        ":cupti_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:profiler_factory",
-        "//tensorflow/core/profiler/lib:profiler_interface",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:time_utils",
-        "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-    ],
-    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
@@ -64,14 +27,12 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["device_tracer_test.cc"],
     args = ["--heap_check="],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
-        "nomac",
         "gpu_cupti",
+        "nomac",
     ],
     deps = [
-        ":device_tracer",
-        "@com_google_absl//absl/strings",
+        ":cupti_collector",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
@@ -85,12 +46,17 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
+        "@local_xla//xla/backends/profiler/gpu:device_tracer",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
@@ -105,7 +71,8 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
-    ] + tf_additional_cupti_deps(),
+        "@local_xla//xla/backends/profiler/gpu:cupti_interface",
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 tf_cuda_library(
@@ -118,17 +85,20 @@ tf_cuda_library(
     ],
     deps = [
         "//tensorflow/core:test",
+        "@local_xla//xla/backends/profiler/gpu:mock_cupti",
     ],
 )
 
 tf_cuda_library(
     name = "cupti_error_manager",
-    srcs = if_cuda(["cupti_error_manager.cc"]),
     hdrs = if_cuda(["cupti_error_manager.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     cuda_deps = [
         ":cupti_interface",
         ":cupti_wrapper",
+        "@local_xla//xla/backends/profiler/gpu:cupti_error_manager",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:thread_annotations",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -138,33 +108,9 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "cupti_error_manager_test",
-    size = "small",
-    srcs = ["cupti_error_manager_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [
-        "nomac",
-        "gpu_cupti",
-    ],
-    deps = [
-        "//tensorflow/core:test_main",
-    ] + if_cuda_is_configured([
-        ":cuda_test",
-        ":cupti_error_manager",
-        ":cupti_tracer",
-        ":cupti_utils",
-        ":cupti_wrapper",
-        ":mock_cupti",
-        "@com_google_absl//absl/memory",
-        "//tensorflow/core/profiler/utils:time_utils",
-    ]),
-)
-
 cuda_library(
     name = "cuda_test",
     testonly = 1,
-    srcs = ["cuda_test.cu.cc"],
     hdrs = ["cuda_test.h"],
     copts = select({
         "@local_config_cuda//cuda:using_nvcc": [
@@ -178,6 +124,7 @@ cuda_library(
         "//tensorflow/core:test",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudart",
+        "@local_xla//xla/backends/profiler/gpu:cuda_test",
     ],
 )
 
@@ -189,19 +136,18 @@ cuda_library(
 # that the wrapper is about the only direct user.
 tf_cuda_library(
     name = "cupti_wrapper",
-    srcs = if_cuda(["cupti_wrapper.cc"]),
     hdrs = if_cuda(["cupti_wrapper.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
-    ] + tf_additional_cupti_deps(),
+        "@local_xla//xla/backends/profiler/gpu:cupti_wrapper",
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 tf_cuda_library(
     name = "cupti_tracer",
-    srcs = if_cuda(["cupti_tracer.cc"]),
     hdrs = if_cuda(["cupti_tracer.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
@@ -213,63 +159,65 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
         "//tensorflow/core/profiler/lib:scoped_annotation",
-        "//tensorflow/core/profiler/utils:buffer_pool",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/profiler/utils:buffer_pool",
+        "@local_xla//xla/backends/profiler/gpu:cupti_tracer",
     ],
 )
 
 tf_cuda_library(
     name = "rocm_tracer",
-    srcs = if_rocm(["rocm_tracer.cc"]),
     hdrs = if_rocm(["rocm_tracer.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/rocm:roctracer_wrapper",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
-        "//tensorflow/core/profiler/utils:time_utils",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/profiler/utils:time_utils",
+        "@local_xla//xla/backends/profiler/gpu:rocm_tracer",
+        "@local_xla//xla/stream_executor/rocm:roctracer_wrapper",
     ],
 )
 
 tf_cuda_library(
     name = "nvtx_utils",
-    srcs = if_cuda(["nvtx_utils.cc"]),
     hdrs = if_cuda(["nvtx_utils.h"]),
     copts = tf_profiler_copts() + tf_copts(),
+    cuda_deps = ["@com_google_absl//absl/strings:string_view"],
     deps = [
         "//tensorflow/core:lib",
+        "@local_xla//xla/backends/profiler/gpu:nvtx_utils",
     ],
 )
 
 tf_cuda_library(
     name = "cupti_collector",
-    srcs = if_cuda(["cupti_collector.cc"]),
     hdrs = if_cuda(["cupti_collector.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:trace_utils",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/strings",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:parse_annotation",
-        "//tensorflow/core/profiler/utils:xplane_builder",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
-        "//tensorflow/core/profiler/utils:trace_utils",
-    ] + tf_additional_cupti_deps(),
+        "@local_tsl//tsl/profiler/utils:parse_annotation",
+        "@local_xla//xla/backends/profiler/gpu:cupti_collector",
+    ] + if_cuda(["@local_tsl//tsl/cuda:cupti"]),
 )
 
 cc_library(
@@ -279,26 +227,22 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:parse_annotation",
-        "//tensorflow/core/profiler/utils:xplane_builder",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/backends/profiler/gpu:cupti_collector_header",
     ],
 )
 
 tf_cuda_library(
     name = "cupti_utils",
-    srcs = if_cuda(["cupti_utils.cc"]),
     copts = tf_profiler_copts() + tf_copts(),
     cuda_deps = [
         ":cupti_error_manager",
         ":cupti_interface",
         ":cupti_wrapper",
+        "@local_xla//xla/backends/profiler/gpu:cupti_utils",
     ],
     visibility = ["//visibility:public"],
     alwayslink = 1,

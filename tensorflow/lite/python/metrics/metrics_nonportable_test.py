@@ -38,6 +38,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -354,7 +355,7 @@ def mock_ngrams(data, width, axis=-1, string_separator=' ', name=None):
 
       # Stack the slices.
       stack_axis = axis + 1 if axis >= 0 else axis
-      windowed_data = array_ops.stack(slices, stack_axis)
+      windowed_data = array_ops_stack.stack(slices, stack_axis)
 
       return string_ops.reduce_join(
           windowed_data, axis=axis, separator=string_separator)

@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for vectorization of math kernels."""
+import itertools
 
 from absl.testing import parameterized
 
@@ -20,6 +21,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as framework_ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -149,8 +151,8 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
   def test_binary_cwise_ops(self):
     # Enable tensor equality to test `equal` and `not_equal` ops below.
-    default_equality = framework_ops.Tensor._USE_EQUALITY
-    framework_ops.enable_tensor_equality()
+    default_equality = tensor.Tensor._USE_EQUALITY
+    tensor.enable_tensor_equality()
     try:
       logical_ops = [
           math_ops.logical_and, math_ops.logical_or, math_ops.logical_xor
@@ -225,7 +227,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         self._test_loop_fn(loop_fn, 3)
     finally:
       if not default_equality:
-        framework_ops.disable_tensor_equality()
+        tensor.disable_tensor_equality()
 
   def test_approximate_equal(self):
     x = random_ops.random_uniform([3, 5])
@@ -493,16 +495,26 @@ class MathTest(PForTestCase, parameterized.TestCase):
           self._test_loop_fn(loop_fn, 2)
 
   @parameterized.parameters(
-      (math_ops.unsorted_segment_sum,), (math_ops.unsorted_segment_min,),
-      (math_ops.unsorted_segment_max,), (math_ops.unsorted_segment_prod,))
-  def test_unsorted_segment_reduction(self, reduction_op):
-    t = random_ops.random_uniform([3, 3, 2])
+      *itertools.product(
+          (
+              math_ops.unsorted_segment_mean,
+              math_ops.unsorted_segment_sum,
+              math_ops.unsorted_segment_min,
+              math_ops.unsorted_segment_max,
+              math_ops.unsorted_segment_prod,
+          ),
+          (
+              [[0, 0, 2], [0, 1, 2], [2, 2, 2]],
+              [[0, 0, 2, -1], [0, 1, 2, -1], [2, 2, 2, -1]],
+          ),
+      )
+  )
+  def test_unsorted_segment_reduction(self, reduction_op, indices):
+    t = random_ops.random_uniform(constant_op.constant(indices).shape + [2])
     for segment_ids_dtype in (dtypes.int32, dtypes.int64):
+      segment_ids = constant_op.constant(indices, dtype=segment_ids_dtype)
       for num_segments_dtype in (dtypes.int32, dtypes.int64):
-        segment_ids = constant_op.constant([[0, 0, 2], [0, 1, 2], [2, 2, 2]],
-                                           dtype=segment_ids_dtype)
         num_segments = constant_op.constant(3, dtype=num_segments_dtype)
-
         # pylint: disable=cell-var-from-loop
         def loop_fn(i):
           data = array_ops.gather(t, i)

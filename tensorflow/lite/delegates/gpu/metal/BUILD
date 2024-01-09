@@ -13,6 +13,7 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "workspace_root")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -89,7 +90,7 @@ objc_library(
 ios_unit_test(
     name = "common_test",
     testonly = 1,
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
@@ -143,7 +144,6 @@ objc_library(
     copts = DEFAULT_COPTS + [
         "-ObjC++",
     ],
-    features = ["-layering_check"],
     sdk_frameworks = ["Metal"],
     deps = [
         ":compute_task",
@@ -267,7 +267,7 @@ ios_application(
         "iphone",
     ],
     infoplists = ["Info.plist"],
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     provisioning_profile = "//tensorflow/lite/delegates/gpu/metal:provisioning_profile.mobileprovision",
     tags = tf_gpu_tests_tags() + [
         "local",
@@ -297,7 +297,7 @@ objc_library(
 
 ios_unit_test(
     name = "ComponentsTests",
-    minimum_os_version = "11.4",
+    minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + ["notap"],
     test_host = ":TestApplication",

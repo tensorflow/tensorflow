@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"

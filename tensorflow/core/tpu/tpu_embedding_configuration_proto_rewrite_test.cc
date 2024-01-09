@@ -19,26 +19,25 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
 Status ParseTextProto(absl::string_view text_proto,
-                      protobuf::Message* parsed_proto) {
-  protobuf::TextFormat::Parser parser;
+                      tpu::TPUEmbeddingConfiguration* parsed_proto) {
+  tsl::protobuf::TextFormat::Parser parser;
   // Attempt to parse as text.
-  protobuf::io::ArrayInputStream input_stream(text_proto.data(),
-                                              text_proto.size());
+  tsl::protobuf::io::ArrayInputStream input_stream(text_proto.data(),
+                                                   text_proto.size());
   if (parser.Parse(&input_stream, parsed_proto)) {
     return OkStatus();
   }
@@ -176,7 +175,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidBatchSizeOrNumFeatures) {
     EXPECT_THAT(
         PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
         tensorflow::testing::StatusIs(
-            tensorflow::error::INVALID_ARGUMENT,
+            absl::StatusCode::kInvalidArgument,
             ::testing::HasSubstr("Invalid batch_size_per_tensor_core")));
   }
   {
@@ -185,7 +184,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidBatchSizeOrNumFeatures) {
     invalid_config.mutable_table_descriptor(0)->clear_num_features();
     EXPECT_THAT(PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
                 tensorflow::testing::StatusIs(
-                    tensorflow::error::INVALID_ARGUMENT,
+                    absl::StatusCode::kInvalidArgument,
                     ::testing::HasSubstr("Invalid num_features")));
   }
   {
@@ -193,7 +192,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidBatchSizeOrNumFeatures) {
     EXPECT_THAT(
         PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
         tensorflow::testing::StatusIs(
-            tensorflow::error::INVALID_ARGUMENT,
+            absl::StatusCode::kInvalidArgument,
             ::testing::HasSubstr(
                 "The batch_size_per_tensor_core field must NOT be populated")));
   }
@@ -202,7 +201,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidBatchSizeOrNumFeatures) {
     invalid_config.clear_batch_size_per_tensor_core();
     EXPECT_THAT(PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
                 tensorflow::testing::StatusIs(
-                    tensorflow::error::INVALID_ARGUMENT,
+                    absl::StatusCode::kInvalidArgument,
                     ::testing::HasSubstr("The TableDescriptor.num_features "
                                          "field must NOT be populated")));
   }
@@ -250,7 +249,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidFeatureDescriptor) {
     invalid_config.mutable_feature_descriptor(0)->set_table_id(2);
     EXPECT_THAT(PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
                 tensorflow::testing::StatusIs(
-                    tensorflow::error::INVALID_ARGUMENT,
+                    absl::StatusCode::kInvalidArgument,
                     ::testing::HasSubstr("Invalid table_id")));
   }
   {
@@ -259,7 +258,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidFeatureDescriptor) {
     EXPECT_THAT(
         PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
         tensorflow::testing::StatusIs(
-            tensorflow::error::INVALID_ARGUMENT,
+            absl::StatusCode::kInvalidArgument,
             ::testing::HasSubstr("The input_shape field cannot be empty")));
   }
   {
@@ -268,7 +267,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidFeatureDescriptor) {
     EXPECT_THAT(
         PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
         tensorflow::testing::StatusIs(
-            tensorflow::error::INVALID_ARGUMENT,
+            absl::StatusCode::kInvalidArgument,
             ::testing::HasSubstr("The input_shape dimension sizes must all")));
   }
   {
@@ -276,7 +275,7 @@ TEST(TPUEmbeddingConfigurationProtoRewriteTest, InvalidFeatureDescriptor) {
     invalid_config.mutable_feature_descriptor(1)->set_table_id(0);
     EXPECT_THAT(PopulateMissingFieldsInTPUEmbeddingConfig(&invalid_config),
                 tensorflow::testing::StatusIs(
-                    tensorflow::error::INVALID_ARGUMENT,
+                    absl::StatusCode::kInvalidArgument,
                     ::testing::HasSubstr(
                         "No feature_descriptor fields found for table: T1")));
   }

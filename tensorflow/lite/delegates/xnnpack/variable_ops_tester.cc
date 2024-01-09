@@ -23,10 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -46,7 +46,7 @@ constexpr uint32_t CALL_ONCE = 3;
 std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
 NewXnnPackDelegateSupportingVariableOps() {
   TfLiteXNNPackDelegateOptions options = TfLiteXNNPackDelegateOptionsDefault();
-  options.handle_variable_ops = true;
+  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS;
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(&options),
                        TfLiteXNNPackDelegateDelete);
@@ -868,12 +868,10 @@ void VariableOpsTester::Test(TfLiteDelegate* delegate,
   for (size_t i = 0; i < NumInputs(); i++) {
     float* default_input_data =
         default_interpreter->typed_input_tensor<float>(i);
-    std::generate(default_input_data, default_input_data + InputSize(),
-                  std::ref(f32rng));
+    std::generate_n(default_input_data, InputSize(), std::ref(f32rng));
     float* delegate_input_data =
         delegate_interpreter->typed_input_tensor<float>(i);
-    std::copy(default_input_data, default_input_data + InputSize(),
-              delegate_input_data);
+    std::copy_n(default_input_data, InputSize(), delegate_input_data);
   }
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);

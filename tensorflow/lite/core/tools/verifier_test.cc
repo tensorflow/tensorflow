@@ -23,10 +23,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/error_reporter.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
@@ -39,7 +40,7 @@ namespace tflite {
 
 namespace {
 static const char* kSparseTensorTestModel =
-    "third_party/tensorflow/lite/testdata/sparse_tensor.bin";
+    "tensorflow/lite/testdata/sparse_tensor.bin";
 }  // namespace
 
 class MockErrorReporter : public ErrorReporter {
@@ -154,7 +155,7 @@ class TfLiteFlatbufferModelBuilder {
 
   flatbuffers::FlatBufferBuilder builder_;
   MutableOpResolver resolver_;
-  TfLiteRegistration fake_op_;
+  TfLiteRegistration fake_op_{};
   MockErrorReporter mock_reporter_;
   std::vector<flatbuffers::Offset<Operator>> operators_;
   std::vector<flatbuffers::Offset<OperatorCode>> operator_codes_;
@@ -614,7 +615,8 @@ TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
 }
 
 TEST(VerifyModel, SimpleValidSparseTensor) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -626,7 +628,7 @@ TEST(VerifyModel, SimpleValidSparseTensor) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_TRUE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -635,7 +637,8 @@ TEST(VerifyModel, SimpleValidSparseTensor) {
 }
 
 TEST(VerifyModel, InvalidSparseTensorMissingBlockMap) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -650,7 +653,7 @@ TEST(VerifyModel, InvalidSparseTensorMissingBlockMap) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -661,7 +664,8 @@ TEST(VerifyModel, InvalidSparseTensorMissingBlockMap) {
 }
 
 TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -677,7 +681,7 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -688,7 +692,8 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
 }
 
 TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -703,7 +708,7 @@ TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -715,7 +720,8 @@ TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
 }
 
 TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -731,7 +737,7 @@ TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_FALSE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));
@@ -742,7 +748,8 @@ TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
 }
 
 TEST(VerifyModel, ValidSparseTensorBCSC) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -771,7 +778,7 @@ TEST(VerifyModel, ValidSparseTensorBCSC) {
   ::tflite::FinishModelBuffer(builder, model_);
   MockErrorReporter mock_reporter;
   MutableOpResolver resolver;
-  TfLiteRegistration fake_op;
+  TfLiteRegistration fake_op{};
   resolver.AddCustom("FakeOp", &fake_op);
   ASSERT_TRUE(
       Verify(builder.GetBufferPointer(), builder.GetSize(), &mock_reporter));

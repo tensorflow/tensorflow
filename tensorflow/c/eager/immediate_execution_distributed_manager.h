@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_DISTRIBUTED_MANAGER_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_DISTRIBUTED_MANAGER_H_
 
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/platform/status.h"
 
-namespace tensorflow {
+namespace tsl {
 class CoordinationServiceAgent;
+}
+
+namespace tensorflow {
 class ImmediateExecutionContext;
 class ServerDef;
 class WorkerEnv;
@@ -32,19 +36,26 @@ class ImmediateExecutionDistributedManager {
   virtual ~ImmediateExecutionDistributedManager() {}
 
   // Set up distributed execution environment on local and remote tasks.
-  // When `reset_context` is true, initialize new cluster context state based on
-  // cluster configurations provided in `server_def`; otherwise, update existing
-  // context state with the provided `server_def`.
-  // Contexts created on remote tasks will be considered stale and garbage
-  // collected after `keep_alive_secs` of inactivity.
+  // When `reset_context` is true, initialize new cluster context state based
+  // on cluster configurations provided in `server_def`; otherwise, update
+  // existing context state with the provided `server_def`. Contexts created
+  // on remote tasks will be considered stale and garbage collected after
+  // `keep_alive_secs` of inactivity.
   virtual Status SetOrUpdateServerDef(const ServerDef& server_def,
-                                      bool reset_context,
-                                      int keep_alive_secs) = 0;
+                                      bool reset_context, int keep_alive_secs,
+                                      int64_t init_timeout_in_ms,
+                                      int retries) = 0;
 
-  // Set up a multi-client distributed execution environment. Must be called on
-  // all tasks in the cluster.
-  // This call internally coordinates with other tasks to initialize the eager
-  // context and TF server for multi-client execution.
+  // Initializes context for the local worker and no contexts will be created
+  // for remote workers. Currently this only works for resetting context.
+  // TODO(b/289445025): Consider removing this when we find a proper fix.
+  virtual Status InitializeLocalOnlyContext(const ServerDef& server_def,
+                                            int keep_alive_secs) = 0;
+
+  // Set up a multi-client distributed execution environment. Must be called
+  // on all tasks in the cluster. This call internally coordinates with other
+  // tasks to initialize the eager context and TF server for multi-client
+  // execution.
   virtual Status EnableCollectiveOps(const ServerDef& server_def) = 0;
 
   // Check if the remote task is alive.
@@ -52,7 +63,7 @@ class ImmediateExecutionDistributedManager {
                                   bool* is_alive) = 0;
 
   // Get pointer to the coordination service agent instance.
-  virtual CoordinationServiceAgent* GetCoordinationServiceAgent() = 0;
+  virtual tsl::CoordinationServiceAgent* GetCoordinationServiceAgent() = 0;
 };
 }  // namespace tensorflow
 

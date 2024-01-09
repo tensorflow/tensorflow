@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
 
 namespace tflite {

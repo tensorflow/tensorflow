@@ -1,0 +1,8 @@
+{
+    "model_file" : "mobilenet_v2_1.0_224.tflite",
+    "output_file_path" : "/Documents/outputs/inference_diff.txt",
+    "num_runs" : "50",
+    "num_threads" : "1",
+    "num_interpreter_threads" : "1",
+    "delegate" : "coreml"
+}

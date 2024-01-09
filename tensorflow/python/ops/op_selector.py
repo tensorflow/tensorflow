@@ -15,6 +15,7 @@
 """Tools for selecting ops in a graph."""
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.util import object_identity
 
 
@@ -27,7 +28,7 @@ def is_differentiable(op):
 
 def is_iterable(obj):
   """Return true if the object is iterable."""
-  if isinstance(obj, ops.Tensor):
+  if isinstance(obj, tensor_lib.Tensor):
     return False
   try:
     _ = iter(obj)
@@ -94,7 +95,7 @@ def get_unique_graph(tops, check_types=None, none_if_empty=False):
   if not is_iterable(tops):
     raise TypeError("{} is not iterable".format(type(tops)))
   if check_types is None:
-    check_types = (ops.Operation, ops.Tensor)
+    check_types = (ops.Operation, tensor_lib.Tensor)
   elif not is_iterable(check_types):
     check_types = (check_types,)
   g = None
@@ -153,9 +154,9 @@ def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
     if not ts:
       return []
     if check_graph:
-      check_types = None if ignore_ops else ops.Tensor
+      check_types = None if ignore_ops else tensor_lib.Tensor
       get_unique_graph(ts, check_types=check_types)
-    return [t for t in ts if isinstance(t, ops.Tensor)]
+    return [t for t in ts if isinstance(t, tensor_lib.Tensor)]
 
 
 def get_generating_ops(ts):
@@ -272,7 +273,7 @@ def get_backward_walk_ops(seed_ops,
     # Empty iterable.
     return []
 
-  if isinstance(first_seed_op, ops.Tensor):
+  if isinstance(first_seed_op, tensor_lib.Tensor):
     ts = make_list_of_t(seed_ops, allow_graph=False)
     seed_ops = get_generating_ops(ts)
   else:
@@ -318,7 +319,7 @@ class UnliftableError(Exception):
 
 
 def _as_operation(op_or_tensor):
-  if isinstance(op_or_tensor, ops.Tensor):
+  if isinstance(op_or_tensor, tensor_lib.Tensor):
     return op_or_tensor.op
   return op_or_tensor
 
@@ -338,7 +339,7 @@ def show_path(from_op, tensors, sources):
   Returns:
     A python string containing the path, or "??" if none is found.
   """
-  if isinstance(from_op, ops.Tensor):
+  if isinstance(from_op, tensor_lib.Tensor):
     from_op = from_op.op
 
   if not isinstance(tensors, list):

@@ -2,7 +2,10 @@
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
     default_visibility = [
         "//tensorflow:internal",
@@ -28,7 +31,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":distribute_coordinator_utils",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -48,6 +50,9 @@ py_library(
         "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/ops:variable_v1",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -58,10 +63,10 @@ py_library(
     srcs = ["optimizer_combinations.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:training",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/training",
     ],
 )
 
@@ -73,14 +78,14 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":distributed_file_utils",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/lib/io:file_io",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/training:checkpoint_management",
     ],
 )
@@ -92,8 +97,8 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:lib",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/lib/io:file_io",
     ],
 )
 
@@ -105,10 +110,10 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:session",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/client:session",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/training:server_lib",
     ],
 )

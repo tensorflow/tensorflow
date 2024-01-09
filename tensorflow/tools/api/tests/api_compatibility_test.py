@@ -244,7 +244,7 @@ class ApiCompatibilityTest(test.TestCase):
 
     Args:
       expected_dict: a dict of TFAPIObject protos constructed from golden files.
-      actual_dict: a ict of TFAPIObject protos constructed by reading from the
+      actual_dict: a dict of TFAPIObject protos constructed by reading from the
         TF package linked to the test.
       verbose: Whether to log the full diffs, or simply report which files were
         different.
@@ -255,7 +255,6 @@ class ApiCompatibilityTest(test.TestCase):
     """
     diffs = []
     verbose_diffs = []
-
     expected_keys = set(expected_dict.keys())
     actual_keys = set(actual_dict.keys())
     only_in_expected = expected_keys - actual_keys

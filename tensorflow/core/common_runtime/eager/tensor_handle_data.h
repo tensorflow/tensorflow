@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_TENSOR_HANDLE_DATA_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_TENSOR_HANDLE_DATA_H_
 
+#include <utility>
+#include <variant>
+
 #include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -41,18 +44,18 @@ class LocalTensorHandleData {
   Status Unprotect();
 
   bool IsReady() const {
-    return absl::visit([](auto& data) { return data.IsReady(); }, ctrl_);
+    return std::visit([](auto& data) { return data.IsReady(); }, ctrl_);
   }
 
   Status WaitReady(const char* caller) const {
-    return absl::visit([caller](auto& data) { return data.WaitReady(caller); },
-                       ctrl_);
+    return std::visit([caller](auto& data) { return data.WaitReady(caller); },
+                      ctrl_);
   }
   void Poison(Status status) {
-    return absl::visit([status](auto& data) { data.Poison(status); }, ctrl_);
+    return std::visit([status](auto& data) { data.Poison(status); }, ctrl_);
   }
   Status IsPoisoned() const {
-    return absl::visit([](auto& data) { return data.IsPoisoned(); }, ctrl_);
+    return std::visit([](auto& data) { return data.IsPoisoned(); }, ctrl_);
   }
 
   Status SetTensor(tensorflow::Tensor&& t);
@@ -102,7 +105,7 @@ class LocalTensorHandleData {
     Status is_poisoned_ TF_GUARDED_BY(mu_);
   };
 
-  absl::variant<NonBlockingControl, BlockingControl> ctrl_;
+  std::variant<NonBlockingControl, BlockingControl> ctrl_;
 };
 
 }  // namespace tensorflow

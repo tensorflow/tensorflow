@@ -61,6 +61,7 @@ class ToTFRecordOp : public AsyncOpKernel {
   Status DoCompute(OpKernelContext* ctx) {
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
+    metrics::RecordTFDataFetchOp("ToTFRecordOp");
     tstring filename;
     TF_RETURN_IF_ERROR(
         ParseScalarArgument<tstring>(ctx, "filename", &filename));

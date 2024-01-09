@@ -77,7 +77,7 @@ std::optional<T> GetAccelerationTestParam(std::string test_id) {
       config->push_back(ConfigurationEntry<T>(key, value, is_denylist));
     };
 
-    ReadAccelerationConfig(T::kAccelerationTestConfig, consumer);
+    ReadAccelerationConfig(T::AccelerationTestConfig(), consumer);
 
     // Even if it has been already set, it would be just replaced with the
     // same value, just freeing the old value to avoid leaks

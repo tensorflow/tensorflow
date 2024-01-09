@@ -97,21 +97,21 @@ TEST_P(RuntimeTest, SimpleModelCallableMultipleArgsTest) {
 TEST_P(RuntimeTest, CreateHostTensorIncompatibleShape) {
   Runtime runtime = RuntimeTest::GetParam()();
   EXPECT_THAT(runtime.CreateHostTensor<float>({2}, TF_FLOAT, {2.0f}),
-              StatusIs(tensorflow::error::INVALID_ARGUMENT,
+              StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Mismatched shape and data size")));
 }
 
 TEST_P(RuntimeTest, CreateHostTensorNonFullyDefinedShapeRaises) {
   Runtime runtime = RuntimeTest::GetParam()();
   EXPECT_THAT(runtime.CreateHostTensor<float>({-1}, TF_FLOAT, {2.0f}),
-              StatusIs(tensorflow::error::INVALID_ARGUMENT,
+              StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Shape must be fully-defined")));
 }
 
 TEST_P(RuntimeTest, CreateHostTensorIncompatibleDataType) {
   Runtime runtime = RuntimeTest::GetParam()();
   EXPECT_THAT(runtime.CreateHostTensor<float>({1}, TF_BOOL, {2.0f}),
-              StatusIs(tensorflow::error::INVALID_ARGUMENT,
+              StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Invalid number of bytes in data buffer")));
 }
 
@@ -122,7 +122,7 @@ TEST_P(RuntimeTest, TensorCopyInvalidSize) {
   float val[2];
 
   EXPECT_THAT(tensor.GetValue(absl::MakeSpan(val)),
-              StatusIs(tensorflow::error::INVALID_ARGUMENT,
+              StatusIs(absl::StatusCode::kInvalidArgument,
                        HasSubstr("Mismatched number of elements")));
 }
 

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -35,9 +35,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-// We don't support integers for convolutions, so we list the supported types
-// here.
-std::vector<DataType> GetXlaConvTypes();
+// We don't support integers for convolutions for GPU, so we list the supported
+// types for non-gpu and gpu here.
+std::vector<DataType> GetXlaConvTypesForNonGpu();
+std::vector<DataType> GetXlaConvTypesForGpu();
 
 // ConvOpAttrs contains all of the metadata necessary to specify a TF or XLA
 // convolution.
@@ -55,22 +56,35 @@ struct ConvOpAttrs {
   TensorFormat data_format;
 };
 
+// Helper for the general Conv Op.
+struct ConvNDOpAttrs {
+  // Constructs a ConvOpAttrs, reading most of the attributes from `ctx`.
+  static StatusOr<ConvNDOpAttrs> Create(OpKernelConstruction* ctx);
+
+  int groups;
+  int batch_dims;
+  std::vector<int32> dilations;
+  std::vector<int32> strides;
+  Padding padding;
+  std::vector<int64_t> explicit_paddings;
+  TensorFormat data_format;
+};
+
 // Creates a new XLA forward or backward convolution with the given inputs and
 // attributes.
-StatusOr<xla::XlaOp> MakeXlaForwardConvOp(
-    StringPiece type_string, xla::XlaOp conv_input, xla::XlaOp filter,
-    const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config = nullptr);
+StatusOr<xla::XlaOp> MakeXlaForwardConvOp(StringPiece type_string,
+                                          xla::XlaOp conv_input,
+                                          xla::XlaOp filter,
+                                          const ConvOpAttrs& attrs);
 StatusOr<xla::XlaOp> MakeXlaBackpropInputConvOp(
     StringPiece type_string, const xla::Shape& input_shape, xla::XlaOp filter,
     xla::XlaOp out_backprop, const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config = nullptr,
     xla::XlaOp* input_sizes = nullptr);
-StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(
-    StringPiece type_string, xla::XlaOp activations,
-    const xla::Shape& filter_shape, xla::XlaOp gradients,
-    const ConvOpAttrs& attrs,
-    const xla::PrecisionConfig* precision_config = nullptr);
+StatusOr<xla::XlaOp> MakeXlaBackpropFilterConvOp(StringPiece type_string,
+                                                 xla::XlaOp activations,
+                                                 const xla::Shape& filter_shape,
+                                                 xla::XlaOp gradients,
+                                                 const ConvOpAttrs& attrs);
 
 }  // namespace tensorflow
 

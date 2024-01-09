@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/types.proto";
+
+// Optimized function graph after instantiation-related graph optimization
+// passes (up till before graph partitioning). The first half of the proto is
+// representing a GraphDef and the rest of the fields are extra information from
+// graph optimizations.
+message OptimizedFunctionGraph {
+  // Function name. It can be a human-readable SignatureDef's method name, or a
+  // FunctionDef name.
+  string name = 1;
+  // Optimized function graph.
+  GraphDef function_graph = 2;
+  // Maps from node name to control ret. This is an output from running TF/XLA
+  // bridge.
+  map<string, string> node_name_to_control_ret = 3;
+  // Return node types of the function. This is an output of graph
+  // preprocessing.
+  repeated DataType ret_types = 4;
+  // Number of return nodes. This is an output of graph preprocessing.
+  uint32 num_return_nodes = 5;
+
+  reserved 6;
+
+  // Enum for distinguishing the origin where the proto is created.
+  //
+  // AOT: proto is created in ahead-of-time environment, which can be different
+  // from the environment where the graph is actually executed.
+  //
+  // JIT: proto is created in just-in-time execution, which has the same
+  // environment as the one the graph is actually executed.
+  enum OptimizationSource {
+    SOURCE_UNSPECIFIED = 0;
+    AOT = 1;
+    JIT = 2;
+  }
+
+  // Indicates the source environment where this proto is generated.
+  optional OptimizationSource source = 7;
+
+  // Time (in microseconds) spent on running the graph optimization passes for
+  // this function.
+  optional uint64 optimization_time_usecs = 8;
+}

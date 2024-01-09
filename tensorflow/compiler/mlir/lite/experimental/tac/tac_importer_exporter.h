@@ -28,7 +28,7 @@ namespace tac {
 // See TacModule in how to register it with the module and use it.
 class TacImporter {
  public:
-  virtual ~TacImporter() {}
+  virtual ~TacImporter() = default;
 
   // Imports and returns the Module for the imported program.
   virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import() = 0;
@@ -40,7 +40,7 @@ class TacImporter {
 // See TacModule in how to register it with the module and use it.
 class TacExporter {
  public:
-  virtual ~TacExporter() {}
+  virtual ~TacExporter() = default;
 
   // Imports and returns the Module for the imported program.
   virtual absl::Status Export(mlir::ModuleOp module) = 0;

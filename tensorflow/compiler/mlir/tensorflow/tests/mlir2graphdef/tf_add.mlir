@@ -16,14 +16,14 @@ attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
 // CHECK-NEXT:   name: "input1"
 // CHECK-NEXT:   op: "_Arg"
 // CHECK:      node {
-// CHECK-NEXT:   name: "Add1"
+// CHECK-NEXT:   name: "Add{{_.*_1}}"
 // CHECK-NEXT:   op: "Add"
 // CHECK-NEXT:   input: "input0"
 // CHECK-NEXT:   input: "input1"
 // CHECK:      node {
 // CHECK-NEXT:   name: "Add"
 // CHECK-NEXT:   op: "_Retval"
-// CHECK-NEXT:   input: "Add1"
+// CHECK-NEXT:   input: "Add{{_.*_1}}"
 // CHECK-NEXT:   attr {
 // CHECK-NEXT:     key: "T"
 // CHECK-NEXT:     value {

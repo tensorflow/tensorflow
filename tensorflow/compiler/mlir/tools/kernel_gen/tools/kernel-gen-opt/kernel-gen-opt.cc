@@ -20,10 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/lhlo/transforms/passes.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
@@ -37,8 +36,7 @@ int main(int argc, char **argv) {
   mlir::stablehlo::registerAllDialects(registry);
   mlir::RegisterAllTensorFlowDialects(registry);
 
-  registry.insert<mlir::gml_st::GmlStDialect,
-                  mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
+  registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
 
   return failed(
       mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));

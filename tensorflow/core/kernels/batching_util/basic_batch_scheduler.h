@@ -293,7 +293,8 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
   // single queue.
   std::unique_ptr<BatchScheduler<TaskType>> shared_scheduler_queue_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BasicBatchScheduler);
+  BasicBatchScheduler(const BasicBatchScheduler&) = delete;
+  void operator=(const BasicBatchScheduler&) = delete;
 };
 
 //////////

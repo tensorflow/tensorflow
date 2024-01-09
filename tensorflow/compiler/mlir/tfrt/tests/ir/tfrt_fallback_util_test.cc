@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_util.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"

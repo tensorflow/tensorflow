@@ -88,12 +88,12 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
 
     int64_t out_rows = 0, out_cols = 0;
     int64_t pad_rows = 0, pad_cols = 0;
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(in_rows, ksize_rows_eff, stride_rows,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(in_cols, ksize_cols_eff, stride_cols,
-                                         padding_, &out_cols, &pad_cols));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                in_rows, ksize_rows_eff, /*dilation_rate=*/1,
+                                stride_rows, padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                in_cols, ksize_cols_eff, /*dilation_rate=*/1,
+                                stride_cols, padding_, &out_cols, &pad_cols));
 
     const std::vector<int64_t> out_sizes = {batch, out_rows, out_cols,
                                             ksize_rows * ksize_cols * depth};
@@ -120,7 +120,8 @@ class ExtractImagePatchesOp : public UnaryOp<T> {
 
   Padding padding_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtractImagePatchesOp);
+  ExtractImagePatchesOp(const ExtractImagePatchesOp&) = delete;
+  void operator=(const ExtractImagePatchesOp&) = delete;
 };
 
 // Registration of the CPU implementations.

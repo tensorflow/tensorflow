@@ -51,19 +51,20 @@ class MklMatMulOp : public OpKernel {
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
-                errors::InvalidArgument("In[0] ndims must be >= 2"));
+                absl::InvalidArgumentError("In[0] ndims must be >= 2"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
-                errors::InvalidArgument("In[1] ndims must be >= 2"));
+                absl::InvalidArgumentError("In[1] ndims must be >= 2"));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
 
     int d1 = a.dim_size(dim_pair[0].first);
     int d2 = b.dim_size(dim_pair[0].second);
-    OP_REQUIRES(ctx, d1 == d2,
-                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
-                                        a.shape().DebugString(),
-                                        ", In[1]: ", b.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, d1 == d2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
+            ", In[1]: ", b.shape().DebugString())));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(
@@ -86,9 +87,13 @@ class MklMatMulOp : public OpKernel {
       return;
     }
 
-    const int m = a.dim_size(1 - dim_pair[0].first);
-    const int k = a.dim_size(dim_pair[0].first);
-    const int n = b.dim_size(1 - dim_pair[0].second);
+    if (std::is_same<T, float>::value) {
+      (void)SetFPMathMode();
+    }
+
+    const int64_t m = a.dim_size(1 - dim_pair[0].first);
+    const int64_t k = a.dim_size(dim_pair[0].first);
+    const int64_t n = b.dim_size(1 - dim_pair[0].second);
     bool transpose_a = dim_pair[0].first == 0;
     bool transpose_b = dim_pair[0].second == 1;
 
@@ -143,9 +148,10 @@ class MklMatMulOp : public OpKernel {
   // layout, leading dimension is the stride between consecutive rows, max(1,n)
   //
   // --------------------------------------------------------------------------
-  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
-                   const int n, const int k, const float* a, const int lda,
-                   const float* b, const int ldb, float* c, const int ldc) {
+  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb,
+                   const int64_t m, const int64_t n, const int64_t k,
+                   const float* a, const int64_t lda, const float* b,
+                   const int64_t ldb, float* c, const int64_t ldc) {
     // BLAS GEMM API defines Matrix Multiplication as c = alpha * op(a) * op(b)
     // + beta * c.
     // Since TF MatMul does not have parameters for alpha, beta, we set them to
@@ -156,7 +162,12 @@ class MklMatMulOp : public OpKernel {
     char char_transb = transb ? 'T' : 'N';
     VLOG(2) << "MKL DNN SGEMM called";
 #ifndef ENABLE_ONEDNN_OPENMP
-    MklDnnThreadPool eigen_tp(ctx);
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(ctx);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                   ThreadPoolUseCallerThread());
     // With threadpool , the runtime overhead is comparable to the kernel
     // execution for small kernel sizes. For such sizes, it may be better to run
     // the kernel single threaded. Here we are coming up with a cost model based
@@ -176,10 +187,10 @@ class MklMatMulOp : public OpKernel {
 #endif  // !ENABLE_ONEDNN_OPENMP
   }
 
-  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
-                   const int n, const int k, const bfloat16* a, const int lda,
-                   const bfloat16* b, const int ldb, bfloat16* c,
-                   const int ldc) {
+  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb,
+                   const int64_t m, const int64_t n, const int64_t k,
+                   const bfloat16* a, const int64_t lda, const bfloat16* b,
+                   const int64_t ldb, bfloat16* c, const int64_t ldc) {
     const float alpha = 1.0f;
     const float beta = 0.0f;
     const int index_transa = transa ? 1 : 0;
@@ -189,8 +200,26 @@ class MklMatMulOp : public OpKernel {
     dnnl_gemm<bfloat16>(ftrans[index_transa], ftrans[index_transb], m, n, k,
                         alpha, a, lda, b, ldb, beta, c, ldc, ctx);
   }
+
+  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
+                   const int n, const int k, const Eigen::half* a,
+                   const int lda, const Eigen::half* b, const int ldb,
+                   Eigen::half* c, const int ldc) {
+    const float alpha = 1.0f;
+    const float beta = 0.0f;
+    const int index_transa = transa ? 1 : 0;
+    const int index_transb = transb ? 1 : 0;
+
+    const char ftrans[] = {'N', 'T', 'C'};
+    dnnl_gemm<Eigen::half>(ftrans[index_transa], ftrans[index_transb], m, n, k,
+                           alpha, a, lda, b, ldb, beta, c, ldc, ctx);
+  }
 };
 
+// We do not want to use this kernel for aarch64 because the
+// Arm Compute Library does not provide a BLAS SGEMM
+// interface, which is what MklMatMulOp calls by default.
+#ifndef DNNL_AARCH64_USE_ACL
 #define REGISTER_CPU(T)                                   \
   REGISTER_KERNEL_BUILDER(                                \
       Name("_MklMatMul")                                  \
@@ -203,5 +232,8 @@ class MklMatMulOp : public OpKernel {
 // additional types
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
+TF_CALL_half(REGISTER_CPU);
+#endif  // !DNNL_AARCH64_USE_ACL
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

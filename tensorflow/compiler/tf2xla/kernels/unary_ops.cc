@@ -20,13 +20,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/client_library.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
+#include "xla/client/xla_builder.h"
+#include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -64,6 +64,7 @@ REGISTER_XLA_OP(Name("Ceil"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Cos"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
 XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
+XLAJIT_MAKE_UNARY(Tan, xla::Tan(x));
 REGISTER_XLA_OP(Name("Exp"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Expm1"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Floor"), MlirXlaOpKernel);
@@ -117,7 +118,6 @@ XLAJIT_MAKE_UNARY(Softplus, Softplus(b, x));
 XLAJIT_MAKE_UNARY(Softsign, x / (xla::Abs(x) + xla::ScalarLike(x, 1.0)));
 REGISTER_XLA_OP(Name("Sqrt"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Square, x* x);
-XLAJIT_MAKE_UNARY(Tan, xla::Tan(x));
 REGISTER_XLA_OP(Name("Tanh"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Real"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Imag"), MlirXlaOpKernel);

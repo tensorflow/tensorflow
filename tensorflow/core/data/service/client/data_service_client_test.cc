@@ -22,18 +22,18 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/client/common.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -83,11 +83,16 @@ class TestDataServiceContext : public DataServiceContext {
         Env::Default()->StartThread({}, name, std::move(fn)));
   }
 
-  // NOLINTBEGIN(MOCK_METHOD does not work on Windows build, using deprecated
-  // MOCK_METHOD<N> instead)
-  MOCK_METHOD1(RecordBufferEnqueue, void(const std::vector<Tensor>& element));
-  MOCK_METHOD1(RecordBufferDequeue, void(const std::vector<Tensor>& element));
-  // NOLINTEND
+  MOCK_METHOD(void, RecordBufferEnqueue, (const std::vector<Tensor>& element),
+              (override));
+  MOCK_METHOD(void, RecordBufferDequeue, (const std::vector<Tensor>& element),
+              (override));
+
+  double GetTargetProcessingTimeNsec() const override { return 1.0e6; }
+  int64_t UpdateMaxOutstandingRequests(int64_t max_outstanding_requests,
+                                       int64_t new_size) override {
+    return new_size;
+  }
 };
 
 std::unique_ptr<TestDataServiceContext> GetTestDataServiceContext() {

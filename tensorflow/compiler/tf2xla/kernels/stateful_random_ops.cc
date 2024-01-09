@@ -27,11 +27,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/lib/prng.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
+#include "xla/client/lib/prng.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -241,8 +241,8 @@ class StatefulUniformOp : public XlaOpKernel {
     auto sampler = [builder, this](xla::RandomAlgorithm alg, xla::XlaOp state,
                                    xla::XlaOp key,
                                    TensorShape shape) -> SamplerReturnType {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
       xla::Shape xla_shape;
-      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
       xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
       xla::RngOutput uniform_state = StatefulRngUniform(
@@ -262,15 +262,16 @@ class StatefulUniformOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformOp);
+  StatefulUniformOp(const StatefulUniformOp&) = delete;
+  void operator=(const StatefulUniformOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulUniform")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatefulUniformOp);
 
 class StatefulStandardNormalOp : public XlaOpKernel {
@@ -285,8 +286,8 @@ class StatefulStandardNormalOp : public XlaOpKernel {
         // Needs explicit lambda return type because it fails to be inferred.
         [this](xla::RandomAlgorithm alg, xla::XlaOp state, xla::XlaOp key,
                TensorShape shape) -> SamplerReturnType {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
       xla::Shape xla_shape;
-      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
       xla::RngOutput value_state = xla::NormalFloatingPointDistribution(
           key, state, BitGen(alg), xla_shape);
@@ -301,15 +302,16 @@ class StatefulStandardNormalOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulStandardNormalOp);
+  StatefulStandardNormalOp(const StatefulStandardNormalOp&) = delete;
+  void operator=(const StatefulStandardNormalOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulStandardNormalV2")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatefulStandardNormalOp);
 
 class StatefulTruncatedNormalOp : public XlaOpKernel {
@@ -326,8 +328,8 @@ class StatefulTruncatedNormalOp : public XlaOpKernel {
         [builder, this](xla::RandomAlgorithm alg, xla::XlaOp state,
                         xla::XlaOp key,
                         TensorShape shape) -> SamplerReturnType {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
       xla::Shape xla_shape;
-      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
       xla::RngOutput uniform_result = StatefulRngUniform(
@@ -348,15 +350,16 @@ class StatefulTruncatedNormalOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulTruncatedNormalOp);
+  StatefulTruncatedNormalOp(const StatefulTruncatedNormalOp&) = delete;
+  void operator=(const StatefulTruncatedNormalOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulTruncatedNormal")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatefulTruncatedNormalOp);
 
 class StatefulUniformIntOp : public XlaOpKernel {
@@ -384,7 +387,8 @@ class StatefulUniformIntOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformIntOp);
+  StatefulUniformIntOp(const StatefulUniformIntOp&) = delete;
+  void operator=(const StatefulUniformIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatefulUniformInt")
@@ -417,7 +421,8 @@ class StatefulUniformFullIntOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformFullIntOp);
+  StatefulUniformFullIntOp(const StatefulUniformFullIntOp&) = delete;
+  void operator=(const StatefulUniformFullIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatefulUniformFullInt")
@@ -491,7 +496,8 @@ class RngSkipOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RngSkipOp);
+  RngSkipOp(const RngSkipOp&) = delete;
+  void operator=(const RngSkipOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RngSkip").CompileTimeConstantInput("algorithm"),

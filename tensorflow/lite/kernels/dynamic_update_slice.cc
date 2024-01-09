@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -120,8 +120,15 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
   std::vector<int> clamped_start_indices =
       ClampStartIndices(input_dims, indices_data, input_shape, update_shape);
 
-  // Copies input to output first.
-  memcpy(output->data.raw, input->data.raw, input->bytes);
+  // If the operation is not done in-place, copy the input data to the output.
+  if (input->data.data != output->data.data) {
+    memcpy(output->data.data, input->data.data, input->bytes);
+  }
+
+  // Update tensor has no elements. Skip.
+  if (update_shape.FlatSize() == 0) {
+    return;
+  }
 
   std::vector<int> current_dim(input_dims, 0);
   // Overwrites update to output.
@@ -184,7 +191,14 @@ TfLiteRegistration* Register_DYNAMIC_UPDATE_SLICE() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
                                  dynamic_update_slice::Prepare,
-                                 dynamic_update_slice::Eval};
+                                 dynamic_update_slice::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0,
+                                 /*registration_external=*/nullptr,
+                                 /*async_kernel=*/nullptr,
+                                 kTfLiteInplaceOpInput0Shared};
   return &r;
 }
 

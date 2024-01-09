@@ -204,7 +204,7 @@ TEST(MutableGraphViewTest, AddSubgraphAndFailIfFunctionDifferent) {
 
   Status status = graph.AddSubgraph(std::move(subgraph));
   EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.error_message(),
+  EXPECT_EQ(status.message(),
             "MutableGraphView::AddSubgraph(function_size=1) error: Found "
             "different function definition with the same name: XTimesTwo.");
 }
@@ -297,7 +297,7 @@ TEST(MutableGraphViewTest, UpdateNodeSwitchControlDependency) {
       "change node op to Switch when node drives a control dependency "
       "(alternatively, we could add the identity node needed, but it seems "
       "like an unlikely event and probably a mistake).";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
 
   CheckNode(graph, "foo", "NotImportant", "", {}, {}, {"^bar"});
   CheckNode(graph, "bar", "NotImportant", "", {}, {"^foo"}, {});
@@ -363,7 +363,7 @@ void TestUpdateNodeName(absl::string_view from_node_name, bool node_exists,
     updated_node_name = string(to_node_name);
   } else {
     updated_node_name = string(from_node_name);
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     EXPECT_EQ(node->name(), updated_node_name);
@@ -680,7 +680,7 @@ void TestSwapNodeNamesError(absl::string_view from_node_name,
 
   Status s = graph.SwapNodeNames(from_node_name, to_node_name, update_fanouts);
   EXPECT_EQ(s.ok(), false);
-  EXPECT_EQ(s.error_message(), error_msg);
+  EXPECT_EQ(s.message(), error_msg);
 
   // No changes to graph.
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {"switch_1"});
@@ -848,14 +848,14 @@ TEST(MutableGraphViewTest, UpdateFanoutsToSwitchWithControlFromSwitch) {
       "MutableGraphView::UpdateFanouts(from_node_name='a', to_node_name='b') "
       "error: can't update fanouts to node 'b' as it will become a Switch "
       "control dependency.";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
   s = graph.UpdateFanouts("d", "b");
   EXPECT_FALSE(s.ok());
   expected_msg =
       "MutableGraphView::UpdateFanouts(from_node_name='d', to_node_name='b') "
       "error: can't update fanouts to node 'b' as it will become a Switch "
       "control dependency.";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
 
   EXPECT_EQ(graph.graph()->node_size(), 5);
 
@@ -926,7 +926,7 @@ void TestAddRegularFanin(absl::string_view node_name, bool node_exists,
   Status s = graph.AddRegularFanin(node_name, fanin_to_add);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -1058,7 +1058,7 @@ void TestAddRegularFaninByPort(absl::string_view node_name, bool node_exists,
   Status s = graph.AddRegularFaninByPort(node_name, port, fanin_to_add);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -1212,7 +1212,7 @@ void TestRemoveRegularFanin(absl::string_view node_name, bool node_exists,
   Status s = graph.RemoveRegularFanin(node_name, fanin_to_remove);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -1354,7 +1354,7 @@ void TestRemoveRegularFaninByPort(absl::string_view node_name, bool node_exists,
   Status s = graph.RemoveRegularFaninByPort(node_name, port);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -1459,7 +1459,7 @@ void TestRemoveAllFanins(absl::string_view node_name, bool node_exists,
   Status s = graph.RemoveAllFanins(node_name, keep_controlling_nodes);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -1555,7 +1555,7 @@ void TestUpdateFanin(absl::string_view node_name, bool node_exists,
   Status s = graph.UpdateFanin(node_name, from_fanin, to_fanin);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -1694,7 +1694,7 @@ void TestUpdateFaninFromFaninToNodeAsSwitchControl(const TensorId& fanin) {
       "to_fanin='^b') error: can't update to fanin '^b' as it will become a "
       "Switch control dependency.",
       fanin.ToString());
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
 
   EXPECT_EQ(graph.graph()->node_size(), 3);
 
@@ -1733,7 +1733,7 @@ void TestUpdateRegularFaninByPort(absl::string_view node_name, bool node_exists,
   Status s = graph.UpdateRegularFaninByPort(node_name, port, fanin);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -1897,7 +1897,7 @@ void TestSwapRegularFaninsByPorts(absl::string_view node_name, bool node_exists,
   Status s = graph.SwapRegularFaninsByPorts(node_name, from_port, to_port);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -2397,21 +2397,21 @@ TEST(MutableGraphViewTest, AddControllingFaninMissing) {
   string expected_msg =
       "MutableGraphView::AddControllingFanin(node_name='a', fanin='^c') error: "
       "node 'c' was not found.";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
   // Missing node.
   s = graph.AddControllingFanin("d", {"a", Graph::kControlSlot});
   EXPECT_FALSE(s.ok());
   expected_msg =
       "MutableGraphView::AddControllingFanin(node_name='d', fanin='^a') error: "
       "node 'd' was not found.";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
   // Missing node and fanin.
   s = graph.AddControllingFanin("c", {"d", Graph::kControlSlot});
   EXPECT_FALSE(s.ok());
   expected_msg =
       "MutableGraphView::AddControllingFanin(node_name='c', fanin='^d') error: "
       "node 'c' was not found.";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
 
@@ -2469,7 +2469,7 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitch) {
   string expected_msg =
       "MutableGraphView::AddControllingFanin(node_name='a', fanin='^b') error: "
       "can't add fanin '^b' as it will become a Switch control dependency.";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
 
@@ -2560,7 +2560,7 @@ void TestAddControllingFaninSelfLoops(absl::string_view node_name,
 
   Status s = graph.AddControllingFanin(node_name, fanin);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(), error_msg);
+  EXPECT_EQ(s.message(), error_msg);
 
   EXPECT_EQ(graph.graph()->node_size(), 5);
 
@@ -2622,7 +2622,7 @@ TEST(MutableGraphViewTest, AddControllingFaninSelfLoopsGeneratedIdentity) {
       "MutableGraphView::AddControllingFanin(node_name='ConstantFoldingCtrl/"
       "b_1', fanin='b:1') error: can't add generated fanin "
       "'^ConstantFoldingCtrl/b_1' to self.";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
 
   EXPECT_EQ(graph.graph()->node_size(), 4);
 
@@ -2715,7 +2715,7 @@ TEST(MutableGraphViewTest, RemoveControllingFaninSelfLoop) {
       "MutableGraphView::RemoveControllingFanin(node_name='c', "
       "fanin_node_name='c') error: can't remove fanin '^c' from "
       "self.";
-  EXPECT_EQ(s.error_message(), expected_msg);
+  EXPECT_EQ(s.message(), expected_msg);
 
   ASSERT_EQ(graph.graph()->node_size(), 3);
 
@@ -2756,7 +2756,7 @@ void TestUpdateAllRegularFaninsToControlling(
   Status s = graph.UpdateAllRegularFaninsToControlling(node_name);
   EXPECT_EQ(s.ok(), success);
   if (!success) {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
   if (node_exists) {
     CompareNodeFanins(graph, node, expected_fanins);
@@ -2940,7 +2940,7 @@ TEST(MutableGraphViewTest, DeleteNodesWithError) {
   string error_msg =
       "MutableGraphView::DeleteNodes(nodes_to_delete={a, b}) error: can't "
       "delete node(s) with retained fanouts(s) [a, b].";
-  EXPECT_EQ(s.error_message(), error_msg);
+  EXPECT_EQ(s.message(), error_msg);
 
   EXPECT_EQ(graph.graph()->node_size(), 6);
 
@@ -2975,7 +2975,7 @@ TEST(MutableGraphViewTest, DeleteNodesWithLargeError) {
       "MutableGraphView::DeleteNodes(nodes_to_delete={a, b, c, d, e, ...}) "
       "error: can't delete node(s) with retained fanouts(s) [a, b, c, d, e, "
       "...].";
-  EXPECT_EQ(s.error_message(), error_msg);
+  EXPECT_EQ(s.message(), error_msg);
 
   EXPECT_EQ(graph.graph()->node_size(), 13);
 

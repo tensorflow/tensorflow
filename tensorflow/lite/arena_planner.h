@@ -15,12 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ARENA_PLANNER_H_
 #define TENSORFLOW_LITE_ARENA_PLANNER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/simple_memory_arena.h"
@@ -29,7 +31,6 @@ limitations under the License.
 namespace tflite {
 
 constexpr const int kDefaultArenaAlignment = 64;
-struct AllocationInfo;
 
 // A memory planner that makes all the allocations using arenas.
 //
@@ -72,6 +73,16 @@ class ArenaPlanner : public MemoryPlanner {
   std::intptr_t BasePointer(TfLiteAllocationType type);
 
  private:
+  // Check whether the input tensor's memory may be shared the output tensor.
+  // tensor_changed: true if the output tensor modifies the tensor data. For
+  // example, `Reshape` doesn't modify data but Add does.
+  bool InputTensorCanBeShared(const TfLiteTensor& input,
+                              const TfLiteTensor& output, int input_id,
+                              int output_id, bool tensor_changed);
+
+  // Identify tensors which can share memory with another.
+  void IdentifyInPlaceTensors();
+
   // Make sure all the arenas have reserved enough memory to store all their
   // tensors.
   TfLiteStatus Commit(bool* arena_reallocated);
@@ -96,7 +107,7 @@ class ArenaPlanner : public MemoryPlanner {
   // Assign absolute memory location to a tensor, based on its relative
   // position inside the corresponding arena buffer.
   TfLiteStatus ResolveTensorAllocation(int32_t tensor_index,
-                                       TfLiteTensor& tensor);
+                                       TfLiteTensor* tensors);
 
   // Register an allocation for all internal (temporary) tensors of
   // 'node_index'.
@@ -105,6 +116,9 @@ class ArenaPlanner : public MemoryPlanner {
   // Register a deallocation for all internal (temporary) tensors of
   // 'node_index'.
   TfLiteStatus CalculateDeallocationOfInternalTensors(int node_index);
+
+  // Return the index of the tensor owing `tensor_index's` buffer.
+  int FindSharedTensor(int tensor_index);
 
   TfLiteContext* context_;
   std::unique_ptr<GraphInfo> graph_info_;
@@ -127,6 +141,8 @@ class ArenaPlanner : public MemoryPlanner {
   // Raw memory buffer that is allocated for all temporary and graph outputs
   // that are declared kTfLiteArenaRw.
   SimpleMemoryArena arena_;
+  // True when the arena_ has allocated memory (Commit was called).
+  bool has_nonpersistent_memory_;
 
   // Raw memory buffer that is allocated for persistent tensors that are
   // declared as kTfLiteArenaRwPersistent.
@@ -142,6 +158,14 @@ class ArenaPlanner : public MemoryPlanner {
 
   // Index of the last node whose tensors were allocated.
   int last_active_node_;
+
+  // Holds index of original tensor if the tensor is sharing underlined
+  // data with another tensor.
+  // NOLINTNEXTLINE - absl::flat_hash_map increases binary size by 106kB.
+  std::unordered_map<int32_t, int32_t> actual_tensor_id_;
+
+  // Store number of references to each tensor.
+  std::vector<int> refcounts_;
 };
 
 }  // namespace tflite

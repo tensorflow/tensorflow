@@ -17,13 +17,13 @@ limitations under the License.
 #include <memory>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -38,6 +38,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
         std::make_unique<StatefulNnApiDelegate>(nnapi, options_);
     this->SetDelegate(stateful_delegate_.get());
   }
+  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
 
   StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
 

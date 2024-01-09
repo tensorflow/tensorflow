@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_chessboard_jpeg.h"
 
 namespace tflite {
@@ -66,7 +66,7 @@ const int kChessboardImgChannels = 3;
 TEST(ReadJpegHeader, ShouldParseValidJpgImage) {
   const tflite::StringRef chessboard_image{
       reinterpret_cast<const char*>(g_tflite_acceleration_chessboard_jpeg),
-      g_tflite_acceleration_chessboard_jpeg_len};
+      static_cast<size_t>(g_tflite_acceleration_chessboard_jpeg_len)};
   ASSERT_GT(chessboard_image.len, 4);
 
   JpegHeader header;
@@ -79,8 +79,8 @@ TEST(ReadJpegHeader, ShouldParseValidJpgImage) {
 
 TEST(ReadJpegHeader, ShouldFailForInvalidJpegImage) {
   const std::string invalid_image = "invalid image content";
-  const tflite::StringRef invalid_image_ref{
-      invalid_image.c_str(), static_cast<int>(invalid_image.size())};
+  const tflite::StringRef invalid_image_ref{invalid_image.c_str(),
+                                            invalid_image.size()};
 
   JpegHeader header;
 
@@ -100,7 +100,7 @@ TEST(ReadJpegHeader, ShouldFailForEmptyJpegImage) {
 TEST(ApplyHeaderToImage, ReturnsNewImageWithDifferentHeader) {
   const tflite::StringRef chessboard_image{
       reinterpret_cast<const char*>(g_tflite_acceleration_chessboard_jpeg),
-      g_tflite_acceleration_chessboard_jpeg_len};
+      static_cast<size_t>(g_tflite_acceleration_chessboard_jpeg_len)};
 
   JpegHeader new_header{
       .height = 20, .width = 30, .channels = 1, .bits_per_sample = 3};
@@ -111,8 +111,8 @@ TEST(ApplyHeaderToImage, ReturnsNewImageWithDifferentHeader) {
       BuildImageWithNewHeader(chessboard_image, new_header, new_image_data),
       StatusEq({kTfLiteOk, ""}));
 
-  const tflite::StringRef altered_image{
-      new_image_data.c_str(), static_cast<int>(new_image_data.size())};
+  const tflite::StringRef altered_image{new_image_data.c_str(),
+                                        new_image_data.size()};
   JpegHeader header;
   ASSERT_THAT(ReadJpegHeader(altered_image, &header),
               StatusEq({kTfLiteOk, ""}));

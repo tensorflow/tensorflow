@@ -39,6 +39,16 @@ TEST(FloatAddNOpModel, AddMultipleTensors) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.4, 0.5, 1.1, 1.5}));
 }
 
+TEST(FloatAddNOpModel, Add2Tensors) {
+  FloatAddNOpModel m(
+      {{TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}}},
+      {TensorType_FLOAT32, {}});
+  m.PopulateTensor<float>(m.input(0), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input(1), {0.1, 0.2, 0.3, 0.5});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
 TEST(IntegerAddNOpModel, AddMultipleTensors) {
   IntegerAddNOpModel m({{TensorType_INT32, {1, 2, 2, 1}},
                         {TensorType_INT32, {1, 2, 2, 1}},

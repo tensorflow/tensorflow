@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 
+#include <algorithm>
+#include <memory>
+#include <set>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
@@ -611,9 +617,9 @@ TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
   // The computation is: C = A @ relu(A)
   // where A sits in ScopeA, relu(A) sits in ScopeB, and C sits in ScopeC.
   // In this case, we cannot fuse anything.
-  EXPECT_EQ(3, clusters.size());
+  EXPECT_EQ(2, clusters.size());
   EXPECT_NE(clusters["A"], clusters["B"]);
-  EXPECT_EQ(clusters["B"], clusters["C"]);
+  EXPECT_NE(clusters["B"], clusters["C"]);
 }
 
 TEST(XlaCompilationTest, DontClusterNodesWithMismatchingDeadness) {
@@ -1851,6 +1857,32 @@ TEST(XlaCompilationTest, DeterministicClusterNames) {
   TF_EXPECT_OK(cluster_names_match(*clusters1.begin(), *clusters3.begin()));
 
   // clusters0/2 should differ from clusters1/3
+}
+
+TEST(XlaCompilationTest, ClusterSessionName) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output variable = ops::Variable(root.WithOpName("variable"),
+                                  PartialTensorShape{}, DT_FLOAT);
+  Output read = ops::Identity(root.WithOpName("read"), variable);
+  Output neg = ops::Negate(root.WithOpName("negate"), read);
+  Output add = ops::Add(root.WithOpName("add"), neg, neg);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  auto options = MarkForCompilationPassTestHelper::Options().WithSessionName(
+      "test_session_name");
+  TF_ASSERT_OK(
+      MarkForCompilationPassTestHelper::MarkForCompilation(&graph, options));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+
+  ASSERT_FALSE(clusters.empty());
+  string cluster_name = clusters.begin()->second;
+
+  std::unordered_map<string, string> expected_clusters(
+      {{"negate", cluster_name}, {"add", cluster_name}});
+  EXPECT_EQ(clusters, expected_clusters);
+  EXPECT_THAT(cluster_name, ::testing::StartsWith("test_session_name"));
 }
 
 namespace {

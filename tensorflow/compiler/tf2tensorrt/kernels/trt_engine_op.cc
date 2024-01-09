@@ -244,6 +244,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // Maximum number of cached engines.
   int max_cached_engines_;
 
+  // Flag to detect whether native segment nodes have been deleted from graph
+  bool native_segment_absent_;
+
   int64 workspace_size_;
   mutex engine_mutex_;
   FunctionLibraryRuntime::Handle native_execution_func_handle_;
@@ -357,7 +360,7 @@ StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
   inst_ops.state_handle = "";
   inst_ops.target = device_name;
-  if (allow_soft_placement) {
+  if (!native_segment_absent_ && allow_soft_placement) {
     const FunctionDef* fdef =
         lib->GetFunctionLibraryDefinition()->Find(func_.name());
     if (!fdef) {
@@ -421,9 +424,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  context->GetAttr("calibration_data", &calibration_data));
   OP_REQUIRES_OK(context, context->GetAttr("segment_func", &func_));
-  OP_REQUIRES(context, !func_.name().empty(),
-              errors::InvalidArgument(
-                  "The TF function for the TRT segment could not be empty"));
   OP_REQUIRES_OK(context,
                  TrtPrecisionModeFromName(precision_string, &precision_mode_));
   OP_REQUIRES_OK(context,
@@ -468,11 +468,17 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     use_explicit_precision_ = false;
   }
 
+  // When a TF-TRT converted model without native segments is loaded,
+  // func_ can be empty.
+  native_segment_absent_ = (func_.name() == "");
   native_execution_func_handle_ = kInvalidHandle;
-  if (!static_engine_) {
-    OP_REQUIRES_OK(context, ImportSegmentGraphDef(context->function_library(),
-                                                  context->device()->name()));
+  if (!native_segment_absent_) {
+    if (!static_engine_) {
+      OP_REQUIRES_OK(context, ImportSegmentGraphDef(context->function_library(),
+                                                    context->device()->name()));
+    }
   }
+
   // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
   // backward compatibility reasons. Remove it once all known users switch to
   // 2.0.
@@ -611,24 +617,20 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   opts.runner = ctx->runner();
   native_inputs.reserve(ctx->num_inputs());
   int n_copies = 0;
-  const cudaStream_t* stream = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack()));
+  cudaStream_t stream = reinterpret_cast<cudaStream_t>(CHECK_NOTNULL(
+      ctx->op_device_context()->stream()->platform_specific_handle().stream));
   for (int i = 0; i < ctx->num_inputs(); i++) {
     if (ctx->input_dtype(i) != DT_INT32) {
       native_inputs.push_back(ctx->input(i));
     } else {
-      OP_REQUIRES_OK_ASYNC(ctx,
-                           CopyToHostAsync(ctx, &native_inputs, i, *stream),
+      OP_REQUIRES_OK_ASYNC(ctx, CopyToHostAsync(ctx, &native_inputs, i, stream),
                            dummy_async_helper);
       n_copies++;
     }
   }
   if (n_copies > 0) {
     // If we have any int32 tensors, then wait until data is copied to host.
-    cudaStreamSynchronize(*stream);
+    cudaStreamSynchronize(stream);
   }
   VLOG(1) << "Executing native segment: " << name();
   // Increment the reference count of the async_helper by 1. When the native
@@ -647,7 +649,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
         for (size_t t = 0; t < native_outputs->size(); ++t) {
           if (native_outputs->at(t).dtype() == DT_INT32) {
             OP_REQUIRES_OK_ASYNC(
-                ctx, CopyToDeviceAsync(ctx, native_outputs->at(t), t, *stream),
+                ctx, CopyToDeviceAsync(ctx, native_outputs->at(t), t, stream),
                 dummy_async_helper);
             n_copies++;
           } else {
@@ -655,7 +657,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
           }
         }
         if (n_copies > 0) {
-          cudaStreamSynchronize(*stream);
+          cudaStreamSynchronize(stream);
         }
       });
 }
@@ -697,11 +699,8 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     VLOG(2) << "Filled map for sending";
     // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
     // files.
-    const cudaStream_t* stream = CHECK_NOTNULL(
-        reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                  ->stream()
-                                                  ->implementation()
-                                                  ->GpuStreamMemberHack()));
+    cudaStream_t stream = reinterpret_cast<cudaStream_t>(CHECK_NOTNULL(
+        ctx->op_device_context()->stream()->platform_specific_handle().stream));
     // TRTInt8Calibrator::setBatch will wait until TRTInt8Calibrator::getBatch
     // is called before proceeding with feeding the calibration data to the
     // calibrator. It returns true if the calibration data is accepted and
@@ -715,13 +714,18 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
     //
     // In both of the above cases, setBatch here returns a boolean value to
     // indicate the result of the calibration process.
-    if (!calib_ctx->calibrator_->setBatch(input_data, *stream)) {
+    if (!calib_ctx->calibrator_->setBatch(input_data, stream)) {
       VLOG(2) << "Failed to feed calibration data";
     } else {
       VLOG(2) << "Passed calibration data";
     }
   }
-  ExecuteNativeSegment(ctx, async_helper);
+  if (!native_segment_absent_) {
+    ExecuteNativeSegment(ctx, async_helper);
+  } else {
+    LOG(ERROR) << "Calibration requires native segment, but is not found in "
+                  "the graph.";
+  }
 }
 
 Status TRTEngineOp::VerifyInputShapes(
@@ -800,7 +804,7 @@ static bool AllowEngineNativeSegmentExecution() {
   bool value;
   Status status =
       ReadBoolFromEnvVar("TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION",
-                         /*default_value=*/true, &value);
+                         /*default_val=*/true, &value);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
@@ -843,11 +847,11 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   Status verify_input_shape_status =
       VerifyInputShapes(input_concrete_shapes_filtered);
   // TODO(bixia): Fix the segmentation.
-  if (!verify_input_shape_status.ok()) {
+  if (!verify_input_shape_status.ok() && !native_segment_absent_) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Running native segment for" << name()
         << " due to failure in verifying input shapes: "
-        << verify_input_shape_status.error_message();
+        << verify_input_shape_status.message();
     ExecuteNativeSegment(ctx, async_helper);
     return;
   }
@@ -868,8 +872,14 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       // Just collect the input shape info and return. The shapes are used to
       // generate optimization profiles during engine creation.
       cache_res->profiles_.AddShape(input_concrete_shapes);
-      VLOG(1) << "Native segment is used during collecting shapes for profiles";
-      ExecuteNativeSegment(ctx, async_helper);
+      VLOG(1)
+          << "Native segment is used during collecting shapes for profiles.";
+      if (!native_segment_absent_) {
+        ExecuteNativeSegment(ctx, async_helper);
+      } else {
+        LOG(ERROR) << "Native segment is required for profile generation,  "
+                      "but is not found in the graph.";
+      }
       return;
     } else if (cache_res->profiles_.GetNumProfiles() == 0 && !static_engine_) {
       // Add current shape if we did not collect any shapes so far.
@@ -926,9 +936,14 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   EngineContext* engine_context = status.value().first;
   int trt_context_idx = status.value().second;
   auto may_execute_native_segment = [&] {
-    if (!AllowEngineNativeSegmentExecution()) {
+    if (!native_segment_absent_ && !AllowEngineNativeSegmentExecution()) {
       ctx->CtxFailure(
-          errors::Aborted("User disallowed engine native segment execution"));
+          errors::Aborted("User disallowed engine native segment execution."));
+      return false;
+    } else if (native_segment_absent_) {
+      ctx->CtxFailure(
+          errors::Aborted("Native segment execution is enabled but "
+                          " native segment is not found in the graph."));
       return false;
     }
     return true;
@@ -954,14 +969,20 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   if (!may_execute_native_segment()) {
     return;
   }
-  // Release any outputs that are allocated, ExecuteNativeSegment will
-  // re-allocate them and fail if they are currently allocated.
+  // When Native Segment execution is enabled, release any outputs that
+  // are allocated. ExecuteNativeSegment will re-allocate them and
+  // fail if they are currently allocated.
   // The Tensor pointer in the returned TensorValue must be explicitly
   // deleted.
   for (int i = 0; i < ctx->num_outputs(); i++) {
     delete ctx->release_output(i).tensor;
   }
-  ExecuteNativeSegment(ctx, async_helper);
+  if (!native_segment_absent_) {
+    ExecuteNativeSegment(ctx, async_helper);
+  } else {
+    LOG(ERROR) << "Native segment execution is enabled, "
+                  "but native segment is not found in the graph.";
+  }
 }
 
 Status TRTEngineOp::ExecuteTrtEngine(
@@ -1019,11 +1040,8 @@ Status TRTEngineOp::ExecuteTrtEngine(
 
   // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
   // files.
-  const cudaStream_t* stream = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack()));
+  cudaStream_t stream = reinterpret_cast<cudaStream_t>(CHECK_NOTNULL(
+      ctx->op_device_context()->stream()->platform_specific_handle().stream));
 
   ContextDeviceMemory context_device_memory;
   if (!has_device_memory) {
@@ -1036,7 +1054,7 @@ Status TRTEngineOp::ExecuteTrtEngine(
         execution_context, allocator, engine_context->GetDeviceMemorySize()));
   }
   // Enqueue the TensorRT engine for execution.
-  return TrtEnqueue(execution_context, buffers, *stream, use_implicit_batch_,
+  return TrtEnqueue(execution_context, buffers, stream, use_implicit_batch_,
                     num_batch);
 }
 
@@ -1099,7 +1117,8 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
       segment_graph_def_, ctx, precision_mode_, batch_size, workspace_size_,
       conversion_input_shapes, &logger, cache_resource->allocator_.get(),
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
-      &cache_resource->profiles_, name(), use_explicit_precision_, &cluster);
+      &cache_resource->profiles_, name(), use_explicit_precision_, &cluster,
+      ctx->device()->name());
   if (!status.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Engine creation for " << name() << " failed. "
@@ -1388,7 +1407,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
         /*convert_successfully=*/nullptr,
         /*profiles=*/&cache_res->profiles_, name(),
         /*use_explicit_precision=*/use_explicit_precision_,
-        /*cluster=*/&cluster);
+        /*cluster=*/&cluster, platform_device_name);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes

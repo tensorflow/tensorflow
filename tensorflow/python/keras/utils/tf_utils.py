@@ -24,8 +24,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
@@ -37,12 +37,11 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 def is_tensor_or_tensor_list(v):
   v = nest.flatten(v)
-  if v and isinstance(v[0], ops.Tensor):
+  if v and isinstance(v[0], tensor_lib.Tensor):
     return True
   else:
     return False
@@ -314,7 +313,7 @@ def is_symbolic_tensor(tensor):
   Returns:
     True for symbolic tensors, False for eager tensors.
   """
-  if isinstance(tensor, ops.Tensor):
+  if isinstance(tensor, tensor_lib.Tensor):
     return hasattr(tensor, 'graph')
   elif is_extension_type(tensor):
     component_tensors = nest.flatten(tensor, expand_composites=True)
@@ -334,7 +333,6 @@ def is_symbolic_tensor(tensor):
     return False
 
 
-@keras_export('keras.__internal__.utils.register_symbolic_tensor_type', v1=[])
 def register_symbolic_tensor_type(cls):
   """Allows users to specify types regarded as symbolic `Tensor`s.
 
@@ -378,7 +376,7 @@ def type_spec_from_value(value):
   # Get a TensorSpec for array-like data without
   # converting the data to a Tensor
   if hasattr(value, 'shape') and hasattr(value, 'dtype'):
-    return tensor_spec.TensorSpec(value.shape, value.dtype)
+    return tensor_lib.TensorSpec(value.shape, value.dtype)
   else:
     return type_spec.type_spec_from_value(value)
 
@@ -477,7 +475,7 @@ def get_tensor_spec(t, dynamic_batch=False, name=None):
         hasattr(t._keras_history[0], '_type_spec')):
     return t._keras_history[0]._type_spec
   elif hasattr(t, 'shape') and hasattr(t, 'dtype'):
-    spec = tensor_spec.TensorSpec(shape=t.shape, dtype=t.dtype, name=name)
+    spec = tensor_lib.TensorSpec(shape=t.shape, dtype=t.dtype, name=name)
   else:
     return None  # Allow non-Tensors to pass through.
 
@@ -521,7 +519,7 @@ def sync_to_numpy_or_python_type(tensors):
     return tensors.fetch()
 
   def _to_single_numpy_or_python_type(t):
-    if isinstance(t, ops.Tensor):
+    if isinstance(t, tensor_lib.Tensor):
       x = t.numpy()
       return x.item() if np.ndim(x) == 0 else x
     return t  # Don't turn ragged or sparse tensors to NumPy.

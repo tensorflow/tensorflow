@@ -34,17 +34,18 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
@@ -74,7 +75,7 @@ class TFRInlinerInterface : public DialectInlinerInterface {
   // Returns true if the given region 'src' can be inlined into the region
   // 'dest' that is attached to an operation registered to the current dialect.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       BlockAndValueMapping &) const final {
+                       IRMapping &) const final {
     return true;
   }
 
@@ -82,18 +83,17 @@ class TFRInlinerInterface : public DialectInlinerInterface {
   // dialect, can be inlined into the region 'dest' that is attached to an
   // operation registered to the current dialect.
   bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
-                       BlockAndValueMapping &) const final {
+                       IRMapping &) const final {
     return true;
   }
 
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
-  void handleTerminator(Operation *op,
-                        ArrayRef<Value> valuesToRepl) const final {
+  void handleTerminator(Operation *op, ValueRange valuesToRepl) const final {
     auto retValOp = dyn_cast<TFRReturnOp>(op);
     if (!retValOp) return;
 
-    for (auto ret_value : llvm::zip(valuesToRepl, retValOp.operands())) {
+    for (auto ret_value : llvm::zip(valuesToRepl, retValOp.getOperands())) {
       std::get<0>(ret_value).replaceAllUsesWith(std::get<1>(ret_value));
     }
   }
@@ -144,7 +144,8 @@ TFRDialect::TFRDialect(MLIRContext *context)
 Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
                                            Type type, Location loc) {
   if (arith::ConstantOp::isBuildableWith(value, type))
-    return builder.create<arith::ConstantOp>(loc, type, value);
+    return builder.create<arith::ConstantOp>(loc, type,
+                                             value.cast<TypedAttr>());
   if (func::ConstantOp::isBuildableWith(value, type))
     return builder.create<func::ConstantOp>(loc, type,
                                             value.cast<FlatSymbolRefAttr>());
@@ -158,6 +159,16 @@ bool TFRType::classof(Type type) {
 //===----------------------------------------------------------------------===//
 // Custom op methods
 //===----------------------------------------------------------------------===//
+
+void CallOp::setCalleeFromCallable(CallInterfaceCallable callee) {
+  // Direct call.
+  if (FlatSymbolRefAttr calleeAttr = getCalleeAttr()) {
+    auto symRef = callee.get<SymbolRefAttr>();
+    return setCalleeAttr(cast<FlatSymbolRefAttr>(symRef));
+  }
+  // Indirect call, callee Value is the first operand.
+  return setOperand(0, callee.get<Value>());
+}
 
 LogicalResult ConstantTensorOp::verify() {
   ConstantTensorOp op = *this;
@@ -359,11 +370,15 @@ ParseResult TFRFuncOp::parse(OpAsmParser &parser, OperationState &result) {
          function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(arg_types, results); };
   return function_interface_impl::parseFunctionOp(
-      parser, result, /*allowVariadic=*/false, build_func_type);
+      parser, result, /*allowVariadic=*/false,
+      getFunctionTypeAttrName(result.name), build_func_type,
+      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
 }
 
 void TFRFuncOp::print(OpAsmPrinter &p) {
-  function_interface_impl::printFunctionOp(p, *this, /*isVariadic=*/false);
+  function_interface_impl::printFunctionOp(
+      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+      getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
 }  // namespace TFR
@@ -679,21 +694,21 @@ class RemoveQParamsOp : public OpRewritePattern<TFRQuantQParamsOp> {
       auto scales_type = RankedTensorType::get(
           {static_cast<int64_t>(num_channels)}, rewriter.getF32Type());
       auto scales_attr =
-          DenseElementsAttr::get(scales_type, llvm::makeArrayRef(scales));
+          DenseElementsAttr::get(scales_type, llvm::ArrayRef(scales));
       scale_op = rewriter.create<TF::ConstOp>(loc, scales_attr);
 
       auto zps_type = RankedTensorType::get(
           {static_cast<int64_t>(num_channels)}, rewriter.getI32Type());
-      auto zps_attr = DenseElementsAttr::get(zps_type, llvm::makeArrayRef(zps));
+      auto zps_attr = DenseElementsAttr::get(zps_type, llvm::ArrayRef(zps));
       zp_op = rewriter.create<TF::ConstOp>(loc, zps_attr);
     }
     if (!scale_op || !zp_op) {
       return failure();
     }
     auto scale_cast = rewriter.create<CastOp>(
-        loc, qparams_op.getScale().getType(), scale_op.output());
+        loc, qparams_op.getScale().getType(), scale_op.getOutput());
     auto zp_cast = rewriter.create<CastOp>(loc, qparams_op.getZp().getType(),
-                                           zp_op.output());
+                                           zp_op.getOutput());
 
     qparams_op.getScale().replaceAllUsesWith(scale_cast.getOut());
     qparams_op.getZp().replaceAllUsesWith(zp_cast.getOut());
@@ -770,10 +785,9 @@ class RemoveScaleFactorOp : public OpRewritePattern<TFRQuantScaleFactorOp> {
     rewriter.setInsertionPoint(scale_factor_op);
     const Location loc = scale_factor_op->getLoc();
     auto result_scale_op = rewriter.create<TF::ConstOp>(
-        loc,
-        DenseElementsAttr::get(scale_type, llvm::makeArrayRef(scale_factors)));
+        loc, DenseElementsAttr::get(scale_type, llvm::ArrayRef(scale_factors)));
     auto result_scale_cast_op = rewriter.create<CastOp>(
-        loc, scale_factor_op.getType(), result_scale_op.output());
+        loc, scale_factor_op.getType(), result_scale_op.getOutput());
     scale_factor_op.getScaleFactor().replaceAllUsesWith(
         result_scale_cast_op.getOut());
     return success();
@@ -810,7 +824,7 @@ class RemoveRescaleOp : public OpRewritePattern<TFRQuantRescaleOp> {
     auto zp_tensor = rewriter.create<TF::ConstOp>(
         loc, RankedTensorType::get({}, zp.getType()), zp_attr);
     auto zp_cast = rewriter.create<CastOp>(
-        loc, rewriter.getType<TFRTensorType>(), zp_tensor.output());
+        loc, rewriter.getType<TFRTensorType>(), zp_tensor.getOutput());
 
     rewriter.setInsertionPoint(rescale_op);
     auto cast_input_to_float_op = rewriter.create<CallOp>(
@@ -893,14 +907,17 @@ void TFRQuantScaleFactorOp::getCanonicalizationPatterns(
   results.add<RemoveScaleFactorOp>(context);
 }
 
-OpFoldResult TFR::EqualOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult TFR::EqualOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
   assert(operands.size() == 2 && "equal op has two operands");
   auto ctx = getContext();
   if (operands[0] == operands[1]) return BoolAttr::get(ctx, true);
   return BoolAttr::get(ctx, false);
 }
 
-OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConstOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  (void)operands;
   assert(operands.empty() && "constant has no operands");
 
   // Return the held attribute value.
@@ -910,11 +927,6 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 // CallableOpInterface
 Region *TFRFuncOp::getCallableRegion() {
   return isExternal() ? nullptr : &getBody().front();
-}
-
-// CallableOpInterface
-ArrayRef<Type> TFRFuncOp::getCallableResults() {
-  return getFunctionType().getResults();
 }
 
 //===----------------------------------------------------------------------===//

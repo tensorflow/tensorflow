@@ -185,7 +185,8 @@ const NnApi LoadNnApi() {
     return nnapi;
   }
 
-  if (IsIsolatedProcess()) {
+  // Disable NNAPI for Android 13 and earlier if running in isolated process.
+  if (nnapi.android_sdk_version <= 33 && IsIsolatedProcess()) {
     NNAPI_LOG("NNAPI is disabled in an isolated process");
     nnapi.nnapi_exists = false;
     return nnapi;

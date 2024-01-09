@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 // Only use multi-threaded Eigen if ruy is disabled.
@@ -24,8 +25,8 @@ limitations under the License.
 #define TFLITE_WITH_MULTITHREADED_EIGEN
 #endif
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #if defined(TFLITE_WITH_MULTITHREADED_EIGEN)
 #include "tensorflow/lite/kernels/eigen_support.h"
@@ -120,6 +121,8 @@ struct OpData {
 
   // Number of convolution groups.
   int32_t groups = 1;
+
+  TfLiteType quantized_bias_type = kTfLiteNoType;
 };
 
 inline PaddingType RuntimePaddingType(TfLitePadding padding) {
@@ -347,6 +350,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   // or equals (normal conv).
   auto input_channel = input->dims->data[3];
   auto filter_input_channel = filter->dims->data[3];
+  TF_LITE_ENSURE(context, filter_input_channel > 0);
   TF_LITE_ENSURE_EQ(context, input_channel % filter_input_channel, 0);
   data->groups = input_channel / filter_input_channel;
 
@@ -357,10 +361,6 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
                      input_type == kTfLiteInt8 || input_type == kTfLiteInt16);
   TF_LITE_ENSURE_TYPES_EQ(context, output->type, input_type);
 
-  if (input_type == kTfLiteInt16) {
-    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-  }
   // Filter must have zero zero-points in per-channel quantization.
   if (input_type == kTfLiteInt16 || input_type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
@@ -392,6 +392,21 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input_type);
     }
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
+  }
+
+  if (input_type == kTfLiteInt16) {
+    // Quantization should be symmetric.
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    // Check quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
+    if (params->quantized_bias_type != kTfLiteFloat32) {
+      TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
+                                  params->quantized_bias_type == kTfLiteInt64);
+      TF_LITE_ENSURE(context, (bias == nullptr) ||
+                                  bias->type == params->quantized_bias_type);
+      data->quantized_bias_type = params->quantized_bias_type;
+    }
   }
 
   const bool is_hybrid =
@@ -596,6 +611,8 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       const auto* affine_quantization =
           reinterpret_cast<TfLiteAffineQuantization*>(
               filter->quantization.params);
+      TF_LITE_ENSURE(context, affine_quantization);
+      TF_LITE_ENSURE(context, affine_quantization->scale);
       TF_LITE_ENSURE_EQ(
           context, affine_quantization->scale->size,
           filter->dims->data[affine_quantization->quantized_dimension]);
@@ -751,31 +768,65 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     effective_kernel_type = kReference;
   }
 
+  const int8_t* filter_data;
+  const size_t bytes_unpacked = filter->bytes * 2;
+  auto unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+
+  if (filter->type == kTfLiteInt4) {
+    tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+        GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
+        unpacked_filter_data.get());
+    filter_data = unpacked_filter_data.get();
+  } else {
+    filter_data = GetTensorData<int8>(filter);
+  }
+
   switch (effective_kernel_type) {
     case kReference: {
-      reference_integer_ops::ConvPerChannel(
-          op_params, data->per_channel_output_multiplier.data(),
-          data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int8>(input), GetTensorShape(filter),
-          GetTensorData<int8>(filter), GetTensorShape(bias),
-          GetTensorData<int32>(bias), GetTensorShape(output),
-          GetTensorData<int8>(output));
+      switch (filter->type) {
+        case kTfLiteInt4:
+        case kTfLiteInt8: {
+          reference_integer_ops::ConvPerChannel(
+              op_params, data->per_channel_output_multiplier.data(),
+              data->per_channel_output_shift.data(), GetTensorShape(input),
+              GetTensorData<int8>(input), GetTensorShape(filter), filter_data,
+              GetTensorShape(bias), GetTensorData<int32>(bias),
+              GetTensorShape(output), GetTensorData<int8>(output));
+          break;
+        }
+
+        default: {
+          TF_LITE_KERNEL_LOG(context,
+                             "Weight type %s (%d) not supported for filter.",
+                             TfLiteTypeGetName(filter->type), filter->type);
+          break;
+        }
+      }
       break;
     }
     case kGenericOptimized:
     case kMultithreadOptimized:
-    case kCblasOptimized: {
-      optimized_integer_ops::ConvPerChannel(
-          op_params, data->per_channel_output_multiplier.data(),
-          data->per_channel_output_shift.data(), GetTensorShape(input),
-          GetTensorData<int8>(input), GetTensorShape(filter),
-          GetTensorData<int8>(filter), GetTensorShape(bias),
-          GetTensorData<int32>(bias), GetTensorShape(output),
-          GetTensorData<int8>(output), GetTensorShape(im2col),
-          GetTensorData<int8>(im2col),
-          CpuBackendContext::GetFromContext(context));
-      break;
-    }
+    case kCblasOptimized:
+      switch (filter->type) {
+        case kTfLiteInt4:
+        case kTfLiteInt8: {
+          optimized_integer_ops::ConvPerChannel(
+              op_params, data->per_channel_output_multiplier.data(),
+              data->per_channel_output_shift.data(), GetTensorShape(input),
+              GetTensorData<int8>(input), GetTensorShape(filter), filter_data,
+              GetTensorShape(bias), GetTensorData<int32>(bias),
+              GetTensorShape(output), GetTensorData<int8>(output),
+              GetTensorShape(im2col), GetTensorData<int8>(im2col),
+              CpuBackendContext::GetFromContext(context));
+          break;
+        }
+        default: {
+          TF_LITE_KERNEL_LOG(context,
+                             "Weight type %s (%d) not supported for filter.",
+                             TfLiteTypeGetName(filter->type), filter->type);
+          break;
+        }
+      }
   }
 }
 
@@ -817,34 +868,37 @@ void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
                             filter->params.zero_point ||
                             output->params.zero_point;
 
-  // Fallback to reference kernel when bias_type is int64 as
-  // there is no optimized kernel for int64 bias yet.
-  if (bias && bias->type == kTfLiteInt64) {
-    reference_integer_ops::ConvPerChannel(
-        op_params, data->per_channel_output_multiplier.data(),
-        data->per_channel_output_shift.data(), GetTensorShape(input),
-        GetTensorData<int16>(input), GetTensorShape(filter),
-        GetTensorData<int8>(filter), GetTensorShape(bias),
-        GetTensorData<std::int64_t>(bias), GetTensorShape(output),
-        GetTensorData<int16>(output));
-  } else if (effective_kernel_type == kReference || has_non_zero_point) {
-    reference_integer_ops::ConvPerChannel(
-        op_params, data->per_channel_output_multiplier.data(),
-        data->per_channel_output_shift.data(), GetTensorShape(input),
-        GetTensorData<int16>(input), GetTensorShape(filter),
-        GetTensorData<int8>(filter), GetTensorShape(bias),
-        GetTensorData<std::int32_t>(bias), GetTensorShape(output),
-        GetTensorData<int16>(output));
+  if (data->quantized_bias_type == kTfLiteInt32) {
+    if (effective_kernel_type == kReference || has_non_zero_point) {
+      reference_integer_ops::ConvPerChannel(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int16>(input), GetTensorShape(filter),
+          GetTensorData<int8>(filter), GetTensorShape(bias),
+          GetTensorData<int32_t>(bias), GetTensorShape(output),
+          GetTensorData<int16>(output));
+    } else {
+      optimized_integer_ops::ConvPerChannel(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int16_t>(input), GetTensorShape(filter),
+          GetTensorData<int8_t>(filter), GetTensorShape(bias),
+          GetTensorData<int32_t>(bias), GetTensorShape(output),
+          GetTensorData<int16_t>(output), GetTensorShape(im2col),
+          GetTensorData<int16_t>(im2col),
+          CpuBackendContext::GetFromContext(context));
+    }
   } else {
-    optimized_integer_ops::ConvPerChannel(
+    TFLITE_DCHECK(!has_non_zero_point);
+    // Fallback to reference kernel when bias_type is int64 as
+    // there is no optimized kernel for int64 bias yet.
+    reference_integer_ops::ConvPerChannel(
         op_params, data->per_channel_output_multiplier.data(),
         data->per_channel_output_shift.data(), GetTensorShape(input),
-        GetTensorData<int16_t>(input), GetTensorShape(filter),
-        GetTensorData<int8_t>(filter), GetTensorShape(bias),
-        GetTensorData<std::int32_t>(bias), GetTensorShape(output),
-        GetTensorData<int16_t>(output), GetTensorShape(im2col),
-        GetTensorData<int16_t>(im2col),
-        CpuBackendContext::GetFromContext(context));
+        GetTensorData<int16>(input), GetTensorShape(filter),
+        GetTensorData<int8>(filter), GetTensorShape(bias),
+        GetTensorData<int64_t>(bias), GetTensorShape(output),
+        GetTensorData<int16>(output));
   }
 }
 

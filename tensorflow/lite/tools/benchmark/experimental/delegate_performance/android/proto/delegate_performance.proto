@@ -1,0 +1,113 @@
+// Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+
+syntax = "proto3";
+
+package tflite.proto.benchmark;
+
+option java_package = "tflite.proto.benchmark";
+
+// Parameters for latency thresholds of the delegate latency benchmarking
+// results. The delegate performance benchmark app generates a
+// "PASS"/"PASS_WITH_WARNING"/"FAIL" result for each pair of test target
+// delegate with a reference delegate and an overall result by aggregating all
+// the results. The result computation involves computing the test target
+// delegate performance regressions and checking if the regression thresholds,
+// specified by LatencyCriteria, are breached.
+//
+// Please see
+// tensorflow/lite/tools/benchmark/experimental/delegate_performance/android/src/main/java/org/tensorflow/lite/benchmark/delegateperformance/BenchmarkResultType.java
+// for the meanings of "PASS", "PASS_WITH_WARNING" and "FAIL".
+//
+// The latency criteria is designed to be model specific.
+//
+// Next ID: 3
+message LatencyCriteria {
+  // The maximum regression (%) of startup overhead time that is allowed.
+  // If initialization_max_regression_percentage_allow is 5 and the
+  // initialization time of the test delegate is slower than the reference
+  // delegate by more than 5%, the threshold is breached.
+  //
+  // Startup overhead time is calculated as below:
+  // initialization time + average warmup time - average inference time
+  optional float startup_overhead_max_regression_percentage_allowed = 1;
+  // The maximum regression (%) of inference time that is allowed.
+  // If average_inference_max_regression_percentage_allowed is 5 and the
+  // inference time of the test delegate is slower than the reference delegate
+  // by more than 5%, the threshold is breached.
+  optional float average_inference_max_regression_percentage_allowed = 2;
+}
+
+// Which stage of benchmarking the event is for.
+enum BenchmarkEventType {
+  BENCHMARK_EVENT_TYPE_UNDEFINED = 0;
+  // Benchmark start. A start without an end can be interpreted as a test that
+  // has crashed or hung.
+  BENCHMARK_EVENT_TYPE_START = 1;
+  // Benchmarking completion. A model was successfully loaded, acceleration
+  // configured and inference run without errors. There may still be an issue
+  // with correctness of results, or with performance.
+  BENCHMARK_EVENT_TYPE_END = 2;
+  // Benchmark was not completed due to an error. The error may be a handled
+  // error (e.g., failure in a delegate), or a crash.
+  BENCHMARK_EVENT_TYPE_ERROR = 3;
+}
+
+// A handled error.
+//
+// Next ID: 2
+message ErrorCode {
+  // What the TF Lite level error is.
+  // See TfLiteStatus in tensorflow/lite/core/c/c_api_types.h for the meaning of
+  // the values.
+  optional int32 tflite_error = 1;
+}
+
+// An error that occurred during benchmarking.
+//
+// Used with event type ERROR.
+//
+// Next ID: 3
+message BenchmarkError {
+  // Handled tflite error.
+  optional ErrorCode error_code = 1;
+  optional string error_message = 2;
+}
+
+// A metric from a benchmark, for example an average inference time in
+// microseconds.
+message BenchmarkMetric {
+  // Metric name, for example inference_latency_average_us.
+  optional string name = 1;
+  // Metric value, for example 180000.
+  optional float value = 2;
+}
+
+// Outcome of a latency benchmark run.  If the benchmark run was successfully
+// completed, the message contains the latency metrics. The information is
+// intended to be compared against with other candidate acceleration
+// configurations. If the benchmark run was failed, the message contains the
+// handled errors for the callers to investigate further.
+//
+// Next ID: 4
+message LatencyResults {
+  // Type of the benchmark event.
+  optional BenchmarkEventType event_type = 1;
+  // Metrics that are intended to be compared against other acceleration
+  // configurations, used when type is END.
+  repeated BenchmarkMetric metrics = 2;
+  // Error during benchmark, used when type is ERROR.
+  optional BenchmarkError error = 3;
+}

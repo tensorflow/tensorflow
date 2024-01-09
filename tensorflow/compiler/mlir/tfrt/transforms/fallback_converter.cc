@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 
+#include <optional>
+
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
@@ -27,17 +29,17 @@ FallbackConverter::FallbackConverter(mlir::MLIRContext *context)
     : builder_(context) {
   addConversion([](tfrt::compiler::ChainType type) { return type; });
   addConversion([](tfrt::fallback::TFTensorType type) { return type; });
-  addConversion([=](mlir::TensorType type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::TensorType type) -> std::optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
     if (type.getElementType().isa<mlir::TF::TensorFlowRefType>()) {
-      return llvm::None;
+      return std::nullopt;
     }
 
     return builder_.getType<tfrt::fallback::TFTensorType>();
   });
-  addConversion([=](mlir::Type type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::Type type) -> std::optional<mlir::Type> {
     if (type == builder_.getI1Type()) return type;
-    return llvm::None;
+    return std::nullopt;
   });
 }
 
@@ -50,7 +52,7 @@ mlir::Value ConvertCoreRTTensorHandleToFallbackTensor(
 
   mlir::OpBuilder::InsertionGuard guard(rewriter);
 
-  if (device.endswith("CPU:0") && !device.startswith("/job:")) {
+  if (device.ends_with("CPU:0") && !device.starts_with("/job:")) {
     // Canonicalize CPU device name. This is needed as corert library only uses
     // the default CPU device name (i.e.
     // "/job:localhost/replica:0/task:0/device:CPU:0") and cannot recoganize
@@ -93,7 +95,7 @@ mlir::Value ConvertFallbackTensorToCoreRTTensorHandle(
       // defining op (it should be defined in TF OpKernel). If HostMemory
       // annotation is set for an output tensor, we should use CPU device here.
       // TODO(b/200896904): Support HostMemory annotation.
-      if (!device_attr.getValue().endswith("TPU_SYSTEM:0")) {
+      if (!device_attr.getValue().ends_with("TPU_SYSTEM:0")) {
         device = device_attr.getValue();
       }
     }

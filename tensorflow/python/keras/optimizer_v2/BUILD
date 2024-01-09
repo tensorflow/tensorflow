@@ -1,13 +1,18 @@
 # Description:
 #   Contains the Keras OptimizerV2 API (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
     default_visibility = [
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
-        "//tensorflow/python/training/tracking:__pkg__",
+        "//tensorflow/python/tpu/tests:__pkg__",
+        "//tensorflow/python/trackable:__pkg__",
+        "//tensorflow/python/training:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -35,25 +40,29 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":learning_rate_schedule",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
         "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:indexed_slices",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:backend_config",
         "//tensorflow/python/keras/engine:base_layer_utils",
         "//tensorflow/python/keras/initializers",
         "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:state_ops",
+        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:variables",
     ],
 )
 
@@ -64,12 +73,15 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:control_flow_case",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:random_ops",
     ],
 )
 
@@ -79,10 +91,11 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":learning_rate_schedule",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_conversion",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

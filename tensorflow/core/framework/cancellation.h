@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/cancellation.h"
+#include "tsl/framework/cancellation.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

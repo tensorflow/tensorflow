@@ -26,7 +26,12 @@ limitations under the License.
 #define TF_CAPI_EXPORT __declspec(dllimport)
 #endif  // TF_COMPILE_LIBRARY
 #else
+#ifdef TF_CAPI_WEAK
+#define TF_CAPI_EXPORT \
+  __attribute__((visibility("default"))) __attribute((weak))
+#else
 #define TF_CAPI_EXPORT __attribute__((visibility("default")))
+#endif  // TF_CAPI_WEAK
 #endif  // _WIN32
 #endif  // SWIG
 

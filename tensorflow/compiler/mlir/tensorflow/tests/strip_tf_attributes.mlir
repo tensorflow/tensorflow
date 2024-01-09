@@ -28,3 +28,14 @@ func.func @strips_result_attributes() -> (f32 {tf.foo = "bar"}) {
   %0 = "foo.constant"() : () -> f32
   return %0 : f32
 }
+
+// -----
+
+// CHECK-LABEL: strips_module_attributes
+module @strips_module_attributes attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1235 : i32}} {
+// CHECK-NOT: tf
+// CHECK: body
+  func.func private @body() -> () {
+    return
+  }
+}

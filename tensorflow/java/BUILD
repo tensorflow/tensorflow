@@ -15,6 +15,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -285,9 +286,6 @@ tf_java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorTest.java"],
     javacopts = JAVACOPTS,
-    tags = [
-        "noasan",  # TODO(b/177573611): enable after this is fixed.
-    ],
     test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
@@ -441,6 +439,9 @@ tf_cc_binary(
             "-z defs",
             "-s",
             "-Wl,--version-script,$(location {})".format(LINKER_VERSION_SCRIPT),
+            # copybara:uncomment_begin(google-only)
+            # "-Wl,--undefined-version",
+            # copybara:uncomment_end
         ],
     }),
     linkshared = 1,

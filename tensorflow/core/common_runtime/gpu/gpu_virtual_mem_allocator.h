@@ -21,14 +21,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/device_id.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #endif
 
 #if CUDA_VERSION >= 10020
@@ -43,13 +42,12 @@ namespace tensorflow {
 // This class is not thread-safe.
 class GpuVirtualMemAllocator : public tsl::SubAllocator {
  public:
-  static stream_executor::port::StatusOr<
-      std::unique_ptr<GpuVirtualMemAllocator>>
-  Create(const std::vector<Visitor>& alloc_visitors,
-         const std::vector<Visitor>& free_visitors,
-         stream_executor::gpu::GpuContext& gpu_context,
-         tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
-         const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids);
+  static tsl::StatusOr<std::unique_ptr<GpuVirtualMemAllocator>> Create(
+      const std::vector<Visitor>& alloc_visitors,
+      const std::vector<Visitor>& free_visitors,
+      stream_executor::gpu::GpuContext& gpu_context,
+      tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
+      const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids);
   ~GpuVirtualMemAllocator() override;
 
   // Allocates memory at least as large as requested by num_bytes. Will be
@@ -108,7 +106,8 @@ class GpuVirtualMemAllocator : public tsl::SubAllocator {
   // List of mappings, sorted by va.
   std::vector<Mapping> mappings_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuVirtualMemAllocator);
+  GpuVirtualMemAllocator(const GpuVirtualMemAllocator&) = delete;
+  void operator=(const GpuVirtualMemAllocator&) = delete;
 };
 
 }  // namespace tensorflow

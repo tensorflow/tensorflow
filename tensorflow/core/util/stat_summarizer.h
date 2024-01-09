@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"

@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/platform/statusor.h"
 

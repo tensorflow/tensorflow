@@ -126,7 +126,7 @@ the following steps:
 ILSVRC_2012_DEVKIT_DIR=[set to path to ILSVRC 2012 devkit]
 VALIDATION_LABELS=[set to  path to output]
 
-python third_party/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/generate_validation_labels.py \
+python tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/generate_validation_labels.py \
 --ilsvrc_devkit_dir=${ILSVRC_2012_DEVKIT_DIR} \
 --validation_labels_output=${VALIDATION_LABELS}
 ```

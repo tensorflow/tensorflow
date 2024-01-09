@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
@@ -22,5 +22,8 @@ namespace tensorflow {
 GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_INT8);
 GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_UINT32);
 GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_UINT64);
+GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_HALF);
+GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_FLOAT);
+GENERATE_AND_REGISTER_BINARY_JIT_GPU_KERNEL(TruncateDiv, DT_DOUBLE);
 
 }  // namespace tensorflow

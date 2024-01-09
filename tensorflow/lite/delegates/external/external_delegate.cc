@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/external/external_delegate_interface.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/shared_library.h"
 
@@ -28,10 +29,6 @@ namespace {
 
 // External delegate library construct
 struct ExternalLib {
-  using CreateDelegatePtr = std::add_pointer<TfLiteDelegate*(
-      const char**, const char**, size_t,
-      void (*report_error)(const char*))>::type;
-  using DestroyDelegatePtr = std::add_pointer<void(TfLiteDelegate*)>::type;
   struct wchar_codecvt : public std::codecvt<wchar_t, char, std::mbstate_t> {};
 
   // Open a given delegate library and load the create/destroy symbols
@@ -44,22 +41,23 @@ struct ExternalLib {
     void* handle = SharedLibrary::LoadLibrary(library.c_str());
 #endif  // defined(_WIN32)
     if (handle == nullptr) {
-      TFLITE_LOG(TFLITE_LOG_INFO, "Unable to load external delegate from : %s",
-                 library.c_str());
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Unable to load external delegate from : %s (%s)",
+                 library.c_str(), SharedLibrary::GetError());
     } else {
-      create =
-          reinterpret_cast<decltype(create)>(SharedLibrary::GetLibrarySymbol(
-              handle, "tflite_plugin_create_delegate"));
-      destroy =
-          reinterpret_cast<decltype(destroy)>(SharedLibrary::GetLibrarySymbol(
-              handle, "tflite_plugin_destroy_delegate"));
+      create = reinterpret_cast<decltype(&tflite_plugin_create_delegate)>(
+          SharedLibrary::GetLibrarySymbol(handle,
+                                          "tflite_plugin_create_delegate"));
+      destroy = reinterpret_cast<decltype(&tflite_plugin_destroy_delegate)>(
+          SharedLibrary::GetLibrarySymbol(handle,
+                                          "tflite_plugin_destroy_delegate"));
       return create && destroy;
     }
     return false;
   }
 
-  CreateDelegatePtr create{nullptr};
-  DestroyDelegatePtr destroy{nullptr};
+  decltype(&tflite_plugin_create_delegate) create{nullptr};
+  decltype(&tflite_plugin_destroy_delegate) destroy{nullptr};
 };
 
 // An ExternalDelegateWrapper is responsibile to manage a TFLite delegate

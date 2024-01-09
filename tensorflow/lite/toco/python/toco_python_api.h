@@ -47,7 +47,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
                             bool enable_numeric_verify = false,
                             bool enable_whole_model_verify = false,
                             PyObject* op_denylist = nullptr,
-                            PyObject* node_denylist = nullptr);
+                            PyObject* node_denylist = nullptr,
+                            bool enable_variable_quantization = false);
 
 // Sparsifies model to encode sparse tensors with proper format. Throws error if
 // sparsification fails.

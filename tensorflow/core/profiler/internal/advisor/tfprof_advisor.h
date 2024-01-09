@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_TFPROF_ADVISOR_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_TFPROF_ADVISOR_H_
 
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/profiler/internal/advisor/accelerator_utilization_checker.h"
 #include "tensorflow/core/profiler/internal/advisor/checker.h"

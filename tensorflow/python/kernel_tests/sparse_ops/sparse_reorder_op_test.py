@@ -19,10 +19,12 @@ import numpy as np
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
@@ -37,10 +39,10 @@ class SparseReorderTest(test.TestCase, parameterized.TestCase):
         array_ops.placeholder(dtypes.float64),
         array_ops.placeholder(dtypes.int64))
 
-  def _SparseTensorValue_5x6(self, permutation):
+  def _SparseTensorValue_5x6(self, permutation, dtype=dtypes.float64):
     ind = np.array([[0, 0], [1, 0], [1, 3], [1, 4], [3, 2],
                     [3, 3]]).astype(np.int64)
-    val = np.array([0, 10, 13, 14, 32, 33]).astype(np.float64)
+    val = np.array([0, 10, 13, 14, 32, 33]).astype(dtype.as_numpy_dtype)
 
     ind = ind[permutation]
     val = val[permutation]
@@ -107,11 +109,12 @@ class SparseReorderTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(output_val.values, input_val.values)
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
-  def testOutOfOrder(self):
-    expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
+  @parameterized.parameters(dtypes.bfloat16, dtypes.float64)
+  def testOutOfOrder(self, dtype):
+    expected_output_val = self._SparseTensorValue_5x6(np.arange(6), dtype)
     with self.session() as sess:
       for _ in range(5):  # To test various random permutations
-        input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
+        input_val = self._SparseTensorValue_5x6(np.random.permutation(6), dtype)
         sp_output = sparse_ops.sparse_reorder(input_val)
 
         output_val = self.evaluate(sp_output)
@@ -164,6 +167,19 @@ class SparseReorderTest(test.TestCase, parameterized.TestCase):
     sp_output = sparse_ops.sparse_reorder(sp_input)
     self.assertAllEqual((4096, 4096, 4096, 4096, 4096, 4096),
                         sp_output.get_shape())
+
+  def testInvalidSparseInput(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Number of elements .* do not match",
+    ):
+      self.evaluate(
+          gen_sparse_ops.sparse_reorder(
+              input_indices=[[0, 0, 0]],
+              input_values=[0, 1, 2],
+              input_shape=[3, 3],
+          )
+      )
 
 
 if __name__ == "__main__":

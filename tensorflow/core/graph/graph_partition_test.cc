@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph_partition.h"
 
+#include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
@@ -32,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -58,6 +64,8 @@ using ops::Const;
 using ops::Identity;
 using ops::LoopCond;
 using ops::NextIteration;
+using ::testing::Eq;
+using ::testing::Ne;
 
 const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
 
@@ -194,6 +202,18 @@ Output Combine(const Scope& scope, Input a, Input b) {
   return ConstructOp(scope, "Combine", {std::move(a), std::move(b)});
 }
 
+std::string FormatStackTrace(const GraphDebugInfo::StackTrace& stack_trace,
+                             const GraphDebugInfo& debug_info) {
+  std::string result;
+  for (const GraphDebugInfo::FileLineCol& file_line_col :
+       stack_trace.file_line_cols()) {
+    const std::string& file = debug_info.files(file_line_col.file_index());
+    absl::StrAppend(&result, file_line_col.func(), "@", file, ":",
+                    file_line_col.line(), ".", file_line_col.col(), "\n");
+  }
+  return result;
+}
+
 class GraphPartitionTest : public ::testing::Test {
  protected:
   GraphPartitionTest()
@@ -203,8 +223,8 @@ class GraphPartitionTest : public ::testing::Test {
         scope_b_(Scope::NewRootScope().ExitOnError().WithDevice(
             "/job:a/replica:0/task:0/cpu:1")) {}
 
-  const GraphDef& ToGraphDef() {
-    TF_EXPECT_OK(in_.ToGraphDef(&in_graph_def_));
+  const GraphDef& ToGraphDef(bool include_debug_info = false) {
+    TF_EXPECT_OK(in_.ToGraphDef(&in_graph_def_, include_debug_info));
     return in_graph_def_;
   }
 
@@ -282,7 +302,8 @@ TEST_F(GraphPartitionTest, CrossDeviceControl) {
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
-  auto c = Const(scope_a_.WithOpName("A1/_0").WithControlDependencies(a1), {});
+  auto c =
+      Const(scope_a_.WithOpName("A1/ctrl/_0").WithControlDependencies(a1), {});
   _Send(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
   ExpectMatchA();
 
@@ -329,7 +350,8 @@ TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
   string a = "/job:a/replica:0/task:0/cpu:0";
   string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
-  auto c = Const(scope_a_.WithOpName("A1/_0").WithControlDependencies(a1), {});
+  auto c =
+      Const(scope_a_.WithOpName("A1/ctrl/_0").WithControlDependencies(a1), {});
   _Send(scope_a_.WithOpName("A1/_1"), c, "edge_3_A1", a, 82, b);
   ExpectMatchA();
 
@@ -355,7 +377,8 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
-  auto c = Const(scope_a_.WithOpName("A1/_2").WithControlDependencies(a1), {});
+  auto c =
+      Const(scope_a_.WithOpName("A1/ctrl/_2").WithControlDependencies(a1), {});
   // NOTE: Send 0 A1/_1 -> A1/_2 is not necessarily needed. We could
   // use A1/_0 -> A1/_4 as the control as a minor optimization.
   _Send(scope_a_.WithOpName("A1/_3"), c, "edge_3_A1", a, 82, b);
@@ -465,7 +488,6 @@ TEST_F(GraphPartitionTest, Functions) {
   *fdef_lib.add_function() = test::function::XTimesFour();
   TF_ASSERT_OK(in_.graph()->AddFunctionLibrary(fdef_lib));
 
-  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
   auto a1 = FloatInput(in_.WithOpName("A1"));
   auto b1 = FloatInput(in_.WithOpName("B1"));
   ConstructOp(in_.WithOpName("A2"), "XTimesTwo", {a1});
@@ -489,14 +511,32 @@ TEST_F(GraphPartitionTest, Functions) {
 
 TEST_F(GraphPartitionTest, SetIncarnation) {
   GraphDef gdef;
-  const char* const kSendRecvAttrs = R"proto(
-  attr { key: 'T' value { type: DT_FLOAT  }  }
-  attr { key: 'client_terminated' value {  b: false } }
-  attr { key: 'recv_device' value { s: 'B' } }
-  attr { key: 'send_device' value { s: 'A' } }
-  attr { key: 'send_device_incarnation' value { i: 0 }  }
-  attr { key: 'tensor_name' value { s: 'test' } }
-)proto";
+  const char* const kSendRecvAttrs = R"pb(
+    attr {
+      key: 'T'
+      value { type: DT_FLOAT }
+    }
+    attr {
+      key: 'client_terminated'
+      value { b: false }
+    }
+    attr {
+      key: 'recv_device'
+      value { s: 'B' }
+    }
+    attr {
+      key: 'send_device'
+      value { s: 'A' }
+    }
+    attr {
+      key: 'send_device_incarnation'
+      value { i: 0 }
+    }
+    attr {
+      key: 'tensor_name'
+      value { s: 'test' }
+    }
+  )pb";
   CHECK(protobuf::TextFormat::ParseFromString(
       strings::StrCat(
           "node { name: 'A/Pi' op: 'Const' ",
@@ -521,6 +561,68 @@ TEST_F(GraphPartitionTest, SetIncarnation) {
       }
     }
   }
+}
+
+TEST_F(GraphPartitionTest, GraphDebugInfo) {
+  GraphDef graph_def;
+  Output a1 = FloatInput(in_.WithOpName("A1"));
+  Output b1 = FloatInput(in_.WithOpName("B1"));
+  Combine(in_.WithOpName("B2"), a1, b1);
+
+  Node *a1_node = nullptr, *b1_node = nullptr, *b2_node = nullptr;
+  for (Node* node : in_.graph()->op_nodes()) {
+    if (node->name() == "A1") {
+      a1_node = node;
+    } else if (node->name() == "B1") {
+      b1_node = node;
+    } else if (node->name() == "B2") {
+      b2_node = node;
+    }
+  }
+  EXPECT_NE(a1_node, nullptr);
+  EXPECT_NE(b1_node, nullptr);
+  EXPECT_NE(b2_node, nullptr);
+
+  std::vector<StackFrame> a1_stack_trace{{"main.cc", 20, "x"},
+                                         {"alpha.cc", 30, "a1"}};
+  std::vector<StackFrame> b1_stack_trace{{"window.cc", 21, "y"},
+                                         {"beta.cc", 35, "b1"}};
+  std::vector<StackFrame> b2_stack_trace{{"cache.cc", 22, "bar"},
+                                         {"beta.cc", 39, "b2"}};
+  a1_node->SetStackTrace(std::make_shared<FrozenStackTrace>(a1_stack_trace));
+  b1_node->SetStackTrace(std::make_shared<FrozenStackTrace>(b1_stack_trace));
+  b2_node->SetStackTrace(std::make_shared<FrozenStackTrace>(b2_stack_trace));
+
+  TF_EXPECT_OK(in_.ToGraphDef(&graph_def, /*include_debug_info=*/true));
+
+  // `Partition()` uses the first letter of the op name ('A' or 'B') to choose a
+  // device for each node. It calls the function under test, also named
+  // `Partition()`, to do the actual partitioning.
+  Partition(ToGraphDef(/*include_debug_info=*/true), &partitions_);
+  EXPECT_EQ(2, partitions_.size());
+
+  // Expect each partitioned graph to contain the stack traces for its nodes.
+  // A stack trace for A1 should be in the A partition (".../cpu:0").
+  string a = "/job:a/replica:0/task:0/cpu:0";
+  const GraphDebugInfo& a_debug_info = partitions_[a].debug_info();
+  StackTracesMap traces = LoadTracesFromDebugInfo(a_debug_info);
+  const auto& a_it = traces.find("A1");
+  EXPECT_THAT(a_it, Ne(traces.end()));
+  EXPECT_THAT(a_it->second->ToString({}),
+              ::testing::ContainsRegex("alpha.cc.*30"));
+
+  // Stack traces for B1 and B2 should be in the B partition (".../cpu:1").
+  string b = "/job:a/replica:0/task:0/cpu:1";
+  const GraphDebugInfo& b_debug_info = partitions_[b].debug_info();
+  traces = LoadTracesFromDebugInfo(b_debug_info);
+  const auto& b1_it = traces.find("B1");
+  const auto& b2_it = traces.find("B2");
+  EXPECT_THAT(b1_it, Ne(traces.end()));
+  EXPECT_THAT(b2_it, Ne(traces.end()));
+  EXPECT_THAT(b1_it->second->ToString({}),
+              ::testing::ContainsRegex("beta.cc.*35"));
+  EXPECT_THAT(b2_it->second->ToString({}),
+              ::testing::ContainsRegex("beta.cc.*39"));
 }
 
 TEST(TopologicalSortNodesWithTimePriorityTest, NoDependencies) {

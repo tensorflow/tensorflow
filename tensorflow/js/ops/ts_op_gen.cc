@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/js/ops/ts_op_gen.h"
+
+#include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -89,7 +92,7 @@ class GenTypeScriptOp {
 GenTypeScriptOp::GenTypeScriptOp(const OpDef& op_def, const ApiDef& api_def)
     : op_def_(op_def), api_def_(api_def), num_outputs_(0) {}
 
-GenTypeScriptOp::~GenTypeScriptOp() {}
+GenTypeScriptOp::~GenTypeScriptOp() = default;
 
 string GenTypeScriptOp::Code() {
   ProcessArgs();

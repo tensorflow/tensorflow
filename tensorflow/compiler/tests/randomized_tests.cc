@@ -43,8 +43,19 @@ limitations under the License.
 // * StridedSliceGrad (need to use shape function to compute sensible inputs)
 
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <functional>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <numeric>
+#include <optional>
 #include <random>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -504,13 +515,7 @@ OpTest::OpTest() {
              << ". To reproduce the "
                 "results of this test, pass flag --tf_xla_random_seed="
              << seed;
-  generator_.reset(new std::mt19937(seed));
-
-  // Create a session with an empty graph.
-  SessionOptions session_options;
-  session_.reset(NewSession(session_options));
-  GraphDef def;
-  TF_CHECK_OK(session_->Create(def));
+  generator_ = std::make_unique<std::mt19937>(seed);
 }
 
 namespace {
@@ -538,7 +543,7 @@ template <typename T>
 class TensorGenerator {
  public:
   explicit TensorGenerator(OpTest& test) : test_(test) {}
-  virtual ~TensorGenerator() {}
+  virtual ~TensorGenerator() = default;
   virtual DataType dtype() = 0;
   virtual void RandomVals(std::optional<T> lo, std::optional<T> hi,
                           bool needs_unique_values,
@@ -1251,8 +1256,8 @@ OpTest::WindowedSpatialDims OpTest::ChooseWindowedSpatialDims(
           std::uniform_int_distribution<int>(1, d.kernel_dims[i])(generator());
       int64_t pad_dummy;
       s = GetWindowedOutputSize(d.input_dims[i], d.kernel_dims[i],
-                                d.stride_dims[i], d.padding, &d.output_dims[i],
-                                &pad_dummy);
+                                /*dilation_rate=*/1, d.stride_dims[i],
+                                d.padding, &d.output_dims[i], &pad_dummy);
     } while (!s.ok());
   }
   return d;
@@ -1518,9 +1523,12 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
     return kInvalid;
   }
 
-  status = session_->Extend(graph);
+  // Create a session with the corresponding graph.
+  SessionOptions session_options;
+  session_.reset(NewSession(session_options));
+  status = session_->Create(graph);
   if (!status.ok()) {
-    LOG(ERROR) << "Session::Extend() failed: " << status;
+    LOG(ERROR) << "Session::Create() failed: " << status;
     return kFatalError;
   }
 

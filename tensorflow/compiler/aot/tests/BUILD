@@ -1,14 +1,17 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
 
 glob_lit_tests(
+    name = "all_lit_tests",
     data = [":filecheck_test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
@@ -60,7 +63,7 @@ test_suite(
     visibility = ["//visibility:public"],
 )
 
-py_binary(
+py_strict_binary(
     name = "make_test_graphs",
     testonly = 1,
     srcs = ["make_test_graphs.py"],
@@ -68,17 +71,22 @@ py_binary(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:session",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:control_flow_assert",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:control_flow_util",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:variable_v1",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/training:saver",
         "@absl_py//absl:app",
         "@six_archive//:six",
     ],
@@ -89,7 +97,6 @@ genrule(
     testonly = 1,
     outs = [
         "test_graph_tfadd.pb",
-        "test_debuginfo_tfadd.pb",
         "test_graph_tfadd_with_ckpt.ckpt",
         "test_graph_tfadd_with_ckpt.pb",
         "test_graph_tfadd_with_ckpt_saver.ckpt",
@@ -124,7 +131,6 @@ genrule(
 tfcompile_test_dep_configs = [
     ("", "None"),
     ("_mlir_bridge", "Bridge"),
-    ("_mhlo_lowering", "HloLowering"),
 ]
 
 [
@@ -323,12 +329,119 @@ tfcompile_test_dep_configs = [
     for suffix, mlir_component in tfcompile_test_dep_configs
 ]
 
+tfcompile_bench_tfmatmul_mkn = [
+    # Intentionally empty to avoid running unnecessary tests.
+    # Add here your desired (M, K, N) parameters, e.g.
+    #    (1, 1, 256),
+    #    (1, 2, 256),
+]
+
+tfcompile_bench_tfmatmul = [
+    (
+        "bench_graph_tfmatmul_%sx%sx%s" % (m, k, n),
+        "bench_graph_tfmatmul_%sx%sx%s.config.pbtxt" % (m, k, n),
+        "bench_graph_tfmatmul.template.pbtxt",
+        "-e \"s|<M>|%s|g\" -e \"s|<K>|%s|g\" -e \"s|<N>|%s|g\"" % (m, k, n),
+    )
+    for (m, k, n) in tfcompile_bench_tfmatmul_mkn
+]
+
+test_suite(
+    name = "all_tfmatmul_benchmarks",
+    tags = ["manual"],
+    tests = [
+        (":%s_test" % bench_name)
+        for (bench_name, _, _, _) in tfcompile_bench_tfmatmul
+    ],
+    visibility = ["//visibility:public"],
+)
+
+test_suite(
+    name = "all_tfmatmul_mlir_benchmarks",
+    tags = ["manual"],
+    tests = [
+        (":%s_mlir_test" % bench_name)
+        for (bench_name, _, _, _) in tfcompile_bench_tfmatmul
+    ],
+    visibility = ["//visibility:public"],
+)
+
+[[
+    genrule(
+        name = "gen_" + config_file,
+        testonly = 1,
+        srcs = [template_file],
+        outs = [config_file],
+        cmd = ("sed " + sed_replace + " " +
+               "$(location " + template_file + ") " +
+               "> $(OUTS)"),
+        tags = ["manual"],
+    ),
+    tf_library(
+        name = bench_name,
+        testonly = 1,
+        config = config_file,
+        cpp_class = "foo::bar::MatMulComp",
+        graph = "test_graph_tfmatmul.pb",
+        tags = [
+            "manual",
+            "no_mac",  # TODO(b/228273415)
+        ],
+    ),
+] for (bench_name, config_file, template_file, sed_replace) in tfcompile_bench_tfmatmul]
+
+tfcompile_bench_tfmatmul_tile_mkn = [
+    # Intentionally empty to avoid running unnecessary tests.
+    # Add here your desired (M, K, N) parameters, e.g.
+    #    (1, 2, 8),
+    #    (1, 4, 4),
+]
+
+tfcompile_bench_tfmatmul_custom_tiling = [
+    (
+        "bench_graph_tfmatmul_%sx%sx%s_tiled_%sx%sx%s_mlir" % (m, k, n, tm, tk, tn),
+        "bench_graph_tfmatmul_%sx%sx%s_tiled_%sx%sx%s_mlir.config.pbtxt" % (m, k, n, tm, tk, tn),
+        "bench_graph_tfmatmul.template.pbtxt",
+        "-e \"s|<M>|%s|g\" -e \"s|<K>|%s|g\" -e \"s|<N>|%s|g\"" % (m, k, n),
+        "--xla_cpu_enable_custom_matmul_tiling --xla_cpu_matmul_tiling_m_dim=%s --xla_cpu_matmul_tiling_k_dim=%s --xla_cpu_matmul_tiling_n_dim=%s" % (tm, tk, tn),
+    )
+    for (m, k, n) in tfcompile_bench_tfmatmul_mkn
+    for (tm, tk, tn) in tfcompile_bench_tfmatmul_tile_mkn
+]
+
+[[
+    genrule(
+        name = "gen_" + config_file,
+        testonly = 1,
+        srcs = [template_file],
+        outs = [config_file],
+        cmd = ("sed " + sed_replace + " " +
+               "$(location " + template_file + ") " +
+               "> $(OUTS)"),
+        tags = ["manual"],
+    ),
+    tf_library(
+        name = bench_name,
+        testonly = 1,
+        config = config_file,
+        cpp_class = "foo::bar::MatMulComp",
+        graph = "test_graph_tfmatmul.pb",
+        mlir_components = "HloLowering",  # XLA:CPU-Next only.
+        tags = [
+            "manual",
+            "no_mac",  # TODO(b/228273415)
+        ],
+        xla_flags = xla_flags,
+    ),
+] for (bench_name, config_file, template_file, sed_replace, xla_flags) in tfcompile_bench_tfmatmul_custom_tiling]
+
 tf_cc_test(
     name = "tfcompile_test",
     srcs = ["tfcompile_test.cc"],
     tags = [
         "manual",
         "no_mac",  # TODO(b/228273415)
+        "not_run:arm",
     ],
     deps = [
         ":test_graph_tfadd",
@@ -346,52 +459,16 @@ tf_cc_test(
         ":test_graph_tfvariable",
         ":test_graph_tfvariable_readonly",
         ":test_graph_tfvariable_sequential_updates",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:regexp",
-        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "tfcompile_test_mhlo_lowering",
-    srcs = ["tfcompile_test.cc"],
-    extra_copts = ["-DMHLO_LOWERING_TEST"],
-    tags = [
-        "manual",
-        "no_mac",  # TODO(b/228273415)
-    ],
-    deps = [
-        ":test_graph_tfadd_mhlo_lowering",
-        ":test_graph_tfadd_with_ckpt_mhlo_lowering",
-        ":test_graph_tfadd_with_ckpt_saver_mhlo_lowering",
-        ":test_graph_tfassert_eq_mhlo_lowering",
-        ":test_graph_tfcond_mhlo_lowering",
-        ":test_graph_tffunction_mhlo_lowering",
-        ":test_graph_tfgather_mhlo_lowering",
-        ":test_graph_tfmatmul_mhlo_lowering",
-        ":test_graph_tfmatmulandadd_mhlo_lowering",
-        ":test_graph_tfsplits_mhlo_lowering",
-        ":test_graph_tftop_k_mhlo_lowering",
-        ":test_graph_tfvariable_mhlo_lowering",
-        ":test_graph_tfvariable_readonly_mhlo_lowering",
-        ":test_graph_tfvariable_sequential_updates_mhlo_lowering",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_profile_printer",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:regexp",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:test",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/service:hlo_profile_printer",
     ],
 )
 
@@ -402,6 +479,7 @@ tf_cc_test(
     tags = [
         "manual",
         "no_mac",  # TODO(b/228273415)
+        "not_run:arm",
     ],
     deps = [
         ":test_graph_tfadd_mlir_bridge",
@@ -419,15 +497,15 @@ tf_cc_test(
         ":test_graph_tfvariable_mlir_bridge",
         ":test_graph_tfvariable_readonly_mlir_bridge",
         ":test_graph_tfvariable_sequential_updates_mlir_bridge",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:regexp",
-        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:test",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/service:hlo_profile_printer",
     ],
 )

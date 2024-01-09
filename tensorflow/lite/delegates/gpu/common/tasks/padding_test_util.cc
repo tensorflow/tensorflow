@@ -56,6 +56,37 @@ absl::Status PaddingAppendWidthTest(TestExecutionEnvironment* env) {
   return absl::OkStatus();
 }
 
+absl::Status PaddingAppendWidthConstValuesTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 1, 2);
+  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
+
+  PadAttributes attr;
+  attr.prepended = BHWC(0, 0, 0, 0);
+  attr.appended = BHWC(0, 0, 1, 0);
+  attr.constant_values = 5;
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      GPUOperation operation = CreatePadding(op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 2, 2), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({0.0f, 1.0f, 5.0f, 5.0f, 2.0f, 3.0f, 5.0f, 5.0f},
+                        dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::Status PaddingPrependWidthTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 1, 2);

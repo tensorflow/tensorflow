@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -48,6 +49,11 @@ namespace full_type {
 // This is the same as not defining a type inference function at all, but
 // explicitly communicates that intent.
 TypeInferenceFn KeepExisting();
+
+// A helper for a type inference function that indicates a single output that
+// is a tensor of type t. This is the equivalent of a type construtor since it
+// does not depend on inputs. This can be used with Tuple.
+TypeInferenceFn Tensor(FullTypeId t);
 
 // Helper for a type inference function which has the same type as the i'th
 // input.
@@ -117,6 +123,13 @@ TypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx);
 // specified indirectly, as the name of an attribute that holds the actual
 // function name.
 TypeInferenceFn FunctionCall(const string& func_attr_name);
+
+// Compose the type of a function by concatenating the outputs of multiple
+// type inference functions. If func_list is {type inference function 1, type
+// inference function 2} which return PRODUCT[T1], PRODUCT[T2] resprectively,
+// the result is PRODUCT[T1, T2], This supports the Merge op that has an index
+// output in addition to the result of the Merge type inference function.
+TypeInferenceFn Tuple(const std::vector<TypeInferenceFn>& func_list);
 
 // Auxiliary constructs to help creation of type inference functions.
 // TODO(mdan): define these as type inference functions as well.

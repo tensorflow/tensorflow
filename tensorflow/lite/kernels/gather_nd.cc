@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -50,6 +50,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
     case kTfLiteInt32:
     case kTfLiteString:
+    case kTfLiteBool:
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -60,6 +61,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (indices->type) {
     case kTfLiteInt64:
     case kTfLiteInt32:
+    case kTfLiteInt16:
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -156,6 +158,9 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
     case kTfLiteString:
       status = GatherNdString<IndicesT>(params, indices, output);
       break;
+    case kTfLiteBool:
+      status = GatherNd<bool, IndicesT>(params, indices, output);
+      break;
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Params type '%s' are not supported by gather_nd.",
@@ -184,6 +189,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                      NumElements(params) > 0);
 
   switch (indices->type) {
+    case kTfLiteInt16:
+      return EvalGatherNd<int16_t>(context, params, indices, output);
     case kTfLiteInt32:
       return EvalGatherNd<int32_t>(context, params, indices, output);
     case kTfLiteInt64:

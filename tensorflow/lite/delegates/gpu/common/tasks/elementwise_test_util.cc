@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/elementwise_test_util.h"
 
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -251,6 +252,34 @@ absl::Status FloorModTest(TestExecutionEnvironment* env) {
                          3.0f - std::floor(3.0f / scalar) * scalar,
                          4.5f - std::floor(4.5f / scalar) * scalar},
                         dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status GeluTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 1, 1, 6);
+  src_tensor.data = {0.0f, 1.0f, 3.0f, 1.0f, -1.0f, -2.0f};
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      GPUOperation operation = CreateElementwiseOneInput(
+          env->GetGpuInfo(), op_def, OperationType::GELU);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 1, 1, 6), &dst_tensor));
+      // Matches FloatActivationsOpTest::Gelu.
+      RETURN_IF_ERROR(PointWiseNear(
+          {0.0f, 0.841345f, 2.99595f, 0.841345f, -0.158655f, -0.0455003},
+          dst_tensor.data, eps));
     }
   }
   return absl::OkStatus();
@@ -1342,6 +1371,96 @@ absl::Status MulBroadcastBothInputsTest(TestExecutionEnvironment* env) {
           &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({3.0f, 4.0f, 6.0f, 8.0f}, dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status LogicalAndTest(TestExecutionEnvironment* env) {
+  using TensorBool32 = Tensor<BHWC, DataType::BOOL>;
+  TensorBool32 src_tensor_0, src_tensor_1, ref_tensor;
+  src_tensor_0.shape = BHWC(1, 1, 2, 24);
+  src_tensor_1.shape = BHWC(1, 1, 2, 24);
+  ref_tensor.shape = BHWC(1, 1, 2, 24);
+  for (int i = 0; i < 48; i++) {
+    bool value = i % 2 == 0;
+    src_tensor_0.data.push_back(value);
+    src_tensor_1.data.push_back(i < 24 ? value : !value);
+    ref_tensor.data.push_back(i < 24 ? value : false);
+  }
+
+  for (auto src_storage : env->GetSupportedStorages(DataType::BOOL)) {
+    for (auto dst_storage : env->GetSupportedStorages(DataType::BOOL)) {
+      OperationDef op_def;
+      op_def.precision = CalculationsPrecision::F32;
+      op_def.src_tensors.push_back({DataType::BOOL, src_storage, Layout::HWC});
+      op_def.src_tensors.push_back({DataType::BOOL, src_storage, Layout::HWC});
+      op_def.dst_tensors.push_back({DataType::BOOL, dst_storage, Layout::HWC});
+
+      TensorDescriptor src_desc0, src_desc1, dst_desc;
+      src_desc0 = op_def.src_tensors[0];
+      src_desc0.UploadData(src_tensor_0);
+      src_desc1 = op_def.src_tensors[1];
+      src_desc1.UploadData(src_tensor_1);
+      dst_desc.SetBHWCShape(BHWC(1, 1, 2, 24));
+
+      GPUOperation operation = CreateElementwiseTwoInput(
+          op_def, OperationType::LOGICAL_AND, src_tensor_1.shape);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {&src_desc0, &src_desc1}, {&dst_desc},
+          std::make_unique<GPUOperation>(std::move(operation))));
+
+      tflite::gpu::Tensor<BHWC, DataType::BOOL> dst_tensor;
+      dst_desc.DownloadData(&dst_tensor);
+      if (dst_tensor.data != ref_tensor.data) {
+        return absl::InternalError("not equal");
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status LogicalAndWithConstantTest(TestExecutionEnvironment* env) {
+  using TensorBool32 = Tensor<BHWC, DataType::BOOL>;
+  TensorBool32 src_tensor_0, ref_tensor;
+  src_tensor_0.shape = BHWC(1, 1, 2, 24);
+  ref_tensor.shape = BHWC(1, 1, 2, 24);
+
+  Tensor<HWC, DataType::BOOL> src_tensor_1;
+  src_tensor_1.shape = HWC(1, 2, 24);
+  for (int i = 0; i < 48; i++) {
+    bool value = i % 2 == 0;
+    src_tensor_0.data.push_back(value);
+    src_tensor_1.data.push_back(i < 24 ? value : !value);
+    ref_tensor.data.push_back(i < 24 ? value : false);
+  }
+
+  ElementwiseAttributesBase<DataType::BOOL, bool> attr;
+  attr.param = src_tensor_1;
+
+  for (auto src_storage : env->GetSupportedStorages(DataType::BOOL)) {
+    for (auto dst_storage : env->GetSupportedStorages(DataType::BOOL)) {
+      OperationDef op_def;
+      op_def.precision = CalculationsPrecision::F32;
+      op_def.src_tensors.push_back({DataType::BOOL, src_storage, Layout::HWC});
+      op_def.dst_tensors.push_back({DataType::BOOL, dst_storage, Layout::HWC});
+
+      TensorDescriptor src_desc0, src_desc1, dst_desc;
+      src_desc0 = op_def.src_tensors[0];
+      src_desc0.UploadData(src_tensor_0);
+      dst_desc.SetBHWCShape(BHWC(1, 1, 2, 24));
+
+      GPUOperation operation = CreateElementwise(
+          env->GetGpuInfo(), op_def, OperationType::LOGICAL_AND, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          {&src_desc0}, {&dst_desc},
+          std::make_unique<GPUOperation>(std::move(operation))));
+
+      tflite::gpu::Tensor<BHWC, DataType::BOOL> dst_tensor;
+      dst_desc.DownloadData(&dst_tensor);
+      if (dst_tensor.data != ref_tensor.data) {
+        return absl::InternalError("not equal");
+      }
     }
   }
   return absl::OkStatus();

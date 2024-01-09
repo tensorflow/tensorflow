@@ -21,7 +21,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {

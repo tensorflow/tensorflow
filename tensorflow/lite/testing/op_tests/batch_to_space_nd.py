@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for batch_to_space_nd."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -44,6 +44,16 @@ def make_batch_to_space_nd_tests(options):
           "constant_crops": [True],
           "dynamic_range_quantize": [True, False],
       },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3, 1]],
+          "block_shape": [[1, 1]],
+          "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
+          "fully_quantize": [True],
+          "quant_16x8": [False, True],
+      },
       # 3D use case.
       {
           "dtype": [tf.float32],
@@ -53,6 +63,16 @@ def make_batch_to_space_nd_tests(options):
           "constant_block_shape": [True],
           "constant_crops": [True],
           "dynamic_range_quantize": [True, False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3]],
+          "block_shape": [[1]],
+          "crops": [[[0, 0]], [[1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
+          "fully_quantize": [True],
+          "quant_16x8": [False, True],
       },
   ]
 
@@ -94,12 +114,17 @@ def make_batch_to_space_nd_tests(options):
           dtype=tf.int32, name="crops", shape=shape)
       input_tensors.append(crops)
 
-    out = tf.batch_to_space_nd(input_tensor, block_shape, crops)
+    out = tf.batch_to_space(input_tensor, block_shape, crops)
     return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
     values = [
-        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+        create_tensor_data(
+            parameters["dtype"],
+            parameters["input_shape"],
+            min_value=-1.0,
+            max_value=1.0,
+        )
     ]
     if not parameters["constant_block_shape"]:
       values.append(np.array(parameters["block_shape"]))

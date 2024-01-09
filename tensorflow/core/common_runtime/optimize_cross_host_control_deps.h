@@ -29,6 +29,14 @@ namespace tensorflow {
 Status OptimizeCrossHostControlOutputEdges(Graph* graph,
                                            int cross_host_edges_threshold);
 
+// Optimize the graph by reducing cross-host data output edges.
+// Once we find any nodes in the graph having not less than
+// `cross_host_edges_threshold` data output edges in one host, we create
+// a `IdentityN` node in the destination host to proxy the data edges between
+// the original node and the destination output nodes.
+Status OptimizeCrossHostDataOutputEdges(Graph* graph,
+                                        int cross_host_edges_threshold);
+
 // Optimize the graph by reducing cross-host control input edges.
 // Once we find any nodes in the graph having not less than
 // `cross_host_edges_threshold` control input edges in one host, we create

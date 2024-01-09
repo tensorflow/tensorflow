@@ -41,22 +41,9 @@ class InsertCallOnceOpFromSessionInitializerPass
 
 void InsertCallOnceOpFromSessionInitializerPass::runOnOperation() {
   ModuleOp module = getOperation();
-  tf_saved_model::SessionInitializerOp session_init_op =
-      tf_saved_model::GetSessionInitializerOp(module);
 
-  if (!session_init_op) return;
-
-  SymbolTable symbol_table(module);
-
-  for (auto sym_ref : session_init_op.getInitializers()) {
-    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        sym_ref.cast<FlatSymbolRefAttr>().getValue());
-
-    if (!init_func_op) {
-      module.emitError("no session initializer function found");
-      return signalPassFailure();
-    }
-
+  for (func::FuncOp init_func_op :
+       tf_saved_model::GetInitializerFunctions(module)) {
     for (auto func : module.getOps<func::FuncOp>()) {
       auto dict_attr =
           func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");

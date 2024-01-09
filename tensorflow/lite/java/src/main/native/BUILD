@@ -3,9 +3,11 @@
 # TensorFlow Lite Java API using the TensorFlow Lite CC library.
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:special_rules.bzl", "jni_utils_visibility_allowlist")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "alias_with_tflite", "cc_library_with_tflite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -15,8 +17,9 @@ cc_library_with_tflite(
     srcs = ["jni_utils.cc"],
     hdrs = ["jni_utils.h"],
     tflite_deps = [
-        "//tensorflow/lite/core/shims:jni_utils",
+        "//tensorflow/lite/c/jni:jni_utils",
     ],
+    visibility = jni_utils_visibility_allowlist(),
     deps = [
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite/java/jni",
@@ -39,7 +42,7 @@ cc_library_with_tflite(
     tflite_deps = [
         ":jni_utils",
         ":native_stable_framework_only",
-        "//tensorflow/lite/core/shims:framework_experimental",
+        "//tensorflow/lite:framework_experimental",
     ],
     deps = [
         "//tensorflow/lite/java/jni",
@@ -93,14 +96,15 @@ cc_library_with_tflite(
     ],
     tflite_deps = [
         ":jni_utils",
-        "//tensorflow/lite/core/shims:c_api_without_op_resolver",
-        "//tensorflow/lite/core/shims:common",
-        "//tensorflow/lite/core/shims:create_op_resolver_header",
-        "//tensorflow/lite/core/shims:delegate_plugin",
-        "//tensorflow/lite/core/shims:framework_stable",
-        "//tensorflow/lite/core/shims:jni_utils",
-        "//tensorflow/lite/core/shims:xnnpack_plugin",
-        "//tensorflow/lite/core/shims:verifier_internal",
+        "//tensorflow/lite:create_op_resolver_header",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite:signature_runner",
+        "//tensorflow/lite/c/jni:jni_utils",
+        "//tensorflow/lite/c:c_api_without_op_resolver",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin",
+        "//tensorflow/lite/tools:verifier_internal",
     ],
     deps = [
         "//tensorflow/lite:minimal_logging",
@@ -108,6 +112,7 @@ cc_library_with_tflite(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api:op_resolver_internal",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         "//tensorflow/lite/java/jni",
@@ -128,9 +133,9 @@ cc_library_with_tflite(
     copts = tflite_copts(),
     tflite_deps = [
         ":native_experimental_framework_only",
-        "//tensorflow/lite/core/shims:builtin_ops",
-        "//tensorflow/lite/core/shims:create_op_resolver_with_builtin_ops",
-        "//tensorflow/lite/core/shims:framework",
+        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
     deps = [
         "//tensorflow/lite/core/api",
@@ -146,9 +151,9 @@ cc_library_with_tflite(
     copts = tflite_copts(),
     tflite_deps = [
         ":native_stable_framework_only",
-        "//tensorflow/lite/core/shims:builtin_ops",
-        "//tensorflow/lite/core/shims:create_op_resolver_with_builtin_ops",
-        "//tensorflow/lite/core/shims:framework_stable",
+        "//tensorflow/lite:create_op_resolver_with_builtin_ops",
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
     deps = [
         "//tensorflow/lite/core/api",

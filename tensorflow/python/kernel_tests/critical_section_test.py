@@ -25,10 +25,13 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import critical_section_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 # TODO(ebrevdo): Re-enable once CriticalSection is in core.
@@ -78,16 +81,16 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
           nv = v.assign_add(a * b)
           with ops.control_dependencies([nv]):
             return array_ops.identity(c)
-      return control_flow_ops.cond(
+      return cond.cond(
           array_ops.identity(inner_cond), true_fn, lambda: c)
 
     def execute():
       return cs.execute(lambda: fn(1.0, 2.0))
 
     r = [
-        control_flow_ops.cond(array_ops.identity(outer_cond),
-                              execute,
-                              v.read_value)
+        cond.cond(array_ops.identity(outer_cond),
+                  execute,
+                  v.read_value)
         for _ in range(num_concurrent)
     ]
     # pylint: enable=cell-var-from-loop
@@ -109,7 +112,7 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
     v = resource_variable_ops.ResourceVariable(0.0, name="v")
 
     def fn(i):
-      error = control_flow_ops.Assert((i % 2) == 1, ["Error"])
+      error = control_flow_assert.Assert((i % 2) == 1, ["Error"])
       with ops.control_dependencies([error]):
         return v.read_value()
 
@@ -235,10 +238,9 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
       fn = lambda: j + 1
       return (i + 1, cs.execute(fn))
 
-    (i_n, j_n) = control_flow_ops.while_loop(
+    (i_n, j_n) = while_loop.while_loop(
         lambda i, _: i < 1000,
-        body_implicit_capture,
-        [0, 0],
+        body_implicit_capture, [0, 0],
         parallel_iterations=25)
     # For consistency between eager and graph mode.
     i_n = array_ops.identity(i_n)
@@ -262,10 +264,9 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
       with ops.control_dependencies([j]):
         return (i + 1, cs.execute(fn))
 
-    (i_n, j_n) = control_flow_ops.while_loop(
+    (i_n, j_n) = while_loop.while_loop(
         lambda i, _: i < 1000,
-        body_implicit_capture_protected,
-        [0, 0],
+        body_implicit_capture_protected, [0, 0],
         parallel_iterations=25)
     # For consistency between eager and graph mode.
     i_n = array_ops.identity(i_n)
@@ -287,10 +288,9 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
       fn = lambda x: x + 1
       return (i + 1, cs.execute(lambda: fn(j)))
 
-    (i_n, j_n) = control_flow_ops.while_loop(
+    (i_n, j_n) = while_loop.while_loop(
         lambda i, _: i < 1000,
-        body_args_capture,
-        [0, 0],
+        body_args_capture, [0, 0],
         parallel_iterations=25)
     # For consistency between eager and graph mode.
     i_n = array_ops.identity(i_n)
@@ -362,8 +362,8 @@ class CriticalSectionTest(test.TestCase, parameterized.TestCase):
     def body(i):
       add_j = lambda j: v + j + 1
       return cs.execute(lambda: add_j(i))
-    out = control_flow_ops.while_loop(
-        lambda i: i < 10, body, [0])
+
+    out = while_loop.while_loop(lambda i: i < 10, body, [0])
     self.evaluate(v.initializer)
     self.assertEqual(10, self.evaluate(out))
 

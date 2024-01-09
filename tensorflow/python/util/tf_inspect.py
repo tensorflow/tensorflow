@@ -17,8 +17,6 @@ import collections
 import functools
 import inspect as _inspect
 
-import six
-
 from tensorflow.python.util import tf_decorator
 
 
@@ -35,7 +33,18 @@ def signature(obj, *, follow_wrapped=True):
 Parameter = _inspect.Parameter
 Signature = _inspect.Signature
 
-ArgSpec = _inspect.ArgSpec
+if hasattr(_inspect, 'ArgSpec'):
+  ArgSpec = _inspect.ArgSpec
+else:
+  ArgSpec = collections.namedtuple(
+      'ArgSpec',
+      [
+          'args',
+          'varargs',
+          'keywords',
+          'defaults',
+      ],
+  )
 
 
 if hasattr(_inspect, 'FullArgSpec'):
@@ -79,11 +88,20 @@ if hasattr(_inspect, 'getfullargspec'):
       from FullArgSpec.
     """
     fullargspecs = getfullargspec(target)
+
+    defaults = fullargspecs.defaults or ()
+    if fullargspecs.kwonlydefaults:
+      defaults += tuple(fullargspecs.kwonlydefaults.values())
+
+    if not defaults:
+      defaults = None
+
     argspecs = ArgSpec(
-        args=fullargspecs.args,
+        args=fullargspecs.args + fullargspecs.kwonlyargs,
         varargs=fullargspecs.varargs,
         keywords=fullargspecs.varkw,
-        defaults=fullargspecs.defaults)
+        defaults=defaults,
+    )
     return argspecs
 else:
   _getargspec = _inspect.getargspec
@@ -215,7 +233,7 @@ def _get_argspec_for_partial(obj):
     all_defaults[-len(defaults):] = defaults
 
   # Fill in default values provided by partial function in all_defaults.
-  for kw, default in six.iteritems(partial_keywords):
+  for kw, default in iter(partial_keywords.items()):
     if kw in args:
       idx = args.index(kw)
       all_defaults[idx] = default

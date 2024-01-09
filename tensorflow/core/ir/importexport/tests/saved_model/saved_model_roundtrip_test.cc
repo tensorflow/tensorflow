@@ -16,13 +16,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/ir/importexport/savedmodel_export.h"
 #include "tensorflow/core/ir/importexport/savedmodel_import.h"
 #include "tensorflow/core/ir/importexport/tests/roundtrip/roundtrip.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
@@ -53,9 +53,9 @@ void RunRoundTrip(const std::string& input_file) {
   auto status = mlir::tfg::ExportMlirToSavedModel(*module_ref, original_model,
                                                   &final_model);
   if (!status.ok()) {
-    LOG(ERROR) << "Export failed: " << status.ToString();
+    LOG(ERROR) << "Export failed: " << status;
   }
-  ASSERT_TRUE(status.ok()) << status.ToString();
+  ASSERT_TRUE(status.ok()) << status;
 
   tensorflow::MetaGraphDef* original_metagraph =
       original_model.mutable_meta_graphs(0);

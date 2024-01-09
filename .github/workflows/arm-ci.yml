@@ -20,15 +20,13 @@ on:
     branches:
       - master
       - r2.**
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - master
-      - r2.**
+permissions:
+  contents: read
 
 jobs:
   build:
-    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    # Don't do this in forks, and if labeled, only for 'kokoro:force-run'
+    if: github.repository == 'tensorflow/tensorflow' && (github.event.action != 'labeled' || (github.event.action == 'labeled' && github.event.label.name == 'kokoro:force-run'))
     runs-on: [self-hosted, linux, ARM64]
     strategy:
       matrix:
@@ -49,14 +47,9 @@ jobs:
         shell: bash
         run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
       - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Build and test pip wheel
+        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
+      - name: Build binary and run python tests
         shell: bash
         run: |
-          CI_DOCKER_BUILD_EXTRA_PARAMS='--build-arg py_major_minor_version=${{ matrix.pyver }}' \
-          ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_pip.sh
-      - name: Upload pip wheel to GitHub
-        uses: actions/upload-artifact@v3
-        with:
-          name: tensorflow_py${{ matrix.pyver }}_wheel
-          path: /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/whl/*.whl
+          CI_DOCKER_BUILD_EXTRA_PARAMS="--pull --build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg is_nightly=1 --build-arg tf_project_name=tf_nightly_ci" \
+          ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_test.sh

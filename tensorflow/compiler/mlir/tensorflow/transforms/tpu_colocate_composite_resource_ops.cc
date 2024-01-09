@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -82,7 +83,8 @@ llvm::SmallVector<Operation*, 4> GetResourceOpsUsingCompositeArgsInReplicate(
       // Account for pass-through identity ops.
       if (auto pass_through_identity =
               llvm::dyn_cast<TF::IdentityOp>(resource_user)) {
-        for (auto identity_user : pass_through_identity.output().getUsers()) {
+        for (auto identity_user :
+             pass_through_identity.getOutput().getUsers()) {
           new_resource_users.emplace_back(identity_user);
         }
       }
@@ -97,8 +99,7 @@ void ColocateCompositeResourceOpsInReplicate(
     tf_device::ReplicateOp replicate_op, OpBuilder* builder) {
   auto devices = replicate_op.getDevices();
   if (!devices) return;
-  if (!devices.getValue().get(tensorflow::GetDeviceAliasForLogicalCore(0)))
-    return;
+  if (!devices.value().get(tensorflow::GetDeviceAliasForLogicalCore(0))) return;
 
   const auto composite_resource_users =
       GetResourceOpsUsingCompositeArgsInReplicate(replicate_op);

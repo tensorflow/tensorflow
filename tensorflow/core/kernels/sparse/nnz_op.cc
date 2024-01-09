@@ -19,7 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -49,7 +49,8 @@ class CSRNNZOp : public OpKernel {
     Tensor* nnz_t;
     TensorShape nnz_shape;
     if (csr_sparse_matrix->dims() == 3) {
-      nnz_shape.AddDim(csr_sparse_matrix->batch_size());
+      OP_REQUIRES_OK(
+          c, nnz_shape.AddDimWithStatus(csr_sparse_matrix->batch_size()));
     }
     OP_REQUIRES_OK(c, c->allocate_output(0, nnz_shape, &nnz_t));
     auto nnz = nnz_t->flat<int32>();

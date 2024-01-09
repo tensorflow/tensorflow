@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+
 # Building blocks for generating accuracy validation metric graphs.
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:build_defs.bzl", "validation_model", "validation_test")
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "minibenchmark_visibility_allowlist")
@@ -23,11 +25,12 @@ default_visibility_group = [
 ] + minibenchmark_visibility_allowlist()
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = default_visibility_group,
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "kl_divergence",
     srcs = [
         "kl_divergence.py",
@@ -39,7 +42,7 @@ py_library(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "mobilenet",
     srcs = ["mobilenet.py"],
     python_version = "PY3",
@@ -47,6 +50,7 @@ py_binary(
     deps = [
         ":kl_divergence",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/tools:flatbuffer_utils",
     ],
 )
 
@@ -83,14 +87,15 @@ validation_test(
     validation_model = ":mobilenet_float_with_validation.tflite",
 )
 
-py_binary(
+py_strict_binary(
     name = "blazeface_metrics",
     srcs = ["blazeface_metrics.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
+        ":kl_divergence",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/experimental/acceleration/mini_benchmark/metrics:kl_divergence",
+        "//tensorflow/lite/tools:flatbuffer_utils",
     ],
 )
 

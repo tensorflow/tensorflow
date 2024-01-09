@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This header file defines common utils used when transforming TF ops to
-// XLA/Uniform Quantized ops.
+// This header file defines common utils used when transforming TF ops to XLA
+// ops.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_TF_TO_XLA_ATTRIBUTE_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_UTILS_TF_TO_XLA_ATTRIBUTE_UTILS_H_
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 
 namespace mlir::quant {
 

@@ -32,5 +32,12 @@ tf_proto {
       type: TYPE_MESSAGE
       type_name: ".tensorflow.FunctionDefLibrary"
     }
+    field {
+      name: "debug_info"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.GraphDebugInfo"
+    }
   }
 }

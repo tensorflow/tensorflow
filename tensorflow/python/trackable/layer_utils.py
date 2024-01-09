@@ -18,7 +18,6 @@
 # once __init__ files no longer require all of tf.keras to be imported together.
 
 import collections
-import functools
 import weakref
 
 from tensorflow.python.util import object_identity
@@ -43,18 +42,6 @@ def has_weights(obj):
                 and hasattr(type(obj), "non_trainable_weights"))
 
   return has_weight and not isinstance(obj, type)
-
-
-def invalidate_recursive_cache(key):
-  """Convenience decorator to invalidate the cache when setting attributes."""
-  def outer(f):
-    @functools.wraps(f)
-    def wrapped(self, value):
-      sentinel = getattr(self, "_attribute_sentinel")  # type: AttributeSentinel
-      sentinel.invalidate(key)
-      return f(self, value)
-    return wrapped
-  return outer
 
 
 class MutationSentinel(object):

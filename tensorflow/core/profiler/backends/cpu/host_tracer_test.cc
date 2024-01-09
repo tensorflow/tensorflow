@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/backends/cpu/host_tracer.h"
 
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 
@@ -99,7 +100,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   EXPECT_EQ(e3.Name(), "good");
   ASSERT_EQ(events[3].stats_size(), 1);
   {
-    absl::optional<std::string> value;
+    std::optional<std::string> value;
     e3.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Name() == "key1") value = stat.ToString();
     });
@@ -111,7 +112,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   EXPECT_EQ(e4.Name(), "morning");
   ASSERT_EQ(events[4].stats_size(), 2);
   {
-    absl::optional<std::string> value1, value2;
+    std::optional<std::string> value1, value2;
     e4.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Name() == "key1") {
         value1 = stat.ToString();
@@ -128,7 +129,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   EXPECT_EQ(e5.Name(), "incomplete");
   ASSERT_EQ(events[5].stats_size(), 1);
   {
-    absl::optional<std::string> value1, value2;
+    std::optional<std::string> value1, value2;
     e5.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Name() == "key1") {
         value1 = stat.ToString();

@@ -3,8 +3,8 @@
 // CHECK-LABEL: @ShardingAttr
 func.func @ShardingAttr(%arg0: tensor<128x10xf32> {mhlo.sharding = "\08\03\1A\02\01\02\22\02\00\01"}, %arg1: tensor<10x1024xf32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}, %arg2: tensor<128x1024xf32> {mhlo.sharding = ""}) -> (tensor<128x10xf32>, tensor<10x1024xf32>, tensor<128x1024xf32>) {
 
-  // CHECK: %[[SHARDED_ARG0:.*]] = "tf.XlaSharding"(%arg0) {_XlaSharding = "\08\03\1A\02\01\02\22\02\00\01", sharding = "\08\03\1A\02\01\02\22\02\00\01"}
-  // CHECK: %[[SHARDED_ARG1:.*]] = "tf.XlaSharding"(%arg1) {_XlaSharding = "\08\01\1A\01\01\22\01\00", sharding = "\08\01\1A\01\01\22\01\00"}
+  // CHECK: %[[SHARDED_ARG0:.*]] = "tf.XlaSharding"(%arg0) <{_XlaSharding = "\08\03\1A\02\01\02\22\02\00\01", sharding = "\08\03\1A\02\01\02\22\02\00\01"}>
+  // CHECK: %[[SHARDED_ARG1:.*]] = "tf.XlaSharding"(%arg1) <{_XlaSharding = "\08\01\1A\01\01\22\01\00", sharding = "\08\01\1A\01\01\22\01\00"}>
 
   // CHECK: "tf.Identity"(%[[SHARDED_ARG1]])
   %0 = "tf.Identity"(%arg1) : (tensor<10x1024xf32>) -> tensor<10x1024xf32>
@@ -163,3 +163,13 @@ func.func @UnsupportedOp(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %0 : tensor<i32>
 }
 
+// -----
+
+// _XlaHostComputeMlir with manual_sharding should not fall back to
+// XlaHostCompute, because XlaHostCompute does not support manual_sharding.
+
+func.func @HostComputeManualNoFallback(%arg0: tensor<i32>) -> () {
+  // expected-error @+1 {{manual_sharding not supported with fallback}}
+  %1 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv1", send_key = "host_compute_channel_send1", host_mlir_module = "", manual_sharding = true} : (tensor<i32>) -> (tensor<f32>)
+  func.return
+}

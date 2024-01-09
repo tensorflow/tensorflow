@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/training_op_helpers.h"
 
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 

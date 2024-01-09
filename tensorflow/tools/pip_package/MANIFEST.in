@@ -1,5 +1,6 @@
 include LICENSE
 include README
+include tensorflow/THIRD_PARTY_NOTICES.txt
 recursive-include * *.py
 recursive-include * *.pyd
 recursive-include * *.pyi
@@ -21,4 +22,6 @@ recursive-include tensorflow/include/include *.h
 recursive-include tensorflow/include/third_party *
 recursive-include tensorflow/include/unsupported *
 recursive-include tensorflow/xla_aot_runtime_src *
+include tensorflow/_api/v2/api_packages.txt
+
 

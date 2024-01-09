@@ -26,20 +26,33 @@ namespace data {
 namespace experimental {
 
 // An operation that can get an element at a specified index in a dataset.
-class GetElementAtIndexOp : public HybridAsyncOpKernel {
+class GetElementAtIndexOp : public AsyncOpKernel {
  public:
   explicit GetElementAtIndexOp(OpKernelConstruction* ctx)
-      : HybridAsyncOpKernel(ctx, "tf_data_get_element_at_index") {
+      : AsyncOpKernel(ctx),
+        unbounded_threadpool_(ctx->env(), "tf_data_get_element_at_index") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
 
   ~GetElementAtIndexOp() override {}
 
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
+    unbounded_threadpool_.Schedule([this, ctx, done = std::move(done)]() {
+      ctx->SetStatus(DoCompute(ctx));
+      done();
+    });
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    ctx->SetStatus(DoCompute(ctx));
+  }
+
  protected:
-  Status DoCompute(OpKernelContext* ctx) override;
+  Status DoCompute(OpKernelContext* ctx);
 
  private:
+  UnboundedThreadPool unbounded_threadpool_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
 };

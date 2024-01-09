@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 
+#include <cstring>
 #include <string>
 
 #include "absl/strings/match.h"

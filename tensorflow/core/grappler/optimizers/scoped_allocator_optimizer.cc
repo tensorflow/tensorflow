@@ -291,6 +291,9 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64_t invocation_count,
                 << " output_index " << output_index;
       }
     }
+    if (inode == nullptr) {
+      return errors::Internal("Did not find node");
+    }
     if (inode_dtype == DT_INVALID) {
       if (!graph_properties.HasOutputProperties(inode->name())) {
         return errors::Internal("Input node ", inode->name(),

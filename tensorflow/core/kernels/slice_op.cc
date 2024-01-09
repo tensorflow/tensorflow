@@ -23,14 +23,14 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/slice_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "absl/base/prefetch.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/prefetch.h"
 
 namespace tensorflow {
 
@@ -109,7 +109,7 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
           errors::InvalidArgument("Expected size[", i, "] in [0, ",
                                   input.dim_size(i) - b, "], but ", "got ", s));
     }
-    output_shape->AddDim(s);
+    OP_REQUIRES_OK(context, output_shape->AddDimWithStatus(s));
     const bool take_all = (b == 0) && (s == input.dim_size(i));
     (*is_identity) &= take_all;
     (*slice_dim0) &= (i == 0) || take_all;
@@ -183,9 +183,8 @@ class SliceOp : public OpKernel {
         for (int i = 0; i < row_size; ++i) {
           const int64_t row = row_begin + i;
           if (i + 1 < size[0]) {
-            port::prefetch<port::PREFETCH_HINT_T0>(&output_t(i + 1, 0));
-            port::prefetch<port::PREFETCH_HINT_T0>(
-                &input_t(row + 1, col_begin));
+            absl::PrefetchToLocalCache(&output_t(i + 1, 0));
+            absl::PrefetchToLocalCache(&input_t(row + 1, col_begin));
           }
           memcpy(&output_t(i, 0), &input_t(row, col_begin),
                  col_size * sizeof(T));
@@ -273,6 +272,8 @@ TF_CALL_ALL_TYPES(DECLARE_FOR_N);
 
 TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
+TF_CALL_float8_e5m2(REGISTER_SLICE);
+TF_CALL_float8_e4m3fn(REGISTER_SLICE);
 #undef REGISTER_SLICE
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -297,7 +298,6 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 7); \
   DECLARE_GPU_SPEC(T, 8);
 
-TF_CALL_bfloat16(DECLARE_FOR_N);
 TF_CALL_int8(DECLARE_FOR_N);
 TF_CALL_int32(DECLARE_FOR_N);
 TF_CALL_int64(DECLARE_FOR_N);
@@ -315,7 +315,6 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_FOR_N);
                               .HostMemory("size"),       \
                           SliceOp<GPUDevice, type>)
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_int8(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);

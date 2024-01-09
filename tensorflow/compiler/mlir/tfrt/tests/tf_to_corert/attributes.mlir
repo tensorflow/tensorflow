@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tf-to-tfrt %s | FileCheck %s --dump-input=fail
+// RUN: tf-tfrt-opt -tf-to-tfrt=func-use-fallback-tensor=true %s | FileCheck %s --dump-input=fail
 
 // _output_shapes and f.* attributes are removed during tf-to-tfrt lowering.
 // CHECK-LABEL: func @remove_unused_attr
@@ -14,8 +14,8 @@ func.func @basic(
     %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> (tensor<3x3xf32>) {
   %1 = "tf.ReadVariableOp"(%arg1) {_output_shapes = ["tfshape$dim { size: 1 } dim { size: 3 }"], device = "/device:CPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
 
-  // CHECK: {{%.*}} = corert.executeop({{%.*}}) "tf.MatMul"
-  // CHECK-SAME: {T = f32, device = "/device:CPU:0", transpose_a = false, transpose_b = false}
+  // CHECK: {{%.*}} = tfrt_fallback_async.executeop {{.*}} device("/device:CPU:0") "tf.MatMul"
+  // CHECK-SAME: {T = f32, transpose_a = false, transpose_b = false}
   %2 = "tf.MatMul"(%arg0, %1) {T = f32, _output_shapes = ["tfshape$dim { size: 3 } dim { size: 3 }"], device = "/device:CPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
   func.return %2 : tensor<3x3xf32>
 }

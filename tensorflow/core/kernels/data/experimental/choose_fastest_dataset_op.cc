@@ -156,7 +156,9 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       return "ChooseFastestDatasetOp::Dataset";
     }
 
-    int64_t CardinalityInternal() const override { return cardinality_; }
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      return cardinality_;
+    }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {

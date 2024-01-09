@@ -22,6 +22,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import quantize_training
@@ -56,7 +57,7 @@ class PywrapQuantizeTrainingTest(test.TestCase):
     g = ops.Graph()
     with session.Session(graph=g) as sess:
       a = constant_op.constant(6.0, shape=[1, 1], name='a')
-      b = variables.VariableV1(
+      b = variable_v1.VariableV1(
           constant_op.constant(7.0, shape=[1, 1]), name='b')
       c = math_ops.matmul(a, b, name='matmul')
 

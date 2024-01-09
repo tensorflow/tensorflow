@@ -37,6 +37,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -155,7 +156,7 @@ class CTCLossOp : public OpKernel {
     Status labels_sp_valid = labels_sp.IndicesValid();
     OP_REQUIRES(ctx, labels_sp_valid.ok(),
                 errors::InvalidArgument("label SparseTensor is not valid: ",
-                                        labels_sp_valid.error_message()));
+                                        labels_sp_valid.message()));
 
     typename ctc::CTCLossCalculator<T>::LabelSequences labels_t(batch_size);
     for (const auto& g : labels_sp.group({0})) {  // iterate by batch
@@ -220,7 +221,8 @@ class CTCLossOp : public OpKernel {
   bool ctc_merge_repeated_;
   bool ignore_longer_outputs_than_inputs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCLossOp<T>);
+  CTCLossOp<T>(const CTCLossOp<T>&) = delete;
+  void operator=(const CTCLossOp<T>&) = delete;
 };
 
 #define REGISTER_CPU(T)                                          \
@@ -359,8 +361,9 @@ class CTCLossOpGPU : public OpKernel {
     bool cudnn_launch_status =
         stream
             ->ThenCtcLoss(*probs_desc, probs_data, labels_data,
-                          labels_lengths_data, input_lengths_data, &costs_data,
-                          *grads_desc, &grads_data, &workspace_allocator)
+                          labels_lengths_data, input_lengths_data,
+                          GetNumericOptions(), &costs_data, *grads_desc,
+                          &grads_data, &workspace_allocator)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -369,7 +372,8 @@ class CTCLossOpGPU : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCLossOpGPU);
+  CTCLossOpGPU(const CTCLossOpGPU&) = delete;
+  void operator=(const CTCLossOpGPU&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CTCLossV2")

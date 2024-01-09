@@ -26,3 +26,38 @@ op 	 {
     }
   }
 }
+op {
+  name: "Shape"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "out_type"
+    experimental_full_type {
+      type_id: TFT_SHAPE_TENSOR
+      args {
+        type_id: TFT_VAR
+        s: "out_type"
+      }
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}

@@ -24,6 +24,7 @@ REGISTER6(UnaryOp, CPU, "Exp", functor::exp, float, Eigen::half, bfloat16,
 REGISTER5(UnaryOp, GPU, "Exp", functor::exp, float, Eigen::half, double,
           complex64, complex128);
 #endif
+REGISTER(UnaryOp, GPU, "Exp", functor::exp, bfloat16);
 #endif
 
 }  // namespace tensorflow

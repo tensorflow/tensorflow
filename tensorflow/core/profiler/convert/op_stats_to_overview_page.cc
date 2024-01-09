@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 
+#include <algorithm>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/str_cat.h"
@@ -28,24 +31,27 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/power_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
-#include "tensorflow/core/profiler/utils/format_utils.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tsl/profiler/utils/format_utils.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+using tsl::profiler::OneDigit;
 
 // If the use of low-precision ops is less than this percentage threshold, a
 // statement of suggestion will be made.
@@ -239,11 +245,12 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   // {metrics.provenance(), metrics.name()} from
   // device_tf_op_metrics_db.metrics_db(), because metrics.provenance() there is
   // not set and metrics.name() can be either HLO-Op name or TF-Op name, which
-  // will confuse IsOutsideCompilationOp().
+  // will confuse tsl::profiler::IsOutsideCompilationOp().
   uint64 outside_compilation_device_op_time_ps = 0;
   for (const OpMetrics& metrics :
        op_stats.device_op_metrics_db().metrics_db()) {
-    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.long_name()))
+    if (!tsl::profiler::IsOutsideCompilationOp(metrics.provenance(),
+                                               metrics.long_name()))
       continue;
     outside_compilation_device_op_time_ps += metrics.self_time_ps();
   }
@@ -298,6 +305,10 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
   re.set_device_core_count(run_environment.device_core_count());
   re.set_replica_count(run_environment.replica_count());
   re.set_num_cores_per_replica(run_environment.num_cores_per_replica());
+  re.set_is_training(run_environment.is_training());
+  if (run_environment.has_power_metrics()) {
+    *re.mutable_power_metrics() = run_environment.power_metrics();
+  }
   *re.mutable_host_independent_job_info() =
       ToOverviewPageHostIndependentJobInfo(
           run_environment.host_independent_job_info());

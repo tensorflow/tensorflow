@@ -310,6 +310,28 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     with self.assertRaisesRegex(ValueError, msg):
       operator.matmul(x)
 
+  def test_composite_gradients(self):
+    with backprop.GradientTape() as tape:
+      op1 = linalg.LinearOperatorFullMatrix(rng.rand(4, 4), is_square=True)
+      op2 = linalg.LinearOperatorFullMatrix(rng.rand(3, 4))
+      op3 = linalg.LinearOperatorFullMatrix(rng.rand(3, 3), is_square=True)
+      tape.watch([op1, op2, op3])
+      operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
+          [[op1], [op2, op3]])
+
+      x = self.make_x(op1, adjoint=False)
+      y = op1.matmul(x)
+      connected_grad, disconnected_grad, composite_grad = tape.gradient(
+          y, [op1, op3, operator]
+      )
+
+    disconnected_component_grad = composite_grad.operators[1][1].to_dense()
+    self.assertAllClose(connected_grad.to_dense(),
+                        composite_grad.operators[0][0].to_dense())
+    self.assertAllClose(disconnected_component_grad,
+                        array_ops.zeros_like(disconnected_component_grad))
+    self.assertIsNone(disconnected_grad)
+
 
 if __name__ == "__main__":
   linear_operator_test_util.add_tests(

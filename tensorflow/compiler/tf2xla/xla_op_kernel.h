@@ -20,10 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -160,6 +160,10 @@ class XlaOpKernelContext {
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
   Status ConstantInputAsIntScalar(
       absl::string_view name, int64_t* out,
+      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+
+  StatusOr<int64_t> ConstantInputAsIntScalar(
+      absl::string_view name,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
   // Converts a constant scalar float32 or float64 tensor into a float64.

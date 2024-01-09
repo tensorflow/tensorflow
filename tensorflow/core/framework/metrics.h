@@ -12,11 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_METRICS_H_
 
-#include "absl/container/flat_hash_map.h"
+#include <cstdint>
+#include <string>
+
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -24,9 +25,20 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace metrics {
+enum class GraphOptimizationSource {
+  kUnknown,
+  kJit,
+  kAot,
+};
+
+// Records when a data-fetching tf.data operation is executed.
+//
+// The `name` argument identifies the operation type (e.g. "ToSingleElementOp").
+void RecordTFDataFetchOp(const string& name);
 
 // Records that a tf.data.Dataset executed by the program used autotuning.
 //
@@ -68,8 +80,22 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64_t num_bytes);
 
-// Records the number of times tf.data experiment is applied to input pipelines.
+// Records the number of times a tf.data experiment was applied.
 void RecordTFDataExperiment(const string& name);
+
+// Records the number of times a tf.data experiment could have been applied.
+void RecordTFDataExperimentLive(const string& name);
+
+// Records the number of times a tf.data experiment was opted into.
+void RecordTFDataExperimentOptIn(const string& experiment_name);
+
+// Records the number of times a tf.data experiment was opted out of.
+void RecordTFDataExperimentOptOut(const string& experiment_name);
+
+// Records the time (in microseconds) spent generating an element and
+// transferring it over the network for the given protocol.
+void RecordTFDataServiceGetElementDuration(const string& data_transfer_protocol,
+                                           uint64 duration_us);
 
 // Records the time (in microseconds) spent in a single invocation of
 // `ItertatorResource::GetNext()`.
@@ -89,6 +115,14 @@ void RecordTFDataAutotuneMaxBufferBudgetRatio(const double ratio);
 // The `name` argument identifies the Dataset graph fingerprint,
 // created using GraphHash().
 void RecordTFDataFingerprint(const string& name);
+
+// Records the event of a tf.data service pipeline getting a runtime
+// compression decision.
+void RecordTFDataServiceRuntimeCompressionDecision(bool compression_decision);
+
+// Records the event of a tf.data service pipeline making the compression
+// related action.
+void RecordTFDataServiceCompressionAction(const string& action);
 
 // Records the time (in microseconds) during which `IteratorResource` was busy
 // processing at least one `GetNext()` request.
@@ -121,11 +155,41 @@ void RecordTFDataServiceClientIterators(
     int64_t worker_uid, data::DeploymentMode deployment_mode,
     const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
+// Records that a tf.data service worker client has been created that will use
+// `data_transfer_protocol` to get data from the worker server and whether or
+// not the user explicitly specified the protocol.
+void RecordTFDataServiceDataTransferProtocolUsed(
+    const string& data_transfer_protocol, bool user_specified);
+
+// Records that a tf.data service worker client fell back to gRPC rather than
+// use `data_transfer_protocol` because of an error of type `code` with message
+// `error_message`.
+void RecordTFDataServiceDataTransferProtocolFallback(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
+
+// Records that a tf.data service worker client got an error of non-retriable
+// type `code` with message `error_message` when trying to transfer data over
+// `data_transfer_protocol`.
+void RecordTFDataServiceDataTransferProtocolError(
+    const string& data_transfer_protocol, error::Code code,
+    const string& error_message);
+
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
 
 // Records tf.data service cross-trainer cache memory usage in bytes.
 void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
+
+// Records tf.data distributed snapshot bytes committed.
+void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes);
+
+// Records tf.data distributed snapshot save/load ops.
+void RecordTFDataServiceSnapshotOp(const std::string& path,
+                                   const std::string& op);
+
+// Records the current estimated optimal number of tf.data service workers.
+void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers);
 
 // Records the file name read by a tf.data Dataset.
 //
@@ -153,6 +217,10 @@ void RecordTFDataAutoShardRewriteBatchSize(
 // criterion is met.
 void RecordTFDataAutotuneStoppingCriteria(const string& name);
 
+// Records the number of times an error of this type occurred with this status
+// code.
+void RecordTFDataError(const string& error_type, const string& error_code);
+
 // Records parsing of dense tensor features.
 void RecordParseDenseFeature(int64_t num_features);
 
@@ -175,6 +243,10 @@ void UpdateGraphPendingQueueLength(uint64 len);
 // Records that one output of an op of type `op_name` was unused.
 void RecordUnusedOutput(const string& op_name);
 
+// Records the pipeline processing time in microseconds
+void RecordPipelineProcessingTime(const string& id,
+                                  double pipeline_processing_time_usec);
+
 // Updates the metrics stored about time spent building graphs.
 //
 // By "GraphBuild", we refer to building a client graph, which is a sub-graph of
@@ -193,6 +265,45 @@ void UpdateGraphBuildTime(const uint64 running_time_usecs);
 // Updates the metric stored for time spent optimizing function graphs.
 void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs);
 
+// Updates the metric stored for time saved by caching graph optimization.
+void UpdateFunctionGraphOptimizationSavingTime(uint64 saving_time_usec,
+                                               GraphOptimizationSource source);
+
+// Retrieves the total time saved by the graph optimization caching.
+uint64 GetFunctionGraphOptimizationSavingTimeUsecs(
+    GraphOptimizationSource source);
+
+// Increments the hit count for the graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheHitCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the hit count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheHitCount(
+    GraphOptimizationSource source);
+
+// Increments the failure count for the graph optimization cache restoring.
+void IncrementFunctionGraphOptimizationCacheFailureCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the failure count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheFailureCount(
+    GraphOptimizationSource source);
+
+// Increments the miss count for the graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheMissCount(
+    int count, GraphOptimizationSource source);
+
+// Gets the miss count for the graph optimization cache.
+int64_t GetFunctionGraphOptimizationCacheMissCount(
+    GraphOptimizationSource source);
+
+// Increments the number of restoring function graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheLoadCount(
+    int count, GraphOptimizationSource source);
+
+int64_t GetFunctionGraphOptimizationCacheLoadCount(
+    GraphOptimizationSource source);
+
 // Records the activity of the first phase of the mlir bridge using the
 // tf_metadata.tf_mlir_bridge_first_phase_count metric.
 // device_type: tpu, cpu, gpu, etc.
@@ -203,6 +314,40 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result);
+
+enum class MlirBridgeSecondPhaseMetric {
+  // MLIR bridge phase 2 was executed and the graph was processed successfully
+  // (fallback enabled).
+  kMlirWithFallbackModeSuccess,
+  // MLIR bridge phase 2 compilation was failure (fallback enabled).
+  kMlirWithFallbackModeFailure,
+  // MLIR bridge phase 2 compilation was successful (manually enabled).
+  kMlirModeSuccess,
+  // MLIR bridge phase 2 compilation fails (manually enabled)
+  kMlirModeFailure,
+  // Old bridge compilation was run successfully (was run because MLIR bridge
+  // could not process the graph).
+  kOldBridgeMlirFilteredSuccess,
+  // Old bridge failed (was run b/c MLIR bridge could not process the graph).
+  kOldBridgeMlirFilteredFailure,
+  // Old bridge compilation was successfully run after MLIR bridge ran and
+  // failed.
+  kOldBridgeWithFallbackModeSuccess,
+  // Old Bridge failed in fallback (was run because MLIR bridge failed first).
+  kOldBridgeWithFallbackModeFailure,
+  // MLIR bridge phase 2 Combined Bridge MLIR was successful
+  kMlirCombinedMlirSuccess,
+  // MLIR bridge phase 2 Combined Bridge MLIR failed
+  kMlirCombinedMlirFailure,
+  // MLIR bridge phase 2 Combined Bridge Old bridge was successful
+  kMlirCombinedOldSuccess,
+  // MLIR bridge phase 2 Combined Bridge Old bridge was successful
+  kMlirCombinedOldFailure,
+};
+
+// Records the activity of the second phase of the mlir bridge.
+void IncrementTfMlirBridgeSecondPhaseCounter(
+    MlirBridgeSecondPhaseMetric metric);
 
 // Records the activity per op using the
 // tf_metadata.tf_mlir_bridge_graph_analysis_per_op.
@@ -221,6 +366,13 @@ void UpdateTfMlirBridgeGraphAnalysisPerOp(
     const std::string& allow_soft_placement,
     const std::string& use_spmd_for_xla_partitioning,
     const std::string& unsupported_reason, bool has_unsupported_features);
+
+// Records whether a graph contains any of the TF1 features
+void RecordTFVersionByGraphFeatures(const std::string& device,
+                                    const std::string& context,
+                                    bool hasControlFlowV1,
+                                    bool hasReferenceVariables,
+                                    bool hasManualControlDeps);
 
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>

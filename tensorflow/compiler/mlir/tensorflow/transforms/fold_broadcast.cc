@@ -102,14 +102,14 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteBatchMatMulV2Op(
         }
 
         const int x_row =
-            matmul_op.adj_x() ? shape_x.back() : *(shape_x.rbegin() + 1);
+            matmul_op.getAdjX() ? shape_x.back() : *(shape_x.rbegin() + 1);
         const int x_col =
-            !matmul_op.adj_x() ? shape_x.back() : *(shape_x.rbegin() + 1);
+            !matmul_op.getAdjX() ? shape_x.back() : *(shape_x.rbegin() + 1);
 
         const int y_row =
-            matmul_op.adj_y() ? shape_y.back() : *(shape_y.rbegin() + 1);
+            matmul_op.getAdjY() ? shape_y.back() : *(shape_y.rbegin() + 1);
         const int y_col =
-            !matmul_op.adj_y() ? shape_y.back() : *(shape_y.rbegin() + 1);
+            !matmul_op.getAdjY() ? shape_y.back() : *(shape_y.rbegin() + 1);
 
         // Checks that matrix multiply can perform a valid contraction.
         if (x_col != y_row) {
@@ -129,7 +129,7 @@ template <typename Op>
 LogicalResult ConvertResultsBroadcastableShapeOp::RewriteEqOp(
     Operation* op, PatternRewriter& rewriter) const {
   auto eq_op = llvm::dyn_cast_or_null<Op>(op);
-  if (eq_op && eq_op.incompatible_shape_error())
+  if (eq_op && eq_op.getIncompatibleShapeError())
     return RewriteOp(op, rewriter, OpTrait::util::getBroadcastedShape);
   return failure();
 }
@@ -156,7 +156,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
 
     // Check that the operand of the broadcast has fully defined shape.
     auto broadcast_arg_type =
-        broadcast.input().getType().dyn_cast_or_null<RankedTensorType>();
+        broadcast.getInput().getType().dyn_cast_or_null<RankedTensorType>();
     if (!broadcast_arg_type || !broadcast_arg_type.hasStaticShape()) continue;
 
     // Check that the other argument has fully defined shape.
@@ -184,7 +184,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
 
     // Update the operand of the op to be the operand of the broadcast.
     rewriter.updateRootInPlace(
-        op, [&]() { op->getOpOperand(i).set(broadcast.input()); });
+        op, [&]() { op->getOpOperand(i).set(broadcast.getInput()); });
     changed = true;
   }
   return success(changed);

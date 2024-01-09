@@ -18,16 +18,17 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/activity_watcher/activity.h"
-#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+
+class OpKernelContext;
+
 namespace activity_watcher {
 
 // A convenient way to create an activity. Writes OpKernelContext information
 // and given attributes to a new activity and returns.
 std::unique_ptr<Activity> ActivityFromContext(
-    OpKernelContext* context, tensorflow::string name,
-    ActivityCategory category,
+    OpKernelContext* context, tsl::string name, ActivityCategory category,
     Activity::Attributes additional_attributes = Activity::Attributes());
 
 }  // namespace activity_watcher

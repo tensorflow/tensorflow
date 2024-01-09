@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -36,15 +37,17 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
+
 class InsertQuantizedFunctionsPass
     : public PassWrapper<InsertQuantizedFunctionsPass,
                          OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(InsertQuantizedFunctionsPass)
 
-  explicit InsertQuantizedFunctionsPass() {}
-  explicit InsertQuantizedFunctionsPass(QuantizationMethod quantization_method,
-                                        const OpSet& op_set) {
+  explicit InsertQuantizedFunctionsPass() = default;
+  explicit InsertQuantizedFunctionsPass(QuantMethod quantization_method,
+                                        OpSet op_set) {
     quantization_method_ = quantization_method;
     op_set_ = op_set;
   }
@@ -73,18 +76,24 @@ class InsertQuantizedFunctionsPass
 
   // Returns the function library for the given quantization method and opset
   // pair.
-  llvm::StringRef GetFunctionLibrary(QuantizationMethod quantization_method,
+  llvm::StringRef GetFunctionLibrary(QuantMethod quantization_method,
                                      OpSet op_set);
 
-  Option<QuantizationMethod> quantization_method_{
+  Option<QuantMethod> quantization_method_{
       *this, "quantization-method",
-      llvm::cl::init(QuantizationMethod::kPostTrainingQuantization),
+      llvm::cl::init(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_INT8),
       llvm::cl::desc("Choose quantization method."),
       llvm::cl::values(
-          clEnumValN(QuantizationMethod::kPostTrainingQuantization, "ptq",
-                     "Post-training static-range quantization"),
-          clEnumValN(QuantizationMethod::kDynamicRangeQuantization, "drq",
-                     "Post-training dynamic-range quantizaiton"))};
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_INT8,
+                     "ptq", "Post-training static-range quantization"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_DYNAMIC_RANGE_INT8,
+                     "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8,
+                     "weight_only", "Post-training weight_only quantizaiton"))};
 
   Option<OpSet> op_set_{
       *this, "target-opset", llvm::cl::init(OpSet::TF),
@@ -98,15 +107,28 @@ class InsertQuantizedFunctionsPass
 };
 
 llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(
-    QuantizationMethod quantization_method, OpSet op_set) {
+    QuantMethod quantization_method, OpSet op_set) {
   absl::flat_hash_map<OpSet, llvm::StringRef> function_library_map;
-  if (quantization_method == QuantizationMethod::kDynamicRangeQuantization) {
+  if (quantization_method ==
+      tensorflow::quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8) {
     function_library_map = {
+        {OpSet::TF, kQuantizedFunctionLibraryInMLIR_TF_DRQ},
         {OpSet::UNIFORM_QUANTIZED,
          kQuantizedFunctionLibraryInMLIR_UNIFORM_QUANTIZED_DRQ},
-        {OpSet::TF, kQuantizedFunctionLibraryInMLIR_TF_DRQ}};
+        {OpSet::XLA, kQuantizedFunctionLibraryInMLIR_TF_DRQ}};
+  } else if (quantization_method ==
+             tensorflow::quantization::QuantizationMethod::
+                 METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8) {
+    // Uniform quantized opset is not supported for weight-only as inputs for
+    // weight quantization are floats. And only dequantize_i8 is used from the
+    // quantized function library.
+    function_library_map = {
+        {OpSet::TF, kQuantizedFunctionLibraryInMLIR},
+        {OpSet::XLA, kQuantizedFunctionLibraryInMLIR_XLA_WEIGHT_ONLY}};
   } else {
     function_library_map = {{OpSet::TF, kQuantizedFunctionLibraryInMLIR},
+                            {OpSet::UNIFORM_QUANTIZED,
+                             kQuantizedFunctionLibraryInMLIR_UNIFORM_QUANTIZED},
                             {OpSet::XLA, kQuantizedFunctionLibraryInMLIR}};
   }
 
@@ -152,9 +174,8 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 
   StatusScopedDiagnosticHandler diagnostic_handler(context);
   if (failed(pm.run(*module_ref))) {
-    emitError(module.getLoc())
-        << "failed to apply the optimization: "
-        << diagnostic_handler.ConsumeStatus().error_message();
+    emitError(module.getLoc()) << "failed to apply the optimization: "
+                               << diagnostic_handler.ConsumeStatus().message();
     signalPassFailure();
     return;
   }
@@ -168,6 +189,15 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
     func::FuncOp new_func = func.clone();
     new_func.setPrivate();
     symbol_table.insert(new_func);
+
+    // For consistency, we require all quantized composite function to have
+    // the "tf_quant.quantized_ops" attribute.
+    if (!new_func.getSymName().starts_with("quantized_")) continue;
+    if (!new_func->hasAttrOfType<ArrayAttr>("tf_quant.quantized_ops")) {
+      new_func->emitError() << "Missing \"tf_quant.quantized_ops\" "
+                               "attribute in the quantized composite function.";
+      signalPassFailure();
+    }
   }
 }
 
@@ -175,9 +205,9 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 
 // Creates an instance of the pass for inserting quantized functions.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
-    QuantizationMethod quantization_method, const OpSet& op_set) {
+    QuantMethod quantization_method, OpSet target_opset) {
   return std::make_unique<InsertQuantizedFunctionsPass>(quantization_method,
-                                                        op_set);
+                                                        target_opset);
 }
 
 }  // namespace quant

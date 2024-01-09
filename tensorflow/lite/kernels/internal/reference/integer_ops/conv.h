@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/lite/kernels/internal/common.h"
-#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 
 namespace tflite {
 namespace reference_integer_ops {
@@ -64,8 +63,10 @@ inline void ConvPerChannel(
   const int filter_width = filter_shape.Dims(2);
   const int filter_input_depth = filter_shape.Dims(3);
   const int groups = input_depth / filter_input_depth;
+  TFLITE_DCHECK_NE(groups, 0);
   TFLITE_DCHECK_EQ(input_depth % filter_input_depth, 0);
   const int filters_per_group = output_depth / groups;
+  TFLITE_DCHECK_NE(filters_per_group, 0);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
@@ -134,20 +135,6 @@ inline void ConvPerChannel(
   }
 }
 
-inline void ConvPerChannelWithPackedInt4Weights(
-    const ConvParams& params, const int32_t* output_multiplier,
-    const int32_t* output_shift, const RuntimeShape& input_shape,
-    const int8_t* input_data, const RuntimeShape& filter_shape,
-    const int8_t* filter_input, int8_t* unpacked_filter_data,
-    const RuntimeShape& bias_shape, const int32_t* bias_data,
-    const RuntimeShape& output_shape, int8_t* output_data) {
-  TFLITE_DCHECK(unpacked_filter_data != nullptr);
-  tflite::tensor_utils::UnpackDenseInt4IntoInt8(
-      filter_input, filter_shape.FlatSize(), unpacked_filter_data);
-  ConvPerChannel(params, output_multiplier, output_shift, input_shape,
-                 input_data, filter_shape, unpacked_filter_data, bias_shape,
-                 bias_data, output_shape, output_data);
-}
 
 // Fixed-point per-channel-quantization convolution reference kernel.
 // 16-bit data and 8-bit filter

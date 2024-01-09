@@ -26,7 +26,12 @@ from tensorflow.python.platform import test
 
 
 class CumulativeLogsumexpTest(test.TestCase):
-  valid_dtypes = [dtypes.float32, dtypes.float64]
+  valid_dtypes = [
+      dtypes.float32,
+      dtypes.float64,
+      dtypes.float16,
+      dtypes.bfloat16,
+  ]
 
   def _computeLogSumExp(self, x, **kwargs):
     result_naive = math_ops.cumsum(math_ops.exp(x), **kwargs)
@@ -40,7 +45,8 @@ class CumulativeLogsumexpTest(test.TestCase):
       result_naive, result_fused = self.evaluate(
           self._computeLogSumExp(x, **kwargs))
 
-    self.assertAllClose(result_naive, result_fused)
+    tol = 2e-2 if dtype in [dtypes.float16, dtypes.bfloat16] else 1e-6
+    self.assertAllClose(result_naive, result_fused, rtol=tol, atol=tol)
 
   def _testLogSumExpAllArgs(self, x, axis=0, use_gpu=False):
     for dtype in self.valid_dtypes:

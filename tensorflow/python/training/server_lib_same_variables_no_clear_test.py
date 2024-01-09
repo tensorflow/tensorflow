@@ -18,7 +18,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -36,8 +36,8 @@ class SameVariablesNoClearTest(test.TestCase):
     server = server_lib.Server.create_local_server()
 
     with session.Session(server.target) as sess_1:
-      v0 = variables.VariableV1([[2, 1]], name="v0")
-      v1 = variables.VariableV1([[1], [2]], name="v1")
+      v0 = variable_v1.VariableV1([[2, 1]], name="v0")
+      v1 = variable_v1.VariableV1([[1], [2]], name="v1")
       v2 = math_ops.matmul(v0, v1)
       sess_1.run([v0.initializer, v1.initializer])
       self.assertAllEqual([[4]], sess_1.run(v2))

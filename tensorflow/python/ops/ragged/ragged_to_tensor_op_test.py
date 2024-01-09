@@ -25,7 +25,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -334,7 +334,7 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
             default = make_placeholder(default)
           rt = nest.map_structure(make_placeholder, rt, expand_composites=True)
         dt = rt.to_tensor(default_value=default, shape=shape)
-        self.assertIsInstance(dt, ops.Tensor)
+        self.assertIsInstance(dt, tensor_lib.Tensor)
         self.assertEqual(rt.dtype, dt.dtype)
         if shape is not None:
           self.assertTrue(dt.shape.is_compatible_with(shape))
@@ -681,7 +681,7 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
     self.assertAllClose(actual_default_grad, expected_default_grad)
 
   def rt_with_partition_type(self, rt, partition_type):
-    if isinstance(rt, ops.Tensor):
+    if isinstance(rt, tensor_lib.Tensor):
       return rt
     if partition_type == 'row_splits':
       return rt

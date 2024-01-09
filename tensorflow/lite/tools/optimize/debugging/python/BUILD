@@ -3,9 +3,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
-    default_visibility = [
-        "//tensorflow:internal",
-    ],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -31,14 +29,15 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":debugger",
+        "@absl_py//absl/testing:parameterized",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:convert",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/metrics",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/trackable:autotrackable",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

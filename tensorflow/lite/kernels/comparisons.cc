@@ -16,7 +16,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -179,6 +179,10 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
       Comparison<float, reference_ops::EqualFn>(input1, input2, output,
                                                 requires_broadcast);
       break;
+    case kTfLiteInt16:
+      Comparison<int16_t, reference_ops::EqualFn>(input1, input2, output,
+                                                  requires_broadcast);
+      break;
     case kTfLiteInt32:
       Comparison<int32_t, reference_ops::EqualFn>(input1, input2, output,
                                                   requires_broadcast);
@@ -316,6 +320,10 @@ TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
       Comparison<float, reference_ops::GreaterEqualFn>(input1, input2, output,
                                                        requires_broadcast);
       break;
+    case kTfLiteInt16:
+      Comparison<int16_t, reference_ops::GreaterEqualFn>(input1, input2, output,
+                                                         requires_broadcast);
+      break;
     case kTfLiteInt32:
       Comparison<int32_t, reference_ops::GreaterEqualFn>(input1, input2, output,
                                                          requires_broadcast);
@@ -356,6 +364,10 @@ TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
       Comparison<float, reference_ops::LessFn>(input1, input2, output,
                                                requires_broadcast);
+      break;
+    case kTfLiteInt16:
+      Comparison<int16_t, reference_ops::LessFn>(input1, input2, output,
+                                                 requires_broadcast);
       break;
     case kTfLiteInt32:
       Comparison<int32_t, reference_ops::LessFn>(input1, input2, output,

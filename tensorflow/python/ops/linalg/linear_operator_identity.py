@@ -18,15 +18,19 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
+from tensorflow.python.ops.linalg import linear_operator_diag
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import property_hint_util
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -310,11 +314,44 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     return batch_shape.concatenate(matrix_shape)
 
   def _shape_tensor(self):
-    matrix_shape = array_ops.stack((self._num_rows, self._num_rows), axis=0)
+    matrix_shape = array_ops_stack.stack(
+        (self._num_rows, self._num_rows), axis=0)
     if self._batch_shape_arg is None:
       return matrix_shape
 
     return array_ops.concat((self._batch_shape_arg, matrix_shape), 0)
+
+  def _linop_adjoint(self) -> "LinearOperatorIdentity":
+    return self
+
+  def _linop_cholesky(self) -> "LinearOperatorIdentity":
+    return LinearOperatorIdentity(
+        num_rows=self._num_rows,  # pylint: disable=protected-access
+        batch_shape=self.batch_shape,
+        dtype=self.dtype,
+        is_non_singular=True,
+        is_self_adjoint=True,
+        is_positive_definite=True,
+        is_square=True)
+
+  def _linop_inverse(self) -> "LinearOperatorIdentity":
+    return self
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorIdentity",
+      right_operator: linear_operator.LinearOperator,
+    ) -> "LinearOperatorIdentity":
+    del left_operator
+    return right_operator
+
+  def _linop_solve(
+      self,
+      left_operator: "LinearOperatorIdentity",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    del left_operator
+    return right_operator
 
   def _assert_non_singular(self):
     return control_flow_ops.no_op("assert_non_singular")
@@ -403,7 +440,9 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
     with self._name_scope(name):  # pylint: disable=not-callable
-      mat = ops.convert_to_tensor_v2_with_dispatch(mat, name="mat")
+      mat = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          mat, name="mat"
+      )
       mat_diag = array_ops.matrix_diag_part(mat)
       new_diag = 1 + mat_diag
       return array_ops.matrix_set_diag(mat, new_diag)
@@ -675,7 +714,8 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     return batch_shape.concatenate(matrix_shape)
 
   def _shape_tensor(self):
-    matrix_shape = array_ops.stack((self._num_rows, self._num_rows), axis=0)
+    matrix_shape = array_ops_stack.stack(
+        (self._num_rows, self._num_rows), axis=0)
 
     batch_shape = array_ops.shape(self.multiplier)
     return array_ops.concat((batch_shape, matrix_shape), 0)
@@ -703,6 +743,97 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     if conjugate:
       multiplier_matrix = math_ops.conj(multiplier_matrix)
     return multiplier_matrix
+
+  def _linop_adjoint(self) -> "LinearOperatorScaledIdentity":
+    multiplier = self.multiplier
+    if multiplier.dtype.is_complex:
+      multiplier = math_ops.conj(multiplier)
+
+    return LinearOperatorScaledIdentity(
+        num_rows=self._num_rows,
+        multiplier=multiplier,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
+  def _linop_cholesky(self) -> "LinearOperatorScaledIdentity":
+    return LinearOperatorScaledIdentity(
+        num_rows=self._num_rows,
+        multiplier=math_ops.sqrt(self.multiplier),
+        is_non_singular=True,
+        is_self_adjoint=True,
+        is_positive_definite=True,
+        is_square=True)
+
+  def _linop_inverse(self) -> "LinearOperatorScaledIdentity":
+    return LinearOperatorScaledIdentity(
+        num_rows=self._num_rows,
+        multiplier=1. / self.multiplier,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=True,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorScaledIdentity",
+      right_operator: linear_operator.LinearOperator,
+    ) -> "LinearOperatorScaledIdentity":
+    is_non_singular = property_hint_util.combined_non_singular_hint(
+        left_operator, right_operator)
+    is_self_adjoint = property_hint_util.combined_commuting_self_adjoint_hint(
+        left_operator, right_operator)
+    is_positive_definite = (
+        property_hint_util.combined_commuting_positive_definite_hint(
+            left_operator, right_operator))
+    if isinstance(right_operator, LinearOperatorScaledIdentity):
+      return LinearOperatorScaledIdentity(
+          num_rows=left_operator.domain_dimension_tensor(),
+          multiplier=left_operator.multiplier * right_operator.multiplier,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=True)
+    elif isinstance(right_operator, linear_operator_diag.LinearOperatorDiag):
+      return linear_operator_diag.LinearOperatorDiag(
+          diag=right_operator.diag * left_operator.multiplier,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=True)
+    else:
+      return super()._linop_matmul(left_operator, right_operator)
+
+  def _linop_solve(
+      self,
+      left_operator: "LinearOperatorScaledIdentity",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    is_non_singular = property_hint_util.combined_non_singular_hint(
+        left_operator, right_operator)
+    is_self_adjoint = property_hint_util.combined_commuting_self_adjoint_hint(
+        left_operator, right_operator)
+    is_positive_definite = (
+        property_hint_util.combined_commuting_positive_definite_hint(
+            left_operator, right_operator))
+    if isinstance(right_operator, LinearOperatorScaledIdentity):
+      return LinearOperatorScaledIdentity(
+          num_rows=left_operator.domain_dimension_tensor(),
+          multiplier=right_operator.multiplier / left_operator.multiplier,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=True)
+    elif isinstance(right_operator, linear_operator_diag.LinearOperatorDiag):
+      return linear_operator_diag.LinearOperatorDiag(
+          diag=right_operator.diag / left_operator.multiplier,
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=True)
+    else:
+      return super()._linop_solve(left_operator, right_operator)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     x = linalg.adjoint(x) if adjoint_arg else x
@@ -757,7 +888,9 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       multiplier_vector = array_ops.expand_dims(self.multiplier, -1)
 
       # Shape [C1,...,Cc, M, M]
-      mat = ops.convert_to_tensor_v2_with_dispatch(mat, name="mat")
+      mat = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          mat, name="mat"
+      )
 
       # Shape [C1,...,Cc, M]
       mat_diag = array_ops.matrix_diag_part(mat)

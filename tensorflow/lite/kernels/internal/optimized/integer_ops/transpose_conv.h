@@ -63,6 +63,9 @@ inline void TransposeConvV2(
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
 
@@ -103,12 +106,10 @@ inline void TransposeConvV2(
   optimized_ops::BiasAdd(scratch_data_p, bias_data, batch_size, output_height,
                          output_width, output_depth);
 
-  const int32_t output_min = std::numeric_limits<DestinationScalar>::min();
-  const int32_t output_max = std::numeric_limits<DestinationScalar>::max();
-
   optimized_ops::Quantize(output_multiplier, output_shift, output_depth,
                           output_shape.FlatSize(), params.output_offset,
-                          output_min, output_max, scratch_data, output_data);
+                          output_activation_min, output_activation_max,
+                          scratch_data, output_data);
 }
 
 }  // namespace optimized_integer_ops

@@ -164,7 +164,7 @@ TEST_F(ShapeRefinerTest, BadShapes) {
   // an error.
   Status s = m.AddNode(mm.node());
   ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(absl::StrContains(s.error_message(),
+  ASSERT_TRUE(absl::StrContains(s.message(),
                                 "Dimensions must be equal, but are 1 and 2"));
 }
 
@@ -1070,8 +1070,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
   TF_ASSERT_OK(m.AddNode(pack.node()));
-  EXPECT_TRUE(
-      absl::StrContains(m.AddNode(result).error_message(), "but is rank 2"));
+  EXPECT_TRUE(absl::StrContains(m.AddNode(result).message(), "but is rank 2"));
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_Concat) {
@@ -1190,7 +1189,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
   TF_ASSERT_OK(m.AddNode(concat_dim.node()));
   TF_ASSERT_OK(m.AddNode(concat.node()));
   EXPECT_EQ("Invalid value in tensor used for shape: -2",
-            m.AddNode(result).error_message());
+            m.AddNode(result).message());
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSlice) {

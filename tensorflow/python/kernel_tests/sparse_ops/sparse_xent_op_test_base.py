@@ -71,7 +71,7 @@ class SparseXentOpTestBase(test.TestCase):
       self.assertAllClose([0.0, 0.0, 0.0], tf_loss)
       self.assertAllClose([[0.0], [0.0], [0.0]], tf_gradient)
 
-  @test_util.run_gpu_only()
+  @test_util.run_gpu_only
   def _testInvalidLabelGPU(self, invalid_label_gradient=np.nan):
     labels = [4, 3, 0, -1]
     logits = [[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 2., 3., 4.],
@@ -193,6 +193,14 @@ class SparseXentOpTestBase(test.TestCase):
           np_labels=np.array([3, 0]).astype(label_dtype),
           np_logits=np.array([[1., 1., 1., 1.], [1., 2., 3.,
                                                  4.]]).astype(np.float16))
+
+  def testBfloat16(self):
+    for label_dtype in np.int32, np.int64:
+      self._testXent(
+          np_labels=np.array([3, 0]).astype(label_dtype),
+          np_logits=np.array([[1., 1., 1., 1.],
+                              [1., 2., 3.,
+                               4.]]).astype(dtypes.bfloat16.as_numpy_dtype))
 
   def testEmpty(self):
     self._testXent(

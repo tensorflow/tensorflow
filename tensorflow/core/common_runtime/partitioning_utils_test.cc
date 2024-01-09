@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -345,6 +346,10 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsNotOnDevice) {
   std::vector<int> ret_indices;
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+  Int32FulltypePass int32_fulltype;
+  TF_ASSERT_OK(
+      int32_fulltype.ProcessGraph(graph.get(), /*ints_on_device=*/false));
 
   Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,

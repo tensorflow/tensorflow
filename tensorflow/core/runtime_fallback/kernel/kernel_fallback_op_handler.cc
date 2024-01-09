@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_op_handler.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
@@ -67,7 +71,6 @@ using tfrt::CoreRuntimeOp;
 using tfrt::ExecutionContext;
 using tfrt::Expected;
 using tfrt::OpAttrsRef;
-using tfrt::OpHandler;
 using tfrt::OpInvocation;
 using tfrt::OpMetadataFn;
 using tfrt::raw_ostream;
@@ -156,9 +159,9 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
           auto error = tfrt::EmitErrorAsync(
               invocation.exec_ctx,
               absl::Status(
-                  ToAbslStatus(s).code(),
+                  s.code(),
                   tfrt::StrCat("Error running kernel fallback OpHandler ",
-                               invocation.op_name, ":", s.error_message())));
+                               invocation.op_name, ":", s.message())));
           for (auto& result : invocation.results) {
             result = tfrt::TensorHandle::CreateError(error.CopyRef());
           }
@@ -242,7 +245,7 @@ KernelFallbackOpHandler::KernelFallbackOpHandler(
     CoreRuntime* runtime, RCReference<tfrt::Device> device)
     : OpHandler("tfkernel", runtime, nullptr), device_(std::move(device)) {}
 
-KernelFallbackOpHandler::~KernelFallbackOpHandler() {}
+KernelFallbackOpHandler::~KernelFallbackOpHandler() = default;
 
 llvm::Error KernelFallbackOpHandler::Initialize() {
   return llvm::Error::success();

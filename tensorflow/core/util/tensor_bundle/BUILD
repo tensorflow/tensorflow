@@ -12,6 +12,7 @@ load(
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -27,7 +28,6 @@ filegroup(
         "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
-        "//tensorflow/tsl/util/tensor_bundle:mobile_srcs",
     ],
 )
 
@@ -58,6 +58,9 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/lib/io:buffered_file",
+        "@local_tsl//tsl/util:byte_swap_array",
     ],
 )
 
@@ -81,7 +84,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/util/tensor_bundle:byte_swap_array",
+        "@local_tsl//tsl/util:byte_swap_array",
     ],
 )
 
@@ -95,6 +98,12 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -108,6 +117,7 @@ tf_cc_test(
     ],
     deps = [
         ":byteswaptensor",
+        ":naming",
         ":tensor_bundle",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

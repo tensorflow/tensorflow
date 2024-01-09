@@ -26,12 +26,16 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import input_util
+from tensorflow.python.distribute import load_context
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as base_cluster_resolver
+from tensorflow.python.distribute.coordinator import cluster_coordinator
+from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
@@ -43,19 +47,26 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import server_lib
-from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
+from tsl.protobuf import coordination_config_pb2
 
 
 ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
+# This sets the coordination service's internal heartbeat timeout. In testing, a
+# value of 1 led to some spurious reports of unavailability, so a higher value
+# is used. Refer to the discussion in b/249134783 for more.
+_HEARTBEAT_TIMEOUT_SECS = 5
 
-cluster_coordinator = LazyLoader(
-    "cluster_coordinator", globals(),
-    "tensorflow.python.distribute.coordinator.cluster_coordinator"
-)
+# Set the number of retries during initial connection for fault tolerance.
+# Retries follow an exponential backoff waiting period as defined in the
+# runtime, with min value 1ms, max value 10s, and exponent 1.3. So 50 retries
+# enables ~3 minutes of retrying. In general, this means the first 35 retries
+# consist of 42 seconds of backoff waiting, and each subsequent retry waits for
+# 10 seconds. So to enable 30 minutes of retrying, we would want
+# 35 + (30 * 60 - 42) // 10 = 210 retries.
+_SET_SERVER_DEF_RETRIES = 50
 
 
 @tf_export(
@@ -423,7 +434,7 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   """
 
   # pyformat: disable
-  def __init__(self, cluster_resolver, variable_partitioner=None):
+  def __init__(self, cluster_resolver: base_cluster_resolver.ClusterResolver, variable_partitioner: sharded_variable.Partitioner = None):
     """Initializes the TF2 parameter server strategy.
 
     This initializes the `tf.distribute.experimental.ParameterServerStrategy`
@@ -472,6 +483,8 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
         "`tf.distribute.experimental.ParameterServerStrategy` is initialized "
         "with cluster_spec: %s", cluster_resolver.cluster_spec())
 
+    if os.getenv("TF_PSS_ENABLE_COORDINATION_SERVICE"):
+      self._configure_coordination_service(cluster_resolver.cluster_spec())
     # TODO(b/167894802): Make coordinator, worker, and ps names customizable.
     self._connect_to_cluster(coordinator_name="chief")
     self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
@@ -482,8 +495,27 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     self._should_use_with_coordinator = True
     # Used while constructing distributed iterators.
     self._canonicalize_devices = False
+    # Used to check if isinstance() without having to import this module
+    self._is_parameter_server_strategy_v2 = True
 
-  def _connect_to_cluster(self, coordinator_name):
+  def _configure_coordination_service(self, cluster_spec: base_cluster_resolver.ClusterSpec):
+    if context.context().coordination_service is None:
+      coordinated_jobs = ["worker", "ps"]
+      coordinated_job_config = []
+      for job in coordinated_jobs:
+        if job in cluster_spec.jobs:
+          coordinated_job_config.append(
+              coordination_config_pb2.CoordinatedJob(
+                  name=job,
+                  num_tasks=cluster_spec.num_tasks(job)))
+      context.context().configure_coordination_service(
+          service_type="standalone",
+          service_leader=multi_worker_util.coordination_leader(
+              cluster_spec),
+          heartbeat_timeout_in_ms=_HEARTBEAT_TIMEOUT_SECS * 1000,
+          allow_new_incarnation_to_reconnect=True)
+
+  def _connect_to_cluster(self, coordinator_name: str):
     if coordinator_name in ["worker", "ps"]:
       raise ValueError("coordinator name should not be 'worker' or 'ps'.")
     cluster_spec = self._cluster_resolver.cluster_spec()
@@ -523,7 +555,13 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "ps_strategy_num_ps").set(self._num_ps)
 
-  def _verify_args_and_config(self, cluster_resolver):
+    # Explicitly connect to the cluster here. Enable retries in case of worker
+    # preemptions during connection.
+    context.set_server_def_retries(_SET_SERVER_DEF_RETRIES)
+    # Perform connection by initializing context.
+    context.ensure_initialized()
+
+  def _verify_args_and_config(self, cluster_resolver: base_cluster_resolver.ClusterResolver):
     if not cluster_resolver.cluster_spec():
       raise ValueError("Cluster spec must be non-empty in "
                        "`tf.distribute.cluster_resolver.ClusterResolver`.")
@@ -541,19 +579,25 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
 
 
 class ParameterServerStrategyV2Extended(
-    parameter_server_strategy.ParameterServerStrategyExtended):
+    parameter_server_strategy.ParameterServerStrategyExtended
+):
   """Extended class for ParameterServerStrategyV2.
 
   Please see `tf.distribute.StrategyExtended` doc for more information.
   """
 
-  def __init__(self, container_strategy, cluster_resolver,
-               variable_partitioner):
+  def __init__(
+      self,
+      container_strategy,
+      cluster_resolver: base_cluster_resolver.ClusterResolver,
+      variable_partitioner,
+  ):
     """Initialization of ParameterServerStrategyV2Extended."""
     super(ParameterServerStrategyV2Extended, self).__init__(container_strategy)
     self._num_ps = len(cluster_resolver.cluster_spec().as_dict().get("ps", []))
-    self._num_workers = len(cluster_resolver.cluster_spec().as_dict().get(
-        "worker", []))
+    self._num_workers = len(
+        cluster_resolver.cluster_spec().as_dict().get("worker", [])
+    )
     self._variable_count = 0
 
     self._variable_partitioner = variable_partitioner
@@ -626,6 +670,11 @@ class ParameterServerStrategyV2Extended(
 
       return variable_creator_single_replica
 
+  def _create_per_worker_variable(self, next_creator, **kwargs):
+    """Create an unsynced, unaggregated variable on each worker."""
+    return ps_values.PerWorkerVariable(
+        self._container_strategy(), next_creator, **kwargs)
+
   def _create_variable(self, next_creator, **kwargs):
     """Implements StrategyExtendedV2._create_variable.
 
@@ -645,6 +694,9 @@ class ParameterServerStrategyV2Extended(
     Returns:
       A `Variable` or `ShardedVariable`.
     """
+    if kwargs.pop("per_worker_variable", False):
+      logging.info("Creating per worker variable")
+      return self._create_per_worker_variable(next_creator, **kwargs)
 
     var_creator = self._create_var_creator(next_creator, **kwargs)
     if "colocate_with" in kwargs:  # Never partition colocated_with variables.
@@ -671,20 +723,24 @@ class ParameterServerStrategyV2Extended(
       v = next_creator(**kwargs)
       if not isinstance(v, resource_variable_ops.UninitializedVariable):
         raise ValueError(
-            "It looks like you are using `ParameterServerStrategy` with a "
-            "`variable_partitioner`, and trying to create a variable without "
-            "specifying `initial_value`. This is not allowed. Please specify the "
-            "`initial_value`.")
+            "It looks like you are using `ParameterServerStrategy` with a"
+            " `variable_partitioner`, and trying to create a variable without"
+            " specifying `initial_value`. This is not allowed. Please specify"
+            " the `initial_value`."
+        )
       elif shape is None or dtype is None:
         raise ValueError(
             "It looks like you are trying to load a `SavedModel` using "
             "`tf.saved_model.load` within a `ParameterServerStrategy` scope, "
-            "but the `SavedModel` is missing shape or dtype information.")
+            "but the `SavedModel` is missing shape or dtype information."
+        )
       else:
+
         def initializer(shape, dtype, **kwargs):
           if "partition_shape" in kwargs:
             shape = kwargs["partition_shape"]
           return array_ops.zeros(shape, dtype)
+
         initial_value = functools.partial(initializer, shape=shape, dtype=dtype)
 
     # Two cases where initial_value can be a callable:
@@ -794,7 +850,11 @@ class ParameterServerStrategyV2Extended(
       with ops.device("/job:ps/task:%d/device:CPU:0" %
                       (self._variable_count % self._num_ps)):
         var = next_creator(**kwargs)
-        logging.debug(
+        log_method = (
+            logging.info if os.getenv("TF_PSS_VERBOSE_VARIABLE_PLACEMENT")
+            else logging.debug
+        )
+        log_method(
             "Creating variable (name:%s, shape:%r) on "
             "/job:ps/task:%d/device:CPU:0", var.name, var.shape,
             (self._variable_count % self._num_ps))
@@ -819,7 +879,7 @@ class ParameterServerStrategyV2Extended(
     # the coordinator which incurs worker-coordinator communication overhead.
 
     def lookup_creator(next_creator, *args, **kwargs):
-      if keras_deps.get_load_context_function()():
+      if load_context.in_load_context():
         return (ps_values.RestoredDistributedTable(
             self._container_strategy(), lambda: next_creator(*args, **kwargs)))  # pylint: disable=protected-access
       else:

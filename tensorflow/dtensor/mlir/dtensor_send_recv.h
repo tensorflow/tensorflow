@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_DTENSOR_SEND_RECV_H_
 #define TENSORFLOW_DTENSOR_MLIR_DTENSOR_SEND_RECV_H_
 
+#include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -40,24 +41,24 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   if (std::is_same<DTensorOp, mlir::TF::DTensorSend>::value) {
     module.walk([&](mlir::Operation* op) {
       if (auto xla_recv_tpu = llvm::dyn_cast<mlir::TF::XlaRecvFromHostOp>(op)) {
-        if (dtensor_op.key() == xla_recv_tpu.key()) {
+        if (dtensor_op.getKey() == xla_recv_tpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto xla_recv_cpu =
                      llvm::dyn_cast<mlir::TF::_XlaRecvAtHostV2Op>(op)) {
-        if (dtensor_op.key() == xla_recv_cpu.key()) {
+        if (dtensor_op.getKey() == xla_recv_cpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto dtensor_recv =
                      llvm::dyn_cast<mlir::TF::DTensorRecv>(op)) {
-        if (dtensor_op.key() == dtensor_recv.key()) {
+        if (dtensor_op.getKey() == dtensor_recv.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto host_recv = llvm::dyn_cast<mlir::TF::_HostRecvOp>(op)) {
-        if (dtensor_op.key() == host_recv.tensor_name()) {
+        if (dtensor_op.getKey() == host_recv.getTensorName()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
@@ -67,29 +68,29 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   } else {
     const bool is_recv = std::is_same<DTensorOp, mlir::TF::DTensorRecv>::value;
     if (!is_recv) {
-      return errors::Internal(
+      return absl::InternalError(
           "Error checking if is same for DTensorOp and DTensorRecv.");
     }
     module.walk([&](mlir::Operation* op) {
       if (auto xla_send_tpu = llvm::dyn_cast<mlir::TF::XlaSendToHostOp>(op)) {
-        if (dtensor_op.key() == xla_send_tpu.key()) {
+        if (dtensor_op.getKey() == xla_send_tpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto xla_send_cpu =
                      llvm::dyn_cast<mlir::TF::_XlaSendFromHostV2Op>(op)) {
-        if (dtensor_op.key() == xla_send_cpu.key()) {
+        if (dtensor_op.getKey() == xla_send_cpu.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto dtensor_send =
                      llvm::dyn_cast<mlir::TF::DTensorSend>(op)) {
-        if (dtensor_op.key() == dtensor_send.key()) {
+        if (dtensor_op.getKey() == dtensor_send.getKey()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
       } else if (auto host_send = llvm::dyn_cast<mlir::TF::_HostSendOp>(op)) {
-        if (dtensor_op.key() == host_send.tensor_name()) {
+        if (dtensor_op.getKey() == host_send.getTensorName()) {
           corresponding_op = op;
           return mlir::WalkResult::interrupt();
         }
@@ -99,7 +100,7 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   }
 
   if (!corresponding_op)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "DTensorSend/DTensorRecv op must have corresponding "
         "DTensorRecv/DTensorSend op.");
 

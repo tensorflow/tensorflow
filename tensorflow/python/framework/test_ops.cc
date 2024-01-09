@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// This file defines ops and op kernels that are only used by Python tests.
+
+#include "tensorflow/python/framework/test_ops.h"
+
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
@@ -66,6 +70,7 @@ REGISTER_OP("GetDeadline")
 
 REGISTER_OP("SleepOp")
     .Input("sleep_seconds: int32")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("SleepIdentityOp")
@@ -73,6 +78,7 @@ REGISTER_OP("SleepIdentityOp")
     .Input("input: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_RESOURCE_HANDLE_OP(StubResource);
@@ -197,6 +203,7 @@ class GetDeadlineOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     if (!ctx->deadline()) {
       ctx->SetStatus(errors::InvalidArgument("Deadline has not ben set."));
+      return;
     }
     Tensor* output;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
@@ -220,6 +227,20 @@ class SleepOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("SleepOp").Device(DEVICE_CPU), SleepOp);
+
+#if GOOGLE_CUDA
+class SleepGpuOp : public OpKernel {
+ public:
+  explicit SleepGpuOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    GpuSleep(ctx, ctx->input(0).scalar<int>()());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("SleepOp").Device(DEVICE_GPU).HostMemory("sleep_seconds"), SleepGpuOp);
+#endif  // GOOGLE_CUDA
 
 class SleepIdentityOp : public OpKernel {
  public:

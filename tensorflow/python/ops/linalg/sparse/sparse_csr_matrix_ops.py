@@ -23,6 +23,7 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -96,7 +97,7 @@ def dense_shape_and_type(matrix):
     ValueError: if `matrix` lacks static handle data containing the dense
       shape and dtype.
   """
-  if not isinstance(matrix, ops.Tensor):
+  if not isinstance(matrix, tensor_lib.Tensor):
     raise TypeError("matrix should be a tensor, but saw: %s" % (matrix,))
   if matrix.dtype != dtypes.variant:
     raise TypeError(
@@ -352,7 +353,9 @@ class CSRSparseMatrix(SparseMatrix):
     return self._csr_matrix
 
   def _from_matrix(self, matrix, handle_data=None):
-    assert isinstance(matrix, ops.Tensor) and matrix.dtype == dtypes.variant
+    assert (
+        isinstance(matrix, tensor_lib.Tensor) and matrix.dtype == dtypes.variant
+    )
     ret = type(self).__new__(type(self))
     # pylint: disable=protected-access
     ret._dtype = self._dtype

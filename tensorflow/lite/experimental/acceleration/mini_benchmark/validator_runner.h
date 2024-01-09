@@ -19,8 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_impl.h"
@@ -59,7 +59,7 @@ class ValidatorRunner {
   // Get results for successfully completed validation runs. The caller can then
   // pick the best configuration based on timings.
   std::vector<const BenchmarkEvent*> GetSuccessfulResults() {
-    return validator_runner_impl_->GetSuccessfulResults();
+    return validator_runner_impl_->GetSuccessfulResultsFromStorage();
   }
 
   // Get results for completed validation runs regardless whether it is
@@ -80,6 +80,7 @@ class ValidatorRunner {
       int64_t timeout_us = kDefaultEventTimeoutUs);
 
  private:
+  const std::string storage_path_;
   FlatbufferStorage<BenchmarkEvent> storage_;
   ErrorReporter* error_reporter_;
   bool triggered_ = false;

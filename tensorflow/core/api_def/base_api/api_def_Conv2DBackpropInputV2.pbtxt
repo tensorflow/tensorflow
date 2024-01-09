@@ -1,0 +1,75 @@
+op {
+  graph_op_name: "Conv2DBackpropInputV2"
+  in_arg {
+    name: "input"
+    description: <<END
+4-D with shape `[batch, in_height, in_width, in_channels]`.
+Only shape of tensor is used.
+END
+  }
+  in_arg {
+    name: "filter"
+    description: <<END
+4-D with shape
+`[filter_height, filter_width, in_channels, out_channels]`.
+END
+  }
+  in_arg {
+    name: "out_backprop"
+    description: <<END
+4-D with shape `[batch, out_height, out_width, out_channels]`.
+Gradients w.r.t. the output of the convolution.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+4-D with shape `[batch, in_height, in_width, in_channels]`.  Gradient
+w.r.t. the input of the convolution.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+The stride of the sliding window for each dimension of the input
+of the convolution. Must be in the same order as the dimension specified with
+format.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  attr {
+    name: "explicit_paddings"
+    description: <<END
+If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+dimension, the amount of padding inserted before and after the dimension is
+`explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+`padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+END
+  }
+  attr {
+    name: "data_format"
+    description: <<END
+Specify the data format of the input and output data. With the
+default format "NHWC", the data is stored in the order of:
+    [batch, in_height, in_width, in_channels].
+Alternatively, the format could be "NCHW", the data storage order of:
+    [batch, in_channels, in_height, in_width].
+END
+  }
+  attr {
+    name: "dilations"
+    description: <<END
+1-D tensor of length 4.  The dilation factor for each dimension of
+`input`. If set to k > 1, there will be k-1 skipped cells between each filter
+element on that dimension. The dimension order is determined by the value of
+`data_format`, see above for details. Dilations in the batch and depth
+dimensions must be 1.
+END
+  }
+  summary: "Computes the gradients of convolution with respect to the input."
+}

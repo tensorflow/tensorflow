@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -325,7 +325,7 @@ class MirrorPadGradOp : public OpKernel {
                                             before, ", ", after,
                                             " not less than ", out_size));
       }
-      output_shape.AddDim(out_size);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(out_size));
     }
 
     if (output_shape == in0.shape()) {

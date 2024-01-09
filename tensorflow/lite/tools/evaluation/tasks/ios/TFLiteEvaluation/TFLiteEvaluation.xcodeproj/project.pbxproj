@@ -1,0 +1,413 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 55;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1F367E8128ADDEE40035EC64 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1F367E8028ADDEE40035EC64 /* AppDelegate.m */; };
+		1F367E8728ADDEE40035EC64 /* EvaluationViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1F367E8628ADDEE40035EC64 /* EvaluationViewController.mm */; };
+		1F367E8A28ADDEE40035EC64 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1F367E8828ADDEE40035EC64 /* Main.storyboard */; };
+		1F367E8C28ADDEE50035EC64 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1F367E8B28ADDEE50035EC64 /* Assets.xcassets */; };
+		1F367E9228ADDEE50035EC64 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 1F367E9128ADDEE50035EC64 /* main.m */; };
+		1F367E9D28ADE3EA0035EC64 /* CoreML.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1F367E9C28ADE3EA0035EC64 /* CoreML.framework */; };
+		1F367E9F28ADE4270035EC64 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1F367E9E28ADE4270035EC64 /* Accelerate.framework */; };
+		1F367EA628B02BEF0035EC64 /* TensorFlowLiteInferenceDiffC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1F367EA528B02BEF0035EC64 /* TensorFlowLiteInferenceDiffC.framework */; };
+		1F367EA728B02BEF0035EC64 /* TensorFlowLiteInferenceDiffC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 1F367EA528B02BEF0035EC64 /* TensorFlowLiteInferenceDiffC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		1F367EAE28B02D9F0035EC64 /* evaluation_params.json in Resources */ = {isa = PBXBuildFile; fileRef = 1F367EAD28B02D9F0035EC64 /* evaluation_params.json */; };
+		1F367EB228B02F500035EC64 /* mobilenet_v2_1.0_224.tflite in Resources */ = {isa = PBXBuildFile; fileRef = 1F367EB128B02F500035EC64 /* mobilenet_v2_1.0_224.tflite */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		1F367EA428AE042F0035EC64 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 8;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				1F367EA728B02BEF0035EC64 /* TensorFlowLiteInferenceDiffC.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		1F367E7C28ADDEE40035EC64 /* TFLiteEvaluation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TFLiteEvaluation.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1F367E7F28ADDEE40035EC64 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		1F367E8028ADDEE40035EC64 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		1F367E9828ADDF1E0035EC64 /* EvaluationViewController.h */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; path = EvaluationViewController.h; sourceTree = "<group>"; };
+		1F367E8628ADDEE40035EC64 /* EvaluationViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = EvaluationViewController.mm; sourceTree = "<group>"; };
+		1F367E8928ADDEE40035EC64 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		1F367E8B28ADDEE50035EC64 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1F367E9028ADDEE50035EC64 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1F367E9128ADDEE50035EC64 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		1F367E9C28ADE3EA0035EC64 /* CoreML.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreML.framework; path = System/Library/Frameworks/CoreML.framework; sourceTree = SDKROOT; };
+		1F367E9E28ADE4270035EC64 /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
+		1F367EA528B02BEF0035EC64 /* TensorFlowLiteInferenceDiffC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = TensorFlowLiteInferenceDiffC.framework; path = TFLiteEvaluation/Frameworks/TensorFlowLiteInferenceDiffC.framework; sourceTree = "<group>"; };
+		1F367EAD28B02D9F0035EC64 /* evaluation_params.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = evaluation_params.json; sourceTree = "<group>"; };
+		1F367EB128B02F500035EC64 /* mobilenet_v2_1.0_224.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = mobilenet_v2_1.0_224.tflite; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1F367E7928ADDEE40035EC64 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1F367E9D28ADE3EA0035EC64 /* CoreML.framework in Frameworks */,
+				1F367E9F28ADE4270035EC64 /* Accelerate.framework in Frameworks */,
+				1F367EA628B02BEF0035EC64 /* TensorFlowLiteInferenceDiffC.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1F367E7328ADDEE40035EC64 = {
+			isa = PBXGroup;
+			children = (
+				1F367E7E28ADDEE40035EC64 /* TFLiteEvaluation */,
+				1F367E7D28ADDEE40035EC64 /* Products */,
+				1F367E9B28ADE3EA0035EC64 /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		1F367E7D28ADDEE40035EC64 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1F367E7C28ADDEE40035EC64 /* TFLiteEvaluation.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1F367E7E28ADDEE40035EC64 /* TFLiteEvaluation */ = {
+			isa = PBXGroup;
+			children = (
+				1F367EAC28B02D9F0035EC64 /* evaluation_data */,
+				1F367E7F28ADDEE40035EC64 /* AppDelegate.h */,
+				1F367E8028ADDEE40035EC64 /* AppDelegate.m */,
+				1F367E9828ADDF1E0035EC64 /* EvaluationViewController.h */,
+				1F367E8628ADDEE40035EC64 /* EvaluationViewController.mm */,
+				1F367E8828ADDEE40035EC64 /* Main.storyboard */,
+				1F367E8B28ADDEE50035EC64 /* Assets.xcassets */,
+				1F367E9028ADDEE50035EC64 /* Info.plist */,
+				1F367E9128ADDEE50035EC64 /* main.m */,
+			);
+			path = TFLiteEvaluation;
+			sourceTree = "<group>";
+		};
+		1F367E9B28ADE3EA0035EC64 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1F367EA528B02BEF0035EC64 /* TensorFlowLiteInferenceDiffC.framework */,
+				1F367E9E28ADE4270035EC64 /* Accelerate.framework */,
+				1F367E9C28ADE3EA0035EC64 /* CoreML.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		1F367EAC28B02D9F0035EC64 /* evaluation_data */ = {
+			isa = PBXGroup;
+			children = (
+				1F367EB128B02F500035EC64 /* mobilenet_v2_1.0_224.tflite */,
+				1F367EAD28B02D9F0035EC64 /* evaluation_params.json */,
+			);
+			path = evaluation_data;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1F367E7B28ADDEE40035EC64 /* TFLiteEvaluation */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1F367E9528ADDEE50035EC64 /* Build configuration list for PBXNativeTarget "TFLiteEvaluation" */;
+			buildPhases = (
+				1F367E7828ADDEE40035EC64 /* Sources */,
+				1F367E7928ADDEE40035EC64 /* Frameworks */,
+				1F367E7A28ADDEE40035EC64 /* Resources */,
+				1F367EA428AE042F0035EC64 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TFLiteEvaluation;
+			productName = TFLiteEvaluation;
+			productReference = 1F367E7C28ADDEE40035EC64 /* TFLiteEvaluation.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1F367E7428ADDEE40035EC64 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1340;
+				TargetAttributes = {
+					1F367E7B28ADDEE40035EC64 = {
+						CreatedOnToolsVersion = 13.4;
+					};
+				};
+			};
+			buildConfigurationList = 1F367E7728ADDEE40035EC64 /* Build configuration list for PBXProject "TFLiteEvaluation" */;
+			compatibilityVersion = "Xcode 13.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1F367E7328ADDEE40035EC64;
+			productRefGroup = 1F367E7D28ADDEE40035EC64 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1F367E7B28ADDEE40035EC64 /* TFLiteEvaluation */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1F367E7A28ADDEE40035EC64 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1F367EAE28B02D9F0035EC64 /* evaluation_params.json in Resources */,
+				1F367EB228B02F500035EC64 /* mobilenet_v2_1.0_224.tflite in Resources */,
+				1F367E8C28ADDEE50035EC64 /* Assets.xcassets in Resources */,
+				1F367E8A28ADDEE40035EC64 /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1F367E7828ADDEE40035EC64 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1F367E8728ADDEE40035EC64 /* EvaluationViewController.mm in Sources */,
+				1F367E9228ADDEE50035EC64 /* main.m in Sources */,
+				1F367E8128ADDEE40035EC64 /* AppDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		1F367E8828ADDEE40035EC64 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				1F367E8928ADDEE40035EC64 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		1F367E9328ADDEE50035EC64 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		1F367E9428ADDEE50035EC64 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.5;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		1F367E9628ADDEE50035EC64 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DF5UT2LC7K;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/TFLiteEvaluation/Frameworks",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TFLiteEvaluation/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = "-all_load";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = google.com.TFLiteEvaluation;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1F367E9728ADDEE50035EC64 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = DF5UT2LC7K;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/TFLiteEvaluation",
+					"$(PROJECT_DIR)/TFLiteEvaluation/Frameworks",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TFLiteEvaluation/Info.plist;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				OTHER_LDFLAGS = "-all_load";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = google.com.TFLiteEvaluation;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1F367E7728ADDEE40035EC64 /* Build configuration list for PBXProject "TFLiteEvaluation" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1F367E9328ADDEE50035EC64 /* Debug */,
+				1F367E9428ADDEE50035EC64 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1F367E9528ADDEE50035EC64 /* Build configuration list for PBXNativeTarget "TFLiteEvaluation" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1F367E9628ADDEE50035EC64 /* Debug */,
+				1F367E9728ADDEE50035EC64 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1F367E7428ADDEE40035EC64 /* Project object */;
+}

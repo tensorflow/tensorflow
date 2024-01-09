@@ -147,7 +147,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
   LogicalResult matchAndRewrite(TFL::DequantizeOp dequant_op,
                                 PatternRewriter& rewriter) const override {
     // We only fold i32 -> float pattern.
-    auto input = dequant_op.input().getDefiningOp();
+    auto input = dequant_op.getInput().getDefiningOp();
     if (!input) return failure();
 
     auto input_dequant = llvm::dyn_cast_or_null<TFL::QConstOp>(input);
@@ -156,7 +156,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
     if (!IsQI32Type(input_dequant.getType())) return failure();
 
     auto output_type =
-        dequant_op.output().getType().dyn_cast_or_null<ShapedType>();
+        dequant_op.getOutput().getType().dyn_cast_or_null<ShapedType>();
     if (!output_type || !output_type.getElementType().isF32()) return failure();
 
     auto input_type = input_dequant.getType().dyn_cast<ShapedType>();
@@ -168,7 +168,7 @@ struct FoldQuantizedI32ToFloat : public OpRewritePattern<TFL::DequantizeOp> {
     const float scale = q_type.getScale();
     const float zp = q_type.getZeroPoint();
 
-    auto input_values = input_dequant.value();
+    auto input_values = input_dequant.getValue();
 
     // mapValues always takes a function returning APInt, even when the output
     // is actually float.

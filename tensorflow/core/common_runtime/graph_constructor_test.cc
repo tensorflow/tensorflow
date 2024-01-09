@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 
+#include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -63,13 +66,12 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_FALSE(status.ok());
 
     for (const string& error : expected_error_strs) {
-      EXPECT_TRUE(status.error_message().find(error) != string::npos)
+      EXPECT_TRUE(absl::StrContains(status.message(), error))
           << "Expected to find '" << error << "' in " << status;
     }
 
     if (!not_expected_error_str.empty()) {
-      EXPECT_TRUE(status.error_message().find(not_expected_error_str) ==
-                  string::npos)
+      EXPECT_TRUE(!absl::StrContains(status.message(), not_expected_error_str))
           << "Expected not to find '" << not_expected_error_str << "' in "
           << status;
     }
@@ -89,7 +91,7 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_FALSE(status.ok());
 
     for (const string& error : expected_error_strs) {
-      EXPECT_TRUE(status.error_message().find(error) != string::npos)
+      EXPECT_TRUE(absl::StrContains(status.message(), error))
           << "Expected to find '" << error << "' in " << status;
     }
 
@@ -1166,9 +1168,9 @@ node {
   def.mutable_versions()->set_producer(10);
   s = ImportGraphDef(ImportGraphDefOptions(), def, &g2, nullptr);
   EXPECT_EQ(error::UNIMPLEMENTED, s.code());
-  EXPECT_TRUE(s.error_message().find("BatchNormWithGlobalNormalization is not "
-                                     "available in GraphDef version 10") !=
-              string::npos)
+  EXPECT_TRUE(absl::StrContains(s.message(),
+                                "BatchNormWithGlobalNormalization is not "
+                                "available in GraphDef version 10"))
       << s;
 }
 
@@ -2450,18 +2452,18 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   EXPECT_EQ(3, graph_.num_edges());
   const string original_graph_description = GraphDebugString();
 
-#define EXPECT_IMPORT_FAILURE(graph_def, options, expected_err)             \
-  do {                                                                      \
-    Status s = ImportGraphDef(options, graph_def, &graph_, nullptr);        \
-    EXPECT_NE(OkStatus(), s) << s;                                          \
-    EXPECT_TRUE(s.error_message().find(expected_err) != string::npos) << s; \
-    const string graph_description = GraphDebugString();                    \
-    EXPECT_EQ(original_graph_description, graph_description);               \
-    EXPECT_EQ(3, graph_.num_nodes());                                       \
-    EXPECT_TRUE(HasControlEdge(source, sink));                              \
-    EXPECT_TRUE(HasControlEdge(source, "scope/A"));                         \
-    EXPECT_TRUE(HasControlEdge("scope/A", sink));                           \
-    EXPECT_EQ(3, graph_.num_edges());                                       \
+#define EXPECT_IMPORT_FAILURE(graph_def, options, expected_err)       \
+  do {                                                                \
+    Status s = ImportGraphDef(options, graph_def, &graph_, nullptr);  \
+    EXPECT_NE(OkStatus(), s) << s;                                    \
+    EXPECT_TRUE(s.message().find(expected_err) != string::npos) << s; \
+    const string graph_description = GraphDebugString();              \
+    EXPECT_EQ(original_graph_description, graph_description);         \
+    EXPECT_EQ(3, graph_.num_nodes());                                 \
+    EXPECT_TRUE(HasControlEdge(source, sink));                        \
+    EXPECT_TRUE(HasControlEdge(source, "scope/A"));                   \
+    EXPECT_TRUE(HasControlEdge("scope/A", sink));                     \
+    EXPECT_EQ(3, graph_.num_edges());                                 \
   } while (0)
 
   EXPECT_IMPORT_FAILURE(def, opts,
@@ -2731,9 +2733,9 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
   // Check that Inner and Outer have been imported
   const OpDef* op_def;
   Status s = graph_.op_registry()->LookUpOpDef("Inner_d03c39a3", &op_def);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   s = graph_.op_registry()->LookUpOpDef("Outer_966fa13d", &op_def);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
 
   // Re-serialize and run the graph. This tests that re-serialized functions can
   // be imported again and that imported functions can be run.
@@ -2741,7 +2743,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
   graph_.ToGraphDef(&gdef);
   std::unique_ptr<Session> sess(NewSession(SessionOptions()));
   s = sess->Create(gdef);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
 
   Tensor p1(DT_FLOAT, TensorShape({1}));
   p1.scalar<float>()() = 1.0;
@@ -2753,7 +2755,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
   std::vector<string> target_names;
   std::vector<Tensor> outputs;
   s = sess->Run(inputs, output_names, target_names, &outputs);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
 
   ASSERT_EQ(outputs.size(), 1);
   EXPECT_EQ(outputs[0].scalar<float>()(), 3.0);
@@ -3253,9 +3255,259 @@ TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
       {"Make sure the Op and Kernel are registered in the "
        "binary running in this process. Note that if you "
        "are loading a saved graph which used ops from "
-       "tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
+       "tf.contrib (e.g. `tf.contrib.resampler`), accessing should be done "
        "before importing the graph, as contrib ops are lazily registered "
        "when the module is first accessed."});
+}
+
+TEST_F(GraphConstructorTest, GraphDebugInfo_Node_StackTrace_Deserialize) {
+  ExpectOK(R"(
+    node     {
+      name: "w1"
+      op: "TestParams"
+    }
+    node {
+      name: "input"
+      op: "TestInput"
+    }
+    node {
+      name: "t1"
+      op: "TestMul"
+      input: "w1"
+      input: "input:1"
+    }
+    debug_info {
+      files: "alpha.cc"
+      files: "beta.cc"
+      files: "gamma.cc"
+      traces {
+        key: "w1"
+        value {
+          file_line_cols {
+            file_index: 0
+            line: 20
+            func: "foo"
+          }
+          file_line_cols {
+            file_index: 1
+            line: 30
+            func: "bar"
+          }
+        }
+      }
+      traces {
+        key: "input"
+        value {
+          file_line_cols {
+            file_index: 0
+            line: 20
+            func: "foo"
+          }
+          file_line_cols {
+            file_index: 2
+            line: 35
+            func: "tree"
+          }
+        }
+      }
+      traces {
+        key: "a1@foo"
+        value {
+          file_line_cols {
+            file_index: 0
+            line: 20
+            func: "foo"
+          }
+          file_line_cols {
+            file_index: 1
+            line: 30
+            func: "bar"
+          }
+        }
+      }
+  })");
+
+  Node* w1 = FindNode("w1");
+  EXPECT_NE(w1, nullptr);
+  const std::shared_ptr<AbstractStackTrace>& w1_stack = w1->GetStackTrace();
+  EXPECT_NE(w1_stack, nullptr);
+  EXPECT_EQ(w1_stack->ToString({}),
+            "File \"alpha.cc\", line 20, in foo\n"
+            "File \"beta.cc\", line 30, in bar");
+
+  Node* input = FindNode("input");
+  EXPECT_NE(input, nullptr);
+  const std::shared_ptr<AbstractStackTrace>& input_stack =
+      input->GetStackTrace();
+  EXPECT_NE(input_stack, nullptr);
+  EXPECT_EQ(input_stack->ToString({}),
+            "File \"alpha.cc\", line 20, in foo\n"
+            "File \"gamma.cc\", line 35, in tree");
+}
+
+TEST_F(GraphConstructorTest,
+       GraphDebugInfo_Node_StackTrace_Deserialize_InvalidFileIndex) {
+  ExpectOK(R"(
+    node     {
+      name: "w1"
+      op: "TestParams"
+    }
+    node {
+      name: "input"
+      op: "TestInput"
+    }
+    node {
+      name: "t1"
+      op: "TestMul"
+      input: "w1"
+      input: "input:1"
+    }
+    debug_info {
+      files: "alpha.cc"
+      files: "beta.cc"
+      files: "gamma.cc"
+      traces {
+        key: "w1"
+        value {
+          file_line_cols {
+            file_index: 2
+            line: 20
+            func: "foo"
+          }
+          file_line_cols {
+            file_index: -1
+            line: 30
+            func: "negative_index"
+          }
+          file_line_cols {
+            file_index: 3
+            line: 40
+            func: "index_ge_length"
+          }
+        }
+      }
+  })");
+
+  Node* w1 = FindNode("w1");
+  EXPECT_NE(w1, nullptr);
+  const std::shared_ptr<AbstractStackTrace>& w1_stack = w1->GetStackTrace();
+  EXPECT_NE(w1_stack, nullptr);
+  EXPECT_EQ(w1_stack->ToString({}),
+            "File \"gamma.cc\", line 20, in foo\n"
+            "File \"<UNKNOWN_FILE_NAME>\", line 30, in negative_index\n"
+            "File \"<UNKNOWN_FILE_NAME>\", line 40, in index_ge_length");
+}
+
+TEST_F(GraphConstructorTest,
+       GraphDebugInfo_FunctionLibrary_StackTrace_Deserialize) {
+  ExpectOK(R"(
+    node     {
+      name: "a"
+      op: "TestParams"
+    }
+    node {
+      name: "b"
+      op: "TestInput"
+    }
+    node {
+      name: "t1"
+      op: "TestMul"
+      input: "a"
+      input: "b:1"
+    }
+    library {
+      function {
+        signature { name: "foo" }
+        node_def { name: "a1" }
+        node_def { name: "a2" }
+      }
+      function {
+        signature { name: "bar" }
+        node_def { name: "b1" }
+        node_def { name: "b2" }
+      }
+    }
+    debug_info {
+      files: "alpha.cc"
+      files: "beta.cc"
+      files: "gamma.cc"
+      files: "delta.cc"
+      traces {
+        key: "input"
+        value {
+          file_line_cols { file_index: 0 line: 20 func: "foo" }
+          file_line_cols { file_index: 2 line: 35 func: "tree" }
+        }
+      }
+      traces {
+        key: "a1@foo"
+        value {
+          file_line_cols { file_index: 0 line: 20 func: "jazz" }
+          file_line_cols { file_index: 1 line: 30 func: "buzz" }
+        }
+      }
+      traces {
+        key: "a2@foo"
+        value {
+          file_line_cols { file_index: 1 line: 25 func: "fuzz" }
+          file_line_cols { file_index: 2 line: 35 func: "fizz" }
+        }
+      }
+      traces {
+        key: "b1@bar"
+        value {
+          file_line_cols { file_index: 0 line: 23 func: "chez" }
+          file_line_cols { file_index: 3 line: 33 func: "whiz" }
+        }
+      }
+      traces {
+        key: "b2@bar"
+        value {
+          file_line_cols { file_index: 1 line: 24 func: "quip" }
+          file_line_cols { file_index: 3 line: 34 func: "jape" }
+        }
+      }
+  })");
+
+  const FunctionLibraryDefinition& flib_def = graph_.flib_def();
+
+  core::RefCountPtr<FunctionRecord> foo_function_record =
+      flib_def.FindRecord("foo");
+  EXPECT_NE(foo_function_record.get(), nullptr);
+  const StackTracesMap& foo_stack_traces = foo_function_record->stack_traces();
+  auto a1_iter = foo_stack_traces.find("a1");
+  EXPECT_NE(a1_iter, foo_stack_traces.end());
+  std::shared_ptr<AbstractStackTrace> a1_stack_trace = a1_iter->second;
+  EXPECT_NE(a1_stack_trace.get(), nullptr);
+  EXPECT_EQ(a1_stack_trace->ToString({}),
+            "File \"alpha.cc\", line 20, in jazz\n"
+            "File \"beta.cc\", line 30, in buzz");
+  auto a2_iter = foo_stack_traces.find("a2");
+  EXPECT_NE(a2_iter, foo_stack_traces.end());
+  std::shared_ptr<AbstractStackTrace> a2_stack_trace = a2_iter->second;
+  EXPECT_NE(a2_stack_trace.get(), nullptr);
+  EXPECT_EQ(a2_stack_trace->ToString({}),
+            "File \"beta.cc\", line 25, in fuzz\n"
+            "File \"gamma.cc\", line 35, in fizz");
+
+  core::RefCountPtr<FunctionRecord> bar_function_record =
+      flib_def.FindRecord("bar");
+  EXPECT_NE(bar_function_record.get(), nullptr);
+  const StackTracesMap& bar_stack_traces = bar_function_record->stack_traces();
+  auto b1_iter = bar_stack_traces.find("b1");
+  EXPECT_NE(b1_iter, bar_stack_traces.end());
+  std::shared_ptr<AbstractStackTrace> b1_stack_trace = b1_iter->second;
+  EXPECT_NE(b1_stack_trace.get(), nullptr);
+  EXPECT_EQ(b1_stack_trace->ToString({}),
+            "File \"alpha.cc\", line 23, in chez\n"
+            "File \"delta.cc\", line 33, in whiz");
+  auto b2_iter = bar_stack_traces.find("b2");
+  EXPECT_NE(b2_iter, bar_stack_traces.end());
+  std::shared_ptr<AbstractStackTrace> b2_stack_trace = b2_iter->second;
+  EXPECT_NE(b2_stack_trace.get(), nullptr);
+  EXPECT_EQ(b2_stack_trace->ToString({}),
+            "File \"beta.cc\", line 24, in quip\n"
+            "File \"delta.cc\", line 34, in jape");
 }
 
 }  // namespace

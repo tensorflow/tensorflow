@@ -136,16 +136,16 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
     // then we keep them as VarHandleOps.
     if (!VariableIsInitialized(var_handle_op)) continue;
 
-    llvm::StringRef name = var_handle_op.shared_nameAttr().getValue();
+    llvm::StringRef name = var_handle_op.getSharedNameAttr().getValue();
     auto it = var_arg_index_by_name.insert({name, func_arg_types.size()});
     if (it.second) {
       var_handle_shared_names->emplace_back(name);
-      auto resource_type = var_handle_op.resource().getType();
+      auto resource_type = var_handle_op.getResource().getType();
       func_arg_types.push_back(resource_type);
-      var_handle_op.resource().replaceAllUsesWith(
+      var_handle_op.getResource().replaceAllUsesWith(
           block.addArgument(resource_type, var_handle_op.getLoc()));
     } else {
-      var_handle_op.resource().replaceAllUsesWith(
+      var_handle_op.getResource().replaceAllUsesWith(
           block.getArgument(it.first->getSecond()));
     }
     var_handle_op.erase();
@@ -226,28 +226,28 @@ LogicalResult PromoteResourcesToArguments(
   // live value.
   for (Operation& op : llvm::make_early_inc_range(block)) {
     if (auto read_op = llvm::dyn_cast<TF::ReadVariableOp>(&op)) {
-      if (auto func_arg = read_op.resource().dyn_cast<BlockArgument>()) {
+      if (auto func_arg = read_op.getResource().dyn_cast<BlockArgument>()) {
         if (func_arg.getOwner() != &block)
           return read_op.emitOpError(kResourceFunctionMsg);
 
         ResourceInfo& resource_info = resources[func_arg.getArgNumber()];
         resource_info.read = true;
-        read_op.value().replaceAllUsesWith(resource_info.live_value);
+        read_op.getValue().replaceAllUsesWith(resource_info.live_value);
       } else {
         return read_op.emitOpError(kInvalidResourceMsg);
       }
 
       read_op.erase();
     } else if (auto write_op = llvm::dyn_cast<TF::AssignVariableOp>(&op)) {
-      if (auto func_arg = write_op.resource().dyn_cast<BlockArgument>()) {
+      if (auto func_arg = write_op.getResource().dyn_cast<BlockArgument>()) {
         if (func_arg.getOwner() != &block)
           return write_op.emitOpError(kResourceFunctionMsg);
 
         ResourceInfo& resource_info = resources[func_arg.getArgNumber()];
         resource_info.write = true;
-        resource_info.live_value = write_op.value();
+        resource_info.live_value = write_op.getValue();
       } else {
-        return read_op.emitOpError(kInvalidResourceMsg);
+        return write_op.emitOpError(kInvalidResourceMsg);
       }
 
       write_op.erase();

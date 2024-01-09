@@ -1,7 +1,8 @@
 path: "tensorflow.distribute.DistributedDataset"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.input_lib.DistributedDatasetInterface\'>"
-  is_instance: "<class \'collections.abc.Iterable\'>"
+  is_instance: "<class \'tensorflow.python.types.distribute.DistributedDatasetInterface\'>"
+  is_instance: "<class \'tensorflow.python.types.distribute.Iterable\'>"
+  is_instance: "<type \'object\'>"
   member {
     name: "element_spec"
     mtype: "<type \'property\'>"

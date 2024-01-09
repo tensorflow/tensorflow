@@ -22,32 +22,30 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/lib/gtl/inlined_vector.h"
-#include "tensorflow/tsl/lib/random/simple_philox.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/strcat.h"
-#include "tensorflow/tsl/platform/test.h"
-#include "tensorflow/tsl/platform/test_benchmark.h"
-#include "tensorflow/tsl/platform/threadpool.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/lib/gtl/inlined_vector.h"
+#include "tsl/lib/random/simple_philox.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
+#include "tsl/platform/threadpool.h"
+#include "tsl/platform/types.h"
 
 namespace tsl {
 namespace {
+using stream_executor::GPUMachineManager;
 using tensorflow::BinSummary;
-using tensorflow::DeviceIdUtil;
 using tensorflow::DeviceMemAllocator;
 using tensorflow::GPUBFCAllocator;
-using tensorflow::GPUMachineManager;
 using tensorflow::GPUOptions;
 using tensorflow::TypedAllocator;
 
@@ -74,10 +72,9 @@ std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
     size_t virtual_address_space_size = 1ull << 32) {
   PlatformDeviceId gpu_id(0);
   auto executor =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .value();
+      GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
   auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
-      executor->implementation()->GpuContextHack());
+      executor->platform_specific_handle().context);
   return tensorflow::GpuVirtualMemAllocator::Create(
              {}, {}, *gpu_context, gpu_id, virtual_address_space_size, {})
       .value();
@@ -87,9 +84,8 @@ std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
 std::unique_ptr<SubAllocator> CreateGPUMemAllocator(size_t) {
   PlatformDeviceId gpu_id(0);
   return absl::WrapUnique(new DeviceMemAllocator(
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .value(),
-      gpu_id, /*use_unified_memory=*/false, {}, {}));
+      GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value(), gpu_id,
+      /*use_unified_memory=*/false, {}, {}));
 }
 
 std::unique_ptr<SubAllocator> CreateSubAllocator(

@@ -42,6 +42,8 @@ table Environment {
 // ones. The thousand part of the value represents the optimization technique
 // and the later part is to distinguish different modes of that technique.
 enum ModelOptimizationMode : int32 {
+  // 0 is reserved as a placeholder
+
   PTQ_FLOAT16 = 1001,
   PTQ_DYNAMIC_RANGE = 1002,
   PTQ_FULL_INTEGER = 1003,

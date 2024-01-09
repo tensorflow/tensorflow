@@ -18,16 +18,21 @@ limitations under the License.
 #include <stddef.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
+
+using testing::ElementsAreArray;
 
 TEST(ConvertVectorToTfLiteIntArray, TestWithVector) {
   std::vector<int> input = {1, 2};
@@ -136,6 +141,56 @@ TEST(MultiplyAndCheckOverflow, Validate) {
   EXPECT_TRUE(MultiplyAndCheckOverflow(1, 2, &res) == kTfLiteOk);
   EXPECT_FALSE(MultiplyAndCheckOverflow(static_cast<size_t>(123456789023),
                                         1223423425, &res) == kTfLiteOk);
+}
+
+TEST(FourBitTest, BytesRequiredEven) {
+  TfLiteContext context;
+
+  int dims[] = {2, 3, 1, 5};
+  const int* dims_ptr = &dims[0];
+  size_t dims_size = 4;
+  size_t required_bytes_four_bit;
+  tflite::BytesRequired(kTfLiteInt4, dims_ptr, dims_size,
+                        &required_bytes_four_bit, &context);
+
+  ASSERT_EQ(required_bytes_four_bit, 15);
+}
+
+TEST(FourBitTest, BytesRequiredOdd) {
+  TfLiteContext context;
+
+  int dims[] = {5, 1, 1, 1};
+  const int* dims_ptr = &dims[0];
+  size_t dims_size = 2;
+  size_t required_bytes_four_bit;
+  tflite::BytesRequired(kTfLiteInt4, dims_ptr, dims_size,
+                        &required_bytes_four_bit, &context);
+
+  ASSERT_EQ(required_bytes_four_bit, 3);
+}
+
+TEST(TestMakeUniqueTensor, Valid) {
+  TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2, 3}, kTfLiteDynamic);
+  ASSERT_NE(t.get(), nullptr);
+  ASSERT_EQ(t->buffer_handle, kTfLiteNullBufferHandle);
+
+  EXPECT_THAT(t.get(), DimsAre({2, 3}));
+  EXPECT_EQ(t->bytes, 24);
+
+  EXPECT_EQ(t->type, kTfLiteInt32);
+  EXPECT_EQ(t->allocation_type, kTfLiteDynamic);
+
+  // Check memory has been properly allocated.
+  int* data = t->data.i32;
+  std::fill_n(data, 6, 0);
+  ASSERT_NE(data, nullptr);
+  ASSERT_THAT(std::vector<int>(data, data + 6),
+              ElementsAreArray({0, 0, 0, 0, 0, 0}));
+}
+
+TEST(TestMakeUniqueTensor, NullDimsReturnsNull) {
+  TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, nullptr, kTfLiteDynamic);
+  ASSERT_EQ(t.get(), nullptr);
 }
 
 }  // namespace

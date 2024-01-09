@@ -25,7 +25,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 
 def _test_combinations():
   def assert_greater(x):
-    assert_op = control_flow_ops.Assert(math_ops.greater(x, -1), [x])
+    assert_op = control_flow_assert.Assert(math_ops.greater(x, -1), [x])
     with ops.control_dependencies([assert_op]):
       return x
 

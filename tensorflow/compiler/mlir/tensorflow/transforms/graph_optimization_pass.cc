@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
 
+#include <string>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -33,7 +35,8 @@ using Graph = ::tensorflow::Graph;
 }  // namespace
 
 Status MlirGraphOptimizationPass::Run(
-    const ConfigProto& config_proto, ModuleOp module, const Graph& graph,
+    const std::string& function_name, const ConfigProto& config_proto,
+    ModuleOp module, const Graph& graph,
     const tensorflow::FunctionLibraryDefinition& function_library) {
   if (GetPassState(/*device_set=*/nullptr, config_proto, graph,
                    function_library) ==

@@ -18,11 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
@@ -44,24 +42,6 @@ struct DataServiceParams final {
   TargetWorkers target_workers = TargetWorkers::TARGET_WORKERS_UNSPECIFIED;
   DataServiceMetadata metadata;
   std::optional<CrossTrainerCacheOptions> cross_trainer_cache_options;
-};
-
-// Container to hold the result of a `GetNext` call.
-struct GetNextResult final {
-  explicit GetNextResult() = default;
-  GetNextResult(const GetNextResult&) = delete;
-  GetNextResult& operator=(const GetNextResult&) = delete;
-  GetNextResult(GetNextResult&&) = default;
-  GetNextResult& operator=(GetNextResult&&) = delete;
-
-  static GetNextResult EndOfSequence() {
-    GetNextResult result;
-    result.end_of_sequence = true;
-    return result;
-  }
-
-  std::vector<Tensor> tensors;
-  bool end_of_sequence = false;
 };
 
 }  // namespace data

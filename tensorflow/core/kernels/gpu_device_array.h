@@ -114,7 +114,8 @@ class GpuDeviceArrayOnHost {
   Tensor out_of_line_values_on_host_;
   Tensor out_of_line_values_on_gpu_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuDeviceArrayOnHost);
+  GpuDeviceArrayOnHost(const GpuDeviceArrayOnHost&) = delete;
+  void operator=(const GpuDeviceArrayOnHost&) = delete;
 };
 
 }  // namespace tensorflow

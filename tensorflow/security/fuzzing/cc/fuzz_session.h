@@ -22,7 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "testing/fuzzing/fuzztest.h"
+#include "fuzztest/fuzztest.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -43,13 +43,13 @@ limitations under the License.
     }                                                                     \
   }
 
-#define BINARY_INPUT_OP_FUZZER(dtype, opName)                                  \
+#define BINARY_INPUT_OP_FUZZER(dtype1, dtype2, opName)                         \
   class Fuzz##opName : public FuzzSession<Tensor, Tensor> {                    \
     void BuildGraph(const Scope& scope) override {                             \
       auto op_node1 =                                                          \
-          tensorflow::ops::Placeholder(scope.WithOpName("input1"), dtype);     \
+          tensorflow::ops::Placeholder(scope.WithOpName("input1"), dtype1);    \
       auto op_node2 =                                                          \
-          tensorflow::ops::Placeholder(scope.WithOpName("input2"), dtype);     \
+          tensorflow::ops::Placeholder(scope.WithOpName("input2"), dtype2);    \
       tensorflow::ops::opName(scope.WithOpName("output"), op_node1, op_node2); \
     }                                                                          \
     void FuzzImpl(const Tensor& input_tensor1,                                 \
@@ -96,7 +96,7 @@ template <typename... T>
 class FuzzSession {
  public:
   FuzzSession() : initialized_(false) {}
-  virtual ~FuzzSession() {}
+  virtual ~FuzzSession() = default;
 
   // Constructs a Graph using the supplied Scope.
   // By convention, the graph should have inputs named "input1", ...
@@ -132,7 +132,7 @@ class FuzzSession {
       // within a session.  Failure to create the session means we
       // can't send any data to the op.
       LOG(FATAL) << "Could not create session: "  // Crash OK
-                 << status.error_message();
+                 << status.message();
     }
     return status;
   }
@@ -157,7 +157,7 @@ class FuzzSession {
   void Fuzz(const T&... args) {
     Status status = InitIfNeeded();
     TF_CHECK_OK(status) << "Fuzzer graph initialization failed: "
-                        << status.error_message();
+                        << status.message();
     // No return value from fuzzing:  Success is defined as "did not
     // crash".  The actual application results are irrelevant.
     FuzzImpl(args...);

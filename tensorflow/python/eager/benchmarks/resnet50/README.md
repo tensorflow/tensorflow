@@ -15,10 +15,10 @@ Using a synthetic data, run:
 
 ```
 # Using eager execution
-python resnet50_test.py --benchmarks=.
+python resnet50_test.py --benchmark_filter=.
 
 # Using graph execution
-python resnet50_graph_test.py --benchmarks=.
+python resnet50_graph_test.py --benchmark_filter=.
 ```
 
 The above uses the model definition included with the TensorFlow pip
@@ -26,10 +26,10 @@ package. To build (and run benchmarks) from source:
 
 ```
 # Using eager execution
-bazel run -c opt --config=cuda :resnet50_test -- --benchmarks=.
+bazel run -c opt --config=cuda :resnet50_test -- --benchmark_filter=.
 
 # Using graph execution
-bazel run -c opt --config=cuda :resnet50_graph_test -- --benchmarks=.
+bazel run -c opt --config=cuda :resnet50_graph_test -- --benchmark_filter=.
 ```
 
 (Or remove the `--config=cuda` flag for running on CPU instead of GPU).

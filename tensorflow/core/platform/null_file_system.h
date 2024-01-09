@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_NULL_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_NULL_FILE_SYSTEM_H_
 
-#include "tensorflow/tsl/platform/null_file_system.h"
+#include "tsl/platform/null_file_system.h"
 
 namespace tensorflow {
 #ifndef SWIG

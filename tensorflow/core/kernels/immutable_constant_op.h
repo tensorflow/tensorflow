@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/env.h"
@@ -41,7 +41,8 @@ class ImmutableConstantOp : public OpKernel {
   string region_name_;
   DataType dtype_;
   TensorShape shape_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ImmutableConstantOp);
+  ImmutableConstantOp(const ImmutableConstantOp&) = delete;
+  void operator=(const ImmutableConstantOp&) = delete;
 };
 
 }  // namespace tensorflow

@@ -23,7 +23,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -119,12 +119,13 @@ class SpaceToDepthOp : public OpKernel {
 
     // Allocate output tensor.
     Tensor* outputs_tensor = nullptr;
+    TensorShape outputs_tensor_shape;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0,
-                       ShapeFromFormat(data_format_, batch_size, output_height,
-                                       output_width, output_depth),
-                       &outputs_tensor));
+                   ShapeFromFormatWithStatus(
+                       data_format_, batch_size, output_height, output_width,
+                       output_depth, &outputs_tensor_shape));
+    OP_REQUIRES_OK(context, context->allocate_output(0, outputs_tensor_shape,
+                                                     &outputs_tensor));
 
     if (std::is_same<Device, GPUDevice>::value) {
       using RT = typename RawType<T>::type;
@@ -208,6 +209,10 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
     SpaceToDepthOp<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(Name("SpaceToDepth")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::bfloat16>("T"),
+                        SpaceToDepthOp<GPUDevice, Eigen::bfloat16>);
 REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     SpaceToDepthOp<GPUDevice, qint8>);

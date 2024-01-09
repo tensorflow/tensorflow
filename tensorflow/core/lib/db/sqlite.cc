@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/lib/db/sqlite.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
@@ -22,49 +23,49 @@ extern "C" int sqlite3_snapfn_init(sqlite3*, const char**, const void*);
 namespace tensorflow {
 namespace {
 
-error::Code GetTfErrorCode(int code) {
+absl::StatusCode GetTfErrorCode(int code) {
   // See: https://sqlite.org/rescode.html
   switch (code & 0xff) {
     case SQLITE_OK:    // Successful result
     case SQLITE_ROW:   // Step has another row ready
     case SQLITE_DONE:  // Step has finished executing
-      return error::OK;
+      return absl::StatusCode::kOk;
     case SQLITE_ABORT:  // Callback routine requested an abort
-      return error::ABORTED;
+      return absl::StatusCode::kAborted;
     case SQLITE_READONLY:  // Attempt to write a readonly database
     case SQLITE_MISMATCH:  // Data type mismatch
-      return error::FAILED_PRECONDITION;
+      return absl::StatusCode::kFailedPrecondition;
     case SQLITE_MISUSE:    // Library used incorrectly
     case SQLITE_INTERNAL:  // Internal logic error in SQLite
-      return error::INTERNAL;
+      return absl::StatusCode::kInternal;
     case SQLITE_RANGE:  // 2nd parameter to sqlite3_bind out of range
-      return error::OUT_OF_RANGE;
+      return absl::StatusCode::kOutOfRange;
     case SQLITE_CANTOPEN:    // Unable to open the database file
     case SQLITE_CONSTRAINT:  // Abort due to constraint violation
     case SQLITE_NOTFOUND:    // Unknown opcode or statement parameter name
     case SQLITE_NOTADB:      // File opened that is not a database file
-      return error::INVALID_ARGUMENT;
+      return absl::StatusCode::kInvalidArgument;
     case SQLITE_CORRUPT:  // The database disk image is malformed
-      return error::DATA_LOSS;
+      return absl::StatusCode::kDataLoss;
     case SQLITE_AUTH:  // Authorization denied
     case SQLITE_PERM:  // Access permission denied
-      return error::PERMISSION_DENIED;
+      return absl::StatusCode::kPermissionDenied;
     case SQLITE_FULL:    // Insertion failed because database is full
     case SQLITE_TOOBIG:  // String or BLOB exceeds size limit
     case SQLITE_NOLFS:   // Uses OS features not supported on host
-      return error::RESOURCE_EXHAUSTED;
+      return absl::StatusCode::kResourceExhausted;
     case SQLITE_BUSY:      // The database file is locked
     case SQLITE_LOCKED:    // A table in the database is locked
     case SQLITE_PROTOCOL:  // Database lock protocol error
     case SQLITE_NOMEM:     // Out of heap or perhaps lookaside memory
-      return error::UNAVAILABLE;
+      return absl::StatusCode::kUnavailable;
     case SQLITE_INTERRUPT:  // Operation terminated by sqlite3_interrupt
-      return error::CANCELLED;
+      return absl::StatusCode::kCancelled;
     case SQLITE_ERROR:   // SQL error or missing database
     case SQLITE_IOERR:   // Some kind of disk I/O error occurred
     case SQLITE_SCHEMA:  // The database schema changed
     default:
-      return error::UNKNOWN;
+      return absl::StatusCode::kUnknown;
   }
 }
 

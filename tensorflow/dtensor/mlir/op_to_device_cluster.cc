@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "llvm/Support/Casting.h"
@@ -56,17 +57,16 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
       op->getLoc(), op->getResultTypes());
   if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
     cluster->setAttr(kMeshAttr, builder->getStringAttr(
-                                    layout_op.layout().mesh().ToString()));
-  } else if (auto copy_to_mesh = llvm::dyn_cast<mlir::TF::CopyToMeshOp>(op)) {
-    const std::string layout_string = copy_to_mesh.layout().str();
-    auto layout_or = Layout::FromString(layout_string);
-    if (!layout_or.ok())
-      return op->emitOpError(
-          llvm::formatv("Found tf.CopyToMesh Op with unparsable layout : {0}",
-                        layout_string));
+                                    layout_op.getLayout().mesh().ToString()));
+  } else if (auto copy_to_mesh = llvm::dyn_cast<mlir::TF::RelayoutOp>(op)) {
+    const std::string layout_string = copy_to_mesh.getLayout().str();
+    auto layout = Layout::FromString(layout_string);
+    if (!layout.ok())
+      return op->emitOpError(llvm::formatv(
+          "Found tf.Relayout Op with unparsable layout: {0}", layout_string));
 
     cluster->setAttr(kMeshAttr,
-                     builder->getStringAttr(layout_or->mesh().ToString()));
+                     builder->getStringAttr(layout->mesh().ToString()));
   } else {
     // If mesh configuration can be inferred from the op directly, use the mesh
     // information from op attribute directly. If op is not annotated with mesh
@@ -78,7 +78,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
     if (!status_or_mesh.ok())
       return op->emitOpError(
           llvm::formatv("failed to wrap to device cluster. {0}",
-                        status_or_mesh.status().error_message()));
+                        status_or_mesh.status().message()));
 
     const auto mesh_config = status_or_mesh.value();
     if (mesh_config)

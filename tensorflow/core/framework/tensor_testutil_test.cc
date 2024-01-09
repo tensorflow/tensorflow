@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace test {

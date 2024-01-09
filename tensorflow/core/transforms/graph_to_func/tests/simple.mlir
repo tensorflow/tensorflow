@@ -1,5 +1,5 @@
-// RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2 fetches=SomeAdd3 control_rets=SomeAdd4}' %s | FileCheck %s
-// RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2,Placeholder1 fetches=SomeAdd3,SomeAdd3 control_rets=SomeAdd4,SomeAdd4}' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2 fetches=SomeAdd3 control_rets=SomeAdd4})' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg-lift-graph-to-func{feeds=Placeholder1,Placeholder2,Placeholder1 fetches=SomeAdd3,SomeAdd3 control_rets=SomeAdd4,SomeAdd4})' %s | FileCheck %s
 
 // Test that we can lift the graph into a function by using the provided feeds
 // as function arguments and the provided fetch as function results.

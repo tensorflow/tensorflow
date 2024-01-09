@@ -89,3 +89,13 @@ def InitializeVariablesInSessionInitializerPass : Pass<"tf-saved-model-initializ
   let constructor = "mlir::tf_test::CreateInitializeVariablesInSessionInitializerTestPass()";
 }
 
+def ResourceAnalyzerTestPass : Pass<"tf-resource-analyzer-test", "ModuleOp"> {
+  let summary = "Test pass for resource analysis.";
+
+  let description = [{
+    Test pass for ResourceAnalyzer, which analyzes whether a resource value is
+    potentially written.
+  }];
+
+  let constructor = "::mlir::tf_test::CreateResourceAnalyzerTestPass()";
+}

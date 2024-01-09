@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/utils.h"
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"

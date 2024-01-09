@@ -308,10 +308,18 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
 class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
 
+  # Model must have at least 7 bytes to hold model identifier
+  def testTooShortModelContent(self):
+    with self.assertRaisesRegex(
+        ValueError,
+        'Model provided must have at least 7 bytes to hold identifier.',
+    ):
+      interpreter_wrapper.Interpreter(model_content=b'short')
+
   def testInvalidModelContent(self):
     with self.assertRaisesRegex(ValueError,
                                 'Model provided has model identifier \''):
-      interpreter_wrapper.Interpreter(model_content=b'garbage')
+      interpreter_wrapper.Interpreter(model_content=b'wrong_identifier')
 
   def testInvalidModelFile(self):
     with self.assertRaisesRegex(ValueError,
@@ -338,7 +346,7 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
     interpreter.allocate_tensors()
     # Invalid tensor index passed.
     with self.assertRaisesRegex(ValueError, 'Tensor with no shape found.'):
-      interpreter._get_tensor_details(4)
+      interpreter._get_tensor_details(4, 0)
     with self.assertRaisesRegex(ValueError, 'Invalid node index'):
       interpreter._get_op_details(4)
 

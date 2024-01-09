@@ -1577,16 +1577,16 @@ class DebugAnalyzer(object):
 
 def create_analyzer_ui(debug_dump,
                        tensor_filters=None,
-                       ui_type="curses",
+                       ui_type="readline",
                        on_ui_exit=None,
                        config=None):
-  """Create an instance of CursesUI based on a DebugDumpDir object.
+  """Create an instance of ReadlineUI based on a DebugDumpDir object.
 
   Args:
     debug_dump: (debug_data.DebugDumpDir) The debug dump to use.
     tensor_filters: (dict) A dict mapping tensor filter name (str) to tensor
       filter (Callable).
-    ui_type: (str) requested UI type, e.g., "curses", "readline".
+    ui_type: (str) requested UI type, only "readline" is supported.
     on_ui_exit: (`Callable`) the callback to be called when the UI exits.
     config: A `cli_config.CLIConfig` object.
 

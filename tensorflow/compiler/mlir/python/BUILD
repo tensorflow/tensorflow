@@ -1,9 +1,22 @@
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
+)
+
+bool_flag(
+    name = "disable_mlir",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "disable_mlir_config",
+    flag_values = {":disable_mlir": "True"},
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -14,35 +27,44 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:TosaDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:register",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:tfe_context_internal",
-        "//tensorflow/compiler/xla/mlir_hlo:all_passes",
+        "@local_xla//xla/mlir/framework/transforms:passes",
+        "@local_xla//xla/mlir_hlo:all_passes",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_import",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_utils",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
+        "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/mlir/tosa:passes_header",
         "//tensorflow/compiler/mlir/tosa:tf_passes",
         "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
         "//tensorflow/compiler/mlir/tosa:tfl_passes",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/xla:xla_passes",
-        "//tensorflow/compiler/xla:status_macros",
+        "@local_xla//xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
@@ -64,7 +86,7 @@ cc_library(
         # TODO: It might be still preferrable to place graph_optimization_pass
         # as part of the libtensorflow_framework.so, as it is the central
         # place for core related components.
-        "//tensorflow/compiler/mlir/tensorflow:graph_optimization_pass_registration",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/tensorflow/transforms:graph_optimization_pass_registration",  # buildcleaner: keep
     ],
     alwayslink = 1,
 )

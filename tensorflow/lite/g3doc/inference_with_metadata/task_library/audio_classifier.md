@@ -40,7 +40,7 @@ API.
 ## Run inference in Java
 
 See the
-[Audio Classification reference app](https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/android)
+[Audio Classification reference app](https://github.com/tensorflow/examples/tree/master/lite/examples/audio_classification/android)
 for an example using `AudioClassifier` in an Android app.
 
 ### Step 1: Import Gradle dependency and other settings
@@ -63,9 +63,9 @@ dependencies {
     // Other dependencies
 
     // Import the Audio Task Library dependency (NNAPI is included)
-    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.4.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.4.4'
     // Import the GPU delegate plugin Library for GPU inference
-    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4'
 }
 ```
 

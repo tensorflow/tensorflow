@@ -41,8 +41,13 @@ Additional functions are provided which accept array-like objects. Here
 array-like objects include `ndarrays` as defined by this module, as well as
 `tf.Tensor`, in addition to types accepted by NumPy.
 
-A subset of NumPy dtypes are supported. Type promotion follows NumPy
+A subset of NumPy dtypes are supported. Type promotion* follows NumPy
 semantics.
+
+**Note**: A new type promotion that offers a lot of advantages over the old
+type promotion is now available. Learn more about enabling the new
+type promotion
+[here](https://www.tensorflow.org/guide/tf_numpy_type_promotion).
 
 ```python
 print(tnp.ones([1, 2], dtype=tnp.int16) + tnp.ones([2, 1], dtype=tnp.uint8))
@@ -160,38 +165,7 @@ Here is a non-exhaustive list of differences:
     not supported.
 *   NumPy C API is not supported. NumPy's Cython and Swig integration are not
     supported.
+
+API docstring: tensorflow.experimental.numpy
 """
-# TODO(wangpeng): Append `np_export`ed symbols to the comments above.
-
-# pylint: disable=g-direct-tensorflow-import
-
-from tensorflow.python.ops.array_ops import newaxis
-from tensorflow.python.ops.numpy_ops import np_random as random
-from tensorflow.python.ops.numpy_ops import np_utils
-# pylint: disable=wildcard-import
-from tensorflow.python.ops.numpy_ops.np_array_ops import *  # pylint: disable=redefined-builtin
-from tensorflow.python.ops.numpy_ops.np_arrays import ndarray
-from tensorflow.python.ops.numpy_ops.np_config import *
-from tensorflow.python.ops.numpy_ops.np_dtypes import *
-from tensorflow.python.ops.numpy_ops.np_math_ops import *  # pylint: disable=redefined-builtin
-# pylint: enable=wildcard-import
-from tensorflow.python.ops.numpy_ops.np_utils import finfo
-from tensorflow.python.ops.numpy_ops.np_utils import promote_types
-from tensorflow.python.ops.numpy_ops.np_utils import result_type
-
-
-# pylint: disable=redefined-builtin,undefined-variable
-@np_utils.np_doc("max", link=np_utils.AliasOf("amax"))
-def max(a, axis=None, keepdims=None):
-  return amax(a, axis=axis, keepdims=keepdims)
-
-
-@np_utils.np_doc("min", link=np_utils.AliasOf("amin"))
-def min(a, axis=None, keepdims=None):
-  return amin(a, axis=axis, keepdims=keepdims)
-
-
-@np_utils.np_doc("round", link=np_utils.AliasOf("around"))
-def round(a, decimals=0):
-  return around(a, decimals=decimals)
-# pylint: enable=redefined-builtin,undefined-variable
+# TODO(wangpeng): Append `tf_export`ed symbols to the comments above.

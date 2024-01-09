@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -46,7 +48,7 @@ struct FallbackInlinerInterface : public mlir::DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
   bool isLegalToInline(Operation *op, Region *dest, bool would_be_cloned,
-                       BlockAndValueMapping &) const final {
+                       IRMapping &) const final {
     return true;
   }
 };
@@ -304,9 +306,7 @@ void ExecuteOp::getOpAttrs(
 // ConstDenseTensorOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult ConstDenseTensorOp::fold(ArrayRef<Attribute> operands) {
-  return getValue();
-}
+OpFoldResult ConstDenseTensorOp::fold(FoldAdaptor) { return getValue(); }
 
 //===----------------------------------------------------------------------===//
 // CoreRTTensorHandleToFallbackTensorOp

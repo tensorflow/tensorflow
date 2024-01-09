@@ -776,7 +776,7 @@ class TensorArrayTest(xla_test.XLATestCase):
 
   #     def body(time, ta_t, state):
   #       sliced = array_ops.slice(
-  #           v0, begin=array_ops.stack([time, 0]), size=[1, -1])
+  #           v0, begin=array_ops_stack.stack([time, 0]), size=[1, -1])
   #       sliced = array_ops.squeeze(sliced)
   #       out = sliced + var + state
   #       state += sliced
@@ -860,7 +860,7 @@ class TensorArrayTest(xla_test.XLATestCase):
   #     c = lambda i, acc: i < 5
 
   #     def b(i, acc):
-  #       x1 = control_flow_ops.cond(
+  #       x1 = cond.cond(
   #           math_ops.equal(i, 0), lambda: x,
   #           lambda: math_ops.multiply(acc.read(i - 1), 2.0))
   #       return i + 1, acc.write(i, x1)

@@ -104,6 +104,10 @@ REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER);
 TF_CALL_QUANTIZED_TYPES(REGISTER);
 TF_CALL_bool(REGISTER);
+TF_CALL_float8_e5m2(REGISTER);
+TF_CALL_float8_e4m3fn(REGISTER);
+TF_CALL_int4(REGISTER);
+TF_CALL_uint4(REGISTER);
 
 REGISTER_KERNEL_BUILDER(
     Name(kDeviceArgOp).Device(DEVICE_DEFAULT).TypeConstraint<int32>("T"),
@@ -142,6 +146,10 @@ TF_CALL_qint16(REGISTER);
 TF_CALL_quint16(REGISTER);
 REGISTER(Variant);
 TF_CALL_bool(REGISTER);
+TF_CALL_float8_e5m2(REGISTER);
+TF_CALL_float8_e4m3fn(REGISTER);
+TF_CALL_int4(REGISTER);
+TF_CALL_uint4(REGISTER);
 
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_DEFAULT)
@@ -234,7 +242,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         ctx, lib->Instantiate(kGradientOp, AttrSlice(def()), &handle), done);
 
-    FunctionLibraryRuntime::Options opts;
+    FunctionLibraryRuntime::Options opts(ctx->step_id());
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
     opts.collective_executor = ctx->collective_executor();
@@ -267,7 +275,8 @@ class SymbolicGradientOp : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
+  SymbolicGradientOp(const SymbolicGradientOp&) = delete;
+  void operator=(const SymbolicGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),

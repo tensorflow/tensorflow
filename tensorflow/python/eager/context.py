@@ -18,6 +18,7 @@ import collections
 import contextlib
 import copy
 import gc
+import itertools
 import os
 import random
 import threading
@@ -26,22 +27,30 @@ from absl import logging
 import numpy as np
 
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import coordination_config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python import tf2
 from tensorflow.python.client import pywrap_tf_session
+from tensorflow.python.eager import cancellation
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.util import compat
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
+from tsl.protobuf import coordination_config_pb2
+
+
+# TODO(b/307794935): Remove after a solution is found.
+is_oss = True  # updated by copybara
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -192,6 +201,15 @@ class FunctionCallOptions:
                        "config_pb2.ConfigProto, or a serialized string of that "
                        "proto or None. got: {}".format(type(config)))
 
+  def as_attrs(self):
+    if self.config_proto_serialized is None:
+      config = function_utils.get_disabled_rewriter_config()
+    else:
+      config = self.config_proto_serialized
+    executor_type = self.executor_type or ""
+
+    return {"executor_type": executor_type, "config_proto": config}
+
 
 # Map from context_id (an int) to _TensorCaches.
 # Dicts are thread safe in CPython.
@@ -287,7 +305,6 @@ class LogicalDevice(
       placement.
     device_type: String declaring the type of device such as "CPU" or "GPU".
   """
-  pass
 
 
 @tf_export("config.LogicalDeviceConfiguration",
@@ -462,7 +479,6 @@ class Context:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._use_tfrt = is_tfrt_enabled()
-    self._use_tfrt_distributed_runtime = None
     self._jit_compile_rewrite = jit_compile_rewrite_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -494,6 +510,11 @@ class Context:
 
     self._is_global_context = False
 
+    # Number of retries to give the SetServerDef step. This is useful for fault
+    # tolerant initial connection in high-preemption settings like
+    # ParameterServerStrategy training.
+    self._set_server_def_retries = 0
+
   # pylint: enable=redefined-outer-name
 
   def _set_global_seed(self, seed):
@@ -504,9 +525,10 @@ class Context:
     # to int.
     try:
       hash(seed)
+      self._rng = random.Random(seed)
     except TypeError:
       seed = int(np.array(seed))
-    self._rng = random.Random(seed)
+      self._rng = random.Random(seed)
     # Also clear the kernel cache, to reset any existing seeds
     if self._context_handle is not None:
       pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
@@ -577,11 +599,6 @@ class Context:
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
-        # pylint: disable=g-backslash-continuation
-        if self._use_tfrt is not None and \
-            self._use_tfrt_distributed_runtime is not None:
-          pywrap_tfe.TFE_ContextOptionsSetTfrtDistributedRuntime(
-              opts, self._use_tfrt_distributed_runtime)
         pywrap_tfe.TFE_ContextOptionsSetRunEagerOpAsFunction(opts, True)
         pywrap_tfe.TFE_ContextOptionsSetJitCompileRewrite(
             opts, self._jit_compile_rewrite)
@@ -593,8 +610,10 @@ class Context:
           "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tfe.TFE_ContextSetServerDef(context_handle, _KEEP_ALIVE_SECS,
-                                           server_def_str)
+        timeout = 0  # Indicates no timeout.
+        pywrap_tfe.TFE_ContextSetServerDefWithTimeoutAndRetries(
+            context_handle, _KEEP_ALIVE_SECS, server_def_str, timeout,
+            self._set_server_def_retries)
       elif self._collective_ops_server_def is not None:
         server_def_str = self._collective_ops_server_def.SerializeToString()
         pywrap_tfe.TFE_EnableCollectiveOps(context_handle, server_def_str)
@@ -605,6 +624,21 @@ class Context:
 
       if self._is_global_context:
         pywrap_tfe.TFE_Py_SetCEagerContext(self._context_handle)
+
+  def ensure_uninitialized(self):
+    """Uninitialize handle and devices if not already done so."""
+    with self._initialize_lock:
+      if not self._initialized:
+        return
+      self._context_devices = None
+      self._logical_devices = None
+      self._server_def = None
+      self._initialized = False
+
+      if self._is_global_context:
+        pywrap_tfe.TFE_Py_SetCEagerContext(None)
+
+      self._context_handle = None
 
   def mark_as_global_context(self):
     # If the context was already initialized, publish it. Otherwise wait with
@@ -653,6 +687,10 @@ class Context:
 
     # Clear all the caches in case there are remote tensors in them.
     self._clear_caches()
+    # Also clear the device parsing cache since it caches the resolution of
+    # partial device names, which may become different due to the set_server_def
+    # call as we may have defined different devices.
+    _device_parsing_cache.clear()
 
   def update_server_def(self, server_def, keep_alive_secs=_KEEP_ALIVE_SECS):
     """Update a server_def on the context.
@@ -740,7 +778,9 @@ class Context:
                                      enable_health_check=True,
                                      cluster_register_timeout_in_ms=0,
                                      heartbeat_timeout_in_ms=0,
-                                     coordinated_jobs=None):
+                                     shutdown_barrier_timeout_in_ms=0,
+                                     coordinated_jobs=None,
+                                     allow_new_incarnation_to_reconnect=False):
     """Enable distributed coordination service with specified configs."""
     if self._context_handle:
       logging.warning("Configuring coordination service type may not be "
@@ -752,6 +792,9 @@ class Context:
     config.enable_health_check = enable_health_check
     config.cluster_register_timeout_in_ms = cluster_register_timeout_in_ms
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
+    config.shutdown_barrier_timeout_in_ms = shutdown_barrier_timeout_in_ms
+    config.allow_new_incarnation_to_reconnect = (
+        allow_new_incarnation_to_reconnect)
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
         config.coordinated_job_list.extend(coordinated_jobs)
@@ -768,10 +811,13 @@ class Context:
     ensure_initialized()
     pywrap_tfe.TFE_InsertConfigKeyValue(self._context_handle, key, value)
 
-  def get_config_key_value(self, key):
+  # If `timeout_in_ms=0`, this will block until the key-value is set or the
+  # worker shuts down.
+  def get_config_key_value(self, key, timeout_in_ms=0):
     ensure_initialized()
     with c_api_util.tf_buffer() as buffer_:
-      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key, buffer_)
+      pywrap_tfe.TFE_GetConfigKeyValue(self._context_handle, key,
+                                       timeout_in_ms, buffer_)
       value = pywrap_tf_session.TF_GetBuffer(buffer_).decode("utf-8")
     return value
 
@@ -791,6 +837,35 @@ class Context:
                                           error_message)
     else:
       raise ValueError("Context is not initialized.")
+
+  def get_task_states(self, job_configs):
+    """Get task states from the Coordination Service.
+
+    Args:
+      job_configs: A list of tuples of job name and task number.
+
+    Returns:
+      A list of TF_Status.
+    """
+    if self._context_handle:
+      job_names, task_nums = zip(*job_configs)
+      return pywrap_tfe.TFE_GetTaskStates(self._context_handle, job_names,
+                                          task_nums)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def wait_at_barrier(self, barrier_id, timeout_in_ms):
+    """Blocks until all coordinated tasks are at the barrier.
+
+    The barrier may fail if it times out or if one of the tasks is unhealthy.
+
+    Args:
+      barrier_id: Unique string identifying the barrier.
+      timeout_in_ms: Duration before the barrier times out and fails.
+    """
+    ensure_initialized()
+    pywrap_tfe.TFE_WaitAtBarrier(self._context_handle, barrier_id,
+                                 timeout_in_ms)
 
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels."""
@@ -1270,17 +1345,31 @@ class Context:
     self.ensure_initialized()
     return self._num_gpus
 
-  def add_function(self, fn):
-    """Add a function definition to the context.
+  def add_c_function(self, c_func):
+    """Add a C API TF_Function to the context.
 
     Once added, the function (identified by its name) can be executed like any
     other operation.
 
     Args:
-      fn: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
+      c_func: A wrapped TF_Function (returned from TF_GraphToFunction_wrapper).
     """
     self.ensure_initialized()
-    pywrap_tfe.TFE_ContextAddFunction(self._handle, fn)
+    pywrap_tfe.TFE_ContextAddFunction(self._handle, c_func)
+
+  def get_c_function(self, name):
+    """Get a C API TF_Function from the context.
+
+    Args:
+      name: Name of the function to get.
+
+    Returns:
+      A ScopedTFFunction wrapping the C API TF_Function.
+    """
+    self.ensure_initialized()
+    return c_api_util.ScopedTFFunction(
+        pywrap_tfe.TFE_ContextGetFunction(self._handle, name), name
+    )
 
   def add_function_def(self, fdef):
     """Add a function definition to the context.
@@ -1292,9 +1381,13 @@ class Context:
       fdef: A FunctionDef protocol buffer message.
     """
     self.ensure_initialized()
-    fdef_string = fdef.SerializeToString()
-    pywrap_tfe.TFE_ContextAddFunctionDef(self._handle, fdef_string,
-                                         len(fdef_string))
+    if is_oss:
+      fdef_string = fdef.SerializeToString()
+      pywrap_tfe.TFE_ContextAddFunctionDef(
+          self._handle, fdef_string, len(fdef_string)
+      )
+    else:
+      pywrap_tfe.TFE_ContextAddFunctionDefNoSerialization(self._handle, fdef)
 
   def get_function_def(self, name):
     """Get a function definition from the context.
@@ -1308,13 +1401,37 @@ class Context:
     Raises:
       tf.errors.NotFoundError: if name is not the name of a registered function.
     """
-    with c_api_util.tf_buffer() as buffer_:
-      pywrap_tfe.TFE_ContextGetFunctionDef(self._handle, name, buffer_)
-      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
-    function_def = function_pb2.FunctionDef()
-    function_def.ParseFromString(proto_data)
-
+    if is_oss:
+      with c_api_util.tf_buffer() as buffer_:
+        pywrap_tfe.TFE_ContextGetFunctionDef(self._handle, name, buffer_)
+        proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
+      function_def = function_pb2.FunctionDef()
+      function_def.ParseFromString(proto_data)
+    else:
+      function_def = pywrap_tfe.TFE_ContextGetFunctionDefNoSerialization(
+          self._handle, name
+      )
     return function_def
+
+  def get_graph_debug_info(self, name):
+    """Get GraphDebugInfo associated with a function from the context.
+
+    Args:
+      name: function signature name.
+
+    Returns:
+      The requested GraphDebugInfo.
+
+    Raises:
+      tf.errors.NotFoundError: if name is not the name of a registered function.
+    """
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tfe.TFE_ContextGetGraphDebugInfo(self._handle, name, buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
+    graph_debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    graph_debug_info.ParseFromString(proto_data)
+
+    return graph_debug_info
 
   def is_custom_device(self, device_name):
     """Calls TFE_IsCustomDevice. See the non-member function."""
@@ -1364,6 +1481,42 @@ class Context:
     """Check if a function `name` is registered."""
     self.ensure_initialized()
     return bool(pywrap_tfe.TFE_ContextHasFunction(self._handle, name))
+
+  @property
+  def function_scope_id(self):
+    """Returns an id that is unique to each scope holding functions."""
+    return id(self._context_handle)
+
+  def call_function(self, name, tensor_inputs, num_outputs):
+    """Calls the function associated with the given name."""
+    attrs = tuple(
+        itertools.chain(
+            *self.function_call_options.as_attrs().items()
+        )
+    )
+
+    cancellation_context = cancellation.context()
+    if cancellation_context is None:
+      outputs = execute.execute(
+          name.decode("utf-8"),
+          num_outputs=num_outputs,
+          inputs=tensor_inputs,
+          attrs=attrs,
+          ctx=self,
+      )
+    else:
+      outputs = execute.execute_with_cancellation(
+          name.decode("utf-8"),
+          num_outputs=num_outputs,
+          inputs=tensor_inputs,
+          attrs=attrs,
+          ctx=self,
+          cancellation_manager=cancellation_context,
+      )
+    # Empty list means no function outputs so return None
+    outputs = outputs or None
+
+    return outputs
 
   def add_op_callback(self, callback):
     """Add a post-op callback to the context.
@@ -1720,9 +1873,45 @@ class Context:
     pywrap_tfe.TFE_SetLogicalCpuDevices(self._context_handle, num_cpus, prefix)
     self._initialize_logical_devices()
 
-  def get_compiler_ir(self, device_name, function_name, args, stage="hlo"):
-    return pywrap_tfe.TF_GetCompilerIr(self._context_handle, function_name,
-                                       stage, device_name, args)
+  def get_compiler_ir(
+      self,
+      device_name,
+      platform_name,
+      function_name,
+      flat_args,
+      captured_inputs,
+      stage="hlo",
+  ):
+    """Get the compiler IR bytes.
+
+    Args:
+      device_name: The name of the device with the form as
+        "/job:localhost/replica:0/task:0/device:CPU:0", "/device:TPU:0" etc.
+        When this is used, actual device is needed for getting the compiler IR.
+      platform_name: The name of the platform, e.g. "TPU". When this is used,
+        first we find a device whose name contains the platform, if it is found
+        we get the compiler IR by device. Otherwise the compiler IR is obtained
+        as if using that device. The former logic of falling back to device is
+        necessary, as there are cases of TF variables that need to access
+        devices, but the upper layer may generally choose platform for getting
+        compiler IR in a device-agnostic way.
+      function_name: The name of the function to get the compiler IR.
+      flat_args: The flat argument inputs.
+      captured_inputs: The inputs that are captured.
+      stage: The exported stage for the given function.
+
+    Returns:
+      The compiler IR bytes.
+    """
+    return pywrap_tfe.TF_GetCompilerIr(
+        self._context_handle,
+        function_name,
+        stage,
+        device_name,
+        flat_args,
+        captured_inputs,
+        platform_name,
+    )
 
   @deprecated(
       None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)
@@ -1912,28 +2101,6 @@ class Context:
       self._use_tfrt = tfrt
 
   @property
-  def use_tfrt_distributed_runtime(self):
-    return self._use_tfrt_distributed_runtime
-
-  @use_tfrt_distributed_runtime.setter
-  def use_tfrt_distributed_runtime(self, enable):
-    """Sets whether to use TFRT distributed runtime.
-
-    This is only effective when use_tfrt is also true. Note that currently TFRT
-    distributed runtime is not function complete and this config is for testing
-    only.
-    Args:
-      enable: A boolean to set whether to use TFRT distributed runtime.
-    """
-    if not isinstance(enable, bool):
-      raise ValueError("Expecting a boolean but got %s" % type(enable))
-
-    if self._use_tfrt_distributed_runtime != enable:
-      if self._initialized:
-        raise ValueError("use_tfrt should be set before being initialized.")
-      self._use_tfrt_distributed_runtime = enable
-
-  @property
   def operation_timeout_in_ms(self):
     return self.config.operation_timeout_in_ms
 
@@ -1995,6 +2162,20 @@ class Context:
     run_metadata = config_pb2.RunMetadata()
     run_metadata.ParseFromString(compat.as_bytes(proto_data))
     return run_metadata
+
+  def set_server_def_retries(self, retries):
+    """Set the number of retries to use when calling SetServerDef.
+
+    In cases where many servers run in high-preemption environments, jobs could
+    be preempted during startup and initial connection via SetServerDef. Retries
+    allow for more robust connection in these environments.
+
+    Args:
+      retries: int specifying the number of connection retries before failing.
+        Retries follow an exponential backoff waiting period with min value 1ms,
+        max value 10s, and exponent 1.3.
+    """
+    self._set_server_def_retries = retries
 
   @property
   def context_switches(self):
@@ -2109,7 +2290,7 @@ def _reset_jit_compiler_flags():
   pywrap_tfe.TF_ResetJitCompilerFlags()
 
 
-def context():
+def context() -> Context:
   """Returns a singleton context object."""
   if _context is None:
     _create_context()
@@ -2601,6 +2782,22 @@ def set_server_def(server_def):
   context().set_server_def(server_def)
 
 
+def set_server_def_retries(retries):
+  """Set the number of retries to use when calling SetServerDef.
+
+  In cases where many servers run in high-preemption environments, jobs could
+  be preempted during startup and initial connection via SetServerDef. Retries
+  allow for more robust connection in these environments.
+
+
+  Args:
+    retries: int specifying the number of connection retries before failing.
+      Retries follow an exponential backoff waiting period with min value 1ms,
+      max value 10s, and exponent 1.3.
+  """
+  context().set_server_def_retries(retries)
+
+
 def update_server_def(server_def):
   context().update_server_def(server_def)
 
@@ -2697,9 +2894,14 @@ def async_clear_error():
   context().clear_executor_errors()
 
 
-def add_function(fdef):
-  """Add a function definition to the context."""
-  context().add_function(fdef)
+def add_c_function(c_func):
+  """Add a C API TF_Function to the context."""
+  context().add_c_function(c_func)
+
+
+def get_c_function(name):
+  """Get a C API TF_Function from the context."""
+  return context().get_c_function(name)
 
 
 def remove_function(name):

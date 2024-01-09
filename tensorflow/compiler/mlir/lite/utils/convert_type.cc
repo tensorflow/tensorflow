@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -217,7 +217,7 @@ bool NotFromQuantOpOrSameQuantType(mlir::Value val, mlir::TypeAttr qtype_attr) {
 
   // Ignore shape details - we're really only trying to
   // check if quantization is the same.
-  auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
+  auto stripped_src_qtype = GetShapeStrippedType(q_op.getQtypeAttr());
   auto stripped_qtype = GetShapeStrippedType(qtype_attr);
   return stripped_src_qtype == stripped_qtype;
 }

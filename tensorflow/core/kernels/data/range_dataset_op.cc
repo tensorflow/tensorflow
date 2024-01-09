@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -65,6 +66,25 @@ Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
 
 int64_t sgn(int64_t val) { return (0 < val) - (val < 0); }
 
+int64_t RangeCardinality(int64_t start, int64_t stop, int64_t step) {
+  // `enumerate` uses int max to simulate an infinite range dataset.
+  if (stop >= tsl::kint64max) {
+    return kInfiniteCardinality;
+  }
+
+  // If the signs of `stop - start` and `step` are different or either of
+  // the values is zero, the range will be empty.
+  if (sgn(stop - start) * sgn(step) <= 0) {
+    return 0;
+  } else if (step > 0) {
+    // Invariant: stop - start > 0 && step > 0
+    return (stop - start - 1) / step + 1;
+  } else {
+    // Invariant: start - stop > 0 && step < 0
+    return (start - stop - 1) / -step + 1;
+  }
+}
+
 // Class which produces the elements of `range(start, stop, step)`. Threadsafe.
 class RangeCounter {
  public:
@@ -80,7 +100,7 @@ class RangeCounter {
       return -1;
     }
     *end_of_counter = false;
-    int result = next_;
+    int64_t result = next_;
     next_ += step_;
     return result;
   }
@@ -99,6 +119,8 @@ class RangeCounter {
     mutex_lock l(mu_);
     next_ = value;
   }
+
+  int64_t Cardinality() const { return RangeCardinality(start_, stop_, step_); }
 
  private:
   const int64_t start_;
@@ -147,6 +169,8 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
     return OkStatus();
   }
 
+  int64_t Cardinality() const override { return counter_.Cardinality(); }
+
  private:
   RangeCounter counter_;
 };
@@ -184,28 +208,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override {
-    // If start_ == stop_ or if the sign of stop_ - start_ and step do not agree
-    // (or are zero), return zero.
-    if (sgn(stop_ - start_) * sgn(step_) <= 0) {
-      return 0;
-    } else if (step_ > 0) {
-      return std::max(int64_t{0}, (stop_ - start_ - 1) / step_ + 1);
-    } else {
-      return std::max(int64_t{0}, (start_ - stop_ - 1) / -step_ + 1);
-    }
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
-    // If start_ == stop_ or if the sign of stop_ - start_ and step do not agree
-    // (or are zero), return zero.
-    if (sgn(stop_ - start_) * sgn(step_) <= 0) {
-      return 0;
-    } else if (step_ > 0) {
-      return std::max(int64_t{0}, (stop_ - start_ - 1) / step_ + 1);
-    } else {
-      return std::max(int64_t{0}, (start_ - stop_ - 1) / -step_ + 1);
-    }
+    return RangeCardinality(start_, stop_, step_);
   }
 
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*
@@ -255,6 +259,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       if (ctx->split_providers().empty() || dataset()->replicate_on_split_) {
         counter_ = std::make_unique<RangeCounter>(
@@ -297,7 +303,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       if (split_provider_) {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kHasSplitProvider), true));
+            writer->WriteScalar(prefix(), kHasSplitProvider, true));
         TF_RETURN_IF_ERROR(split_provider_->Save(
             [this](const std::string& key) {
               return SplitProviderKeyNameFn(key);
@@ -305,14 +311,14 @@ class RangeDatasetOp::Dataset : public DatasetBase {
             writer));
       } else {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kNext), counter_->Peek()));
+            writer->WriteScalar(prefix(), kNext, counter_->Peek()));
       }
       return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (reader->Contains(full_name(kHasSplitProvider))) {
+      if (reader->Contains(prefix(), kHasSplitProvider)) {
         TF_RETURN_IF_ERROR(split_provider_->Restore(
             [this](const std::string& key) {
               return SplitProviderKeyNameFn(key);
@@ -320,7 +326,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
             reader));
       } else {
         int64_t next;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNext), &next));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kNext, &next));
         counter_->SetNext(next);
       }
       return OkStatus();

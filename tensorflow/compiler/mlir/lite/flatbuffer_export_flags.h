@@ -27,5 +27,8 @@ extern bool emit_custom_ops;
 extern bool lower_tensor_list_ops;
 // The flag to control whether debug info gets stripped on export.
 extern bool strip_debug_info;
+// The flag to control whether to store constant & custom buffers inside
+// flatbuffer
+extern bool use_buffer_offset;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_FLAGS_H_

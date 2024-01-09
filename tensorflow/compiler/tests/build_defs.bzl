@@ -1,6 +1,7 @@
 """Build rules for Tensorflow/XLA testing."""
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -21,6 +22,7 @@ def tf_xla_py_test(
         disabled_backends = None,
         use_xla_device = True,
         enable_mlir_bridge = True,
+        test_rule = py_test,
         **kwargs):
     """Generates py_test targets, one per XLA backend.
 
@@ -82,7 +84,7 @@ def tf_xla_py_test(
                 "--test_device=" + cpu_xla_device,
                 "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128",
             ]
-        elif backend == "gpu":
+        elif backend in ("gpu", "gpu_a100"):
             backend_args += [
                 "--test_device=" + gpu_xla_device,
                 "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128,DT_BFLOAT16",
@@ -108,22 +110,29 @@ def tf_xla_py_test(
 
         for mlir_option in enable_mlir_bridge_options:
             extra_dep = []
+            extra_tag = []
             updated_name = test_name
 
-            mlir_bridge_dep = "//tensorflow/python:is_mlir_bridge_test_true"
+            mlir_bridge_dep = "//tensorflow/python/framework:is_mlir_bridge_test_true"
             has_mlir_dep = (mlir_bridge_dep in deps)
             if mlir_option:
                 if updated_name.endswith("_test"):
                     updated_name = updated_name[:-5]
                 updated_name += "_mlir_bridge_test"
                 extra_dep = [] if has_mlir_dep else [mlir_bridge_dep]
+
+                # Mark gpu mlir_bridge tests as ondemand
+                #
+                # This is for testing book keeping because the bridge does not have any gpu specific
+                # logic at this time, so CPU testing is good enough and cheaper.
+                extra_tag = ["ondemand"] if backend in ("gpu", "gpu_a100") else []
             elif has_mlir_dep:
                 # Some tests run only with mlir_bridge by explicitly adding the MLIR
                 # bridge dep so if the dep is already present skip non MLIR
                 # version.
                 continue
 
-            py_test(
+            test_rule(
                 name = updated_name,
                 srcs = srcs,
                 srcs_version = "PY3",
@@ -131,12 +140,15 @@ def tf_xla_py_test(
                 main = "{}.py".format(name) if main == None else main,
                 data = data + backend_data,
                 deps = deps + backend_deps + extra_dep,
-                tags = test_tags,
+                tags = test_tags + extra_tag,
                 exec_properties = tf_exec_properties({"tags": test_tags}),
                 **kwargs
             )
             test_names.append(updated_name)
     native.test_suite(name = name, tests = test_names)
+
+def tf_xla_py_strict_test(**kwargs):
+    tf_xla_py_test(test_rule = py_strict_test, **kwargs)
 
 def generate_backend_suites(backends = []):
     """Generates per-backend test_suites that run all tests for a backend."""

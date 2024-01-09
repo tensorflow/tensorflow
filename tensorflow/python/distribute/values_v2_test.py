@@ -25,6 +25,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -329,7 +330,7 @@ class _VariableInterfaceTestBase(test.TestCase, parameterized.TestCase):
   # ==== Begin ResourceVariable interface ===
   def testHandle(self):
     v = self.create_variable()
-    self.assertIsInstance(v.handle, ops.Tensor)
+    self.assertIsInstance(v.handle, tensor.Tensor)
     self.assertEqual(v.handle.dtype, dtypes.resource)
 
   def testInGraphMode(self):

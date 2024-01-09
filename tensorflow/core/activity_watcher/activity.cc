@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/activity_watcher/activity.h"
 
+#include <atomic>
 #include <memory>
 
 namespace tensorflow {
 namespace activity_watcher {
-void MaybeEnableMultiWorkersWatching(CoordinationServiceAgent* agent) {}
+void MaybeEnableMultiWorkersWatching(tsl::CoordinationServiceAgent* agent) {}
 
 namespace tfw_internal {
 

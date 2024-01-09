@@ -19,9 +19,9 @@ None of these methods are exposed in the main "ragged" package.
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_ragged_math_ops
 from tensorflow.python.ops import math_ops
-
 
 
 def assert_splits_match(nested_splits_lists):
@@ -74,9 +74,10 @@ def repeat_ranges(params, splits, repeats):
   Args:
     params: The `Tensor` whose values should be repeated.
     splits: A splits tensor indicating the ranges of `params` that should be
-      repeated.
-    repeats: The number of times each range should be repeated.  Supports
-      broadcasting from a scalar value.
+      repeated. Elements should be non-negative integers.
+    repeats: The number of times each range should be repeated. Supports
+      broadcasting from a scalar value. Elements should be non-negative
+      integers.
 
   Returns:
     A `Tensor` with the same rank and type as `params`.
@@ -90,6 +91,34 @@ def repeat_ranges(params, splits, repeats):
   tf.Tensor([b'a' b'b' b'a' b'b' b'a' b'b' b'c' b'c' b'c'],
       shape=(9,), dtype=string)
   """
+  # Check if the input is valid
+  splits_checks = [
+      check_ops.assert_non_negative(
+          splits, message="Input argument 'splits' must be non-negative"
+      ),
+      check_ops.assert_integer(
+          splits,
+          message=(
+              "Input argument 'splits' must be integer, but got"
+              f" {splits.dtype} instead"
+          ),
+      ),
+  ]
+  repeats_checks = [
+      check_ops.assert_non_negative(
+          repeats, message="Input argument 'repeats' must be non-negative"
+      ),
+      check_ops.assert_integer(
+          repeats,
+          message=(
+              "Input argument 'repeats' must be integer, but got"
+              f" {repeats.dtype} instead"
+          ),
+      ),
+  ]
+  splits = control_flow_ops.with_dependencies(splits_checks, splits)
+  repeats = control_flow_ops.with_dependencies(repeats_checks, repeats)
+
   # Divide `splits` into starts and limits, and repeat them `repeats` times.
   if repeats.shape.ndims != 0:
     repeated_starts = repeat(splits[:-1], repeats, axis=0)

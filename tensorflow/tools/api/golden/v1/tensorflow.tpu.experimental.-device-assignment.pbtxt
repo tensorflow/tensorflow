@@ -24,7 +24,7 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'topology\', \'computation_shape\', \'computation_stride\', \'num_replicas\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\'], "
+    argspec: "args=[\'cls\', \'topology\', \'computation_shape\', \'computation_stride\', \'num_replicas\', \'device_order_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\', \'0\'], "
   }
   member_method {
     name: "coordinates"

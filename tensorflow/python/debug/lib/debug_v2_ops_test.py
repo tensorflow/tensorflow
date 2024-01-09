@@ -461,7 +461,7 @@ class DebugNumericSummaryV2Test(test_util.TensorFlowTestCase):
     for mode in modes:
       debug_mode = debug_event_pb2.TensorDebugMode.Name(mode)
       with test_util.deterministic_ops():
-        if test_util.is_gpu_available(cuda_only=True):
+        if test_util.config.list_physical_devices("GPU"):
           with self.assertRaisesRegex(
               errors_impl.UnimplementedError, "Determinism is not yet "
               "supported for DebugNumericSummaryV2 when tensor_debug_mode is "

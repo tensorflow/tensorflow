@@ -35,6 +35,14 @@ GraphDef CreateTestGraph() {
 
 TEST(UtilTest, TestGetSuffixUID) { EXPECT_EQ(*GetSuffixUID("foo_32"), 32); }
 
+TEST(UtilTest, TestGetSuffixUID64Bit) {
+  EXPECT_EQ(*GetSuffixUID("foo_2209431640"), 2209431640);
+}
+
+TEST(UtilTest, TestGetSuffixUIDInvalid) {
+  EXPECT_FALSE(GetSuffixUID("foo").ok());
+}
+
 TEST(FingerprintingTest, TestComputeHash) {
   GraphDef graph_def = CreateTestGraph();
   EXPECT_EQ(ComputeHash(graph_def), 4870331646167591885);

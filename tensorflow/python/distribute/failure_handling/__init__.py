@@ -16,3 +16,4 @@
 
 from tensorflow.python.distribute.failure_handling.failure_handling import PreemptionCheckpointHandler
 from tensorflow.python.distribute.failure_handling.failure_handling import TerminationConfig
+from tensorflow.python.distribute.failure_handling.tpu_preemption_watcher import PreemptionWatcher

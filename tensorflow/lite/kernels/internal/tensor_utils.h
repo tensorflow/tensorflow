@@ -19,8 +19,8 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 
 #if defined(_MSC_VER)

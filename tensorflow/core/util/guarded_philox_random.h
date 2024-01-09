@@ -74,7 +74,8 @@ class GuardedPhiloxRandom {
   random::PhiloxRandom generator_ TF_GUARDED_BY(mu_);
   bool initialized_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GuardedPhiloxRandom);
+  GuardedPhiloxRandom(const GuardedPhiloxRandom&) = delete;
+  void operator=(const GuardedPhiloxRandom&) = delete;
 };
 
 }  // namespace tensorflow

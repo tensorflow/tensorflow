@@ -42,13 +42,13 @@ py_strict_library(
 
 tf_py_test(
     name = "simple_hash_table_test",
-    size = "small",
+    size = "medium",  # This test blocks because it writes and reads a file,
+    timeout = "short",  # but it still runs quickly.
     srcs = ["simple_hash_table_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/216321151): Re-enable this test.
-        "no_pip",
     ],
     deps = [
         ":simple_hash_table",

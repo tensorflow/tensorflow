@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
@@ -52,7 +51,7 @@ void ConvertLaunchFuncToTFCallPass::runOnOperation() {
   module.walk([&](tf_device::LaunchFuncOp launch) {
     OpBuilder builder(launch);
     auto call_op = builder.create<TF::PartitionedCallOp>(
-        module.getLoc(), launch.getResultTypes(), launch.operands(),
+        module.getLoc(), launch.getResultTypes(), launch.getOperands(),
         SymbolRefAttr::get(builder.getContext(), launch.getFunc()),
         /*config=*/builder.getStringAttr(""),
         /*config_proto=*/builder.getStringAttr(""),

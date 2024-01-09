@@ -20,8 +20,8 @@ limitations under the License.
 #include <functional>
 #include <limits>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -45,6 +45,13 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+#include "xnnpack.h"  // from @XNNPACK
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
+#include "pthreadpool.h"  // from @pthreadpool
+#endif  // TFLITE_KERNEL_USE_XNNPACK
 
 namespace tflite {
 namespace ops {
@@ -595,14 +602,14 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     // insignificant. Use a symmetric output range of [-1.0; 1.0] and double as
     // FloatT for backward compatibility.
     data->params.exp_lut = data->exp_lut;
-    LUTPopulate<int16_t, double>(
+    LUTPopulate<int16_t>(
         10.0 / range, std::numeric_limits<int16_t>::max(), 2.0 / range, 0,
         [](double value) { return std::exp(value); }, data->params.exp_lut);
 
     // Input is in the [0; 1] range and use a symmetric output range of
     // [-1.0; 1.0] and double as FloatT for backward compatibility.
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
-    LUTPopulate<int16_t, double>(
+    LUTPopulate<int16_t>(
         1.0 / range, std::numeric_limits<int16_t>::min(), 2.0 / range, 0,
         [](double value) { return 1.0 / (1.0 + value); },
         data->params.one_over_one_plus_x_lut);
@@ -737,6 +744,24 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
   const ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+      const size_t channel_dim = 1;
+      const size_t batch_size = NumElements(input->dims);
+      CpuBackendContext* cpu_backend_context =
+          CpuBackendContext::GetFromContext(context);
+      pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+      xnn_status status = xnn_run_clamp_nc_f32(
+          channel_dim, channel_dim, channel_dim, batch_size,
+          GetTensorData<float>(input), GetTensorData<float>(output),
+          /*min=*/0.0f, /*max=*/std::numeric_limits<float>::infinity(),
+          /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+      if (status == xnn_status_success) {
+        return kTfLiteOk;
+      }
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Failed to run xnnpack xnn_run_clamp_nc_f32. Error code: %d",
+                 status);
+#endif
       optimized_ops::Relu(GetTensorShape(input), GetTensorData<float>(input),
                           GetTensorShape(output), GetTensorData<float>(output));
     } break;
@@ -772,6 +797,24 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
   const ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+      const size_t channel_dim = 1;
+      const size_t batch_size = NumElements(input->dims);
+      CpuBackendContext* cpu_backend_context =
+          CpuBackendContext::GetFromContext(context);
+      pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+      xnn_status status = xnn_run_clamp_nc_f32(
+          channel_dim, channel_dim, channel_dim, batch_size,
+          GetTensorData<float>(input), GetTensorData<float>(output),
+          /*min=*/-1.0f, /*max=*/1.0f, /*flags=*/XNN_FLAG_YIELD_WORKERS,
+          threadpool);
+      if (status == xnn_status_success) {
+        return kTfLiteOk;
+      }
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Failed to run xnnpack xnn_run_clamp_nc_f32. Error code: %d",
+                 status);
+#endif
       optimized_ops::Relu1(GetTensorShape(input), GetTensorData<float>(input),
                            GetTensorShape(output),
                            GetTensorData<float>(output));
@@ -809,6 +852,25 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(input), GetTensorData<float>(input),
             GetTensorShape(output), GetTensorData<float>(output));
       } else {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+        const size_t channel_dim = 1;
+        const size_t batch_size = NumElements(input->dims);
+        CpuBackendContext* cpu_backend_context =
+            CpuBackendContext::GetFromContext(context);
+        pthreadpool_t threadpool =
+            cpu_backend_context->get_xnnpack_threadpool();
+        xnn_status status = xnn_run_hardswish_nc_f32(
+            channel_dim, channel_dim, channel_dim, batch_size,
+            GetTensorData<float>(input), GetTensorData<float>(output),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+        if (status == xnn_status_success) {
+          return kTfLiteOk;
+        }
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to run xnnpack xnn_run_hardswish_nc_f32. Error code: %d",
+            status);
+#endif
         optimized_ops::HardSwish(
             GetTensorShape(input), GetTensorData<float>(input),
             GetTensorShape(output), GetTensorData<float>(output));
@@ -858,6 +920,24 @@ TfLiteStatus Relu0to1Eval(TfLiteContext* context, TfLiteNode* node) {
   const ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+      const size_t channel_dim = 1;
+      const size_t batch_size = NumElements(input->dims);
+      CpuBackendContext* cpu_backend_context =
+          CpuBackendContext::GetFromContext(context);
+      pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+      xnn_status status = xnn_run_clamp_nc_f32(
+          channel_dim, channel_dim, channel_dim, batch_size,
+          GetTensorData<float>(input), GetTensorData<float>(output),
+          /*min=*/0.0f, /*max=*/1.0f, /*flags=*/XNN_FLAG_YIELD_WORKERS,
+          threadpool);
+      if (status == xnn_status_success) {
+        return kTfLiteOk;
+      }
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Failed to run xnnpack xnn_run_clamp_nc_f32. Error code: %d",
+                 status);
+#endif
       optimized_ops::Relu0To1(
           GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(output), GetTensorData<float>(output));
@@ -888,6 +968,24 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
   ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+      const size_t channel_dim = 1;
+      const size_t batch_size = NumElements(input->dims);
+      CpuBackendContext* cpu_backend_context =
+          CpuBackendContext::GetFromContext(context);
+      pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+      xnn_status status = xnn_run_clamp_nc_f32(
+          channel_dim, channel_dim, channel_dim, batch_size,
+          GetTensorData<float>(input), GetTensorData<float>(output),
+          /*min=*/0.0f, /*max=*/6.0f, /*flags=*/XNN_FLAG_YIELD_WORKERS,
+          threadpool);
+      if (status == xnn_status_success) {
+        return kTfLiteOk;
+      }
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Failed to run xnnpack xnn_run_clamp_nc_f32. Error code: %d",
+                 status);
+#endif
       size_t elements = input->bytes / sizeof(float);
       const float* in = GetTensorData<float>(input);
       const float* in_end = in + elements;
@@ -929,6 +1027,24 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
                             GetTensorShape(output),
                             GetTensorData<float>(output));
       } else {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+        const size_t channel_dim = 1;
+        const size_t batch_size = NumElements(input->dims);
+        CpuBackendContext* cpu_backend_context =
+            CpuBackendContext::GetFromContext(context);
+        pthreadpool_t threadpool =
+            cpu_backend_context->get_xnnpack_threadpool();
+        xnn_status status = xnn_run_tanh_nc_f32(
+            channel_dim, channel_dim, channel_dim, batch_size,
+            GetTensorData<float>(input), GetTensorData<float>(output),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+        if (status == xnn_status_success) {
+          return kTfLiteOk;
+        }
+        TFLITE_LOG(TFLITE_LOG_INFO,
+                   "Failed to run xnnpack xnn_run_tanh_nc_f32. Error code: %d",
+                   status);
+#endif
         optimized_ops::Tanh(GetTensorShape(input), GetTensorData<float>(input),
                             GetTensorShape(output),
                             GetTensorData<float>(output));
@@ -1011,6 +1127,25 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
             GetTensorShape(input), GetTensorData<float>(input),
             GetTensorShape(output), GetTensorData<float>(output));
       } else {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+        const size_t channel_dim = 1;
+        const size_t batch_size = NumElements(input->dims);
+        CpuBackendContext* cpu_backend_context =
+            CpuBackendContext::GetFromContext(context);
+        pthreadpool_t threadpool =
+            cpu_backend_context->get_xnnpack_threadpool();
+        xnn_status status = xnn_run_sigmoid_nc_f32(
+            channel_dim, channel_dim, channel_dim, batch_size,
+            GetTensorData<float>(input), GetTensorData<float>(output),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+        if (status == xnn_status_success) {
+          return kTfLiteOk;
+        }
+        TFLITE_LOG(
+            TFLITE_LOG_INFO,
+            "Failed to run xnnpack xnn_run_sigmoid_nc_f32. Error code: %d",
+            status);
+#endif
         optimized_ops::Logistic(
             GetTensorShape(input), GetTensorData<float>(input),
             GetTensorShape(output), GetTensorData<float>(output));
@@ -1450,6 +1585,24 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   LeakyReluParams op_params;
   switch (input->type) {
     case kTfLiteFloat32: {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+      const size_t channel_dim = 1;
+      const size_t batch_size = NumElements(input->dims);
+      CpuBackendContext* cpu_backend_context =
+          CpuBackendContext::GetFromContext(context);
+      pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+      xnn_status status = xnn_run_leaky_relu_nc_f32(
+          channel_dim, channel_dim, channel_dim, batch_size,
+          GetTensorData<float>(input), GetTensorData<float>(output),
+          params->alpha, /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+      if (status == xnn_status_success) {
+        return kTfLiteOk;
+      }
+      TFLITE_LOG(
+          TFLITE_LOG_INFO,
+          "Failed to run xnnpack xnn_run_leaky_relu_nc_f32. Error code: %d",
+          status);
+#endif
       op_params.alpha = params->alpha;
       optimized_ops::LeakyRelu(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
@@ -1502,6 +1655,23 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
   switch (input->type) {
     case kTfLiteFloat32: {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+      const size_t channel_dim = 1;
+      const size_t batch_size = NumElements(input->dims);
+      CpuBackendContext* cpu_backend_context =
+          CpuBackendContext::GetFromContext(context);
+      pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+      xnn_status status = xnn_run_elu_nc_f32(
+          channel_dim, channel_dim, channel_dim, batch_size,
+          GetTensorData<float>(input), GetTensorData<float>(output),
+          /*alpha=*/1.0f, /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
+      if (status == xnn_status_success) {
+        return kTfLiteOk;
+      }
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Failed to run xnnpack xnn_run_elu_nc_f32. Error code: %d",
+                 status);
+#endif
       optimized_ops::Elu(GetTensorShape(input), GetTensorData<float>(input),
                          GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
@@ -1687,17 +1857,33 @@ TfLiteRegistration* Register_LOGISTIC() {
 
 TfLiteRegistration* Register_SOFTMAX_REF() {
   static TfLiteRegistration r = {
-      activations::SoftmaxInit, activations::SoftmaxFree,
+      activations::SoftmaxInit,
+      activations::SoftmaxFree,
       activations::SoftmaxPrepare<activations::kReference>,
-      activations::SoftmaxEval<activations::kReference>};
+      activations::SoftmaxEval<activations::kReference>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_SOFTMAX() {
   static TfLiteRegistration r = {
-      activations::SoftmaxInit, activations::SoftmaxFree,
+      activations::SoftmaxInit,
+      activations::SoftmaxFree,
       activations::SoftmaxPrepare<activations::kGenericOptimized>,
-      activations::SoftmaxEval<activations::kGenericOptimized>};
+      activations::SoftmaxEval<activations::kGenericOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared};
   return &r;
 }
 

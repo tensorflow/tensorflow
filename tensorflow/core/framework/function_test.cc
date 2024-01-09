@@ -15,24 +15,40 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <memory>
+#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::Eq;
+using ::testing::Ne;
+using ::testing::NotNull;
+using ::testing::UnorderedElementsAreArray;
 
 // A helper class to make AttrSlice from initializer lists
 class Attrs {
@@ -1037,7 +1053,7 @@ TEST(Canonicalize, Basic) {
 }
 
 TEST(FunctionLibraryDefinitionTest, Contains) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   EXPECT_FALSE(lib_def.Contains("XTimes16"));
@@ -1045,18 +1061,23 @@ TEST(FunctionLibraryDefinitionTest, Contains) {
 }
 
 TEST(FunctionLibraryDefinitionTest, Find) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   EXPECT_EQ(lib_def.Find("XTimes16"), nullptr);
+  EXPECT_EQ(lib_def.FindRecord("XTimes16").get(), nullptr);
 
   auto found = lib_def.Find("XTimesTwo");
+  auto found_record = lib_def.FindRecord("XTimesTwo");
   ASSERT_NE(found, nullptr);
+  ASSERT_NE(found_record.get(), nullptr);
   EXPECT_EQ(test::function::XTimesTwo().DebugString(), found->DebugString());
+  EXPECT_EQ(test::function::XTimesTwo().DebugString(),
+            found_record->fdef().DebugString());
 }
 
 TEST(FunctionLibraryDefinitionTest, LookUp) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   const OpDef* op_def;
@@ -1075,7 +1096,7 @@ TEST(FunctionLibraryDefinitionTest, LookUp) {
 }
 
 TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   // Test lookup of existing function.
@@ -1090,12 +1111,28 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
   fdef.mutable_signature()->set_name("Add");
   Status s = lib_def.AddFunctionDef(fdef);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot add function 'Add' because an op with the same name "
             "already exists.");
 
   // Test that adding the same functions again does not produce an error.
   TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+}
+
+TEST(FunctionLibraryDefinitionTest, AddFunctionDefMove) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+  FunctionDef fdef = test::function::XTimesTwo();
+  EXPECT_GT(fdef.node_def_size(), 0);
+  TF_CHECK_OK(lib_def.AddFunctionDef(std::move(fdef)));
+  // The protobuf move constructor will empty the node defs from the function.
+  EXPECT_EQ(fdef.node_def_size(), 0);  // NOLINT
+
+  // Test lookup of existing function.
+  const OpDef* op_def;
+  TF_EXPECT_OK(lib_def.LookUpOpDef("XTimesTwo", &op_def));
+  ASSERT_NE(op_def, nullptr);
+  EXPECT_EQ(op_def->DebugString(),
+            test::function::XTimesTwo().signature().DebugString());
 }
 
 TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
@@ -1116,19 +1153,18 @@ TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
   grad.set_gradient_func(test::function::XTimes16().signature().name());
   Status s = lib_def.AddGradientDef(grad);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'XTimes16' to 'XTimesTwo' because "
             "it already has gradient function 'XTimesFour'");
 }
 
 TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   Status s = lib_def.RemoveFunction("XTimes16");
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
-            "Tried to remove non-existent function 'XTimes16'.");
+  EXPECT_EQ(s.message(), "Tried to remove non-existent function 'XTimes16'.");
 
   EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
   TF_EXPECT_OK(lib_def.RemoveFunction("XTimesTwo"));
@@ -1136,7 +1172,7 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
 }
 
 TEST(FunctionLibraryDefinitionTest, Clear) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XAddX()));
 
@@ -1166,7 +1202,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto);
   Status s = lib_def.AddLibrary(lib_def2);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot add function 'XTimesTwo' because a different function with "
             "the same name already exists.");
 
@@ -1177,7 +1213,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   FunctionLibraryDefinition lib_def3(OpRegistry::Global(), proto);
   s = lib_def.AddLibrary(lib_def3);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'XTimes16' to 'XTimesTwo' because "
             "it already has gradient function 'XTimesFour'");
 
@@ -1217,7 +1253,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary_Atomic) {
   EXPECT_EQ(
       "Cannot add function 'XTimesTwo' because a different function with "
       "the same name already exists.",
-      s.error_message());
+      s.message());
 
   // Verify that none of the functions are added
   EXPECT_TRUE(lib_def.Find(x2_name) == nullptr);
@@ -1230,7 +1266,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary_Atomic) {
   // Try adding the library and check that nothing was added
   s = lib_def.AddLibrary(proto);
   EXPECT_EQ(error::Code::INVALID_ARGUMENT, s.code());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'SecondGradName' to 'XTimesTwo' "
             "because it already has gradient function 'XTimesFour'");
   EXPECT_TRUE(lib_def.Find(x2_name) == nullptr);
@@ -1268,7 +1304,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_FuncConflict) {
   EXPECT_EQ(
       "Cannot add function 'XTimesTwo' because a different function "
       "with the same name already exists.",
-      s.error_message());
+      s.message());
   EXPECT_TRUE(lib_def.Find(wx_name) == nullptr);
   EXPECT_EQ(1, lib_def.ToProto().function_size());
   EXPECT_EQ(1, lib_def.ToProto().gradient_size());
@@ -1304,14 +1340,15 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_GradConflict) {
   EXPECT_EQ(
       "Cannot assign gradient function 'WXPlusB' to 'XTimesTwo'"
       " because it already has gradient function 'XTimesFour'",
-      s.error_message());
+      s.message());
   EXPECT_TRUE(lib_def.Find(wx_name) == nullptr);
   EXPECT_EQ(1, lib_def.ToProto().function_size());
   EXPECT_EQ(1, lib_def.ToProto().gradient_size());
 }
 
 TEST(FunctionLibraryDefinitionTest, ToProto) {
-  FunctionLibraryDefinition lib_def1(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def1(OpRegistry::Global(),
+                                     FunctionDefLibrary());
   TF_CHECK_OK(lib_def1.AddFunctionDef(test::function::XTimesTwo()));
   TF_CHECK_OK(lib_def1.AddFunctionDef(test::function::WXPlusB()));
 
@@ -1331,7 +1368,7 @@ TEST(FunctionLibraryDefinitionTest, ToProto) {
 }
 
 TEST(FunctionLibraryDefinitionTest, ListFunctionNames) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::WXPlusB()));
 
@@ -1491,6 +1528,82 @@ TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
   EXPECT_TRUE(reachable_flib.Contains("Func4"));
   EXPECT_TRUE(reachable_flib.Contains("Func5"));
   EXPECT_FALSE(reachable_flib.Contains("Func6"));
+}
+
+TEST(FunctionLibraryDefinitionTest, AddAndFindOptimizedFunctionGraph) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+  EXPECT_EQ(lib_def.FindOptimizedFunctionGraph("test"), nullptr);
+  OptimizedFunctionGraph proto;
+  lib_def.AddOptimizedFunctionGraph("test", proto);
+  EXPECT_NE(lib_def.FindOptimizedFunctionGraph("test"), nullptr);
+}
+
+TEST(FunctionLibraryDefinitionTest, MoveTest) {
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+  const OptimizedFunctionGraph proto;
+  lib_def.AddOptimizedFunctionGraph("test", proto);
+  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
+
+  FunctionLibraryDefinition copy_lib_def = std::move(lib_def);
+  EXPECT_TRUE(copy_lib_def.Contains("XTimesTwo"));
+  EXPECT_NE(copy_lib_def.FindOptimizedFunctionGraph("test"), nullptr);
+}
+
+TEST(FunctionLibraryDefinitionTest, ConstructFromGraphDef) {
+  // Prepare GraphDef with FunctionDefLibrary and associated stackt traces.
+  FunctionDefLibrary library;
+  *library.add_function() = test::function::XTimesTwo();
+  *library.add_function() = test::function::XTimesFour();
+  GraphDef graph_def;
+  *graph_def.mutable_library() = library;
+  GraphDebugInfoBuilder builder;
+  StackTracesMap x2_expected_traces;
+  x2_expected_traces["two"] =
+      std::make_shared<FrozenStackTrace>(std::vector<StackFrame>{
+          {"alpha.cc", 20, "bar"}, {"x.cc", 5, "x"}, {"beta.cc", 30, "sop"}});
+  StackTracesMap x4_expected_traces;
+  x4_expected_traces["y"] =
+      std::make_shared<FrozenStackTrace>(std::vector<StackFrame>{
+          {"beta.cc", 10, "foo"},
+          {"x.cc", 5, "x"},  // duplicate one frame exactly
+          {"gamma.cc", 123, "bell"},
+      });
+  builder.AccumulateStackTracesMap(x2_expected_traces, "@XTimesTwo");
+  builder.AccumulateStackTracesMap(x4_expected_traces, "@XTimesFour");
+  *graph_def.mutable_debug_info() = builder.Build();
+
+  // This is the constructor being tested. It should pull the stack traces from
+  // the GraphDef, and populate the FunctionLibraryDefinition's FunctionRecords
+  // with them.
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), graph_def);
+
+  // Check that expected stack traces exist and are correctly mapped.
+  EXPECT_THAT(lib_def.ListFunctionNames(),
+              UnorderedElementsAreArray({"XTimesTwo", "XTimesFour"}));
+  const core::RefCountPtr<FunctionRecord> x2_record =
+      lib_def.FindRecord("XTimesTwo");
+  EXPECT_THAT(x2_record.get(), NotNull());
+  const StackTracesMap& x2_traces = x2_record->stack_traces();
+  const auto& two_it = x2_traces.find("two");
+  EXPECT_THAT(two_it, Ne(x2_traces.end()));
+  if (two_it != x2_traces.end()) {
+    EXPECT_THAT(two_it->second->ToString({}),
+                Eq("File \"alpha.cc\", line 20, in bar\n"
+                   "File \"x.cc\", line 5, in x\n"
+                   "File \"beta.cc\", line 30, in sop"));
+  }
+  const core::RefCountPtr<FunctionRecord> x4_record =
+      lib_def.FindRecord("XTimesFour");
+  EXPECT_THAT(x4_record, NotNull());
+  const StackTracesMap& x4_traces = x4_record->stack_traces();
+  const auto& y_it = x4_traces.find("y");
+  EXPECT_THAT(y_it, Ne(x4_traces.end()));
+  if (y_it != x4_traces.end()) {
+    EXPECT_THAT(y_it->second->ToString({}),
+                Eq("File \"beta.cc\", line 10, in foo\n"
+                   "File \"x.cc\", line 5, in x\n"
+                   "File \"gamma.cc\", line 123, in bell"));
+  }
 }
 
 // TODO(skyewm): this could be more thorough
@@ -1664,6 +1777,108 @@ TEST(InstantiateFunctionTest, ResourceInputDevice) {
   EXPECT_EQ(device1, "/device:CPU:0");
   EXPECT_EQ(composite_devices.size(), 1);
   EXPECT_EQ(composite_devices.at("/device:COMPOSITE:0").size(), 2);
+}
+
+TEST(FrozenStackTrace, ToFramesReturnsAllFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.ToFrames(), ElementsAreArray(frames));
+}
+
+TEST(FrozenStackTrace, GetUserFramesWithNegativeLimitReturnsAllFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.GetUserFrames(-1), ElementsAreArray(frames));
+}
+
+TEST(FrozenStackTrace, GetUserFramesWithLargeLimitReturnsAllFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.GetUserFrames(frames.size() + 1),
+              ElementsAreArray(frames));
+}
+
+TEST(FrozenStackTrace, GetUserFramesWithLowLimitSlicesFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.GetUserFrames(2),
+              ElementsAre(Eq(frames[0]), Eq(frames[1])));
+}
+
+TEST(FrozenStackTrace, LastUserFrameReturnsLastFrame) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_EQ(frozen_stack_trace.LastUserFrame(), frames[2]);
+}
+
+TEST(FrozenStackTrace, ToString) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/tensorflow/python/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_EQ(frozen_stack_trace.ToString({}),
+            "File \"some/path/alpha.cc\", line 20, in bar\n"
+            "File \"some/path/beta.cc\", line 30, in fox\n"
+            "File \"some/path/tensorflow/python/gamma.cc\", line 40, in trot");
+}
+
+TEST(FrozenStackTrace, ToStringWithFilterCommonPrefix) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"<embedded something>", 10, "foo"},
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/tensorflow/python/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+  AbstractStackTrace::TracePrintingOptions options;
+  options.filter_common_prefix = true;
+  EXPECT_EQ(frozen_stack_trace.ToString(options),
+            "File \"<embedded something>\", line 10, in foo\n"
+            "File \"alpha.cc\", line 20, in bar\n"
+            "File \"beta.cc\", line 30, in fox\n"
+            "File \"tensorflow/python/gamma.cc\", line 40, in trot");
+}
+
+TEST(FrozenStackTrace, ToStringWithDropInternalFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/tensorflow/python/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+  AbstractStackTrace::TracePrintingOptions options;
+  options.drop_internal_frames = true;
+  EXPECT_EQ(frozen_stack_trace.ToString(options),
+            "File \"some/path/alpha.cc\", line 20, in bar\n"
+            "File \"some/path/beta.cc\", line 30, in fox");
 }
 
 }  // end namespace

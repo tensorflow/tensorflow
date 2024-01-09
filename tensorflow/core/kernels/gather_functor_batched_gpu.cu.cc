@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/gather_functor_batched_gpu.cu.h"
+
 #include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
@@ -34,6 +35,8 @@ typedef Eigen::GpuDevice GPUDevice;
 TF_CALL_int32(DEFINE_GPU_SPECS);
 TF_CALL_int64(DEFINE_GPU_SPECS);
 TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_float8_e5m2(DEFINE_GPU_SPECS);
+TF_CALL_float8_e4m3fn(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX

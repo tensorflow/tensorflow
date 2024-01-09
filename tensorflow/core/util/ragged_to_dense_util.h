@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_RAGGED_TO_DENSE_UTIL_H_
 #define TENSORFLOW_CORE_UTIL_RAGGED_TO_DENSE_UTIL_H_
 
+#include <vector>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"

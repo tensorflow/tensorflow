@@ -59,7 +59,8 @@ using gpuError_t = hipError_t;
 #if GOOGLE_CUDA
 
 #define GPU_DYNAMIC_SHARED_MEM_DECL(ALIGN, TYPE, NAME) \
-  extern __shared__ __align__(ALIGN) TYPE NAME[]
+  extern __shared__ __align__(ALIGN)                   \
+  TYPE NAME[]
 
 #elif TENSORFLOW_USE_ROCM
 
@@ -85,13 +86,12 @@ inline const char* GpuGetErrorString(hipError_t error) {
 // Returns a raw reference to the current cuda stream. Required by a
 // number of kernel calls (for which StreamInterface* does not work),
 // i.e. CUB and certain cublas primitives.
-inline const gpuStream_t& GetGpuStream(OpKernelContext* context) {
-  const gpuStream_t* ptr = CHECK_NOTNULL(
-      reinterpret_cast<const gpuStream_t*>(context->op_device_context()
-                                               ->stream()
-                                               ->implementation()
-                                               ->GpuStreamMemberHack()));
-  return *ptr;
+inline gpuStream_t GetGpuStream(OpKernelContext* context) {
+  void* opaque_stream = CHECK_NOTNULL(context->op_device_context()
+                                          ->stream()
+                                          ->platform_specific_handle()
+                                          .stream);
+  return reinterpret_cast<gpuStream_t>(opaque_stream);
 }
 
 // Launches a GPU kernel through cudaLaunchKernel in CUDA environment, or
@@ -104,20 +104,25 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
                        Args... arguments) {
   static_assert(detail::NoneIsReference<Ts...>(),
                 "Kernels with reference arguments have undefined behaviour.");
+  if (grid_dim.x * grid_dim.y * grid_dim.z > 0 &&
+      block_dim.x * block_dim.y * block_dim.z > 0) {
 #if GOOGLE_CUDA
-  auto func_ptr = absl::bit_cast<const void*>(function);
-  // Cast arguments and forward them as an array of pointers.
-  auto args_tuple = std::tuple<Ts...>(arguments...);
-  auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
-  auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
-                                 shared_memory_size_bytes, stream);
-  if (result != cudaSuccess) {
-    return errors::Internal(cudaGetErrorString(result));
-  }
+    auto func_ptr = absl::bit_cast<const void*>(function);
+    // Cast arguments and forward them as an array of pointers.
+    auto args_tuple = std::tuple<Ts...>(arguments...);
+    auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
+    auto result =
+        cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
+                         shared_memory_size_bytes, stream);
+    if (result != cudaSuccess) {
+      return errors::Internal(cudaGetErrorString(result));
+    }
 #elif TENSORFLOW_USE_ROCM
-  hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
-                     stream, std::forward<Args>(arguments)...);
+    hipLaunchKernelGGL(function, grid_dim, block_dim, shared_memory_size_bytes,
+                       stream, std::forward<Args>(arguments)...);
+    TF_RETURN_IF_CUDA_ERROR(hipGetLastError());
 #endif
+  }
   return OkStatus();
 }
 
@@ -164,6 +169,15 @@ __host__ __device__ inline float tf_max(float x, float y) {
 __host__ __device__ inline double tf_max(double x, double y) {
   return fmax(x, y);
 }
+
+#ifdef _MSC_VER
+#if _MSC_VER >= 1930
+using std::max;
+using std::min;
+__host__ __device__ inline int tf_min(int x, int y) { return min(x, y); }
+__host__ __device__ inline int tf_max(int x, int y) { return max(x, y); }
+#endif
+#endif
 
 // ROCM TODO re-enable them after adding fp16 support logic
 #if GOOGLE_CUDA

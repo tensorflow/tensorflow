@@ -15,11 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_SPARSITY_SPARSIFY_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_SPARSITY_SPARSIFY_MODEL_H_
 
-#include <memory>
-#include <unordered_set>
-
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {

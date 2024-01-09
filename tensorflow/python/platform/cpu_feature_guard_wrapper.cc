@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/platform/cpu_feature_guard.h"
 
 PYBIND11_MODULE(_pywrap_cpu_feature_guard, m) {

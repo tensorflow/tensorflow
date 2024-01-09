@@ -25,7 +25,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.platform import test
@@ -214,7 +214,7 @@ class MakeBatchedFeaturesDatasetTest(tf_record_test_base.FeaturesTestBase,
         batch_size=batch_size,
         drop_final_batch=True)
     for tensor in nest.flatten(outputs):
-      if isinstance(tensor, ops.Tensor):  # Guard against SparseTensor.
+      if isinstance(tensor, tensor_lib.Tensor):  # Guard against SparseTensor.
         self.assertEqual(tensor.shape[0], batch_size)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -227,7 +227,7 @@ class MakeBatchedFeaturesDatasetTest(tf_record_test_base.FeaturesTestBase,
     for shape, clazz in zip(
         nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)),
         nest.flatten(dataset_ops.get_legacy_output_classes(dataset))):
-      if issubclass(clazz, ops.Tensor):
+      if issubclass(clazz, tensor_lib.Tensor):
         self.assertEqual(32, shape[0])
 
   @combinations.generate(test_base.default_test_combinations())

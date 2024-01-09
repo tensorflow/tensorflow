@@ -18,9 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/cleanup/cleanup.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/stream_executor/tpu/proto_helper.h"
+#include "xla/stream_executor/tpu/status_helper.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
@@ -63,7 +64,7 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
 
     char* common_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&common_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           common_config_output);
     });
     size_t common_config_output_size;
@@ -73,7 +74,8 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ExecutePartitionerFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ExecutePartitionerFn(
+        &params);
     if (!status.ok()) {
       LOG(WARNING) << "ExecuteTPUEmbeddingPartitioner::Compute failed"
                    << status.status().ToString();
@@ -94,7 +96,9 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
   // The embedding layer configuration for the TPUEmbedding host software.
   std::string config_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecuteTPUEmbeddingPartitionerOp);
+  ExecuteTPUEmbeddingPartitionerOp(const ExecuteTPUEmbeddingPartitionerOp&) =
+      delete;
+  void operator=(const ExecuteTPUEmbeddingPartitionerOp&) = delete;
 };
 
 // Initializes the HBM memory addresses and segments on each host.
@@ -116,7 +120,7 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
 
     char* memory_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&memory_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           memory_config_output);
     });
     size_t memory_config_output_size;
@@ -127,7 +131,8 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureMemoryFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureMemoryFn(
+        &params);
     OP_REQUIRES_OK(ctx, status.status());
 
     const std::string memory_config_string =
@@ -144,7 +149,8 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
   ~ConfigureTPUEmbeddingMemoryOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConfigureTPUEmbeddingMemoryOp);
+  ConfigureTPUEmbeddingMemoryOp(const ConfigureTPUEmbeddingMemoryOp&) = delete;
+  void operator=(const ConfigureTPUEmbeddingMemoryOp&) = delete;
 };
 
 // Merges the memory configurations of all hosts into one
@@ -176,7 +182,7 @@ class CollateTPUEmbeddingMemoryOp : public OpKernel {
 
     char* merged_memory_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&merged_memory_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           merged_memory_config_output);
     });
 
@@ -187,7 +193,8 @@ class CollateTPUEmbeddingMemoryOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_CollateMemoryFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_CollateMemoryFn(
+        &params);
     OP_REQUIRES_OK(ctx, status.status());
 
     const std::string merged_memory_config_string = std::string(
@@ -204,7 +211,8 @@ class CollateTPUEmbeddingMemoryOp : public OpKernel {
   ~CollateTPUEmbeddingMemoryOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollateTPUEmbeddingMemoryOp);
+  CollateTPUEmbeddingMemoryOp(const CollateTPUEmbeddingMemoryOp&) = delete;
+  void operator=(const CollateTPUEmbeddingMemoryOp&) = delete;
 };
 
 // The ConfigureTpuEmbeddingHost op is used to set up the TPUEmbedding host
@@ -247,7 +255,7 @@ class ConfigureTPUEmbeddingHostOp : public OpKernel {
 
     char* network_config_output = nullptr;
     auto cleanup = absl::MakeCleanup([&network_config_output]() {
-      tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+      stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_FreeCharArrayFn(
           network_config_output);
     });
 
@@ -258,7 +266,8 @@ class ConfigureTPUEmbeddingHostOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureHostFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ConfigureHostFn(
+        &params);
     OP_REQUIRES_OK(ctx, status.status());
 
     const std::string network_config_string =
@@ -278,7 +287,8 @@ class ConfigureTPUEmbeddingHostOp : public OpKernel {
   // The embedding layer configuration for the TPUEmbedding host software.
   std::string config_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ConfigureTPUEmbeddingHostOp);
+  ConfigureTPUEmbeddingHostOp(const ConfigureTPUEmbeddingHostOp&) = delete;
+  void operator=(const ConfigureTPUEmbeddingHostOp&) = delete;
 };
 
 // The ConnectTpuEmbeddingHosts op is used to set up gRPC connections
@@ -314,7 +324,8 @@ class ConnectTPUEmbeddingHostsOp : public OpKernel {
     StatusHelper status;
     params.status = status.c_status;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_ConnectHostsFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ConnectHostsFn(
+        &params);
     OP_REQUIRES_OK(ctx, status.status());
 
     VLOG(1) << "ConnectTPUEmbeddingHostsOp::Compute done";
@@ -323,7 +334,8 @@ class ConnectTPUEmbeddingHostsOp : public OpKernel {
   ~ConnectTPUEmbeddingHostsOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConnectTPUEmbeddingHostsOp);
+  ConnectTPUEmbeddingHostsOp(const ConnectTPUEmbeddingHostsOp&) = delete;
+  void operator=(const ConnectTPUEmbeddingHostsOp&) = delete;
 };
 
 // The FinalizeTpuEmbeddingOp op is used to update TpuMeshCommonState and
@@ -364,7 +376,7 @@ class FinalizeTPUEmbeddingOp : public OpKernel {
     core::ScopedUnref mesh_state_unref(mesh_state);
     params.tpu_mesh_state = mesh_state->data();
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_FinalizeFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_FinalizeFn(&params);
     OP_REQUIRES_OK(ctx, status.status());
     VLOG(1) << "FinalizeTPUEmbeddingOp::Compute done";
   }
@@ -372,7 +384,8 @@ class FinalizeTPUEmbeddingOp : public OpKernel {
   ~FinalizeTPUEmbeddingOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FinalizeTPUEmbeddingOp);
+  FinalizeTPUEmbeddingOp(const FinalizeTPUEmbeddingOp&) = delete;
+  void operator=(const FinalizeTPUEmbeddingOp&) = delete;
 };
 
 // The IsTPUEmbeddingInitializedOp is used to check whether the TPU
@@ -398,7 +411,8 @@ class IsTPUEmbeddingInitializedOp : public OpKernel {
     bool is_initialized = false;
     params.is_tpu_embedding_initialized = &is_initialized;
 
-    tpu::OpsApiFn()->TpuEmbeddingEngine_IsInitializedFn(&params);
+    stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_IsInitializedFn(
+        &params);
 
     OP_REQUIRES_OK(ctx, status.status());
 
@@ -412,7 +426,8 @@ class IsTPUEmbeddingInitializedOp : public OpKernel {
 
  private:
   std::string config_string_;
-  TF_DISALLOW_COPY_AND_ASSIGN(IsTPUEmbeddingInitializedOp);
+  IsTPUEmbeddingInitializedOp(const IsTPUEmbeddingInitializedOp&) = delete;
+  void operator=(const IsTPUEmbeddingInitializedOp&) = delete;
 };
 
 // These ops execute on the CPU devices of TPU worker tasks.

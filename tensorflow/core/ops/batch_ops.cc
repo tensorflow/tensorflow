@@ -45,6 +45,12 @@ REGISTER_OP("BatchFunction")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Attr("batching_queue: string = ''")
+    // A separate set of batch options for the low priority requests, which is
+    // used for priority queue batching.
+    .Attr("low_priority_max_batch_size: int = 0")
+    .Attr("low_priority_batch_timeout_micros: int = 0")
+    .Attr("low_priority_allowed_batch_sizes: list(int) = []")
+    .Attr("low_priority_max_enqueued_batches: int = 0")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")

@@ -1,6 +1,6 @@
 op {
   graph_op_name: "TruncateDiv"
-  summary: "Returns x / y element-wise for integer types."
+  summary: "Returns x / y element-wise, rounded towards zero."
   description: <<END
 Truncation designates that negative numbers will round fractional quantities
 toward zero. I.e. -7 / 5 = -1. This matches C semantics but it is different

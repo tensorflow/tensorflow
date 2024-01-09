@@ -100,6 +100,12 @@ class ThreadPoolHandleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_intra_op_parallelism",
                                      &max_intra_op_parallelism_));
     OP_REQUIRES_OK(ctx, ValidateNumThreads(num_threads_));
+
+    // For consistency with Dataset, use MaxParallelism if 0 threads are
+    // specified.
+    if (num_threads_ == 0) {
+      num_threads_ = port::MaxParallelism();
+    }
   }
 
   // The resource is deleted from the resource manager only when it is private
@@ -156,8 +162,9 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     core::RefCountPtr<ThreadPoolResource> threadpool_resource;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 1),
-                                       &threadpool_resource));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 1, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &threadpool_resource));
     *output = new Dataset(ctx, input, ctx->input(1), threadpool_resource.get());
   }
 
@@ -196,8 +203,8 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       return "ThreadPoolDatasetOp::Dataset";
     }
 
-    int64_t CardinalityInternal() const override {
-      return input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      return input_->Cardinality(options);
     }
 
     Status InputDatasets(
@@ -318,7 +325,9 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
     return "MaxIntraOpParallelismDatasetOp::Dataset";
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
@@ -459,7 +468,9 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
     return "PrivateThreadPoolDatasetOp::Dataset";
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();

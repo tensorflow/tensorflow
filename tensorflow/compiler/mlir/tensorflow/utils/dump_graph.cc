@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include <utility>
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"

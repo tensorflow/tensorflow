@@ -24,10 +24,12 @@ class ModelTests: XCTestCase {
     super.setUp()
 
     let bundle = Bundle(for: type(of: self))
-    guard let modelPath = bundle.path(
-      forResource: Constant.modelInfo.name,
-      ofType: Constant.modelInfo.extension
-    ) else {
+    guard
+      let modelPath = bundle.path(
+        forResource: Constant.modelInfo.name,
+        ofType: Constant.modelInfo.extension
+      )
+    else {
       XCTFail("Failed to get the model file path.")
       return
     }
@@ -41,7 +43,10 @@ class ModelTests: XCTestCase {
   }
 
   func testInitWithFilePath() {
-    XCTAssertNotNil(Model(filePath: modelPath))
+    let model = Model(filePath: modelPath)
+    XCTAssertNotNil(model)
+    XCTAssertNotNil(model?.cModel)
+    XCTAssertNil(model?.data)
   }
 
   func testInitWithEmptyFilePath_FailsInitialization() {
@@ -50,6 +55,13 @@ class ModelTests: XCTestCase {
 
   func testInitWithInvalidFilePath_FailsInitialization() {
     XCTAssertNil(Model(filePath: "invalid/path"))
+  }
+
+  func testInitWithData() throws {
+    let model = Model(modelData: try Data(contentsOf: URL(fileURLWithPath: modelPath)))
+    XCTAssertNotNil(model)
+    XCTAssertNotNil(model?.cModel)
+    XCTAssertNotNil(model?.data)
   }
 }
 

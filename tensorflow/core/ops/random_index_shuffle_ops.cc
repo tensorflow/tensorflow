@@ -44,15 +44,24 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
 
   // Check that last dimension of seed is 3.
   if (seed_rank == 1 && c->Value(c->Dim(seed_shape, 0)) != 3) {
-    return errors::InvalidArgument("Seed must have shape [3] but got [",
-                                   c->Value(c->Dim(seed_shape, 0)), "].");
+    return errors::InvalidArgument(
+        "Seed must have shape [3] or [n, 3] but got [",
+        c->Value(c->Dim(seed_shape, 0)), "].");
   }
   if (seed_rank == 2 && c->Value(c->Dim(seed_shape, 1)) != 3) {
-    return errors::InvalidArgument("Seed must have shape [n, 3] but got [",
-                                   c->Value(c->Dim(seed_shape, 0)), ", ",
-                                   c->Value(c->Dim(seed_shape, 1)), "].");
+    return errors::InvalidArgument(
+        "Seed must have shape [3] or [n, 3] but got [",
+        c->Value(c->Dim(seed_shape, 0)), ", ", c->Value(c->Dim(seed_shape, 1)),
+        "].");
   }
 
+  // Below we handle 3 cases:
+  // 1. If all inputs are scalars the output is a scalar.
+  // 2. If we cannot decide if the output is a scalar or a vector we output
+  //    unknown shape.
+  // 3. The output must be a vector and try to compute it's size.
+
+  // Case 1.
   // If all inputs are scalars the output is a scalar.
   const bool output_is_scalar =
       (index_rank == 0 && seed_rank == 1 && max_index_rank == 0);
@@ -61,39 +70,52 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
     return OkStatus();
   }
 
-  if (!c->FullyDefined(index_shape) || !c->FullyDefined(seed_shape) ||
-      !c->FullyDefined(max_index_shape)) {
-    const bool output_is_vector =
-        (index_rank == 1 || seed_rank == 2 || max_index_rank == 1);
-    if (output_is_vector) {
-      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-    }
+  // Case 2.
+  // If we know for certain that the output is a vector we should proceed to
+  // calculate the size below. Otherwise the output could be a scalar or a
+  // vector.
+  const bool output_must_be_vector =
+      (index_rank == 1 || seed_rank == 2 || max_index_rank == 1);
+  if (!output_must_be_vector) {
+    c->set_output(0, c->UnknownShape());
     return OkStatus();
   }
 
-  // Shape is fully defined and the output is a vector.
-  const int64_t num_indices = index_rank ? c->Value(c->Dim(index_shape, 0)) : 1;
-  const int64_t num_seeds =
-      seed_rank == 2 ? c->Value(c->Dim(seed_shape, 0)) : 1;
-  const int64_t num_max_indices =
-      max_index_rank ? c->Value(c->Dim(max_index_shape, 0)) : 1;
-  const int64_t num_outputs =
-      std::max(std::max(num_indices, num_seeds), num_max_indices);
-  if (num_indices != 1 && num_indices != num_outputs) {
-    return errors::InvalidArgument("Index has shape [", num_indices,
-                                   "] but must have shape [", num_outputs,
-                                   "].");
+  // Case 3.
+  // Output is a vector and we try to compute the size `num_outputs`. The result
+  // can be kUknownDim.
+  int64_t num_outputs = InferenceContext::kUnknownDim;
+
+  // Check index.
+  if (index_rank == 1) num_outputs = c->Value(c->Dim(index_shape, 0));
+
+  // Check seed.
+  if (seed_rank == 2) {
+    const int64_t num_seeds = c->Value(c->Dim(seed_shape, 0));
+    if (num_outputs == InferenceContext::kUnknownDim) {
+      num_outputs = num_seeds;
+    } else if (num_outputs > 1 && num_seeds != InferenceContext::kUnknownDim &&
+               num_seeds > 1 && num_seeds != num_outputs) {
+      return errors::InvalidArgument(
+          "Seed has shape [", num_seeds, ", 3] but must have shape [",
+          num_outputs, ", 3]. since index had shape [", num_outputs, "].");
+    }
   }
-  if (num_seeds != 1 && num_seeds != num_outputs) {
-    return errors::InvalidArgument("Seed has shape [", num_seeds,
-                                   "3, ] but must have shape [", num_outputs,
-                                   ", 3].");
+
+  // Check max index.
+  if (max_index_rank == 1) {
+    int64_t num_max_indices = c->Value(c->Dim(max_index_shape, 0));
+    if (num_outputs == InferenceContext::kUnknownDim) {
+      num_outputs = num_max_indices;
+    } else if (num_outputs > 1 &&
+               num_max_indices != InferenceContext::kUnknownDim &&
+               num_max_indices > 1 && num_max_indices != num_outputs) {
+      return errors::InvalidArgument("Max index has shape [", num_max_indices,
+                                     "] but must have shape [", num_outputs,
+                                     "].");
+    }
   }
-  if (num_max_indices != 1 && num_max_indices != num_outputs) {
-    return errors::InvalidArgument("Max index has shape [", num_max_indices,
-                                   "] but must have shape [", num_outputs,
-                                   "].");
-  }
+
   c->set_output(0, c->Vector(num_outputs));
   return OkStatus();
 }

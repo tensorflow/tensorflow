@@ -97,7 +97,7 @@ bool NewProfiler(const string* graph, const string* op_log) {
 
   std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
-    op_log_ptr.reset(new OpLogProto());
+    op_log_ptr = std::make_unique<OpLogProto>();
     if (!op_log_ptr->ParseFromString(*op_log)) {
       absl::FPrintF(stderr, "Failed to parse OpLogProto.\n");
       return false;
@@ -143,7 +143,7 @@ double AddStep(int64_t step, const string* graph, const string* run_meta,
 
   if (op_log && !op_log->empty()) {
     std::unique_ptr<OpLogProto> op_log_ptr;
-    op_log_ptr.reset(new OpLogProto());
+    op_log_ptr = std::make_unique<OpLogProto>();
     op_log_ptr->ParseFromString(*op_log);
     tf_stat->AddOpLogProto(std::move(op_log_ptr));
   }
@@ -182,13 +182,13 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
 
   std::unique_ptr<RunMetadata> run_meta_ptr;
   if (run_meta && !run_meta->empty()) {
-    run_meta_ptr.reset(new RunMetadata());
+    run_meta_ptr = std::make_unique<RunMetadata>();
     run_meta_ptr->ParseFromString(*run_meta);
   }
 
   std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
-    op_log_ptr.reset(new OpLogProto());
+    op_log_ptr = std::make_unique<OpLogProto>();
     op_log_ptr->ParseFromString(*op_log);
   }
 

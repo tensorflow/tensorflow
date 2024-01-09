@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -38,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "xla/client/sharding_builder.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
@@ -80,7 +82,7 @@ void IdentifyTPUFunctions(
   if (!main_func) return;
 
   for (auto call : main_func.getOps<mlir::TF::StatefulPartitionedCallOp>()) {
-    auto mesh_or_status = Mesh::FromString(string(call.config()));
+    auto mesh_or_status = Mesh::FromString(string(call.getConfig()));
     // Function calls created by end users instead of being converted from
     // tf_device.cluster do not have a serialized mesh as a config attribute. We
     // ignore the error returned from parsing in this case.
@@ -109,7 +111,7 @@ mlir::LogicalResult CreateTPUCluster(
   builder->setInsertionPointToStart(&function_block);
 
   auto cluster = builder->create<mlir::tf_device::ClusterOp>(
-      tpu_call.getLoc(), function->getCallableResults());
+      tpu_call.getLoc(), function->getResultTypes());
   cluster.getBody().push_back(new mlir::Block);
 
   auto& function_body = function_block.getOperations();

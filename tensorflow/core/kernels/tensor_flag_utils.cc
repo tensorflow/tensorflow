@@ -28,19 +28,19 @@ Status ValidateSparseMatrixShardingConfig(const Tensor& config) {
       return OkStatus();
     }
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat("Expected config to be in range (0, 1] but instead found ",
                      scalar_config));
   }
   if (!TensorShapeUtils::IsMatrix(config.shape())) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Expected config to be either scalar or matrix "
                                "but instead found tensor of rank ",
                                config.dims()));
   }
   if (config.dim_size(1) != 3) {
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat(
             "Expected config matrix to have dim(1) = 3 but instead found ",
             config.dim_size(1)));
@@ -92,19 +92,19 @@ Status ValidateScalarQuantityShardingConfig(const Tensor& config) {
       return OkStatus();
     }
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat("Expected config to be in range (0, 1] but instead found ",
                      scalar_config));
   }
   if (!TensorShapeUtils::IsMatrix(config.shape())) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Expected config to be either scalar or matrix "
                                "but instead found tensor of rank ",
                                config.dims()));
   }
   if (config.dim_size(1) != 2) {
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat(
             "Expected config matrix to have dim(1) = 2 but instead found ",
             config.dim_size(1)));

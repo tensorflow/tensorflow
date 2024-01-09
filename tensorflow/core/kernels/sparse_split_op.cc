@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/sparse_utils.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -99,6 +100,13 @@ void SparseSplitOpImpl(OpKernelContext* context, int num_split,
                         "Input shape should be a vector but received shape ",
                         input_shape.shape().DebugString()),
                     done);
+  OP_REQUIRES_OK_ASYNC(context,
+                       sparse_utils::ValidateSparseTensor<int64_t>(
+                           input_indices, input_values, input_shape,
+                           std::is_same_v<Device, CPUDevice>
+                               ? sparse_utils::IndexValidation::kUnordered
+                               : sparse_utils::IndexValidation::kNone),
+                       done);
 
   const int64_t axis_input = input_axis.scalar<int64_t>()();
   const int64_t input_rank = input_shape.vec<int64_t>().size();

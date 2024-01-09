@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REGISTER_REF_H_
 #define TENSORFLOW_LITE_KERNELS_REGISTER_REF_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 

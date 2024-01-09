@@ -18,6 +18,7 @@ Additional tests are included in spacetobatch_op_test.py, where the BatchToSpace
 op is tested in tandem with its reverse SpaceToBatch op.
 """
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -44,12 +45,14 @@ class CppOpImpl(object):
     return gen_array_ops.batch_to_space(*args, **kwargs)
 
 
-class BatchToSpaceDepthToSpace(test.TestCase, PythonOpImpl):
+class BatchToSpaceDepthToSpace(test.TestCase, parameterized.TestCase,
+                               PythonOpImpl):
 
   # Verifies that: batch_to_space(x) = transpose(depth_to_space(transpose(x)))
+  @parameterized.parameters(np.float32, dtypes.bfloat16.as_numpy_dtype)
   @test_util.run_deprecated_v1
-  def testDepthToSpaceTranspose(self):
-    x = np.arange(20 * 5 * 8 * 7, dtype=np.float32).reshape([20, 5, 8, 7])
+  def testDepthToSpaceTranspose(self, dtype):
+    x = np.arange(20 * 5 * 8 * 7, dtype=dtype).reshape([20, 5, 8, 7])
     block_size = 2
     for crops_dtype in [dtypes.int64, dtypes.int32]:
       crops = array_ops.zeros((2, 2), dtype=crops_dtype)

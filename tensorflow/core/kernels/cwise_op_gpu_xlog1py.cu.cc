@@ -24,6 +24,7 @@ namespace functor {
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_BINARY5(xlog1py, Eigen::half, float, double, complex64, complex128);
 #endif
+DEFINE_BINARY1(xlog1py, bfloat16);
 #endif
 
 }  // namespace functor

@@ -25,4 +25,4 @@ attributes {tf.entry_function = {inputs = "foo,bar", outputs = "Add"}} {
 // CHECK-NEXT: input: "[[BAR_ID_0]]"
 // CHECK: name: "Add"
 // CHECK-NEXT: op: "_Retval"
-// CHECK-NEXT: input: "Add1"
+// CHECK-NEXT: input: "Add{{_.*_1}}"

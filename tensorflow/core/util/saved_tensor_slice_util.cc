@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 
+#include <vector>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/ordered_code.h"
 #include "tensorflow/core/lib/strings/str_util.h"

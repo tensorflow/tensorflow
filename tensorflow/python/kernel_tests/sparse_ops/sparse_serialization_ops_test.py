@@ -21,6 +21,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
@@ -94,7 +95,7 @@ class SerializeSparseTest(test.TestCase):
     with self.cached_session(use_gpu=False) as sess:
       sp_input = self._SparseTensorValue_5x6(np.arange(6))
       serialized = serialize_fn(sp_input, out_type=out_type)
-      serialized = array_ops.stack([serialized, serialized])
+      serialized = array_ops_stack.stack([serialized, serialized])
 
       sp_deserialized = deserialize_fn(serialized, dtype=dtypes.int32)
 
@@ -132,7 +133,7 @@ class SerializeSparseTest(test.TestCase):
       sp_input1 = self._SparseTensorValue_3x4(np.arange(6))
       serialized0 = serialize_fn(sp_input0, out_type=out_type)
       serialized1 = serialize_fn(sp_input1, out_type=out_type)
-      serialized = array_ops.stack([serialized0, serialized1])
+      serialized = array_ops_stack.stack([serialized0, serialized1])
 
       sp_deserialized = deserialize_fn(serialized, dtype=dtypes.int32)
 
@@ -165,8 +166,8 @@ class SerializeSparseTest(test.TestCase):
     with self.cached_session(use_gpu=False) as sess:
       sp_input = self._SparseTensorValue_5x6(np.arange(6))
       serialized = serialize_fn(sp_input, out_type=out_type)
-      serialized = array_ops.stack([serialized, serialized])
-      serialized = array_ops.stack([serialized, serialized])
+      serialized = array_ops_stack.stack([serialized, serialized])
+      serialized = array_ops_stack.stack([serialized, serialized])
 
       sp_deserialized = deserialize_fn(serialized, dtype=dtypes.int32)
 
@@ -214,7 +215,7 @@ class SerializeSparseTest(test.TestCase):
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
       serialized0 = serialize_fn(sp_input0, out_type=out_type)
       serialized1 = serialize_fn(sp_input1, out_type=out_type)
-      serialized_concat = array_ops.stack([serialized0, serialized1])
+      serialized_concat = array_ops_stack.stack([serialized0, serialized1])
 
       sp_deserialized = deserialize_fn(serialized_concat, dtype=dtypes.int32)
 
@@ -344,7 +345,7 @@ class SerializeSparseTest(test.TestCase):
       sparse_tensor = self._SparseTensorPlaceholder()
       serialized = sparse_ops.serialize_sparse(
           sparse_tensor, out_type=dtypes.variant)
-      stacked = array_ops.stack([serialized, serialized])
+      stacked = array_ops_stack.stack([serialized, serialized])
       deserialized = sparse_ops.deserialize_sparse(stacked, dtype=dtypes.int32)
       deserialized_value = sess.run(
           deserialized,
@@ -371,7 +372,7 @@ class SerializeSparseTest(test.TestCase):
       input1_val = self._SparseTensorValue_3x4(np.arange(6))
       serialized0 = serialize_fn(sp_input0, out_type=out_type)
       serialized1 = serialize_fn(sp_input1, out_type=out_type)
-      serialized_concat = array_ops.stack([serialized0, serialized1])
+      serialized_concat = array_ops_stack.stack([serialized0, serialized1])
 
       sp_deserialized = deserialize_fn(serialized_concat, dtype=dtypes.int64)
 
@@ -409,7 +410,7 @@ class SerializeSparseTest(test.TestCase):
       input1_val = self._SparseTensorValue_1x1x1()
       serialized0 = serialize_fn(sp_input0, out_type=out_type)
       serialized1 = serialize_fn(sp_input1, out_type=out_type)
-      serialized_concat = array_ops.stack([serialized0, serialized1])
+      serialized_concat = array_ops_stack.stack([serialized0, serialized1])
 
       sp_deserialized = deserialize_fn(serialized_concat, dtype=dtypes.int32)
 
@@ -445,7 +446,7 @@ class SerializeSparseTest(test.TestCase):
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       serialized0 = serialize_fn(sp_input0, out_type=out_type)
       serialized1 = ["a", "b", "c"]
-      serialized_concat = array_ops.stack([serialized0, serialized1])
+      serialized_concat = array_ops_stack.stack([serialized0, serialized1])
 
       sp_deserialized = deserialize_fn(serialized_concat, dtype=dtypes.int32)
 

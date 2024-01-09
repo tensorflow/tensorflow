@@ -833,7 +833,7 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
                                   diff.update_op ? diff.op : node->op(), device,
                                   AttrSlice(&(*diff.processed_attrs)));
     if (!s.ok()) {
-      LOG(WARNING) << s.error_message();
+      LOG(WARNING) << s.message();
     }
   }
   for (const auto& new_node_holder : mutation_.new_nodes_) {
@@ -846,7 +846,7 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
     }
     s = IsKernelRegisteredForNode(new_node_def);
     if (!s.ok()) {
-      LOG(WARNING) << s.error_message();
+      LOG(WARNING) << s.message();
     }
   }
   return OkStatus();

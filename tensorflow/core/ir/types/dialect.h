@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_TYPES_DIALECT_H_
 #define TENSORFLOW_CORE_IR_TYPES_DIALECT_H_
 
+#include <optional>
 #include <string>
 
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -50,7 +52,8 @@ class TensorFlowType : public Type {
 
 // Returns true if the specified type is a valid TensorFlow element type.
 inline bool IsValidTFElementType(Type type) {
-  return type.isa<ComplexType, FloatType, IntegerType, TensorFlowType>();
+  return type.isa<ComplexType, FloatType, IntegerType, TensorFlowType,
+                  quant::QuantizedType>();
 }
 
 // Returns true if this is a valid TensorFlow tensor type.
@@ -108,12 +111,13 @@ class TensorFlowRefType : public TensorFlowType {
 
 // Define a class for each individual TensorFlow type (dtype), see types.def
 // for the list.
-#define HANDLE_TF_TYPE(tftype, enumerant, name)                          \
+#define HANDLE_TF_TYPE(tftype, enumerant, name_marg)                     \
   class tftype##Type : public detail::TensorFlowTypeImpl<tftype##Type> { \
    public:                                                               \
     using TFBase::TFBase;                                                \
+    static constexpr StringLiteral name = #name_marg;                    \
   };
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
+#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name_marg)
 #include "tensorflow/core/ir/types/types.def"
 
 namespace detail {
@@ -219,6 +223,7 @@ inline Type GetDefaultTypeOf(TensorFlowTypeWithSubtype type) {
 class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
  public:
   using TFBase::TFBase;
+  static constexpr ::mlir::StringLiteral name = "tf_type.resource";
   static std::string getTypeName() { return "ResourceType"; }
 };
 
@@ -230,6 +235,7 @@ class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
 class VariantType : public detail::TypeWithSubtypeImpl<VariantType> {
  public:
   using TFBase::TFBase;
+  static constexpr ::mlir::StringLiteral name = "tf_type.variant";
   static std::string getTypeName() { return "VariantType"; }
 };
 
@@ -287,14 +293,14 @@ Type DropRefAndSubTypes(Type ty);
 //===----------------------------------------------------------------------===//
 
 // An iterator for the tensor shapes of an op's operands of shaped types.
-// Returns llvm::None if a operand is unranked; returns ArrayRef<int64_t> as the
-// shape otherwise.
+// Returns std::nullopt if a operand is unranked; returns ArrayRef<int64_t> as
+// the shape otherwise.
 class OperandShapeIterator final
     : public llvm::mapped_iterator<Operation::operand_iterator,
-                                   llvm::Optional<ArrayRef<int64_t>> (*)(
+                                   std::optional<ArrayRef<int64_t>> (*)(
                                        Value)> {
  public:
-  using reference = llvm::Optional<ArrayRef<int64_t>>;
+  using reference = std::optional<ArrayRef<int64_t>>;
 
   /// Initializes the operand shape iterator to the specified operand iterator.
   explicit OperandShapeIterator(Operation::operand_iterator it);
@@ -303,14 +309,14 @@ class OperandShapeIterator final
 using OperandShapeRange = iterator_range<OperandShapeIterator>;
 
 // An iterator for the tensor shapes of an op's results of shaped types.
-// Returns llvm::None if a result is unranked; returns ArrayRef<int64_t> as the
-// shape otherwise.
+// Returns std::nullopt if a result is unranked; returns ArrayRef<int64_t> as
+// the shape otherwise.
 class ResultShapeIterator final
     : public llvm::mapped_iterator<Operation::result_iterator,
-                                   llvm::Optional<ArrayRef<int64_t>> (*)(
+                                   std::optional<ArrayRef<int64_t>> (*)(
                                        Value)> {
  public:
-  using reference = llvm::Optional<ArrayRef<int64_t>>;
+  using reference = std::optional<ArrayRef<int64_t>>;
 
   /// Initializes the result shape iterator to the specified result iterator.
   explicit ResultShapeIterator(Operation::result_iterator it);

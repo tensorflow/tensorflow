@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
@@ -120,6 +121,8 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
 StatusOr<mlir::Operation*> IOOpSPMDExpander::ExpandOp(mlir::Operation* op) {
   if (llvm::isa<mlir::TF::WriteSummaryOp>(op)) {
     return Expand<mlir::TF::WriteSummaryOp>(op);
+  } else if (llvm::isa<mlir::TF::FlushSummaryWriterOp>(op)) {
+    return Expand<mlir::TF::FlushSummaryWriterOp>(op);
   }
   return errors::Unimplemented(
       llvm::formatv("SPMD for op : {0} is not implemented ", OpName(op)).str());

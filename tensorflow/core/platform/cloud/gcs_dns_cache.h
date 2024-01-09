@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_DNS_CACHE_H_
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_GCS_DNS_CACHE_H_
 
+#include <memory>
 #include <random>
+#include <vector>
 
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"

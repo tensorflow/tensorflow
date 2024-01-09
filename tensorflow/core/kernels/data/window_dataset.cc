@@ -70,7 +70,9 @@ class Window : public DatasetBase {
     return total_bytes;
   }
 
-  int64_t CardinalityInternal() const override { return elements_.size(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return elements_.size();
+  }
 
   string DebugString() const override { return kWindow; }
 
@@ -125,7 +127,7 @@ class Window : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIndex, i_));
       return OkStatus();
     }
 
@@ -133,7 +135,7 @@ class Window : public DatasetBase {
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       int64_t i;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i));
       i_ = size_t(i);
       return OkStatus();
     }

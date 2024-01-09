@@ -79,10 +79,10 @@ LogicalResult LiftVariablesFromSession(
   std::vector<Tensor> resource_tensors;
   Status status = session->Run(
       /*inputs=*/{}, variable_names,
-      /*target_node_names=*/{}, &resource_tensors);
+      /*target_tensor_names=*/{}, &resource_tensors);
   if (!status.ok()) {
     return module.emitOpError()
-           << "failed to run the provided session: " << status.error_message();
+           << "failed to run the provided session: " << status.message();
   }
 
   const DeviceMgr* device_manager;

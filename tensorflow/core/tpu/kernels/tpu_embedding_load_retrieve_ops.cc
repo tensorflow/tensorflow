@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <array>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,10 +26,10 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/status_helper.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -222,8 +223,8 @@ void LoadAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
     }
   }
   StatusHelper status;
-  tpu::OpsApiFn()->TpuEmbeddingEngine_WriteParametersFn(&(params->c_params),
-                                                        status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_WriteParametersFn(
+      &(params->c_params), status.c_status);
   OP_REQUIRES_OK(ctx, status.status());
 
   VLOG(1) << "LoadAllTPUEmbeddingParameters::Compute done";
@@ -348,8 +349,8 @@ void RetrieveAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
     }
   }
   StatusHelper status;
-  tpu::OpsApiFn()->TpuEmbeddingEngine_ReadParametersFn(&(params->c_params),
-                                                       status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ReadParametersFn(
+      &(params->c_params), status.c_status);
   OP_REQUIRES_OK(ctx, status.status());
 
   if (VLOG_IS_ON(5)) {

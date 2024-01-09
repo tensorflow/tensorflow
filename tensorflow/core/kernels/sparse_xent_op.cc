@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_xent_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -145,6 +145,8 @@ REGISTER(GPU, float, int32)
 REGISTER(GPU, float, int64_t)
 REGISTER(GPU, Eigen::half, int32)
 REGISTER(GPU, Eigen::half, int64_t)
+REGISTER(GPU, Eigen::bfloat16, int32)
+REGISTER(GPU, Eigen::bfloat16, int64_t)
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER

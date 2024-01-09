@@ -1,0 +1,93 @@
+op 	 {
+  name: "UniformQuantizedAdd"
+  input_arg {
+    name: "lhs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "lhs_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "rhs_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "rhs_zero_points"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "output_zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "lhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "lhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "lhs_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "rhs_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "rhs_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "output_quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "output_quantization_max_val"
+    type: "int"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT32
+      }
+    }
+  }
+}

@@ -38,7 +38,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import sysconfig
+from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import _pywrap_utils
 
@@ -92,7 +92,8 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
       # The cublaslt matmul with gelu epilog is only supported since cuda 11.4.
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('This test requires GPU.')
-      cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
+      cuda_version_str = sysconfig_lib.get_build_info().get(
+          'cuda_version', '0.0')
       cuda_version = tuple([int(x) for x in cuda_version_str.split('.')])
       if cuda_version < (11, 4):
         self.skipTest('This test requires CUDA >= 11.4.')
@@ -156,6 +157,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_matmul_biasadd_activation_fusion(self, mode):
     """Test MatMul+BiasAdd+Gelu fusion."""
     self.maybe_skip_test(mode)
@@ -168,18 +170,24 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
     device = '/device:GPU:0' if mode == 'cuda' else '/device:CPU:0'
     config = []
+    use_fp16 = True
+    if (
+        test_util.IsMklEnabled()
+        and not _pywrap_utils.IsDataTypeSupportedByOneDNNOnThisCPU(
+            dtypes.float16
+        )
+    ):
+      use_fp16 = False
     if mode == 'mkl':
       config.append((dtypes.float32, gelu_exact, b'GeluExact'))
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
-      # Gelu exact (approximate=False) is not supported with bfloat16 precision
-      # since no support for Erf with bfloat16 data type.
-      # TODO(intel-tf): Enable gelu exact with bfloat16, when Erf op is
-      # supported with bfloat16.
-      if _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU():
+      if _pywrap_utils.IsDataTypeSupportedByOneDNNOnThisCPU(dtypes.bfloat16):
         config.append((dtypes.bfloat16, gelu_approximate, b'GeluApproximate'))
+        config.append((dtypes.bfloat16, gelu_exact, b'GeluExact'))
     elif mode == 'cuda':
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
-      config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))
+      if use_fp16:
+        config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))
       # Gelu exact fusion is supported by cuDNN frontend APIs and performant
       # with fp16 and on Ampere GPUs and later.
       if (test_util.is_gpu_available(
@@ -223,10 +231,13 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_conv2d_biasadd_act_fusion(self):
     """Test Conv2D+BiasAdd+Relu fusion."""
     if not test_util.is_gpu_available():
       self.skipTest('No GPU available')
+    if test.is_built_with_rocm():
+      self.skipTest('ROCm does not support conv biasadd fusion')
 
     N, H, W, C = (5, 3, 3, 8)  # pylint: disable=invalid-name
     # The runtime fusion requires the output dims to be 32-bit aligned.
@@ -243,6 +254,14 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     for precision in ('float16', 'float32'):
       for act_fn, act_name in zip(act_fns, act_names):
         use_fp16 = precision == 'float16'
+        if (
+            test_util.IsMklEnabled()
+            and use_fp16
+            and not _pywrap_utils.IsDataTypeSupportedByOneDNNOnThisCPU(
+                dtypes.float16
+            )
+        ):
+          continue
         # The runtime fusion (when the activation is not relu) only supports
         # fp16 at this moment.
         if not use_fp16 and act_name != b'Relu':
@@ -276,6 +295,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_two_conv2d_fusions(self):
     """Test two Conv2D patterns and only the second is fusable."""
     if not test_util.is_gpu_available(

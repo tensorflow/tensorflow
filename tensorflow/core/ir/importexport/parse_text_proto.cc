@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/parse_text_proto.h"
 
+#include <string>
+
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"

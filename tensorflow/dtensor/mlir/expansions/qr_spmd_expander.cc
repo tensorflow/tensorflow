@@ -47,8 +47,9 @@ StatusOr<mlir::Operation*> QRSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   // Relayout all layouts to the first output layout with the last two
   // dimensions replicated. We can do more optimization but this is fine
-  Layout new_layout =
-      output_layouts[0].GetLayoutWithReducedDims({-1, -2}, /*keep_dims=*/true);
+  TF_ASSIGN_OR_RETURN(
+      Layout new_layout,
+      output_layouts[0].GetLayoutWithReducedDims({-1, -2}, /*keep_dims=*/true));
 
   TF_ASSIGN_OR_RETURN(
       const auto new_operand,
@@ -96,8 +97,9 @@ StatusOr<llvm::DenseMap<int, Layout>> QRSPMDExpander::ComputeLayoutForward(
 
   // Set the output layouts as the copy of the input layouts with the last 2
   // dimensions replicated.
-  Layout output_layout = input_layouts.lookup(0).GetLayoutWithReducedDims(
-      {-1, -2}, /*keep_dims=*/true);
+  TF_ASSIGN_OR_RETURN(Layout output_layout,
+                      input_layouts.lookup(0).GetLayoutWithReducedDims(
+                          {-1, -2}, /*keep_dims=*/true));
   return llvm::DenseMap<int, Layout>({{0, output_layout}, {1, output_layout}});
 }
 
@@ -111,8 +113,10 @@ StatusOr<llvm::DenseMap<int, Layout>> QRSPMDExpander::ComputeLayoutBackward(
   Layout layout = output_layouts.find(0) != output_layouts.end()
                       ? output_layouts.lookup(0)
                       : output_layouts.lookup(1);
-  return llvm::DenseMap<int, Layout>(
-      {{0, layout.GetLayoutWithReducedDims({-1, -2}, /*keep_dims=*/true)}});
+  TF_ASSIGN_OR_RETURN(
+      Layout layout_reduced_dims,
+      layout.GetLayoutWithReducedDims({-1, -2}, /*keep_dims=*/true));
+  return llvm::DenseMap<int, Layout>({{0, layout_reduced_dims}});
 }
 
 }  // namespace dtensor

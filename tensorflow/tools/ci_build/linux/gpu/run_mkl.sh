@@ -74,8 +74,8 @@ echo ""
 #Bazel test command with two option eigencuda or dnllcuda
 
 bazel test \
-    --test_tag_filters=gpu,-no_gpu,-benchmark-test,-no_gpu_presubmit,-no_cuda11,-v1only,-no_oss,-oss_serial \
-    --build_tag_filters=gpu,-no_gpu,-benchark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-no_cuda11,-v1only \
+    --test_tag_filters=gpu,-no_gpu,-benchmark-test,-no_gpu_presubmit,-no_cuda11,-v1only,-no_oss,-oss_excluded,-oss_serial \
+    --build_tag_filters=gpu,-no_gpu,-benchark-test,-no_oss,-oss_excluded,-oss_serial,-no_gpu_presubmit,-no_cuda11,-v1only \
     --test_lang_filters=cc,py \
     -c opt -k \
     --test_timeout 300,450,1200,3600 \

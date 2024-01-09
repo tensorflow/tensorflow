@@ -37,25 +37,33 @@ config.mlir_tools_dir = os.path.join(external_srcdir, 'llvm-project', 'mlir')
 config.suffixes = ['.td', '.mlir', '.pbtxt']
 
 mlir_tf_tools_dirs = [
-    'tensorflow/core/ir/importexport/',
-    'tensorflow/core/ir/tests/',
-    'tensorflow/core/transforms/',
+    'tensorflow/compiler/aot',
     'tensorflow/compiler/mlir',
-    'tensorflow/compiler/xla/mlir_hlo',
-    'tensorflow/compiler/xla/mlir_hlo/tosa',
-    'tensorflow/compiler/xla/translate',
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/lite/experimental/tac',
+    'tensorflow/compiler/mlir/lite/stablehlo',
     'tensorflow/compiler/mlir/quantization/tensorflow',
     'tensorflow/compiler/mlir/tensorflow',
     'tensorflow/compiler/mlir/tfrt',
-    'tensorflow/compiler/mlir/xla',
     'tensorflow/compiler/mlir/tools/kernel_gen',
-    'tensorflow/compiler/aot',
-    'tensorflow/compiler/xla/service/mlir_gpu',
-    'tensorflow/compiler/xla/service/gpu/tests',
-    'tensorflow/compiler/xla/mlir/tools',
-    'tensorflow/compiler/mlir/lite/stablehlo',
+    'tensorflow/compiler/mlir/xla',
+    os.path.join(external_srcdir, 'local_xla/xla/mlir/backends/cpu'),
+    os.path.join(external_srcdir, 'local_xla/xla/mlir/backends/gpu'),
+    os.path.join(external_srcdir, 'local_xla/xla/mlir/runtime'),
+    os.path.join(external_srcdir, 'local_xla/xla/mlir/tools/mlir_bisect'),
+    os.path.join(external_srcdir, 'local_xla/xla/mlir_hlo'),
+    os.path.join(external_srcdir, 'local_xla/xla/python/ifrt/ir/tests'),
+    os.path.join(external_srcdir, 'local_xla/xla/service/gpu/tests'),
+    os.path.join(external_srcdir, 'local_xla/xla/service/mlir_gpu'),
+    os.path.join(external_srcdir, 'local_xla/xla/translate'),
+    os.path.join(
+        external_srcdir,
+        'local_xla/xla/translate/mhlo_to_lhlo_with_xla'
+    ),
+    'tensorflow/core/ir/importexport/',
+    'tensorflow/core/ir/tests/',
+    'tensorflow/core/transforms/',
+    'tensorflow/dtensor/mlir/tests',
 ]
 config.mlir_tf_tools_dirs = [
     os.path.join(real_test_srcdir, os.environ['TEST_WORKSPACE'], s)

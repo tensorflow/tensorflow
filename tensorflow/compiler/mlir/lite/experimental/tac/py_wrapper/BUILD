@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "VERSION")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/lite/experimental/tac:__subpackages__",
     ],
@@ -38,6 +39,10 @@ pybind_extension(
         "//tensorflow:windows": [],
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
     }),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tac_wrapper.pyi",
+    ],
     static_deps = [
         "@arm_neon_2_x86_sse//:__subpackages__",
         "@bazel_tools//:__subpackages__",
@@ -59,6 +64,8 @@ pybind_extension(
         "@farmhash_gpu_archive//:__subpackages__",
         "@fft2d//:__subpackages__",
         "@flatbuffers//:__subpackages__",
+        "@FP16//:__subpackages__",
+        "@FXdiv//:__subpackages__",
         "@gemmlowp//:__subpackages__",
         "@gif//:__subpackages__",
         "@highwayhash//:__subpackages__",
@@ -70,7 +77,6 @@ pybind_extension(
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
         "@llvm_zlib//:__subpackages__",
-        "@lmdb//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",
@@ -79,11 +85,12 @@ pybind_extension(
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
-        "@mkl_dnn_v1//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
+        "@pthreadpool//:__subpackages__",
         "@pybind11//:__subpackages__",
         "@ruy//:__subpackages__",
         "@snappy//:__subpackages__",
@@ -93,10 +100,12 @@ pybind_extension(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
+        "@local_xla//xla:__subpackages__",
     ],
     deps = [
         ":tac_wrapper_lib",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

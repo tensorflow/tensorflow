@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -86,9 +85,9 @@ NodeDef* AddScalarConstNodeHelper(
 
   (*node.mutable_attr())["dtype"].set_type(dtype);
   std::unique_ptr<tensorflow::TensorProto> tensor =
-      tensorflow::MakeUnique<tensorflow::TensorProto>();
+      std::make_unique<tensorflow::TensorProto>();
   std::unique_ptr<tensorflow::TensorShapeProto> tensor_shape =
-      tensorflow::MakeUnique<tensorflow::TensorShapeProto>();
+      std::make_unique<tensorflow::TensorShapeProto>();
   tensor->set_allocated_tensor_shape(tensor_shape.release());
   tensor->set_dtype(dtype);
   add_value(tensor.get());

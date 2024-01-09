@@ -94,6 +94,15 @@ gtl::FlatMap<StringPiece, const AttrValueMap*, StringPieceHasher> NodeToAttrMap(
 gtl::FlatMap<StringPiece, const tensorflow::FunctionDef*, StringPieceHasher>
 FunctionNameToFunctionDefMap(const FunctionDefLibrary& library);
 
+// Finds the "signatures" object in the object graph, and fills a mapping of
+// each signature's name to the corresponding function's node in the object
+// graph.
+Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
+                        gtl::FlatMap<std::string, int>* signatures_map);
+
+// Validates the `saved_function`.
+Status ValidateSingleConcreteFunction(const SavedFunction& saved_function);
+
 // Walks through the SavedObjectGraph in metagraph, and restores all nodes
 // (except "UserDefinedObjects") with their corresponding type in
 // "PartiallyRevivedObjects".

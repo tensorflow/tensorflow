@@ -29,18 +29,23 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr char kCoordinationServiceType[] = "standalone";
 
-void ConfigCoordinationService(
-    tensorflow::ServerDef* server_def,
-    bool agent_destruction_without_shutdown = false) {
+void ConfigCoordinationService(tensorflow::ServerDef* server_def,
+                               bool agent_destruction_without_shutdown = false,
+                               bool enable_health_check = false) {
+  // Set the number of threads here since in some environment the default number
+  // of threads may be small which could cause RPC to hang.
+  server_def->mutable_default_session_config()
+      ->set_inter_op_parallelism_threads(10);
   auto coord_config = server_def->mutable_default_session_config()
                           ->mutable_experimental()
                           ->mutable_coordination_config();
@@ -52,6 +57,7 @@ void ConfigCoordinationService(
       absl::ToInt64Milliseconds(absl::Seconds(5)));
   coord_config->set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(absl::Seconds(5)));
+  coord_config->set_enable_health_check(enable_health_check);
 }
 
 string SetConfigKeyValueFn() {
@@ -306,7 +312,8 @@ TEST(CAPI, MultiClientCoordinationSetGetConfigs) {
     EXPECT_EQ(TF_ALREADY_EXISTS, TF_GetCode(status)) << TF_Message(status);
     // Getting next_key returns the value set by another worker
     TF_Buffer* value_buf = TF_NewBuffer();
-    TFE_GetConfigKeyValue(ctx, next_key.c_str(), value_buf, status);
+    TFE_GetConfigKeyValue(ctx, next_key.c_str(), /*timeout_in_ms=*/5000,
+                          value_buf, status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     std::string value_str{static_cast<const char*>(value_buf->data),
                           value_buf->length};

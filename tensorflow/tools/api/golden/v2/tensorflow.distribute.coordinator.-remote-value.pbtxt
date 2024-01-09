@@ -1,6 +1,6 @@
 path: "tensorflow.distribute.coordinator.RemoteValue"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.coordinator.values.RemoteValue\'>"
+  is_instance: "<class \'tensorflow.python.distribute.coordinator.remote_value.RemoteValue\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

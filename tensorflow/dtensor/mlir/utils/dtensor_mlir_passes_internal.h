@@ -23,12 +23,6 @@ namespace dtensor {
 
 void AddDTensorAllReduceCombineOptimization(mlir::OpPassManager* pm);
 
-void AddDTensorEmbeddingPass(mlir::OpPassManager* pm);
-
-void AddDTensorEmbeddingPassV2(mlir::OpPassManager* pm);
-
-void AddDTensorEmbeddingCheckpointPass(mlir::OpPassManager* pm);
-
 }  // namespace dtensor
 }  // namespace tensorflow
 

@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
 
+#include <complex>
+#include <memory>
+#include <numeric>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "llvm/ADT/SmallVector.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"
-#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/cpp_tests/test_util.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 #include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -36,7 +41,7 @@ TEST(TensorUtilTest, DHTToTFTensor) {
       TensorMetadata(DType(DType::I32), {2, 2}), host.get());
   auto view = MutableDHTArrayView<int32_t>(&dht);
   std::iota(view.begin(), view.end(), 1);
-  auto tf_tensor = *TFRTTensorToTFTensor(dht, host.get());
+  auto tf_tensor = *TFRTTensorToTFTensor(dht);
   EXPECT_THAT(tf_tensor.shape().dim_sizes(), testing::ElementsAre(2, 2));
   EXPECT_EQ(tf_tensor.data(), dht.data());
 }
@@ -46,7 +51,7 @@ TEST(TensorUtilTest, SHTToTFTensor) {
   auto sht = *StringHostTensor::CreateUninitialized(
       TensorMetadata(DType(DType::String), TensorShape(1)), host.get());
   sht.strings().front() = "hello";
-  auto tf_tensor = *TFRTTensorToTFTensor(sht, host.get());
+  auto tf_tensor = *TFRTTensorToTFTensor(sht);
   EXPECT_EQ(tf_tensor.NumElements(), 1);
   EXPECT_EQ(tf_tensor.flat<tensorflow::tstring>()(0), "hello");
 }
@@ -55,7 +60,7 @@ TEST(TensorUtilTest, KNFBToTFTensor) {
   std::unique_ptr<HostContext> host = CreateHostContext();
   tensorflow::Tensor original_tf_tensor(0.1f);
   tensorflow::KernelFallbackTensor knfbt(original_tf_tensor);
-  auto tf_tensor = *TFRTTensorToTFTensor(knfbt, host.get());
+  auto tf_tensor = *TFRTTensorToTFTensor(knfbt);
   EXPECT_EQ(tf_tensor.NumElements(), 1);
   EXPECT_EQ(tf_tensor.data(), original_tf_tensor.data());
 }
@@ -63,7 +68,7 @@ TEST(TensorUtilTest, KNFBToTFTensor) {
 TEST(TensorUtilTest, ScalarHostTensorToTFTensor) {
   std::unique_ptr<HostContext> host = CreateHostContext();
   ScalarHostTensor<int32_t> t(TensorShape({2, 2}), 1);
-  auto tf_tensor = TFRTTensorToTFTensor(t, host.get());
+  auto tf_tensor = TFRTTensorToTFTensor(t);
   ASSERT_FALSE(!tf_tensor);
   ASSERT_EQ(tf_tensor->dtype(), tensorflow::DT_INT32);
   ASSERT_THAT(tf_tensor->shape().dim_sizes(), testing::ElementsAre(2, 2));
@@ -88,7 +93,7 @@ TEST(TensorUtilTest, TFRTTensorToTFTensorUnsupported) {
   };
 
   UnsupportedTensor t(TensorMetadata(DType{DType::I32}, /*shape=*/{}));
-  EXPECT_FALSE(TFRTTensorToTFTensor(t, host.get()));
+  EXPECT_FALSE(TFRTTensorToTFTensor(t));
 }
 
 TEST(TensorUtilTest, TFTensorToTFRTTensorHandle) {
@@ -96,8 +101,8 @@ TEST(TensorUtilTest, TFTensorToTFRTTensorHandle) {
   tensorflow::Tensor tf_tensor(0.2f);
   auto handle = TFTensorToTFRTTensorHandle(tf_tensor, host.get());
   ASSERT_TRUE(handle->GetAsyncTensor()->IsAvailable());
-  auto converted_tf_tensor = *TFRTTensorToTFTensor(
-      handle->GetAsyncTensor()->get<Tensor>(), host.get());
+  auto converted_tf_tensor =
+      *TFRTTensorToTFTensor(handle->GetAsyncTensor()->get<Tensor>());
   EXPECT_EQ(converted_tf_tensor.NumElements(), 1);
   EXPECT_EQ(converted_tf_tensor.data(), tf_tensor.data());
 }
@@ -191,6 +196,16 @@ TEST(TensorUtilTest, TFTensorAndTensorHandleString) {
   auto tf_data_2 = tf_tensor_2.flat<tensorflow::tstring>();
   EXPECT_EQ(tf_data_2(0), "test");
   EXPECT_EQ(tf_data_2(1), "string");
+}
+
+TEST(TensorUtilTest, TFTensorToDHT) {
+  std::unique_ptr<HostContext> host = CreateHostContext();
+  tensorflow::Tensor tf_tensor(0.2f);
+  auto dht = ConvertTfTensorToDHT(tf_tensor);
+  ASSERT_FALSE(!dht);
+  llvm::SmallVector<int32_t, 4> dims;
+  EXPECT_EQ(dht->NumElements(), 1);
+  EXPECT_EQ(tf_tensor.data(), dht->data());
 }
 
 }  // namespace

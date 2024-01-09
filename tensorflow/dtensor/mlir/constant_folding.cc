@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -47,10 +49,7 @@ mlir::LogicalResult FoldConstantOp(mlir::OperationFolder& folder,
 
     // Try to fold this op.
     bool inPlaceUpdate;
-    if (succeeded(folder.tryToFold(op,
-                                   /*processGeneratedConstants=*/nullptr,
-                                   /*preReplaceAction=*/nullptr,
-                                   &inPlaceUpdate))) {
+    if (succeeded(folder.tryToFold(op, &inPlaceUpdate))) {
       changed = true;
       if (!inPlaceUpdate) {
         return mlir::success();

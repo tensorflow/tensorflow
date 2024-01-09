@@ -3,7 +3,10 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
-package(licenses = ["notice"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
+)
 
 tf_cc_binary(
     name = "detect_objects",

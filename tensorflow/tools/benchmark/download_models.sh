@@ -14,9 +14,11 @@
 # limitations under the License.
 # ==============================================================================
 
+source onednn_benchmark_config.sh
+
 # Store models in home directory
-mkdir -p ~/tf-graphs
-cd ~/tf-graphs
+mkdir -p ${TF_GRAPHS}
+cd ${TF_GRAPHS}
 
 # Download TF graphs linked from MLPerf Inference v2.0
 # https://github.com/mlcommons/inference#mlperf-inference-v20-submission-02252022

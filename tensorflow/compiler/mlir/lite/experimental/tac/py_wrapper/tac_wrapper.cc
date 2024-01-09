@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"

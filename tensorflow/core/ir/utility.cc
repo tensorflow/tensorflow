@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/ir/utility.h"
 
+#include <optional>
+
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -60,7 +62,7 @@ Value LookupControlDependency(Value data) {
   return control_dep;
 }
 
-Optional<Value> LookupDataValue(Value ctl) {
+std::optional<Value> LookupDataValue(Value ctl) {
   assert(ctl.getType().isa<ControlType>() && "expected a control type");
   // If the value is defined by an op, then return the first result.
   Value data;

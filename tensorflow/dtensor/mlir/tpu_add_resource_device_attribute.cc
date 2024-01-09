@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
+#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -40,14 +43,6 @@ namespace {
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kFuncDeviceAttr[] = "tf.device";
-
-// Returns whether `val` is of resource type.
-bool IsResourceType(mlir::Value val) {
-  return val.isa<mlir::BlockArgument>() && val.getType()
-                                               .cast<mlir::TensorType>()
-                                               .getElementType()
-                                               .isa<mlir::TF::ResourceType>();
-}
 
 // Adds device attribute to `arg` with the device placement of `execute_op`
 void AddPlaceholderDeviceAttributeToResource(
@@ -97,7 +92,8 @@ struct DTensorTpuAddResourceDeviceAttribute
     mlir::WalkResult walk_result =
         module.walk([](mlir::TF::TPUExecuteOp tpu_execute) {
           for (mlir::Value tpu_input : tpu_execute.getOperands()) {
-            if (IsResourceType(tpu_input))
+            if (tpu_input.isa<mlir::BlockArgument>() &&
+                IsResourceType(tpu_input))
               AddPlaceholderDeviceAttributeToResource(
                   tpu_input.cast<mlir::BlockArgument>(), tpu_execute);
 
@@ -107,7 +103,7 @@ struct DTensorTpuAddResourceDeviceAttribute
             if (!read_variable_op) continue;
 
             AddPlaceholderDeviceAttributeToResource(
-                read_variable_op.resource().cast<mlir::BlockArgument>(),
+                read_variable_op.getResource().cast<mlir::BlockArgument>(),
                 tpu_execute);
           }
 
@@ -118,7 +114,7 @@ struct DTensorTpuAddResourceDeviceAttribute
 
             AddPlaceholderDeviceAttributeToResource(
                 llvm::cast<mlir::TF::AssignVariableOp>(assign_variable)
-                    .resource()
+                    .getResource()
                     .cast<mlir::BlockArgument>(),
                 tpu_execute);
           }

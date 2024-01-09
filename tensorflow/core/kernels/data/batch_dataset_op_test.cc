@@ -291,7 +291,7 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(BatchDatasetOpTest, BatchDatasetParams,
 TEST_F(BatchDatasetOpTest, InvalidBatchSize) {
   auto batch_dataset_params = InvalidBatchSizeBatchDatasetParams();
   EXPECT_EQ(Initialize(batch_dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 // TODO(b/222556529) when Const has type constructor, remove the following

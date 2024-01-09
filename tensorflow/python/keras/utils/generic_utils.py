@@ -33,7 +33,6 @@ from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.tf_export import keras_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
 _GLOBAL_CUSTOM_NAMES = {}
@@ -47,8 +46,6 @@ _SKIP_FAILED_SERIALIZATION = False
 _LAYER_UNDEFINED_CONFIG_KEY = 'layer was saved without config'
 
 
-@keras_export('keras.utils.custom_object_scope',  # pylint: disable=g-classes-have-attributes
-              'keras.utils.CustomObjectScope')
 class CustomObjectScope(object):
   """Exposes custom classes/functions to Keras deserialization internals.
 
@@ -89,7 +86,6 @@ class CustomObjectScope(object):
     _GLOBAL_CUSTOM_OBJECTS.update(self.backup)
 
 
-@keras_export('keras.utils.get_custom_objects')
 def get_custom_objects():
   """Retrieves a live reference to the global dictionary of custom objects.
 
@@ -341,7 +337,6 @@ def serialize_keras_class_and_config(
   return base_config
 
 
-@keras_export('keras.utils.register_keras_serializable')
 def register_keras_serializable(package='Custom', name=None):
   """Registers an object with the Keras serialization framework.
 
@@ -390,7 +385,6 @@ def register_keras_serializable(package='Custom', name=None):
   return decorator
 
 
-@keras_export('keras.utils.get_registered_name')
 def get_registered_name(obj):
   """Returns the name registered to an object within the Keras framework.
 
@@ -422,7 +416,6 @@ def skip_failed_serialization():
     _SKIP_FAILED_SERIALIZATION = prev
 
 
-@keras_export('keras.utils.get_registered_object')
 def get_registered_object(name, custom_objects=None, module_objects=None):
   """Returns the class associated with `name` if it is registered with Keras.
 
@@ -464,7 +457,6 @@ class CustomMaskWarning(Warning):
 # pylint: enable=g-bad-exception-name
 
 
-@keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
   """Serialize a Keras object into a JSON-compatible representation.
 
@@ -602,7 +594,6 @@ def class_and_config_for_serialized_keras_object(
   return (cls, cls_config)
 
 
-@keras_export('keras.utils.deserialize_keras_object')
 def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
@@ -811,7 +802,6 @@ def has_arg(fn, name, accept_all=False):
   return name in arg_spec.args or name in arg_spec.kwonlyargs
 
 
-@keras_export('keras.utils.Progbar')
 class Progbar(object):
   """Displays a progress bar.
 

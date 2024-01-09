@@ -69,7 +69,7 @@ REGISTER_OP("In16Out1")
     .Input("p: float")
     .Output("y: float");
 
-GraphDef CreateGraphDef(int num_nodes, int num_edges_per_node) {
+inline GraphDef CreateGraphDef(int num_nodes, int num_edges_per_node) {
   const int kNumInNodes = 10 * num_edges_per_node;
   GraphDef graph_def;
 
@@ -111,7 +111,7 @@ GraphDef CreateGraphDef(int num_nodes, int num_edges_per_node) {
   return graph_def;
 }
 
-GraphDef CreateRandomGraph(int size) {
+inline GraphDef CreateRandomGraph(int size) {
   random::PhiloxRandom philox(0x12345);
   random::SimplePhilox rnd(&philox);
 
@@ -135,11 +135,11 @@ GraphDef CreateRandomGraph(int size) {
   return graph;
 }
 
-GraphDef CreateFaninFanoutNodeGraph(int num_regular_fanins,
-                                    int num_regular_fanouts,
-                                    int num_controlling_fanins,
-                                    int num_controlled_fanouts,
-                                    bool fanout_unique_index) {
+inline GraphDef CreateFaninFanoutNodeGraph(int num_regular_fanins,
+                                           int num_regular_fanouts,
+                                           int num_controlling_fanins,
+                                           int num_controlled_fanouts,
+                                           bool fanout_unique_index) {
   GraphDef graph;
 
   auto create_node = [](const string& name) {

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
-#include "tensorflow/compiler/xla/test.h"
+#include "xla/test.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"

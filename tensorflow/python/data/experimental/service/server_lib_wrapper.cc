@@ -12,18 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "Python.h"
 #include "absl/strings/str_cat.h"
-#include "pybind11/chrono.h"
-#include "pybind11/complex.h"
-#include "pybind11/detail/common.h"
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/chrono.h"  // from @pybind11
+#include "pybind11/complex.h"  // from @pybind11
+#include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
+#include "pybind11_protobuf/native_proto_caster.h"  // from @pybind11_protobuf
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/server_lib.h"
@@ -37,6 +41,8 @@ limitations under the License.
 namespace py = pybind11;
 
 PYBIND11_MODULE(_pywrap_server_lib, m) {
+  pybind11_protobuf::ImportNativeProtoCasters();
+
   py::class_<tensorflow::data::DispatchGrpcDataServer>(m,
                                                        "DispatchGrpcDataServer")
       .def("start", &tensorflow::data::DispatchGrpcDataServer::Start)
@@ -50,6 +56,16 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
              tensorflow::Status status = server->NumWorkers(&num_workers);
              tensorflow::MaybeRaiseFromStatus(status);
              return num_workers;
+           })
+      .def("snapshot_streams",
+           [](tensorflow::data::DispatchGrpcDataServer* server,
+              const std::string& path)
+               -> std::vector<tensorflow::data::SnapshotStreamInfoWrapper> {
+             std::vector<tensorflow::data::SnapshotStreamInfoWrapper> streams;
+             tensorflow::Status status =
+                 server->SnapshotStreams(path, &streams);
+             tensorflow::MaybeRaiseFromStatus(status);
+             return streams;
            });
 
   py::class_<tensorflow::data::WorkerGrpcDataServer>(m, "WorkerGrpcDataServer")
@@ -64,6 +80,16 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
              tensorflow::Status status = server->NumTasks(&num_tasks);
              tensorflow::MaybeRaiseFromStatus(status);
              return num_tasks;
+           })
+      .def("snapshot_task_progresses",
+           [](tensorflow::data::WorkerGrpcDataServer* server)
+               -> std::vector<tensorflow::data::SnapshotTaskProgressWrapper> {
+             std::vector<tensorflow::data::SnapshotTaskProgressWrapper>
+                 snapshot_task_progresses;
+             tensorflow::Status status =
+                 server->SnapshotTaskProgresses(&snapshot_task_progresses);
+             tensorflow::MaybeRaiseFromStatus(status);
+             return snapshot_task_progresses;
            });
 
   m.def(
@@ -100,33 +126,6 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       },
       py::return_value_policy::reference);
 
-  // TODO(b/236725000): Remove this after the forward compatibility window
-  // has passed.
-  m.def(
-      "TF_DATA_GetDataServiceMetadata",
-      [](int64_t dataset_id, const std::string& address,
-         const std::string& protocol) -> tensorflow::data::DataServiceMetadata {
-        tensorflow::data::DataServiceMetadata metadata;
-        tensorflow::data::DataServiceDispatcherClient client(address, protocol);
-        int64_t deadline_micros = tensorflow::kint64max;
-        tensorflow::Status status;
-        Py_BEGIN_ALLOW_THREADS;
-        status = tensorflow::data::grpc_util::Retry(
-            [&]() {
-              return client.GetDataServiceMetadata(absl::StrCat(dataset_id),
-                                                   metadata);
-            },
-            /*description=*/
-            tensorflow::strings::StrCat(
-                "Get data service metadata for dataset ", dataset_id,
-                " from dispatcher at ", address),
-            deadline_micros);
-        Py_END_ALLOW_THREADS;
-        tensorflow::MaybeRaiseFromStatus(status);
-        return metadata;
-      },
-      py::return_value_policy::reference);
-
   m.def(
       "TF_DATA_GetDataServiceMetadataByID",
       [](std::string dataset_id, const std::string& address,
@@ -151,14 +150,40 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       },
       py::return_value_policy::reference);
 
-  py::class_<tensorflow::data::DataServiceMetadata> data_service_metadata(
-      m, "DataServiceMetadata");
-  data_service_metadata.def(py::init<>())
+  py::class_<tensorflow::data::SnapshotTaskProgressWrapper>
+      snapshot_task_progress_wrapper(m, "SnapshotTaskProgressWrapper");
+  snapshot_task_progress_wrapper.def(py::init<>())
       .def_property_readonly(
-          "element_spec",
-          [](const tensorflow::data::DataServiceMetadata& data_service_metadata)
-              -> py::bytes { return data_service_metadata.element_spec(); })
+          "snapshot_task_base_path",
+          [](const tensorflow::data::SnapshotTaskProgressWrapper&
+                 snapshot_task_progress_wrapper) -> py::bytes {
+            return snapshot_task_progress_wrapper.snapshot_task_base_path;
+          })
       .def_property_readonly(
-          "compression", &tensorflow::data::DataServiceMetadata::compression)
-      .def("__repr__", &tensorflow::data::DataServiceMetadata::DebugString);
+          "snapshot_task_stream_index",
+          [](const tensorflow::data::SnapshotTaskProgressWrapper&
+                 snapshot_task_progress_wrapper) -> int {
+            return snapshot_task_progress_wrapper.snapshot_task_stream_index;
+          })
+      .def_property_readonly(
+          "completed",
+          [](const tensorflow::data::SnapshotTaskProgressWrapper&
+                 snapshot_task_progress_wrapper) -> bool {
+            return snapshot_task_progress_wrapper.completed;
+          });
+  py::class_<tensorflow::data::SnapshotStreamInfoWrapper>
+      snapshot_stream_info_wrapper(m, "SnapshotStreamInfoWrapper");
+  snapshot_stream_info_wrapper.def(py::init<>())
+      .def_property_readonly(
+          "index",
+          [](const tensorflow::data::SnapshotStreamInfoWrapper&
+                 snapshot_stream_info_wrapper) -> int {
+            return snapshot_stream_info_wrapper.index;
+          })
+      .def_property_readonly(
+          "state",
+          [](const tensorflow::data::SnapshotStreamInfoWrapper&
+                 snapshot_stream_info_wrapper) -> int {
+            return snapshot_stream_info_wrapper.state;
+          });
 };

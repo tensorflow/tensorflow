@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -249,8 +249,8 @@ class BandedTriangularSolveOpCpu : public OpKernel {
                     "In[0] mismatch In[1] shape: ", d1, " vs. ", d2, ": ",
                     in0.shape().DebugString(), " ", in1.shape().DebugString(),
                     " ", lower_, " ", adjoint_));
-    out_shape.AddDim(d1);
-    out_shape.AddDim(d3);
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d1));
+    OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d3));
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
     if (out->NumElements() == 0) {

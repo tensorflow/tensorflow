@@ -37,9 +37,9 @@ from tensorflow.python.keras.layers.pooling import MaxPooling3D
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.util.tf_export import keras_export
 # pylint: disable=g-classes-have-attributes
 
 
@@ -382,7 +382,6 @@ class Conv(Layer):
     return op_padding
 
 
-@keras_export('keras.layers.Conv1D', 'keras.layers.Convolution1D')
 class Conv1D(Conv):
   """1D convolution layer (e.g. temporal convolution).
 
@@ -523,7 +522,6 @@ class Conv1D(Conv):
         **kwargs)
 
 
-@keras_export('keras.layers.Conv2D', 'keras.layers.Convolution2D')
 class Conv2D(Conv):
   """2D convolution layer (e.g. spatial convolution over images).
 
@@ -683,7 +681,6 @@ class Conv2D(Conv):
         **kwargs)
 
 
-@keras_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
 class Conv3D(Conv):
   """3D convolution layer (e.g. spatial convolution over volumes).
 
@@ -830,8 +827,6 @@ class Conv3D(Conv):
         **kwargs)
 
 
-@keras_export('keras.layers.Conv1DTranspose',
-              'keras.layers.Convolution1DTranspose')
 class Conv1DTranspose(Conv1D):
   """Transposed convolution layer (sometimes called Deconvolution).
 
@@ -1024,7 +1019,7 @@ class Conv1DTranspose(Conv1D):
       output_shape = (batch_size, out_length, self.filters)
     data_format = conv_utils.convert_data_format(self.data_format, ndim=3)
 
-    output_shape_tensor = array_ops.stack(output_shape)
+    output_shape_tensor = array_ops_stack.stack(output_shape)
     outputs = nn_ops.conv1d_transpose(
         inputs,
         self.kernel,
@@ -1077,8 +1072,6 @@ class Conv1DTranspose(Conv1D):
     return config
 
 
-@keras_export('keras.layers.Conv2DTranspose',
-              'keras.layers.Convolution2DTranspose')
 class Conv2DTranspose(Conv2D):
   """Transposed convolution layer (sometimes called Deconvolution).
 
@@ -1316,7 +1309,7 @@ class Conv2DTranspose(Conv2D):
     else:
       output_shape = (batch_size, out_height, out_width, self.filters)
 
-    output_shape_tensor = array_ops.stack(output_shape)
+    output_shape_tensor = array_ops_stack.stack(output_shape)
     outputs = backend.conv2d_transpose(
         inputs,
         self.kernel,
@@ -1380,8 +1373,6 @@ class Conv2DTranspose(Conv2D):
     return config
 
 
-@keras_export('keras.layers.Conv3DTranspose',
-              'keras.layers.Convolution3DTranspose')
 class Conv3DTranspose(Conv3D):
   """Transposed convolution layer (sometimes called Deconvolution).
 
@@ -1625,7 +1616,7 @@ class Conv3DTranspose(Conv3D):
                       self.filters)
       strides = (1, stride_d, stride_h, stride_w, 1)
 
-    output_shape_tensor = array_ops.stack(output_shape)
+    output_shape_tensor = array_ops_stack.stack(output_shape)
     outputs = nn.conv3d_transpose(
         inputs,
         self.kernel,
@@ -1904,8 +1895,6 @@ class SeparableConv(Conv):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.SeparableConv1D',
-              'keras.layers.SeparableConvolution1D')
 class SeparableConv1D(SeparableConv):
   """Depthwise separable 1D convolution.
 
@@ -2085,8 +2074,6 @@ class SeparableConv1D(SeparableConv):
     return outputs
 
 
-@keras_export('keras.layers.SeparableConv2D',
-              'keras.layers.SeparableConvolution2D')
 class SeparableConv2D(SeparableConv):
   """Depthwise separable 2D convolution.
 
@@ -2259,7 +2246,6 @@ class SeparableConv2D(SeparableConv):
     return outputs
 
 
-@keras_export('keras.layers.DepthwiseConv2D')
 class DepthwiseConv2D(Conv2D):
   """Depthwise 2D convolution.
 
@@ -2490,7 +2476,6 @@ class DepthwiseConv2D(Conv2D):
     return config
 
 
-@keras_export('keras.layers.UpSampling1D')
 class UpSampling1D(Layer):
   """Upsampling layer for 1D inputs.
 
@@ -2547,7 +2532,6 @@ class UpSampling1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.UpSampling2D')
 class UpSampling2D(Layer):
   """Upsampling layer for 2D inputs.
 
@@ -2651,7 +2635,6 @@ class UpSampling2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.UpSampling3D')
 class UpSampling3D(Layer):
   """Upsampling layer for 3D inputs.
 
@@ -2732,7 +2715,6 @@ class UpSampling3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.ZeroPadding1D')
 class ZeroPadding1D(Layer):
   """Zero-padding layer for 1D input (e.g. temporal sequence).
 
@@ -2798,7 +2780,6 @@ class ZeroPadding1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.ZeroPadding2D')
 class ZeroPadding2D(Layer):
   """Zero-padding layer for 2D input (e.g. picture).
 
@@ -2923,7 +2904,6 @@ class ZeroPadding2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.ZeroPadding3D')
 class ZeroPadding3D(Layer):
   """Zero-padding layer for 3D data (spatial or spatio-temporal).
 
@@ -3049,7 +3029,6 @@ class ZeroPadding3D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Cropping1D')
 class Cropping1D(Layer):
   """Cropping layer for 1D input (e.g. temporal sequence).
 
@@ -3110,7 +3089,6 @@ class Cropping1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Cropping2D')
 class Cropping2D(Layer):
   """Cropping layer for 2D input (e.g. picture).
 
@@ -3237,7 +3215,6 @@ class Cropping2D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Cropping3D')
 class Cropping3D(Layer):
   """Cropping layer for 3D data (e.g. spatial or spatio-temporal).
 

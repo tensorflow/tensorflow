@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 #define TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/function.pb.h"
@@ -104,7 +105,7 @@ class GraphDefBuilder {
     // Returns a string representation of the status associated with *this.
     // Returns the string `"OK"` if the status doesn't have any error.
     string StatusToString() const {
-      return status_->ok() ? "OK" : status_->error_message();
+      return status_->ok() ? "OK" : std::string(status_->message());
     }
 
     // Given the Op type name, return a name for a node of that type.

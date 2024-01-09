@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
+#include <algorithm>
+#include <functional>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -118,7 +122,7 @@ namespace parsed {
 // ParseDataType has to be called first, then appropriate ParseZzzzList.
 class Feature {
  public:
-  Feature() {}
+  Feature() = default;
   explicit Feature(StringPiece serialized) : serialized_(serialized) {}
 
   Status ParseDataType(DataType* dtype) {
@@ -1081,7 +1085,7 @@ class TensorVector {
  private:
   // Use absl::optional to avoid calling the default constructor of Tensor
   // unnecessarily.
-  absl::optional<Tensor> tensor_;
+  std::optional<Tensor> tensor_;
 
   // Cached pointer to the raw data inside the tensor.
   T* data_ = nullptr;

@@ -36,6 +36,7 @@ extern llvm::cl::opt<std::string> inference_type;
 extern llvm::cl::opt<std::string> min_values;
 extern llvm::cl::opt<std::string> max_values;
 extern llvm::cl::opt<std::string> debug_info_file;
+extern llvm::cl::opt<std::string> xla_compile_device_type;
 extern llvm::cl::opt<bool> prune_unused_nodes;
 extern llvm::cl::opt<bool> convert_legacy_fed_inputs;
 extern llvm::cl::opt<bool> graph_as_function;
@@ -43,8 +44,11 @@ extern llvm::cl::opt<bool> upgrade_legacy;
 // TODO(jpienaar): Temporary flag, flip default and remove.
 extern llvm::cl::opt<bool> enable_shape_inference;
 extern llvm::cl::opt<bool> unconditionally_use_set_output_shapes;
+extern llvm::cl::opt<bool> enable_soft_placement;
+extern llvm::cl::opt<bool> set_original_tf_func_name;
 
 // Export options.
 extern llvm::cl::opt<bool> export_entry_func_to_flib;
+extern llvm::cl::opt<bool> export_original_tf_func_name;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_CL_H_

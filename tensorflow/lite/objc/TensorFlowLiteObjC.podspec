@@ -1,10 +1,10 @@
 Pod::Spec.new do |s|
   s.name             = 'TensorFlowLiteObjC'
-  s.version          = '2.10.0'
+  s.version          = '2.14.0'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }
   s.homepage         = 'https://github.com/tensorflow/tensorflow'
-  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '359c3cdfc5fabac82b3c70b3b6de2b0a8c16874f' }
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '4dacf3f368eb7965e9b5c3bbdd5193986081c3b2' }
   s.summary          = 'TensorFlow Lite for Objective-C'
   s.description      = <<-DESC
 
@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
                        DESC
 
   s.cocoapods_version = '>= 1.9.0'
-  s.ios.deployment_target = '11.0'
+  s.ios.deployment_target = '12.0'
 
   s.module_name = 'TFLTensorFlowLite'
   s.static_framework = true
@@ -42,10 +42,12 @@ Pod::Spec.new do |s|
       objc_dir + '{apis,sources}/*.{h,m,mm}',
       tfl_dir + 'builtin_ops.h',
       tfl_dir + 'c/c_api.h',
+      tfl_dir + 'core/c/c_api.h',
       tfl_dir + 'c/c_api_experimental.h',
       tfl_dir + 'c/c_api_types.h',
       tfl_dir + 'c/common.h',
       tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
+      tfl_dir + 'core/c/registration_external.h',
     ]
     core.exclude_files = [
       objc_dir + '{apis,sources}/TFL{Metal,CoreML}Delegate.{h,m}',

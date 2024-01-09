@@ -16,8 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 #include <bitset>
+#include <limits>
+#include <map>
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -29,9 +36,11 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -128,7 +137,7 @@ bool MayHaveSideEffect(Operation* op) {
   if (isa_and_nonnull<TF::TensorFlowDialect>(op->getDialect()))
     return TensorFlowDialect::CanHaveSideEffects(op);
 
-  if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) return false;
+  if (mlir::isMemoryEffectFree(op)) return false;
   // Conservatively assume that there can be side effects.
   return true;
 }
@@ -170,9 +179,146 @@ SideEffects GetSideEffectsFromEffectInstance(
   return side_effects;
 }
 
+// Relates `from` and `to` according to their original nesting structure.
+// `groups_same_branch` is the number of common group keys that have the same
+//    branch value.
+// `groups_different_branch` is the number of common group keys that have
+//    different branch values.
+// `groups_from_only` is the number of group keys exclusive to `from`.
+// `groups_to_only` is the number of group keys exclusive to `to`.
+void CategorizeParallelIdsMap(
+    ParallelIdsMap from, ParallelIdsMap to,
+    int& groups_same_branch, int& groups_different_branch,
+    int& groups_from_only, int& groups_to_only) {
+  groups_same_branch = 0;
+  groups_different_branch = 0;
+  groups_from_only = 0;
+  groups_to_only = 0;
+  for (auto [group, branch] : from) {
+    auto to_iter = to.find(group);
+    if (to_iter == to.end()) {
+      ++groups_from_only;
+    } else {
+      auto to_branch = to_iter->second;
+      if (to_branch == branch) {
+        ++groups_same_branch;
+      } else {
+        ++groups_different_branch;
+      }
+    }
+  }
+  for (auto [group, _] : to) {
+    auto from_iter = from.find(group);
+    if (from_iter == from.end()) {
+      ++groups_to_only;
+    }
+  }
+}
+
 }  // namespace
 
 namespace detail {
+
+ParallelIdsMap SideEffectAnalysisInfo::GetParallelIdsMap(Operation* op) {
+  ParallelIdsMap branches;
+  auto iter = op_to_parallel_ids_.find(op);
+  if (iter != op_to_parallel_ids_.end()) branches = iter->second;
+  return branches;
+}
+
+absl::flat_hash_set<Operation*> SideEffectAnalysisInfo::GetLastWrites(
+    ResourceId resource_id) {
+  PerResourceAccessInfo info = per_resource_access_info_[resource_id];
+  absl::flat_hash_set<Operation*> last_writes;
+  if (!info.reads_since_last_write.empty())
+    last_writes.insert(info.reads_since_last_write.back());
+  else
+    last_writes = info.last_writes;
+  return last_writes;
+}
+
+void SideEffectAnalysisInfo::SetLastWrites(
+    ResourceId resource_id, absl::flat_hash_set<Operation*> last_writes) {
+  PerResourceAccessInfo info;
+  info.last_writes = last_writes;
+  per_resource_access_info_[resource_id] = info;
+}
+
+void SideEffectAnalysisInfo::Enter() {
+  per_resource_access_info_.clear();
+  for (auto [resource, last_writes] : stack_down_.back()) {
+    SetLastWrites(resource, last_writes);
+  }
+}
+
+void SideEffectAnalysisInfo::Exit() {
+  for (auto [resource, _] : per_resource_access_info_) {
+    absl::flat_hash_set<Operation*> last_writes = GetLastWrites(resource);
+    auto& resource_to_operations = stack_up_.back();
+    resource_to_operations.try_emplace(resource);
+    resource_to_operations[resource].insert(
+        last_writes.begin(), last_writes.end());
+  }
+  per_resource_access_info_.clear();
+}
+
+void SideEffectAnalysisInfo::Down() {
+  stack_down_.emplace_back();
+  stack_up_.emplace_back();
+  for (auto [resource, _] : per_resource_access_info_) {
+    absl::flat_hash_set<Operation*> last_writes = GetLastWrites(resource);
+    stack_down_.back()[resource] = last_writes;
+  }
+  Enter();
+}
+
+void SideEffectAnalysisInfo::Lateral() {
+  Exit();
+  Enter();
+}
+
+void SideEffectAnalysisInfo::Up() {
+  Exit();
+  for (auto [resource, last_writes] : stack_up_.back()) {
+    SetLastWrites(resource, last_writes);
+  }
+  stack_down_.pop_back();
+  stack_up_.pop_back();
+}
+
+void SideEffectAnalysisInfo::Transition(ParallelIdsMap from,
+                                        ParallelIdsMap to) {
+  int groups_same_branch, groups_different_branch,
+      groups_from_only, groups_to_only;
+  CategorizeParallelIdsMap(from, to, groups_same_branch,
+                           groups_different_branch, groups_from_only,
+                           groups_to_only);
+  for (int i = 0; i < groups_from_only; ++i) Up();
+  if (groups_different_branch != 0) Lateral();
+  for (int i = 0; i < groups_to_only; ++i) Down();
+}
+
+void SideEffectAnalysisInfo::TransitionToParallelIdsMap(ParallelIdsMap to) {
+  Transition(previous_parallel_ids_, to);
+  previous_parallel_ids_ = to;
+}
+
+void SideEffectAnalysisInfo::TransitionToOp(Operation* to) {
+  TransitionToParallelIdsMap(GetParallelIdsMap(to));
+}
+
+// Called at beginning of function.
+void SideEffectAnalysisInfo::InitFunction() {
+  previous_parallel_ids_.clear();
+  stack_down_.clear();
+  stack_up_.clear();
+}
+
+// Called at end of function.
+void SideEffectAnalysisInfo::UninitFunction() {
+  ParallelIdsMap empty;
+  TransitionToParallelIdsMap(empty);
+}
 
 // Class for propagating op-based side effects bottom-up and collecting them
 // per op, by resource ID.
@@ -199,6 +345,9 @@ class OpSideEffectCollector {
   bool IsOnlySelfDependent(ResourceId resource_id) const {
     return self_dependent_only_ids_.contains(resource_id);
   }
+
+  bool IsCallToPureFunction(Operation* callOp) const;
+  bool IsPureFunction(func::FuncOp func_op) const;
 
  private:
   // Adds op-based side effects from all ops in `region` to `op` side effects.
@@ -241,7 +390,7 @@ class OpSideEffectCollector {
     } else if (auto while_op = dyn_cast<WhileOp>(op)) {
       AddRegionSideEffectsForOp(while_op.body_function().getBody(), op);
     } else if (auto while_region_op = dyn_cast<WhileRegionOp>(op)) {
-      AddRegionSideEffectsForOp(while_region_op.body(), op);
+      AddRegionSideEffectsForOp(while_region_op.getBody(), op);
     } else if (auto case_op = dyn_cast<CaseOp>(op)) {
       llvm::SmallVector<func::FuncOp, 4> branch_funcs;
       case_op.get_branch_functions(branch_funcs);
@@ -253,6 +402,14 @@ class OpSideEffectCollector {
                    CaseRegionOp>(op)) {
       for (Region& region : op->getRegions()) {
         AddRegionSideEffectsForOp(region, op);
+      }
+    } else if (auto xla_call_module_op = dyn_cast<XlaCallModuleOp>(op)) {
+      for (auto func_symbol : xla_call_module_op.getFunctionList().getAsRange<
+          mlir::FlatSymbolRefAttr>()) {
+        if (auto func = symbol_table_collection_.lookupNearestSymbolFrom<
+                mlir::func::FuncOp>(xla_call_module_op, func_symbol)) {
+          AddRegionSideEffectsForOp(func.getBody(), op);
+        }
       }
     } else {
       // Now handle all other ops.
@@ -286,15 +443,21 @@ class OpSideEffectCollector {
           // dead or get pruned, ignore it for side effect analysis.
           continue;
 
-        // Add side effects for op resource ID.
-        std::string instance_str = "";
+        // Add side effects for op resource ID. If `op` does not have
+        // `GetResourceInstanceInterface`, then all op instances will keep an
+        // empty `instance_str` which enforces global order.
+        std::optional<std::string> instance_str = "";
         SideEffects side_effects(GetSideEffectsFromEffectInstance(effect, op));
         if (auto resource_instance_op =
             dyn_cast<GetResourceInstanceInterface>(op)) {
           instance_str = resource_instance_op.GetResourceInstanceStr();
         }
+        // No value (`std::nullopt`) instance string signals that we should
+        // ignore this effect, see comment for `GetResourceInstanceInterface`.
+        if (!instance_str.has_value()) continue;
+
         TypeID type_id = effect.getResource()->getResourceID();
-        ResourceId resource_id = GetOpResourceId(type_id, instance_str);
+        ResourceId resource_id = GetOpResourceId(type_id, instance_str.value());
         side_effects.SetResourceId(resource_id);
         UpdateSideEffectsByResourceId(side_effects,
                                       side_effects_by_resource_id);
@@ -329,7 +492,7 @@ class OpSideEffectCollector {
   absl::node_hash_map<std::pair<const void*, std::string>, ResourceId>
     type_instance_str_to_op_resource_id_;
   // Used for faster callable resolution.
-  SymbolTableCollection symbol_table_collection_;
+  mutable SymbolTableCollection symbol_table_collection_;
   // Collect all op-based side effects here.
   OpSideEffectMap op_side_effect_map_;
   const SideEffectsByResourceId empty_side_effects_map_;
@@ -337,7 +500,57 @@ class OpSideEffectCollector {
   // Set of all resource IDs which only have dependencies to themselves, not to
   // any other resource ID (including unknown resource ID).
   llvm::SmallDenseSet<ResourceId, 8> self_dependent_only_ids_;
+
+  // Maps functions to whether they're pure or not. A function is pure if it
+  // only executes ops with no side effects.
+  mutable llvm::SmallDenseMap<Operation*, bool> is_pure_function_;
 };
+
+bool OpSideEffectCollector::IsCallToPureFunction(Operation* callOp) const {
+  auto call = llvm::dyn_cast<CallOpInterface>(callOp);
+  if (!call)
+    return false;  // not a call
+  func::FuncOp func_op = dyn_cast<func::FuncOp>(call.resolveCallable(
+      &symbol_table_collection_));
+  return IsPureFunction(func_op);
+}
+
+bool OpSideEffectCollector::IsPureFunction(func::FuncOp func_op) const {
+  auto it = is_pure_function_.find(func_op);
+  if (it == is_pure_function_.end()) {
+    bool is_pure = true;
+    is_pure_function_[func_op] = is_pure;  // prevent infinite recursion
+    func_op->walk([&](Operation* op) {
+      if (op == func_op) {
+        return WalkResult::advance();
+      }
+      // AssertOp is not, technically, pure. However, we treat functions
+      // that contain an assert as pure, so that graphs with and without
+      // assert don't have different side effect semantics. Also see
+      // b/309824992 for the challenges associated with improving the side
+      // effect modelling of Assert on the op level.
+      if (llvm::isa<AssertOp>(op)) {
+        return WalkResult::advance();
+      }
+      if (auto if_op = llvm::dyn_cast<IfOp>(op)) {
+        if (IsPureFunction(if_op.then_function()) &&
+            IsPureFunction(if_op.else_function())) {
+          return WalkResult::advance();
+        }
+      }
+      if (IsCallToPureFunction(op)) {
+        return WalkResult::advance();
+      }
+      if (TensorFlowDialect::CanHaveSideEffects(op)) {
+        is_pure = false;
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    is_pure_function_[func_op] = is_pure;
+  }
+  return is_pure_function_[func_op];
+}
 
 // Collects all op-based and value-based side effects for `op` per resource ID.
 SideEffectsByResourceId CollectSideEffectsByResourceId(
@@ -345,7 +558,20 @@ SideEffectsByResourceId CollectSideEffectsByResourceId(
     const OpSideEffectCollector& op_side_effect_collector,
     const TF::ResourceAliasAnalysis::Info& alias_analysis) {
   SideEffectsByResourceId side_effects_by_resource_id;
-  if (!MayHaveSideEffect(op)) return side_effects_by_resource_id;
+  if (!MayHaveSideEffect(op) ||
+      op_side_effect_collector.IsCallToPureFunction(op))
+    return side_effects_by_resource_id;
+
+  // For fetch op, set unknown effect to guarantee that it depends on every
+  // side-effecting op (directly or indirectly).
+  if (isa<tf_executor::FetchOp>(op)) {
+    SideEffects unknown_effect;
+    unknown_effect.SetUnknownEffect();
+    unknown_effect.SetResourceId(kUnknownResourceId);
+    UpdateSideEffectsByResourceId(unknown_effect,
+                                  side_effects_by_resource_id);
+    return side_effects_by_resource_id;
+  }
 
   if (isa<tf_device::LaunchOp, tf_device::ClusterOp, tf_executor::IslandOp,
           tf_executor::GraphOp, IfRegionOp, CaseRegionOp, WhileRegionOp>(op)) {
@@ -455,8 +681,8 @@ SideEffectsByResourceId CollectSideEffectsByResourceId(
 //===----------------------------------------------------------------------===//
 
 void SideEffectAnalysisInfo::AddPredecessorsForAccess(ResourceId resource_id,
-                                                      Operation* op,
-                                                      bool read_only) {
+                                                       Operation* op,
+                                                       bool read_only) {
   VLOG(4) << "    Adding predecessors for resource " << resource_id;
   auto it = per_resource_access_info_.find(resource_id);
   if (it == per_resource_access_info_.end()) return;
@@ -473,9 +699,10 @@ void SideEffectAnalysisInfo::AddPredecessorsForAccess(ResourceId resource_id,
     is_last_write_indirectly_tracked =
         !access_info.reads_since_last_write.empty();
   }
-  if (access_info.last_write && !is_last_write_indirectly_tracked) {
+  if (!is_last_write_indirectly_tracked) {
     // Add last write as predecessor since it was not indirectly tracked.
-    new_control_predecessors.insert(access_info.last_write);
+    new_control_predecessors.insert(access_info.last_writes.begin(),
+                                    access_info.last_writes.end());
   }
   if (VLOG_IS_ON(4)) {
     for (Operation* new_control_predecessor : new_control_predecessors) {
@@ -532,7 +759,8 @@ void SideEffectAnalysisInfo::UpdateAccess(ResourceId resource_id,
     // the write as a predecessor for `op` before).
     access_info.is_last_unknown_write_tracked = true;
   } else {
-    access_info.last_write = op;
+    access_info.last_writes.clear();
+    access_info.last_writes.insert(op);
     access_info.reads_since_last_write.clear();
     // Last unknown read(s) and write are indirectly tracked by this write (we
     // have added the read(s) and write as predecessors for `op` before).
@@ -543,9 +771,11 @@ void SideEffectAnalysisInfo::UpdateAccess(ResourceId resource_id,
 }
 
 void SideEffectAnalysisInfo::AnalyzeFunction(func::FuncOp func_op) {
+  InitFunction();
   // AnalyzeRegion() recursively analyzes the function body, and only populates
   // control_predecessors_.
   AnalyzeRegion(&func_op.getBody());
+  UninitFunction();
   // Populate sorted_control_predecessors_ and sorted_control_successors_ based
   // on control_predecessors.
   for (auto& entry : control_predecessors_) {
@@ -590,7 +820,8 @@ void SideEffectAnalysisInfo::AnalyzeRegion(Region* region) {
     for (Operation& op : block) {
       for (Region& child_region : op.getRegions()) {
         SideEffectAnalysisInfo child_analysis(
-            &child_region, op_side_effect_collector_, alias_analysis_);
+            &child_region, op_side_effect_collector_, alias_analysis_,
+            op_to_parallel_ids_);
         // Move data from `child_analysis` to current region.
         for (auto& entry : child_analysis.control_predecessors_)
           control_predecessors_[entry.first] = std::move(entry.second);
@@ -604,7 +835,7 @@ void SideEffectAnalysisInfo::AnalyzeRegion(Region* region) {
 
 ResourceIdSet
 SideEffectAnalysisInfo::GetDependentIds(ResourceId resource_id,
-                                        bool is_fetch_op)  const {
+                                         bool is_fetch_op)  const {
   ResourceIdSet dependent_ids;
   if (resource_id == kUnknownResourceId) {
     // Unknown resource has potential dependence on all other resources, except
@@ -629,6 +860,7 @@ SideEffectAnalysisInfo::GetDependentIds(ResourceId resource_id,
 
 void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
   VLOG(4) << "Processing op " << mlir::debugString(*op);
+  TransitionToOp(op);
   SideEffectsByResourceId side_effects_by_resource_id =
         CollectSideEffectsByResourceId(
             op,
@@ -663,7 +895,9 @@ void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
     for (ResourceId id : dependent_ids) {
       // Handle unknown resource later, access might already be indirectly
       // tracked by another resource access.
-      if (id == kUnknownResourceId) continue;
+      if (id == kUnknownResourceId) {
+        continue;
+      }
 
       AddPredecessorsForAccess(id, op, read_only);
       is_unknown_access_indirectly_tracked |=
@@ -671,8 +905,9 @@ void SideEffectAnalysisInfo::AnalyzeOp(Operation* op) {
     }
     // Add predecessors for unknown resource if necessary.
     if (dependent_ids.contains(kUnknownResourceId) &&
-        !is_unknown_access_indirectly_tracked)
+        !is_unknown_access_indirectly_tracked) {
       AddPredecessorsForAccess(kUnknownResourceId, op, read_only);
+    }
     // Update resource access.
     UpdateAccess(resource_id, op, read_only);
 
@@ -694,11 +929,13 @@ bool SideEffectAnalysisInfo::IsUnknownAccessIndirectlyTrackedByResource(
   auto access_info = it->getSecond();
 
   auto unknown_it = per_resource_access_info_.find(kUnknownResourceId);
-  if (unknown_it == per_resource_access_info_.end()) return true;
+  if (unknown_it == per_resource_access_info_.end()) {
+    return true;
+  }
   auto unknown_access_info = unknown_it->getSecond();
 
   bool no_unknown_read = unknown_access_info.reads_since_last_write.empty();
-  bool no_unknown_write = (unknown_access_info.last_write == nullptr);
+  bool no_unknown_write = unknown_access_info.last_writes.empty();
 
   // For the read-only case we only need that the last unknown write is already
   // tracked by the last `resource` write since we don't have dependencies to
@@ -716,6 +953,14 @@ bool SideEffectAnalysisInfo::IsUnknownAccessIndirectlyTrackedByResource(
   return is_tracked;
 }
 
+const llvm::SmallVector<Operation*, 4>&
+SideEffectAnalysisInfo::DirectControlPredecessors(
+    Operation* op) const {
+  auto it = sorted_control_predecessors_.find(op);
+  if (it == sorted_control_predecessors_.end()) return empty_operation_set_;
+  return it->second;
+}
+
 llvm::SmallVector<Operation*, 4>
 SideEffectAnalysisInfo::DirectControlPredecessors(
     Operation* op, llvm::function_ref<bool(Operation*)> filter) const {
@@ -727,6 +972,14 @@ SideEffectAnalysisInfo::DirectControlPredecessors(
     if (!filter || filter(predecessor)) result.push_back(predecessor);
   }
   return result;
+}
+
+const llvm::SmallVector<Operation*, 4>&
+SideEffectAnalysisInfo::DirectControlSuccessors(
+    Operation* op) const {
+  auto it = sorted_control_successors_.find(op);
+  if (it == sorted_control_successors_.end()) return empty_operation_set_;
+  return it->second;
 }
 
 llvm::SmallVector<Operation*, 4>
@@ -751,17 +1004,24 @@ SideEffectAnalysisInfo::GetResourceIds(Operation* op) const {
 
 }  // namespace detail
 
-SideEffectAnalysis::SideEffectAnalysis(ModuleOp module)
+SideEffectAnalysis::SideEffectAnalysis(ModuleOp module,
+                                       OpToParallelIdsMap op_to_parallel_ids)
   // Analyze entire module for alias analysis info.
     : alias_analysis_(module) {
+
   // Collect op-based side effects for entire module.
   detail::OpSideEffectCollector op_side_effect_collector(module);
 
   // Analyze side effects for all functions in module.
-  for (auto func : module.getOps<func::FuncOp>())
-    this->info_map_.try_emplace(func, func,
-                                op_side_effect_collector,
-                                alias_analysis_.GetAnalysisForFunc(func));
+  for (auto func : module.getOps<func::FuncOp>()) {
+    this->info_map_.try_emplace(func, func, op_side_effect_collector,
+                                alias_analysis_.GetAnalysisForFunc(func),
+                                op_to_parallel_ids);
+  }
+}
+
+SideEffectAnalysis::SideEffectAnalysis(ModuleOp module)
+    : SideEffectAnalysis(module, {}) {
 }
 
 }  // namespace TF

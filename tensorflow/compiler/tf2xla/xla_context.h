@@ -22,10 +22,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/graph/graph.h"
@@ -175,7 +175,8 @@ class XlaContext : public ResourceBase {
   // Cached computation to compute Sigmoid of an element, specialized by type.
   ComputationMap sigmoid_func_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaContext);
+  XlaContext(const XlaContext&) = delete;
+  void operator=(const XlaContext&) = delete;
 };
 
 }  // namespace tensorflow

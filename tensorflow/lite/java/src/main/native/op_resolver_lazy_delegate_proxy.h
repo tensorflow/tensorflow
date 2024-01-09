@@ -42,7 +42,7 @@ class OpResolverLazyDelegateProxy : public OpResolver {
   bool MayContainUserDefinedOps() const override;
 
   static std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>
-  createXNNPackDelegate(int num_threads);
+  createXNNPackDelegate(TfLiteContext* context);
 
   static OpResolver::TfLiteOpaqueDelegatePtr createXNNPackOpaqueDelegate(
       int num_threads);

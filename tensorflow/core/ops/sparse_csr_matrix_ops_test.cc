@@ -249,8 +249,6 @@ TEST(SparseMatrixOpsTest, SparseMatrixSparseMatMul_ShapeFn) {
   INFER_ERROR("must be at least rank 2 but is rank 1", op, "[];[]");
   set_shapes("[?,?]", "[?,?]");
   INFER_OK(op, "[];[]", "[]");  // [d0_0,d1_1]"
-  set_shapes("[?,?,?]", "[?,?]");
-  INFER_ERROR("must be equal rank, but are", op, "[];[]");
   set_shapes("[?,?,?]", "[?,?,?]");
   INFER_OK(op, "[];[]", "[]");  // "[d0_0,d0_1,d1_2]"
   set_shapes("[?,3,?]", "[?,?,?]");

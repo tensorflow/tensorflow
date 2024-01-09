@@ -49,7 +49,8 @@ class RpcRemoteRendezvous : public BaseRemoteRendezvous {
  private:
   ~RpcRemoteRendezvous() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcRemoteRendezvous);
+  RpcRemoteRendezvous(const RpcRemoteRendezvous&) = delete;
+  void operator=(const RpcRemoteRendezvous&) = delete;
 };
 
 // Used only to retrieve tensors from remote processes.
@@ -180,7 +181,8 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   mutable mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RpcRecvTensorCall);
+  RpcRecvTensorCall(const RpcRecvTensorCall&) = delete;
+  void operator=(const RpcRecvTensorCall&) = delete;
 };
 
 class RpcRecvTensorFreeList {
@@ -308,9 +310,10 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 RpcRendezvousMgr::RpcRendezvousMgr(const WorkerEnv* env)
     : BaseRendezvousMgr(env) {}
 
-BaseRemoteRendezvous* RpcRendezvousMgr::Create(int64_t step_id,
-                                               const WorkerEnv* worker_env) {
-  return new RpcRemoteRendezvous(worker_env, step_id);
+tsl::core::RefCountPtr<BaseRemoteRendezvous> RpcRendezvousMgr::Create(
+    int64_t step_id, const WorkerEnv* worker_env) {
+  return tsl::core::RefCountPtr<BaseRemoteRendezvous>(
+      new RpcRemoteRendezvous(worker_env, step_id));
 }
 
 }  // end namespace tensorflow

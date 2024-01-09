@@ -98,10 +98,9 @@ Now let's build `tf-nightly`.
    Hub](https://hub.docker.com/r/tensorflow/build/tags). The options for the
    `master` branch are:
 
+    - `tensorflow/build:latest-python3.11`
     - `tensorflow/build:latest-python3.10`
     - `tensorflow/build:latest-python3.9`
-    - `tensorflow/build:latest-python3.8`
-    - `tensorflow/build:latest-python3.7`
 
     For this example we'll use `tensorflow/build:latest-python3.9`.
 
@@ -131,6 +130,7 @@ Now let's build `tf-nightly`.
 
     ```bash
     docker run --name tf -w /tf/tensorflow -it -d \
+      --env TF_PYTHON_VERSION=3.9 \
       -v "/tmp/packages:/tf/pkg" \
       -v "/tmp/tensorflow:/tf/tensorflow" \
       -v "/tmp/bazelcache:/tf/cache" \

@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {

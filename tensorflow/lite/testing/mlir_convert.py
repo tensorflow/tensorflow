@@ -69,11 +69,15 @@ def mlir_convert(
   if options.enable_dynamic_update_slice:
     converter._experimental_enable_dynamic_update_slice = True  # pylint: disable=protected-access
 
-  if options.disable_batchmatmul_unfold:
-    converter._experimental_disable_batchmatmul_unfold = True  # pylint: disable=protected-access
+  converter.unfold_batchmatmul = options.unfold_batchmatmul
 
   if test_params.get("dynamic_range_quantize", False):
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+  if options.experimental_low_bit_qat:
+    converter._experimental_low_bit_qat = (   # pylint: disable=protected-access
+        True
+    )
 
   if test_params.get("fully_quantize", False):
     converter.optimizations = [tf.lite.Optimize.DEFAULT]

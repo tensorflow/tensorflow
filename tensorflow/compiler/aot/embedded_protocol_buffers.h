@@ -21,7 +21,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_AOT_EMBEDDED_PROTOCOL_BUFFERS_H_
 
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {

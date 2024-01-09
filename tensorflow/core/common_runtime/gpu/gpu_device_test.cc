@@ -15,18 +15,27 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
+#define TF_GPU_USE_PJRT
+#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
+
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/lib/core/status_test_util.h"
+
+#ifdef TF_GPU_USE_PJRT
+#include "xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/tfrt/common/pjrt_util.h"
+#endif  // TF_GPU_USE_PJRT
 
 namespace tensorflow {
 namespace {
@@ -35,10 +44,9 @@ using ::testing::SizeIs;
 
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
-int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
+int64_t GetTotalGPUMemory(tsl::PlatformDeviceId gpu_id) {
   se::StreamExecutor* se =
-      DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .value();
+      se::GPUMachineManager()->ExecutorForDevice(gpu_id.value()).value();
 
   int64_t total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
@@ -46,8 +54,8 @@ int64_t GetTotalGPUMemory(PlatformDeviceId gpu_id) {
 }
 
 se::CudaComputeCapability GetComputeCapability() {
-  return DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                   PlatformDeviceId(0))
+  return se::GPUMachineManager()
+      ->ExecutorForDevice(0)
       .value()
       ->GetDeviceDescription()
       .cuda_compute_capability();
@@ -74,6 +82,7 @@ class GPUDeviceTest : public ::testing::Test {
       const std::vector<std::vector<float>>& memory_limit_mb = {},
       const std::vector<std::vector<int32>>& priority = {},
       const std::vector<std::vector<int32>>& device_ordinal = {},
+      const int32 num_virtual_devices = 0,
       const bool use_cuda_malloc_async = false) {
     SessionOptions options;
     ConfigProto* config = &options.config;
@@ -84,22 +93,27 @@ class GPUDeviceTest : public ::testing::Test {
         per_process_gpu_memory_fraction);
     gpu_options->mutable_experimental()->set_use_cuda_malloc_async(
         use_cuda_malloc_async);
-    for (int i = 0; i < memory_limit_mb.size(); ++i) {
-      auto virtual_devices =
-          gpu_options->mutable_experimental()->add_virtual_devices();
-      for (float mb : memory_limit_mb[i]) {
-        virtual_devices->add_memory_limit_mb(mb);
-      }
-      if (i < device_ordinal.size()) {
-        for (int o : device_ordinal[i]) {
-          virtual_devices->add_device_ordinal(o);
+    if (!memory_limit_mb.empty()) {
+      for (int i = 0; i < memory_limit_mb.size(); ++i) {
+        auto virtual_devices =
+            gpu_options->mutable_experimental()->add_virtual_devices();
+        for (float mb : memory_limit_mb[i]) {
+          virtual_devices->add_memory_limit_mb(mb);
+        }
+        if (i < device_ordinal.size()) {
+          for (int o : device_ordinal[i]) {
+            virtual_devices->add_device_ordinal(o);
+          }
+        }
+        if (i < priority.size()) {
+          for (int p : priority[i]) {
+            virtual_devices->add_priority(p);
+          }
         }
       }
-      if (i < priority.size()) {
-        for (int p : priority[i]) {
-          virtual_devices->add_priority(p);
-        }
-      }
+    } else if (num_virtual_devices > 0) {
+      gpu_options->mutable_experimental()->set_num_virtual_devices_per_gpu(
+          num_virtual_devices);
     }
     return options;
   }
@@ -143,12 +157,12 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
   }
 #endif
 
-  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {},
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   std::vector<std::unique_ptr<Device>> devices;
   Status status;
   int number_instantiated =
-      GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
+      se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
   {  // The new scope is to trigger the destruction of the object.
     status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
@@ -165,19 +179,19 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsync)) {
     allocator->DeallocateRaw(ptr);
   }
   EXPECT_EQ(number_instantiated + 1,
-            GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
+            se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
   EXPECT_EQ(status.code(), error::OK);
 }
 
 TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
-  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {},
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 0,
                                            /*use_cuda_malloc_async=*/true);
   setenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC", "2048", 1);
   std::vector<std::unique_ptr<Device>> devices;
   Status status;
 
   int number_instantiated =
-      GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
+      se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly();
   {  // The new scope is to trigger the destruction of the object.
     status = DeviceFactory::GetFactory("GPU")->CreateDevices(
         opts, kDeviceNamePrefix, &devices);
@@ -197,7 +211,7 @@ TEST_F(GPUDeviceTest, DISABLED_ON_GPU_ROCM(CudaMallocAsyncPreallocate)) {
   unsetenv("TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC");
 
   EXPECT_EQ(number_instantiated + 1,
-            GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
+            se::GpuCudaMallocAsyncAllocator::GetInstantiatedCountTestOnly());
 
   EXPECT_EQ(status.code(), error::OK);
 }
@@ -267,7 +281,7 @@ TEST_F(GPUDeviceTest, NotEnoughGpuInVisibleDeviceList) {
 
 TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
   // This test requires at least two visible GPU hardware.
-  if (GPUMachineManager()->VisibleDeviceCount() < 2) return;
+  if (se::GPUMachineManager()->VisibleDeviceCount() < 2) return;
   // Three entries in visible_device_list with two (empty) VirtualDevices
   // messages.
   SessionOptions opts = MakeSessionOptions("0,1", 0, 8, {{}});
@@ -281,6 +295,20 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
       "match the number of elements in the virtual_devices "
       "list.");
 }
+
+#ifdef TF_GPU_USE_PJRT
+TEST_F(GPUDeviceTest, GpuDeviceWithPjrt) {
+  SessionOptions opts = MakeSessionOptions("0");
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  EXPECT_THAT(devices, SizeIs(1));
+  EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
+  EXPECT_EQ(static_cast<BaseGPUDevice*>(devices[0].get())->priority(), 0);
+  auto pjrt_client = GetPjRtClient(DeviceType(DEVICE_GPU));
+  EXPECT_OK(pjrt_client.status());
+}
+#endif  // TF_GPU_USE_PJRT
 
 TEST_F(GPUDeviceTest, EmptyVirtualDeviceConfig) {
   // It'll create single virtual device when the virtual device config is empty.
@@ -448,7 +476,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithDeviceOrdinal) {
 TEST_F(GPUDeviceTest,
        MultipleVirtualDevicesWithDeviceOrdinalOnMultipleDevices) {
   // This test requires at least two visible GPU hardware.
-  if (GPUMachineManager()->VisibleDeviceCount() < 2) return;
+  if (se::GPUMachineManager()->VisibleDeviceCount() < 2) return;
 
   SessionOptions opts =
       MakeSessionOptions("0,1", 0, 2, {{1, 2}, {3, 4}}, {}, {{1, 2}, {1, 2}});
@@ -460,6 +488,29 @@ TEST_F(GPUDeviceTest,
   EXPECT_EQ(devices[1]->attributes().memory_limit(), 3 << 20);
   EXPECT_EQ(devices[2]->attributes().memory_limit(), 2 << 20);
   EXPECT_EQ(devices[3]->attributes().memory_limit(), 4 << 20);
+}
+
+TEST_F(GPUDeviceTest, MultipleVirtualDevicesWithSpecifiedNumber) {
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {}, {}, {}, 2);
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  EXPECT_THAT(devices, SizeIs(2));
+  // The two virtual devices have the same memory size.
+  EXPECT_EQ(devices[0]->attributes().memory_limit(),
+            devices[1]->attributes().memory_limit());
+  ASSERT_EQ(devices[0]->attributes().locality().links().link_size(), 1);
+  ASSERT_EQ(devices[1]->attributes().locality().links().link_size(), 1);
+  EXPECT_EQ(devices[0]->attributes().locality().links().link(0).device_id(), 1);
+  EXPECT_EQ(devices[0]->attributes().locality().links().link(0).type(),
+            "SAME_DEVICE");
+  EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
+            devices[0]->attributes().locality().links().link(0).strength());
+  EXPECT_EQ(devices[1]->attributes().locality().links().link(0).device_id(), 0);
+  EXPECT_EQ(devices[1]->attributes().locality().links().link(0).type(),
+            "SAME_DEVICE");
+  EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
+            devices[1]->attributes().locality().links().link(0).strength());
 }
 
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
@@ -484,7 +535,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
 // more memory than what is available on the device.
 TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr double kGpuMemoryFraction = 1.2;
-  static constexpr PlatformDeviceId kPlatformDeviceId(0);
+  static constexpr tsl::PlatformDeviceId kPlatformDeviceId(0);
 
   // Exit early if running on pre-Pascal GPUs.
   if (!GetComputeCapability().IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
@@ -570,6 +621,22 @@ TEST_F(GPUDeviceTest, DeviceDetails) {
     EXPECT_NE(details["compute_capability"], "");
 #endif
   }
+}
+
+TEST_F(GPUDeviceTest, StreamToIdMultipleVirtualDevices) {
+  // Valid range for priority values on AMD GPUs in (-1,1)
+  // Valid range for priority values on NVidia GPUs in (-2, 0)
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, -1}});
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  // Verify FindTfDeviceId() works.
+  for (int i = 0; i < devices.size(); i++) {
+    EXPECT_EQ(tsl::TfDeviceId(i),
+              *BaseGPUDevice::FindTfDeviceId(
+                  devices[i]->tensorflow_accelerator_device_info()->stream));
+  }
+  EXPECT_FALSE(BaseGPUDevice::FindTfDeviceId(nullptr).has_value());
 }
 
 class GPUKernelTrackerTest : public ::testing::Test {

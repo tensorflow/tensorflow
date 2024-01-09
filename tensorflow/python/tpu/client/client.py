@@ -44,6 +44,7 @@ _ENDPOINTS_SEPARATOR = ','
 _DEFAULT_ENV_VARIABLE = 'TPU_NAME'
 _DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
 _GCE_METADATA_URL_ENV_VARIABLE = 'GCE_METADATA_IP'
+_GCE_METADATA_ENDPOINT_ENV_VARIABLE = 'GCE_METADATA_HOST'
 _DEFAULT_ENDPOINT_PORT = '8470'
 _OOM_EVENT_COOL_TIME_SEC = 90
 _VERSION_SWITCHER_ENDPOINT = 'http://{}:8475/requestversion'
@@ -66,8 +67,12 @@ def _environment_discovery_url():
 
 
 def _gce_metadata_endpoint():
-  return 'http://' + os.environ.get(_GCE_METADATA_URL_ENV_VARIABLE,
-                                    'metadata.google.internal')
+  endpoint = os.environ.get(_GCE_METADATA_ENDPOINT_ENV_VARIABLE)
+  if not endpoint:
+    endpoint = os.environ.get(
+        _GCE_METADATA_URL_ENV_VARIABLE, 'metadata.google.internal'
+    )
+  return 'http://' + endpoint
 
 
 def _request_compute_metadata(path):

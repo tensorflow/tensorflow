@@ -49,7 +49,7 @@ limitations under the License.
 #include "tensorflow/core/util/transform_output_iterator.h"
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -299,19 +299,25 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     TensorReference partition_ref(partition_count);
     auto wrapped_callback = [this, c, &data, &partitions, indices_out,
                              partition_ref, cpu_tensor, done]() {
-      auto stream = c->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      {
+        auto stream = c->op_device_context()->stream();
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
-      OpOutputList outputs;
-      this->AllocateOutputs(c, &data, &partitions, &cpu_tensor, &outputs, done);
-      if (!c->status().ok()) {
+        OpOutputList outputs;
+        this->AllocateOutputs(c, &data, &partitions, &cpu_tensor, &outputs,
+                              done);
+        if (!c->status().ok()) {
+          partition_ref.Unref();
+          return;
+        }
+        int32 N = partitions.NumElements();
+        int64 slice_size = data.NumElements() / N;
+        this->GatherSlices(c, &data, &indices_out, N, slice_size, outputs);
         partition_ref.Unref();
-        return;
-      }
-      int32 N = partitions.NumElements();
-      int64 slice_size = data.NumElements() / N;
-      this->GatherSlices(c, &data, &indices_out, N, slice_size, outputs);
-      partition_ref.Unref();
+      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
+
       done();
     };
 
@@ -337,9 +343,16 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Determine temporary device storage requirements.
     Tensor cub_temp_storage;
     size_t temp_storage_bytes = 0;
-    gpuprim::DeviceRadixSort::SortPairs(
+    auto gpuResult = gpuprim::DeviceRadixSort::SortPairs(
         NULL, temp_storage_bytes, partitions_ptr, partitions_out_ptr,
         indices_in_ptr, indices_out_ptr, N, 0, sizeof(int32) * 8, cu_stream);
+
+    OP_REQUIRES(
+        c, gpuResult == gpuSuccess,
+        errors::Internal(
+            "Failed to launch gpuprim::DeviceRadixSort::SortPairs to calculate",
+            "temp_storage_bytes, status: ", GpuGetErrorString(gpuResult)));
+
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
         c,
@@ -348,10 +361,17 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
             &cub_temp_storage),
         done);
     // Radix-sort the partition information.
-    gpuprim::DeviceRadixSort::SortPairs(
+    gpuResult = gpuprim::DeviceRadixSort::SortPairs(
         cub_temp_storage.flat<int8>().data(), temp_storage_bytes,
         partitions_ptr, partitions_out_ptr, indices_in_ptr, indices_out_ptr, N,
         0, sizeof(int32) * 8, cu_stream);
+
+    OP_REQUIRES(
+        c, gpuResult == gpuSuccess,
+        errors::Internal("Failed to launch gpuprim::DeviceRadixSort::SortPairs"
+                         "temp_storage_bytes: ",
+                         temp_storage_bytes,
+                         "status: ", GpuGetErrorString(gpuResult)));
   }  // At this point cub_temp_storage will be marked for deallocation.
 
   void CountAndSortParts(OpKernelContext* c, const Tensor* partitions,
@@ -413,9 +433,16 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // Determine temporary device storage requirements
     Tensor cub_temp_storage;
     size_t temp_storage_bytes = 0;
-    gpuprim::DeviceReduce::ReduceByKey(
+    auto gpuResult = gpuprim::DeviceReduce::ReduceByKey(
         NULL, temp_storage_bytes, keys_in_ptr, unique_out_it, values_in,
         aggregates_out_it, num_runs_ptr, reduction_op, N, cu_stream);
+
+    OP_REQUIRES(
+        c, gpuResult == gpuSuccess,
+        errors::Internal(
+            "Failed to launch gpuprim::DeviceReduce::ReduceByKey ",
+            "temp_storage_bytes, status: ", GpuGetErrorString(gpuResult)));
+
     // Allocate temporary storage.
     OP_REQUIRES_OK_ASYNC(
         c,
@@ -427,10 +454,17 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     // each index appears in partitions. The distinct indices are stored
     // in unique_out, while the count is stored in aggregates_out.
     // The total number of distinct indices is stored in num_runs.
-    gpuprim::DeviceReduce::ReduceByKey(
+    gpuResult = gpuprim::DeviceReduce::ReduceByKey(
         cub_temp_storage.flat<int8>().data(), temp_storage_bytes, keys_in_ptr,
         unique_out_it, values_in, aggregates_out_it, num_runs_ptr, reduction_op,
         N, cu_stream);
+
+    OP_REQUIRES(
+        c, gpuResult == gpuSuccess,
+        errors::Internal("Failed to launch gpuprim::DeviceReduce::ReduceByKey ",
+                         "temp_storage_bytes: ", temp_storage_bytes,
+                         ", status: ", GpuGetErrorString(gpuResult)));
+
     // We are not done yet. unique_out only contains the indices that appeared
     // at least once in partitions. We move each value from aggregates_out
     // to the corresponding position in partition_count. This will handle

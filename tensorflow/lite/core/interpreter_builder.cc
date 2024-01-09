@@ -27,10 +27,10 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/model_builder.h"
@@ -38,6 +38,8 @@ limitations under the License.
 #include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting_internal.h"
+#include "tensorflow/lite/schema/conversion_metadata_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/shared_library.h"
@@ -47,7 +49,8 @@ limitations under the License.
 #include "tensorflow/lite/version.h"
 
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
-#if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
+// (introduced in stdc11 but realized in C++17)
+#if __cplusplus >= 201703L && __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
 // Neither Apple nor Windows provide aligned_alloc.
 #if !defined(__APPLE__) && !defined(_WIN32)
@@ -73,6 +76,9 @@ limitations under the License.
 namespace tflite {
 
 namespace {
+
+constexpr char kConversionMetadataKey[] = "CONVERSION_METADATA";
+constexpr char kTelemetryBuilderEventName[] = "InterpreterBuilder::operator()";
 
 // Ensure that ErrorReporter is non-null.
 ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
@@ -227,16 +233,19 @@ InterpreterBuilder::InterpreterBuilder(
 InterpreterBuilder::InterpreterBuilder(
     const ::tflite::Model* model, const OpResolver& op_resolver,
     ErrorReporter* error_reporter,
-    const InterpreterOptions* options_experimental)
+    const InterpreterOptions* options_experimental,
+    const Allocation* allocation)
     : model_(model),
       op_resolver_(op_resolver),
-      error_reporter_(ValidateErrorReporter(error_reporter)) {
+      error_reporter_(ValidateErrorReporter(error_reporter)),
+      metadata_(FlatBufferModel::ReadAllMetadata(model_)),
+      allocation_(allocation) {
   if (options_experimental) {
     options_ = *options_experimental;
   }
 }
 
-InterpreterBuilder::~InterpreterBuilder() {}
+InterpreterBuilder::~InterpreterBuilder() = default;
 
 TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   TfLiteStatus status = kTfLiteOk;
@@ -266,7 +275,8 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
       // If it's an unresolved custom op, allow it for now. It might be resolved
       // by a delegate later.
       if (!opcode->custom_code()) {
-        error_reporter_->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
             "Operator with CUSTOM builtin_code has no custom_code.\n");
         return status;
       }
@@ -331,8 +341,8 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     const auto* op = operators->Get(i);
     int index = op->opcode_index();
     if (index < 0 || index >= flatbuffer_op_index_to_registration_.size()) {
-      error_reporter_->Report("Missing registration for opcode_index %d\n",
-                              index);
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Missing registration for opcode_index %d\n", index);
       status = kTfLiteError;
       continue;
     }
@@ -340,7 +350,8 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     const TfLiteRegistration* registration =
         flatbuffer_op_index_to_registration_[index];
     if (registration == nullptr) {
-      error_reporter_->Report("Skipping op for opcode_index %d\n", index);
+      TF_LITE_REPORT_ERROR(error_reporter_, "Skipping op for opcode_index %d\n",
+                           index);
       status = kTfLiteError;
       continue;
     }
@@ -349,9 +360,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
         static_cast<BuiltinOperator>(registration->builtin_code);
 
     if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
-      error_reporter_->Report(
-          "Found builtin operator %s with custom options.\n",
-          EnumNameBuiltinOperator(op_type));
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Found builtin operator %s with custom options.\n",
+                           EnumNameBuiltinOperator(op_type));
     }
 
     if (op_type == BuiltinOperator_CUSTOM) {
@@ -362,6 +373,24 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
             FlatBufferIntArrayToVector(op->intermediates()),
             reinterpret_cast<const char*>(op->custom_options()->data()),
             op->custom_options()->size(), nullptr, registration);
+      } else if (op->large_custom_options_offset() > 1 && allocation_) {
+        if (op->large_custom_options_offset() +
+                op->large_custom_options_size() >
+            allocation_->bytes()) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter_,
+              "Custom Option Offset for opcode_index %d is out of bound\n",
+              index);
+          return kTfLiteError;
+        }
+        // If the custom op is storing payloads outside of flatbuffers
+        subgraph->AddNodeWithParameters(
+            FlatBufferIntArrayToVector(op->inputs()),
+            FlatBufferIntArrayToVector(op->outputs()),
+            FlatBufferIntArrayToVector(op->intermediates()),
+            reinterpret_cast<const char*>(allocation_->base()) +
+                op->large_custom_options_offset(),
+            op->large_custom_options_size(), nullptr, registration);
       } else {
         subgraph->AddNodeWithParameters(
             FlatBufferIntArrayToVector(op->inputs()),
@@ -394,7 +423,8 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
     return kTfLiteOk;
   }
   if (!src_quantization->zero_point()) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "Quantization parameters has non-null scale but null zero_point.");
     return kTfLiteError;
   }
@@ -402,8 +432,10 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   // Ensure that the number of scales matches the number of zero_points.
   if (src_quantization->scale()->size() !=
       src_quantization->zero_point()->size()) {
-    error_reporter_->Report(
-        "QuantizationParam has %d zero_point values and %d scale values. Must "
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "QuantizationParam has %d zero_point values and %d scale values. "
+        "Must "
         "have same number.",
         src_quantization->zero_point()->size(),
         src_quantization->scale()->size());
@@ -416,7 +448,8 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   if (src_quantization->quantized_dimension() < 0 ||
       (!dims.empty() &&
        src_quantization->quantized_dimension() >= dims.size())) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "quantized_dimension must be in range [0, %d). Was %d.", dims.size(),
         src_quantization->quantized_dimension());
     return kTfLiteError;
@@ -427,7 +460,8 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   if (num_scales != 1 &&
       (!dims.empty() &&
        num_scales != dims[src_quantization->quantized_dimension()])) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "num_scales must be 1 for per-layer quantization, or %d for per-axis "
         "quantization, but got %d.",
         dims[src_quantization->quantized_dimension()], num_scales);
@@ -459,7 +493,7 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
 
   if (src_sparsity->traversal_order() == nullptr ||
       src_sparsity->dim_metadata() == nullptr) {
-    error_reporter_->Report("Invalid sparsity parameter.");
+    TF_LITE_REPORT_ERROR(error_reporter_, "Invalid sparsity parameter.");
     return kTfLiteError;
   }
 
@@ -564,7 +598,7 @@ TfLiteStatus InterpreterBuilder::ParseSignatureDefs(
 TfLiteStatus InterpreterBuilder::ParseTensors(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-    Subgraph* subgraph) {
+    Subgraph* subgraph, TfLiteTelemetrySubgraphInfo* subgraph_info) {
   TfLiteStatus status = kTfLiteOk;
 
   // A little helper to get the names of inputs and outputs. Note that they
@@ -574,6 +608,10 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     if (name) return name->c_str();
     return kEmptyTensorName;
   };
+
+  if (subgraph_info) {
+    subgraph_info->quantizations.resize(tensors->size());
+  }
 
   num_fp32_tensors_ = 0;
   for (int i = 0; i < tensors->size(); ++i) {
@@ -596,15 +634,29 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       *buffer_data = nullptr;
       if (tensor->buffer() == 0) return kTfLiteOk;
       if (tensor->buffer() >= buffers->size()) {
-        error_reporter_->Report(
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
             "Tensor %d specifies out of range buffer %d (only %d buffers).\n",
             i, tensor->buffer(), buffers->size());
         return kTfLiteError;
       }
       if (auto* buffer = (*buffers)[tensor->buffer()]) {
+        auto offset = buffer->offset();
         if (auto* array = buffer->data()) {
           *buffer_size = array->size();
           *buffer_data = reinterpret_cast<const char*>(array->data());
+          return kTfLiteOk;
+        } else if (offset > 1 && allocation_) {
+          if (offset + buffer->size() > allocation_->bytes()) {
+            TF_LITE_REPORT_ERROR(
+                error_reporter_,
+                "Constant buffer %d specified an out of range offset.\n",
+                tensor->buffer());
+            return kTfLiteError;
+          }
+          *buffer_size = buffer->size();
+          *buffer_data =
+              reinterpret_cast<const char*>(allocation_->base()) + offset;
           return kTfLiteOk;
         }
       }
@@ -617,10 +669,11 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const auto* src_quantization = tensor->quantization();
     TfLiteQuantization quantization;
     if (ParseQuantization(src_quantization, &quantization, dims) != kTfLiteOk) {
-      error_reporter_->Report("Tensor %d has invalid quantization parameters.",
-                              i);
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "Tensor %d has invalid quantization parameters.", i);
       status = kTfLiteError;
     }
+    if (subgraph_info) subgraph_info->quantizations[i] = quantization;
 
     std::vector<int> dims_signature = {};
     if (tensor->shape_signature()) {
@@ -630,10 +683,10 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     bool is_variable = tensor->is_variable();
     if (buffer_ptr) {
       if (is_variable) {
-        error_reporter_->Report(
-            "Tensor %d is a variable tensor with buffer. "
-            "It's not supported now.\n",
-            i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Tensor %d is a variable tensor with buffer. "
+                             "It's not supported now.\n",
+                             i);
         status = kTfLiteError;
       }
 
@@ -641,24 +694,26 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       const auto* src_sparsity = tensor->sparsity();
       TfLiteSparsity* sparsity = nullptr;
       if (ParseSparsity(src_sparsity, &sparsity) != kTfLiteOk) {
-        error_reporter_->Report("Tensor %d has invalid sparsity parameters.",
-                                i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Tensor %d has invalid sparsity parameters.", i);
         status = kTfLiteError;
       }
 
       if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_, sparsity) != kTfLiteOk) {
-        error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
-                                i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Tensor %d is invalidly specified in schema.\n",
+                             i);
         status = kTfLiteError;
       }
     } else {
       if (subgraph->SetTensorParametersReadWrite(
               i, type, get_name(tensor), dims, quantization, is_variable,
               dims_signature) != kTfLiteOk) {
-        error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
-                                i);
+        TF_LITE_REPORT_ERROR(error_reporter_,
+                             "Tensor %d is invalidly specified in schema.\n",
+                             i);
         status = kTfLiteError;
       }
     }
@@ -677,8 +732,9 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
     }
   }
   for (TfLiteDelegate* delegate : delegates_) {
-    // Note that we DON'T transfer ownership of the delegate to the interpreter.
-    // (Doing that would cause problems if operator() was invoked twice.)
+    // Note that we DON'T transfer ownership of the delegate to the
+    // interpreter. (Doing that would cause problems if operator() was invoked
+    // twice.)
     TF_LITE_ENSURE_STATUS(interpreter->ModifyGraphWithDelegateImpl(delegate));
   }
   return kTfLiteOk;
@@ -686,7 +742,8 @@ TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
 
 TfLiteStatus InterpreterBuilder::SetNumThreads(int num_threads) {
   if (num_threads < -1) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "num_threads should be >= 0 or just -1 to let TFLite runtime set the "
         "value.");
     return kTfLiteError;
@@ -708,8 +765,8 @@ TfLiteStatus InterpreterBuilder::operator()(
 TfLiteStatus InterpreterBuilder::operator()(
     std::unique_ptr<Interpreter>* interpreter) {
   if (!interpreter) {
-    error_reporter_->Report(
-        "Null output pointer passed to InterpreterBuilder.");
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Null output pointer passed to InterpreterBuilder.");
     return kTfLiteError;
   }
 
@@ -721,28 +778,28 @@ TfLiteStatus InterpreterBuilder::operator()(
   };
 
   if (!model_) {
-    error_reporter_->Report("Null pointer passed in as model.");
+    TF_LITE_REPORT_ERROR(error_reporter_, "Null pointer passed in as model.");
     return cleanup_and_error();
   }
 
   if (model_->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter_->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
-        model_->version(), TFLITE_SCHEMA_VERSION);
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.\n",
+                         model_->version(), TFLITE_SCHEMA_VERSION);
     return cleanup_and_error();
   }
 
   if (BuildLocalIndexToRegistrationMapping() != kTfLiteOk) {
-    error_reporter_->Report("Registration failed.\n");
+    TF_LITE_REPORT_ERROR(error_reporter_, "Registration failed.\n");
     return cleanup_and_error();
   }
 
-  // Flatbuffer model schemas define a list of opcodes independent of the graph.
-  // We first map those to registrations. This reduces string lookups for custom
-  // ops since we only do it once per custom op rather than once per custom op
-  // invocation in the model graph.
-  // Construct interpreter with correct number of tensors and operators.
+  // Flatbuffer model schemas define a list of opcodes independent of the
+  // graph. We first map those to registrations. This reduces string lookups
+  // for custom ops since we only do it once per custom op rather than once
+  // per custom op invocation in the model graph. Construct interpreter with
+  // correct number of tensors and operators.
   auto* subgraphs = model_->subgraphs();
   auto* buffers = model_->buffers();
 
@@ -770,11 +827,24 @@ TfLiteStatus InterpreterBuilder::operator()(
   (*interpreter)
       ->SetProfilerImpl(tflite::profiling::MaybeCreatePlatformProfiler());
 
+  bool telemetry_registered = telemetry_profiler_ != nullptr;
+  std::unique_ptr<TfLiteTelemetryInterpreterSettings> telemetry_settings;
+  if (telemetry_registered) {
+    (*interpreter)->AddProfiler(std::move(telemetry_profiler_));
+    telemetry_settings = std::make_unique<TfLiteTelemetryInterpreterSettings>();
+    telemetry_settings->subgraph_infos.resize(subgraphs->size());
+  }
+
   for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
     tflite::Subgraph* modified_subgraph =
         (*interpreter)->subgraph(subgraph_index);
+    modified_subgraph->allocation_ = allocation_;
+    auto* subgraph_info =
+        telemetry_registered
+            ? &telemetry_settings->subgraph_infos[subgraph_index]
+            : nullptr;
     auto operators = subgraph->operators();
     auto tensors = subgraph->tensors();
     if (!tensors) {
@@ -795,7 +865,8 @@ TfLiteStatus InterpreterBuilder::operator()(
     // Finally setup nodes and tensors
     // Parse tensors before nodes as ParseNodes checks input tensors for the
     // nodes.
-    if (ParseTensors(buffers, tensors, modified_subgraph) != kTfLiteOk)
+    if (ParseTensors(buffers, tensors, modified_subgraph, subgraph_info) !=
+        kTfLiteOk)
       return cleanup_and_error();
     if (operators && ParseNodes(operators, modified_subgraph) != kTfLiteOk)
       return cleanup_and_error();
@@ -827,6 +898,13 @@ TfLiteStatus InterpreterBuilder::operator()(
         op_resolver_.GetDelegateCreators();
   }
 
+  if (telemetry_registered) {
+    ParseConversionMetadata(telemetry_settings.get());
+    (*interpreter)->SetTelemetrySettings(std::move(telemetry_settings));
+    // Reports model and interpreter settings if telemetry is applied.
+    (*interpreter)->ReportTelemetrySettings(kTelemetryBuilderEventName);
+  }
+
   TfLiteStatus status = ApplyDelegates(interpreter->get());
   if (status != kTfLiteOk) {
     interpreter->reset();
@@ -836,6 +914,7 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (options_.GetDynamicAllocationForLargeTensors()) {
     (*interpreter)->ApplyOptionsImpl(&options_);
   }
+
   return status;
 }
 
@@ -845,6 +924,34 @@ void InterpreterBuilder::AddDelegate(TfLiteDelegate* delegate) {
   } else {
     delegates_.push_back(delegate);
   }
+}
+
+void InterpreterBuilder::AddDelegate(
+    TfLiteOpaqueDelegateStruct* opaque_delegate) {
+  // The following cast is safe only because this code is part of the TF Lite
+  // runtime code.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  AddDelegate(reinterpret_cast<TfLiteDelegate*>(opaque_delegate));
+}
+
+void InterpreterBuilder::ParseConversionMetadata(
+    TfLiteTelemetryInterpreterSettings* settings) {
+  if (settings == nullptr) return;
+  auto it = metadata_.find(kConversionMetadataKey);
+  if (it == metadata_.end()) {
+    // No conversion metadata embeded.
+    return;
+  }
+  auto* conversion_meta = GetConversionMetadata(it->second.data());
+  if (conversion_meta == nullptr || conversion_meta->options() == nullptr) {
+    // Empty conversion metadata.
+    return;
+  }
+  settings->conversion_metadata =
+      std::make_unique<TfLiteTelemetryConversionMetadata>();
+  settings->conversion_metadata->model_optimization_modes =
+      FlatBufferIntArrayToVector(
+          conversion_meta->options()->model_optimization_modes());
 }
 
 }  // namespace tflite

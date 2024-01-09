@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_UTIL_H_
 #define TENSORFLOW_CORE_UTIL_UTIL_H_
 
+#include <string>
+
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/cpu_info.h"
 
 namespace tensorflow {
 
@@ -54,10 +57,19 @@ std::string PrintMemory(const char* ptr, size_t n);
 // Given a flattened index into a tensor, computes a string s so that
 // StrAppend("tensor", s) is a Python indexing expression.  E.g.,
 // "tensor", "tensor[i]", "tensor[i, j]", etc.
-std::string SliceDebugString(const TensorShape& shape, const int64_t flat);
+std::string SliceDebugString(const TensorShape& shape, int64_t flat);
 
 // Check if MKL is enabled in runtime
 bool IsMKLEnabled();
+
+// Flag a warning if input type is unsupported on CPU when oneDNN is enabled
+void DataTypeUnsupportedWarning(const DataType& dt);
+
+// Check if input type is supported on CPU when oneDNN is enabled
+bool IsDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt);
+
+// Check if input type supports AMX on CPU when oneDNN is enabled
+bool IsAMXDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt);
 
 }  // namespace tensorflow
 

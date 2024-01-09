@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 

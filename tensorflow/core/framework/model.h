@@ -16,15 +16,22 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_MODEL_H_
 
 #include <algorithm>
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <limits>
 #include <list>
 #include <memory>
 #include <string>
 // TODO(b/114492873): Move this include into core/platform.
+#include <optional>
 #include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.pb.h"
@@ -35,11 +42,14 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -103,6 +113,13 @@ struct Parameter {
         max(max),
         state(std::move(state)) {}
 
+  explicit Parameter(const std::shared_ptr<Parameter> parameter)
+      : name(parameter->name),
+        value(parameter->value),
+        min(parameter->min),
+        max(parameter->max),
+        state(parameter->state) {}
+
   // Human-readable name of the parameter.
   const string name;
 
@@ -128,6 +145,113 @@ std::shared_ptr<Parameter> MakeParameter(const string& name,
 // Returns a new non-tunable parameter.
 std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
                                                    double value);
+
+// Class for managing the ram budget of an iterator. This is necessary for
+// coordinating ram usage between the model-based autotuner and the legacy
+// prefetch autotuner. Once the legacy autotuner is retired we can remove this
+// class and move all ram budget management to the model autotuner.
+class RamBudgetManager {
+ public:
+  explicit RamBudgetManager(int64_t budget) : budget_(budget) {
+    if (budget <= 0) {
+      LOG(WARNING) << "RAM budget is " << budget
+                   << " which could prevent autotuner from properly adjusting "
+                      "buffer sizes.";
+    }
+  }
+
+  // Requests a new total memory allocation for the parts of the dataset
+  // tuned by the model.
+  //
+  // The autotuner is expected to follow a pattern like
+  //
+  // int64_t budget = ram_budget_manager.AvailableModelRam();
+  // NewModel potential_new_params = OptimizeModel(budget);
+  // int64_t new_ram_used = potential_new_params.RamUsed();
+  // if (ram_budget_manager.RequestModelAllocation(new_ram_used)) {
+  //   ApplyModel(potential_new_params);
+  // }
+  //
+  // Returns whether the request succeeded.
+  bool RequestModelAllocation(int64_t total_bytes) {
+    mutex_lock l(mu_);
+    if (total_bytes > budget_ - legacy_prefetch_allocated_) {
+      return false;
+    }
+    model_allocated_ = total_bytes;
+    return true;
+  }
+
+  // Requests `delta_elements` allocated to the model where each element is of
+  // size `element_size` bytes. `delta_elements` can be negative.
+  // Returns the actual allocated delta elements.
+  int64_t RequestModelBytes(int64_t delta_elements, double element_size) {
+    if (delta_elements == 0) {
+      return 0;
+    }
+    int64_t allocated_delta_elements = delta_elements;
+    mutex_lock l(mu_);
+    // If `delta_elements` is positive, allocate only up to the available
+    // memory.
+    if (delta_elements > 0) {
+      int64_t max_delta_elements = static_cast<int64_t>(
+          (budget_ - legacy_prefetch_allocated_ - model_allocated_) /
+          element_size);
+      if (max_delta_elements < 0) {
+        return 0;
+      }
+      allocated_delta_elements = std::min(max_delta_elements, delta_elements);
+    }
+    model_allocated_ +=
+        static_cast<int64_t>(allocated_delta_elements * element_size);
+    return allocated_delta_elements;
+  }
+
+  // Requests `bytes` additional bytes for the purpose of legacy prefetch
+  // autotuning.
+  //
+  // Unlike RequestModelAllocation, we use a delta number of bytes, since there
+  // can only be one model per iterator but there may be multiple legacy
+  // prefetch autotuners.
+  //
+  // Returns whether there were enough bytes left in the budget to serve the
+  // request. If not, no bytes are allocated.
+  bool RequestLegacyPrefetchBytes(int64_t delta_bytes) {
+    mutex_lock l(mu_);
+    if (delta_bytes > budget_ - legacy_prefetch_allocated_ - model_allocated_) {
+      return false;
+    }
+    legacy_prefetch_allocated_ += delta_bytes;
+    return true;
+  }
+
+  // The total number of bytes that the model could potentially use.
+  int64_t AvailableModelRam() const {
+    tf_shared_lock l(mu_);
+    return budget_ - legacy_prefetch_allocated_;
+  }
+
+  void UpdateBudget(int64_t budget) {
+    mutex_lock l(mu_);
+    budget_ = budget;
+    VLOG(2) << "Updated ram budget to " << budget;
+  }
+
+  std::string DebugString() {
+    mutex_lock l(mu_);
+    return absl::StrCat("RamBudgetManager: budget_: ", budget_,
+                        " prefetch allocated: ", legacy_prefetch_allocated_,
+                        " model allocated: ", model_allocated_);
+  }
+
+ private:
+  mutable mutex mu_;
+  int64_t budget_ TF_GUARDED_BY(mu_) = 0;
+  // Number of bytes allocated by legacy prefetch autotuner.
+  int64_t legacy_prefetch_allocated_ TF_GUARDED_BY(mu_) = 0;
+  // Number of bytes allocated by the model.
+  int64_t model_allocated_ TF_GUARDED_BY(mu_) = 0;
+};
 
 // Abstract representation of a TensorFlow input pipeline node. It collects
 // information about inputs to this node, processing time spent executing the
@@ -172,6 +296,7 @@ class Node {
         name_(std::move(args.name)),
         autotune_(true),
         buffered_bytes_(0),
+        peak_buffered_bytes_(0),
         buffered_elements_(0),
         buffered_elements_low_(std::numeric_limits<int64_t>::max()),
         buffered_elements_high_(std::numeric_limits<int64_t>::min()),
@@ -181,7 +306,8 @@ class Node {
         processing_time_(0),
         record_metrics_(true),
         metrics_(name_),
-        output_(args.output.get()) {}
+        output_(args.output.get()),
+        output_weak_ptr_(args.output) {}
 
   virtual ~Node() {
     // Clear the sub-nodes instead of relying on implicit shared pointer
@@ -189,7 +315,7 @@ class Node {
     std::deque<std::shared_ptr<Node>> queue;
     {
       mutex_lock l(mu_);
-      while (inputs_.size() > 0) {
+      while (!inputs_.empty()) {
         queue.push_back(inputs_.front());
         inputs_.pop_front();
       }
@@ -199,7 +325,7 @@ class Node {
       queue.pop_back();
       {
         mutex_lock l(node->mu_);
-        while (node->inputs_.size() > 0) {
+        while (!node->inputs_.empty()) {
           queue.push_back(node->inputs_.front());
           node->inputs_.pop_front();
         }
@@ -226,6 +352,11 @@ class Node {
   // Returns the number of bytes stored in this node's buffer.
   int64_t buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
     return buffered_bytes_;
+  }
+
+  // Returns the peak number of bytes stored in this node's buffer.
+  int64_t peak_buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
+    return peak_buffered_bytes_;
   }
 
   // Returns the number of elements stored in this node's buffer.
@@ -286,6 +417,7 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
+  std::shared_ptr<Node> output_shared() { return output_weak_ptr_.lock(); }
 
   // Returns the parameter value.
   double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
@@ -311,6 +443,7 @@ class Node {
   // Records the change in this node's buffer.
   void record_buffer_event(int64_t bytes_delta, int64_t elements_delta) {
     buffered_bytes_ += bytes_delta;
+    peak_buffered_bytes_.store(std::max(peak_buffered_bytes_, buffered_bytes_));
     buffered_elements_ += elements_delta;
     // There is no need to maintain watermarks for synchronous ops because we
     // will not upsize or downsize the buffers of synchronous ops.
@@ -400,7 +533,7 @@ class Node {
   // Given the average time between events when the elements in the buffer are
   // produced (`producer_time`), the average time between events when elements
   // in the buffer are consumed (`consumer_time`) and the buffer size, the
-  // method computes the expected time an consumer event will have to wait.
+  // method computes the expected time a consumer event will have to wait.
   //
   // The wait time is approximated as the product of the probability the buffer
   // will be empty and the time it takes to produce an element into the buffer.
@@ -412,9 +545,8 @@ class Node {
   // Collects derivatives of `ComputeWaitTime` w.r.t `producer_time`,
   // `consumer_time' and `buffer_size` if the corresponding pointers are not
   // `nullptr`.
-  static double ComputeWaitTime(const double& producer_time,
-                                const double& consumer_time,
-                                const double& buffer_size,
+  static double ComputeWaitTime(double producer_time, double consumer_time,
+                                double buffer_size,
                                 double* producer_time_derivative,
                                 double* consumer_time_derivative,
                                 double* buffer_size_derivative);
@@ -488,6 +620,12 @@ class Node {
   void CollectBufferParametersToUpsize(
       absl::flat_hash_map<Node*, Parameter*>& node_parameters);
 
+  // Returns the average size of an element buffered in this node.
+  double AverageBufferedElementSize() const {
+    tf_shared_lock l(mu_);
+    return AverageBufferedElementSizeLocked();
+  }
+
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
   class Metrics {
@@ -537,8 +675,9 @@ class Node {
   void UpdateProcessingTimeEma() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (previous_processing_time_ == 0) {
       if (num_elements_ > 0) {
-        processing_time_ema_ = static_cast<double>(processing_time_) /
-                               static_cast<double>(num_elements_);
+        processing_time_ema_ =
+            static_cast<double>(processing_time_) /
+            static_cast<double>(num_elements_ + buffered_elements_);
       } else {
         processing_time_ema_ = static_cast<double>(processing_time_);
       }
@@ -568,7 +707,7 @@ class Node {
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the average size of an element buffered in this node.
-  double AverageBufferedElementSize() const TF_SHARED_LOCKS_REQUIRED(mu_);
+  double AverageBufferedElementSizeLocked() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Returns the sum of per-element output time for the tunable inputs of this
   // node.
@@ -680,6 +819,7 @@ class Node {
   // from computation of output time and processing time.
   std::atomic<bool> autotune_;
   std::atomic<int64_t> buffered_bytes_;
+  std::atomic<int64_t> peak_buffered_bytes_;
   std::atomic<int64_t> buffered_elements_;
   std::atomic<int64_t> buffered_elements_low_;
   std::atomic<int64_t> buffered_elements_high_;
@@ -709,6 +849,7 @@ class Node {
   // The reference to the output node is not owned so that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
+  std::weak_ptr<Node> output_weak_ptr_;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
@@ -728,11 +869,13 @@ std::shared_ptr<Node> MakeKnownRatioNode(Node::Args args, double ratio);
 // AsyncKnownRatio nodes are the asynchronous version of KnownRate nodes.
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio, double memory_ratio,
-    std::vector<std::shared_ptr<Parameter>> parameters);
+    std::vector<std::shared_ptr<Parameter>> parameters,
+    bool is_legacy_prefetch_autotuned = false);
 
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
-    std::vector<std::shared_ptr<Parameter>> parameters);
+    std::vector<std::shared_ptr<Parameter>> parameters,
+    bool is_legacy_prefetch_autotuned = false);
 
 // Source nodes represent data sources.
 std::shared_ptr<Node> MakeSourceNode(Node::Args args);
@@ -773,17 +916,20 @@ class Model {
   using NodeValues = Node::NodeValues;
   using ParameterGradients = Node::ParameterGradients;
 
-  Model();
+  explicit Model(std::optional<std::string> dataset_name);
+  explicit Model() : Model(std::nullopt) {}
   ~Model();
 
   // Returns a pointer to the model's output node.
-  const std::shared_ptr<Node> output() const {
+  std::shared_ptr<Node> output() const {
     mutex_lock l(mu_);
     return output_;
   }
 
   // Set the experiment that this job is part of.
-  void SetExperiment(const string& experiment) { experiment_ = experiment; }
+  void AddExperiment(const std::string& experiment) {
+    experiments_.insert(experiment);
+  }
 
   // Adds a node with the given name and given parent.
   void AddNode(Node::Factory factory, const string& name,
@@ -798,16 +944,30 @@ class Model {
   // Uses the given algorithm and resource budgets to periodically perform the
   // autotuning optimization.
   //
+  // `cpu_budget_func` can be used to provide the optimizer with up-to-date
+  // values in cases where CPUs budgets may be changed by the runtime
+  // dynamically.
+  //
+  // `ram_budget_func` is similar to `cpu_budget_func`. This lambda takes a
+  // parameter that is the total number of bytes currently buffered by the
+  // model.
+  //
   // To terminate the execution of the optimization loop, the caller needs to
   // invoke `cancellation_mgr->StartCancel()`.
-  Status OptimizeLoop(AutotuneAlgorithm algorithm, int64_t cpu_budget,
-                      int64_t ram_budget,
+  Status OptimizeLoop(AutotuneAlgorithm algorithm,
+                      std::function<int64_t()> cpu_budget_func,
+                      double ram_budget_share,
+                      std::optional<int64_t> fixed_ram_budget,
+                      RamBudgetManager& ram_budget_manager,
                       CancellationManager* cancellation_manager);
 
   // Uses the given algorithm and resource budgets to perform the autotuning
   // optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64_t cpu_budget,
-                int64_t ram_budget, double model_input_time,
+  void Optimize(AutotuneAlgorithm algorithm,
+                std::function<int64_t()> cpu_budget_func,
+                double ram_budget_share,
+                std::optional<int64_t> fixed_ram_budget,
+                double model_input_time, RamBudgetManager& ram_budget_manager,
                 CancellationManager* cancellation_manager);
 
   // Optimizes buffers in the pipeline rooted at `snapshot`. It downsizes
@@ -846,8 +1006,20 @@ class Model {
   void RecordIteratorGapTime(uint64_t duration_usec);
 
   // Computes the target time in nsecs to use for `STAGE_BASED` autotune
-  // algorithm.
+  // algorithm. Returns 0 if there if there are not sufficient recorded iterator
+  // gap times to produce a good estimate.
   double ComputeTargetTimeNsec();
+
+  // Computes the target time in nsecs to use for estimating input bottlenecks.
+  // Returns 0 if there are not sufficient recorded iterator gap times to
+  // produce a good estimate.
+  double ComputeExperimentalTargetTimeNsec();
+
+  // Returns the time in nanoseconds it takes the pipeline to produce an
+  // element, according to the latest model snapshot obtained from optimization.
+  // Returns 0 if the model snapshot is empty or null. This may be caused by not
+  // having executed an optimization round before.
+  double ComputeSnapshotProcessingTimeNsec() const;
 
  private:
   // Determines whether optimization should stop given total processing time,
@@ -862,6 +1034,12 @@ class Model {
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a vector which contains pairs of node names and tunable parameters.
   ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
+
+  // Copy parameter state values to parameter values if necessary.For some
+  // nodes, the parameter state values are not tuned by Autotune and hence the
+  // parameter values can be stale. We do not sync all parameters because it may
+  // increase mutex contention with `GetNext()`.
+  void MaybeSyncStateValuesToValues(ModelParameters* parameters);
 
   // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
   // Returns true if any buffer is downsized.
@@ -899,6 +1077,8 @@ class Model {
   void OptimizeHillClimbHelper(std::shared_ptr<Node> snapshot,
                                const OptimizationParams& optimization_params,
                                CancellationManager* cancellation_manager,
+                               int64_t ram_budget,
+                               RamBudgetManager& ram_budget_manager,
                                StopPredicate should_stop);
 
   // This optimization algorithm starts by setting all tunable parallelism
@@ -909,14 +1089,16 @@ class Model {
   // needed to produce an element divided by CPU budget.
   void OptimizeHillClimb(std::shared_ptr<Node> snapshot,
                          const OptimizationParams& optimization_params,
-                         CancellationManager* cancellation_manager);
+                         CancellationManager* cancellation_manager,
+                         RamBudgetManager& ram_budget_manager);
 
   // This optimization behaves similarly to the hill climb optimization but uses
   // a relaxed stoping condition, allowing the optimization to oversubscribe
   // CPU.
   void OptimizeMaxParallelism(std::shared_ptr<Node> snapshot,
                               const OptimizationParams& optimization_params,
-                              CancellationManager* cancellation_manager);
+                              CancellationManager* cancellation_manager,
+                              RamBudgetManager& ram_budget_manager);
 
   // This optimization starts by setting all tunable parallelism parameters to
   // their minimum values. It then repeatedly increases the parallelism
@@ -926,14 +1108,27 @@ class Model {
   // sizes of parallel ops.
   void OptimizeStageBased(std::shared_ptr<Node> snapshot,
                           const OptimizationParams& optimization_params,
-                          CancellationManager* cancellation_manager);
+                          CancellationManager* cancellation_manager,
+                          RamBudgetManager& ram_budget_manager);
 
   // This is the first part of the stage-based optimization that optimizes
-  // tunable parallelism parameters.
-  void OptimizeStageBasedParallelism(
+  // tunable parallelism parameters for async interleave many nodes only. We
+  // separately optimize async interleave many nodes more aggressively because
+  // the variance of IO is difficult to predict.
+  void OptimizeStageBasedAsyncInterleaveManyNodes(
+      std::shared_ptr<Node> snapshot,
+      const OptimizationParams& optimization_params,
+      CancellationManager* cancellation_manager,
+      RamBudgetManager& ram_budget_manager);
+
+  // This is the second part of the stage-based optimization that optimizes
+  // tunable parallelism parameters for all nodes other than async interleave
+  // many nodes.
+  void OptimizeStageBasedNonAsyncInterleaveManyNodes(
       std::shared_ptr<Node> snapshot, double target_time_nsec,
       const OptimizationParams& optimization_params,
-      CancellationManager* cancellation_manager);
+      CancellationManager* cancellation_manager,
+      RamBudgetManager& ram_budget_manager);
 
   // Determines if we should stop the gradient descent optimization iterations
   // based on number of increasable parameters, CPU budget, RAM budget and
@@ -957,6 +1152,7 @@ class Model {
   // buffers were full.
   double TotalMaximumBufferedBytes(std::shared_ptr<Node> node);
 
+  std::optional<std::string> dataset_name_;
   // Used for coordination between different input pipeline threads. Exclusive
   // access is required only when adding or removing nodes. Concurrent access to
   // existing nodes is protected by a node mutex.
@@ -982,11 +1178,11 @@ class Model {
   };
   std::shared_ptr<GuardedBool> safe_to_collect_metrics_;
 
-  // Time use for rate limitting the recomputation of human-readable string
-  // represention of the model.
+  // Time use for rate limiting the recomputation of human-readable string
+  // representation of the model.
   absl::Time cache_until_ = absl::InfinitePast();
   // Cached result of the `DebugString()` invocation used to implement rate
-  // limitting of the computation.
+  // limiting of the computation.
   std::string cached_debug_string_ = "";
   // Used to coordinate gap time updates between different threads. Gap time is
   // the time between the completion of the previous `GetNext()` and the start
@@ -995,7 +1191,13 @@ class Model {
   // Stores the latest gap times between consecutive `GetNext()`.
   std::deque<uint64_t> gap_times_usec_ TF_GUARDED_BY(gap_mu_);
   // The experiment that this job is part of.
-  std::string experiment_ = "";
+  absl::flat_hash_set<std::string> experiments_;
+  // Stores the optimization snapshot of the Model.
+  std::shared_ptr<Node> snapshot_ TF_GUARDED_BY(mu_);
+  // Stores the optimization parameters used by autotune.
+  OptimizationParams optimization_params_ TF_GUARDED_BY(mu_);
+  // Stores the model id in the string format
+  std::string model_id_;
 };
 
 // Class to compute timing information for a model.
@@ -1037,11 +1239,16 @@ class ModelTiming {
   // to be a vector of model nodes in reversed BFS manner.
   void ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes);
 
-  // Computes the total time of a node that is not an async interleave node.
+  // Computes the first input total time of an interleave node.
+  double ComputeInterleaveManyFirstInputTotalTime(const Node& node);
+
+  // Computes the total time of a node of any type other than async interleave.
   void ComputeNonAsyncInterleaveManyTotalTime(const Node& node);
 
   // Computes the total time of an async interleave node.
   void ComputeAsyncInterleaveManyTotalTime(const Node& node);
+  // Computes the interleaved inputs' total time of an async interleave node.
+  double ComputeAsyncInterleaveManyInterleavedInputsTotalTime(const Node& node);
 
   // Returns a vector of all nodes in the model. The nodes are either in
   // breadth-first search or reverse breadth-first search order depending on the

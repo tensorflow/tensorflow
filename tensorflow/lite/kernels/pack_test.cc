@@ -110,6 +110,47 @@ TEST(PackOpTest, FloatFiveDimensions) {
                                 15, 16, 25, 26, 27, 28, 29, 30, 31, 32}));
 }
 
+// uint32 tests.
+TEST(PackOpTest, UInt32ThreeInputs) {
+  PackOpModel<uint32_t> model({TensorType_UINT32, {2}}, 0, 3);
+  model.SetInput(0, {1, 4});
+  model.SetInput(1, {2, 5});
+  model.SetInput(2, {3, 6});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
+}
+
+TEST(PackOpTest, UInt32ThreeInputsDifferentAxis) {
+  PackOpModel<uint32_t> model({TensorType_UINT32, {2}}, 1, 3);
+  model.SetInput(0, {1, 4});
+  model.SetInput(1, {2, 5});
+  model.SetInput(2, {3, 6});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(PackOpTest, UInt32ThreeInputsNegativeAxis) {
+  PackOpModel<uint32_t> model({TensorType_UINT32, {2}}, -1, 3);
+  model.SetInput(0, {1, 4});
+  model.SetInput(1, {2, 5});
+  model.SetInput(2, {3, 6});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(PackOpTest, UInt32MultilDimensions) {
+  PackOpModel<uint32_t> model({TensorType_UINT32, {2, 3}}, 1, 2);
+  model.SetInput(0, {1, 2, 3, 4, 5, 6});
+  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+}
+
 // int32 tests.
 TEST(PackOpTest, Int32ThreeInputs) {
   PackOpModel<int32_t> model({TensorType_INT32, {2}}, 0, 3);

@@ -13,24 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """The implementation of `tf.data.Dataset.ragged_batch`."""
-from tensorflow.python.data.ops import batch_op
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops.ragged import ragged_tensor
 
 
-def ragged_batch(self,
-                 batch_size,
-                 drop_remainder=False,
-                 row_splits_dtype=dtypes.int64,
-                 name=None):
-  ragged_dataset = _DenseToRaggedDataset(self, row_splits_dtype, name)
-  return batch_op.BatchDataset(
-      ragged_dataset, batch_size=batch_size, drop_remainder=drop_remainder)
+def _ragged_batch(input_dataset,
+                  batch_size,
+                  drop_remainder=False,
+                  row_splits_dtype=dtypes.int64,
+                  name=None):
+  ragged_dataset = _DenseToRaggedDataset(input_dataset, row_splits_dtype, name)
+  return ragged_dataset.batch(batch_size, drop_remainder)
 
 
 class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
@@ -58,7 +55,7 @@ class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
     # corresponding RaggedTensorSpec.
     def to_ragged_spec(spec):
       """Returns the new spec based on RaggedTensors."""
-      if (not isinstance(spec, tensor_spec.TensorSpec) or
+      if (not isinstance(spec, tensor.TensorSpec) or
           spec.shape.rank is None or
           spec.shape.is_fully_defined()):
         return spec
@@ -82,12 +79,12 @@ class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
     # RaggedTensorSpec._from_tensor_list.
     def to_ragged_variant(value):
       """Re-encode Tensors as RaggedTensors."""
-      if (not isinstance(value, ops.Tensor) or
+      if (not isinstance(value, tensor.Tensor) or
           value.shape.rank is None or
           value.shape.is_fully_defined()):
         return value
       else:
-        spec = to_ragged_spec(tensor_spec.TensorSpec.from_tensor(value))
+        spec = to_ragged_spec(tensor.TensorSpec.from_tensor(value))
         if spec._ragged_rank > 0:  # pylint: disable=protected-access
           value = ragged_tensor.RaggedTensor.from_tensor(
               value, ragged_rank=spec._ragged_rank)  # pylint: disable=protected-access
@@ -102,7 +99,7 @@ class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
     self._mapped_dataset = input_dataset.map(map_fn)
     self._name = name
     variant = self._mapped_dataset._variant_tensor  # pylint: disable=protected-access
-    super(_DenseToRaggedDataset, self).__init__(input_dataset, variant)
+    super().__init__(input_dataset, variant)
 
   @property
   def element_spec(self):

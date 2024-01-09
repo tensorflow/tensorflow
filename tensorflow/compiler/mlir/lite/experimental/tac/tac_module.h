@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TAC_MODULE_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TAC_MODULE_H_
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -57,7 +58,7 @@ class TacModule {
     bool legalize_to_tflite_ops = false;
   };
 
-  virtual ~TacModule() {}
+  virtual ~TacModule() = default;
 
   explicit TacModule(const Options& options) : options_(options) {}
 

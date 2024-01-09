@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_
 
+#include <map>
+#include <memory>
+#include <set>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "json/json.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
@@ -28,7 +33,7 @@ typedef std::map<string, string> Event;
 // Class for generating timeline json output.
 class ChromeTraceFormatter {
  public:
-  ChromeTraceFormatter() {}
+  ChromeTraceFormatter() = default;
   // The following methods creates timeline nodes. See chrome tracing format
   // document for details.
   Json::Value CreateEvent(const string& ph, const string& category,
@@ -80,7 +85,7 @@ class TimeNode {
         start_micros(start_micros),
         exec_micros(exec_micros),
         tid(-1) {}
-  virtual ~TimeNode() {}
+  virtual ~TimeNode() = default;
 
   const string& name() { return node->name(); }
 
@@ -121,7 +126,7 @@ class Timeline {
  public:
   Timeline(int64_t step, const string& outfile)
       : step_(step), outfile_(outfile) {}
-  ~Timeline() {}
+  ~Timeline() = default;
 
   int64_t step() const { return step_; }
   void SetStep(int64_t step) { step_ = step; }

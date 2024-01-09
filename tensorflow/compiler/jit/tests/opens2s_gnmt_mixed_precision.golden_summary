@@ -1,8 +1,8 @@
-Clustered nodes: 2452
-Unclustered nodes: 3894
-Number of clusters: 31
+Clustered nodes: 2385
+Unclustered nodes: 4221
+Number of clusters: 30
 
-unclustered size 3894
+unclustered size 4221
  Add 17
  AddN 1
  All 1
@@ -12,8 +12,9 @@ unclustered size 3894
  AssignAdd 2
  AssignSub 2
  BroadcastGradientArgs 44
+ Cast 38
  ConcatV2 3
- Const 662
+ Const 875
  ControlTrigger 5
  Enter 874
  Equal 4
@@ -30,9 +31,9 @@ unclustered size 3894
  LogicalAnd 3
  LoopCond 8
  Max 4
- Maximum 6
+ Maximum 44
  Merge 145
- Minimum 5
+ Minimum 43
  Mul 8
  NextIteration 136
  RandomUniform 14
@@ -138,18 +139,16 @@ cluster 4 size 11
  ReverseSequence 1
  Slice 2
  Transpose 3
-cluster 5 size 32
- All 2
- Cast 1
- Const 16
- Equal 2
- ExpandDims 2
- GatherV2 1
- Identity 1
+cluster 5 size 21
+ All 1
+ ConcatV2 1
+ Const 11
+ Equal 1
+ ExpandDims 1
  ReverseSequence 1
- Shape 2
- StridedSlice 2
- Transpose 2
+ Shape 1
+ StridedSlice 1
+ Transpose 3
 cluster 6 size 11
  Cast 1
  Const 5
@@ -158,7 +157,19 @@ cluster 6 size 11
  StridedSlice 1
  Transpose 1
  ZerosLike 1
-cluster 7 size 11
+cluster 7 size 33
+ All 2
+ Cast 1
+ Const 17
+ Equal 2
+ ExpandDims 2
+ GatherV2 1
+ Identity 1
+ ReverseSequence 1
+ Shape 2
+ StridedSlice 2
+ Transpose 2
+cluster 8 size 11
  Cast 1
  Const 4
  Floor 1
@@ -166,26 +177,26 @@ cluster 7 size 11
  Mul 2
  Pow 1
  Sub 1
-cluster 8 size 5
+cluster 9 size 5
  All 1
  Const 1
  Less 1
  LogicalAnd 1
  LogicalNot 1
-cluster 9 size 9
+cluster 10 size 9
  All 1
  Const 4
  Equal 1
  LessEqual 1
  LogicalOr 1
  Max 1
-cluster 10 size 272
+cluster 11 size 302
  Add 24
  BatchMatMulV2 1
  BiasAdd 8
  Cast 8
  ConcatV2 16
- Const 51
+ Const 81
  ExpandDims 3
  Fill 1
  GreaterEqual 8
@@ -207,13 +218,13 @@ cluster 10 size 272
  StridedSlice 1
  Sum 2
  Tanh 17
-cluster 11 size 6
+cluster 12 size 6
  Add 1
  All 1
  Const 2
  GreaterEqual 1
  LogicalOr 1
-cluster 14 size 614
+cluster 15 size 614
  Add 22
  AddN 41
  BatchMatMulV2 2
@@ -239,7 +250,7 @@ cluster 14 size 614
  TanhGrad 17
  Tile 2
  ZerosLike 1
-cluster 15 size 22
+cluster 16 size 22
  Add 2
  BiasAdd 1
  ConcatV2 1
@@ -252,7 +263,7 @@ cluster 15 size 22
  Sigmoid 3
  Split 1
  Tanh 2
-cluster 16 size 60
+cluster 17 size 60
  Add 2
  AddN 4
  BiasAddGrad 1
@@ -270,16 +281,6 @@ cluster 16 size 60
  Slice 2
  Sum 9
  TanhGrad 2
-cluster 17 size 20
- All 1
- ConcatV2 1
- Const 10
- Equal 1
- ExpandDims 1
- ReverseSequence 1
- Shape 1
- StridedSlice 1
- Transpose 3
 cluster 18 size 22
  Add 2
  BiasAdd 1
@@ -311,12 +312,12 @@ cluster 19 size 60
  Slice 2
  Sum 9
  TanhGrad 2
-cluster 21 size 27
+cluster 21 size 29
  Add 2
  BiasAdd 1
  Cast 1
  ConcatV2 1
- Const 5
+ Const 7
  GreaterEqual 2
  MatMul 1
  Mul 5
@@ -325,12 +326,12 @@ cluster 21 size 27
  Snapshot 1
  Split 1
  Tanh 2
-cluster 22 size 25
+cluster 22 size 28
  Add 3
  BiasAdd 1
  Cast 1
  ConcatV2 1
- Const 2
+ Const 5
  GreaterEqual 1
  MatMul 1
  Mul 5
@@ -361,12 +362,12 @@ cluster 24 size 4
  Const 1
  Shape 2
  Transpose 1
-cluster 25 size 24
+cluster 25 size 27
  Add 3
  BiasAdd 1
  Cast 1
  ConcatV2 1
- Const 2
+ Const 5
  GreaterEqual 1
  MatMul 1
  Mul 5
@@ -375,12 +376,12 @@ cluster 25 size 24
  Snapshot 1
  Split 1
  Tanh 2
-cluster 26 size 24
+cluster 26 size 27
  Add 3
  BiasAdd 1
  Cast 1
  ConcatV2 1
- Const 2
+ Const 5
  GreaterEqual 1
  MatMul 1
  Mul 5
@@ -389,12 +390,12 @@ cluster 26 size 24
  Snapshot 1
  Split 1
  Tanh 2
-cluster 27 size 24
+cluster 27 size 27
  Add 3
  BiasAdd 1
  Cast 1
  ConcatV2 1
- Const 2
+ Const 5
  GreaterEqual 1
  MatMul 1
  Mul 5
@@ -403,12 +404,12 @@ cluster 27 size 24
  Snapshot 1
  Split 1
  Tanh 2
-cluster 28 size 24
+cluster 28 size 27
  Add 3
  BiasAdd 1
  Cast 1
  ConcatV2 1
- Const 2
+ Const 5
  GreaterEqual 1
  MatMul 1
  Mul 5
@@ -435,8 +436,3 @@ cluster 31 size 4
 cluster 32 size 4
  Mul 3
  UnsortedSegmentSum 1
-cluster 33 size 116
- Cast 38
- Const 2
- Maximum 38
- Minimum 38

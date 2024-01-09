@@ -16,25 +16,28 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include <functional>
+#include <memory>
+#include <optional>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
-// clang-format off
-// Required for IS_MOBILE_PLATFORM
-#include "tensorflow/core/platform/platform.h"
-// clang-format on
-
-#include "absl/types/optional.h"
-#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/stats_publisher_interface.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/platform/thread_annotations.h"
+
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
-#endif  // IS_MOBILE_PLATFORM
+#endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -71,7 +74,8 @@ class ProcessFunctionLibraryRuntime {
       thread::ThreadPool* thread_pool = nullptr,
       DistributedFunctionLibraryRuntime* parent = nullptr,
       const SessionMetadata* session_metadata = nullptr,
-      Rendezvous::Factory rendezvous_factory = Rendezvous::Factory());
+      Rendezvous::Factory rendezvous_factory = Rendezvous::Factory(),
+      StatsPublisherFactory stats_publisher_factory = CreateNoOpStatsPublisher);
 
   ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
@@ -164,18 +168,6 @@ class ProcessFunctionLibraryRuntime {
   // execute cross process.
   Status IsCrossProcess(FunctionLibraryRuntime::Handle handle,
                         bool* is_cross_process) const;
-
-  // TODO(iga): Reword
-  // Pins each arg that emits a `DT_RESOURCE` tensor to the device on which the
-  // corresponding resource lives. This ensures that the Placer assigns ops that
-  // access these resources to the appropriate devices.
-  static Status PinArgsAndRets(const std::vector<string>& input_devices,
-                               const std::vector<string>& output_devices,
-                               const DeviceSet& device_set,
-                               const std::vector<Node*>& arg_nodes,
-                               const std::vector<Node*>& ret_nodes,
-                               const FunctionLibraryDefinition* lib_def,
-                               Device* default_device);
 
   // Delegates to the local FLR that owns state corresponding to `handle` and
   // tells it to release it. If the `handle` isn't needed at all, the local FLR
@@ -273,6 +265,8 @@ class ProcessFunctionLibraryRuntime {
   struct ComponentFunctionData {
     // The handle for the instantiated component function.
     FunctionLibraryRuntime::Handle handle;
+    // The name for the component function.
+    string name;
     // arg_indices.size() is the number of arguments to the component function.
     // The i-th argument of the component function comes from the
     // `arg_indices[i]`-th argument of the multi-device function.
@@ -298,12 +292,10 @@ class ProcessFunctionLibraryRuntime {
   struct MultiDeviceFunctionData {
     MultiDeviceFunctionData(const string& function_name,
                             const string& function_key, int num_outputs,
-                            FunctionLibraryDefinition&& lib_def,
                             DataTypeVector ret_types)
         : function_name_(function_name),
           function_key_(function_key),
           instantiation_counter_(1),
-          lib_def_(std::move(lib_def)),
           num_outputs_(num_outputs),
           ret_types_(std::move(ret_types)),
           is_cross_process_(false),
@@ -312,9 +304,6 @@ class ProcessFunctionLibraryRuntime {
     const string function_name_;
     const string function_key_;
     uint64 instantiation_counter_;
-    // A library that contains definitions of component functions and their
-    // transitive dependencies.
-    FunctionLibraryDefinition lib_def_;
     // Stored here to resize the output tensor vector when function is run.
     const int num_outputs_;
     DataTypeVector ret_types_;
@@ -383,27 +372,6 @@ class ProcessFunctionLibraryRuntime {
 
   Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
 
-  // Function graph related information after optimizations.
-  struct OptimizedFunctionGraphInfo {
-    // Optimized graph.
-    std::unique_ptr<Graph> graph;
-    // Optimized function library.
-    FunctionLibraryDefinition lib_def;
-    // Map from original node names to control return names.
-    std::unordered_map<string, string> node_name_to_control_ret;
-    // Return node types of the function.
-    DataTypeVector ret_types;
-    // Number of return nodes.
-    size_t num_return_nodes;
-  };
-
-  // Outputs graph optimization result after all the graph optimization (up till
-  // before graph partitioning); returns error if optimization fails.
-  StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
-      const string& function_name, AttrSlice attrs,
-      const FunctionLibraryRuntime::InstantiateOptions& options,
-      const std::shared_ptr<DeviceSet>& dev_set);
-
   Status InstantiateMultiDevice(
       const string& function_name, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
@@ -428,16 +396,15 @@ class ProcessFunctionLibraryRuntime {
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 
-  Status CreateRendezvous(FunctionLibraryRuntime::Options& opts,
-                          Rendezvous** created_rendezvous) const;
-
-  void CleanupCreatedRendezvous(const Rendezvous* created_rendezvous,
-                                const int64_t step_id) const;
+  Status CreateRendezvous(
+      FunctionLibraryRuntime::Options& opts,
+      tsl::core::RefCountPtr<Rendezvous>* created_rendezvous) const;
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
-      const Rendezvous* rendezvous) const;
+      FunctionLibraryRuntime::DoneCallback done,
+      const FunctionLibraryRuntime::Options& opts,
+      tsl::core::RefCountPtr<Rendezvous> rendezvous) const;
 
   void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
                FunctionLibraryRuntime::DoneCallback done) const;
@@ -474,6 +441,10 @@ class ProcessFunctionLibraryRuntime {
       std::function<Status(const ComponentFunctionData& comp_data,
                            InternalArgs* args)>
           get_component_args) const;
+
+  void PublishSubgraphs(
+      const std::string& function_name,
+      std::vector<core::RefCountPtr<FunctionRecord>>&& function_records);
 
   // Data structure holding information for a single instantiated remote
   // (to be executed on `target_device`) function.
@@ -522,7 +493,7 @@ class ProcessFunctionLibraryRuntime {
   mutable mutex mu_;
 
   Env* const env_;
-  const absl::optional<const ConfigProto> config_;
+  const std::optional<const ConfigProto> config_;
   const DeviceMgr* const device_mgr_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;
@@ -551,7 +522,7 @@ class ProcessFunctionLibraryRuntime {
       mdevice_data_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<
-      std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
+      std::unordered_map<Device*, core::RefCountPtr<FunctionLibraryRuntime>>>
       flr_map_;
   int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;
@@ -559,6 +530,12 @@ class ProcessFunctionLibraryRuntime {
 
   const OptimizerOptions optimizer_options_;
   const int graph_def_version_;
+
+  StatsPublisherFactory stats_publisher_factory_;
+  // Holds all stats publishers, one for publishing subgraphs of each
+  // instantiated function.
+  std::vector<std::unique_ptr<StatsPublisherInterface>> stats_publishers_
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

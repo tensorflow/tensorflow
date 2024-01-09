@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_experimental.h"
 
 #include "absl/types/optional.h"
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -253,6 +254,111 @@ TEST(CAPI_EXPERIMENTAL, LibraryPluggableDeviceLoadFunctions) {
   TF_DeletePluggableDeviceLibraryHandle(lib);
 #endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
 #endif  // !defined(PLATFORM_WINDOWS)
+}
+
+TEST(CAPI_EXPERIMENTAL, LibraryNextPluggableDeviceLoadFunctions) {
+  // TODO(penpornk): Enable this test on Windows.
+#if !defined(PLATFORM_WINDOWS)
+#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  // Load the library.
+  TF_Status* status = TF_NewStatus();
+  string lib_path =
+      tensorflow::GetDataDependencyFilepath(tensorflow::io::JoinPath(
+          "tensorflow", "core", "common_runtime", "next_pluggable_device", "c",
+          "test_next_pluggable_device_plugin.so"));
+  TF_Library* lib = TF_LoadPluggableDeviceLibrary(lib_path.c_str(), status);
+  TF_Code code = TF_GetCode(status);
+  string status_msg(TF_Message(status));
+  TF_DeleteStatus(status);
+  ASSERT_EQ(TF_OK, code) << status_msg;
+  TF_DeletePluggableDeviceLibraryHandle(lib);
+#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+#endif  // !defined(PLATFORM_WINDOWS)
+}
+
+void DefineFunction(const char* name, TF_Function** func,
+                    const char* description = nullptr,
+                    bool append_hash = false) {
+  std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
+      TF_NewGraph(), TF_DeleteGraph);
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
+                                                           TF_DeleteStatus);
+
+  TF_Operation* feed = Placeholder(func_graph.get(), s.get());
+  TF_Operation* neg = Neg(feed, func_graph.get(), s.get());
+
+  TF_Output inputs[] = {{feed, 0}};
+  TF_Output outputs[] = {{neg, 0}};
+  *func = TF_GraphToFunction(func_graph.get(), name, append_hash, -1,
+                             /*opers=*/nullptr, 1, inputs, 1, outputs,
+                             /*output_names=*/nullptr,
+                             /*opts=*/nullptr, description, s.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
+  ASSERT_NE(*func, nullptr);
+}
+
+class CApiExperimentalFunctionTest : public ::testing::Test {
+ protected:
+  CApiExperimentalFunctionTest()
+      : s_(TF_NewStatus()), func_graph_(TF_NewGraph()), func_(nullptr) {}
+
+  void SetUp() override {}
+
+  ~CApiExperimentalFunctionTest() override {
+    TF_DeleteFunction(func_);
+    TF_DeleteGraph(func_graph_);
+    TF_DeleteStatus(s_);
+  }
+
+  const char* func_name_ = "MyFunc";
+  TF_Status* s_;
+  TF_Graph* func_graph_;
+  TF_Function* func_;
+};
+
+TEST_F(CApiExperimentalFunctionTest, GraphRemoveFunction) {
+  TF_Function* funcs[1];
+  DefineFunction(func_name_, &func_);
+
+  TF_GraphCopyFunction(func_graph_, func_, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_EQ(TF_GraphNumFunctions(func_graph_), 1);
+  EXPECT_EQ(TF_GraphGetFunctions(func_graph_, funcs, 1, s_), 1);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  TF_GraphRemoveFunction(func_graph_, func_name_, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_EQ(TF_GraphNumFunctions(func_graph_), 0);
+  EXPECT_EQ(TF_GraphGetFunctions(func_graph_, funcs, 1, s_), 0);
+
+  TF_DeleteFunction(funcs[0]);
+}
+
+TEST_F(CApiExperimentalFunctionTest, EmptyGraphRemoveNonExistentFunction) {
+  TF_GraphRemoveFunction(func_graph_, "wrong_name", s_);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("Tried to remove non-existent function 'wrong_name'."),
+            string(TF_Message(s_)));
+}
+
+TEST_F(CApiExperimentalFunctionTest, GraphRemoveNonExistentFunction) {
+  TF_Function* funcs[1];
+  DefineFunction(func_name_, &func_);
+
+  TF_GraphCopyFunction(func_graph_, func_, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  EXPECT_EQ(TF_GraphNumFunctions(func_graph_), 1);
+  EXPECT_EQ(TF_GraphGetFunctions(func_graph_, funcs, 1, s_), 1);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  TF_GraphRemoveFunction(func_graph_, "wrong_name", s_);
+  EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_));
+  EXPECT_EQ(string("Tried to remove non-existent function 'wrong_name'."),
+            string(TF_Message(s_)));
+  TF_DeleteFunction(funcs[0]);
 }
 
 }  // namespace

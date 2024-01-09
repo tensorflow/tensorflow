@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SPARSE_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_SPARSE_KERNELS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
@@ -119,7 +119,7 @@ struct COOSparseMatrixToCSRSparseMatrix {
 //   Also csr_row_ptr should be initially filled with zeros.
 //
 struct SparseTensorToCSRSparseMatrixCPUFunctor {
-  Status operator()(const int64_t batch_size, const int num_rows,
+  Status operator()(int64_t batch_size, int num_rows, int num_cols,
                     TTypes<int64_t>::ConstMatrix indices,
                     TTypes<int32>::Vec batch_ptr,
                     TTypes<int32>::Vec csr_row_ptr,

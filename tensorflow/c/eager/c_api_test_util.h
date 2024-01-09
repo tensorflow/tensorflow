@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 #define TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 
+#include <vector>
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/tf_datatype.h"
@@ -144,5 +146,29 @@ tensorflow::ServerDef GetServerDef(int num_tasks);
 tensorflow::ServerDef GetMultiClientServerDef(const std::string& job_name,
                                               int num_tasks,
                                               int num_virtual_gpus = 0);
+
+// Create a variable handle with name `variable_name` on a device with name
+// `device_name`.
+TFE_TensorHandle* CreateVarHandle(TFE_Context* ctx,
+                                  const tensorflow::string& device_name,
+                                  const tensorflow::string& variable_name);
+
+// Create a variable with value `value` and name `variable_name` on a device
+// with name `device_name`.
+TFE_TensorHandle* CreateVariable(TFE_Context* ctx, float value,
+                                 const tensorflow::string& device_name,
+                                 const tensorflow::string& variable_name);
+
+TFE_Context* CreateContext(const std::string& serialized_server_def,
+                           bool isolate_session_state,
+                           int64_t init_timeout_in_ms);
+
+tensorflow::ServerDef ReplaceTaskInServerDef(
+    const tensorflow::ServerDef& server_def, int task_index);
+
+void ReplaceTaskInServerDef(tensorflow::ServerDef* server_def, int task_index,
+                            const std::string& host, int port);
+
+std::vector<std::string> ListDeviceNames(TFE_Context* ctx);
 
 #endif  // TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_

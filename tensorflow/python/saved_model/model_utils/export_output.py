@@ -21,6 +21,7 @@ import abc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.saved_model import signature_def_utils
 
@@ -86,7 +87,7 @@ class ExportOutput:
     for key, value in outputs.items():
       error_name = error_label or single_output_default_name
       key = self._check_output_key(key, error_name)
-      if not isinstance(value, ops.Tensor):
+      if not isinstance(value, tensor.Tensor):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 error_name, value))
@@ -128,12 +129,12 @@ class ClassificationOutput(ExportOutput):
           `Tensor` with the correct dtype.
     """
     if (scores is not None
-        and not (isinstance(scores, ops.Tensor)
+        and not (isinstance(scores, tensor.Tensor)
                  and scores.dtype.is_floating)):
       raise ValueError('Classification scores must be a float32 Tensor; '
                        'got {}'.format(scores))
     if (classes is not None
-        and not (isinstance(classes, ops.Tensor)
+        and not (isinstance(classes, tensor.Tensor)
                  and dtypes.as_dtype(classes.dtype) == dtypes.string)):
       raise ValueError('Classification classes must be a string Tensor; '
                        'got {}'.format(classes))
@@ -186,7 +187,7 @@ class RegressionOutput(ExportOutput):
     Raises:
       ValueError: if the value is not a `Tensor` with dtype tf.float32.
     """
-    if not (isinstance(value, ops.Tensor) and value.dtype.is_floating):
+    if not (isinstance(value, tensor.Tensor) and value.dtype.is_floating):
       raise ValueError('Regression output value must be a float32 Tensor; '
                        'got {}'.format(value))
     self._value = value
@@ -355,7 +356,7 @@ class _SupervisedOutput(ExportOutput):
 
       val_name = key + self._SEPARATOR_CHAR + self.METRIC_VALUE_SUFFIX
       op_name = key + self._SEPARATOR_CHAR + self.METRIC_UPDATE_SUFFIX
-      if not isinstance(metric_val, ops.Tensor):
+      if not isinstance(metric_val, tensor.Tensor):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 key, metric_val))
@@ -368,7 +369,7 @@ class _SupervisedOutput(ExportOutput):
       # We must wrap any ops (or variables) in a Tensor before export, as the
       # SignatureDef proto expects tensors only. See b/109740581
       metric_op_tensor = metric_op
-      if not isinstance(metric_op, ops.Tensor):
+      if not isinstance(metric_op, tensor.Tensor):
         with ops.control_dependencies([metric_op]):
           metric_op_tensor = constant_op.constant([], name='metric_op_wrapper')
 
@@ -422,4 +423,3 @@ class EvalOutput(_SupervisedOutput):
 
   def _get_signature_def_fn(self):
     return signature_def_utils.supervised_eval_signature_def
-# LINT.ThenChange(//keras/saving/utils_v1/export_output.py)

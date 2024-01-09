@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -62,7 +64,7 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
   if (!can_optimize) {
-    return errors::Aborted("Nothing to do.");
+    return absl::AbortedError("Nothing to do.");
   }
 
   *optimized_graph = item.graph;

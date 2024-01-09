@@ -15,14 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/outfeed_ops.h"
 
+#include <memory>
+
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/tpu/kernels/transfer_ops.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
+
 namespace tensorflow {
 namespace {
+
 template <class T>
 class StreamExecutorOutfeedDequeueOp : public TpuOutfeedDequeueOp<T> {
  public:
   explicit StreamExecutorOutfeedDequeueOp(OpKernelConstruction* ctx)
       : TpuOutfeedDequeueOp<T>(
-            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   StreamExecutorOutfeedDequeueOp(const StreamExecutorOutfeedDequeueOp&) =
@@ -36,7 +44,7 @@ class StreamExecutorOutfeedDequeueTupleOp : public TpuOutfeedDequeueTupleOp<T> {
  public:
   explicit StreamExecutorOutfeedDequeueTupleOp(OpKernelConstruction* ctx)
       : TpuOutfeedDequeueTupleOp<T>(
-            ctx, absl::make_unique<StreamExecutorTransferOpImpl>()) {}
+            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   StreamExecutorOutfeedDequeueTupleOp(

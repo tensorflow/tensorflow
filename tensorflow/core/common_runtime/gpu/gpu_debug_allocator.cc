@@ -20,12 +20,11 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 #define MASK_WORDS 2
 #define MASK_BYTES (MASK_WORDS * sizeof(int64_t))
@@ -82,8 +81,8 @@ void InitMask(se::StreamExecutor* exec, void* ptr, int64_t* mask) {
 GPUDebugAllocator::GPUDebugAllocator(Allocator* allocator,
                                      tsl::PlatformDeviceId platform_device_id)
     : base_allocator_(allocator) {
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_device_id)
+  stream_exec_ = se::GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
 }
 
@@ -161,8 +160,8 @@ bool GPUDebugAllocator::CheckFooter(void* ptr) {
 GPUNanResetAllocator::GPUNanResetAllocator(
     Allocator* allocator, tsl::PlatformDeviceId platform_device_id)
     : base_allocator_(allocator) {
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_device_id)
+  stream_exec_ = se::GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
 }
 

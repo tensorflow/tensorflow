@@ -22,6 +22,8 @@ namespace functor {
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 DEFINE_BINARY4(squared_difference, float, Eigen::half, double, int64);
 #endif
+
+DEFINE_BINARY1(squared_difference, bfloat16);
 }  // namespace functor
 }  // namespace tensorflow
 

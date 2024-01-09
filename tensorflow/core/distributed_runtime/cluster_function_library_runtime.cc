@@ -15,9 +15,12 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 
 #include <map>
+#include <memory>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -26,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/named_tensor.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -337,7 +339,7 @@ void ClusterFunctionLibraryRuntime::Run(
   std::vector<Tensor> tensors;
   for (const auto& arg : args) {
     if (arg.index() == 0) {
-      tensors.push_back(absl::get<Tensor>(arg));
+      tensors.push_back(std::get<Tensor>(arg));
     } else {
       done(
           errors::Internal("ClusterFunctionLibraryRuntime doesn't support "

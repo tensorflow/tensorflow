@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for lstm."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import ExtraConvertOptions
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
@@ -65,8 +65,8 @@ def make_lstm_tests(options):
     """Feed inputs, assign variables, and freeze graph."""
 
     with tf.compat.v1.variable_scope("", reuse=True):
-      kernel = tf.get_variable("rnn/basic_lstm_cell/kernel")
-      bias = tf.get_variable("rnn/basic_lstm_cell/bias")
+      kernel = tf.compat.v1.get_variable("rnn/basic_lstm_cell/kernel")
+      bias = tf.compat.v1.get_variable("rnn/basic_lstm_cell/bias")
       kernel_values = create_tensor_data(parameters["dtype"],
                                          [kernel.shape[0], kernel.shape[1]], -1,
                                          1)

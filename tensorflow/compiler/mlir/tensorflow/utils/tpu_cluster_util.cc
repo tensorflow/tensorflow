@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/meta_optimizer.h"
 
+#include <array>
+
+#include "absl/status/status.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
@@ -25,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -36,15 +38,15 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 19> kTFDataOptimizations = {
+constexpr std::array<const char*, 21> kTFDataOptimizations = {
     "noop_elimination",
     "disable_intra_op_parallelism",
     "use_private_thread_pool",
     "shuffle_and_repeat_fusion",
+    "map_parallelization",
     "map_fusion",
     "filter_fusion",
     "map_and_filter_fusion",
-    "map_parallelization",
     "map_and_batch_fusion",
     "batch_parallelization",
     "filter_parallelization",
@@ -53,6 +55,8 @@ constexpr std::array<const char*, 19> kTFDataOptimizations = {
     "slack",
     "autotune_buffer_sizes",
     "inject_prefetch",
+    "inject_io_prefetch_eligible",
+    "inject_io_prefetch",
     "disable_prefetch_legacy_autotune",
     "enable_gradient_descent",
     "make_deterministic"};
@@ -175,7 +179,7 @@ Status TFDataMetaOptimizer::ApplyOptimization(const string& name,
   if (status.ok()) {
     // The optimizer succeeded and wrote the optimized graph to result.
     item->graph.Swap(&result);
-  } else if (errors::IsAborted(status)) {
+  } else if (absl::IsAborted(status)) {
     // A status of errors::Aborted just means that the optimizer was a no-op and
     // did not populate result. Swallow the error status and leave the original
     // graph in item.

@@ -15,24 +15,104 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 
+#include <memory>
+#include <string>
 #include <vector>
 
-namespace tensorflow {
+#include "absl/status/status.h"
+#include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/tfrt/common/global_state.h"
+#include "tensorflow/core/util/determinism.h"
 
-XlaCompiler::SingleOpCompileArgument BuildSingleOpCompileArgument(
-    OpKernelContext* ctx) {
-  XlaCompiler::SingleOpCompileArgument single_op_arg;
-  std::vector<DataType> output_dtypes(ctx->num_outputs());
-  for (int i = 0; i < output_dtypes.size(); ++i) {
-    output_dtypes[i] = ctx->expected_output_dtype(i);
+namespace tensorflow {
+namespace {
+constexpr const char* kPjRtDeviceCompilerResourceName = "pjrt_device_compiler";
+constexpr const char* kPjRtDeviceCompilationProfilerResourceName =
+    "pjrt_device_compilation_profiler";
+}  // namespace
+
+StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
+    const NodeDef& node_def, absl::Span<const XlaArgument> args,
+    absl::Span<const DataType> result_types) {
+  // TODO(b/74182462): We implement this by creating a new dummy Graph including
+  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  // First create the actual node we care about computing.
+  TF_ASSIGN_OR_RETURN(Node * main_node, graph->AddNode(node_def));
+
+  // Create dummy _Arg nodes. Link these to `node` and also via a control
+  // dependency edge to the _SOURCE node.
+  for (int64_t i = 0, end = args.size(); i < end; ++i) {
+    Node* node;
+    string arg_name = absl::StrCat("_arg", i);
+    Status status =
+        NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
+            .ControlInput(graph->source_node())
+            .Attr("T", args[i].kind == XlaArgument::kResource ? DT_RESOURCE
+                                                              : args[i].type)
+            .Attr("index", i)
+            .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
+    graph->AddEdge(node, 0, main_node, i);
   }
-  single_op_arg.output_dtypes = output_dtypes;
-  single_op_arg.node_def = ctx->op_kernel().def();
-  auto* config_proto = ctx->function_library()->config_proto();
-  if (config_proto != nullptr) {
-    single_op_arg.config_proto = *config_proto;
+
+  // Similarly with return values, create dummy _Retval nodes fed by `node`.
+  for (int64_t i = 0, end = result_types.size(); i < end; ++i) {
+    Node* node;
+    string retval_name = absl::StrCat("_retval", i);
+    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
+                        .Input(main_node, i)
+                        .Attr("T", result_types[i])
+                        .Attr("index", i)
+                        .Finalize(graph.get(), &node);
+    TF_RETURN_IF_ERROR(status);
   }
-  return single_op_arg;
+  FixupSourceAndSinkEdges(graph.get());
+  return graph;
+}
+
+bool UsePjRtForSingleDeviceCompilation(const DeviceType& device_type) {
+  const auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+  return rollout_config.IsEnabledInXlaLaunchForDevice(device_type) ||
+         rollout_config.IsEnabledInXlaCompileOnDemandForDevice(device_type) ||
+         rollout_config.IsEnabledInXlaCompileAndRunForDevice(device_type);
+}
+
+std::string GetPjRtDeviceCompilerResourceName(const DeviceType& device_type) {
+  return absl::StrCat(kPjRtDeviceCompilerResourceName, "_",
+                      device_type.type_string());
+}
+
+std::string GetPjRtDeviceCompilationProfilerResourceName(
+    const DeviceType& device_type) {
+  return absl::StrCat(kPjRtDeviceCompilationProfilerResourceName, "_",
+                      device_type.type_string());
+}
+
+StatusOr<ResourceMgr*> GetResourceMgrForDeviceCompiler(
+    const OpKernelContext& ctx, const DeviceType& device_type) {
+  // We store information about the JIT-compiled XLA computation in the
+  // ResourceMgr. The DeviceCompiler (which contains the DeviceCompilationCache)
+  // is stored in the tfrt_global ResourceMgr for TPU and the Device ResourceMgr
+  // for CPU/GPU. This is to make sure the DeviceCompiler's lifecycle is
+  // maintained appropriately.
+  ResourceMgr* rm = nullptr;
+  if (device_type == DEVICE_TPU) {
+    rm = tfrt_global::GetTFGlobalResourceMgr();
+  } else {
+    rm = ctx.resource_manager();
+  }
+
+  if (!rm) {
+    return absl::InternalError("No resource manager found.");
+  }
+  return rm;
 }
 
 }  // namespace tensorflow

@@ -1351,6 +1351,27 @@ TEST_P(LogisticOpTest, SigmoidInt16General) {
                   kQuantizedToleranceInt16)));
 }
 
+TEST_P(SoftmaxOpTest, Softmax4DInplace) {
+  FloatActivationsOpModel m(GetRegistration(), 0.1f,
+                            {TensorType_FLOAT32, {1, 2, 1, 4}},
+                            TensorType_FLOAT32);
+  m.SetInput({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 .23463, .12877, .28658, .35003,  //
+                                 .22528, .13664, .45365, .18443,  //
+                             })));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TEST_P(SoftmaxOpTest, Softmax4D) {
   FloatActivationsOpModel m(GetRegistration(), 0.1f,
                             {TensorType_FLOAT32, {1, 2, 1, 4}},
@@ -2729,16 +2750,22 @@ TEST(FloatActivationsOpTest, Gelu) {
 
 TEST(FloatActivationsOpTest, GeluApproximate) {
   FloatGeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/true);
+  // The OpenCL delegate always uses the accurate version so use a higher
+  // tolerance for validation.
+  constexpr float kEpsilon = 1e-3;
 
   m.SetInput({
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0.0f, 0.841192f, 2.99636f,           // Row 1
-                                 0.841192f, -0.158808f, -0.0454023f,  // Row 2
-                             })));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.841192f, 2.99636f,           // Row 1
+                      0.841192f, -0.158808f, -0.0454023f,  // Row 2
+                  },
+                  kEpsilon)));
 }
 
 TEST(QuantizedGeluOpTest, GeluInt8) {

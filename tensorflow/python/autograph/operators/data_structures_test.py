@@ -17,7 +17,7 @@
 from tensorflow.python.autograph.operators import data_structures
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -30,7 +30,7 @@ class ListTest(test.TestCase):
     l = data_structures.new_list()
     # Can't evaluate an empty list.
     # TODO(mdan): sess.run should allow tf.variant maybe?
-    self.assertTrue(isinstance(l, ops.Tensor))
+    self.assertTrue(isinstance(l, tensor.Tensor))
 
   def test_new_list_tensor(self):
     l = data_structures.new_list([3, 4, 5])

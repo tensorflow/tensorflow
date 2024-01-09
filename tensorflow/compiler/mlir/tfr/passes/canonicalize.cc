@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -66,7 +66,7 @@ class UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
     // TODO(fengliuai): use loopUnrollByFactor once the iter_arg is supported
 
     Block *single_block = for_op.getBody();
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     Value iv = for_op.getInductionVar();
     for (auto iter_op :
          llvm::zip(for_op.getRegionIterArgs(), for_op.getInitArgs())) {

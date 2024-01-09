@@ -16,28 +16,38 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_API_OP_RESOLVER_H_
 
 #include <functional>
+#include <limits>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
-// Opaque type similar to TfLiteDelegate / TfLiteOpaqueDelegate.
-// This is used for cases (e.g. when using "TF Lite with Google Play Services")
-// where the TF Lite runtime might be built using a newer (or older)
-// version of the TF Lite sources than the app, and hence might have a
-// different definition of the TfLiteDelegate type. TF Lite APIs use
-// TfLiteOpaqueDelegate rather than TfLiteDelegate when they want to
-// refer to a delegate defined with that potentially different version
-// of the TfLiteDelegate type.
-struct TfLiteOpaqueDelegateStruct;
-
 namespace tflite {
+
+#ifndef DOXYGEN_SKIP
+class OpResolverInternal;  // For friend declaration below.
+class Subgraph;            // For friend declaration below.
+
+namespace internal {
+class CommonOpaqueConversionUtil;  // For friend declaration below.
+class RegistrationExternalsCache;  // Forward decl.
+}  // namespace internal
+#endif
 
 /// Abstract interface that returns TfLiteRegistrations given op codes or custom
 /// op names. This is the mechanism that ops being referenced in the flatbuffer
 /// model are mapped to executable function pointers (TfLiteRegistrations).
+///
+/// The lifetime of the TfLiteRegistration object whose address is
+/// returned by FindOp must exceed the lifetime of any InterpreterBuilder or
+/// Interpreter created with this OpResolver.
+/// Likewise the lifetime of the TfLiteRegistrationExternal object referenced
+/// from the TfLiteRegistration object, if any, must exceed the lifetime of
+/// any InterpreterBuilder or Interpreter created with this OpResolver.
 class OpResolver {
  public:
   /// Finds the op registration for a builtin operator by enum code.
@@ -62,7 +72,7 @@ class OpResolver {
   // Represents a function that creates a TfLite delegate instance.
   using TfLiteDelegateCreator =
       std::function<std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>(
-          int /*num_threads*/)>;
+          TfLiteContext* /*context*/)>;
 
   // Represents a sequence of delegate creator functions.
   using TfLiteDelegateCreators = std::vector<TfLiteDelegateCreator>;
@@ -82,8 +92,7 @@ class OpResolver {
   // Represents an opaque delegate instance.
   // WARNING: Experimental interface, subject to change.
   using TfLiteOpaqueDelegatePtr =
-      std::unique_ptr<TfLiteOpaqueDelegateStruct,
-                      void (*)(TfLiteOpaqueDelegateStruct*)>;
+      std::unique_ptr<TfLiteOpaqueDelegate, void (*)(TfLiteOpaqueDelegate*)>;
 
   // Represents a function that creates an opaque delegate instance.
   // WARNING: Experimental interface, subject to change.
@@ -108,7 +117,9 @@ class OpResolver {
     return {};
   }
 
-  virtual ~OpResolver() {}
+  virtual ~OpResolver() = default;
+  OpResolver() = default;
+  OpResolver(const OpResolver& other) = default;
 
  private:
   /// Returns true if this OpResolver may contain any "user defined" ops.
@@ -124,8 +135,80 @@ class OpResolver {
   /// "builtin" ops, and may not support all of the "builtin" op enum values.
   virtual bool MayContainUserDefinedOps() const { return true; }
 
+#ifndef DOXYGEN_SKIP
   friend class OpResolverInternal;
+  friend class Subgraph;  // For OpId.
+  friend class tflite::internal::CommonOpaqueConversionUtil;
+  friend class tflite::internal::RegistrationExternalsCache;
+#endif
+
+  // This holds the identity of an operator.
+  // Ths is used as the key for the RegistrationExternalsCache below.
+  struct OpId {
+    int builtin_code;
+    const char* custom_name;
+    int version;
+    bool operator==(const OpId& other) const {
+      return builtin_code == other.builtin_code &&
+             custom_name == other.custom_name && version == other.version;
+    }
+    struct Hasher {
+      size_t operator()(const OpId& op_id) const {
+        size_t hash_builtin_code = std::hash<int>()(op_id.builtin_code);
+        size_t hash_custom_name =
+            op_id.custom_name != nullptr
+                ? std::hash<std::string>()(std::string(op_id.custom_name))
+                : 0;
+        size_t hash_version = std::hash<int>()(op_id.version);
+        return Combine(hash_builtin_code,
+                       Combine(hash_custom_name, hash_version));
+      }
+
+     private:
+      static size_t Combine(size_t hash1, size_t hash2) {
+        constexpr int num_bits_to_rotate_left = 21;
+        constexpr int num_bits_to_rotate_right =
+            std::numeric_limits<size_t>::digits - num_bits_to_rotate_left;
+        size_t hash1_rotated = (hash1 << num_bits_to_rotate_left) |
+                               (hash1 >> num_bits_to_rotate_right);
+        return hash1_rotated + hash2;
+      }
+    };
+  };
+
+  // A set of 'TfLiteRegistrationExternal' objects whose lifetimes need to
+  // last at least as long as the lifetime of the OpResolver.
+  // We use shared_ptr rather than unique_ptr here, to allow the
+  // RegistrationExternalsCache to be shared with other classes such as the
+  // InterpreterBuilder and Interpreter. This is so that the
+  // TfLiteRegistrationExternal objects allocated by an OpResolver,
+  // which may be referenced by a Subgraph in an Interpreter, can remain live
+  // even if the OpResolver is destroyed, while also allowing the same
+  // OpResolver to be used with multiple InterpreterBuilders and multiple
+  // Interpreters.
+  mutable std::shared_ptr<internal::RegistrationExternalsCache>
+      registration_externals_cache_;
 };
+
+#ifndef DOXYGEN_SKIP
+// Type for a set of owned 'TfLiteRegistrationExternal' objects.
+// This is needed when converting TfLiteRegistration to
+// TfLiteRegistrationExternal, to ensure that the number of
+// TfLiteRegistrationExternal objects that we allocate is bounded, and to
+// ensure that those objects get deallocated at the appropriate time.
+// We use a public class rather than a typedef or using declaration here,
+// to ensure that the class can be forward-declared.
+// WARNING: Experimental interface, subject to change.
+namespace internal {
+class RegistrationExternalsCache
+    : private std::unordered_map<OpResolver::OpId,
+                                 std::unique_ptr<TfLiteRegistrationExternal>,
+                                 OpResolver::OpId::Hasher> {
+  friend class ::tflite::Subgraph;
+  friend class ::tflite::internal::CommonOpaqueConversionUtil;
+};
+}  // namespace internal
+#endif
 
 // Handles the logic for converting between an OperatorCode structure extracted
 // from a flatbuffer and information about a registered operator

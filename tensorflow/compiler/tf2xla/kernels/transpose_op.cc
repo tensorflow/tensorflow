@@ -18,13 +18,15 @@ limitations under the License.
 // handles all transposes, while Eigen needs a restricted DoTranspose
 // helper.
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
+#include "xla/client/xla_builder.h"
+#include "xla/primitive_util.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -184,8 +186,9 @@ class InvertPermutationOp : public XlaOpKernel {
           xla::Iota(ctx->builder(),
                     xla::primitive_util::NativeToPrimitiveType<T>(), size);
       auto result = XlaScatter(iota, iota, indices,
-                               /*indices_are_vectors=*/false, /*combiner=*/{},
-                               ctx->builder());
+                               /*indices_are_vectors=*/false,
+                               /*indices_are_sorted=*/false,
+                               /*combiner=*/{}, ctx->builder());
       OP_REQUIRES_OK(ctx, result.status());
       ctx->SetOutput(0, result.value());
     }

@@ -179,6 +179,18 @@ class SoftmaxTest(test.TestCase):
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float32),
         dtype=dtypes.bfloat16)
 
+  @unittest.skipUnless(test.is_built_with_gpu_support(),
+                       "Test only applicable when running on GPUs")
+  def testBfloat16GPU(self):
+    if test.is_gpu_available(cuda_only=True):
+      rows = [2**x + np.random.randint(0, 16) for x in range(1, 4)]
+      cols = [2**x + np.random.randint(0, 16) for x in range(1, 4)]
+      for row, col in zip(rows, cols):
+        logging.info("Testing softmax bfloat16 dtype in shape [%d, %d]", row,
+                     col)
+        data = np.random.rand(row, col)
+        self._testAll(data.astype(dtypes.bfloat16.as_numpy_dtype))
+
   def test1DTensorAsInput(self):
     self._testSoftmax(
         np.array([3., 2., 3., 9.]).astype(np.float64), use_gpu=False)

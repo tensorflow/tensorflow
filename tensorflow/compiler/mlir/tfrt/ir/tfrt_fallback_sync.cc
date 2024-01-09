@@ -53,36 +53,6 @@ static Type GetTensorType(Builder *builder) {
   return tfrt::t::TensorType::get(builder->getContext());
 }
 
-LogicalResult SyncExecuteOp::verify() {
-  return fallback_common::VerifyExecuteOpCommon(*this);
-}
-
-ParseResult SyncExecuteOp::parse(OpAsmParser &parser, OperationState &result) {
-  fallback_common::ParseExecuteOpOptions parse_options;
-  parse_options.has_chain = false;
-  parse_options.has_key = false;
-  parse_options.has_device = false;
-  parse_options.has_func_attr = false;
-  parse_options.has_cost = false;
-
-  auto &builder = parser.getBuilder();
-  return fallback_common::ParseExecuteOpCommon(
-      parser, builder, result, GetTensorType(&builder), parse_options);
-}
-
-void SyncExecuteOp::print(OpAsmPrinter &p) {
-  p << " " << (*this)->getAttr("op_name") << '(' << operands() << ')';
-
-  fallback_common::PrintExecuteOpCommon(p, *this);
-  if (!getResults().empty()) p << " : " << getResults().size();
-}
-
-void SyncExecuteOp::getOpAttrs(
-    SmallVectorImpl<std::pair<StringRef, Attribute>> *op_attrs) {
-  fallback_common::GetExecuteOpAttrsCommon(
-      this->getContext(), this->getOpAttrs().getValue(), op_attrs);
-}
-
 }  // namespace fallback_sync
 }  // namespace tfrt
 

@@ -15,6 +15,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#define EIGEN_USE_GPU
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/segment_reduction_ops_gpu.cu.h"
 
@@ -78,6 +80,12 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_REDUCTION_FUNCTOR);
   template struct SparseSegmentGradFunctor<GPUDevice, T, int64_t, int64_t>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR);
 #undef DEFINE_SPARSE_SEGMENT_GRAD_FUNCTOR
+
+#define DEFINE_SPARSE_SEGMENT_GRAD_V2_FUNCTOR(T)                            \
+  template struct SparseSegmentGradV2Functor<GPUDevice, T, int64_t, int32>; \
+  template struct SparseSegmentGradV2Functor<GPUDevice, T, int64_t, int64_t>;
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_SPARSE_SEGMENT_GRAD_V2_FUNCTOR);
+#undef DEFINE_SPARSE_SEGMENT_GRAD_V2_FUNCTOR
 
 }  // namespace functor
 }  // namespace tensorflow

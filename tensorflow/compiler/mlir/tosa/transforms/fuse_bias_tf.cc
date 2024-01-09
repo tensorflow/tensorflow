@@ -19,7 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <optional>
+#include <utility>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -43,7 +46,7 @@ namespace {
 
 class FuseBiasTF : public impl::TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
-  explicit FuseBiasTF() {}
+  explicit FuseBiasTF() = default;
   void runOnOperation() override;
 };
 
@@ -69,14 +72,14 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_biasadd_op = cast<TF::BiasAddOp>(op);
   auto output_type =
-      tf_biasadd_op.getResult().getType().dyn_cast<RankedTensorType>();
+      dyn_cast<RankedTensorType>(tf_biasadd_op.getResult().getType());
 
   if (!output_type) {
     return rewriter.notifyMatchFailure(op, "output not a ranked tensor");
   }
 
-  auto value = tf_biasadd_op.value();
-  auto bias = tf_biasadd_op.bias();
+  auto value = tf_biasadd_op.getValue();
+  auto bias = tf_biasadd_op.getBias();
   auto bias_shape = bias.getType().cast<RankedTensorType>().getShape();
   if (bias_shape.size() != 1) {
     return rewriter.notifyMatchFailure(op, "bias tensor must be rank 1");
@@ -86,7 +89,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
           llvm::dyn_cast_if_present<TF::Conv2DOp>(value.getDefiningOp())) {
     // Sanity check to confirm rhs() has the expected shape of bias
     auto filter_shape =
-        tf_conv2d_op.filter().getType().cast<RankedTensorType>().getShape();
+        tf_conv2d_op.getFilter().getType().cast<RankedTensorType>().getShape();
 
     // Assume the filter shape is [H, W, I, O]
     if (filter_shape.back() != bias_shape.back()) {
@@ -95,10 +98,10 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
     }
 
     auto result = convertTFConv2DCommon(
-        rewriter, op, output_type, tf_conv2d_op.input(), tf_conv2d_op.filter(),
-        bias, tf_conv2d_op.strides(), tf_conv2d_op.dilations(),
-        tf_conv2d_op.explicit_paddings(), tf_conv2d_op.padding(),
-        tf_conv2d_op.data_format());
+        rewriter, op, output_type, tf_conv2d_op.getInput(),
+        tf_conv2d_op.getFilter(), bias, tf_conv2d_op.getStrides(),
+        tf_conv2d_op.getDilations(), tf_conv2d_op.getExplicitPaddings(),
+        tf_conv2d_op.getPadding(), tf_conv2d_op.getDataFormat());
 
     if (!result) return failure();
 
@@ -111,7 +114,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
           llvm::dyn_cast_if_present<TF::Conv3DOp>(value.getDefiningOp())) {
     // Sanity check to confirm rhs() has the expected shape of bias
     auto filter_shape =
-        tf_conv3d_op.filter().getType().cast<RankedTensorType>().getShape();
+        tf_conv3d_op.getFilter().getType().cast<RankedTensorType>().getShape();
 
     // Assume the filter shape is [D, H, W, I, O]
     if (filter_shape.back() != bias_shape.back()) {
@@ -119,10 +122,11 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
           op, "bias dimension must match filter output channels");
     }
 
-    llvm::Optional<Value> result = convertTFConv3DCommon(
-        rewriter, op, output_type, tf_conv3d_op.input(), tf_conv3d_op.filter(),
-        bias, tf_conv3d_op.strides(), tf_conv3d_op.dilations(),
-        tf_conv3d_op.padding(), tf_conv3d_op.data_format());
+    std::optional<Value> result = convertTFConv3DCommon(
+        rewriter, op, output_type, tf_conv3d_op.getInput(),
+        tf_conv3d_op.getFilter(), bias, tf_conv3d_op.getStrides(),
+        tf_conv3d_op.getDilations(), tf_conv3d_op.getPadding(),
+        tf_conv3d_op.getDataFormat());
 
     if (!result) return failure();
 

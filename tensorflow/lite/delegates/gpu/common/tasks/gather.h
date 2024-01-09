@@ -24,7 +24,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-GPUOperation CreateGather(const OperationDef& op_def,
+GPUOperation CreateGather(const GpuInfo& gpu_info, const OperationDef& op_def,
                           const GatherAttributes& attr);
 
 }  // namespace gpu

@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -36,9 +37,9 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
-#===============================================================================
+# ===============================================================================
 # ragged.range
-#===============================================================================
+# ===============================================================================
 # pylint: disable=redefined-builtin
 @tf_export('ragged.range')
 @dispatch.add_dispatch_support
@@ -123,9 +124,9 @@ def _infer_matching_dtype(tensors, dtype_hierarchy):
 
 ops.no_gradient('RaggedRange')
 
-#===============================================================================
+# ===============================================================================
 # ragged_segment_<AGGREGATE>
-#===============================================================================
+# ===============================================================================
 
 # Docstring template used for the raggged_segment_<AGGREGATE> ops.
 _RAGGED_SEGMENT_DOCSTRING = """\
@@ -373,9 +374,9 @@ _set_ragged_segment_docstring(segment_mean, 'mean', 'averaged')
 _set_ragged_segment_docstring(segment_sqrt_n, 'sum divided by sqrt(N)',
                               'summed')
 
-#===============================================================================
+# ===============================================================================
 # ragged_reduce_<AGGREGATE>
-#===============================================================================
+# ===============================================================================
 
 # Docstring template used for ragged_reduce_<AGGREGATE> ops.
 _RAGGED_REDUCE_DOCSTRING = """\
@@ -529,7 +530,7 @@ def ragged_reduce_aggregate(reduce_op,
     return reduce_op(
         rt_input, axis, keepdims=keepdims, name=name, **maybe_separator)
 
-  if isinstance(axis, ops.Tensor):
+  if isinstance(axis, tensor.Tensor):
     axis = tensor_util.constant_value(axis)
     if axis is None:
       raise ValueError('axis must be known at graph construction time.')
@@ -706,7 +707,8 @@ def reduce_variance(input_tensor: ragged_tensor.Ragged,
         input_tensor, name='input_tensor')
     if input_tensor.dtype.is_complex:
       raise ValueError(
-          'reduce_variance is not supported for RaggedTensors with complex dtypes.'
+          'reduce_variance is not supported for RaggedTensors with complex'
+          ' dtypes.'
       )
     square_of_input = math_ops.square(input_tensor)
     mean_of_square = reduce_mean(square_of_input, axis=axis, keepdims=keepdims)
@@ -787,20 +789,24 @@ _set_ragged_reduce_docstring(reduce_any, 'logical or', 'or-ed', 'False',
                              _RAGGED_REDUCE_ANY_EXAMPLE)
 
 
-#===============================================================================
+# ===============================================================================
 # ragged.matmul
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(math_ops.matmul)
-def matmul(a: ragged_tensor.RaggedOrDense,
-           b: ragged_tensor.RaggedOrDense,
-           transpose_a=False,
-           transpose_b=False,
-           adjoint_a=False,
-           adjoint_b=False,
-           a_is_sparse=False,
-           b_is_sparse=False,
-           output_type=None,
-           name=None):
+def matmul(
+    a: ragged_tensor.RaggedOrDense,
+    b: ragged_tensor.RaggedOrDense,
+    transpose_a=False,
+    transpose_b=False,
+    adjoint_a=False,
+    adjoint_b=False,
+    a_is_sparse=False,
+    b_is_sparse=False,
+    output_type=None,
+    grad_a=False,
+    grad_b=False,
+    name=None,
+):
   """Multiplies matrix `a` by matrix `b`.
 
   If all transpose or adjoint attributes are `False` then:
@@ -823,6 +829,8 @@ def matmul(a: ragged_tensor.RaggedOrDense,
     a_is_sparse: If `True`, optimize assuming `a` is mostly zero.
     b_is_sparse: If `True`, optimize assuming `b` is mostly zero.
     output_type: The output datatype (optional).
+    grad_a: Unused.
+    grad_b: Unused.
     name: Name for the operation (optional).
 
   Returns:
@@ -830,6 +838,8 @@ def matmul(a: ragged_tensor.RaggedOrDense,
     each inner-most matrix is the product of the corresponding matrices in `a`
     and `b`.
   """
+  del grad_a
+  del grad_b
   if transpose_a and adjoint_a:
     raise ValueError('Only one of transpose_a and adjoint_a can be True.')
   if transpose_b and adjoint_b:
@@ -1028,9 +1038,9 @@ def _matmul_3d_with_batch_dim_folding(a, b, **kwargs):
   return a.with_values(array_ops.squeeze(flat_result, axis=1))
 
 
-#===============================================================================
+# ===============================================================================
 # ragged.softmax
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(nn_ops.softmax_v2)
 def softmax(logits: ragged_tensor.Ragged, axis=None, name=None):
   """Computes softmax activations.
@@ -1075,9 +1085,9 @@ def softmax(logits: ragged_tensor.Ragged, axis=None, name=None):
     return math_ops.divide(logits_exp, denominator)
 
 
-#===============================================================================
+# ===============================================================================
 # ragged.add_n
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(math_ops.add_n)
 def add_n(inputs: typing.List[ragged_tensor.RaggedOrDense], name=None):
   """RaggedTensor implementation for tf.math.add_n."""
@@ -1087,9 +1097,9 @@ def add_n(inputs: typing.List[ragged_tensor.RaggedOrDense], name=None):
     return ragged_functional_ops.map_flat_values(math_ops.add_n, inputs)
 
 
-#===============================================================================
+# ===============================================================================
 # Ragged version of nn_ops.dropout
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(nn_ops.dropout)
 def dropout_v1(x: ragged_tensor.Ragged,
                keep_prob=None,
@@ -1139,9 +1149,9 @@ def stateless_dropout(x: ragged_tensor.Ragged,
             x.flat_values, rate=rate, seed=seed, rng_alg=rng_alg))
 
 
-#===============================================================================
+# ===============================================================================
 # Ragged version of Tensor.__eq__ and Tensor.__ne__
-#===============================================================================
+# ===============================================================================
 @dispatch.dispatch_for_api(math_ops.tensor_equals)
 def tensor_equals(self: ragged_tensor.RaggedOrDense,
                   other: ragged_tensor.RaggedOrDense):
@@ -1174,7 +1184,7 @@ def tensor_not_equals(self: ragged_tensor.RaggedOrDense,
 
 def _use_legacy_mode_for_tensor_equality(self):
   g = getattr(self, 'graph', None)
-  return not (ops.Tensor._USE_EQUALITY and  # pylint: disable=protected-access
+  return not (tensor.Tensor._USE_EQUALITY and  # pylint: disable=protected-access
               ops.executing_eagerly_outside_functions() and
               (g is None or g.building_function))
 

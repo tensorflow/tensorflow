@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device_base.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"

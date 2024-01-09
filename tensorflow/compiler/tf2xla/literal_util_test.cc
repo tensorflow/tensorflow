@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/platform/test.h"
@@ -32,10 +32,10 @@ TEST(LiteralUtil, LiteralToHostTensor) {
   Tensor host_tensor;
   EXPECT_EQ("Cannot convert literal of type S64 to tensor of type int32",
             LiteralToHostTensor(int64_values_literal, DT_INT32, &host_tensor)
-                .error_message());
+                .message());
   EXPECT_EQ("Cannot convert literal of type S64 to tensor of type qint32",
             LiteralToHostTensor(int64_values_literal, DT_QINT32, &host_tensor)
-                .error_message());
+                .message());
   EXPECT_TRUE(
       LiteralToHostTensor(int64_values_literal, DT_INT64, &host_tensor).ok());
   test::ExpectTensorEqual<int64_t>(host_tensor,

@@ -42,6 +42,26 @@ public class GpuDelegateFactory implements DelegateFactory {
      */
     public static final int INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1;
 
+    /** Which GPU backend to select. */
+    public enum GpuBackend {
+      /** Try OpenCL first. Fall back to OpenGL if it's not available. */
+      UNSET(0),
+      /** Enforces execution with Open CL. */
+      OPENCL(1),
+      /** Enforces execution with Open GL. */
+      OPENGL(2);
+      private final int value;
+
+      GpuBackend(int value) {
+        this.value = value;
+      }
+
+      /** int value of this enum. */
+      public int value() {
+        return value;
+      }
+    }
+
     /**
      * Sets whether precision loss is allowed.
      *
@@ -96,6 +116,14 @@ public class GpuDelegateFactory implements DelegateFactory {
       return this;
     }
 
+    /**
+     * Sets the GPU Backend.
+     */
+    public Options setForceBackend(GpuBackend forceBackend) {
+      this.forceBackend = forceBackend;
+      return this;
+    }
+
     public boolean isPrecisionLossAllowed() {
       return precisionLossAllowed;
     }
@@ -116,11 +144,16 @@ public class GpuDelegateFactory implements DelegateFactory {
       return modelToken;
     }
 
+    public GpuBackend getForceBackend() {
+      return forceBackend;
+    }
+
     private boolean precisionLossAllowed = true;
     boolean quantizedModelsAllowed = true;
     int inferencePreference = INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
     String serializationDir = null;
     String modelToken = null;
+    GpuBackend forceBackend = GpuBackend.UNSET;
   }
 
   public GpuDelegateFactory() {

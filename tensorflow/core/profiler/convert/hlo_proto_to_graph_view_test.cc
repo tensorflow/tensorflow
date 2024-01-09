@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <variant>
 
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
@@ -35,9 +35,8 @@ TEST(GraphViewerParamsTest, GraphType) {
   // Default for graph type.
   ToolOptions options1;
   options1["type"] = "graph";
-  TF_ASSERT_OK_AND_ASSIGN(
-      GraphViewerParams params1,
-      ParseGraphViewerParams(ToolOptionsToHloToolOptions(options1)));
+  TF_ASSERT_OK_AND_ASSIGN(GraphViewerParams params1,
+                          ParseGraphViewerParams(options1));
   EXPECT_EQ(params1.type, "graph");
   EXPECT_EQ(params1.node_name, "");
   EXPECT_EQ(params1.graph_width, 3);
@@ -53,9 +52,8 @@ TEST(GraphViewerParamsTest, GraphType) {
   options2["show_metadata"] = 1;
   options2["merge_fusion"] = 1;
   options2["format"] = "html";
-  TF_ASSERT_OK_AND_ASSIGN(
-      GraphViewerParams params2,
-      ParseGraphViewerParams(ToolOptionsToHloToolOptions(options2)));
+  TF_ASSERT_OK_AND_ASSIGN(GraphViewerParams params2,
+                          ParseGraphViewerParams(options2));
   EXPECT_EQ(params2.type, "graph");
   EXPECT_EQ(params2.node_name, "fusion.111");
   EXPECT_EQ(params2.graph_width, 10);
@@ -68,9 +66,8 @@ TEST(GraphViewerParamsTest, ShortTxtType) {
   // Default for short txt type.
   ToolOptions options1;
   options1["type"] = "short_txt";
-  TF_ASSERT_OK_AND_ASSIGN(
-      GraphViewerParams params1,
-      ParseGraphViewerParams(ToolOptionsToHloToolOptions(options1)));
+  TF_ASSERT_OK_AND_ASSIGN(GraphViewerParams params1,
+                          ParseGraphViewerParams(options1));
   EXPECT_EQ(params1.type, "short_txt");
   EXPECT_EQ(params1.verbose, false);
   EXPECT_EQ(params1.show_metadata, false);
@@ -79,9 +76,8 @@ TEST(GraphViewerParamsTest, ShortTxtType) {
   ToolOptions options2;
   options2["type"] = "short_txt";
   options2["show_metadata"] = 1;
-  TF_ASSERT_OK_AND_ASSIGN(
-      GraphViewerParams params2,
-      ParseGraphViewerParams(ToolOptionsToHloToolOptions(options2)));
+  TF_ASSERT_OK_AND_ASSIGN(GraphViewerParams params2,
+                          ParseGraphViewerParams(options2));
   EXPECT_EQ(params2.type, "short_txt");
   EXPECT_EQ(params2.verbose, false);
   EXPECT_EQ(params2.show_metadata, true);
@@ -91,9 +87,8 @@ TEST(GraphViewerParamsTest, LongTxtType) {
   // Default for long txt type.
   ToolOptions options1;
   options1["type"] = "long_txt";
-  TF_ASSERT_OK_AND_ASSIGN(
-      GraphViewerParams params1,
-      ParseGraphViewerParams(ToolOptionsToHloToolOptions(options1)));
+  TF_ASSERT_OK_AND_ASSIGN(GraphViewerParams params1,
+                          ParseGraphViewerParams(options1));
   EXPECT_EQ(params1.type, "long_txt");
   EXPECT_EQ(params1.verbose, true);
   EXPECT_EQ(params1.show_metadata, false);
@@ -102,9 +97,8 @@ TEST(GraphViewerParamsTest, LongTxtType) {
   ToolOptions options2;
   options2["type"] = "long_txt";
   options2["show_metadata"] = 1;
-  TF_ASSERT_OK_AND_ASSIGN(
-      GraphViewerParams params2,
-      ParseGraphViewerParams(ToolOptionsToHloToolOptions(options2)));
+  TF_ASSERT_OK_AND_ASSIGN(GraphViewerParams params2,
+                          ParseGraphViewerParams(options2));
   EXPECT_EQ(params2.type, "long_txt");
   EXPECT_EQ(params2.verbose, true);
   EXPECT_EQ(params2.show_metadata, true);
@@ -112,13 +106,13 @@ TEST(GraphViewerParamsTest, LongTxtType) {
 
 TEST(GraphViewerParamsTest, OtherTypes) {
   ToolOptions options1;
-  EXPECT_THAT(ParseGraphViewerParams(ToolOptionsToHloToolOptions(options1)),
+  EXPECT_THAT(ParseGraphViewerParams(options1),
               StatusIs(error::INVALID_ARGUMENT,
                        HasSubstr("Graph viewer must provide a type option")));
 
   ToolOptions options2;
   options2["type"] = "abcd";
-  EXPECT_THAT(ParseGraphViewerParams(ToolOptionsToHloToolOptions(options2)),
+  EXPECT_THAT(ParseGraphViewerParams(options2),
               StatusIs(error::INVALID_ARGUMENT,
                        HasSubstr("Unknown graph viewer type option: abcd")));
 }

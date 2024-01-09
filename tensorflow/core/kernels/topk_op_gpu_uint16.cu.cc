@@ -22,8 +22,8 @@ limitations under the License.
 namespace tensorflow {
 using Eigen::GpuDevice;
 
-template struct functor::TopKFunctor<GPUDevice, uint16>;
-template struct functor::TopKFunctor<GPUDevice, uint32>;
+template struct functor::TopKFunctor<GPUDevice, uint16, int32>;
+template struct functor::TopKFunctor<GPUDevice, uint32, int32>;
 
 }  // namespace tensorflow
 

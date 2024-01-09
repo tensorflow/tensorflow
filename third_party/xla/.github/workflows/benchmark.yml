@@ -1,0 +1,56 @@
+# Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+name: A/B Diff Performance Benchmarking
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+
+jobs:
+  run-benchmark-at-pr:
+    # TODO(b/278787029): Rework triggering to prevent new labels from overriding job status.
+    if: contains(github.event.pull_request.labels.*.name, 'A/B diff benchmarking')
+    runs-on:
+      - self-hosted  # must come first
+      - environment=testing
+      - cpu
+      - os-family=Linux
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 60
+    steps:
+      - name: "Checking out PR repository"
+        uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0
+      - name: "Build docker"  # TODO(b/277242108): build once and reference docker image by digest.
+        run: |
+          docker build --file build_tools/docker/dockerfiles/benchmarking.Dockerfile \
+            --tag base \
+            build_tools/docker/context
+      - name: "Benchmark at PR"
+        run: |
+          docker run --mount="type=bind,src="${PWD}",target=/work" --workdir="/work" \
+            base:latest \
+            build_tools/github_actions/build_xla.sh
+      - name: "Checking out base repository"
+        uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0
+        with:
+          ref: "${{ github.event.pull_request.base.sha }}"
+      - name: "Benchmark at Base"
+        run: |
+          docker run --mount="type=bind,src="${PWD}",target=/work" --workdir="/work" \
+            base:latest \
+            build_tools/github_actions/build_xla.sh

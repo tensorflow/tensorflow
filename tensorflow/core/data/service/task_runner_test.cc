@@ -16,16 +16,17 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"

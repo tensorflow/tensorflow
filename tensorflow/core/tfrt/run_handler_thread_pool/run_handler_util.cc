@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
 
 #include <cmath>
+#include <cstdlib>
+#include <string>
+#include <vector>
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"

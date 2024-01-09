@@ -25,12 +25,14 @@ import threading
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.dtensor.python import api as dtensor_api
+from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
-from tensorflow.python.eager import profiler as _profiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -40,11 +42,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import profiler_v2 as _profiler
 from tensorflow.python.trackable import resource
 from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
+
 
 # Name for graph collection of summary writer init ops, which is only exposed
 # as a legacy API for tf.contrib.summary in TF 1.x.
@@ -306,14 +310,22 @@ class SummaryWriter(metaclass=abc.ABCMeta):
 class _ResourceSummaryWriter(SummaryWriter):
   """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
 
-  def __init__(self, create_fn, init_op_fn):
-    self._resource = create_fn()
-    self._init_op = init_op_fn(self._resource)
+  def __init__(self, create_fn, init_op_fn, mesh=None):
+    if mesh is not None:
+      with dtensor_api.default_mesh(mesh.host_mesh()):
+        self._resource = create_fn()
+        self._init_op = init_op_fn(self._resource)
+    else:
+      self._resource = create_fn()
+      self._init_op = init_op_fn(self._resource)
+
     self._closed = False
     if context.executing_eagerly():
       self._set_up_resource_deleter()
     else:
       ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
+
+    self._mesh = mesh
 
   # Extension point to be overridden by subclasses to customize deletion.
 
@@ -370,7 +382,7 @@ class _TrackableResourceSummaryWriter(
     metaclass=_MultiMetaclass):
   """A `_ResourceSummaryWriter` subclass that implements `TrackableResource`."""
 
-  def __init__(self, create_fn, init_op_fn):
+  def __init__(self, create_fn, init_op_fn, mesh=None):
     # Resolve multiple inheritance via explicit calls to __init__() on parents.
     resource.TrackableResource.__init__(self, device="/CPU:0")
     self._create_fn = create_fn
@@ -379,7 +391,11 @@ class _TrackableResourceSummaryWriter(
     # create_fn, to ensure it accesses the resource handle only through the
     # cached property so that everything is using a single resource handle.
     _ResourceSummaryWriter.__init__(
-        self, create_fn=lambda: self.resource_handle, init_op_fn=init_op_fn)
+        self,
+        create_fn=lambda: self.resource_handle,
+        init_op_fn=init_op_fn,
+        mesh=mesh,
+    )
 
   # Override for TrackableResource implementation.
   def _create_resource(self):
@@ -493,28 +509,35 @@ def initialize(
 
 
 @tf_export("summary.create_file_writer", v1=[])
-def create_file_writer_v2(logdir,
-                          max_queue=None,
-                          flush_millis=None,
-                          filename_suffix=None,
-                          name=None,
-                          experimental_trackable=False):
+def create_file_writer_v2(
+    logdir,
+    max_queue=None,
+    flush_millis=None,
+    filename_suffix=None,
+    name=None,
+    experimental_trackable=False,
+    experimental_mesh=None,
+):
   """Creates a summary file writer for the given log directory.
 
   Args:
     logdir: a string specifying the directory in which to write an event file.
-    max_queue: the largest number of summaries to keep in a queue; will
-     flush once the queue gets bigger than this. Defaults to 10.
+    max_queue: the largest number of summaries to keep in a queue; will flush
+      once the queue gets bigger than this. Defaults to 10.
     flush_millis: the largest interval between flushes. Defaults to 120,000.
     filename_suffix: optional suffix for the event file name. Defaults to `.v2`.
     name: a name for the op that creates the writer.
     experimental_trackable: a boolean that controls whether the returned writer
       will be a `TrackableResource`, which makes it compatible with SavedModel
       when used as a `tf.Module` property.
+    experimental_mesh: a `tf.experimental.dtensor.Mesh` instance. When running
+      with DTensor, the mesh (experimental_mesh.host_mesh()) will be used for
+      bringing all the DTensor logging from accelerator to CPU mesh.
 
   Returns:
     A SummaryWriter object.
   """
+  # TODO(b/291655717): Revisit the experimental_mesh once we have soft placment.
   if logdir is None:
     raise ValueError("Argument `logdir` cannot be None")
   inside_function = ops.inside_function()
@@ -554,10 +577,12 @@ def create_file_writer_v2(logdir,
           filename_suffix=filename_suffix)
       if experimental_trackable:
         return _TrackableResourceSummaryWriter(
-            create_fn=create_fn, init_op_fn=init_op_fn)
+            create_fn=create_fn, init_op_fn=init_op_fn, mesh=experimental_mesh
+        )
       else:
         return _ResourceSummaryWriter(
-            create_fn=create_fn, init_op_fn=init_op_fn)
+            create_fn=create_fn, init_op_fn=init_op_fn, mesh=experimental_mesh
+        )
 
 
 def create_file_writer(logdir,
@@ -756,13 +781,21 @@ def write(tag, tensor, step=None, metadata=None, name=None):
       with ops.device("cpu:0"):
         summary_tensor = tensor() if callable(tensor) else array_ops.identity(
             tensor)
+        # For DTensor, the device scope above doesn't work, we need to
+        # explicitly copy the resource tensor to host mesh, which is a cpu
+        # mesh.
+        writer = _summary_state.writer
+        summary_value = _maybe_convert_tensor_to_dtensor(writer, summary_tensor)
+        step_value = _maybe_convert_tensor_to_dtensor(writer, step)
+
         write_summary_op = gen_summary_ops.write_summary(
-            _summary_state.writer._resource,  # pylint: disable=protected-access
-            step,
-            summary_tensor,
+            writer._resource,  # pylint: disable=protected-access
+            step_value,
+            summary_value,
             tag,
             serialized_metadata,
-            name=scope)
+            name=scope,
+        )
         with ops.control_dependencies([write_summary_op]):
           return constant_op.constant(True)
 
@@ -992,10 +1025,14 @@ def graph_v1(param, step=None, name=None):
   Raises:
     TypeError: If `param` isn't already a `tf.Tensor` in graph mode.
   """
-  if not context.executing_eagerly() and not isinstance(param, ops.Tensor):
-    raise TypeError("graph() needs a argument `param` to be tf.Tensor "
-                    "(e.g. tf.placeholder) in graph mode, but received "
-                    f"param={param} of type {type(param).__name__}.")
+  if not context.executing_eagerly() and not isinstance(
+      param, tensor_lib.Tensor
+  ):
+    raise TypeError(
+        "graph() needs a argument `param` to be tf.Tensor "
+        "(e.g. tf.placeholder) in graph mode, but received "
+        f"param={param} of type {type(param).__name__}."
+    )
   writer = _summary_state.writer
   if writer is None:
     return control_flow_ops.no_op()
@@ -1170,7 +1207,7 @@ def _serialize_graph(arbitrary_graph):
 def _choose_step(step):
   if step is None:
     return training_util.get_or_create_global_step()
-  if not isinstance(step, ops.Tensor):
+  if not isinstance(step, tensor_lib.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step
 
@@ -1290,7 +1327,7 @@ _current_trace_context = None
 
 
 @tf_export("summary.trace_on", v1=[])
-def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-name
+def trace_on(graph=True, profiler=False, profiler_outdir=None):  # pylint: disable=redefined-outer-name
   """Starts a trace to record computation graphs and profiling information.
 
   Must be invoked in eager mode.
@@ -1305,12 +1342,13 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
 
   Args:
     graph: If True, enables collection of executed graphs. It includes ones from
-        tf.function invocation and ones from the legacy graph mode. The default
-        is True.
+      tf.function invocation and ones from the legacy graph mode. The default is
+      True.
     profiler: If True, enables the advanced profiler. Enabling profiler
-        implicitly enables the graph collection. The profiler may incur a high
-        memory overhead. The default is False.
-
+      implicitly enables the graph collection. The profiler may incur a high
+      memory overhead. The default is False.
+    profiler_outdir: Output directory for profiler. It is required when profiler
+      is enabled when trace was started. Otherwise, it is ignored.
   """
   if ops.inside_function():
     logging.warn("Cannot enable trace inside a tf.function.")
@@ -1328,12 +1366,22 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
     if graph and not profiler:
       context.context().enable_graph_collection()
     if profiler:
-      context.context().enable_run_metadata()
-      _profiler.start()
+      if profiler_outdir is None:
+        # TODO(b/149431324): Change this to throw a ValueError when Tensorflow
+        # major version advances. (current version is 2.15)
+        logging.warn(
+            "No `profiler_outdir` passed to trace_on(). Profiler won't be"
+            " enabled."
+        )
+      else:
+        context.context().enable_run_metadata()
+        _profiler.start(profiler_outdir)
 
     _current_trace_context = _TraceContext(graph=graph, profiler=profiler)
 
 
+# TODO(b/149431324): Delete `profiler_outdir` arg when Tensorflow major version
+# advances. (current version is 2.15)
 @tf_export("summary.trace_export", v1=[])
 def trace_export(name, step=None, profiler_outdir=None):
   """Stops and exports the active trace as a Summary and/or profile file.
@@ -1346,8 +1394,7 @@ def trace_export(name, step=None, profiler_outdir=None):
     step: Explicit `int64`-castable monotonic step value for this summary. If
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
-    profiler_outdir: Output directory for profiler. It is required when profiler
-      is enabled when trace was started. Otherwise, it is ignored.
+    profiler_outdir: This arg is a no-op. Please set this in trace_on().
 
   Raises:
     ValueError: if a default writer exists, but no step was provided and
@@ -1369,8 +1416,6 @@ def trace_export(name, step=None, profiler_outdir=None):
       raise ValueError("Must enable trace before export through "
                        "tf.summary.trace_on.")
     graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
-    if profiler and profiler_outdir is None:
-      raise ValueError("Argument `profiler_outdir` is not specified.")
 
   run_meta = context.context().export_run_metadata()
 
@@ -1380,7 +1425,12 @@ def trace_export(name, step=None, profiler_outdir=None):
     run_metadata(name, run_meta, step)
 
   if profiler:
-    _profiler.save(profiler_outdir, _profiler.stop())
+    if profiler_outdir:
+      logging.warn(
+          "Ignoring `profiler_outdir` passed to trace_export(). Please pass it"
+          " to trace_on() instead."
+      )
+    _profiler.stop()
 
   trace_off()
 
@@ -1402,5 +1452,15 @@ def trace_off():
   if profiler:
     try:
       _profiler.stop()
-    except _profiler.ProfilerNotRunningError:
+    except Exception as e:  # pylint: disable=broad-except
+      logging.warn("Error while stopping profiler: %s", e)
       pass
+
+
+def _maybe_convert_tensor_to_dtensor(writer, tensor):
+  if getattr(writer, "_mesh", None) is not None:
+    mesh = writer._mesh.host_mesh()  # pylint: disable=protected-access
+    tensor = dtensor_api.copy_to_mesh(
+        tensor, layout_lib.Layout.replicated(mesh, rank=tensor.shape.rank)
+    )
+  return tensor

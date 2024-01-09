@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse_to_dense_op_gpu.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -189,39 +189,45 @@ void LaunchSparseToDense<T, Index>::operator()(
                                      default_value, indices_ptr, values_ptr,
                                      num_elems, num_values, shape, num_dims,
                                      dense_ptr, done]() {
-      // Ensure that within the callback, the proper GPU settings are
-      // configured.
-      auto stream = c->op_device_context()->stream();
-      se::gpu::ScopedActivateExecutorContext scoped_activation{
-          stream->parent()};
+      {
+        // Ensure that within the callback, the proper GPU settings are
+        // configured.
+        auto stream = c->op_device_context()->stream();
+        se::gpu::ScopedActivateExecutorContext scoped_activation{
+            stream->parent()};
 
-      OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
-                        errors::InvalidArgument("indices[", valid_status.valid,
-                                                "] is out of bounds."),
-                        done);
+        OP_REQUIRES_ASYNC(
+            c, valid_status.valid == INT_MAX,
+            errors::InvalidArgument("indices[", valid_status.valid,
+                                    "] is out of bounds."),
+            done);
 
-      OP_REQUIRES_ASYNC(c, valid_status.increasing == INT_MAX,
-                        errors::InvalidArgument(
-                            "indices[", valid_status.increasing,
-                            "] is out of "
-                            "order. Many sparse ops require sorted indices.\n"
-                            "  Use `tf.sparse.reorder` to create a correctly "
-                            "ordered copy.\n\n"),
-                        done);
+        OP_REQUIRES_ASYNC(c, valid_status.increasing == INT_MAX,
+                          errors::InvalidArgument(
+                              "indices[", valid_status.increasing,
+                              "] is out of "
+                              "order. Many sparse ops require sorted indices.\n"
+                              "  Use `tf.sparse.reorder` to create a correctly "
+                              "ordered copy.\n\n"),
+                          done);
 
-      OP_REQUIRES_ASYNC(
-          c, valid_status.different == INT_MAX,
-          errors::InvalidArgument("indices[", valid_status.different,
-                                  "] is "
-                                  "repeated."),
-          done);
+        OP_REQUIRES_ASYNC(
+            c, valid_status.different == INT_MAX,
+            errors::InvalidArgument("indices[", valid_status.different,
+                                    "] is "
+                                    "repeated."),
+            done);
 
-      OP_REQUIRES_OK_ASYNC(
-          c,
-          LaunchComputeKernels(c, dense_size, default_value, indices_ptr,
-                               values_ptr, num_elems, num_values,
-                               shape.flat<Index>().data(), num_dims, dense_ptr),
-          done);
+        OP_REQUIRES_OK_ASYNC(
+            c,
+            LaunchComputeKernels(c, dense_size, default_value, indices_ptr,
+                                 values_ptr, num_elems, num_values,
+                                 shape.flat<Index>().data(), num_dims,
+                                 dense_ptr),
+            done);
+      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+      // inlines another Op kernel, which may assume the original cuda Context.
+
       done();
     };
 
@@ -244,9 +250,9 @@ void LaunchSparseToDense<T, Index>::operator()(
   template struct functor::LaunchSparseToDense<T, int64>; \
   template struct functor::LaunchSparseToDense<T, int32>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC)
-TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC)
-DEFINE_GPU_SPEC(bool)
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
+TF_CALL_INTEGRAL_TYPES(DEFINE_GPU_SPEC);
+DEFINE_GPU_SPEC(bool);
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

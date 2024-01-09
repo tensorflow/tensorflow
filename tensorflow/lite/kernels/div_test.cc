@@ -82,6 +82,40 @@ inline float GetTolerance(int min, int max) {
   return kQuantizedTolerance;
 }
 
+TEST(FloatDivOpTest, NoActivationInplaceInput0) {
+  FloatDivOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-0.2, 0.2, -1.2, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.5, 0.2, -1.5, 0.5});
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-0.4, 1.0, 0.8, 1.6})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
+TEST(FloatDivOpTest, NoActivationInplaceInput1) {
+  FloatDivOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-0.2, 0.2, -1.2, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.5, 0.2, -1.5, 0.5});
+  const int kInplaceInputTensorIdx = 1;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-0.4, 1.0, 0.8, 1.6})));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TEST(FloatDivOpTest, NoActivation) {
   FloatDivOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},

@@ -76,6 +76,17 @@ tensorflow::Status ConvertToTensorProto(ElementsAttr attr,
 tensorflow::Status ConvertToTensor(ElementsAttr attr,
                                    tensorflow::Tensor* output_tensor);
 
+// Converts a TF shape to MLIR shape, i.e. -1 becomes kDynamicSize.
+llvm::SmallVector<int64_t> ConvertTFShapeToMlir(llvm::ArrayRef<int64_t> shape);
+
+// Converts an MLIR shape to TF shape, i.e. kDynamicSize becomes -1.
+llvm::SmallVector<int64_t> ConvertMlirShapeToTF(llvm::ArrayRef<int64_t> shape);
+
+// Creates a TF TensorShape using MLIR shape, element type and encoding.
+mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
+                                                mlir::Type elementType,
+                                                mlir::Attribute encoding = {});
+
 }  // namespace tfg
 }  // namespace mlir
 

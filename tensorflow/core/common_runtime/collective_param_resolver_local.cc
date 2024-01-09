@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -76,7 +77,10 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
       return "Permute";
 
     case ALL_TO_ALL_COLLECTIVE:
-      return "AllToAll";
+      return nccl ? "NcclAllToAll" : "AllToAll";
+
+    case REDUCE_SCATTER_COLLECTIVE:
+      return nccl ? "NcclReduceScatter" : "undef";
 
     default:
       return "undef";
@@ -553,22 +557,8 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(CollGroupParams* gp) {
   // Sort gp->member to avoid indeterminism.
   std::sort(gp->members.begin(), gp->members.end(),
             [](const CollGroupMember& lhs, const CollGroupMember& rhs) {
-              DeviceNameUtils::ParsedName lhs_device_name, rhs_device_name;
-              if (DeviceNameUtils::ParseFullName(lhs.device.name(),
-                                                 &lhs_device_name) &&
-                  DeviceNameUtils::ParseFullName(rhs.device.name(),
-                                                 &rhs_device_name)) {
-                if (lhs_device_name.job == rhs_device_name.job) {
-                  if (lhs_device_name.task == rhs_device_name.task) {
-                    return lhs_device_name.id < rhs_device_name.id;
-                  } else {
-                    return lhs_device_name.task < rhs_device_name.task;
-                  }
-                } else {
-                  return lhs_device_name.job < rhs_device_name.job;
-                }
-              }
-              return lhs.device.name() < rhs.device.name();
+              return DeviceNameUtils::CompareFullNames(lhs.device.name(),
+                                                       rhs.device.name());
             });
   // Establish an instance-specific default rank order for devices
   // based on localities.  This rank order should be a good ring
@@ -601,9 +591,11 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
   InstanceRec* irec = nullptr;
   {
     mutex_lock l(instance_mu_);
+    std::tuple<int64_t, int32_t> key = {cp->instance.step_id,
+                                        cp->instance.instance_key};
     auto group_it = instance_table_.find(cp->group.group_key);
     if (group_it != instance_table_.end()) {
-      auto instance_it = group_it->second.find(cp->instance.instance_key);
+      auto instance_it = group_it->second.find(key);
       if (instance_it != group_it->second.end()) {
         irec = instance_it->second.get();
       }
@@ -617,8 +609,7 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
         irec->known.resize(cp->group.group_size, false);
       }
       InitInstanceSharedParams(cp, irec);
-      instance_table_[cp->group.group_key][cp->instance.instance_key].reset(
-          irec);
+      instance_table_[cp->group.group_key][key].reset(irec);
     }
   }
   Status status;

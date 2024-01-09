@@ -32,6 +32,14 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 
 
+try:
+  import dill  # pylint:disable=g-import-not-at-top
+
+  _REGISTER_DECORATOR = dill.register
+except ImportError:
+  _REGISTER_DECORATOR = lambda fn, *_: fn
+
+
 def fn_that_adds_task_type_in_return_data():
   return multi_worker_test_base.get_task_type()
 
@@ -639,6 +647,33 @@ class MultiProcessRunnerMultiGPUTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(result.return_value, [1, 1])
     else:
       self.assertAllEqual(result.return_value, [2, 2])
+
+
+@_REGISTER_DECORATOR(MultiProcessRunnerTest)
+def _save_multi_process_runner_test(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return MultiProcessRunnerTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
+
+
+@_REGISTER_DECORATOR(MultiProcessPoolRunnerTest)
+def _save_multi_process_pool_runner_test(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return MultiProcessPoolRunnerTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
+
+
+@_REGISTER_DECORATOR(MultiProcessRunnerMultiGPUTest)
+def _save_multi_process_runner_multi_gpu_test(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return MultiProcessRunnerMultiGPUTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
 
 
 if __name__ == '__main__':

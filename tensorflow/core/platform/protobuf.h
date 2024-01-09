@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace protobuf = tsl::protobuf;  // NOLINT(misc-unused-alias-decls)

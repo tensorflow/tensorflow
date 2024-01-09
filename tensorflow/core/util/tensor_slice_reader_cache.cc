@@ -23,7 +23,7 @@ namespace tensorflow {
 
 namespace checkpoint {
 
-TensorSliceReaderCacheWrapper::TensorSliceReaderCacheWrapper() {}
+TensorSliceReaderCacheWrapper::TensorSliceReaderCacheWrapper() = default;
 TensorSliceReaderCacheWrapper::~TensorSliceReaderCacheWrapper() {
   delete cache_;
   cache_ = nullptr;
@@ -41,7 +41,7 @@ const TensorSliceReader* TensorSliceReaderCacheWrapper::GetReader(
                            preferred_shard);
 }
 
-TensorSliceReaderCache::TensorSliceReaderCache() {}
+TensorSliceReaderCache::TensorSliceReaderCache() = default;
 
 TensorSliceReaderCache::~TensorSliceReaderCache() {
   for (const auto& pair : readers_) {

@@ -20,8 +20,8 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_graph_dumper.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
 
@@ -43,8 +43,7 @@ struct GraphViewerParams {
 };
 
 // Parse tool options to get the parameters for graph viewer.
-StatusOr<GraphViewerParams> ParseGraphViewerParams(
-    const HloToolOptions& options);
+StatusOr<GraphViewerParams> ParseGraphViewerParams(const ToolOptions& options);
 
 // Get graph render format.
 xla::RenderedGraphFormat GetRenderFormat(const std::string& format_string);

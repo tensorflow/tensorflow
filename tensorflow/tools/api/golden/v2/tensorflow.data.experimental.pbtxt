@@ -6,11 +6,11 @@ tf_module {
   }
   member {
     name: "AutoShardPolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "AutotuneAlgorithm"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "AutotuneOptions"
@@ -34,7 +34,7 @@ tf_module {
   }
   member {
     name: "ExternalStatePolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "INFINITE_CARDINALITY"
@@ -87,6 +87,10 @@ tf_module {
   member_method {
     name: "assert_cardinality"
     argspec: "args=[\'expected_cardinality\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "at"
+    argspec: "args=[\'dataset\', \'index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "bucket_by_sequence_length"
@@ -175,6 +179,10 @@ tf_module {
   member_method {
     name: "map_and_batch"
     argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "pad_to_cardinality"
+    argspec: "args=[\'cardinality\', \'mask_key\'], varargs=None, keywords=None, defaults=[\'valid\'], "
   }
   member_method {
     name: "parallel_interleave"

@@ -21,7 +21,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 
 namespace tflite {
@@ -53,7 +53,7 @@ class OnlineHelperDelegate : public TfLiteDelegate {
   }
 
  protected:
-  // This function uses a pointer to a mehtod (implemented by each specific DCC)
+  // This function uses a pointer to a method (implemented by each specific DCC)
   // which contains the logic to check whether the primary subgraph can be
   // delegated to the specific delegate.
   static TfLiteStatus DoPrepare(TfLiteContext* context,

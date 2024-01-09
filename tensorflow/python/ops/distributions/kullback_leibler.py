@@ -16,7 +16,7 @@
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
@@ -108,12 +108,13 @@ def kl_divergence(distribution_a, distribution_b,
     kl_t = array_ops.identity(kl_t, name="kl")
 
     with ops.control_dependencies([
-        control_flow_ops.Assert(
-            math_ops.logical_not(
-                math_ops.reduce_any(math_ops.is_nan(kl_t))),
-            ["KL calculation between %s and %s returned NaN values "
-             "(and was called with allow_nan_stats=False). Values:"
-             % (distribution_a.name, distribution_b.name), kl_t])]):
+        control_flow_assert.Assert(
+            math_ops.logical_not(math_ops.reduce_any(math_ops.is_nan(kl_t))), [
+                "KL calculation between %s and %s returned NaN values "
+                "(and was called with allow_nan_stats=False). Values:" %
+                (distribution_a.name, distribution_b.name), kl_t
+            ])
+    ]):
       return array_ops.identity(kl_t, name="checked_kl")
 
 

@@ -19,6 +19,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
@@ -241,7 +242,7 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
-      return array_ops.stack([x1, y], axis=-1)
+      return array_ops_stack.stack([x1, y], axis=-1)
 
     self._test_loop_fn(loop_fn, 1)
 
@@ -250,8 +251,8 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       x_i = array_ops.gather(x, i)
-      return array_ops.unstack(
-          x_i, 4, axis=-1), array_ops.unstack(
+      return array_ops_stack.unstack(
+          x_i, 4, axis=-1), array_ops_stack.unstack(
               x_i, 3, axis=1)
 
     self._test_loop_fn(loop_fn, 3)
@@ -342,6 +343,16 @@ class ArrayTest(PForTestCase):
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
       z = array_ops.zeros_like(x1),
+      return z, z + x1
+
+    self._test_loop_fn(loop_fn, 3)
+
+  def test_ones_like(self):
+    x = random_ops.random_uniform([3, 2, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      z = array_ops.ones_like(x1),
       return z, z + x1
 
     self._test_loop_fn(loop_fn, 3)

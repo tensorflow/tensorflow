@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
@@ -31,7 +34,7 @@ std::string GetVariableName(TF::VarHandleOp var_handle_op) {
   // then fallback to shared_name attribute.
   if (auto loc = var_handle_op->getLoc().dyn_cast<NameLoc>())
     return loc.getName().str();
-  return var_handle_op.shared_name().str();
+  return var_handle_op.getSharedName().str();
 }
 
 std::vector<std::string> GetVariableNames(
@@ -50,11 +53,11 @@ tensorflow::Var* GetVariableFromSession(mlir::TF::VarHandleOp var_handle_op,
   if (!mgr || !mgr->LookupDevice(StringRefToView(device_name), &device).ok())
     return nullptr;
   tensorflow::Var* var_ptr = nullptr;
-  const auto& container = var_handle_op.container().str();
+  const auto& container = var_handle_op.getContainer().str();
   auto status = device->resource_manager()->Lookup(
       (container.empty() ? device->resource_manager()->default_container()
                          : container),
-      var_handle_op.shared_name().str(), &var_ptr);
+      var_handle_op.getSharedName().str(), &var_ptr);
   if (!device || !status.ok()) return nullptr;
   return var_ptr;
 }
@@ -71,7 +74,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> GetResourcesFromSession(
 
   auto status = session->Run({}, variable_names, {}, &resource_tensors);
   if (!status.ok())
-    return absl::Status(absl::StatusCode::kInternal, status.error_message());
+    return absl::Status(absl::StatusCode::kInternal, status.message());
   return resource_tensors;
 }
 }  // namespace tf_saved_model

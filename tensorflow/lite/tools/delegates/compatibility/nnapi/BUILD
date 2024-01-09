@@ -1,5 +1,6 @@
 # BUILD rules for NNAPI delegate compatibility checking.
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -17,7 +18,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
     ],
 )
@@ -32,8 +33,8 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/nnapi:nnapi_lib",
         "//tensorflow/lite/tools/delegates/compatibility/common:delegate_compatibility_checker_base",
         "//tensorflow/lite/tools/delegates/compatibility/common:delegate_compatibility_checker_util",
@@ -52,7 +53,7 @@ cc_test(
     ],
     deps = [
         ":nnapi_compatibility_lib",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
@@ -67,6 +68,7 @@ cc_test(
     data = [
         "//tensorflow/lite:testdata/add.bin",
     ],
+    tags = ["no_oss"],  #TODO(b/276295784): Re-enable when fixed.
     deps = [
         ":nnapi_delegate_compatibility_checker",
         "//tensorflow/core/platform:resource_loader",

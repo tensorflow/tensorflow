@@ -30,13 +30,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tensorflow/core/util/ptr_util.h"
 #ifndef IS_MOBILE_PLATFORM
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -265,7 +264,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
              if (!status.ok()) {
                const string function_and_msg =
                    strings::StrCat(errors::FormatFunctionForError(func_name),
-                                   " ", status.error_message());
+                                   " ", status.message());
                ctx->SetStatus(
                    errors::CreateWithUpdatedMessage(status, function_and_msg));
              } else {

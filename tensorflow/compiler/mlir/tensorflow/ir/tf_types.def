@@ -44,6 +44,8 @@ HANDLE_CUSTOM_TF_TYPE(Variant, VARIANT, "variant")
 #endif
 HANDLE_TF_REF_TYPE(FloatRef, FLOAT_REF, "f32ref")
 HANDLE_TF_REF_TYPE(DoubleRef, DOUBLE_REF, "f64ref")
+HANDLE_TF_REF_TYPE(Uint4Ref, UINT4_REF, "uint4ref")
+HANDLE_TF_REF_TYPE(Int4Ref, INT4_REF, "int4ref")
 HANDLE_TF_REF_TYPE(Uint8Ref, UINT8_REF, "uint8ref")
 HANDLE_TF_REF_TYPE(Int8Ref, INT8_REF, "int8ref")
 HANDLE_TF_REF_TYPE(Uint16Ref, UINT16_REF, "uint16ref")
@@ -64,6 +66,8 @@ HANDLE_TF_REF_TYPE(Complex64Ref, COMPLEX64_REF, "complex64ref")
 HANDLE_TF_REF_TYPE(Complex128Ref, COMPLEX128_REF, "complex128ref")
 HANDLE_TF_REF_TYPE(HalfRef, HALF_REF, "halfref")
 HANDLE_TF_REF_TYPE(ResourceRef, RESOURCE_REF, "resourceref")
+HANDLE_TF_REF_TYPE(Float8E4M3FNRef, FLOAT8_E4M3FN_REF, "float8e4m3fnref")
+HANDLE_TF_REF_TYPE(Float8E5M2Ref, FLOAT8_E5M2_REF, "float8e5m2ref")
 
 #ifndef HANDLE_LAST_TF_TYPE
 #define HANDLE_LAST_TF_TYPE(class, enumerant, name) \

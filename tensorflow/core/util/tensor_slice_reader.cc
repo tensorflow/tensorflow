@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
+#include <climits>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -36,7 +38,7 @@ namespace tensorflow {
 
 namespace checkpoint {
 
-TensorSliceReader::Table::~Table() {}
+TensorSliceReader::Table::~Table() = default;
 
 namespace {
 class TensorSliceReaderTable : public TensorSliceReader::Table {
@@ -86,7 +88,7 @@ Status OpenTableTensorSliceReader(const string& fname,
         return OkStatus();
       } else {
         s = errors::CreateWithUpdatedMessage(
-            s, strings::StrCat(s.error_message(),
+            s, strings::StrCat(s.message(),
                                ": perhaps your file is in a different "
                                "file format and you need to use a "
                                "different restore operator?"));
@@ -256,6 +258,15 @@ Status TensorSliceReader::GetTensor(
   std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor);
   Status s = tensorflow::Tensor::BuildTensor(type, shape, t.get());
   if (!s.ok()) return s;
+
+  for (const auto d : shape.dim_sizes()) {
+    if (d == LLONG_MAX) {
+      return errors::InvalidArgument("Unable to read dimensions of size ",
+                                     LLONG_MAX,
+                                     ". Got shape: ", shape.DebugString());
+    }
+  }
+
   bool success = false;
 
 #define READER_COPY(dt)                                                  \
@@ -273,6 +284,7 @@ Status TensorSliceReader::GetTensor(
     READER_COPY(DT_INT8);
     READER_COPY(DT_INT64);
     READER_COPY(DT_STRING);
+    READER_COPY(DT_BOOL);
     default:
       return errors::Unimplemented("Data type not supported");
   }

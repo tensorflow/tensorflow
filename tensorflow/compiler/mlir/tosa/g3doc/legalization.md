@@ -140,7 +140,7 @@ vector<int64> get_padding_values_from_pad_type(tensorflow::Padding padding, tens
 
         int64 op_size, pad_before_tf, pad_after_tf;
 
-        tensorflow::GetWindowedOutputSizeVerboseV2(input_type.shape[ifm_dim], filter_type.shape[filter_dim],
+        tensorflow::GetWindowedOutputSizeVerbose(input_type.shape[ifm_dim], filter_type.shape[filter_dim],
                                                    dim_dilation, dim_stride, padding,
                                                    // Outputs
                                                    &op_size, &pad_before_tf, &pad_after_tf);

@@ -22,7 +22,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
@@ -67,7 +67,6 @@ void ConcatGPUImpl(const Eigen::GpuDevice& d,
       int split_size, typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER);  // int32 Needed for TensorLists.
-TF_CALL_bfloat16(REGISTER);
 TF_CALL_GPU_ALL_TYPES(REGISTER);
 #undef REGISTER
 

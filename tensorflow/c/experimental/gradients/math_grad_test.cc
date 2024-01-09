@@ -86,13 +86,13 @@ class CppGradients
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     status_ = StatusFromTF_Status(status.get());
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
     {
       AbstractContext* ctx_raw = nullptr;
       status_ =
           BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-      ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+      ASSERT_EQ(errors::OK, status_.code()) << status_.message();
       immediate_execution_ctx_.reset(ctx_raw);
     }
 
@@ -117,7 +117,7 @@ TEST_P(CppGradients, TestAddGrad) {
     AbstractTensorHandle* x_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x.reset(x_raw);
   }
 
@@ -126,14 +126,14 @@ TEST_P(CppGradients, TestAddGrad) {
     AbstractTensorHandle* y_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &y_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     y.reset(y_raw);
   }
 
   // TODO(srbs): Rename ops::Add to ops::AddV2 and AddRegister to
   // AddV2Registerer.
   status_ = registry_.Register("AddV2", AddRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       AddModel, BuildGradModel(AddModel, registry_),
@@ -146,12 +146,12 @@ TEST_P(CppGradients, TestExpGrad) {
     AbstractTensorHandle* x_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x.reset(x_raw);
   }
 
   status_ = registry_.Register("Exp", ExpRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       ExpModel, BuildGradModel(ExpModel, registry_),
@@ -171,7 +171,7 @@ TEST_P(CppGradients, TestMatMulGrad) {
     AbstractTensorHandle* A_raw;
     status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), A_vals, A_dims, 2, &A_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     A.reset(A_raw);
   }
 
@@ -182,12 +182,12 @@ TEST_P(CppGradients, TestMatMulGrad) {
     AbstractTensorHandle* B_raw;
     status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), B_vals, B_dims, 2, &B_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     B.reset(B_raw);
   }
 
   status_ = registry_.Register("MatMul", MatMulRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   for (bool transpose_a : {false, true}) {
     for (bool transpose_b : {false, true}) {
@@ -214,7 +214,7 @@ TEST_P(CppGradients, TestMatMulGradManual) {
     AbstractTensorHandle* A_raw;
     status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), A_vals, A_dims, 2, &A_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     A.reset(A_raw);
   }
 
@@ -225,12 +225,12 @@ TEST_P(CppGradients, TestMatMulGradManual) {
     AbstractTensorHandle* B_raw;
     status_ = TestTensorHandleWithDims<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), B_vals, B_dims, 2, &B_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     B.reset(B_raw);
   }
 
   status_ = registry_.Register("MatMul", MatMulRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   bool transpose_a_vals[] = {false, false, true, true};
   bool transpose_b_vals[] = {false, true, false, true};
@@ -259,7 +259,7 @@ TEST_P(CppGradients, TestMatMulGradManual) {
     status_ =
         RunModel(MatMulGradModel, immediate_execution_ctx_.get(),
                  {A.get(), B.get()}, absl::MakeSpan(outputs), UseFunction());
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[0], dA_vals[i],
                                              /*dims*/ {3, 3},
                                              /*abs_error*/ 0));
@@ -277,12 +277,12 @@ TEST_P(CppGradients, TestSqrtGrad) {
     AbstractTensorHandle* x_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x.reset(x_raw);
   }
 
   status_ = registry_.Register("Sqrt", SqrtRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       SqrtModel, BuildGradModel(SqrtModel, registry_),
@@ -295,12 +295,12 @@ TEST_P(CppGradients, TestNegGrad) {
     AbstractTensorHandle* x_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x.reset(x_raw);
   }
 
   status_ = registry_.Register("Neg", NegRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       NegModel, BuildGradModel(NegModel, registry_),
@@ -313,7 +313,7 @@ TEST_P(CppGradients, TestSubGrad) {
     AbstractTensorHandle* x_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x.reset(x_raw);
   }
 
@@ -322,12 +322,12 @@ TEST_P(CppGradients, TestSubGrad) {
     AbstractTensorHandle* y_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &y_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     y.reset(y_raw);
   }
 
   status_ = registry_.Register("Sub", SubRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       SubModel, BuildGradModel(SubModel, registry_),
@@ -340,7 +340,7 @@ TEST_P(CppGradients, TestMulGrad) {
     AbstractTensorHandle* x_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x.reset(x_raw);
   }
 
@@ -349,12 +349,12 @@ TEST_P(CppGradients, TestMulGrad) {
     AbstractTensorHandle* y_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &y_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     y.reset(y_raw);
   }
 
   status_ = registry_.Register("Mul", MulRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       MulModel, BuildGradModel(MulModel, registry_),
@@ -367,12 +367,12 @@ TEST_P(CppGradients, TestLog1pGrad) {
     AbstractTensorHandle* x_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x.reset(x_raw);
   }
 
   status_ = registry_.Register("Log1p", Log1pRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       Log1pModel, BuildGradModel(Log1pModel, registry_),
@@ -381,7 +381,7 @@ TEST_P(CppGradients, TestLog1pGrad) {
 
 TEST_P(CppGradients, TestDivNoNanGrad) {
   status_ = registry_.Register("DivNoNan", DivNoNanRegisterer);
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
 
   auto DivNoNanGradModel = BuildGradModel(DivNoNanModel, registry_);
 
@@ -390,7 +390,7 @@ TEST_P(CppGradients, TestDivNoNanGrad) {
     AbstractTensorHandle* x_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     x.reset(x_raw);
   }
 
@@ -399,7 +399,7 @@ TEST_P(CppGradients, TestDivNoNanGrad) {
     AbstractTensorHandle* y_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 2.0f, &y_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     y.reset(y_raw);
   }
 
@@ -413,14 +413,14 @@ TEST_P(CppGradients, TestDivNoNanGrad) {
     AbstractTensorHandle* z_raw = nullptr;
     status_ = TestScalarTensorHandle<float, TF_FLOAT>(
         immediate_execution_ctx_.get(), 0.0f, &z_raw);
-    ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+    ASSERT_EQ(errors::OK, status_.code()) << status_.message();
     z.reset(z_raw);
   }
   std::vector<AbstractTensorHandle*> outputs(2);
   status_ =
       RunModel(DivNoNanGradModel, immediate_execution_ctx_.get(),
                {x.get(), z.get()}, absl::MakeSpan(outputs), UseFunction());
-  ASSERT_EQ(errors::OK, status_.code()) << status_.error_message();
+  ASSERT_EQ(errors::OK, status_.code()) << status_.message();
   ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[0], {0.0f}, /*dims*/ {},
                                            /*abs_error*/ 0));
   ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[1], {0.0f}, /*dims*/ {},

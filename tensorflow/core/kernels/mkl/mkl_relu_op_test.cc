@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3) && defined(ENABLE_MKL)
+// TODO(intel-tf): This file is no longer used and needs to be removed.
+// This file will be an empty compilation unit when building with oneDNN v3.x
+// (default behavior). It can be compiled only when building with oneDNN v2.x.
 
 #include "absl/strings/match.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -136,4 +139,4 @@ TEST_ALL_SIZES(LeakyReluGrad)
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL && ENABLE_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3 && ENABLE_MKL

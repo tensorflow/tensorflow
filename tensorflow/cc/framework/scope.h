@@ -125,8 +125,7 @@ class Scope {
   /// Return a new scope. All ops created within the returned scope will have as
   /// control dependencies the union of operations in the control_deps vector
   /// and the control dependencies of the current scope.
-  Scope WithControlDependencies(
-      const gtl::ArraySlice<Operation>& control_deps) const;
+  Scope WithControlDependencies(gtl::ArraySlice<Operation> control_deps) const;
   /// Same as above, but convenient to add control dependency on the operation
   /// producing the control_dep output.
   Scope WithControlDependencies(const Output& control_dep) const;
@@ -201,8 +200,10 @@ class Scope {
 
   /// If status() is ok, convert the Graph object stored in this scope
   /// to a GraphDef proto and return an ok Status. Otherwise, return the error
-  /// status as is without performing GraphDef conversion.
-  Status ToGraphDef(GraphDef* gdef) const;
+  /// status as is without performing GraphDef conversion. If
+  /// `include_debug_info` is true, populate the `debug_info` field of the
+  /// GraphDef from stack traces in this Graph.
+  Status ToGraphDef(GraphDef* gdef, bool include_debug_info = false) const;
 
   // START_SKIP_DOXYGEN
 

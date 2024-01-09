@@ -53,7 +53,7 @@ void registerAttributes();
 public:
   }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//

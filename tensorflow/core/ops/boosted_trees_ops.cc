@@ -417,15 +417,15 @@ REGISTER_OP("BoostedTreesSparseAggregateStats")
       shape_inference::ShapeHandle feature_values_shape;
       shape_inference::ShapeHandle feature_shape;
 
-      shape_inference::DimensionHandle batch_size = c->Dim(c->input(0), 0);
-      shape_inference::DimensionHandle num_entries;
-
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &node_ids_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &gradients_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &hessians_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 2, &feature_indices_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 1, &feature_values_shape));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 1, &feature_shape));
+
+      shape_inference::DimensionHandle batch_size = c->Dim(c->input(0), 0);
+      shape_inference::DimensionHandle num_entries;
 
       // Verify all inputs have same first dimension, i.e., batch_size.
       TF_RETURN_IF_ERROR(c->Merge(c->Dim(gradients_shape, 0),

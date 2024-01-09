@@ -49,6 +49,7 @@ if(NOT TENSORFLOW_SOURCE_DIR)
   )
 endif()
 set(TF_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/tensorflow")
+set(TSL_SOURCE_DIR "${TENSORFLOW_SOURCE_DIR}/third_party/xla/third_party/tsl")
 set(TFLITE_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 set(CMAKE_MODULE_PATH
   "${TFLITE_SOURCE_DIR}/tools/cmake/modules"
@@ -61,6 +62,7 @@ set(CMAKE_PREFIX_PATH
 include(GNUInstallDirs)
 include(CMakeDependentOption)
 option(TFLITE_ENABLE_INSTALL "Enable install rule" OFF)
+option(TFLITE_ENABLE_LABEL_IMAGE "Enable label_image example" OFF)
 option(TFLITE_ENABLE_RUY "Enable experimental RUY integration" OFF)
 option(TFLITE_ENABLE_RESOURCE "Enable experimental support for resources" ON)
 option(TFLITE_ENABLE_NNAPI "Enable NNAPI (Android only)." ON)
@@ -138,16 +140,50 @@ macro(populate_tf_source_vars RELATIVE_DIR SOURCES_VAR)
     "${TF_SOURCE_DIR}/${RELATIVE_DIR}" ${SOURCES_VAR} ${ARGN}
   )
 endmacro()
+# Make sure all repos have licenses.
+set(OVERRIDABLE_FETCH_CONTENT_LICENSE_CHECK ON)
+# Additional library dependencies based upon enabled features.
+set(TFLITE_TARGET_DEPENDENCIES "")
 # Find TensorFlow Lite dependencies.
 find_package(absl REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(farmhash REQUIRED)
 find_package(fft2d REQUIRED)
-find_package(Flatbuffers REQUIRED)
+find_package(FlatBuffers REQUIRED)
 find_package(gemmlowp REQUIRED)
-find_package(NEON_2_SSE REQUIRED)
+if (NOT CMAKE_SYSTEM_PROCESSOR OR CMAKE_SYSTEM_PROCESSOR MATCHES "x86")
+  find_package(NEON_2_SSE REQUIRED)
+  list(APPEND TFLITE_TARGET_DEPENDENCIES NEON_2_SSE::NEON_2_SSE)
+endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
+find_package(ml_dtypes REQUIRED)
 find_package(ruy REQUIRED)
+# Include TSL, which is in tensorflow/third_party
+include_directories(
+  ${TSL_SOURCE_DIR}
+)
+# Download necessary dependencies.
+# Download pthreadpool source package if it doesn't exist.
+if(SYSTEM_PTHREADPOOL)
+  find_library(PTHREADPOOL_LIB pthreadpool REQUIRED)
+elseif(NOT DEFINED PTHREADPOOL_SOURCE_DIR)
+    message(STATUS "Downloading pthreadpool to ${CMAKE_BINARY_DIR}/pthreadpool-source (define SYSTEM_PTHREADPOOL or PTHREADPOOL_SOURCE_DIR to avoid it)")
+    configure_file(cmake/DownloadPThreadPool.cmake "${CMAKE_BINARY_DIR}/pthreadpool-download/CMakeLists.txt")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+    execute_process(COMMAND "${CMAKE_COMMAND}" --build .
+      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/pthreadpool-download")
+    set(PTHREADPOOL_SOURCE_DIR "${CMAKE_BINARY_DIR}/pthreadpool-source" CACHE STRING "pthreadpool source directory")
+endif()
+# Configure pthreadpool
+if(NOT SYSTEM_PTHREADPOOL AND NOT TARGET pthreadpool)
+  set(PTHREADPOOL_BUILD_TESTS OFF CACHE BOOL "")
+  set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE BOOL "")
+  set(PTHREADPOOL_ALLOW_DEPRECATED_API OFF CACHE BOOL "")
+  add_subdirectory(
+    "${PTHREADPOOL_SOURCE_DIR}"
+    "${CMAKE_BINARY_DIR}/pthreadpool")
+endif()
 set(TF_TARGET_PRIVATE_OPTIONS "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   # TensorFlow uses a heap of deprecated proto fields so surpress these
@@ -155,11 +191,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   list(APPEND TF_TARGET_PRIVATE_OPTIONS "-Wno-deprecated-declarations")
 endif()
 # Additional compiler flags used when compiling TF Lite.
-set(TFLITE_TARGET_PUBLIC_OPTIONS "")
-set(TFLITE_TARGET_PRIVATE_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
+set(TFLITE_TARGET_PUBLIC_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
+set(TFLITE_TARGET_PRIVATE_OPTIONS "")
 set(TFLITE_TARGET_PRIVATE_DEFINITIONS "")
-# Additional library dependencies based upon enabled features.
-set(TFLITE_TARGET_DEPENDENCIES "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   # TFLite uses deprecated methods in neon2sse which generates a huge number of
   # warnings so surpress these until they're fixed.
@@ -169,7 +203,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   # Use NOMINMAX to disable the min / max macros in windows.h as they break
   # use of std::min std::max.
   # Use NOGDI to ERROR macro which breaks TensorFlow logging.
-  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DNOMINMAX" "-DNOGDI")
+  # Disable mmap, which is not available on Windows.
+  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DNOMINMAX" "-DNOGDI" "-DTFLITE_MMAP_DISABLED")
   # lite/kernels/conv.cc has more than 64k sections so enable /bigobj to
   # support compilation with MSVC2015.
   if(MSVC)
@@ -198,9 +233,15 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 endif()
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   find_library(ANDROID_LOG_LIB log)
+  list(APPEND TFLITE_TARGET_DEPENDENCIES
+    log
+  )
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
+if(CMAKE_SYSTEM_NAME MATCHES "Windows" AND BUILD_SHARED_LIBS)
+  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*simple_memory_arena_debug_dump\\.cc$")
+endif()
 
 # This particular file is excluded because the more explicit approach to enable
 # XNNPACK delegate is preferred to the weak-symbol one.
@@ -209,19 +250,37 @@ list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tflite_with_xnnpack\\.cc$")
 # Exclude Flex related files.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*with_selected_ops\\.cc$")
 
+# Exclude tensorflow_profiler_logger files.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tensorflow_profiler_logger\\.cc$")
+
 if(_TFLITE_ENABLE_MMAP)
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
 else()
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation\\.cc$")
 endif()
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_android\\.cc$")
+
+# Handle TFLite logging source.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_.*\\.cc$")
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_android.cc)
+elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_ios.cc)
+else()
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_default.cc)
 endif()
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_ios\\.cc$")
-endif()
+
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
+populate_tflite_source_vars(
+  "core/acceleration/configuration" TFLITE_CORE_ACCELERATION_SRCS
+  FILTER "xnnpack_plugin.*"
+  FILTER "(_test)\\.(cc|h)$"
+)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
+populate_tflite_source_vars("core/async" TFLITE_CORE_ASYNC_SRCS)
+populate_tflite_source_vars("core/async/c" TFLITE_CORE_ASYNC_C_SRCS)
+populate_tflite_source_vars("core/async/interop" TFLITE_CORE_ASYNC_INTEROP_SRCS)
+populate_tflite_source_vars("core/async/interop/c" TFLITE_CORE_ASYNC_INTEROP_C_SRCS)
+populate_tflite_source_vars("core/c" TFLITE_CORE_C_SRCS)
 populate_tflite_source_vars("core/experimental/acceleration/configuration" TFLITE_CORE_EXPERIMENTAL_SRCS)
 populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
 populate_tflite_source_vars("core/tools" TFLITE_CORE_TOOLS_SRCS)
@@ -293,6 +352,7 @@ if(TFLITE_ENABLE_GPU)
     ${TFLITE_SOURCE_DIR}/delegates/gpu/api.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate.cc
     ${TFLITE_SOURCE_DIR}/delegates/gpu/delegate_options.cc
+    ${TFLITE_SOURCE_DIR}/delegates/gpu/tflite_profile.cc
     ${TFLITE_SOURCE_DIR}/experimental/acceleration/compatibility/android_info.cc
     ${TFLITE_DELEGATES_GPU_CL_SRCS}
     ${TFLITE_DELEGATES_GPU_CL_DEFAULT_SRCS}
@@ -321,6 +381,14 @@ if(TFLITE_ENABLE_GPU)
     enable_language(OBJCXX)
     list(APPEND TFLITE_DELEGATES_METAL_SRCS
       ${TFLITE_SOURCE_DIR}/delegates/gpu/metal_delegate.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/buffer_convert.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/common.mm
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/compute_task.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_arguments.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_device.cc
+      ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/metal_spatial_tensor.cc
     )
     add_library(metal_delegate STATIC
       ${TFLITE_DELEGATES_METAL_SRCS}
@@ -328,8 +396,28 @@ if(TFLITE_ENABLE_GPU)
     target_include_directories(metal_delegate PUBLIC
       ${CMAKE_BINARY_DIR}/abseil-cpp
       ${CMAKE_BINARY_DIR}/flatbuffers/include
+      PRIVATE ${TENSORFLOW_SOURCE_DIR}
     )
-
+    #
+    # generate flatbuffers header for inference_context
+    #
+    if(FLATBUFFERS_FLATC_EXECUTABLE)
+      set(FLATC ${FLATBUFFERS_FLATC_EXECUTABLE})
+    else()
+      set(FLATC flatc)
+    endif()
+    add_custom_command(
+        OUTPUT ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+        COMMAND ${FLATC} --scoped-enums
+        -I ${TENSORFLOW_SOURCE_DIR}
+        -o ${TFLITE_SOURCE_DIR}/delegates/gpu/metal
+        -c ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context.fbs
+    )
+    add_custom_target(
+        inference_context_cc_fbs
+        DEPENDS ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/inference_context_generated.h
+    )
+    add_dependencies(metal_delegate inference_context_cc_fbs)
     #
     # supplementary libraries for libmetal_delegate
     #
@@ -337,11 +425,9 @@ if(TFLITE_ENABLE_GPU)
         buffer
         compute_task
         inference_context
-        linear_storage
         metal_arguments
         metal_device
         metal_spatial_tensor
-        texture2d
     )
    SET(METAL_DELEGATE_PATH ${TFLITE_SOURCE_DIR}/delegates/gpu/metal/)
 
@@ -411,6 +497,8 @@ if(TFLITE_ENABLE_XNNPACK)
     XNNPACK
   )
   list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DTFLITE_BUILD_WITH_XNNPACK_DELEGATE")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DXNNPACK_DELEGATE_ENABLE_QS8")
+  list(APPEND TFLITE_TARGET_PUBLIC_OPTIONS "-DXNNPACK_DELEGATE_ENABLE_QU8")
 endif()
 if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
   populate_tflite_source_vars("delegates/external"
@@ -464,10 +552,22 @@ populate_tflite_source_vars("kernels/internal/reference/integer_ops"
 populate_tflite_source_vars("kernels/internal/reference/sparse_ops"
   TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS
 )
+populate_tflite_source_vars("kernels/internal/optimized/4bit"
+  TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS
+  FILTER "(.*neon.*|.*sse.*)\\.(cc|h)"
+)
 set(TFLITE_PROFILER_SRCS
   ${TFLITE_SOURCE_DIR}/profiling/platform_profiler.cc
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.h
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/profiler.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting_internal.cc
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting_internal.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/profiler.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/c/telemetry_setting.h
+  ${TFLITE_SOURCE_DIR}/profiling/telemetry/telemetry_status.h
 )
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   list(APPEND TFLITE_PROFILER_SRCS
@@ -478,14 +578,21 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "iOS")
   list(APPEND TFLITE_PROFILER_SRCS
     ${TFLITE_SOURCE_DIR}/profiling/signpost_profiler.mm
   )
+  set_source_files_properties(${TFLITE_SOURCE_DIR}/profiling/signpost_profiler.mm PROPERTIES COMPILE_FLAGS -fno-objc-arc)
 endif()
 
 # TFLite library
 set(_ALL_TFLITE_SRCS
+  ${TFLITE_CORE_ACCELERATION_SRCS}
   ${TFLITE_CORE_API_SRCS}
+  ${TFLITE_CORE_C_SRCS}
   ${TFLITE_CORE_EXPERIMENTAL_SRCS}
   ${TFLITE_CORE_KERNELS_SRCS}
   ${TFLITE_CORE_SRCS}
+  ${TFLITE_CORE_ASYNC_SRCS}
+  ${TFLITE_CORE_ASYNC_C_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_SRCS}
+  ${TFLITE_CORE_ASYNC_INTEROP_C_SRCS}
   ${TFLITE_CORE_TOOLS_SRCS}
   ${TFLITE_C_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}
@@ -501,6 +608,7 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_KERNEL_INTERNAL_OPT_INTEGER_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_OPT_SRCS}
+  ${TFLITE_KERNEL_INTERNAL_OPT_4BIT_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_INTEGER_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SPARSE_OPS_SRCS}
   ${TFLITE_KERNEL_INTERNAL_REF_SRCS}
@@ -511,6 +619,7 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_PROFILER_SRCS}
   ${TFLITE_SOURCE_DIR}/internal/signature_def.h
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
+  ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
   ${TFLITE_SOURCE_DIR}/schema/schema_utils.cc
   ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
 )
@@ -525,7 +634,6 @@ target_include_directories(tensorflow-lite
 target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
-    NEON_2_SSE::NEON_2_SSE
     absl::flags
     absl::hash
     absl::status
@@ -535,8 +643,10 @@ target_link_libraries(tensorflow-lite
     farmhash
     fft2d_fftsg2d
     flatbuffers::flatbuffers
-    gemmlowp
+    gemmlowp::gemmlowp
+    ml_dtypes
     ruy::ruy
+    pthreadpool
     ${CMAKE_DL_LIBS}
     ${TFLITE_TARGET_DEPENDENCIES}
 )

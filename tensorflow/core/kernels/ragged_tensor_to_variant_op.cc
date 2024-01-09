@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"
+#include "tensorflow/core/kernels/ragged_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
@@ -187,11 +189,25 @@ class RaggedTensorToVariantOp : public OpKernel {
     batched_ragged_input.set_values(context->input(ragged_nested_splits_len));
     batched_ragged_input.mutable_nested_splits()->reserve(
         ragged_nested_splits_len);
+
+    // Validate nested_row_splits.
+    for (int i = ragged_nested_splits_len - 1; i >= 0; --i) {
+      SPLIT_TYPE nvals;
+      if (i == ragged_nested_splits_len - 1) {
+        OP_REQUIRES(context, batched_ragged_input.values().dims() >= 1,
+                    errors::InvalidArgument(
+                        "Requires flat_values to have rank>=1 when "
+                        "nested_row_splits is not empty, but is 0."));
+        nvals = batched_ragged_input.values().dim_size(0);
+      } else {
+        nvals = ragged_nested_splits_in[i + 1].dim_size(0) - 1;
+      }
+
+      OP_REQUIRES_OK(context, RaggedTensorVerifySplits<SPLIT_TYPE>(
+                                  ragged_nested_splits_in[i], true, nvals));
+    }
+
     for (int i = 0; i < ragged_nested_splits_len; i++) {
-      OP_REQUIRES(context, ragged_nested_splits_in[i].dims() == 1,
-                  errors::InvalidArgument("Requires nested_row_splits[", i, "]",
-                                          " to be rank 1 but is rank ",
-                                          ragged_nested_splits_in[i].dims()));
       batched_ragged_input.append_splits(ragged_nested_splits_in[i]);
     }
 
@@ -242,6 +258,15 @@ class RaggedTensorToVariantGradientOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    TensorShapeUtils::MakeShape(context->input(2).vec<int32>(),
                                                &dense_values_shape));
+
+    // Validate row_splits.
+    // Note rank of the row_splits can be 0. Besides, the number of ragged
+    // values corresponding to the outermost splits are unknown when calculating
+    // the gradient so we don't check the last element of `row_splits`
+    if (row_splits.dims()) {
+      OP_REQUIRES_OK(
+          context, RaggedTensorVerifySplits<SPLIT_TYPE>(row_splits, false, 0));
+    }
 
     const auto& flat_variants = encoded_variant.flat<Variant>();
 

@@ -1,7 +1,10 @@
 # Description:
 #   Contains the Keras save model API (internal TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
     default_visibility = [
         "//tensorflow/python/distribute:__pkg__",
@@ -31,13 +34,9 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:saver",
-        "//tensorflow/python:tensor_spec",
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:optimizers",
@@ -50,6 +49,12 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:metrics_utils",
         "//tensorflow/python/keras/utils:mode_keys",
+        "//tensorflow/python/lib/io:file_io",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python/training:saver",
+        "@pypi_h5py//:pkg",
     ],
 )

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/rpc/grpc.h"
 
+#include <memory>
+
 namespace tensorflow {
 namespace profiler {
 

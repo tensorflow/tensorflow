@@ -14,6 +14,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core:__pkg__"],
     features = ["-parse_headers"],
     licenses = ["notice"],
@@ -25,7 +26,7 @@ cc_library(
         "jpeg_handle.cc",
         "jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
-        "//tensorflow/tsl/platform:jpeg_hdrs",
+        "@local_tsl//tsl/platform:jpeg_hdrs",
     ],
     hdrs = [
         "jpeg_handle.h",
@@ -51,27 +52,37 @@ cc_library(
         "jpeg_handle.cc",
         "jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
-        "//tensorflow/tsl/platform:jpeg_hdrs",
+        "@local_tsl//tsl/platform:jpeg_hdrs",
     ]),
     hdrs = [
         "jpeg_handle.h",
         "jpeg_mem.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:jpeg_internal_hdrs",
-        "//tensorflow/tsl/platform:jpeg_internal_hdrs",
-        "//tensorflow/tsl/platform/default:integral_types.h",
-        "//tensorflow/tsl/platform/default:logging.h",
+        "@local_tsl//tsl/platform:jpeg_internal_hdrs",
+        "@local_tsl//tsl/platform/default:integral_types.h",
+        "@local_tsl//tsl/platform/default:logging.h",
     ],
     copts = tf_copts(),
     linkopts = if_android(["-ldl"]),
     deps = [
         "//tensorflow/core:core_stringpiece",
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:float8",
         "//tensorflow/core/platform:jpeg",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@libjpeg_turbo//:jpeg",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:tstring",
+        "@local_tsl//tsl/platform:types",
     ],
 )
 
