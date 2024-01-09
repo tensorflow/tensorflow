@@ -552,13 +552,13 @@ struct RnnDescriptorDeleter {
     CHECK_CUDNN_OK(cudnnDestroyRNNDescriptor(descriptor));
   }
 };
+#if CUDNN_VERSION < 8100
 struct PersistentRnnPlanDeleter {
   void operator()(cudnnPersistentRNNPlan_t plan) const {
-#if CUDNN_VERSION < 8100
     CHECK_CUDNN_OK(cudnnDestroyPersistentRNNPlan(plan));
-#endif  // CUDNN_VERSION < 8100
   }
 };
+#endif  // CUDNN_VERSION < 8100
 #if CUDNN_VERSION >= 7603
 struct CtcLossDescriptorDeleter {
   void operator()(cudnnCTCLossDescriptor_t descriptor) const {
