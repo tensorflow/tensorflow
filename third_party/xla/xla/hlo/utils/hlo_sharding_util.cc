@@ -33,20 +33,26 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/literal_util.h"
+#include "xla/map_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -753,43 +759,31 @@ HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64_t dim,
   // |   |   |               |   3   |              | | | | |
   // +---+---+               +---+---+              +-+-+-+-+
 
-  std::vector<int64_t> tile_dims(sharding.tile_assignment().num_dimensions(),
-                                 1);
-  // Handle ignore dimensions.
-  std::vector<int64_t> ignore_sizes;
-  int64_t ignore_size = 1;
+  auto old_dims = sharding.tile_assignment().dimensions();
+  std::vector<int64_t> new_dims(old_dims.begin(), old_dims.end());
+  std::vector<int> not_in_dims, dims_except_the_dim;
   for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
-    if (absl::c_find(dims, i) == dims.end()) {
-      int64_t size = sharding.tile_assignment().dim(i);
-      ignore_sizes.push_back(size);
-      tile_dims[i] = size;
-      ignore_size *= size;
+    if (i == dim) {
+      continue;
+    } else if (absl::c_find(dims, i) != dims.end()) {
+      dims_except_the_dim.push_back(i);
+      new_dims[dim] *= old_dims[i];
+      new_dims[i] = 1;
+    } else {
+      not_in_dims.push_back(i);
     }
   }
+  // perm = not_in_dims + {dim} + dims_except_the_dim
+  std::vector<int> perm;
+  perm.reserve(sharding.tile_assignment().num_dimensions());
+  perm.insert(perm.end(), not_in_dims.begin(), not_in_dims.end());
+  perm.push_back(dim);
+  perm.insert(perm.end(), dims_except_the_dim.begin(),
+              dims_except_the_dim.end());
 
-  using Buckets = std::vector<std::vector<int64_t>>;
-  Array<Buckets> buckets(ignore_sizes,
-                         Buckets(sharding.tile_assignment().dim(dim)));
-  sharding.tile_assignment().Each(
-      [&](absl::Span<const int64_t> index, int64_t device) {
-        std::vector<int64_t> ignore_index;
-        for (int64_t i = 0; i < index.size(); ++i) {
-          if (absl::c_find(dims, i) == dims.end()) {
-            ignore_index.push_back(index[i]);
-          }
-        }
-        buckets(ignore_index)[index[dim]].push_back(device);
-      });
-  std::vector<int64_t> devices;
-  buckets.Each([&](absl::Span<const int64_t> index, const Buckets& buckets) {
-    for (auto& bucket : buckets) {
-      devices.insert(devices.end(), bucket.begin(), bucket.end());
-    }
-  });
-  tile_dims[dim] = devices.size() / ignore_size;
-  Array<int64_t> tile_assignment(tile_dims);
-  tile_assignment.SetValues(devices);
-  return HloSharding::Tile(tile_assignment, sharding.metadata());
+  auto new_tile_assignment =
+      sharding.tile_assignment().Transpose(perm).Reshape(new_dims);
+  return HloSharding::Tile(new_tile_assignment, sharding.metadata());
 }
 
 bool ContainsTileSharding(const HloModule& module) {
