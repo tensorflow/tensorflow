@@ -1,5 +1,4 @@
-# Disable arm64 uploads while being worked on
-source ci/official/envs/disable_all_uploads
+source ci/official/envs/ci_nightly_uploads
 TFCI_BAZEL_COMMON_ARGS="--config release_arm64_linux --config tf_public_cache_push --config resultstore --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
 TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_arm64
 TFCI_BUILD_PIP_PACKAGE_ARGS="--nightly_flag"
