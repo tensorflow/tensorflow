@@ -1310,6 +1310,11 @@ class HloFusionInstruction : public HloCallableInstruction {
   // its fusion computation, to avoid referencing freed memory.
   void ClearFusionComputationInstruction();
 
+  // Clones the given instruction_to_append and inserts the clone into this
+  // callable instruction.
+  HloInstruction* CloneAndAppendInstructionIntoCalledComputation(
+      HloInstruction* instruction_to_append, bool add_output = false);
+
   std::string ToCategory() const override;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
