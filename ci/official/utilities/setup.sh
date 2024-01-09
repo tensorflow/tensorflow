@@ -63,9 +63,12 @@ else
 
   # TODO(angerson) write this documentation
   # Sources every env, in order, from the comma-separated list "TFCI"
+  # Assumes variables will resolve themselves correctly.
+  set +u
   for env_file in ${TFCI//,/ }; do
     source "./ci/official/envs/$env_file"
   done
+  set -u
 
   # Load those stored pre-existing TFCI_ vars, if any
   if [[ -s "$FROM_ENV" ]]; then
@@ -90,7 +93,7 @@ fi
 # we want to make sure those extra jobs don't upload anything.
 # TODO(angerson) Remove this once it's no longer relevant
 if [[ "${KOKORO_BUILD_INITIATOR:-}" != "kokoro" ]]; then
-  source ./ci/official/envs/disable_all_uploads
+  source ./ci/official/envs/no_upload
 fi
 
 # Create and expand to the full path of TFCI_OUTPUT_DIR

@@ -10,16 +10,14 @@ if ! grep "rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" .bazelrc; then
   echo "huh?"
 fi
 
-if [[ $TFCI_MACOS_CROSS_COMPILE_ENABLE == 1 ]]; then
+if [[ "$TFCI_MACOS_CROSS_COMPILE_ENABLE" == 1 ]]; then
+  echo astnaoeuhs
   # asdfadsf
 fi
 
 TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX"
 
-# Note that local Docker-enabled jobs also need:
-#
-#   TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"
-#
 # These flags share the user's gcloud credentials with the container, so that bazel
-# inside the container can authenticate. TF's CI jobs do not need this because
-# authentication on Linux is handled without credentials.
+# inside the container can authenticate. Note: TF's CI does not have any credential
+# stored here.
+TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"
