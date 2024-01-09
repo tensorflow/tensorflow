@@ -420,6 +420,30 @@ cc_library(
 )
 
 cc_library(
+    name = "outfeed_thunk",
+    srcs = ["outfeed_thunk.cc"],
+    hdrs = ["outfeed_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:util",
+        "//xla/service/gpu:io_feed_manager",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+    ],
+)
+
+cc_library(
+    name = "replica_id_thunk",
+    srcs = ["replica_id_thunk.cc"],
+    hdrs = ["replica_id_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:thunk",
+    ],
+)
+
+cc_library(
     name = "sequential_thunk",
     srcs = ["sequential_thunk.cc"],
     hdrs = ["sequential_thunk.h"],

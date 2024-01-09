@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_REPLICA_ID_THUNK_H_
-#define XLA_SERVICE_GPU_REPLICA_ID_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_REPLICA_ID_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_REPLICA_ID_THUNK_H_
 
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/thunk.h"
@@ -50,4 +50,4 @@ class PartitionIdThunk : public ReplicaOrPartitionIdThunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_REPLICA_ID_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_REPLICA_ID_THUNK_H_

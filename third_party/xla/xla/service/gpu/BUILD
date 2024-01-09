@@ -353,6 +353,8 @@ cc_library(
         "//xla/service/gpu/runtime3:infeed_thunk",
         "//xla/service/gpu/runtime3:kernel_thunk",
         "//xla/service/gpu/runtime3:norm_thunk",
+        "//xla/service/gpu/runtime3:outfeed_thunk",
+        "//xla/service/gpu/runtime3:replica_id_thunk",
         "//xla/service/gpu/runtime3:send_recv_thunk",
         "//xla/service/gpu/runtime3:sequential_thunk",
         "//xla/service/gpu/runtime3:while_thunk",
@@ -1062,13 +1064,9 @@ cc_library(
     name = "gpu_executable",
     srcs = [
         "gpu_executable.cc",
-        "outfeed_thunk.cc",
-        "replica_id_thunk.cc",
     ],
     hdrs = [
         "gpu_executable.h",
-        "outfeed_thunk.h",
-        "replica_id_thunk.h",
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
