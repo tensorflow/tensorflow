@@ -872,6 +872,21 @@ XLA_TEST_F(FusionClientLibraryTest, ManyLayoutTransformations) {
   ComputeAndCompare(&b, {});
 }
 
+XLA_TEST_F(CpuGpuFusionTest, TransposeDiamondWithNonTrivialBranch) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f64[16,16]{1,0} parameter(0)
+  trans = f64[16,16]{1,0} transpose(p), dimensions={1,0}
+  rev = f64[16,16]{1,0} reverse(trans), dimensions={0,1}
+  sub = f64[16,16]{1,0} subtract(trans, trans)
+  ROOT add = f64[16,16]{1,0} add(rev, sub)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-5, 1e-5}));
+}
+
 void BM_ParallelFusion(::testing::benchmark::State& state) {
   // Simple element-wise computation to benchmark parallel task partitioning.
 

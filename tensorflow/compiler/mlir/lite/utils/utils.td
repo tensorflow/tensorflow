@@ -17,6 +17,16 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
+include "mlir/IR/PatternBase.td"
+
+// Returns shape of a ranked tensor.
+// if called without a ranked tensor it will fail.
+def GetShape: NativeCodeCall<"GetShape($0)">;
+
+// Checks if the value has rank at most 'n'.
+class HasRankAtLeast<int n> : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
+          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
 
 // Checks value is not produced by a TFL_Quant or
 // from TFL_Quant Op with same quant type.
@@ -49,3 +59,7 @@ def AreLastTwoDimsTransposed : Constraint<CPred<
 
 // Checks if the param passed is of NoneType.
 def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;
+
+def ConstantLikePred : CPred<"::mlir::matchPattern($0, ::mlir::m_Constant())">;
+def IsConstantLike : Constraint<ConstantLikePred>;
+def NotConstantLike : Constraint<Neg<ConstantLikePred>>;

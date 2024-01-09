@@ -31,7 +31,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -89,9 +89,8 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
   int64_t total_memory = 0;
   int64_t available_memory = 0;
   se::Platform* platform = PluggableDeviceMachineManager(platform_name);
-  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                               platform, platform_device_id)
-                               .value();
+  se::StreamExecutor* se =
+      platform->ExecutorForDevice(platform_device_id.value()).value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return absl::UnknownError(
         absl::StrCat("Failed to query available memory for PluggableDevice ",

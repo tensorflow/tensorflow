@@ -83,13 +83,6 @@ class LocalService : public Service {
                         std::unique_ptr<Backend> backend);
   LocalService(const LocalService&) = delete;
   void operator=(const LocalService&) = delete;
-
-  // Validates the computation argument layouts, and returns the corresponding
-  // HloModuleConfig.
-  StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
-      const XlaComputation& computation,
-      const absl::Span<const Shape* const> argument_layouts,
-      const ExecutableBuildOptions& build_options);
 };
 
 }  // namespace xla

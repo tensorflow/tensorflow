@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker_client.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/data/utils.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
@@ -53,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/platform/retrying_utils.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -351,10 +351,10 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
               << task_info.worker_address() << "'.";
     return worker;
   }
-  LOG(WARNING) << "Failed to start client for data transfer protocol '"
-               << transfer_server.protocol() << "' for worker '"
-               << task_info.worker_address() << "'; falling back to grpc. "
-               << "Original error: " << worker.status();
+  LOG(INFO) << "Failed to start client for data transfer protocol '"
+            << transfer_server.protocol() << "' for worker '"
+            << task_info.worker_address() << "'; falling back to grpc. "
+            << "Original error: " << worker.status();
   metrics::RecordTFDataServiceDataTransferProtocolFallback(
       transfer_server.protocol(),
       static_cast<error::Code>(worker.status().raw_code()),
@@ -860,9 +860,10 @@ Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
         return OkStatus();
       }
     }
-    int64_t backoff_until =
-        std::min(deadline_micros,
-                 now_micros + ComputeBackoffMicroseconds(task->num_retries++));
+    int64_t backoff_until = std::min(
+        deadline_micros,
+        now_micros + absl::ToInt64Microseconds(
+                         tsl::ComputeRetryBackoff(task->num_retries++)));
     VLOG(1) << "Failed to get an element from worker "
             << task->info.worker_address() << ": " << s << ". Will retry in "
             << (backoff_until - now_micros) << " microseconds";

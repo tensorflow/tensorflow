@@ -1,6 +1,6 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.bzl", "xla_cc_binary")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 package_group(
     name = "friends",

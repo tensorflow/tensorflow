@@ -323,9 +323,31 @@ void Destroy(XLA_Shape* c_shape) {
 
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
-  CreateVector(layout.dim_level_types(), &c_layout->dim_level_types);
-  CreateVector(layout.dim_unique(), &c_layout->dim_unique);
-  CreateVector(layout.dim_ordered(), &c_layout->dim_ordered);
+  {
+    const int n = layout.dim_level_types_size();
+    absl::InlinedVector<xla::DimLevelType, xla::InlineRank()> dim_level_types(
+        n);
+    for (int i = 0; i < n; i++) {
+      dim_level_types[i] = layout.dim_level_type(i);
+    }
+    CreateVector(dim_level_types, &c_layout->dim_level_types);
+  }
+  {
+    const int n = layout.dim_unique_size();
+    absl::InlinedVector<bool, xla::InlineRank()> dim_unique(n);
+    for (int i = 0; i < n; i++) {
+      dim_unique[i] = layout.dim_unique(i);
+    }
+    CreateVector(dim_unique, &c_layout->dim_unique);
+  }
+  {
+    const int n = layout.dim_ordered_size();
+    absl::InlinedVector<bool, xla::InlineRank()> dim_ordered(n);
+    for (int i = 0; i < n; i++) {
+      dim_ordered[i] = layout.dim_ordered(i);
+    }
+    CreateVector(dim_ordered, &c_layout->dim_ordered);
+  }
   c_layout->index_primitive_type = layout.index_primitive_type();
   c_layout->pointer_primitive_type = layout.pointer_primitive_type();
   c_layout->element_size_in_bits = layout.element_size_in_bits();

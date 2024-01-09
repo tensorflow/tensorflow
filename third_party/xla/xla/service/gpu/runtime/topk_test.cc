@@ -64,11 +64,11 @@ using ParameterizedInterface =
 class TopkTest : public HloTestBase, public ParameterizedInterface {
  public:
   TopkTest()
-      : HloTestBase(*PlatformUtil::GetPlatform("CUDA"),
-                    *PlatformUtil::GetPlatform("CUDA"), true, true, {}) {}
+      : HloTestBase(*PlatformUtil::GetPlatform("gpu"),
+                    *PlatformUtil::GetPlatform("gpu"), true, true, {}) {}
 
  protected:
-  StatusOr<std::unique_ptr<HloModule>> TopkHlo(int n, int k,
+  StatusOr<std::unique_ptr<HloModule>> TopkHlo(int n, int k, int batch_size,
                                                std::string_view dtype) {
     return ParseAndReturnVerifiedModule(absl::Substitute(
         R"(
@@ -84,11 +84,11 @@ class TopkTest : public HloTestBase, public ParameterizedInterface {
       }
 
       ENTRY top_k {
-        %arg = $2[32,$0] parameter(0)
-        ROOT %result = ($2[32,$1], s32[32,$1]) custom-call(%arg), custom_call_target="TopK", to_apply=%compare
+        %arg = $3[$2,$0] parameter(0)
+        ROOT %result = ($3[$2,$1], s32[$2,$1]) custom-call(%arg), custom_call_target="TopK", to_apply=%compare
       }
     )",
-        n, k, dtype));
+        n, k, batch_size, dtype));
   }
 };
 
@@ -139,7 +139,7 @@ void ToSortAndSlice(HloModule* module) {
 TEST_P(TopkTest, ProducesCorrectResult) {
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
-  TF_ASSERT_OK_AND_ASSIGN(auto topk_module, TopkHlo(n, k, dtype));
+  TF_ASSERT_OK_AND_ASSIGN(auto topk_module, TopkHlo(n, k, batch_size, dtype));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           gpu::TopkSpecializer().Run(topk_module.get()));
   ASSERT_TRUE(changed);
@@ -152,7 +152,7 @@ INSTANTIATE_TEST_SUITE_P(
     Combine(
         /*n_kb=*/Values(1, 8, 12, 32),
         /*k=*/Values(1, 2, 4, 8, 16, 7, 12),
-        /*batch_size=*/Values(1, 16, 64, 128),
+        /*batch_size=*/Values(1, 16, 32, 64, 128),
         /*dtype=*/Values(absl::string_view("f32"), "bf16")),
     [](const auto& info) {
       return absl::Substitute("n$0KiB_k$1_batch_size$2_$3",

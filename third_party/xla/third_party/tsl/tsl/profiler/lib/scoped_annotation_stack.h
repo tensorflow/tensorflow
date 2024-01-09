@@ -55,10 +55,7 @@ class ScopedAnnotationStack {
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
-      nvtxEventAttributes_t attrs;
-      std::string name_str(name);
-      tsl::profiler::nvtx::MakeAttributes(name_str.c_str(), &attrs);
-      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+      tsl::profiler::nvtx::RangePush(domain.value(), name);
     } else  // NOLINT
 #endif
         if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
@@ -83,15 +80,17 @@ class ScopedAnnotationStack {
     std::optional<nvtxDomainHandle_t> domain =
         tsl::profiler::nvtx::GetNVTXDomain();
     if (TF_PREDICT_FALSE(domain.has_value())) {
-      auto name = name_generator();
-      nvtxEventAttributes_t attrs;
-      std::string name_str(name);
-      tsl::profiler::nvtx::MakeAttributes(name_str.c_str(), &attrs);
-      ::nvtxDomainRangePushEx(domain.value(), &attrs);
+      tsl::profiler::nvtx::RangePush(domain.value(), name_generator());
     } else  // NOLINT
 #endif
         if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-      return AnnotationStack::PushAnnotation(name_generator());
+      auto annotation = name_generator();
+      if constexpr (tsl::profiler::nvtx::has_annotation_api_v<
+                        std::decay_t<decltype(annotation)>>) {
+        return AnnotationStack::PushAnnotation(annotation.Title());
+      } else {
+        return AnnotationStack::PushAnnotation(std::move(annotation));
+      }
     }
 #endif
     return kInvalidActivity;

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/convert_mover.h"
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
 
 namespace xla {
@@ -113,6 +114,12 @@ StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
       continue;
     }
 
+    // Currently int4 is not supported in most ops so moving the convert is not
+    // safe.
+    if (primitive_util::Is4BitType(src_ty)) {
+      continue;
+    }
+
     VLOG(2) << "Moving increase-precision convert op " << convert_op->ToString()
             << " down the graph: " << instr->ToString();
 
@@ -160,6 +167,9 @@ StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
     PrimitiveType src_ty = instr->operand(0)->shape().element_type();
     PrimitiveType dst_ty = instr->shape().element_type();
     if (primitive_util::BitWidth(src_ty) <= primitive_util::BitWidth(dst_ty)) {
+      continue;
+    }
+    if (primitive_util::Is4BitType(dst_ty)) {
       continue;
     }
 

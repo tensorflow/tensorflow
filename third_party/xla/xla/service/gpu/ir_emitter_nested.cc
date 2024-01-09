@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
@@ -113,8 +115,7 @@ StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   for (const HloInstruction* param : params) {
     io_hlos.push_back(param);
     const Shape& param_shape = param->shape();
-    argument_types.push_back(
-        llvm_ir::ShapeToIrType(param_shape, module_)->getPointerTo());
+    argument_types.push_back(b_.getPtrTy());
     int64_t param_size =
         llvm_ir::ByteSizeOf(param_shape, module_->getDataLayout());
     argument_dereferenceable_bytes.push_back(param_size);
@@ -123,8 +124,7 @@ StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   const HloInstruction* root = nested_computation_.root_instruction();
   {
     const Shape& root_shape = root->shape();
-    argument_types.push_back(
-        llvm_ir::ShapeToIrType(root_shape, module_)->getPointerTo());
+    argument_types.push_back(b_.getPtrTy());
     int64_t root_size = llvm_ir::ByteSizeOf(
         root_shape, ir_emitter_context_->llvm_module()->getDataLayout());
     argument_dereferenceable_bytes.push_back(root_size);
@@ -184,20 +184,17 @@ StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
       llvm::Value* ret_value =
           Load(llvm_ir::ShapeToIrType(return_shape, module_), root_value,
                "load_ret_value");
-      Store(ret_value,
-            BitCast(out_parameter, root_value->getType(), "bitcast_ret_value"));
+      Store(ret_value, out_parameter);
     } else {
       CHECK(return_shape.IsTuple());
       llvm::Type* tuple_type = llvm_ir::ShapeToIrType(return_shape, module_);
-      llvm::Type* tuple_type_ptr = tuple_type->getPointerTo();
-      llvm::Value* tuple_ptr = BitCast(out_parameter, tuple_type_ptr);
 
       for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
         const Shape& element_shape = return_shape.tuple_shapes(i);
         llvm::Value* destination = llvm_ir::EmitGetTupleElement(
             element_shape,
             /*index=*/i,
-            /*alignment=*/1, tuple_ptr, tuple_type, &b_);
+            /*alignment=*/1, out_parameter, tuple_type, &b_);
         llvm::Value* source = llvm_ir::EmitGetTupleElement(
             element_shape,
             /*index=*/i,
@@ -257,7 +254,9 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
 
         global_name,
         /*allocation_idx=*/-1,
-        llvm::ArrayRef<uint8_t>(base, base + literal.size_bytes()), &b_);
+        DenseDataIntermediate::Alias(
+            absl::MakeSpan(base, base + literal.size_bytes())),
+        &b_);
   }
   return OkStatus();
 }
@@ -269,8 +268,8 @@ llvm::Value* AddrCastToDefault(llvm::Value* arg, llvm::IRBuilder<>& b) {
   llvm::Type* arg_type = arg->getType();
   CHECK(arg_type->isPointerTy());
   if (arg_type->getPointerAddressSpace() != 0) {
-    llvm::Type* generic_arg_type = llvm::PointerType::getWithSamePointeeType(
-        llvm::cast<llvm::PointerType>(arg_type), 0);
+    llvm::Type* generic_arg_type = llvm::PointerType::get(
+        llvm::cast<llvm::PointerType>(arg_type)->getContext(), 0);
     llvm::Value* addrspacecast_arg =
         b.CreateAddrSpaceCast(arg, generic_arg_type);
     return addrspacecast_arg;
@@ -293,8 +292,8 @@ void EmitAMDGPUAtomicAdd(llvm::IRBuilder<>* builder,
           // is in global addrspace (1)
           : builder->CreateAddrSpaceCast(
                 output_address,
-                llvm::PointerType::getWithSamePointeeType(output_address_type,
-                                                          /*AddressSpace=*/1));
+                llvm::PointerType::get(output_address_type->getContext(),
+                                       /*AddressSpace=*/1));
 
   builder->CreateAtomicRMW(
       llvm::AtomicRMWInst::FAdd, output_ptr, source, llvm::MaybeAlign(),
@@ -416,15 +415,8 @@ bool MaybeEmitDirectAtomicOperation(llvm::IRBuilder<>* builder,
 
       KernelSupportLibrary ksl(builder, llvm_ir::UnrollMode::kDefaultUnroll);
 
-      llvm::PointerType* output_address_type =
-          llvm::dyn_cast<llvm::PointerType>(output_address->getType());
-      llvm::Type* atomic_address_type = builder->getFloatTy()->getPointerTo(
-          output_address_type->getPointerAddressSpace());
-      llvm::Value* atomic_memory_address =
-          builder->CreatePointerBitCastOrAddrSpaceCast(output_address,
-                                                       atomic_address_type);
       llvm::Value* old_output = builder->CreateLoad(
-          builder->getFloatTy(), atomic_memory_address, "old_output");
+          builder->getFloatTy(), output_address, "old_output");
       auto is_nan_output = builder->CreateFCmpUNO(old_output, old_output);
       ksl.If(
           "is_nan_output", is_nan_output,
@@ -555,14 +547,13 @@ Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
   llvm::PointerType* output_address_type =
       llvm::dyn_cast<llvm::PointerType>(output_address->getType());
   CHECK_NE(output_address_type, nullptr);
-  CHECK(output_address_type->isOpaqueOrPointeeTypeMatches(element_type));
 
   int element_size = llvm_ir::GetSizeInBits(element_type);
 
   int atomic_size = (element_size < 32) ? 32 : element_size;
   llvm::Type* atomic_type = builder->getIntNTy(atomic_size);
   llvm::Type* atomic_address_type =
-      atomic_type->getPointerTo(output_address_type->getPointerAddressSpace());
+      builder->getPtrTy(output_address_type->getPointerAddressSpace());
 
   // cas_old_output_address and cas_new_output_address point to the scratch
   // memory where we store the old and new values for the repeated atomicCAS
@@ -598,16 +589,14 @@ Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
         offset);
     binop_output_address = builder->CreateIntToPtr(
         binop_output_address,
-        llvm::PointerType::get(
-            element_type,
+        builder->getPtrTy(
             cas_new_output_address->getType()->getPointerAddressSpace()));
   } else {
     atomic_memory_address = builder->CreatePointerBitCastOrAddrSpaceCast(
         output_address, atomic_address_type);
     binop_output_address = builder->CreatePointerBitCastOrAddrSpaceCast(
         cas_new_output_address,
-        llvm::PointerType::get(
-            element_type,
+        builder->getPtrTy(
             cas_new_output_address->getType()->getPointerAddressSpace()));
   }
 

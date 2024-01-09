@@ -673,6 +673,25 @@ message ConfigProto {
     // Whether runtime execution uses TFRT.
     bool use_tfrt = 18;
 
+    // If true, use Pathways with TFRT API for multi host support.
+    bool enable_multi_host = 27;
+
+    // Port for the Pathways server. Ignored if enable_multi_host=false.
+    int32 backend_server_port = 28;
+
+    // If true, TFRT will use TPU specific compiler passes and perform TPU
+    // specific initialization.
+    bool target_tpu = 29;
+
+    // If true, TFRT will use GPU specific compiler passes and perform GPU
+    // specific initialization.
+    bool target_gpu = 30;
+
+    // The threshold to merge small streams in TFRT. The stream with cost
+    // smaller than the threshold will be merged. Setting it to value 1
+    // disables all merges.
+    int32 stream_merge_threshold = 31;
+
     // The field "coordination_service was previously specified as a string;
     // this has been replaced with a message below.
     reserved 19;
@@ -711,7 +730,7 @@ message ConfigProto {
 
     reserved 25;
 
-    // Next: 27
+    // Next: 32
   }
 
   Experimental experimental = 16;

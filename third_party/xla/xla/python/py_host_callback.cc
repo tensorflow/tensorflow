@@ -27,6 +27,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "xla/layout_util.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/callback.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/host_callback.h"
@@ -112,7 +113,8 @@ PyCpuLoadedHostCallback::Create(ifrt::Client* ifrt_client,
                                 absl::Span<const Shape> operand_shapes,
                                 absl::Span<const Shape> result_shapes) {
   ifrt::PlatformId platform_id = ifrt_client->platform_id();
-  if (platform_id != GpuId() && platform_id != CpuId()) {
+  if (platform_id != CpuId() && platform_id != CudaId() &&
+      platform_id != RocmId()) {
     return Unimplemented("CpuCallback supports CPU and GPU only");
   }
 
@@ -204,6 +206,8 @@ PyHostSendAndRecvLoadedHostCallback::PyHostSendAndRecvLoadedHostCallback(
 PyHostSendAndRecvLoadedHostCallback::~PyHostSendAndRecvLoadedHostCallback() {
   GlobalPyRefManager()->AddGarbage(
       absl::MakeSpan(static_cast<pybind11::object*>(&callable_), 1));
+  GlobalPyRefManager()->AddGarbage(
+      absl::MakeSpan(static_cast<pybind11::object*>(&serializer_), 1));
 }
 
 StatusOr<std::string> PyHostSendAndRecvLoadedHostCallback::Serialize() const {

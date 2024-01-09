@@ -3,11 +3,7 @@
 
 load("//tsl/cuda:stub.bzl", "cuda_stub")
 load(
-    "//tsl/platform:build_config.bzl",
-    "tsl_cc_test",
-)
-load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
@@ -44,7 +40,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@local_config_cuda//cuda:cuda_headers",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )
 
@@ -67,7 +64,8 @@ cc_library(
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )
 
@@ -90,7 +88,8 @@ cc_library(
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )
 
@@ -122,7 +121,8 @@ cc_library(
         "//tsl:is_cuda_enabled_and_oss": [
             ":cuda",
             "//tsl/platform:dso_loader",
-            "//tsl/platform:env",
+            "//tsl/platform:load_library",
+            "//tsl/platform:logging",
             "@com_google_absl//absl/container:flat_hash_set",
             "@local_config_cuda//cuda:cuda_headers",
         ],
@@ -148,11 +148,11 @@ cc_library(
     textual_hdrs = ["cudnn.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
-        ":cudnn_version",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_config_cuda//cuda:cudnn_header",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )
 
@@ -166,27 +166,6 @@ cc_library(
     name = "tensorrt_rpath",
     linkopts = if_cuda_is_configured(cuda_rpath_flags("tensorrt")),
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "cudnn_version",
-    srcs = ["cudnn_version.cc"],
-    hdrs = ["cudnn_version.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tsl_cc_test(
-    name = "cudnn_version_test",
-    srcs = ["cudnn_version_test.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cudnn_version",
-        "//tsl/platform:test",
-        "//tsl/platform:test_main",
-    ],
 )
 
 cuda_stub(
@@ -209,7 +188,8 @@ cc_library(
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )
 
@@ -235,7 +215,8 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )
 
@@ -259,7 +240,8 @@ cc_library(
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )
 
@@ -283,7 +265,8 @@ cc_library(
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )
 
@@ -309,6 +292,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_nccl//:nccl_headers",
         "//tsl/platform:dso_loader",
-        "//tsl/platform:env",
+        "//tsl/platform:logging",
+        "//tsl/platform:load_library",
     ]),
 )

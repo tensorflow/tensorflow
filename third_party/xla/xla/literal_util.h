@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <iterator>
+#include <optional>
 #include <ostream>
 #include <random>
 #include <string>
@@ -278,6 +279,12 @@ class LiteralUtil {
   // be returned for a 2-dimensional index with dimension 0 index equal to 7,
   // dimension 1 equal to 8.
   static std::string MultiIndexAsString(absl::Span<const int64_t> multi_index);
+
+  // Converts the given literal to a scalar int64_t, if possible.
+  //
+  // Fails if the literal is not an integral type or if the value it contains
+  // cannot be represented as an int64_t.
+  static std::optional<int64_t> LiteralAsScalarInt64(const Literal& l);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);

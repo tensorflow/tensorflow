@@ -303,7 +303,8 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
                                  profiler::TraceMeLevel::kInfo);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
+  GrpcMasterService(const GrpcMasterService&) = delete;
+  void operator=(const GrpcMasterService&) = delete;
 };
 
 tsl::AsyncServiceInterface* NewGrpcMasterService(

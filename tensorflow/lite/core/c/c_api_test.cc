@@ -291,6 +291,7 @@ TEST(CApiSimple, TfLiteInterpreterGetTensor) {
   TfLiteInterpreterDelete(interpreter);
 }
 
+#if !TFLITE_USE_OPAQUE_DELEGATE
 TEST(CApiSimple, Delegate) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -316,6 +317,7 @@ TEST(CApiSimple, Delegate) {
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
   TfLiteInterpreterDelete(interpreter);
 }
+#endif
 
 TEST(CApiSimple, DelegateExternal_GetExecutionPlan) {
   TfLiteModel* model =
@@ -409,6 +411,7 @@ TEST(CApiSimple, DelegateExternal_MarkSubgraphAsDelegationSkippable) {
   TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
+#if !TFLITE_USE_OPAQUE_DELEGATE
 TEST(CApiSimple, DelegateFails) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -428,6 +431,7 @@ TEST(CApiSimple, DelegateFails) {
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);
 }
+#endif
 
 struct DelegateState {
   bool delegate_prepared;

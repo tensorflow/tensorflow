@@ -83,7 +83,8 @@ class CrossOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CrossOp);
+  CrossOp(const CrossOp&) = delete;
+  void operator=(const CrossOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Cross"), CrossOp);

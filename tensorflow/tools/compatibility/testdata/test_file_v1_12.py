@@ -76,13 +76,6 @@ class TestUpgrade(test_util.TensorFlowTestCase):
         logits=[0.1, 0.8], labels=[0, 1])
     self.assertAllClose(out, 0.40318608)
 
-  def testUniformUnitScalingInitializer(self):
-    init = tf.initializers.uniform_unit_scaling(0.5, seed=1)
-    self.assertArrayNear(
-        [-0.45200047, 0.72815341],
-        init((2,)).numpy(),
-        err=1e-6)
-
 
 if __name__ == "__main__":
   test_lib.main()

@@ -1099,7 +1099,8 @@ class DecodeProtoOp : public OpKernel {
   // security review.
   bool sanitize_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DecodeProtoOp);
+  DecodeProtoOp(const DecodeProtoOp&) = delete;
+  void operator=(const DecodeProtoOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeProtoV2").Device(DEVICE_CPU),

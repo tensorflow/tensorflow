@@ -132,7 +132,8 @@ class ZlibInputStream : public InputStreamInterface {
   // Number of *uncompressed* bytes that have been read from this stream.
   int64_t bytes_read_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ZlibInputStream);
+  ZlibInputStream(const ZlibInputStream&) = delete;
+  void operator=(const ZlibInputStream&) = delete;
 };
 
 }  // namespace io

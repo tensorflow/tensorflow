@@ -1454,8 +1454,10 @@ class TrtGraphConverterV2(object):
             graphdef=self._converted_func.graph.as_graph_def(add_shapes=True),
             dot_output_filename=graphviz_path)
       except Exception as e:
-        logging.error("An Exception occured during the export of the graph "
-                      f"visualization: {e}")
+        logging.error(
+            "An Exception occurred during the export of the graph "
+            f"visualization: {e}"
+        )
 
     return self._converted_func
 

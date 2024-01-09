@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_COMMON_H_
 #define XLA_SERVICE_GPU_RUNTIME_TOPK_KERNEL_COMMON_H_
 
+#include <cstddef>
+
 // Contains shared declarations between topk_kernel.cc and topk_kernel.cu.cc
 // but avoids including ABSL, etc. which some CUDA compilers cannot
 // handle.

@@ -47,7 +47,8 @@ class XlaIfOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaIfOp);
+  XlaIfOp(const XlaIfOp&) = delete;
+  void operator=(const XlaIfOp&) = delete;
 
   NameAttrList then_branch_;
   NameAttrList else_branch_;

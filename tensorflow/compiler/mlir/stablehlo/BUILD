@@ -53,5 +53,6 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":stablehlo",
+        #internal proto upb dep
     ],
 )

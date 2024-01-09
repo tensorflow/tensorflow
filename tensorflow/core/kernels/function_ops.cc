@@ -275,7 +275,8 @@ class SymbolicGradientOp : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
+  SymbolicGradientOp(const SymbolicGradientOp&) = delete;
+  void operator=(const SymbolicGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name(kGradientOp).Device(DEVICE_CPU),

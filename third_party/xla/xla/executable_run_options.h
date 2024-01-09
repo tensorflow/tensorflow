@@ -51,6 +51,10 @@ class DeviceAssignment;
 class ExecutionProfile;
 class Shape;
 
+namespace cpu {
+class CpuExecutableRunOptions;
+}  // namespace cpu
+
 namespace gpu {
 class GpuExecutableRunOptions;
 }  // namespace gpu
@@ -210,6 +214,12 @@ class ExecutableRunOptions {
     return recv_device_memory_function_;
   }
 
+  // CPU-backend specific options. These are kept out-of-line to avoid bloating
+  // the size of this dependency for CPU-only AOT builds.
+  ExecutableRunOptions& set_cpu_executable_run_options(
+      const cpu::CpuExecutableRunOptions* cpu_executable_run_options);
+  const cpu::CpuExecutableRunOptions* cpu_executable_run_options() const;
+
   // GPU-backend specific options. These are kept out-of-line to avoid bloating
   // the size of this dependency for CPU-only AOT builds.
   ExecutableRunOptions& set_gpu_executable_run_options(
@@ -231,6 +241,7 @@ class ExecutableRunOptions {
   SendDeviceMemoryFunction* send_device_memory_function_ = nullptr;
   RecvDeviceMemoryFunction* recv_device_memory_function_ = nullptr;
   RunId run_id_;
+  const cpu::CpuExecutableRunOptions* cpu_executable_run_options_ = nullptr;
   const gpu::GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
 };
 

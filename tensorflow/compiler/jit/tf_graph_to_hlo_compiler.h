@@ -51,7 +51,8 @@ class TfGraphToHloCompiler : public TfToHloCompiler {
  private:
   XlaCompiler xla_compiler_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TfGraphToHloCompiler);
+  TfGraphToHloCompiler(const TfGraphToHloCompiler&) = delete;
+  void operator=(const TfGraphToHloCompiler&) = delete;
 };
 
 }  // namespace tensorflow

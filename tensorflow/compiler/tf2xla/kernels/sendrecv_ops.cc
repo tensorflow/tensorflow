@@ -34,7 +34,8 @@ class SendOp : public XlaOpKernel {
  private:
   string tensor_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SendOp);
+  SendOp(const SendOp&) = delete;
+  void operator=(const SendOp&) = delete;
 };
 
 SendOp::SendOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -59,7 +60,8 @@ class RecvOp : public XlaOpKernel {
   string tensor_name_;
   xla::Shape shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RecvOp);
+  RecvOp(const RecvOp&) = delete;
+  void operator=(const RecvOp&) = delete;
 };
 
 RecvOp::RecvOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {

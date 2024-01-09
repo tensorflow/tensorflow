@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -51,10 +52,14 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+const int64_t kDefaultMemorySpace = 0;
+
 bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         op == HloOpcode::kBroadcast || op == HloOpcode::kIota ||
          hlo.IsEffectiveBitcast();
 }
 }  // namespace
@@ -166,7 +171,7 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   return false;
 }
 
-ResourcesVector AsyncTracker::GetResourcesFromInstruction(
+ResourcesVector AsyncTracker::GetResourcesFromInstructionImpl(
     const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   auto get_resource_for_op = [](HloOpcode op) -> ResourceType {
@@ -241,6 +246,14 @@ ResourcesVector AsyncTracker::GetResourcesFromInstruction(
     default:
       return ResourcesVector{};
   }
+}
+
+ResourcesVector AsyncTracker::GetResourcesFromInstruction(
+    const HloInstruction& hlo) const {
+  if (!resources_cache_.contains(&hlo)) {
+    resources_cache_.insert({&hlo, GetResourcesFromInstructionImpl(hlo)});
+  }
+  return resources_cache_.at(&hlo);
 }
 
 int64_t AsyncTracker::GetNumResourcesPerInstruction(
@@ -406,6 +419,14 @@ AsyncTracker::GetOccupiedShareableResourcesFromVector(
   return {};
 }
 
+// For now, only the target-defined resources have serial hazard type, so
+// this async tracker does not know which resources are serial.
+absl::InlinedVector<int64_t, 1>
+AsyncTracker::GetOccupiedSerialResourcesFromVector(
+    const ResourcesVector& resources) const {
+  return {};
+}
+
 BufferInfoTracker::BufferInfoTracker(
     const HloModule* module, const HloAliasAnalysis* alias_analysis,
     const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
@@ -518,6 +539,10 @@ void MemoryPressureTracker::Initialize(
   if (!initial_live_buffers.empty()) {
     for (HloBuffer::Id id : initial_live_buffers) {
       auto& buffer = buffer_tracker_.GetBufferInfo(id);
+      if (buffer.value->values()[0]->shape().has_layout() &&
+          buffer.value->values()[0]->shape().layout().memory_space() != 0) {
+        continue;
+      }
       live_buffers_[buffer.value->id()] = 1;
       initial_memory_pressure_ += buffer.buffer_size;
     }
@@ -544,7 +569,10 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   for (auto* op : instruction->operands()) {
     auto& output_values = output_buffers_[op];
     for (auto& info : output_values) {
-      if (ShouldSkipBufferAllocations(instruction, info.second)) {
+      if (ShouldSkipBufferAllocations(instruction, info.second) ||
+          (info.first.value->values()[0]->shape().has_layout() &&
+           info.first.value->values()[0]->shape().layout().memory_space() !=
+               kDefaultMemorySpace)) {
         continue;
       }
       if (live_buffers_[info.first.value->id()] == 0) {
@@ -560,8 +588,14 @@ void MemoryPressureTracker::UpdateBuffers(const HloInstruction* instruction) {
   CHECK(it != defined_buffers_.end());
   if (!ShouldSkipBufferReleases(instruction)) {
     for (auto& b : it->second) {
+      if (b.value->values()[0]->shape().has_layout() &&
+          b.value->values()[0]->shape().layout().memory_space() !=
+              kDefaultMemorySpace) {
+        continue;
+      }
       if (live_buffers_[b.value->id()] != 0) {
         if (b.first_definition == instruction) {
+          // VLOG(0) << "Removing " << b.buffer_size;
           live_memory_usage_ -= b.buffer_size;
           live_buffers_set_.erase(b.value->id());
         }
@@ -595,7 +629,10 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
     auto it = output_buffers_.find(op);
     CHECK(it != output_buffers_.end());
     for (auto& b : it->second) {
-      if (ShouldSkipBufferAllocations(instruction, b.second)) {
+      if (ShouldSkipBufferAllocations(instruction, b.second) ||
+          (b.first.value->values()[0]->shape().has_layout() &&
+           b.first.value->values()[0]->shape().layout().memory_space() !=
+               kDefaultMemorySpace)) {
         continue;
       }
       if (!live_buffers_[b.first.value->id()]) {
@@ -609,6 +646,11 @@ std::pair<int64_t, int64_t> MemoryPressureTracker::MemoryPressureDifference(
   // Decrease memory pressure if some buffers are released.
   if (!ShouldSkipBufferReleases(instruction)) {
     for (auto& b : it->second) {
+      if (b.value->values()[0]->shape().has_layout() &&
+          b.value->values()[0]->shape().layout().memory_space() !=
+              kDefaultMemorySpace) {
+        continue;
+      }
       if (live_buffers_[b.value->id()]) {
         if (b.first_definition == instruction) {
           increase -= b.buffer_size;
@@ -771,6 +813,20 @@ class ReadySetLt {
             b_ready_interval < a_ready_interval, b, "kLessStall")) {
       return *value;
     }
+    if (sched_state_.config.resource_serializing) {
+      // Prioritize scheduling the instruction which has less serial-resource
+      // conflicts with the resources in flight.
+      const int64_t a_num_conflicting_resources =
+          GetNumConflictingSerialResources(a);
+      const int64_t b_num_conflicting_resources =
+          GetNumConflictingSerialResources(b);
+      if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+              a_num_conflicting_resources < b_num_conflicting_resources, a,
+              b_num_conflicting_resources < a_num_conflicting_resources, b,
+              "kLessSerialResourceConflict")) {
+        return *value;
+      }
+    }
     if (sched_state_.config.aggressive_scheduling_policies) {
       // If an instruction releasing a resource is not resource constrained and
       // has an async depth of 0, delay it as much as possible to avoid
@@ -857,11 +913,11 @@ class ReadySetLt {
       }
     }
     // If we computed memory pressure increase of instructions when we don't
-    // have a better choice let's just choose the one that decreases or
-    // increases less memory pressure.
+    // have a better choice let's just choose the one that decreases the memory
+    // pressure.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            a_increase.first < b_increase.first, a,
-            b_increase.first < a_increase.first, b, "kDecreaseMemory")) {
+            a_increase.first < 0, a, b_increase.first < 0, b,
+            "kDecreaseMemory")) {
       return *value;
     }
     // If none of the heuristics above triggers then prefer to schedule
@@ -993,6 +1049,19 @@ class ReadySetLt {
           std::max(start_result->second, cand.pressure_change->second);
     }
     return *cand.pressure_change;
+  }
+  int64_t GetNumConflictingSerialResources(
+      DefaultSchedulerCore::ScheduleCandidate& cand) const {
+    auto resources =
+        sched_state_.async_tracker->GetOccupiedSerialResourcesFromVector(
+            cand.node->GetResources());
+    int64_t num_conflicting_resources = 0;
+    for (int64_t resource : resources) {
+      if (!sched_state_.resources_in_flight.contains(resource)) continue;
+      num_conflicting_resources +=
+          sched_state_.resources_in_flight.at(resource);
+    }
+    return num_conflicting_resources;
   }
 };
 
@@ -1384,6 +1453,28 @@ std::string HloEdge::ToString() const {
                       " latency: ", Latency(), "\n");
 }
 
+bool HloScheduleGraph::IsPredecessorTransitively(
+    const HloGraphNode* node, const HloGraphNode* possible_predecessor) {
+  absl::flat_hash_set<const HloGraphNode*> visited = {possible_predecessor};
+  std::vector<const HloGraphNode*> to_visit_queue = {node};
+  while (!to_visit_queue.empty()) {
+    const HloGraphNode* curr = to_visit_queue.back();
+    to_visit_queue.pop_back();
+    if (curr == possible_predecessor) {
+      return true;
+    }
+    if (visited.contains(curr)) {
+      continue;
+    }
+    visited.insert(curr);
+    for (const auto& edge : curr->GetPredecessors()) {
+      auto user_node_it = nodes_.find(&edge.Target().GetInstr());
+      to_visit_queue.push_back(user_node_it->second.get());
+    }
+  }
+  return false;
+}
+
 HloScheduleGraph::HloScheduleGraph(
     const std::vector<HloInstruction*>* post_order_instructions,
     HloAliasAnalysis* alias_analysis, const LatencyEstimator* latency_estimator,
@@ -1412,14 +1503,8 @@ HloScheduleGraph::HloScheduleGraph(
         async_tracker->GetOccupiedShareableResourcesFromVector(
             new_node_it->second->GetResources());
   }
-  // Cache used to detect if we already added a dependency between two nodes
-  // to avoid duplicates in the predecessors/successors lists.
-  absl::flat_hash_map<const HloInstruction*,
-                      absl::flat_hash_set<const HloInstruction*>>
-      dependencies_set;
-  auto add_dependency_helper = [&dependencies_set, latency_estimator,
-                                async_tracker](HloGraphNode* from,
-                                               HloGraphNode* to) {
+  auto add_dependency_helper = [latency_estimator](HloGraphNode* from,
+                                                   HloGraphNode* to) {
     // Get the latency between these two instructions for this edge.
     const LatencyEstimator::TimeCost latency =
         latency_estimator->GetLatencyBetween(*from, *to);
@@ -1429,9 +1514,6 @@ HloScheduleGraph::HloScheduleGraph(
     to->predecessors_.push_back(HloEdge(latency, from));
     ++to->indegree_;
     ++from->outdegree_;
-    if (async_tracker->IsSupportedAsyncStart(to->GetInstr())) {
-      dependencies_set[&to->GetInstr()].insert(&from->GetInstr());
-    }
   };
   // Add dependencies edges between each of the graph nodes.
   for (const HloInstruction* instr : *post_order_instructions) {
@@ -1472,11 +1554,8 @@ HloScheduleGraph::HloScheduleGraph(
                 // The instruction itself and later ones might be
                 // identified as use.instruction. Add checks here to avoid
                 // adding dependencies for these instructions.
-                // Also don't add the dependency if it has been already added.
-                auto dep_it = dependencies_set.find(async_start);
                 if (use.instruction == async_start ||
-                    reachability->IsReachable(instr, use.instruction) ||
-                    dep_it->second.contains(use.instruction)) {
+                    reachability->IsReachable(instr, use.instruction)) {
                   continue;
                 }
                 auto it = nodes_.find(use.instruction);
@@ -1485,6 +1564,11 @@ HloScheduleGraph::HloScheduleGraph(
                 it = nodes_.find(async_start);
                 CHECK(it != nodes_.end());
                 HloGraphNode* start_node = it->second.get();
+                // If there is already a transitive link between the nodes the
+                // other way then skip adding this one.
+                if (IsPredecessorTransitively(pred_node, start_node)) {
+                  continue;
+                }
                 pred_node->successors_.push_back(HloEdge(1, start_node));
                 start_node->predecessors_.push_back(HloEdge(1, pred_node));
                 ++pred_node->outdegree_;
@@ -1608,6 +1692,7 @@ Status DefaultSchedulerCore::InitializeScheduler(const HloModule* module) {
   module_pressure_state_ = std::make_unique<ModulePressureState>(
       module, alias_analysis_.get(), shape_size_bytes_);
   module_pressure_state_->InitializePressureStates();
+  module_pressure_state_->SetMemoryPeak(0);
   return OkStatus();
 }
 
@@ -1944,15 +2029,40 @@ StatusOr<bool> LatencyHidingScheduler::Run(
   if (computations_to_schedule.empty()) {
     return false;
   }
-
+  absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>
+      saved_schedules;
   TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+  for (HloComputation* computation : computations_to_schedule) {
+    TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
+                        scheduler_core_->ScheduleComputation(computation));
+    saved_schedules[computation] = std::move(new_schedule);
+  }
+  uint64_t initial_memory_limit = scheduler_core_->GetMemoryLimit();
+  for (int64_t iter = 0;
+       iter < scheduler_core_->GetRerunTimes() &&
+       scheduler_core_->GetMemoryPeak() > initial_memory_limit;
+       iter++) {
+    LOG(INFO) << "LatencyHidingScheduler current memory usage: "
+              << scheduler_core_->GetMemoryPeak()
+              << " bytes, does not fit in limit: "
+              << scheduler_core_->GetMemoryLimit()
+              << ". Setting the new limit to "
+              << scheduler_core_->GetMemoryLimit() * 0.9;
+    TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+    scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
+    for (HloComputation* computation : computations_to_schedule) {
+      TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
+                          scheduler_core_->ScheduleComputation(computation));
+      saved_schedules[computation] = std::move(new_schedule);
+    }
+  }
+  LOG(INFO) << "LatencyHidingScheduler current memory usage: "
+            << scheduler_core_->GetMemoryPeak() << " bytes.";
   for (HloComputation* computation : computations_to_schedule) {
     VLOG(1) << "Statistics before scheduling:";
     LogScheduleStatistics(computation);
-    TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
-                        scheduler_core_->ScheduleComputation(computation));
-    module->schedule().set_sequence(computation,
-                                    absl::MakeConstSpan(new_schedule));
+    module->schedule().set_sequence(
+        computation, absl::MakeConstSpan(saved_schedules[computation]));
     VLOG(1) << "Statistics after scheduling:";
     LogScheduleStatistics(computation);
   }

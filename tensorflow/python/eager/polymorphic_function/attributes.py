@@ -150,7 +150,7 @@ def _parse_func_attr_value(key, value):
     return attr_value_pb2.AttrValue(list=list_value)
   else:
     raise ValueError(
-        f"Attribute {key} must be bool, int, float, string, list, or"
+        f"Attribute {key} must be bool, int, float, string, list, or "
         f"AttrValue. Got {type(value)}."
     )
 

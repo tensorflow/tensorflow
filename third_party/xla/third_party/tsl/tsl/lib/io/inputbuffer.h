@@ -107,7 +107,8 @@ class InputBuffer {
   char* pos_;    // Current position in "buf"
   char* limit_;  // Just past end of valid data in "buf"
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InputBuffer);
+  InputBuffer(const InputBuffer&) = delete;
+  void operator=(const InputBuffer&) = delete;
 };
 
 // Implementation details.

@@ -16,7 +16,7 @@
 Build dependencies and utilities for the TPU driver interface.
 """
 
-def go_grpc_library(**kwargs):
+def go_grpc_library(**_kwargs):
     # A dummy macro placeholder for compatibility reason.
     pass
 

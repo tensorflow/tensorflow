@@ -177,7 +177,8 @@ class CPUAllocator : public Allocator {
   std::atomic<int> single_allocation_warning_count_;
   int total_allocation_warning_count_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
+  CPUAllocator(const CPUAllocator&) = delete;
+  void operator=(const CPUAllocator&) = delete;
 };
 
 class CPUAllocatorFactory : public AllocatorFactory {

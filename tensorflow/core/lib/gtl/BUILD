@@ -144,12 +144,6 @@ cc_library(
 )
 
 cc_library(
-    name = "optional",
-    hdrs = ["optional.h"],
-    deps = ["@com_google_absl//absl/types:optional"],
-)
-
-cc_library(
     name = "priority_queue_util",
     hdrs = ["priority_queue_util.h"],
 )
@@ -171,7 +165,6 @@ filegroup(
         "flatset.h",
         "inlined_vector.h",
         "iterator_range.h",
-        "optional.h",
         "priority_queue_util.h",
         "@local_tsl//tsl/lib/gtl:legacy_lib_gtl_headers",
     ],
@@ -236,7 +229,6 @@ filegroup(
         "iterator_range.h",
         "manual_constructor.h",
         "map_util.h",
-        "optional.h",
         "priority_queue_util.h",
         "//tensorflow/core/lib/gtl/subtle:map_traits",
         "@local_tsl//tsl/lib/gtl:mobile_srcs_only_runtime",
@@ -259,7 +251,6 @@ filegroup(
         "iterator_range.h",
         "manual_constructor.h",
         "map_util.h",
-        "optional.h",
         "priority_queue_util.h",
         "top_n.h",
         "//tensorflow/core/lib/gtl/subtle:map_traits",

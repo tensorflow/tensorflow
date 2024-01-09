@@ -81,7 +81,8 @@ class ExecutorCache {
   absl::Mutex mutex_;
   absl::node_hash_map<int, Entry> cache_ ABSL_GUARDED_BY(mutex_);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ExecutorCache);
+  ExecutorCache(const ExecutorCache&) = delete;
+  void operator=(const ExecutorCache&) = delete;
 };
 
 }  // namespace stream_executor

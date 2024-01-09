@@ -53,7 +53,8 @@ class FakeTask : public BatchTask {
  private:
   const size_t size_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FakeTask);
+  FakeTask(const FakeTask&) = delete;
+  void operator=(const FakeTask&) = delete;
 };
 
 using Queue = BatchScheduler<FakeTask>;

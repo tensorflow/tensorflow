@@ -611,9 +611,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // CHECK-LABEL: func @no_replication_device
   func.func @no_replication_device() {
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "__no_replication_cluster", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device = "/job:worker/replica:0/task:0/device:TPU:1", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
+    // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:TPU:1"}>
     // CHECK: tf.TPUExecute
     // CHECK-NEXT: tf_device.return
-    // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:TPU:1"
     func.return
   }
   func.func @empty_func() {
@@ -629,9 +629,9 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   // CHECK-LABEL: func @no_replication_device
   func.func @no_replication_device() {
     "tf_device.cluster_func"() {_xla_compile_device_type = "TPU", _replication_info = "__no_replication_cluster", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device = "/job:worker/replica:0/task:0/device:CPU:0", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = [], use_spmd_for_xla_partitioning = false} : () -> ()
+    // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:TPU:0"}>
     // CHECK: tf.TPUExecute
     // CHECK-NEXT: tf_device.return
-    // CHECK-NEXT: device = "/job:worker/replica:0/task:0/device:TPU:0"
     func.return
   }
   func.func @empty_func() {
@@ -709,20 +709,18 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.cluster_func"(%0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
-    // CHECK: "tf_device.launch"
+    // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
-    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
     // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:TPU:0"
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -756,17 +754,15 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: n = 2
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
       // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[RI_0]])
-      // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
       // CHECK-SAME: metadata
       // CHECK-SAME: mlir_module
       // CHECK-SAME: func @main
       // CHECK-SAME: tf.B
       // CHECK-NOT: func = @tpu0_func
-      // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
-      // CHECK: "tf_device.launch"
+      // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
-      // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
       // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
       // CHECK-NEXT: "tf.TPUExecute"(%[[RI_0]], %[[COMPILE_OUTPUT]]#1)
       %2 = "tf_device.cluster_func"(%ri_0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
@@ -799,8 +795,8 @@ module attributes {tf.versions = {producer = 888 : i32}} {
 
     %1 = "tf_device.cluster_func"(%0) {device = "gpu0", func = @gpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: tf_device.cluster_func
-    // CHECK-SAME: device = "gpu0"
     // CHECK-SAME: func = @gpu0_func
+    // CHECK-SAME: device = "gpu0"
     // CHECK-SAME: num_cores_per_replica = 1
     // CHECK-SAME: step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP"
     // CHECK-NOT: metadata
@@ -826,7 +822,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     %1 = "tf_device.cluster_func"(%0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
@@ -835,13 +831,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func private @nested_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
-    // CHECK: "tf_device.launch"
+    // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
-    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:TPU:0"}>
     // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -1198,14 +1191,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:3 = "tf_device.launch"
     // CHECK-NEXT: "tf._TPUCompileMlir"()
     // CHECK: "tf_device.launch"
-    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
     // CHECK: [[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
-    // CHECK: "tf_device.launch"
+    // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:TPU:0"}>
     // CHECK-NEXT: "tf.TPUExecute"(%[[READ_VAR_0]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
-    // CHECK: "tf_device.launch"
+    // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:TPU:1"}>
     // CHECK-NEXT: "tf.TPUExecute"(%[[READ_VAR_1]], %[[COMPILE_OUTPUT]]#2)
-    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:1"
     %computation = "tf_device.cluster_func"(%partitioned_input) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @computation, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = [""], output_sharding_configuration = [""], use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
     // CHECK-NOT: tf.TPUPartitionedOutputV2
     %partitioned_output:2 = "tf.TPUPartitionedOutputV2"(%computation) {N = 2 : i64, partition_dims = []} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
@@ -1238,12 +1229,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK: "tf_device.launch"
     // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
     // CHECK: [[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
-    // CHECK: "tf_device.launch"
+    // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:TPU:0"}>
     // CHECK-NEXT: "tf.TPUExecute"(%[[READ_VAR_0]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
-    // CHECK: "tf_device.launch"
+    // CHECK: "tf_device.launch"() <{device = "/job:worker/replica:0/task:0/device:TPU:1"}>
     // CHECK-NEXT: "tf.TPUExecute"(%[[READ_VAR_1]], %[[COMPILE_OUTPUT]]#2)
-    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:1"
     %computation = "tf_device.cluster_func"(%partitioned_input) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @computation, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01"], output_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01"], use_spmd_for_xla_partitioning = true} : (tensor<3x4xf32>) -> tensor<3x4xf32>
     // CHECK-NOT: tf.TPUPartitionedOutputV2
     %partitioned_output:2 = "tf.TPUPartitionedOutputV2"(%computation) {_XlaSharding = "\08\03\1A\02\01\02\22\02\00\01", partition_dims = [1, 2]} : (tensor<3x4xf32>) -> (tensor<3x2xf32>, tensor<3x2xf32>)
@@ -1443,10 +1432,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK: "tf_device.parallel_execute"
       // CHECK-NOT:"tf._XlaCompileMlirPlaceholderProgramKey"
       // CHECK:    "tf.D"(%[[COMPILE_OUTPUT]]#1
+      // CHECK:    "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       // CHECK:    "tf.TPUExecute"
-      // CHECK:      device = "TPU_REPLICATED_CORE_0"
+      // CHECK:     "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK:    "tf.TPUExecute"
-      // CHECK:      device = "TPU_REPLICATED_CORE_1"
       // CHECK-NOT:    "tf.TPUExecute"
       %3 = "tf_device.parallel_execute"() ({
          %program = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
@@ -1485,10 +1474,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK: "tf._TPUCompileMlir"
       // CHECK: "tf.TPUCompileSucceededAssert"
       // CHECK: "tf_device.parallel_execute"
+      // CHECK:    "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       // CHECK:    "tf.TPUExecute"
-      // CHECK:      device = "TPU_REPLICATED_CORE_0"
+      // CHECK:    "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK:    "tf.TPUExecute"
-      // CHECK:      device = "TPU_REPLICATED_CORE_1"
       // CHECK-NOT:    "tf.TPUExecute"
       // CHECK-NOT:"tf._XlaCompileMlirPlaceholderProgramKey"
       // CHECK:    "tf.D"(%[[COMPILE_OUTPUT]]#1
@@ -1524,23 +1513,19 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"]} {
   // CHECK-LABEL: func @non_replicated_parallel_execute
   func.func @non_replicated_parallel_execute(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-    // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+    // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   "tf._TPUCompileMlir"()
     // CHECK-NEXT:   tf_device.return
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    // CHECK:      "tf_device.launch"
+    // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
     // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
     // CHECK-NEXT:   tf_device.return
-    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
     // CHECK:      "tf_device.parallel_execute"
-    // CHECK-NEXT:   "tf_device.launch"
+    // CHECK-NEXT:   "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:TPU:0"}>
     // CHECK-NEXT:     "tf.TPUExecute"
     // CHECK-NEXT:     tf_device.return
-    // CHECK-NEXT:   device = "/job:localhost/replica:0/task:0/device:TPU:0"
-    // CHECK:        "tf_device.launch"
+    // CHECK:        "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:TPU:1"}>
     // CHECK-NEXT:     "tf.TPUExecute"
     // CHECK-NEXT:     tf_device.return
-    // CHECK-NEXT:   device = "/job:localhost/replica:0/task:0/device:TPU:1"
     %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
     func.return %0 : tensor<8xi32>
   }
@@ -1587,23 +1572,19 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK: tf_device.replicate
     // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"], TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"], TPU_REPLICATED_HOST_0 = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:1/device:CPU:0"], TPU_REPLICATED_HOST_1 = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:1/device:CPU:0"]}
     %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
-      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"()
       // CHECK-NEXT:   tf_device.return
-      // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
       // CHECK-NEXT:   tf_device.return
-      // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
       // CHECK:      "tf_device.parallel_execute"
-      // CHECK-NEXT:   "tf_device.launch"
+      // CHECK-NEXT:   "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       // CHECK-NEXT:     "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return
-      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
-      // CHECK:        "tf_device.launch"
+      // CHECK:        "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK-NEXT:     "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return
-      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_1"
       %1 = "tf_device.cluster_func"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
       tf_device.return %1 : tensor<8xi32>
     }
@@ -1632,13 +1613,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
       // CHECK:      "tf._TPUCompileMlir"
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
-      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       // CHECK-NEXT:     %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[RI_0]], %[[RI_1]], %[[RI_2]], %[[COMPILE]]#1)
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_OUTPUT]]
-      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
-      // CHECK:        "tf_device.launch"
+      // CHECK:        "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK-NEXT:     "tf.TPUExecute"(%[[RI_1]], %[[RI_2]], %[[COMPILE]]#2)
-      // CHECK:        device = "TPU_REPLICATED_CORE_1"
       %1 = "tf_device.cluster_func"(%ri, %ri2, %ri3) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "", ""], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>, tensor<*xi1>, tensor<*xi32>) -> tensor<8xi32>
       tf_device.return %1 : tensor<8xi32>
     }
@@ -1663,20 +1642,16 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
     // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
     %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
-      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"()
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
-      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       // CHECK-NEXT:     %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_OUTPUT]]
-      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
-      // CHECK:        "tf_device.launch"
+      // CHECK:        "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK-NEXT:     "tf.TPUExecute"
-      // CHECK:        device = "TPU_REPLICATED_CORE_1"
       %1 = "tf_device.cluster_func"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> tensor<8xi32>
       tf_device.return %1 : tensor<8xi32>
     }
@@ -1700,21 +1675,17 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
     // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
-      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"()
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
-      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_0_OUTPUT]]
-      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
-      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
-      // CHECK:        device = "TPU_REPLICATED_CORE_1"
       %1, %2 = "tf_device.cluster_func"(%ri) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
@@ -1763,25 +1734,21 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
     // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-      // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       //
       // CHECK:      %[[CONST_SPLIT_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_DIM]], %[[RI_0]])
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
-      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       //
       // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"(%[[SPLIT_OUT]]#0, %[[COMPILE]]#1)
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_0_OUTPUT]]
-      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
-      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[SPLIT_OUT]]#1, %[[RI_1]], %[[COMPILE]]#2)
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
-      // CHECK:        device = "TPU_REPLICATED_CORE_1"
       %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
@@ -1830,22 +1797,18 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
     // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-      // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       //
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
-      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_0_OUTPUT]]
-      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
-      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
-      // CHECK:        device = "TPU_REPLICATED_CORE_1"
       //
       // CHECK:     %[[CONST_CONCAT_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#0, %[[PARALLEL_EXECUTE_OUTPUT]]#2
@@ -1899,22 +1862,18 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
     // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-      // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       //
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
-      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_0"}>
       // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_0_OUTPUT]]
-      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
-      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_CORE_1"}>
       // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
-      // CHECK:        device = "TPU_REPLICATED_CORE_1"
       //
       // CHECK:     %[[CONST_CONCAT_DIM:.*]] = "tf.Const"()
       // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#1, %[[PARALLEL_EXECUTE_OUTPUT]]#2
@@ -2091,12 +2050,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
     // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       // CHECK:      %[[CONST_SPLIT_0_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_0_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_0_DIM]], %[[RI_0]])
       // CHECK:      %[[CONST_SPLIT_1_DIM:.*]] = "tf.Const"()
@@ -2198,12 +2155,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
     // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       // CHECK:      %[[CONST_SPLIT_0_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_0_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_0_DIM]], %[[RI_0]])
       // CHECK:      %[[CONST_SPLIT_1_DIM:.*]] = "tf.Const"()
@@ -2282,12 +2237,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
     // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
       // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
       // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
@@ -2367,12 +2320,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
     // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       // CHECK:      %[[CONST_SPLIT_0_DIM:.*]] = "tf.Const"()
       // CHECK:      %[[SPLIT_0_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_0_DIM]], %[[RI_0]])
       // CHECK:      %[[CONST_SPLIT_1_DIM:.*]] = "tf.Const"()
@@ -2451,12 +2402,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
     // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf._TPUCompileMlir"
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:      "tf_device.launch"
+      // CHECK:      "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
-      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
       // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
       // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
       // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
@@ -2613,14 +2562,12 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1199 : i32}} {
   func.func @return_from_host_and_tpu() -> (tensor<?xi32>, tensor<?x!tf_type.string>) attributes {tf._construction_context = "kEagerRuntime", tf.signature.is_stateful} {
       // CHECK:     %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
-      // CHECK:       %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK:       %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:CPU:0"}>
       // CHECK:         %[[B_OUTPUT:[0-9]*]] = "tf.B"
       // CHECK:         tf_device.return %[[B_OUTPUT:[0-9]*]]
-      // CHECK:       device = "/job:localhost/replica:0/task:0/device:CPU:0"
-      // CHECK:       %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK:       %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"() <{device = "/job:localhost/replica:0/task:0/device:TPU:0"}>
       // CHECK-NEXT:    %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
       // CHECK:         tf_device.return %[[EXECUTE_1_OUTPUT]]
-      // CHECK:       device = "/job:localhost/replica:0/task:0/device:TPU:0"
       // CHECK:    return %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]#1, %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]#0
     %0:2 = "tf_device.parallel_execute"() ({
       %1 = "tf_device.launch"() ({

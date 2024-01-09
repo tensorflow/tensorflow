@@ -106,12 +106,12 @@ func.func @uniform_quantize_dot_dequantize(%arg0: tensor<?x?xf32>, %arg1: tensor
 
 // -----
 
-// CHECK-LABEL: func @uniform_quantized_convolution
-func.func @uniform_quantized_convolution(%arg0: tensor<?x?x?x?xf32>, %arg1: tensor<?x?x?x?xf32>) {
+// CHECK-LABEL: func @uniform_quantized_conv2d_dynamic
+func.func @uniform_quantized_conv2d_dynamic(%arg0: tensor<?x?x?x?xf32>, %arg1: tensor<?x?x?x?xf32>) {
   // CHECK-NOT: chlo
   %0 = mhlo.uniform_quantize %arg0 : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?x!quant.uniform<i8:f32, 2.000000e+00:4>>
-  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?x!quant.uniform<i8:f32, 3.000000e+00:1>>
-  %2 = mhlo.convolution(%0, %1)
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<?x?x?x?xf32>) -> tensor<?x?x?x?x!quant.uniform<i8:f32, 3.000000e+00:0>>
+    %2 = mhlo.convolution(%0, %1)
     dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
     window = {
       stride = [1, 2], pad = [[0, 0], [0, 0]],
@@ -121,8 +121,52 @@ func.func @uniform_quantized_convolution(%arg0: tensor<?x?x?x?xf32>, %arg1: tens
     {
       batch_group_count = 1 : i64,
       feature_group_count = 1 : i64
-    } : (tensor<?x?x?x?x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<?x?x?x?x!quant.uniform<i8:f32, 3.000000e+00:1>>)
+    } : (tensor<?x?x?x?x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<?x?x?x?x!quant.uniform<i8:f32, 3.000000e+00:0>>)
     -> tensor<?x?x?x?x!quant.uniform<i32:f32, 1.000000e+00:5>>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_conv2d_static
+func.func @uniform_quantized_conv2d_static(%arg0: tensor<128x28x28x1xf32>, %arg1: tensor<3x3x1x128xf32>) {
+  // CHECK-NOT: chlo
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<128x28x28x1xf32>) -> tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<3x3x1x128xf32>) -> tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>
+  %2 = mhlo.convolution(%0, %1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>)
+    -> tensor<128x26x26x128x!quant.uniform<i32:f32, 1.000000e+00:5>>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @uniform_quantized_conv3d_static
+func.func @uniform_quantized_conv3d_static(%arg0: tensor<128x28x28x28x1xf32>, %arg1: tensor<3x3x3x1x128xf32>) {
+  // CHECK-NOT: chlo
+  %0 = mhlo.uniform_quantize %arg0 : (tensor<128x28x28x28x1xf32>) -> tensor<128x28x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>
+  %1 = mhlo.uniform_quantize %arg1 : (tensor<3x3x3x1x128xf32>) -> tensor<3x3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>
+  %2 = mhlo.convolution(%0, %1)
+    dim_numbers = [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f],
+    window = {
+      stride = [1, 1, 1], pad = [[0, 0], [0, 0], [0, 0]],
+      lhs_dilate = [1, 1, 1],
+      rhs_dilate = [1, 1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (tensor<128x28x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>, tensor<3x3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>)
+    -> tensor<128x26x26x26x128x!quant.uniform<i32:f32, 1.000000e+00:5>>
   return
 }
 

@@ -89,9 +89,6 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64_t index,
                                  int alignment, llvm::Value* operand,
                                  llvm::Type* operand_pointee_type,
                                  llvm::IRBuilder<>* b) {
-  CHECK(llvm::cast<llvm::PointerType>(operand->getType())
-            ->isOpaqueOrPointeeTypeMatches(operand_pointee_type));
-  llvm::Module* module = getModuleFromBuilder(b);
   const std::vector<llvm::Value*> gep_index = {b->getInt64(0),
                                                b->getInt64(index)};
   llvm::Value* element_ptr =
@@ -107,11 +104,7 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64_t index,
         ByteSizeOf(target_shape, src_buffer->getModule()->getDataLayout()));
   }
   SetAlignmentMetadataForLoad(src_buffer, alignment);
-
-  llvm::Type* element_type = ShapeToIrType(target_shape, module);
-  llvm::Value* ret_val =
-      b->CreateBitCast(src_buffer, element_type->getPointerTo());
-  return ret_val;
+  return src_buffer;
 }
 
 }  // namespace llvm_ir

@@ -27,27 +27,29 @@
 // CHECK:         %[[VAL_20:.*]] = add nuw nsw i64 %[[VAL_19]], %[[VAL_18]]
 // CHECK:         %[[VAL_21:.*]] = icmp ult i64 %[[VAL_20]], 98304
 // CHECK:         call void @llvm.assume(i1 %[[VAL_21]])
-// CHECK:         %[[VAL_22:.*]] = udiv i64 %[[VAL_20]], 1
-// CHECK:         %[[VAL_23:.*]] = urem i64 %[[VAL_22]], 1024
-// CHECK:         %[[VAL_24:.*]] = udiv i64 %[[VAL_20]], 1024
-// CHECK:         %[[VAL_25:.*]] = urem i64 %[[VAL_24]], 96
-// CHECK:         %[[VAL_26:.*]] = udiv i64 %[[VAL_20]], 98304
-// CHECK:         %[[VAL_27:.*]] = icmp ult i64 %[[VAL_20]], 98304
-// CHECK:         br i1 %[[VAL_27]], label %[[VAL_28:.*]], label %[[VAL_29:.*]]
-// CHECK:       dynamic-update-slice.in_bounds-after:             ; preds = %[[VAL_28]], %[[VAL_30:.*]]
+// CHECK:         %[[VAL_22:.*]] = add nuw nsw i64 %[[VAL_20]], 0
+// CHECK:         %[[VAL_23:.*]] = udiv i64 %[[VAL_22]], 1
+// CHECK:         %[[VAL_24:.*]] = urem i64 %[[VAL_23]], 1024
+// CHECK:         %[[VAL_25:.*]] = udiv i64 %[[VAL_22]], 1024
+// CHECK:         %[[VAL_26:.*]] = urem i64 %[[VAL_25]], 96
+// CHECK:         %[[VAL_27:.*]] = udiv i64 %[[VAL_22]], 98304
+// CHECK:         %[[VAL_28:.*]] = icmp ult i64 %[[VAL_20]], 98304
+// CHECK:         br i1 %[[VAL_28]], label %[[VAL_29:.*]], label %[[VAL_30:.*]]
+// CHECK:       dynamic-update-slice.in_bounds-after:             ; preds = %[[VAL_29]], %[[VAL_31:.*]]
 // CHECK:         ret void
-// CHECK:       dynamic-update-slice.in_bounds-true:              ; preds = %[[VAL_30]]
-// CHECK:         %[[VAL_31:.*]] = sext i32 %[[VAL_4]] to i64
-// CHECK:         %[[VAL_32:.*]] = add i64 %[[VAL_31]], %[[VAL_26]]
-// CHECK:         %[[VAL_33:.*]] = sext i32 %[[VAL_9]] to i64
-// CHECK:         %[[VAL_34:.*]] = add i64 %[[VAL_33]], %[[VAL_25]]
-// CHECK:         %[[VAL_35:.*]] = sext i32 %[[VAL_14]] to i64
-// CHECK:         %[[VAL_36:.*]] = add i64 %[[VAL_35]], %[[VAL_23]]
-// CHECK:         %[[VAL_37:.*]] = getelementptr inbounds half, ptr %[[VAL_38:.*]], i64 %[[VAL_20]]
-// CHECK:         %[[VAL_39:.*]] = load half, ptr %[[VAL_37]], align 2, !invariant.load
-// CHECK:         %[[VAL_40:.*]] = getelementptr inbounds [50 x [96 x [1024 x half]]], ptr %[[VAL_41:.*]], i64 0, i64 %[[VAL_32]], i64 %[[VAL_34]], i64 %[[VAL_36]]
-// CHECK:         store half %[[VAL_39]], ptr %[[VAL_40]], align 2
-// CHECK:         br label %[[VAL_29]]
+// CHECK:       dynamic-update-slice.in_bounds-true:              ; preds = %[[VAL_31]]
+// CHECK:         %[[VAL_32:.*]] = sext i32 %[[VAL_4]] to i64
+// CHECK:         %[[VAL_33:.*]] = add i64 %[[VAL_32]], %[[VAL_27]]
+// CHECK:         %[[VAL_34:.*]] = sext i32 %[[VAL_9]] to i64
+// CHECK:         %[[VAL_35:.*]] = add i64 %[[VAL_34]], %[[VAL_26]]
+// CHECK:         %[[VAL_36:.*]] = sext i32 %[[VAL_14]] to i64
+// CHECK:         %[[VAL_37:.*]] = add i64 %[[VAL_36]], %[[VAL_24]]
+// CHECK:         %[[VAL_38:.*]] = getelementptr half, ptr %[[VAL_39:.*]], i64 %[[VAL_20]]
+// CHECK:         %[[VAL_40:.*]] = getelementptr inbounds half, ptr %[[VAL_38]], i64 0
+// CHECK:         %[[VAL_41:.*]] = load half, ptr %[[VAL_40]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [50 x [96 x [1024 x half]]], ptr %[[VAL_43:.*]], i64 0, i64 %[[VAL_33]], i64 %[[VAL_35]], i64 %[[VAL_37]]
+// CHECK:         store half %[[VAL_41]], ptr %[[VAL_42]], align 2
+// CHECK:         br label %[[VAL_30]]
 
 HloModule TestModule, is_scheduled=true
 
@@ -78,21 +80,23 @@ ENTRY entry {
 // CHECK:       [[FUSION]].in_bounds-true:
 // CHECK:         br i1 %{{.*}}, label %[[SLICE:.*]]-true, label %[[SLICE]]-false
 // CHECK:       [[SLICE]]-after:
-// CHECK:         %[[VAL_82:.*]] = load i32, ptr [[ADDRSPACE_ANNOTATION]]%[[RET_VALUE_ADDR:.*]], align 4
-// CHECK:         %[[VAL_83:.*]] = getelementptr inbounds i32, ptr %[[ARG2]], i32 %[[LINEAR_INDEX]]
-// CHECK:         store i32 %[[VAL_82]], ptr %[[VAL_83]], align 4
+// CHECK:         %[[VAL_85:.*]] = load i32, ptr [[ADDRSPACE_ANNOTATION]]%[[RET_VALUE_ADDR:.*]], align 4
+// CHECK:         %[[VAL_86:.*]] = getelementptr i32, ptr %[[ARG2]], i32 %[[LINEAR_INDEX]]
+// CHECK:         %[[VAL_88:.*]] = getelementptr inbounds i32, ptr %[[VAL_86]], i32 0
+// CHECK:         store i32 %[[VAL_85]], ptr %[[VAL_88]], align 4
 // CHECK:         br label %[[FUSION]].in_bounds-after
 // CHECK:       [[SLICE]]-true:
-// CHECK:         %[[VAL_104:.*]] = getelementptr inbounds [6 x i32], ptr %[[ARG0]], i32 0, i32 %[[VAL_102:.*]]
-// CHECK:         %[[VAL_106:.*]] = load i32, ptr %[[VAL_104]], align 4, !invariant.load
-// CHECK:         %[[VAL_107:.*]] = load i32, ptr @1, align 4
-// CHECK:         %[[VAL_108:.*]] = add i32 %[[VAL_106]], %[[VAL_107]]
-// CHECK:         store i32 %[[VAL_108]], ptr [[ADDRSPACE_ANNOTATION]]%[[RET_VALUE_ADDR]], align 4
+// CHECK:         %[[VAL_108:.*]] = getelementptr inbounds [6 x i32], ptr %[[ARG0]], i32 0, i32 %[[VAL_106:.*]]
+// CHECK:         %[[VAL_110:.*]] = load i32, ptr %[[VAL_108]], align 4, !invariant.load
+// CHECK:         %[[VAL_111:.*]] = load i32, ptr @1, align 4
+// CHECK:         %[[VAL_112:.*]] = add i32 %[[VAL_110]], %[[VAL_111]]
+// CHECK:         store i32 %[[VAL_112]], ptr [[ADDRSPACE_ANNOTATION]]%[[RET_VALUE_ADDR]], align 4
 // CHECK:         br label %[[SLICE]]-after
 // CHECK:       [[SLICE]]-false:
-// CHECK:         %[[VAL_114:.*]] = getelementptr inbounds i32, ptr %[[ARG0]], i32 %[[LINEAR_INDEX]]
-// CHECK:         %[[VAL_115:.*]] = load i32, ptr %[[VAL_114]], align 4, !invariant.load
-// CHECK:         store i32 %[[VAL_115]], ptr [[ADDRSPACE_ANNOTATION]]%[[RET_VALUE_ADDR]], align 4
+// CHECK:         %[[VAL_118:.*]] = getelementptr i32, ptr %[[ARG0]], i32 %[[LINEAR_INDEX]]
+// CHECK:         %[[VAL_119:.*]] = getelementptr inbounds i32, ptr %[[VAL_118]], i32 0
+// CHECK:         %[[VAL_120:.*]] = load i32, ptr %[[VAL_119]], align 4, !invariant.load
+// CHECK:         store i32 %[[VAL_120]], ptr [[ADDRSPACE_ANNOTATION]]%[[RET_VALUE_ADDR]], align 4
 // CHECK:         br label %[[SLICE]]-after
 
 HloModule fusion, is_scheduled=true
@@ -132,13 +136,13 @@ ENTRY main {
 // CHECK:      [[DUS1]].in_bounds-after:
 // CHECK-NEXT:   ret void
 // CHECK:      [[DUS0]].in_bounds-true
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG1]]
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG3]]
-// CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG1]], i64 %[[VAL_141:.*]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG3]], i64 %[[VAL_141]]
+// CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]], i64 0, i64 %[[VAL_185:.*]], i64 %[[VAL_187:.*]], i64 %[[VAL_189:.*]]
 // CHECK:      [[DUS1]].in_bounds-true
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG1]]
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG3]]
-// CHECK-DAG:    getelementptr inbounds [8 x [11 x [12 x i16]]], ptr %[[ARG2]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG1]], i64 %[[VAL_173:.*]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG3]], i64 %[[VAL_173]]
+// CHECK-DAG:    getelementptr inbounds [8 x [11 x [12 x i16]]], ptr %[[ARG2]], i64 0, i64 %[[VAL_208:.*]], i64 %[[VAL_210:.*]], i64 %[[VAL_212:.*]]
 
 HloModule MultipleInplaceDus, is_scheduled=true, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
 
@@ -182,13 +186,13 @@ ENTRY main {
 // CHECK:      [[DUS1]].in_bounds-after:
 // CHECK-NEXT:   ret void
 // CHECK:      [[DUS0]].in_bounds-true
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG1]]
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG3]]
-// CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG1]], i64 %[[VAL_247:.*]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG3]], i64 %[[VAL_247]]
+// CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]], i64 0, i64 %[[VAL_291:.*]], i64 %[[VAL_293:.*]], i64 %[[VAL_295:.*]]
 // CHECK:      [[DUS1]].in_bounds-true
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG1]]
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG3]]
-// CHECK-DAG:    getelementptr inbounds [8 x [11 x [12 x i16]]], ptr %[[ARG2]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG1]], i64 %[[VAL_279:.*]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG3]], i64 %[[VAL_279]]
+// CHECK-DAG:    getelementptr inbounds [8 x [11 x [12 x i16]]], ptr %[[ARG2]], i64 0, i64 %[[VAL_314:.*]], i64 %[[VAL_316:.*]], i64 %[[VAL_318:.*]]
 
 HloModule MultipleInplaceDusWithTransposeBitcastToTheRoot, is_scheduled=true, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
 
@@ -229,9 +233,9 @@ ENTRY main {
 // CHECK:      [[DUS0]].in_bounds-after:
 // CHECK-NEXT:   ret void
 // CHECK:      [[DUS0]].in_bounds-true
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG1]]
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG2]]
-// CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG1]], i64 %[[VAL_353:.*]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG2]], i64 %[[VAL_353]]
+// CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]], i64 0, i64 %[[VAL_366:.*]], i64 %[[VAL_368:.*]], i64 %[[VAL_370:.*]]
 
 HloModule SingleInplaceDusWithTransposeBitcastToTheRoot, is_scheduled=true, input_output_alias={ {}: (0, {}) }
 
@@ -268,9 +272,9 @@ ENTRY main {
 // CHECK:      [[DUS0]].in_bounds-after:
 // CHECK-NEXT:   ret void
 // CHECK:      [[DUS0]].in_bounds-true
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG1]]
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG2]]
-// CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG1]], i64 %[[VAL_408:.*]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG2]], i64 %[[VAL_408:.*]]
+// CHECK-DAG:    getelementptr inbounds [10 x [11 x [12 x i16]]], ptr %[[ARG0]], i64 0, i64 %[[VAL_421:.*]], i64 %[[VAL_423:.*]], i64 %[[VAL_425:.*]]
 
 HloModule SingleInplaceDusWithReshapeBitcastToTheRoot, is_scheduled=true, input_output_alias={ {}: (0, {}) }
 
@@ -307,9 +311,9 @@ ENTRY main {
 // CHECK:      [[DUS0]].in_bounds-after:
 // CHECK-NEXT:   ret void
 // CHECK:      [[DUS0]].in_bounds-true
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG1]]
-// CHECK-DAG:    getelementptr inbounds i16, ptr %[[ARG2]]
-// CHECK-DAG:    getelementptr inbounds [10 x [6 x [2 x [11 x i16]]]], ptr %[[ARG0]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG1]], i64 %[[VAL_468:.*]]
+// CHECK-DAG:    getelementptr i16, ptr %[[ARG2]], i64 %[[VAL_468]]
+// CHECK-DAG:    getelementptr inbounds [10 x [6 x [2 x [11 x i16]]]], ptr %[[ARG0]], i64 0, i64 %[[VAL_483:.*]], i64 %[[VAL_485:.*]], i64 %[[VAL_487:.*]], i64 %[[VAL_489:.*]]
 
 HloModule SingleInplaceDusWithBitcastToTheRootAndFromTheParameter, is_scheduled=true, input_output_alias={ {}: (0, {}) }
 

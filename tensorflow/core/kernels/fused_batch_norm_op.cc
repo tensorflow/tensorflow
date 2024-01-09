@@ -25,6 +25,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1045,11 +1046,9 @@ struct FusedBatchNorm<GPUDevice, Eigen::bfloat16, float, is_training> {
                   Tensor* batch_mean, Tensor* batch_var, Tensor* saved_mean,
                   Tensor* saved_inv_var, TensorFormat tensor_format,
                   bool use_reserved_space) {
-    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
     auto* stream = context->op_device_context()->stream();
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
+
     if (cast_to_float) {
       Tensor casted_x = x;
       Tensor casted_side_input;
@@ -1311,11 +1310,8 @@ struct FusedBatchNormGrad<GPUDevice, Eigen::bfloat16, float> {
                   Tensor* x_backprop, Tensor* scale_backprop,
                   Tensor* offset_backprop, Tensor* side_input_backprop,
                   bool use_reserved_space, TensorFormat tensor_format) {
-    // Performant bfloat16 operations are supported for Ampere+ GPUs. For
-    // pre-Ampere GPUs, we cast inputs to float and outputs back to bfloat16.
     auto* stream = context->op_device_context()->stream();
-    const bool cast_to_float = !stream->GetCudaComputeCapability().IsAtLeast(
-        se::CudaComputeCapability::AMPERE);
+    const bool cast_to_float = !IsBF16SupportedInOps(stream);
     if (cast_to_float) {
       Tensor casted_y_backprop = y_backprop;
       Tensor casted_x = x;

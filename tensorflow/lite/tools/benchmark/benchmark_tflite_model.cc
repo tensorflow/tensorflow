@@ -780,6 +780,41 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
 
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
+  auto interpreter_inputs = interpreter_->inputs();
+
+  if (!inputs_.empty()) {
+    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
+        << "Inputs mismatch: Model inputs #:" << inputs_.size()
+        << " expected: " << interpreter_inputs.size();
+  }
+
+  // Check if the tensor names match, and log a warning if it doesn't.
+  for (int j = 0; j < inputs_.size(); ++j) {
+    const InputLayerInfo& input = inputs_[j];
+    int i = interpreter_inputs[j];
+    TfLiteTensor* t = interpreter_->tensor(i);
+    if (input.name != t->name) {
+      TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
+                       << " but flags call it " << input.name;
+    }
+
+    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
+      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
+                        << t->dims->size << " dimensions!";
+      return kTfLiteError;
+    }
+  }
+
+  // Resize all non-string tensors.
+  for (int j = 0; j < inputs_.size(); ++j) {
+    const InputLayerInfo& input = inputs_[j];
+    int i = interpreter_inputs[j];
+    TfLiteTensor* t = interpreter_->tensor(i);
+    if (t->type != kTfLiteString) {
+      interpreter_->ResizeInputTensor(i, input.shape);
+    }
+  }
+
   owned_delegates_.clear();
 
   // Contains all ids of TfLiteNodes that have been checked to see whether it's
@@ -859,41 +894,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
             << " delegate is explicitly applied, the model graph will not be"
             << " executed by the delegate.";
       }
-    }
-  }
-
-  auto interpreter_inputs = interpreter_->inputs();
-
-  if (!inputs_.empty()) {
-    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
-        << "Inputs mismatch: Model inputs #:" << inputs_.size()
-        << " expected: " << interpreter_inputs.size();
-  }
-
-  // Check if the tensor names match, and log a warning if it doesn't.
-  for (int j = 0; j < inputs_.size(); ++j) {
-    const InputLayerInfo& input = inputs_[j];
-    int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter_->tensor(i);
-    if (input.name != t->name) {
-      TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
-                       << " but flags call it " << input.name;
-    }
-
-    if (t->type != kTfLiteString && input.shape.size() != t->dims->size) {
-      TFLITE_LOG(ERROR) << "Input tensor #" << i << " should have "
-                        << t->dims->size << " dimensions!";
-      return kTfLiteError;
-    }
-  }
-
-  // Resize all non-string tensors.
-  for (int j = 0; j < inputs_.size(); ++j) {
-    const InputLayerInfo& input = inputs_[j];
-    int i = interpreter_inputs[j];
-    TfLiteTensor* t = interpreter_->tensor(i);
-    if (t->type != kTfLiteString) {
-      interpreter_->ResizeInputTensor(i, input.shape);
     }
   }
 

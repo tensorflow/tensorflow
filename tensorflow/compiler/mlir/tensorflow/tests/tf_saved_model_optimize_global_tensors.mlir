@@ -8,9 +8,9 @@ module attributes {tf_saved_model.semantics} {
 
   // Test case: Basic test of marking immutable.
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK-NOT: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.> : tensor<f32> } : () -> ()
 
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}) -> (tensor<f32> {tf_saved_model.index_path = []})
@@ -27,9 +27,9 @@ module attributes {tf_saved_model.semantics} {
 
   // Test case: Don't mark immutable if the variable is mutated.
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK-SAME: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.> : tensor<f32> } : () -> ()
 
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
@@ -47,9 +47,9 @@ module attributes {tf_saved_model.semantics} {
 
   // Test case: Don't mark immutable if the variable is exported.
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> {{{.*}}} : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", tf_saved_model.exported_names = ["v"], type = tensor<f32>, value = dense<42.> : tensor<f32> } : () -> ()
 
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}) -> (tensor<f32> {tf_saved_model.index_path = []})
@@ -148,9 +148,9 @@ module {}
 // Test use as an input in unhandled op
 module attributes {tf_saved_model.semantics} {
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK-SAME: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.> : tensor<f32> } : () -> ()
 
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
@@ -166,9 +166,9 @@ module attributes {tf_saved_model.semantics} {
 // Test use as a region capture in an unhandled op
 module attributes {tf_saved_model.semantics} {
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK-SAME: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.> : tensor<f32> } : () -> ()
 
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
@@ -187,14 +187,14 @@ module attributes {tf_saved_model.semantics} {
 // to the unhandled op.
 module attributes {tf_saved_model.semantics} {
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK-SAME: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.> : tensor<f32> } : () -> ()
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK-SAME: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "u", type = tensor<f32>, value = dense<22.> : tensor<f32> } : () -> ()
 
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}, %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @u})
@@ -212,14 +212,14 @@ module attributes {tf_saved_model.semantics} {
 // Test multiple global tensors uses as operands for an unhandled op.
 module attributes {tf_saved_model.semantics} {
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK-SAME: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v", type = tensor<f32>, value = dense<42.> : tensor<f32> } : () -> ()
 
-  // CHECK: "tf_saved_model.global_tensor"() {
+  // CHECK: "tf_saved_model.global_tensor"() <{
   // CHECK-SAME: is_mutable
-  // CHECK-SAME: } : () -> ()
+  // CHECK-SAME: }> : () -> ()
   "tf_saved_model.global_tensor"() { is_mutable, sym_name = "u", type = tensor<f32>, value = dense<22.> : tensor<f32> } : () -> ()
 
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v}, %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @u})

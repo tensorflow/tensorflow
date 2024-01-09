@@ -59,6 +59,8 @@ class CpuTransferManager : public GenericTransferManager {
                            Shape* device_shape) override;
 
  private:
+  bool PackSubbyteTypes() const override { return true; }
+
   CpuTransferManager(const CpuTransferManager&) = delete;
   CpuTransferManager& operator=(const CpuTransferManager&) = delete;
 };

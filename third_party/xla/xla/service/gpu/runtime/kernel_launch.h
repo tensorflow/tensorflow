@@ -35,7 +35,7 @@ void RegisterKernelLaunchCustomCalls(
 
 // Kernels loaded by Gpu executable for a single stream executor.
 class StreamExecutorKernels
-    : public runtime::StateVector<std::unique_ptr<se::KernelBase>> {};
+    : public runtime::StateVector<std::unique_ptr<se::Kernel>> {};
 
 // Xla runtime Gpu executable owns the pre-compiled device module (PTX and
 // Cubin for Nvidia Gpus) for all device kernels, and the cache keeps a mapping

@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -78,12 +79,12 @@ cc_library(
     deps = [
         ":next_pluggable_device",
         ":next_pluggable_device_api",
-        ":pjrt_compile_on_demand_op",
         ":utils",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/core:framework",
+        "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/framework:device_id_utils",
@@ -103,34 +104,6 @@ cc_library(
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
     ],
-)
-
-cc_library(
-    name = "pjrt_compile_on_demand_op",
-    srcs = [
-        "pjrt_compile_on_demand_op.cc",
-    ],
-    hdrs = [
-        "pjrt_compile_on_demand_op.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/jit:device_compiler_client",
-        "//tensorflow/compiler/jit:variable_info",
-        "//tensorflow/compiler/jit:variable_info_util",
-        "//tensorflow/compiler/jit:xla_device",
-        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
-        "//tensorflow/compiler/jit:xla_launch_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/tfrt/common:create_pjrt_client_util",
-        "//tensorflow/core/util:determinism",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla/pjrt:pjrt_client",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -211,6 +184,7 @@ cc_library(
     name = "c_plugin_op_kernel",
     srcs = ["c_plugin_op_kernel.cc"],
     hdrs = ["c_plugin_op_kernel.h"],
+    copts = ["-DTF_CAPI_WEAK"],
     visibility = ["//visibility:public"],
     deps = [
         ":c_plugin_variable",
@@ -272,7 +246,9 @@ cc_library(
     name = "loose_headers",
     tags = ["avoid_dep"],
     textual_hdrs = ["c_plugin_op_kernel.h"],
-    visibility = [":__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 cc_library(
@@ -282,6 +258,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -292,6 +269,8 @@ cc_library(
     deps = [
         ":plugin_coordination_service_agent",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
 )
@@ -300,16 +279,19 @@ cc_library(
     name = "c_plugin_coordination_service_agent",
     srcs = ["c_plugin_coordination_service_agent.cc"],
     hdrs = ["c_plugin_coordination_service_agent.h"],
-    defines = ["TF_CAPI_WEAK"],
+    copts = ["-DTF_CAPI_WEAK"],
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_coordination_service_agent",
         "//tensorflow/c:kernels_experimental_hdrs",
-        "//tensorflow/c:tf_buffer_internal",
+        "//tensorflow/c:tf_buffer",
+        "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/next_pluggable_device:c_api_hdrs",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -324,6 +306,39 @@ cc_library(
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core/common_runtime/next_pluggable_device:flags",
+    ],
+)
+
+tf_cc_test(
+    name = "c_plugin_coordination_service_agent_test",
+    srcs = ["c_plugin_coordination_service_agent_test.cc"],
+    tags = [
+        # TODO(b/317086445): Re-enable windows and mac test.
+        "no_mac",
+        "no_windows",
+    ],
+    deps = [
+        ":c_plugin_coordination_service_agent",
+        "//tensorflow/c:tf_buffer",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/c/experimental/next_pluggable_device:c_api",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/distributed_runtime:call_options",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_client",
+        "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:env_impl",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+        "@local_tsl//tsl/protobuf:coordination_config_proto_cc",
+        "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -352,7 +367,7 @@ cc_library(
     name = "c_plugin_variable",
     srcs = ["c_plugin_variable.cc"],
     hdrs = ["c_plugin_variable.h"],
-    defines = ["TF_CAPI_WEAK"],
+    copts = ["-DTF_CAPI_WEAK"],
     visibility = ["//visibility:public"],
     deps = [
         ":plugin_variable",

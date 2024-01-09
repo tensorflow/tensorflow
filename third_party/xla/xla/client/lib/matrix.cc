@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <limits>
+#include <cstdint>
 #include <map>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -29,7 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -39,12 +40,14 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -296,8 +299,7 @@ xla::XlaOp EinsumDiagonalMask(XlaOp x, absl::Span<const int64_t> config) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-    Shape iota_shape = x_shape;
-    iota_shape.set_element_type(S32);
+    Shape iota_shape = ShapeUtil::MakeShape(S32, x_shape.dimensions());
     XlaOp mask = ConstantR0(builder, true);
 
     for (auto label = config.begin(); label != config.end(); ++label) {
@@ -385,25 +387,27 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
                   xla::XlaOp y, absl::Span<const int64_t> y_config,
                   absl::Span<const int64_t> output_config,
                   xla::PrecisionConfig::Precision precision,
-                  std::optional<PrimitiveType> preferred_element_type) {
+                  std::optional<PrimitiveType> preferred_element_type,
+                  bool grad_x, bool grad_y) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     auto x_diagonal_labels = EinsumDiagonalLabels(x_config);
     if (x_diagonal_labels) {
       return Einsum(EinsumDiagonal(x, x_config), x_diagonal_labels->at(0), y,
-                    y_config, output_config, precision, preferred_element_type);
+                    y_config, output_config, precision, preferred_element_type,
+                    grad_x, grad_y);
     }
     auto y_diagonal_labels = EinsumDiagonalLabels(y_config);
     if (y_diagonal_labels) {
       return Einsum(x, x_config, EinsumDiagonal(y, y_config),
                     y_diagonal_labels->at(0), output_config, precision,
-                    preferred_element_type);
+                    preferred_element_type, grad_x, grad_y);
     }
     auto output_diagonal_labels = EinsumDiagonalLabels(output_config);
     if (output_diagonal_labels) {
       return EinsumInverseDiagonal(
           Einsum(x, x_config, y, y_config, output_diagonal_labels->at(0),
-                 precision, preferred_element_type),
+                 precision, preferred_element_type, grad_x, grad_y),
           output_config);
     }
 
@@ -547,6 +551,11 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64_t> x_config,
     precision_proto.add_operand_precision(precision);
     auto dot =
         DotGeneral(x, y, dnums, &precision_proto, preferred_element_type);
+
+    TF_RETURN_IF_ERROR(builder->SetInstructionFrontendAttribute(
+        dot, "grad_x", (grad_x ? "true" : "false")));
+    TF_RETURN_IF_ERROR(builder->SetInstructionFrontendAttribute(
+        dot, "grad_y", (grad_y ? "true" : "false")));
     dot = Transpose(dot, transpose_dims);
     if (transpose_rank == output_rank) {
       return dot;
@@ -578,7 +587,8 @@ XlaOp BatchDot(XlaOp x, XlaOp y, PrecisionConfig::Precision precision,
 
 XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
                PrecisionConfig::Precision precision,
-               std::optional<PrimitiveType> preferred_element_type) {
+               std::optional<PrimitiveType> preferred_element_type, bool grad_x,
+               bool grad_y) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     std::string string("...mk,...kn->...mn");
@@ -588,7 +598,8 @@ XlaOp BatchDot(XlaOp x, bool transpose_x, XlaOp y, bool transpose_y,
     if (transpose_y) {
       std::swap(string[6 + 3], string[6 + 4]);
     }
-    return Einsum(x, y, string, precision, preferred_element_type);
+    return Einsum(x, y, string, precision, preferred_element_type, grad_x,
+                  grad_y);
   });
 }
 
@@ -709,12 +720,14 @@ std::string NormalizeEinsumString(absl::string_view einsum_config) {
 
 XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
              PrecisionConfig::Precision precision,
-             std::optional<PrimitiveType> preferred_element_type) {
+             std::optional<PrimitiveType> preferred_element_type, bool grad_x,
+             bool grad_y) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     auto new_config = NormalizeEinsumString(einsum_config);
     if (!new_config.empty()) {
-      return Einsum(x, y, new_config, precision, preferred_element_type);
+      return Einsum(x, y, new_config, precision, preferred_element_type, grad_x,
+                    grad_y);
     }
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
@@ -722,7 +735,8 @@ XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
         auto einsum_config_numeric,
         ParseEinsumString(einsum_config, x_shape.rank(), y_shape.rank()));
     return Einsum(x, einsum_config_numeric[0], y, einsum_config_numeric[1],
-                  einsum_config_numeric[2], precision, preferred_element_type);
+                  einsum_config_numeric[2], precision, preferred_element_type,
+                  grad_x, grad_y);
   });
 }
 

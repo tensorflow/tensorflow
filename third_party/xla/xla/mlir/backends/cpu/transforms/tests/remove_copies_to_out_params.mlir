@@ -37,7 +37,7 @@ func.func @alloc_vectorized(%arg0: memref<1024xf64>, %arg1: memref<1024xf64>) {
     %1 = arith.addf %0, %0 : vector<8xf64>
     vector.transfer_write %1, %subview[%c0] {in_bounds = [true]} :
         vector<8xf64>, memref<8xf64, strided<[1], offset: ?>>
-    scf.yield
+    scf.reduce
   }
   memref.copy %alloc, %arg1 : memref<1024xf64> to memref<1024xf64>
   memref.dealloc %alloc : memref<1024xf64>
@@ -53,7 +53,7 @@ func.func @alloc_vectorized(%arg0: memref<1024xf64>, %arg1: memref<1024xf64>) {
 // CHECK:           %[[R0:.*]] = vector.transfer_read %[[ARG0]]
 // CHECK:           %[[R1:.*]] = arith.addf %[[R0]], %[[R0]] : vector<8xf64>
 // CHECK:           vector.transfer_write %[[R1]], %[[SUBVIEW]]
-// CHECK:           scf.yield
+// CHECK:           scf.reduce
 // CHECK:         }
 // CHECK-NOT:     memref.copy
 // CHECK-NOT:     memref.dealloc
@@ -80,7 +80,7 @@ func.func @alloc2_vectorized(%arg0: memref<256xf64>,
     vector.transfer_write %1, %alloca[%c0] {in_bounds = [true]} : vector<8xf64>, memref<8xf64>
     %subview = memref.subview %alloc_0[%arg3] [8] [1] : memref<256xf64> to memref<8xf64, strided<[1], offset: ?>>
     memref.copy %alloca, %subview : memref<8xf64> to memref<8xf64, strided<[1], offset: ?>>
-    scf.yield
+    scf.reduce
   }
   scf.parallel (%arg3) = (%c0) to (%c256) step (%c8) {
     %subview = memref.subview %alloc[%arg3] [8] [1] : memref<256xf64> to memref<8xf64, strided<[1], offset: ?>>
@@ -88,7 +88,7 @@ func.func @alloc2_vectorized(%arg0: memref<256xf64>,
     %1 = vector.transfer_read %arg0[%arg3], %cst {in_bounds = [true]} : memref<256xf64>, vector<8xf64>
     %2 = arith.mulf %0, %1 : vector<8xf64>
     vector.transfer_write %2, %subview[%c0] {in_bounds = [true]} : vector<8xf64>, memref<8xf64, strided<[1], offset: ?>>
-    scf.yield
+    scf.reduce
   }
   memref.copy %alloc_0, %arg1 : memref<256xf64> to memref<256xf64>
   memref.dealloc %alloc_0 : memref<256xf64>
@@ -109,7 +109,7 @@ func.func @alloc2_vectorized(%arg0: memref<256xf64>,
 // CHECK:           vector.transfer_write %[[R1]], %[[ALLOCA]]
 // CHECK:           %[[SUBVIEW:.*]] = memref.subview %[[ARG1]]
 // CHECK:           memref.copy %[[ALLOCA]], %[[SUBVIEW]]
-// CHECK:           scf.yield
+// CHECK:           scf.reduce
 // CHECK:         }
 // CHECK-NOT:     memref.copy
 // CHECK-NOT:     memref.dealloc
@@ -119,7 +119,7 @@ func.func @alloc2_vectorized(%arg0: memref<256xf64>,
 // CHECK:           %[[R1:.*]] = vector.transfer_read %[[ARG0]]
 // CHECK:           %[[R2:.*]] = arith.mulf %[[R0]], %[[R1]]
 // CHECK:           vector.transfer_write %[[R2]], %[[SUBVIEW]]
-// CHECK:           scf.yield
+// CHECK:           scf.reduce
 // CHECK:         }
 // CHECK-NOT:     memref.copy
 // CHECK-NOT:     memref.dealloc

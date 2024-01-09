@@ -15,10 +15,19 @@ limitations under the License.
 
 #include "xla/service/gpu/conv_algorithm_picker.h"
 
+#include <cstdint>
+#include <vector>
+
+#include "absl/strings/string_view.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/tuple_simplifier.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"

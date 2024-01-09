@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -94,7 +93,8 @@ class CudaPlatform : public Platform {
   // manager.
   int limit_numa_node_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudaPlatform);
+  CudaPlatform(const CudaPlatform&) = delete;
+  void operator=(const CudaPlatform&) = delete;
 };
 
 }  // namespace gpu

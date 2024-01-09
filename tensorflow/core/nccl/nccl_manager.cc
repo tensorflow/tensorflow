@@ -722,8 +722,8 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
   se::Stream* comm_stream = nccl_stream->stream.get();
 #endif
   ScopedActivateExecutorContext scoped_context(nccl_stream->executor);
-  const cudaStream_t* cu_stream = reinterpret_cast<const cudaStream_t*>(
-      comm_stream->implementation()->GpuStreamMemberHack());
+  cudaStream_t cu_stream = reinterpret_cast<cudaStream_t>(
+      comm_stream->platform_specific_handle().stream);
 
   while (true) {
     // Find collective to run.
@@ -771,7 +771,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         });
         nccl_result = ncclAllReduce(sendbuff, recvbuff, p->input->NumElements(),
                                     data_type, collective->reduction_op,
-                                    nccl_comm, *cu_stream);
+                                    nccl_comm, cu_stream);
         break;
       }
       case kBroadcast: {
@@ -808,7 +808,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         });
         nccl_result =
             ncclBroadcast(sendbuff, recvbuff, num_elements, data_type,
-                          collective->root_rank, nccl_comm, *cu_stream);
+                          collective->root_rank, nccl_comm, cu_stream);
         break;
       }
       case kReduce: {
@@ -824,7 +824,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         });
         nccl_result = ncclReduce(sendbuff, recvbuff, p->input->NumElements(),
                                  data_type, collective->reduction_op,
-                                 collective->root_rank, nccl_comm, *cu_stream);
+                                 collective->root_rank, nccl_comm, cu_stream);
         break;
       }
       case kAllGather: {
@@ -845,7 +845,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
                {"collective_type", "all_gather"}});
         });
         nccl_result = ncclAllGather(sendbuff, recvbuff, p->input->NumElements(),
-                                    data_type, nccl_comm, *cu_stream);
+                                    data_type, nccl_comm, cu_stream);
         break;
       }
       case kReduceScatter: {
@@ -866,7 +866,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         });
         nccl_result = ncclReduceScatter(
             sendbuff, recvbuff, p->output->NumElements(), data_type,
-            collective->reduction_op, nccl_comm, *cu_stream);
+            collective->reduction_op, nccl_comm, cu_stream);
         break;
       }
       case kAllToAll: {
@@ -893,10 +893,10 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         for (int i = 0; i < collective->participants.size(); ++i) {
           ncclSend(sendbuff + i * rank_offset, count, data_type,
                    collective->participants[i]->global_rank, nccl_comm,
-                   *cu_stream);
+                   cu_stream);
           ncclRecv(recvbuff + i * rank_offset, count, data_type,
                    collective->participants[i]->global_rank, nccl_comm,
-                   *cu_stream);
+                   cu_stream);
         }
         nccl_result = ncclGroupEnd();
         break;

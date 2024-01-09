@@ -194,7 +194,8 @@ class GraphMgr {
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,
                                          Graph* graph, Device* device);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphMgr);
+  GraphMgr(const GraphMgr&) = delete;
+  void operator=(const GraphMgr&) = delete;
 };
 
 }  // end namespace tensorflow

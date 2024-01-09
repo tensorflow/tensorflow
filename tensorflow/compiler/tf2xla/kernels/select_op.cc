@@ -76,7 +76,8 @@ class SelectOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
+  SelectOp(const SelectOp&) = delete;
+  void operator=(const SelectOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Select"), MlirXlaOpKernel);
@@ -129,7 +130,8 @@ class SelectOpV2 : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectOpV2);
+  SelectOpV2(const SelectOpV2&) = delete;
+  void operator=(const SelectOpV2&) = delete;
 };
 
 REGISTER_XLA_OP(Name("SelectV2"), SelectOpV2);

@@ -66,7 +66,8 @@ class TpuNodeContext final {
   const int device_ordinal_;
   XLA_TpuNodeContext* const node_context_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuNodeContext);
+  TpuNodeContext(const TpuNodeContext&) = delete;
+  void operator=(const TpuNodeContext&) = delete;
 };
 
 }  // namespace tpu

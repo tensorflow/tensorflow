@@ -71,9 +71,9 @@ module attributes {gpu.container_module} {
   // CHECK-SAME:   %[[ARG1:.*]]: memref<i1>
   // CHECK-SAME: )
   func.func @for_loop(%arg0: memref<i32>, %arg1: memref<i1>) {
-    // CHECK: %[[LB:.*]] = arith.constant 0
-    // CHECK: %[[UB:.*]] = arith.constant 3000
-    // CHECK: %[[C1:.*]] = arith.constant 1
+    // CHECK-DAG: %[[LB:.*]] = arith.constant 0
+    // CHECK-DAG: %[[UB:.*]] = arith.constant 3000
+    // CHECK-DAG: %[[C1:.*]] = arith.constant 1
     %c1 = arith.constant 1 : index
 
     // CHECK: scf.for %[[I:.*]] = %[[LB]] to %[[UB]] step %[[C1]]

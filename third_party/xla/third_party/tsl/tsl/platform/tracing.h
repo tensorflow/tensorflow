@@ -129,7 +129,8 @@ class ScopedRegion {
   bool IsEnabled() const { return collector_ != nullptr; }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedRegion);
+  ScopedRegion(const ScopedRegion&) = delete;
+  void operator=(const ScopedRegion&) = delete;
 
   const EventCollector* collector_;
 };

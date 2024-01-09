@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 
 #include "xla/pjrt/pjrt_client.h"
+#include "tensorflow/core/framework/function.h"
 #include "tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
@@ -87,6 +88,18 @@ XlaCompiler::Options GenerateCompilerOptionsForTfrtTpu(
 XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     const FunctionLibraryRuntime& function_library,
     const DeviceBase* device_base, const XlaPlatformInfo& platform_info,
+    const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
+        pjrt_device_compiler) {
+  return GenerateCompilerOptionsForPjRt(
+      function_library.GetFunctionLibraryDefinition(),
+      function_library.graph_def_version(), device_base, platform_info,
+      pjrt_device_compiler);
+}
+
+XlaCompiler::Options GenerateCompilerOptionsForPjRt(
+    const FunctionLibraryDefinition* function_library_def,
+    int graph_def_version, const DeviceBase* device_base,
+    const XlaPlatformInfo& platform_info,
     const PjRtDeviceCompiler* pjrt_device_compiler) {
   XlaCompiler::Options options;
   StatusOr<int> platform_device_id =
@@ -99,8 +112,8 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
   } else {
     options.device_ordinal = device_base->parsed_name().id;
   }
-  options.flib_def = function_library.GetFunctionLibraryDefinition();
-  options.graph_def_version = function_library.graph_def_version();
+  options.flib_def = function_library_def;
+  options.graph_def_version = graph_def_version;
   if (const auto* metadata = platform_info.xla_device_metadata();
       metadata != nullptr) {
     options.device_type = metadata->jit_device_type();

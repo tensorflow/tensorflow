@@ -3604,9 +3604,9 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
   // examples quite a bit nicer.
   for (auto func :
        llvm::make_early_inc_range(module->getOps<mlir::func::FuncOp>())) {
-    if (func.getName().startswith("__inference__traced_save_") ||
-        func.getName().startswith("__inference__traced_restore_") ||
-        func.getName().startswith("__inference_signature_wrapper_")) {
+    if (func.getName().starts_with("__inference__traced_save_") ||
+        func.getName().starts_with("__inference__traced_restore_") ||
+        func.getName().starts_with("__inference_signature_wrapper_")) {
       func.erase();
     }
   }
@@ -4326,7 +4326,7 @@ tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
     mlir::MLIRContext* context) {
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
-  specs.graph_func_name = fbody->fdef.signature().name();
+  specs.graph_func_name = fbody->record->fdef().signature().name();
   specs.enable_shape_inference = false;
   specs.graph_as_function = true;
   for (const auto* control_ret_node : fbody->control_ret_nodes)

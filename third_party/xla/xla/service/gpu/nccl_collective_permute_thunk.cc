@@ -83,24 +83,6 @@ NcclP2PConfig GetNcclP2PConfig(CollectivePermuteStartOp op,
   return collective_permute_config;
 }
 
-// The collective permute is degenerate if all source-target pairs are identity,
-// and all the IDs appear in the list.
-bool IsDegenerate(CollectivePermuteStartOp op, int64_t replica_count,
-                  int64_t partition_count) {
-  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
-      ConvertNx2Attribute(op.getSourceTargetPairs()).value();
-  // Each ID can appear only once as a source and as a target. So if all pairs
-  // are identity, all IDs must appear in the list is the size == number of
-  // replicas/partitions.
-  const int64_t expected_size =
-      op.getChannelId() ? partition_count : replica_count;
-  return source_target_pairs.size() == expected_size &&
-         absl::c_all_of(source_target_pairs,
-                        [](const std::pair<int64_t, int64_t>& source_target) {
-                          return source_target.first == source_target.second;
-                        });
-}
-
 Status CheckImplementable(CollectivePermuteStartOp op) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
@@ -132,7 +114,20 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
 /*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(
     CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
-  return impl::IsDegenerate(op, replica_count, partition_count);
+  // The collective permute is degenerate if all source-target pairs are
+  // identity, and all the IDs appear in the list.
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+      ConvertNx2Attribute(op.getSourceTargetPairs()).value();
+  // Each ID can appear only once as a source and as a target. So if all pairs
+  // are identity, all IDs must appear in the list is the size == number of
+  // replicas/partitions.
+  const int64_t expected_size =
+      op.getChannelId() ? partition_count : replica_count;
+  return source_target_pairs.size() == expected_size &&
+         absl::c_all_of(source_target_pairs,
+                        [](const std::pair<int64_t, int64_t>& source_target) {
+                          return source_target.first == source_target.second;
+                        });
 }
 
 /*static*/ CollectiveOpGroupMode NcclCollectivePermuteStartThunk::GetGroupMode(

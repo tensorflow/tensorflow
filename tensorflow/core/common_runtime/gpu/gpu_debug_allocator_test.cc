@@ -21,7 +21,6 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -39,8 +38,8 @@ namespace {
 
 se::StreamExecutor* ExecutorForPlatformDeviceId(
     tsl::PlatformDeviceId platform_device_id) {
-  return se::DeviceIdUtil::ExecutorForPlatformDeviceId(se::GPUMachineManager(),
-                                                       platform_device_id)
+  return se::GPUMachineManager()
+      ->ExecutorForDevice(platform_device_id.value())
       .value();
 }
 

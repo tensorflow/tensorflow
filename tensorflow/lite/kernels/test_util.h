@@ -1100,24 +1100,38 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   }
 };
 
+// Maps the native C++ types to the corresponding TFLite tensor type enum
+// values.
+template <class T>
+struct TensorTypeFor;
+
+#define TFLITE_TENSOR_TYPE_ASSOC(CPP_TYPE, TENSORTYPE_VALUE) \
+  template <>                                                \
+  struct TensorTypeFor<CPP_TYPE> {                           \
+    static constexpr TensorType value = TENSORTYPE_VALUE;    \
+  };
+
+TFLITE_TENSOR_TYPE_ASSOC(bool, TensorType_BOOL);
+TFLITE_TENSOR_TYPE_ASSOC(int8_t, TensorType_INT8);
+TFLITE_TENSOR_TYPE_ASSOC(int16_t, TensorType_INT16);
+TFLITE_TENSOR_TYPE_ASSOC(int32_t, TensorType_INT32);
+TFLITE_TENSOR_TYPE_ASSOC(int64_t, TensorType_INT64);
+TFLITE_TENSOR_TYPE_ASSOC(uint8_t, TensorType_UINT8);
+TFLITE_TENSOR_TYPE_ASSOC(uint16_t, TensorType_UINT16);
+TFLITE_TENSOR_TYPE_ASSOC(uint32_t, TensorType_UINT32);
+TFLITE_TENSOR_TYPE_ASSOC(uint64_t, TensorType_UINT64);
+TFLITE_TENSOR_TYPE_ASSOC(TfLiteFloat16, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(Eigen::half, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(float, TensorType_FLOAT32);
+TFLITE_TENSOR_TYPE_ASSOC(double, TensorType_FLOAT64);
+TFLITE_TENSOR_TYPE_ASSOC(std::string, TensorType_STRING);
+
+#undef TFLITE_TENSOR_TYPE_ASSOC
+
 // Returns the corresponding TensorType given the type T.
 template <typename T>
-TensorType GetTensorType() {
-  if (std::is_same<T, float>::value) return TensorType_FLOAT32;
-  if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
-  if (std::is_same<T, Eigen::half>::value) return TensorType_FLOAT16;
-  if (std::is_same<T, double>::value) return TensorType_FLOAT64;
-  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
-  if (std::is_same<T, int16_t>::value) return TensorType_INT16;
-  if (std::is_same<T, uint16_t>::value) return TensorType_UINT16;
-  if (std::is_same<T, int32_t>::value) return TensorType_INT32;
-  if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
-  if (std::is_same<T, int64_t>::value) return TensorType_INT64;
-  if (std::is_same<T, uint64_t>::value) return TensorType_UINT64;
-  if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
-  if (std::is_same<T, string>::value) return TensorType_STRING;
-  if (std::is_same<T, bool>::value) return TensorType_BOOL;
-  return TensorType_MIN;  // default value
+constexpr TensorType GetTensorType() {
+  return TensorTypeFor<T>::value;
 }
 
 // Strings have a special implementation that is in test_util.cc

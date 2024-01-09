@@ -200,5 +200,6 @@ tf_cc_test(
         "@com_google_googletest//:gtest",
         "@flatbuffers",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:logging",
     ],
 )

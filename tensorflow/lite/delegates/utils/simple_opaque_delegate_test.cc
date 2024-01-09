@@ -14,20 +14,29 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/simple_opaque_delegate.h"
 
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
 #include <array>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/delegates/utils/experimental/sample_stable_delegate/sample_stable_delegate.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter_builder.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/model_builder.h"
 
 namespace tflite {
 
@@ -343,7 +352,7 @@ class MySimpleOpaqueDelegateWithBufferHandleSupport
   static constexpr int kDelegateOutputValue = 42;
   TfLiteStatus CopyFromBufferHandle(TfLiteOpaqueContext* context,
                                     TfLiteBufferHandle buffer_handle,
-                                    TfLiteOpaqueTensor* tensor) {
+                                    TfLiteOpaqueTensor* tensor) override {
     auto* output = reinterpret_cast<float*>(TfLiteOpaqueTensorData(tensor));
     std::vector<float> test_output(
         example::helpers::CalculateNumElements(tensor), kDelegateOutputValue);
@@ -353,8 +362,7 @@ class MySimpleOpaqueDelegateWithBufferHandleSupport
   }
 
   void FreeBufferHandle(TfLiteOpaqueContext* context,  // NOLINT
-                        TfLiteOpaqueDelegate* delegate,
-                        TfLiteBufferHandle* handle) {
+                        TfLiteBufferHandle* handle) override {
     recorded_buffer_handle_ = *handle;
     free_buffer_handle_called_ = true;
   }
@@ -411,7 +419,7 @@ TEST_F(TestDelegate, SetBufferHandle) {
                                                 TfLiteBufferHandle* handle) {
     auto* simple_opaque_delegate =
         reinterpret_cast<MySimpleOpaqueDelegateWithBufferHandleSupport*>(data);
-    simple_opaque_delegate->FreeBufferHandle(context, delegate, handle);
+    simple_opaque_delegate->FreeBufferHandle(context, handle);
   };
   TfLiteDelegate tflite_delegate{};
   tflite_delegate.opaque_delegate_builder = &opaque_delegate_builder;

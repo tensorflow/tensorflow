@@ -49,7 +49,8 @@ class NVTXRangeTracker {
  private:
   static std::stack<std::string>& GetRangeStack();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NVTXRangeTracker);
+  NVTXRangeTracker(const NVTXRangeTracker&) = delete;
+  void operator=(const NVTXRangeTracker&) = delete;
 };
 
 }  // namespace profiler

@@ -31,7 +31,9 @@ exports_files([
     "src/testdata/uint8.bin",
     "src/testdata/with_custom_op.lite",
     "AndroidManifest.xml",
+    "AndroidManifestApi.xml",
     "AndroidManifestGpu.xml",
+    "AndroidManifestGpuApi.xml",
     "proguard.flags",
     "tflite_version_script.lds",
 ])
@@ -269,7 +271,7 @@ android_library_with_tflite(
 android_library(
     name = "tensorflowlite_api",
     srcs = [":java_api_srcs"],
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestApi.xml",
     proguard_specs = ["proguard.flags"],
     deps = [
         "@org_checkerframework_qual",
@@ -318,7 +320,7 @@ tflite_flex_android_library(
 # EXPERIMENTAL: Android target for GPU acceleration. Note that this library
 # contains *only* the GPU delegate and its Java wrapper; clients must also
 # include the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 alias(
     name = "tensorflowlite_gpu",
     actual = "tensorflowlite_gpu_impl",
@@ -327,7 +329,7 @@ alias(
 # EXPERIMENTAL: Android target for the implementation of the GPU acceleration API, including the
 # native library. Note that this library contains *only* the GPU delegate and its Java wrapper;
 # clients must also include the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu_impl",
     # Note that we need to directly includes all the Java source files we intend to ship directly in
@@ -339,7 +341,7 @@ android_library(
     # Note that this uses the standard manifest and doesn't export it: the declaration is required
     # because android_library targets require a non-empty Android package in Bazel. The API target
     # exports the GPU manifest.
-    manifest = "AndroidManifest.xml",
+    manifest = "AndroidManifestGpu.xml",
     exports = [
         ":tensorflowlite_gpu_api",
         ":tensorflowlite_gpu_native",
@@ -388,12 +390,12 @@ android_library(
 # EXPERIMENTAL: Android target for GPU acceleration API, EXCLUDING implementation.
 # Note that this library contains *only* the GPU delegate API; clients must also include
 # an implementation, as well as the core `tensorflowlite` runtime.
-# Note that AndroidManifestGpu.xml usage requires AGP 4.2.0+.
+# Note that AndroidManifestGpuApi.xml usage requires AGP 4.2.0+.
 android_library(
     name = "tensorflowlite_gpu_api",
     srcs = ["//tensorflow/lite/delegates/gpu/java/src/main/java/org/tensorflow/lite/gpu:gpu_delegate"],
     exports_manifest = 1,
-    manifest = "AndroidManifestGpu.xml",
+    manifest = "AndroidManifestGpuApi.xml",
     proguard_specs = ["proguard.flags"],
     deps = [":tensorflowlite_api"],
 )
@@ -463,6 +465,14 @@ java_library(
     ],
 )
 
+java_library_with_tflite(
+    name = "test_init",
+    testonly = True,
+    srcs = [
+        "src/test/java/org/tensorflow/lite/TestInit.java",
+    ],
+)
+
 #-----------------------------------------------------------------------------
 # java_library targets that also include native code dependencies.
 
@@ -514,7 +524,6 @@ java_test_with_tflite(
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     javacopts = JAVACOPTS,
     # We want to ensure that every test case in the test also verifies that the
@@ -530,6 +539,9 @@ java_test_with_tflite(
         "v1only",
     ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -595,7 +607,6 @@ java_test_with_tflite(
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/NativeInterpreterWrapperTest.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     data = [
         # The files named as <data_type>.bin reshape the incoming tensor from (2, 8, 8, 3) to (2, 4, 4, 12).
@@ -611,6 +622,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -629,7 +643,6 @@ java_test_with_tflite(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterTest.java",
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     data = [
@@ -644,6 +657,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.InterpreterTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -661,7 +677,6 @@ java_test_with_tflite(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterApiTest.java",
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     data = [
@@ -675,6 +690,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.InterpreterApiTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_stable_test_jni.so",
     ],
@@ -693,7 +711,6 @@ java_test_with_tflite(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterApiNoRuntimeTest.java",
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     data = [
@@ -701,6 +718,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.InterpreterApiNoRuntimeTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_stable_test_jni.so",
     ],
@@ -718,7 +738,6 @@ java_test_with_tflite(
     srcs = [
         "src/test/java/org/tensorflow/lite/NnApiDelegateNativeTest.java",
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
     ],
     data = [
@@ -726,6 +745,9 @@ java_test_with_tflite(
     ],
     tags = ["no_mac"],
     test_class = "org.tensorflow.lite.NnApiDelegateNativeTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -743,7 +765,6 @@ java_test_with_tflite(
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/SupportedFeatures.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
         "src/test/java/org/tensorflow/lite/TestUtils.java",
         "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
     ],
@@ -753,6 +774,9 @@ java_test_with_tflite(
     javacopts = JAVACOPTS,
     tags = ["no_mac"],
     test_class = "org.tensorflow.lite.nnapi.NnApiDelegateTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],
@@ -795,7 +819,6 @@ java_test_with_tflite(
     size = "small",
     srcs = [
         "src/test/java/org/tensorflow/lite/TensorTest.java",
-        "src/test/java/org/tensorflow/lite/TestInit.java",
     ],
     data = [
         "src/testdata/add.bin",
@@ -806,6 +829,9 @@ java_test_with_tflite(
     ],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.lite.TensorTest",
+    tflite_deps = [
+        ":test_init",
+    ],
     tflite_jni_binaries = [
         "//tensorflow/lite/java/src/test/native:libtensorflowlite_test_jni.so",
     ],

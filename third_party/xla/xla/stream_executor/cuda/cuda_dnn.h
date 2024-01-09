@@ -295,6 +295,15 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::ActivationMode activation_mode) override;
 
+  tsl::StatusOr<std::unique_ptr<const dnn::NormRunner>> NormRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc, double epsilon,
+      const dnn::TensorDescriptor& input_descriptor,
+      const dnn::TensorDescriptor& scale_descriptor,
+      const dnn::TensorDescriptor& bias_descriptor,
+      const dnn::TensorDescriptor& output_descriptor,
+      std::optional<dnn::TensorDescriptor> expectation_descriptor,
+      std::optional<dnn::TensorDescriptor> norm_factor_descriptor) override;
+
   tsl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
   FusedMHARunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
@@ -307,7 +316,8 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<dnn::TensorDescriptor> activation_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
       std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask) override;
 
   tsl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
   FusedMHABackwardRunnerFromDesc(
@@ -321,10 +331,13 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::TensorDescriptor& d_bmm1_lhs_descriptor,
       const dnn::TensorDescriptor& d_bmm1_rhs_descriptor,
       const dnn::TensorDescriptor& d_bmm2_rhs_descriptor,
-      const dnn::TensorDescriptor& d_s_descriptor,
+      std::optional<dnn::TensorDescriptor> d_s_descriptor,
       std::optional<dnn::TensorDescriptor> mask_descriptor,
-      std::optional<dnn::TensorDescriptor> d_bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
+      std::optional<dnn::TensorDescriptor> d_bias_descriptor,
+      std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
+      std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
+      std::optional<double> dropout_rate, std::optional<int64_t> seed,
+      bool is_flash_attention, bool is_causal_mask);
   bool GetRnnAlgorithms(
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
@@ -449,81 +462,6 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<const DeviceMemory<float>> bias_input,
       std::optional<DeviceMemory<float>> bias_output) override;
 
-  bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int8_t>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DoConvolveQuantized not supported by cuDNN";
-    return false;
-  }
-
-  bool DoConvolveQuantized(
-      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<int16>& filter_coefficients,
-      const DeviceMemory<float>& coefficient_scales,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DoConvolveQuantized not supported by cuDNN";
-    return false;
-  }
-
-  bool DoSeparableConvolve(
-      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
-      const DeviceMemory<float>& input_data,
-      const dnn::FilterDescriptor& filter_descriptor, int depth_multiplier,
-      const DeviceMemory<float>& first_weights,
-      const DeviceMemory<float>& second_weights,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "separable convolution not supported by CUDNN";
-    return false;
-  }
-
-  bool DoMatMul(Stream* stream, const DeviceMemory<float>& input_data,
-                const DeviceMemory<float>& weights,
-                const dnn::BatchDescriptor& input_dimensions,
-                const dnn::BatchDescriptor& output_dimensions,
-                DeviceMemory<float>* output_data) override;
-
-  bool DoMatMulQuantized(Stream* stream, const DeviceMemory<float>& input_data,
-                         const DeviceMemory<int8_t>& quantized_weights,
-                         const DeviceMemory<float>& weight_scales,
-                         const dnn::BatchDescriptor& input_dimensions,
-                         const dnn::BatchDescriptor& output_dimensions,
-                         DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DNN MatMulQuantized not supported by CUDNN";
-    return false;
-  }
-
-  bool DoMatMulQuantized(Stream* stream, const DeviceMemory<float>& input_data,
-                         const DeviceMemory<int16>& quantized_weights,
-                         const DeviceMemory<float>& weight_scales,
-                         const dnn::BatchDescriptor& input_dimensions,
-                         const dnn::BatchDescriptor& output_dimensions,
-                         DeviceMemory<float>* output_data) override {
-    LOG(ERROR) << "DNN MatMulQuantized not supported by CUDNN";
-    return false;
-  }
-
-  bool DoBiasAdd(Stream* stream, const DeviceMemory<float>& input_data,
-                 const DeviceMemory<float>& biases,
-                 const dnn::BatchDescriptor& dimensions,
-                 DeviceMemory<float>* output_data) override;
-
-  bool DoActivate(Stream* stream, dnn::ActivationMode activation_mode,
-                  const dnn::BatchDescriptor& dimensions,
-                  const DeviceMemory<float>& input_data,
-                  DeviceMemory<float>* output_data, uint64_t options) override;
-
   tsl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
                             const dnn::PoolingDescriptor& pooling_dimensions,
                             const dnn::BatchDescriptor& input_dimensions,
@@ -580,32 +518,6 @@ class CudnnSupport : public dnn::DnnSupport {
   bool DoDepthConcatenate(Stream* stream, BatchDescriptorSlice input_dimensions,
                           DeviceMemorySlice<float> input_data,
                           DeviceMemory<float>* output_data) override;
-
-  bool DoElementwiseOperate(Stream* stream, dnn::ElementwiseOperation operation,
-                            BatchDescriptorSlice input_dimensions,
-                            DeviceMemorySlice<float> input_data,
-                            const dnn::BatchDescriptor& output_dimensions,
-                            DeviceMemory<float>* output_data) override;
-
-  bool DoXYPad(Stream* stream, const dnn::BatchDescriptor& dimensions,
-               const DeviceMemory<float>& input_data, int64_t left_pad,
-               int64_t right_pad, int64_t top_pad, int64_t bottom_pad,
-               DeviceMemory<float>* output_data) override;
-
-  bool DoXYSlice(Stream* stream, const dnn::BatchDescriptor& dimensions,
-                 const DeviceMemory<float>& input_data, int64_t left_trim,
-                 int64_t right_trim, int64_t top_trim, int64_t bottom_trim,
-                 DeviceMemory<float>* output_data) override;
-
-  bool DoMemcpyD2HQuantized(Stream* stream,
-                            const DeviceMemory<float>& device_unquantized_src,
-                            dnn::QuantizedActivationMode mode, void* host_dst,
-                            int64_t size) override;
-
-  bool DoMemcpyH2DQuantized(
-      Stream* stream, const void* host_src, int64_t size,
-      dnn::QuantizedActivationMode mode,
-      DeviceMemory<float>* device_unquantized_dst) override;
 
   // Derives an output batch descriptor from an input batch and convolution
   // descriptors.
@@ -767,7 +679,8 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) override;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
+  CudnnSupport(const CudnnSupport&) = delete;
+  void operator=(const CudnnSupport&) = delete;
 };
 
 }  // namespace gpu

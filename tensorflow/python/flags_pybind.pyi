@@ -19,12 +19,14 @@ class Flag:
     def value(self) -> bool: ...
 
 class Flags:
+    enable_aggressive_constant_replication: Flag
+    enable_colocation_key_propagation_in_while_op_lowering: Flag
     enable_nested_function_shape_inference: Flag
     enable_quantized_dtypes_training: Flag
     graph_building_optimization: Flag
     more_stack_traces: Flag
     op_building_optimization: Flag
-    replicate_small_constants: Flag
+    publish_function_graphs: Flag
     saved_model_fingerprinting: Flag
     test_only_experiment_1: Flag
     test_only_experiment_2: Flag

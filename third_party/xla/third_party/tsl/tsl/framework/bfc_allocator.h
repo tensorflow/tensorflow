@@ -352,7 +352,8 @@ class BFCAllocator : public Allocator {
     // for the memory allocation represented by "p"
     std::vector<ChunkHandle> handles_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(AllocationRegion);
+    AllocationRegion(const AllocationRegion&) = delete;
+    void operator=(const AllocationRegion&) = delete;
   };
 
   // RegionManager aggregates one or more "AllocationRegions" and provides
@@ -619,7 +620,8 @@ class BFCAllocator : public Allocator {
 
   friend class GPUBFCAllocatorPrivateMethodsTest;
   friend class GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific;
-  TF_DISALLOW_COPY_AND_ASSIGN(BFCAllocator);
+  BFCAllocator(const BFCAllocator&) = delete;
+  void operator=(const BFCAllocator&) = delete;
 };
 
 }  // namespace tsl

@@ -88,12 +88,6 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
 
   void SetStreamAndPreallocateMemory(void* stream) override;
 
-  // With the right VLOG set, it prints:
-  // - the number of ptr currently allocated per size (histogram).
-  // - each ptr value and its size.
-  // - If CUDA_VERSION >= 11030, print cudaMallocAsync statistics.
-  void PrintAllocatorStatistics();
-
   static int GetInstantiatedCountTestOnly() { return number_instantiated_; }
 
   tsl::AllocatorMemoryType GetMemoryType() const override {
@@ -127,7 +121,8 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
 
   bool reserve_memory_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuCudaMallocAsyncAllocator);
+  GpuCudaMallocAsyncAllocator(const GpuCudaMallocAsyncAllocator&) = delete;
+  void operator=(const GpuCudaMallocAsyncAllocator&) = delete;
 
   // Stats.
   // Structures mutable after construction

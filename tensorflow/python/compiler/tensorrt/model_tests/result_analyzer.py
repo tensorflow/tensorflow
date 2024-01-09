@@ -104,7 +104,7 @@ class DataFrame:
 
 def extract_test_info(
     test_results: model_handler.TestResultCollection) -> DataFrame:
-  """Extracts the test infomation."""
+  """Extracts the test information."""
   column_names = list(
       itertools.chain(model_handler.ModelConfig._fields,
                       ["enable_gpu", "trt_model"],
@@ -207,7 +207,7 @@ def check_column(df: DataFrame, row: int, name: str,
     row: The row in the DataFrame
     name: The name of the column to be checked.
     fn: The function that takes a value of at the specified column and returns
-      if the value statisfies the check.
+      if the value satisfies the check.
 
   Returns:
     Whether all the values of the specified column satisfies the provided check.

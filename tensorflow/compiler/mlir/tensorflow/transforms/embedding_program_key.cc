@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -86,35 +87,84 @@ Operation* FindCompileSuccessor(Operation* func_op, Operation* preprocess_op) {
   return tpu_compile_successor;
 }
 
+// Get all the Blocks underneath `top` that are "in the scope" of `bottom`,
+// i.e., are ancestors.
+llvm::DenseSet<Block*> GetAllBlocksBetween(Operation* bottom, Operation* top) {
+  llvm::DenseSet<Block*> blocks;
+  Operation* op = bottom;
+  while (op && op != top) {
+    blocks.insert(op->getBlock());
+    op = op->getParentOp();
+  }
+  return blocks;
+}
+
+// For a given value defined somewhere underneath `target_blocks`, get the
+// result that's emitted through the op(s) that wrap it, in one of the
+// `target_blocks`.
+Value GetResultInBlock(Value value, llvm::DenseSet<Block*> target_blocks) {
+  while (target_blocks.find(value.getParentBlock()) == target_blocks.end()) {
+    Value new_value = nullptr;
+    for (OpOperand& operand : value.getUses()) {
+      Operation* owner = operand.getOwner();
+      if (!llvm::isa<tf_device::ReturnOp>(owner)) continue;
+      Operation* parent = owner->getParentOp();  // op that owns the "return"
+      if (llvm::isa<tf_device::LaunchOp>(parent)) {
+        new_value = parent->getResult(operand.getOperandNumber());
+      } else if (auto replicate =
+                     llvm::dyn_cast<tf_device::ReplicateOp>(parent)) {
+        int n = replicate.getN();
+        new_value = parent->getResult(operand.getOperandNumber() * n);
+      } else {
+        parent->emitOpError("Unsupported wrapper op.");
+        return nullptr;
+      }
+    }
+    if (!new_value) {
+      return nullptr;
+    } else {
+      value = new_value;
+    }
+  }
+  return value;
+}
+
 // Find a TPUCompileMlirOp that's before the given `preprocess_op`, under
-// `func`. Assumes the TPUCompileMlirOp is wrapped in a tf_device.launch,
-// possibly itself wrapped in a tf_device.replicate.
+// `func`. Allows both ops to be wrapped inside a tf_device.launch or a
+// tf_device.replicate.
 Operation* FindCompilePredecessor(Operation* func_op,
                                   Operation* preprocess_op) {
-  bool in_launch = isa<tf_device::LaunchOp>(preprocess_op->getParentOp());
-  Operation* preprocess_or_launch =
-      in_launch ? preprocess_op->getParentOp() : preprocess_op;
+  llvm::DenseSet<Block*> blocks = GetAllBlocksBetween(preprocess_op, func_op);
+
+  llvm::DenseMap<Block*, Operation*> scope;
+  Operation* o = preprocess_op;
+  while (o && o != func_op) {
+    scope[o->getBlock()] = o;
+    o = o->getParentOp();
+  }
 
   Operation* tpu_compile_predecessor = nullptr;
   func_op->walk([&](TF::_TPUCompileMlirOp compile_op) {
-    if (compile_op->getParentOp() == nullptr ||
-        !isa<tf_device::LaunchOp>(compile_op->getParentOp()))
-      return WalkResult::advance();
-    Operation* compile_launch_op = compile_op->getParentOp();
-    if (compile_launch_op->getBlock() == preprocess_or_launch->getBlock() &&
-        compile_launch_op->isBeforeInBlock(preprocess_or_launch)) {
+    // Check that the compile op is before the preprocess op.
+    Operation* o = compile_op;
+    while (o && o != func_op) {
+      auto it = scope.find(o->getBlock());
+      if (it != scope.end()) {
+        // Once we have a found a compile op that's in the same
+        // (parent) block, we need to check that it's before (the
+        // (parent of) the preprocess_op.
+        if (o->isBeforeInBlock(it->second)) {
+          break;  // valid compile predecessor
+        } else {
+          return WalkResult::advance();
+        }
+      }
+      o = o->getParentOp();
+    }
+    // Check that the the compile op actually passes its results to its parents.
+    if (GetResultInBlock(compile_op->getResult(1), blocks)) {
       tpu_compile_predecessor = compile_op;
       return WalkResult::interrupt();
-    }
-    // The launch op might be underneath a replicate op. If the preprocess_op is
-    // in the same block as said replicate, that's OK, too.
-    if (auto replicate_op = llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
-            compile_launch_op->getParentOp())) {
-      if (replicate_op->getBlock() == preprocess_or_launch->getBlock() &&
-          replicate_op->isBeforeInBlock(preprocess_or_launch)) {
-        tpu_compile_predecessor = compile_op;
-        return WalkResult::interrupt();
-      }
     }
     return WalkResult::advance();
   });
@@ -355,16 +405,24 @@ void RewritePreprocessInputs(OpBuilder* builder, func::FuncOp func_op,
       FindCompilePredecessor(func_op, preprocess_op);
   if (tpu_compile_predecessor == nullptr) return;
 
-  for (OpOperand& operand : tpu_compile_predecessor->getResult(1).getUses()) {
-    if (llvm::isa<tf_device::ReturnOp>(operand.getOwner()) &&
-        tpu_compile_predecessor->getParentOp()
-            ->getBlock()
-            ->findAncestorOpInBlock(*preprocess_op)) {
-      preprocess_op->setOperand(
-          0, tpu_compile_predecessor->getParentOp()->getResult(
-                 operand.getOperandNumber()));
+  Value program = GetResultInBlock(tpu_compile_predecessor->getResult(1),
+                                   GetAllBlocksBetween(preprocess_op, func_op));
+  if (!program) return;
+  preprocess_op->setOperand(0, program);
+}
+
+LogicalResult VerifyAllProgramKeyOperandsReplaced(Operation* module) {
+  WalkResult result = module->walk([&](Operation* op) {
+    if (!op->hasAttr(kMiniBatchSplitsAttr) && !op->hasAttr(kMiniBatchCsrAttr))
+      return WalkResult::advance();
+    Operation* defining = op->getOperand(0).getDefiningOp();
+    if (llvm::dyn_cast_or_null<TF::ConstOp>(defining)) {
+      op->emitError("Couldn't find a program key to insert into this op.");
+      return WalkResult::interrupt();
     }
-  }
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted() ? failure() : success();
 }
 
 void EmbeddingProgramKeyPass::runOnOperation() {
@@ -400,6 +458,10 @@ void EmbeddingProgramKeyPass::runOnOperation() {
 
   for (Operation* preprocess_op : preprocess_ops) {
     RewritePreprocessInputs(&builder, getOperation(), preprocess_op);
+  }
+
+  if (failed(VerifyAllProgramKeyOperandsReplaced(getOperation()))) {
+    signalPassFailure();
   }
 }
 

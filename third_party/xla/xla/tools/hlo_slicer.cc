@@ -80,7 +80,7 @@ void ReduceTupleParameterHelper(HloModule* hlo_module,
   }
 
   // Update HloModule shape.
-  hlo_module->config().SetComputationLayoutIfExists(
+  hlo_module->mutable_config().SetComputationLayoutIfExists(
       hlo_module->entry_computation()->ComputeProgramShape());
 }
 
@@ -407,8 +407,8 @@ SliceOutput SliceModule(
                             /*nearest_common_ancestor_as_root=*/false);
 
       // Intersect the sliced instructions between forward slicing pass and
-      // backward slicing pass as the the new sliced instructions, and return
-      // the new SliceOutput.
+      // backward slicing pass as the new sliced instructions, and return the
+      // new SliceOutput.
       return SliceOutput{SliceOutput::IntersectSlicedInstructions(
                              forward_slice_output, backward_slice_output),
                          backward_slice_output.frontier_instructions(),

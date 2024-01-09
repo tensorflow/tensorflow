@@ -19,6 +19,8 @@ ncclGetUniqueId
 ncclGetVersion
 ncclGroupEnd
 ncclGroupStart
+ncclMemAlloc
+ncclMemFree
 ncclRecv
 ncclRedOpCreatePreMulSum
 ncclRedOpDestroy
@@ -46,6 +48,8 @@ pncclGetUniqueId
 pncclGetVersion
 pncclGroupEnd
 pncclGroupStart
+pncclMemAlloc
+pncclMemFree
 pncclRecv
 pncclRedOpCreatePreMulSum
 pncclRedOpDestroy

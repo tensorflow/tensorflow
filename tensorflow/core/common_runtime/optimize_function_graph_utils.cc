@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
@@ -43,14 +44,16 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tensorflow/core/util/dump_graph.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -156,7 +159,7 @@ void GetColocationGroup(const Node* node, string* group) {
 
 // Writes the OptimizedFunctionGraphInfo proto into a cache file.
 // Returns error if the cache file writing fails.
-Status WriteToCache(const string& dir_name, const string& file_name,
+Status WriteToCache(const std::string& dir_name, const std::string& file_name,
                     OptimizedFunctionGraphInfo& optimized_function_graph_info,
                     Env* env) {
   const absl::Time cache_writing_start_time = absl::Now();
@@ -172,8 +175,26 @@ Status WriteToCache(const string& dir_name, const string& file_name,
   if (!env->FileExists(dir_name).ok()) {
     TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir_name));
   }
+  {
+    bool has_atomic_move = false;
+    TF_RETURN_IF_ERROR(env->HasAtomicMove(dir_name, &has_atomic_move));
+    if (!has_atomic_move) {
+      LOG_EVERY_POW_2(WARNING)
+          << "Filesystem for OptimizedFunctionGraphInfo persistent cache at "
+          << dir_name
+          << " does not support atomic moves. Therefore the "
+             "persistent cache is racy if you have multiple optimizations "
+             "occurring simultaneously!";
+    }
+  }
+  std::string temp_file_name = file_name;
+  if (!env->CreateUniqueFileName(&temp_file_name, ".pb.tmp")) {
+    return absl::UnavailableError(
+        absl::StrCat("Could not create a unique file inside ", dir_name));
+  }
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
-      env, file_name, optimized_function_graph_proto_str));
+      env, temp_file_name, optimized_function_graph_proto_str));
+  TF_RETURN_IF_ERROR(env->RenameFile(temp_file_name, file_name));
 
   const absl::Duration cache_writing_duration =
       absl::Now() - cache_writing_start_time;
@@ -234,17 +255,21 @@ string GetFileCacheName(const string& dir_name, const string& function_name,
                       tsl::port::TaskId(), "_", plain_func_name, "_",
                       fdef->node_def_size());
 }
-}  // namespace
 
-Status GetGraphAndArgRets(
-    const string& function_name, AttrSlice attrs, const FunctionDef* fdef,
-    const FunctionLibraryDefinition* lib_def, std::unique_ptr<Graph>* graph,
-    std::vector<Node*>* arg_nodes, std::vector<Node*>* ret_nodes,
-    std::vector<string>* ret_node_names, DataTypeVector* ret_types,
-    std::vector<string>* control_ret_node_names) {
+// Generates graph and return information given the input function name,
+// attributes and function definition.
+Status GetGraphAndArgRets(const string& function_name, AttrSlice attrs,
+                          core::RefCountPtr<FunctionRecord>&& fdef,
+                          const FunctionLibraryDefinition* lib_def,
+                          std::unique_ptr<Graph>* graph,
+                          std::vector<Node*>* arg_nodes,
+                          std::vector<Node*>* ret_nodes,
+                          std::vector<string>* ret_node_names,
+                          DataTypeVector* ret_types,
+                          std::vector<string>* control_ret_node_names) {
   std::unique_ptr<FunctionBody> fbody;
-  // TODO(iga): FunctionDefToBodyHelper copies fdef. Avoid this copy.
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, attrs, lib_def, &fbody));
+  TF_RETURN_IF_ERROR(
+      FunctionDefToBodyHelper(std::move(fdef), attrs, lib_def, &fbody));
   if (!fbody) {
     LOG(ERROR) << "Failed to get FunctionBody for \"" << function_name << "\"";
     return errors::Internal("Failed to construct FunctionBody for ",
@@ -271,6 +296,7 @@ Status GetGraphAndArgRets(
   }
   return OkStatus();
 }
+}  // namespace
 
 Status PinArgsAndRets(const std::vector<string>& input_devices,
                       const std::vector<string>& output_devices,
@@ -448,13 +474,13 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   const FunctionLibraryDefinition* lib_def =
       options.lib_def == nullptr ? input_lib_def : options.lib_def;
 
-  const FunctionDef* fdef = lib_def->Find(function_name);
+  core::RefCountPtr<FunctionRecord> fdef = lib_def->FindRecord(function_name);
   if (fdef == nullptr) {
     return errors::InvalidArgument("Failed to find function \"", function_name,
                                    "\" in function library: ", lib_def);
   }
 
-  TF_RETURN_IF_ERROR(ValidateMultiDeviceOptions(*fdef, options));
+  TF_RETURN_IF_ERROR(ValidateMultiDeviceOptions(fdef->fdef(), options));
 
   std::unique_ptr<Graph> graph;
   std::vector<Node*> arg_nodes, ret_nodes;
@@ -463,8 +489,8 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   std::vector<string> control_ret_node_names;
 
   TF_RETURN_IF_ERROR(GetGraphAndArgRets(
-      function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
-      &ret_node_names, &ret_types, &control_ret_node_names));
+      function_name, attrs, fdef.GetNewRef(), lib_def, &graph, &arg_nodes,
+      &ret_nodes, &ret_node_names, &ret_types, &control_ret_node_names));
 
   DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
       function_name, kDebugGroupOpStacktrace, "before_opt", graph.get());
@@ -536,7 +562,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       node_name_to_control_ret.emplace(control_ret, control_ret);
     }
   } else {
-    for (const auto& control_ret : fdef->control_ret()) {
+    for (const auto& control_ret : fdef->fdef().control_ret()) {
       node_name_to_control_ret.emplace(control_ret.second, control_ret.first);
     }
   }
@@ -553,7 +579,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.is_function_graph = true;
   optimization_options.composite_devices = &composite_devices;
   optimization_options.default_function_device = default_device;
-  optimization_options.function_def = fdef;
+  optimization_options.function_def = &fdef->fdef();
   optimization_options.shape_inference_on_tfe_dialect_import =
       options.shape_inference_on_tfe_dialect_import;
   optimization_options.debug_filename_prefix = function_name;

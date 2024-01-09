@@ -113,7 +113,8 @@ class TfToPlatformDeviceIdMap {
   TypeIdMapType id_map_ TF_GUARDED_BY(mu_);
 
   friend class ::tsl::DeviceIdManager;
-  TF_DISALLOW_COPY_AND_ASSIGN(TfToPlatformDeviceIdMap);
+  TfToPlatformDeviceIdMap(const TfToPlatformDeviceIdMap&) = delete;
+  void operator=(const TfToPlatformDeviceIdMap&) = delete;
 };
 }  // namespace
 

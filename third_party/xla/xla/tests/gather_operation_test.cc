@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/array.h"
 #include "xla/client/xla_builder.h"
 #include "xla/execution_options_util.h"
 #include "xla/literal_util.h"
@@ -790,5 +791,54 @@ XLA_TEST_F(GatherClientLibraryTest,
   LiteralTestUtil::ExpectR2Equal<int32_t>({{1, 2, 3}, {7, 8, 9}},
                                           result_literal);
 }
+
+XLA_TEST_F(GatherOperationTest, b_301618442_case1) {
+  const std::string hlo_text = R"(
+HloModule b_301618442
+
+ENTRY main {
+  operand = s32[4,256] parameter(0)
+  indices = s32[64] parameter(1)
+  ROOT gather = s32[64,256] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
+      index_vector_dim=1,
+      slice_sizes={1,256}
+}
+)";
+  Array<int32_t> operand({4, 256});
+  operand.FillIota(0);
+  Literal operand_literal = LiteralUtil::CreateFromArray(operand);
+  Array<int32_t> indices({64});
+  operand.FillRandomUniform(0, 3);
+  Literal indices_literal = LiteralUtil::CreateFromArray(indices);
+  RunTest(hlo_text, &operand_literal, &indices_literal);
+}
+
+XLA_TEST_F(GatherOperationTest, b_301618442_case2) {
+  const std::string hlo_text = R"(
+HloModule b_301618442
+
+ENTRY main {
+  operand = s32[4,4096] parameter(0)
+  indices = s32[64] parameter(1)
+  ROOT gather = s32[64,4096] gather(operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
+      index_vector_dim=1,
+      slice_sizes={1,4096}
+}
+)";
+  Array<int32_t> operand({4, 4096});
+  operand.FillIota(0);
+  Literal operand_literal = LiteralUtil::CreateFromArray(operand);
+  Array<int32_t> indices({64});
+  operand.FillRandomUniform(0, 3);
+  Literal indices_literal = LiteralUtil::CreateFromArray(indices);
+  RunTest(hlo_text, &operand_literal, &indices_literal);
+}
+
 }  // namespace
 }  // namespace xla

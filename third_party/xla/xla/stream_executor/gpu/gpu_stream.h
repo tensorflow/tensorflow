@@ -41,10 +41,7 @@ class GpuStream : public internal::StreamInterface {
   // Note: teardown is handled by a parent's call to DeallocateStream.
   ~GpuStream() override = default;
 
-  void* GpuStreamHack() override { return gpu_stream_; }
-  void** GpuStreamMemberHack() override {
-    return reinterpret_cast<void**>(&gpu_stream_);
-  }
+  void* platform_specific_stream() override { return gpu_stream_; }
 
   // Explicitly initialize the CUDA resources associated with this stream, used
   // by StreamExecutor::AllocateStream().

@@ -59,8 +59,6 @@ from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
-ops.NotDifferentiable("TPUReplicatedInput")
-
 # Ops which can be safely pruned from XLA compile if they have no consumers.
 #  These ops should also have no inputs.
 _UNCONNECTED_OPS_TO_PRUNE = set(["Placeholder", "VarHandleOp"])

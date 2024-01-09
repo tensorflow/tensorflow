@@ -288,8 +288,8 @@ tf_py_strict_test(
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:load_library",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
@@ -323,9 +323,9 @@ tf_py_strict_test(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:load_library",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:resource_variable_ops_gen",
@@ -336,6 +336,10 @@ tf_py_strict_test(
 tf_python_pybind_extension(
     name = "tfr_wrapper",
     srcs = ["python/tfr_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "tfr_wrapper.pyi",
+    ],
     deps = [
         ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -378,8 +382,8 @@ py_strict_library(
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_definitions",
         "//tensorflow/python/autograph/pyct/static_analysis:reaching_fndefs",
         "//tensorflow/python/autograph/pyct/static_analysis:type_inference",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:load_library",
         "//tensorflow/python/framework:op_def_registry",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_inspect",

@@ -40,6 +40,14 @@ NEON_FLAGS_IF_APPLICABLE = select({
     ],
 })
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = ["compatibility.h"],
+    visibility = [
+        "//tensorflow/lite:__pkg__",
+    ],
+)
+
 cc_library(
     name = "compatibility",
     hdrs = ["compatibility.h"],
@@ -1497,7 +1505,9 @@ filegroup(
     srcs = glob([
         "optimized/*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 filegroup(
@@ -1505,7 +1515,9 @@ filegroup(
     srcs = glob([
         "reference/*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 filegroup(
@@ -1513,7 +1525,9 @@ filegroup(
     srcs = glob([
         "*.h",
     ]),
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 transitive_hdrs(

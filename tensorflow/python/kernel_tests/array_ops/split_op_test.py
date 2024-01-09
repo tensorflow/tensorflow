@@ -27,7 +27,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 _TEST_DTYPES = (
-    dtypes.int4,
     dtypes.int8,
     dtypes.float32,
     dtypes.float64,
@@ -37,6 +36,10 @@ _TEST_DTYPES = (
     dtypes.float8_e5m2,
     dtypes.float8_e4m3fn,
 )
+
+if not test_util.is_xla_enabled():
+  # TODO(b/183567451): Support int4 in XLA
+  _TEST_DTYPES += (dtypes.int4,)
 
 
 class SplitOpTest(test.TestCase):

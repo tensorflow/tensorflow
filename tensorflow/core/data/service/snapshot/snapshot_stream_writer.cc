@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
@@ -34,16 +35,14 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -90,7 +89,7 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
 
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
-  Status status = WriteSnapshot();
+  absl::Status status = WriteSnapshot();
   if (IsPreemptedError(status)) {
     LOG(INFO) << "tf.data service snapshot writer is cancelled: " << status;
     return;
@@ -109,7 +108,7 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   iterator_ = nullptr;  // Reclaims iterator resources.
 }
 
-Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {
+absl::Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {
   // TODO(b/258691097): Write the "LEASE" file periodically.
   TF_RETURN_IF_ERROR(InitializeDirectories());
   TF_RETURN_IF_ERROR(Restore());
@@ -126,12 +125,12 @@ bool SnapshotStreamWriter::StreamAlreadyCompleted() const {
   return params_.env->FileExists(done_file_path).ok();
 }
 
-Status SnapshotStreamWriter::InitializeDirectories() {
+absl::Status SnapshotStreamWriter::InitializeDirectories() {
   TF_RETURN_IF_ERROR(
       params_.env->RecursivelyCreateDir(params_.UncommittedChunksDirectory()));
   TF_RETURN_IF_ERROR(
       params_.env->RecursivelyCreateDir(params_.CheckpointsDirectory()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
@@ -139,7 +138,7 @@ bool SnapshotStreamWriter::ShouldWriteChunk() const TF_LOCKS_EXCLUDED(mu_) {
   return !end_of_sequence_ && completed_.ok();
 }
 
-Status SnapshotStreamWriter::WriteChunk() {
+absl::Status SnapshotStreamWriter::WriteChunk() {
   LOG(INFO) << "Writing distributed tf.data snapshot " << params_.snapshot_path
             << ", stream " << params_.stream_index << ", chunk " << chunk_index_
             << ".";
@@ -147,8 +146,8 @@ Status SnapshotStreamWriter::WriteChunk() {
   std::string uncommitted_chunk_file_path =
       tsl::io::JoinPath(params_.UncommittedChunksDirectory(),
                         absl::StrCat("chunk_", chunk_index_));
-  snapshot_util::TFRecordWriter writer(uncommitted_chunk_file_path,
-                                       params_.compression);
+  snapshot_util::TFRecordWriter writer(
+      TranslateFileName(uncommitted_chunk_file_path), params_.compression);
   TF_RETURN_IF_ERROR(writer.Initialize(params_.env));
   while (ShouldWriteRecord()) {
     TF_RETURN_IF_ERROR(WriteRecord(writer));
@@ -163,7 +162,7 @@ Status SnapshotStreamWriter::WriteChunk() {
   ++chunk_index_;
   chunk_size_bytes_ = 0;
   chunk_num_elements_ = 0;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool SnapshotStreamWriter::ShouldCommit() const {
@@ -178,7 +177,7 @@ bool SnapshotStreamWriter::ShouldCommit() const {
          now > last_commit_time_ + params_.checkpoint_interval;
 }
 
-Status SnapshotStreamWriter::Commit() {
+absl::Status SnapshotStreamWriter::Commit() {
   // Writes the checkpoint before committing the chunks. If the worker fails in
   // between, the restarted worker will commit the uncommitted chunks.
   TF_RETURN_IF_ERROR(Save());
@@ -210,7 +209,7 @@ Status SnapshotStreamWriter::Commit() {
   last_committed_chunk_ = chunk_index_;
   last_commit_time_ = absl::FromUnixMicros(params_.env->NowMicros());
   chunk_file_to_num_elements_.clear();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool SnapshotStreamWriter::ShouldWriteRecord() const TF_LOCKS_EXCLUDED(mu_) {
@@ -219,7 +218,7 @@ bool SnapshotStreamWriter::ShouldWriteRecord() const TF_LOCKS_EXCLUDED(mu_) {
          !end_of_sequence_ && completed_.ok();
 }
 
-Status SnapshotStreamWriter::WriteRecord(
+absl::Status SnapshotStreamWriter::WriteRecord(
     snapshot_util::TFRecordWriter& writer) {
   std::vector<Tensor> element;
   TF_RETURN_IF_ERROR(iterator_->GetNext(element, end_of_sequence_));
@@ -231,10 +230,10 @@ Status SnapshotStreamWriter::WriteRecord(
   TF_RETURN_IF_ERROR(writer.WriteTensors(element));
   chunk_size_bytes_ += EstimatedSizeBytes(element);
   ++chunk_num_elements_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SnapshotStreamWriter::FinalizeStream(Status status) {
+absl::Status SnapshotStreamWriter::FinalizeStream(absl::Status status) {
   if (status.ok()) {
     status = WriteDoneFile();
   }
@@ -243,7 +242,7 @@ Status SnapshotStreamWriter::FinalizeStream(Status status) {
     // the former status.
     WriteErrorFile(status).IgnoreError();
   }
-  Status s = DeleteCheckpoints();
+  absl::Status s = DeleteCheckpoints();
   if (!s.ok()) {
     LOG(ERROR) << "Failed to clean up checkpoints at "
                << params_.CheckpointsDirectory() << ": " << s;
@@ -251,25 +250,26 @@ Status SnapshotStreamWriter::FinalizeStream(Status status) {
   return status;
 }
 
-Status SnapshotStreamWriter::WriteDoneFile() {
+absl::Status SnapshotStreamWriter::WriteDoneFile() {
   std::string done_file_path =
       StreamDoneFilePath(params_.snapshot_path, params_.stream_index);
   return AtomicallyWriteStringToFile(done_file_path, "", params_.env);
 }
 
-Status SnapshotStreamWriter::WriteErrorFile(const Status& status) {
+absl::Status SnapshotStreamWriter::WriteErrorFile(const absl::Status& status) {
   std::string error_file_path =
       tsl::io::JoinPath(params_.StreamDirectory(), "ERROR");
   return AtomicallyWriteStringToFile(error_file_path, status.ToString(),
                                      params_.env);
 }
 
-StatusOr<bool> SnapshotStreamWriter::Completed() const TF_LOCKS_EXCLUDED(mu_) {
+absl::StatusOr<bool> SnapshotStreamWriter::Completed() const
+    TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   return completed_;
 }
 
-StatusOr<bool> SnapshotStreamWriter::Wait() TF_LOCKS_EXCLUDED(mu_) {
+absl::StatusOr<bool> SnapshotStreamWriter::Wait() TF_LOCKS_EXCLUDED(mu_) {
   snapshot_thread_.reset();
   mutex_lock l(mu_);
   return completed_;
@@ -277,11 +277,11 @@ StatusOr<bool> SnapshotStreamWriter::Wait() TF_LOCKS_EXCLUDED(mu_) {
 
 void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
-  completed_ = errors::Cancelled(
+  completed_ = absl::CancelledError(
       "The tf.data service snapshot writer has been cancelled.");
 }
 
-Status SnapshotStreamWriter::Save() {
+absl::Status SnapshotStreamWriter::Save() {
   LOG(INFO) << "Checkpointing distributed tf.data snapshot writer for snapshot "
             << params_.DebugString() << ". Stream " << params_.stream_index
             << ", chunk " << chunk_index_
@@ -303,9 +303,9 @@ Status SnapshotStreamWriter::Save() {
   return DeleteOutdatedCheckpoints();
 }
 
-Status SnapshotStreamWriter::DeleteOutdatedCheckpoints() {
+absl::Status SnapshotStreamWriter::DeleteOutdatedCheckpoints() {
   if (params_.test_only_keep_temp_files) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<std::string> checkpoint_filenames;
@@ -326,12 +326,12 @@ Status SnapshotStreamWriter::DeleteOutdatedCheckpoints() {
       TF_RETURN_IF_ERROR(params_.env->DeleteFile(checkpoint_filepath));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SnapshotStreamWriter::DeleteCheckpoints() {
+absl::Status SnapshotStreamWriter::DeleteCheckpoints() {
   if (params_.test_only_keep_temp_files) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   LOG(INFO) << "Deleting tf.data snapshot checkpoints directory: "
             << params_.CheckpointsDirectory();
@@ -340,12 +340,12 @@ Status SnapshotStreamWriter::DeleteCheckpoints() {
     return params_.env->DeleteRecursively(params_.CheckpointsDirectory(),
                                           &undeleted_files, &undeleted_dirs);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SnapshotStreamWriter::Restore() {
-  StatusOr<std::string> checkpoint_name = LastCheckpointName();
-  if (errors::IsNotFound(checkpoint_name.status())) {
+absl::Status SnapshotStreamWriter::Restore() {
+  absl::StatusOr<std::string> checkpoint_name = LastCheckpointName();
+  if (absl::IsNotFound(checkpoint_name.status())) {
     // No checkpoint has been written. Deletes any uncommitted chunks.
     // Otherwise, it may attempt to write an existing file.
     return SyncCheckpointWithChunks(/*checkpoint_index=*/std::nullopt,
@@ -368,15 +368,16 @@ Status SnapshotStreamWriter::Restore() {
   LOG(INFO) << "Restored distributed tf.data snapshot writer. Snapshot "
             << params_.snapshot_path << ", stream " << params_.stream_index
             << ", chunk " << checkpoint_index << ".";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::string> SnapshotStreamWriter::LastCheckpointName() const {
+absl::StatusOr<std::string> SnapshotStreamWriter::LastCheckpointName() const {
   TF_ASSIGN_OR_RETURN(std::vector<std::string> checkpoint_names,
                       GetChildren(params_.CheckpointsDirectory(), params_.env));
   if (checkpoint_names.empty()) {
-    return errors::NotFound("No checkpoint has been written in directory ",
-                            params_.CheckpointsDirectory());
+    return absl::NotFoundError(
+        absl::StrCat("No checkpoint has been written in directory ",
+                     params_.CheckpointsDirectory()));
   }
 
   int64_t last_index = -1;
@@ -393,7 +394,7 @@ StatusOr<std::string> SnapshotStreamWriter::LastCheckpointName() const {
   return last_checkpoint_name;
 }
 
-Status SnapshotStreamWriter::SyncCheckpointWithChunks(
+absl::Status SnapshotStreamWriter::SyncCheckpointWithChunks(
     std::optional<int64_t> checkpoint_index, int64_t checkpoint_num_elements) {
   // In case the worker fails after writing the checkpoint but before committing
   // a chunk file, this will synchronize the checkpoint with the chunks. It will
@@ -422,7 +423,7 @@ Status SnapshotStreamWriter::SyncCheckpointWithChunks(
       TF_RETURN_IF_ERROR(params_.env->DeleteFile(uncommitted_chunk_filename));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string SnapshotStreamWriter::CheckpointPath(

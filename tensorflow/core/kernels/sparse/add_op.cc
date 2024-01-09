@@ -381,7 +381,8 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
   const T beta_;
   bool initialized_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CSRSparseMatrixAdd);
+  CSRSparseMatrixAdd(const CSRSparseMatrixAdd&) = delete;
+  void operator=(const CSRSparseMatrixAdd&) = delete;
 };
 
 }  // namespace functor

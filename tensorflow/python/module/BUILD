@@ -18,7 +18,7 @@ py_strict_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )

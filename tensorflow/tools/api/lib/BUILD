@@ -30,7 +30,8 @@ py_strict_library(
         ":api_objects_proto_py",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )
 

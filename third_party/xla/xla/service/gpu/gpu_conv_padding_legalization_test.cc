@@ -32,7 +32,6 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
-using ::testing::_;
 
 using GpuConvPaddingLegalizationTest = HloTestBase;
 

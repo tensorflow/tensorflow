@@ -53,7 +53,9 @@ const char kScopedAllocatorAttrName[] = "_scoped_allocator";
 // For stateless RNGs ops, they are pure but device-dependent. Those ops are not
 // constant-foldable.
 static absl::flat_hash_set<std::string>* kBlockList =
-    new absl::flat_hash_set<std::string>({"StatelessRandomGetKeyCounter"});
+    new absl::flat_hash_set<std::string>({
+        "StatelessRandomGetKeyCounter",
+    });
 
 // Always allow these ops to fold even if their shape information is incomplete.
 static absl::flat_hash_set<std::string>* kAllowList =

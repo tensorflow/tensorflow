@@ -251,6 +251,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                         bool add_to_local_only = false,
                         const StackTracesMap& stack_traces = {});
 
+  // Adds a component function (i.e. containing a subgraph of a multi-process
+  // function) implemented as `fdef`.
+  //
+  // REQUIRES: `library` must contain all functions reachable from `fdef`. It
+  //   should not contain `fdef` itself.
+  Status AddComponentFunction(const FunctionDef& fdef,
+                              const FunctionDefLibrary& library);
+
   const FunctionDef* GetFunctionDef(const string& function_name);
 
   std::vector<string> ListFunctionNames() override;
@@ -272,7 +280,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
   Device* GetCachedDevice(Fprint128 device_cache_key);
 
-  void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
+  core::RefCountPtr<KernelAndDevice> AddKernelToCache(
+      Fprint128 cache_key, core::RefCountPtr<KernelAndDevice> kernel);
   void AddDeviceToCache(Fprint128 device_cache_key, Device* device);
 
   bool LogDevicePlacement() const { return log_device_placement_; }
@@ -384,6 +393,16 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   ScopedStepContainer* StepContainer();
 
   FunctionLibraryDefinition* FuncLibDef() override { return &func_lib_def_; }
+
+  FunctionLibraryDefinition* GetComponentFunctionFunctionLibraryDefinition(
+      const string& function_name) {
+    tf_shared_lock lock(cache_mu_);
+    auto iter = component_function_libraries_.find(function_name);
+    if (iter != component_function_libraries_.end()) {
+      return iter->second.get();
+    }
+    return nullptr;
+  }
 
 #if !defined(IS_MOBILE_PLATFORM)
   // Assign the EagerClient pointer to `client` based on the given device / task
@@ -727,7 +746,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   absl::flat_hash_map<uint64, std::unique_ptr<CompositeDevice>>
       composite_devices_ ABSL_GUARDED_BY(composite_devices_mu_);
 
-  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(),
+                                          FunctionDefLibrary()};
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
@@ -755,6 +775,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       kernel_cache_ TF_GUARDED_BY(cache_mu_);
   std::unordered_map<string, RegisteredFunction*> registered_functions_
       TF_GUARDED_BY(cache_mu_);
+
+  std::unordered_map<string, std::unique_ptr<FunctionLibraryDefinition>>
+      component_function_libraries_ TF_GUARDED_BY(cache_mu_);
   absl::flat_hash_map<Fprint128, Device*, Fprint128Hasher> device_cache_
       TF_GUARDED_BY(device_cache_mu_);
   std::unordered_map<std::string, std::vector<std::function<void()>>>

@@ -448,7 +448,7 @@ TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK: call SHUFFLE
 ; CHECK: }
 )";
@@ -482,7 +482,7 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
 ; CHECK: call SHUFFLE
@@ -521,7 +521,7 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
 ; CHECK: call SHUFFLE
@@ -561,7 +561,7 @@ TEST_F(GpuKernelTilingTest,
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   const char *expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )";
@@ -682,7 +682,7 @@ TEST_F(GpuKernelTilingTest,
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK-NOT: call SHUFFLE
 ; CHECK: }
 )";
@@ -842,11 +842,10 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   Status status = CompileToExecutable(std::move(hlo_module)).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_THAT(
-      status.message(),
-      ::testing::HasSubstr(
-          "Number of physical blocks (4294967296) does not fit in an i32"));
+  EXPECT_THAT(status.message(),
+              ::testing::HasSubstr(
+                  "Kernel 'wrapped_reduce' launch needs more blocks "
+                  "(4294967296) than allowed by hardware (2147483647)"));
 }
 
 }  // namespace

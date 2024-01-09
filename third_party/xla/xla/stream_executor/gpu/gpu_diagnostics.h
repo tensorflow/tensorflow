@@ -83,13 +83,10 @@ class Diagnostician {
       tsl::StatusOr<DriverVersion> dso_version,
       tsl::StatusOr<DriverVersion> kernel_version);
 
-  // Logs information about the dev nodes present on this machine: their
-  // existence, permissions, accessibility from this uid/gid.
-  static void LogDevNodeDiagnosticInformation();
-
   static std::string GetDevNodePath(int dev_node_ordinal);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(Diagnostician);
+  Diagnostician(const Diagnostician&) = delete;
+  void operator=(const Diagnostician&) = delete;
 };
 
 }  // namespace gpu

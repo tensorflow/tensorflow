@@ -78,7 +78,7 @@ py_strict_library(
     deps = [
         ":export_output",
         ":mode_keys",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:op_selector",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",

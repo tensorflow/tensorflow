@@ -117,7 +117,8 @@ class Regularizations {
   // L1 divided by L2, pre-computed for use during weight shrinking.
   double shrinkage_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Regularizations);
+  Regularizations(const Regularizations&) = delete;
+  void operator=(const Regularizations&) = delete;
 };
 
 class ModelWeights;
@@ -307,7 +308,8 @@ class ModelWeights {
   std::vector<FeatureWeightsSparseStorage> sparse_weights_;
   std::vector<FeatureWeightsDenseStorage> dense_weights_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ModelWeights);
+  ModelWeights(const ModelWeights&) = delete;
+  void operator=(const ModelWeights&) = delete;
 };
 
 // Examples contains all the training examples that SDCA uses for a mini-batch.
@@ -382,7 +384,8 @@ class Examples {
 
   int num_features_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Examples);
+  Examples(const Examples&) = delete;
+  void operator=(const Examples&) = delete;
 };
 
 }  // namespace sdca

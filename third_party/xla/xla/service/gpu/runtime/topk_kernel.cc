@@ -20,21 +20,23 @@ limitations under the License.
 #include "xla/service/gpu/runtime/topk_kernel.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/service/gpu/runtime/topk_kernel_common.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
 namespace {
-
-using ::stream_executor::gpu::GpuStreamHandle;
 
 size_t NumThreads(size_t n, size_t k, size_t batch_size) {
   // Estimate number of threads per block that can run concurrently given the
@@ -47,38 +49,6 @@ size_t NumThreads(size_t n, size_t k, size_t batch_size) {
   return std::min(threads_per_block, min_slice);
 }
 
-// Helper type for converting the untyped arguments of RunTopk to TypedTopk
-template <typename T>
-struct TopkArgs {
-  TopkArgs(GpuStreamHandle stream, PrimitiveType dtype, T* data,
-           size_t num_elements, T* top_elements, uint32_t* top_indices,
-           size_t k, size_t batch_size)
-      : stream(stream),
-        dtype(dtype),
-        data(data),
-        num_elements(num_elements),
-        top_elements(top_elements),
-        top_indices(top_indices),
-        k(k),
-        batch_size(batch_size) {}
-
-  template <typename T2>
-  TopkArgs<T2> Convert() const {
-    return TopkArgs<T2>(stream, dtype, static_cast<T2*>(data), num_elements,
-                        static_cast<T2*>(top_elements), top_indices, k,
-                        batch_size);
-  }
-
-  GpuStreamHandle stream;
-  PrimitiveType dtype;
-  T* data;
-  size_t num_elements;
-  T* top_elements;
-  uint32_t* top_indices;
-  size_t k;
-  size_t batch_size;
-};
-
 template <typename T>
 absl::StatusOr<void*> GetKernel(int n, int k) {
   if (k <= 1) return GetTopKKernelForK<T, 1>(n);
@@ -90,44 +60,56 @@ absl::StatusOr<void*> GetKernel(int n, int k) {
 }
 
 template <typename T>
-absl::Status TypedTopK(TopkArgs<T> args) {
-  int num_threads = NumThreads(args.num_elements, args.k, args.batch_size);
-  if (num_threads == 0) {
-    return absl::FailedPreconditionError(
-        "Invalid kernel pameters. This is likely a bug in the "
-        "TopkSpecializer.");
-  }
-  TF_ASSIGN_OR_RETURN(void* kernel, GetKernel<T>(args.num_elements, args.k));
-  int blocks_per_grid = args.batch_size;
+absl::Status TypedTopK(se::Stream* stream, se::DeviceMemoryBase data,
+                       size_t num_elements, se::DeviceMemoryBase top_elements,
+                       se::DeviceMemoryBase top_indices, size_t k,
+                       size_t batch_size) {
   constexpr size_t max_kv_size = sizeof(uint64_t);
   // Allocate shmem assuming we have a full reduction.
-  int shmem_size = absl::bit_ceil(args.k) * max_kv_size * 32;
-  void* kernel_args[] = {&args.data, &args.num_elements, &args.top_elements,
-                         &args.top_indices, &args.k};
-  cudaError_t launch_status =
-      cudaLaunchKernel(kernel, blocks_per_grid, num_threads, kernel_args,
-                       shmem_size, args.stream);
-  if (launch_status != cudaSuccess) {
-    return absl::InternalError(absl::StrCat("Failed to launch kernel: ",
-                                            cudaGetErrorString(launch_status)));
+  int shmem_size = absl::bit_ceil(k) * max_kv_size * WAVEFRONT_SIZE;
+  int num_threads = NumThreads(num_elements, k, batch_size);
+  if (num_threads == 0) {
+    return absl::FailedPreconditionError(
+        "Invalid kernel parameters. This is likely a bug in the "
+        "TopkSpecializer.");
   }
+  se::StreamExecutor* executor = stream->parent();
+  se::DeviceMemory<T> data_typed(data);
+  se::DeviceMemory<T> top_elements_typed(top_elements);
+  se::DeviceMemory<uint32_t> top_indices_typed(top_indices);
+
+  TF_ASSIGN_OR_RETURN(void* kernel_symbol, GetKernel<T>(num_elements, k));
+  TF_ASSIGN_OR_RETURN(
+      auto kernel,
+      (executor
+           ->CreateTypedKernel<se::DeviceMemory<T>, size_t, se::DeviceMemory<T>,
+                               se::DeviceMemory<uint32_t>, size_t>(
+               "topk", kernel_symbol)));
+
+  TF_RETURN_IF_ERROR(stream->ThenLaunch(
+      se::ThreadDim(num_threads, 1, 1), se::BlockDim(batch_size, 1, 1),
+      shmem_size, *kernel, data_typed, num_elements, top_elements_typed,
+      top_indices_typed, k));
+
   return absl::OkStatus();
 }
 
 }  // namespace
 
-absl::Status RunTopk(GpuStreamHandle stream, PrimitiveType dtype, void* data,
-                     size_t num_elements, void* top_elements,
-                     uint32_t* top_indices, size_t k, size_t batch_size) {
+absl::Status RunTopk(se::Stream* stream, PrimitiveType dtype,
+                     se::DeviceMemoryBase data, size_t num_elements,
+                     se::DeviceMemoryBase top_elements,
+                     se::DeviceMemoryBase top_indices, size_t k,
+                     size_t batch_size) {
   VLOG(2) << "TopK: " << primitive_util::LowercasePrimitiveTypeName(dtype)
           << ", n: " << num_elements << ", k: " << k << ", bs: " << batch_size;
-  auto args = TopkArgs<void>(stream, dtype, data, num_elements, top_elements,
-                             top_indices, k, batch_size);
   switch (dtype) {
     case PrimitiveType::F32:
-      return TypedTopK(args.Convert<float>());
+      return TypedTopK<float>(stream, data, num_elements, top_elements,
+                              top_indices, k, batch_size);
     case PrimitiveType::BF16:
-      return TypedTopK(args.Convert<Eigen::bfloat16>());
+      return TypedTopK<Eigen::bfloat16>(
+          stream, data, num_elements, top_elements, top_indices, k, batch_size);
     default:
       return absl::UnimplementedError("GpuTopK not implemented for this dtype");
   }

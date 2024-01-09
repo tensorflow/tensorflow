@@ -124,7 +124,8 @@ class RecordReader {
 
   std::unique_ptr<Metadata> cached_metadata_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RecordReader);
+  RecordReader(const RecordReader&) = delete;
+  void operator=(const RecordReader&) = delete;
 };
 
 // High-level interface to read TFRecord files.

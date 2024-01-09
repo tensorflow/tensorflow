@@ -15,6 +15,7 @@
 """Implementation of image ops."""
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -2029,7 +2030,8 @@ def random_brightness(image, max_delta, seed=None):
 
   Args:
     image: An image or images to adjust.
-    max_delta: float, must be non-negative.
+    max_delta: float, must be non-negative. This parameter controls the maximum
+      relative change in brightness.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
 
@@ -2919,7 +2921,7 @@ def stateless_random_jpeg_quality(image,
 
 @tf_export('image.adjust_jpeg_quality')
 @dispatch.add_dispatch_support
-def adjust_jpeg_quality(image, jpeg_quality, name=None):
+def adjust_jpeg_quality(image, jpeg_quality, dct_method='', name=None):
   """Adjust jpeg encoding quality of an image.
 
   This is a convenience method that converts an image to uint8 representation,
@@ -2955,7 +2957,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
          [[1., 1., 1.],
           [1., 1., 1.]]], dtype=float32)>
 
-  Note that `jpeg_quality` 100 is still lossy compresson.
+  Note that `jpeg_quality` 100 is still lossy compression.
 
   >>> x = tf.constant([[[1, 2, 3],
   ...                   [4, 5, 6]],
@@ -2971,6 +2973,10 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
     jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
+    dct_method: An optional string. Specifies the DCT method to use for JPEG
+      decompression. Currently available options are ["INTEGER_FAST",
+      "INTEGER_ACCURATE"]. Defaults to "" which maps to "INTEGER_FAST",
+      sacrificing image quality for speed.
     name: A name for this operation (optional).
 
   Returns:
@@ -2991,7 +2997,9 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
       jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
     image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
 
-    image = gen_image_ops.decode_jpeg(image, channels=channels)
+    image = gen_image_ops.decode_jpeg(
+        image, channels=channels, dct_method=dct_method
+    )
     return convert_image_dtype(image, orig_dtype, saturate=True)
 
 

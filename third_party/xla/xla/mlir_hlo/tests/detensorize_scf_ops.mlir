@@ -75,8 +75,8 @@ func.func @if_return(%cond: i1) -> tensor<f32> {
 
 // CHECK-LABEL: @if_return
 // CHECK-SAME:    (%[[COND:.*]]:
-// CHECK:       %[[C0:.*]] = arith.constant 0
-// CHECK:       %[[C1:.*]] = arith.constant 1
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1
 // CHECK:       %[[RESULT_SCALAR:.*]] = scf.if %[[COND]] -> (f32) {
 // CHECK:         scf.yield %[[C0]]
 // CHECK:       } else {
@@ -99,9 +99,9 @@ func.func @for(%arg: tensor<f32>) -> tensor<f32> {
 
 // CHECK-LABEL: @for
 // CHECK-SAME:    (%[[ARG:.*]]:
-// CHECK:       %[[CST:.*]] = arith.constant 0.0
-// CHECK:       %[[C0:.*]] = arith.constant 0
-// CHECK:       %[[C1:.*]] = arith.constant 1
+// CHECK-DAG:   %[[CST:.*]] = arith.constant 0.0
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1
 // CHECK:       %[[ARG_SCALAR:.*]] = tensor.extract %[[ARG]]
 // CHECK:       %[[RESULT_SCALAR:.*]] = scf.for {{.*}} iter_args(%{{.*}} = %[[ARG_SCALAR]])
 // CHECK:         scf.yield %[[CST]]

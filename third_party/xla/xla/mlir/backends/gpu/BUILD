@@ -1,5 +1,5 @@
-load("//xla:xla.bzl", "xla_cc_binary")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla:xla.bzl", "xla_cc_binary")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -20,7 +20,6 @@ xla_cc_binary(
         "//xla/mlir/backends/gpu/transforms:passes",
         "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:lhlo_gpu",
-        "//xla/stream_executor",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:GPUDialect",

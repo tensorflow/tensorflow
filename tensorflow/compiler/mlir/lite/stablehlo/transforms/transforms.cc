@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/drop_savedmodel_semantics.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/smuggle_disallowed_ops.h"
@@ -34,6 +35,9 @@ namespace odml {
 void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
                             bool smuggle_disallowed_ops) {
   pm.addPass(CreateRenameEntrypointToMainPass());
+
+  // if the input is a call_xla_module, then unwrap the content
+  pm.addPass(mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
   // TODO(b/230572023): Consider improving shape inference for While op instead
   // of dropping the attribute. This need not be correct for models not trained
   // on TPU.

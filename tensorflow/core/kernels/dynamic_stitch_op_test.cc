@@ -48,7 +48,7 @@ class DynamicStitchOpTest : public OpsTestBase {
 TEST_F(DynamicStitchOpTest, Simple_OneD) {
   MakeOp(2, DT_FLOAT);
 
-  // Feed and run
+  // Feed and run.
   AddInputFromArray<int32>(TensorShape({3}), {0, 4, 7});
   AddInputFromArray<int32>(TensorShape({5}), {1, 6, 2, 3, 5});
   AddInputFromArray<float>(TensorShape({3}), {0, 40, 70});
@@ -64,7 +64,7 @@ TEST_F(DynamicStitchOpTest, Simple_OneD) {
 TEST_F(DynamicStitchOpTest, Simple_TwoD) {
   MakeOp(3, DT_FLOAT);
 
-  // Feed and run
+  // Feed and run.
   AddInputFromArray<int32>(TensorShape({3}), {0, 4, 7});
   AddInputFromArray<int32>(TensorShape({2}), {1, 6});
   AddInputFromArray<int32>(TensorShape({3}), {2, 3, 5});
@@ -80,10 +80,24 @@ TEST_F(DynamicStitchOpTest, Simple_TwoD) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
+TEST_F(DynamicStitchOpTest, IndicesNotCoverAllPortions) {
+  MakeOp(1, DT_FLOAT);
+
+  // Feed and run.
+  AddInputFromArray<int32>(TensorShape({1}), {2});
+  AddInputFromArray<float>(TensorShape({1}), {1});
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Check the output.
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({3}));
+  test::FillValues<float>(&expected, {0, 0, 1});
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
+
 TEST_F(DynamicStitchOpTest, Error_IndicesMultiDimensional) {
   MakeOp(2, DT_FLOAT);
 
-  // Feed and run
+  // Feed and run.
   AddInputFromArray<int32>(TensorShape({3}), {0, 4, 7});
   AddInputFromArray<int32>(TensorShape({1, 5}), {1, 6, 2, 3, 5});
   AddInputFromArray<float>(TensorShape({3}), {0, 40, 70});
@@ -98,7 +112,7 @@ TEST_F(DynamicStitchOpTest, Error_IndicesMultiDimensional) {
 TEST_F(DynamicStitchOpTest, Error_DataNumDimsMismatch) {
   MakeOp(2, DT_FLOAT);
 
-  // Feed and run
+  // Feed and run.
   AddInputFromArray<int32>(TensorShape({3}), {0, 4, 7});
   AddInputFromArray<int32>(TensorShape({5}), {1, 6, 2, 3, 5});
   AddInputFromArray<float>(TensorShape({3}), {0, 40, 70});
@@ -113,7 +127,7 @@ TEST_F(DynamicStitchOpTest, Error_DataNumDimsMismatch) {
 TEST_F(DynamicStitchOpTest, Error_DataDimSizeMismatch) {
   MakeOp(2, DT_FLOAT);
 
-  // Feed and run
+  // Feed and run.
   AddInputFromArray<int32>(TensorShape({3}), {0, 4, 5});
   AddInputFromArray<int32>(TensorShape({4}), {1, 6, 2, 3});
   AddInputFromArray<float>(TensorShape({3, 1}), {0, 40, 70});
@@ -130,7 +144,7 @@ TEST_F(DynamicStitchOpTest, Error_DataDimSizeMismatch) {
 TEST_F(DynamicStitchOpTest, Error_DataAndIndicesSizeMismatch) {
   MakeOp(2, DT_FLOAT);
 
-  // Feed and run
+  // Feed and run.
   AddInputFromArray<int32>(TensorShape({3}), {0, 4, 7});
   AddInputFromArray<int32>(TensorShape({5}), {1, 6, 2, 3, 5});
   AddInputFromArray<float>(TensorShape({3}), {0, 40, 70});

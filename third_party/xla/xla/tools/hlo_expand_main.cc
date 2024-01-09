@@ -97,9 +97,9 @@ int main(int argc, char** argv) {
     config.input_format = std::string(tsl::io::Extension(hlo_filename));
   }
   if (config.input_format != "hlo" && config.input_format != "pb" &&
-      config.input_format != "pbtxt") {
+      config.input_format != "pbtxt" && config.input_format != "txt") {
     std::cerr << absl::StrCat(
-        "input_format must be specified as [hlo|pb|pbtxt].\n", kHelpString);
+        "input_format must be specified as [hlo|pb|pbtxt|txt].\n", kHelpString);
     return 1;
   }
 
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
             : std::string(tsl::io::Extension(output_filename));
   }
   if (config.output_format != "hlo" && config.output_format != "pb" &&
-      config.output_format != "pbtxt") {
+      config.output_format != "pbtxt" && config.output_format != "txt") {
     std::cerr << absl::StrCat(
         "output_format must be specified as [hlo|pb|pbtxt].\n", kHelpString);
     return 1;
@@ -141,10 +141,10 @@ int main(int argc, char** argv) {
 
   // 2. Add a set of passes to the HloPassPipeline.
   xla::HloPassPipeline pipeline("expand_pass_pipeline");
-  AddPassesToPipeline(config, pipeline);
+  auto& hlo_module = status_or_module.value();
+  AddPassesToPipeline(config, pipeline, hlo_module->config());
 
   // 3. Run a set of expander passes on the module.
-  auto& hlo_module = status_or_module.value();
   auto pipeline_status = pipeline.Run(hlo_module.get()).status();
   if (!pipeline_status.ok()) {
     std::cerr << pipeline_status;
@@ -153,14 +153,14 @@ int main(int argc, char** argv) {
 
   // 4. Optionally print the output to stdout.
   if (output_filename == "-") {
-    if (config.output_format == "hlo") {
+    if (config.output_format == "hlo" || config.output_format == "txt") {
       std::cout << hlo_module->ToString();
     } else if (config.output_format == "pbtxt") {
       std::cout << hlo_module->ToProto().DebugString();
     } else {
       std::cerr << absl::StrCat(
           "Printing to stdout must specify supported "
-          "output_format=[hlo|pbtxt].\n",
+          "output_format=[hlo|pbtxt|txt].\n",
           kHelpString);
       return 1;
     }

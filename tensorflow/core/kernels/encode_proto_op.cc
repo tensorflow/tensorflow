@@ -636,7 +636,8 @@ class EncodeProtoOp : public OpKernel {
   // order of writing.
   std::vector<int> sorted_field_index_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EncodeProtoOp);
+  EncodeProtoOp(const EncodeProtoOp&) = delete;
+  void operator=(const EncodeProtoOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("EncodeProto").Device(DEVICE_CPU), EncodeProtoOp);

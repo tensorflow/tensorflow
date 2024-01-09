@@ -432,7 +432,8 @@ class Barrier : public ResourceBase {
   std::unordered_map<string, TensorTuple> incomplete_ TF_GUARDED_BY(mu_);
   PriorityQueue* ready_queue_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Barrier);
+  Barrier(const Barrier&) = delete;
+  void operator=(const Barrier&) = delete;
 };
 
 class BarrierOp : public ResourceOpKernel<Barrier> {
@@ -490,7 +491,8 @@ class BarrierOp : public ResourceOpKernel<Barrier> {
   DataTypeVector value_component_types_;
   std::vector<TensorShape> value_component_shapes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BarrierOp);
+  BarrierOp(const BarrierOp&) = delete;
+  void operator=(const BarrierOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("Barrier").Device(DEVICE_CPU), BarrierOp);
@@ -549,7 +551,8 @@ class InsertManyOp : public BarrierOpKernel {
 
  private:
   int component_index_;
-  TF_DISALLOW_COPY_AND_ASSIGN(InsertManyOp);
+  InsertManyOp(const InsertManyOp&) = delete;
+  void operator=(const InsertManyOp&) = delete;
 };
 
 #define REGISTER_INSERTMANY(T)                                             \
@@ -619,7 +622,8 @@ class TakeManyOp : public BarrierOpKernel {
  private:
   int64_t timeout_;
   bool allow_small_batch_;
-  TF_DISALLOW_COPY_AND_ASSIGN(TakeManyOp);
+  TakeManyOp(const TakeManyOp&) = delete;
+  void operator=(const TakeManyOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BarrierTakeMany").Device(DEVICE_CPU), TakeManyOp);
@@ -640,7 +644,8 @@ class BarrierCloseOp : public BarrierOpKernel {
 
  private:
   bool cancel_pending_enqueues_;
-  TF_DISALLOW_COPY_AND_ASSIGN(BarrierCloseOp);
+  BarrierCloseOp(const BarrierCloseOp&) = delete;
+  void operator=(const BarrierCloseOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BarrierClose").Device(DEVICE_CPU),

@@ -132,7 +132,8 @@ class ExecutableClosure {
   ResourceVarsSnapshot resource_var_snapshots_;
   int num_constant_args_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutableClosure);
+  ExecutableClosure(const ExecutableClosure&) = delete;
+  void operator=(const ExecutableClosure&) = delete;
 };
 
 // This maintains a mapping from a globally unique ID to ExecutableClosure
@@ -173,7 +174,8 @@ class ExecutableClosureStore {
   absl::flat_hash_map<KeyT, ExecutableClosure<ExecutableType, ClientType>>
       closures_ TF_GUARDED_BY(mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutableClosureStore);
+  ExecutableClosureStore(const ExecutableClosureStore&) = delete;
+  void operator=(const ExecutableClosureStore&) = delete;
 };
 
 using XlaExecutableClosure =

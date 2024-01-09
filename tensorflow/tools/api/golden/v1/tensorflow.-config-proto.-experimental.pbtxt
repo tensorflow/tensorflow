@@ -107,6 +107,36 @@ tf_proto {
       type: TYPE_BOOL
     }
     field {
+      name: "enable_multi_host"
+      number: 27
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "backend_server_port"
+      number: 28
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "target_tpu"
+      number: 29
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "target_gpu"
+      number: 30
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "stream_merge_threshold"
+      number: 31
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
       name: "disable_functional_ops_lowering"
       number: 21
       label: LABEL_OPTIONAL

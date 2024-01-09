@@ -40,7 +40,9 @@ using std::string;
 
 }  // namespace stream_executor
 
+// DEPRECATED: directly use the macro implementation instead.
 #define SE_DISALLOW_COPY_AND_ASSIGN TF_DISALLOW_COPY_AND_ASSIGN
+
 #define SE_MUST_USE_RESULT TF_MUST_USE_RESULT
 #define SE_PREDICT_TRUE TF_PREDICT_TRUE
 #define SE_PREDICT_FALSE TF_PREDICT_FALSE

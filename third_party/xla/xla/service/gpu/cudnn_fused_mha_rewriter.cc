@@ -17,15 +17,19 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <numeric>
 #include <optional>
 #include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -44,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -79,7 +84,7 @@ struct MatchBwdResult {
 
   HloInstruction* matched_bmm_2_grad_1 = nullptr;
   HloInstruction* matched_bmm_2_grad_2 = nullptr;
-  HloInstruction* matched_d_intermediate = nullptr;
+  HloInstruction* matched_dbias = nullptr;
   // We use this to keep track of all gradient bmms that need
   // canonicalization.
   bool bmm_1_grad_1_need_canonicalization = false;
@@ -212,22 +217,33 @@ auto GetUnfusedReduceMaxSumSoftmaxPattern(
     HloInstruction** softmax_reduce_sum = nullptr,
     HloInstruction** softmax_reduce_sum_bcast = nullptr) {
   // The reduce-max part of the softmax
-  auto unfused_softmax_max_subpattern = m::SharedSubpattern(m::Subtract(
-      m::Op(), m::Broadcast(OptionalConvert(OptionalConvert(
-                   m::Op()
-                       .WithPredicate(IsReduceMax)
-                       .WithOperand(0, OptionalBitcast(OptionalConvert(
-                                           m::Op(softmax_input)))))))));
+  // reduce_max and subtract will always have exactly 1 user
+  // in both training and inference
+  // softmax_input should always have exactly 2 users
+  auto unfused_softmax_max_subpattern = m::SharedSubpattern(
+      m::Subtract(
+          m::Op(),
+          m::Broadcast(OptionalConvert(
+              m::Op()
+                  .WithPredicate(IsReduceMax)
+                  .WithOneUse()
+                  .WithOperand(0, OptionalBitcast(OptionalConvert(
+                                      m::Op(softmax_input).WithNumUser(2)))))))
+          .WithOneUse());
   // The reduce-add part of the softmax
+  // reduce_sum and reduce_sum_broadcast should have 2 users in training
+  // and 1 user in inference
   auto unfused_softmax_sum_subpattern = m::SharedSubpattern(m::Divide(
       OptionalBitcast(m::Exp(unfused_softmax_max_subpattern)),
       m::Broadcast(
           softmax_reduce_sum_bcast,
-          OptionalConvert(OptionalConvert(
+          OptionalConvert(
               m::Op(softmax_reduce_sum)
                   .WithOperand(0, OptionalBitcast(OptionalConvert(
                                       m::Exp(unfused_softmax_max_subpattern))))
-                  .WithPredicate(IsReduceSum))))));
+                  .WithPredicate(IsReduceSum)
+                  .WithAtMostNumUser(2)))
+          .WithAtMostNumUser(2)));
   return unfused_softmax_sum_subpattern;
 }
 
@@ -300,9 +316,11 @@ bool IsContractingDimSupported(absl::Span<const int64_t> contracting_dims) {
 }
 
 bool IsNonContractingDimSupported(
-    const std::vector<int64_t>& non_contracting_dims) {
-  return absl::c_all_of(non_contracting_dims,
-                        [](int64_t dim) { return dim <= 512; });
+    const std::vector<int64_t>& non_contracting_dims, bool is_training) {
+  // For training, cuDNN require non_contracting_dim to be Divisible by 64
+  return absl::c_all_of(non_contracting_dims, [&](int64_t dim) {
+    return dim <= 512 && (!is_training || dim % 64 == 0);
+  });
 }
 
 std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
@@ -314,7 +332,7 @@ std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
   return vec;
 }
 
-StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
+StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1, bool is_training) {
   const DotDimensionNumbers& dot_dims_bmm1 = bmm_1->dot_dimension_numbers();
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_non_contracting_dim_nums_bmm1,
@@ -334,8 +352,10 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
                          rhs_non_contracting_dim_nums_bmm1);
   // The non contracting dimensions for BMM1 need to be less than or equal to
   // 512.
-  if (!IsNonContractingDimSupported(lhs_non_contracting_dims_bmm1) ||
-      !IsNonContractingDimSupported(rhs_non_contracting_dims_bmm1)) {
+  if (!IsNonContractingDimSupported(lhs_non_contracting_dims_bmm1,
+                                    is_training) ||
+      !IsNonContractingDimSupported(rhs_non_contracting_dims_bmm1,
+                                    is_training)) {
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "BMM1 lhs_non_contracting_dims: "
               << absl::StrJoin(lhs_non_contracting_dims_bmm1, ",")
@@ -409,12 +429,16 @@ MatchFwdResult MatchDefaultFwdBmmBmm(MatchFwdResult previous_result,
   // Try matching default bmm1-bmm2 pattern
   HloInstruction* bmm_1;
   HloInstruction* bmm_2;
-
+  // bmm1 should have at most 2 users at this case
+  // 1. 1 user(bmm2) in case of inference
+  // 2. 2 users(bmm2 and backward bmm) in case of training
   auto default_bmm_bmm_pattern =
       m::Op(&bmm_2)
           .WithPredicate(IsBatchedMatmul)
           .WithOperand(bmm2_operand_position,
-                       m::Op(&bmm_1).WithPredicate(IsBatchedMatmul));
+                       m::Op(&bmm_1)
+                           .WithPredicate(IsBatchedMatmul)
+                           .WithAtMostNumUser(2));
 
   // If any of bmm1's operands is coming from a forward fMHA call, then return
   // false
@@ -513,11 +537,12 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
   HloInstruction* bmm_1;
   HloInstruction* bias = nullptr;
   HloInstruction* scale = nullptr;
-
+  // bmm1/scale/bias add should have 2 users if being connected to softmax
+  // otherwise should have exactly 1 user
   auto first_bmm_pattern =
       m::SharedSubpattern(m::Op(&bmm_1).WithPredicate(IsBatchedMatmul));
   auto unfused_scaled_bmm_subpattern = m::MultiplyAnyOrder(
-      OptionalConvert(first_bmm_pattern),
+      OptionalConvert(first_bmm_pattern.WithOneUse()),
       OptionalConvert(
           m::Broadcast(m::Constant(&scale).WithPredicate(IsScalar))));
 
@@ -531,7 +556,8 @@ MatchFwdResult MatchBmm1UnfusedBiasSoftmaxBmm2(MatchFwdResult previous_result,
   } else if (Match(softmax_input,
                    OptionalBitcast(m::AddAnyOrder(
                        OptionalConvert(OptionalBitcast(m::AnyOf<HloInstruction>(
-                           unfused_scaled_bmm_subpattern, first_bmm_pattern))),
+                           unfused_scaled_bmm_subpattern.WithOneUse(),
+                           first_bmm_pattern.WithOneUse()))),
                        m::Op(&bias))))) {
     match_result.matched_bmm_1 = bmm_1;
     match_result.matched_scale = scale;
@@ -561,29 +587,30 @@ MatchFwdResult MatchBmm1ScaleBiasMaskSoftmaxDropoutBmm2(
       OptionalConvert(
           m::Op(&bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse()),
       m::Broadcast(m::Constant(&scale).WithPredicate(IsScalar))));
-
-  if (Match(
-          softmax_input,
-          OptionalConvert(m::Select(
-              m::Op(&mask).WithPredicate([](const HloInstruction* instr) {
-                return instr->shape().element_type() == PRED;
-              }),
-              // Match bmm1-scale-bias-mask
-              m::AnyOf<HloInstruction>(
-                  // Scale and bias might or might not be fused
-                  // with gemm
-                  m::Op(&bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse(),
-                  OptionalConvert(m::AnyOf<HloInstruction>(
-                      // Try to match unfused bias
-                      m::AddAnyOrder(m::Op(&bias),
-                                     m::AnyOf<HloInstruction>(
-                                         OptionalConvert(
-                                             m::Op(&bmm_1)
-                                                 .WithPredicate(IsBatchedMatmul)
-                                                 .WithOneUse()),
-                                         unfused_scaled_bmm_subpattern)),
-                      unfused_scaled_bmm_subpattern))),
-              m::Op())))) {
+  // bmm1/scale/bias add/mask should have 2 users if being connected to softmax
+  // otherwise should have exactly 1 user
+  if (Match(softmax_input,
+            OptionalConvert(m::Select(
+                m::Op(&mask).WithPredicate([](const HloInstruction* instr) {
+                  return instr->shape().element_type() == PRED;
+                }),
+                // Match bmm1-scale-bias-mask
+                m::AnyOf<HloInstruction>(
+                    // Scale and bias might or might not be fused
+                    // with gemm
+                    m::Op(&bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse(),
+                    OptionalConvert(m::AnyOf<HloInstruction>(
+                        // Try to match unfused bias
+                        m::AddAnyOrder(
+                            m::Op(&bias),
+                            m::AnyOf<HloInstruction>(
+                                OptionalConvert(
+                                    m::Op(&bmm_1)
+                                        .WithPredicate(IsBatchedMatmul)
+                                        .WithOneUse()),
+                                unfused_scaled_bmm_subpattern.WithOneUse())),
+                        unfused_scaled_bmm_subpattern.WithOneUse()))),
+                m::Op())))) {
     if (!IsSupportedPrimitiveType(bmm_1)) {
       matched_result.has_match = false;
       return matched_result;
@@ -671,11 +698,10 @@ bool IsBmm2GradGemm2(HloInstruction* instr) {
 }
 
 MatchBwdResult MatchBmm1GradGemm1(MatchBwdResult previous_result,
-                                  HloInstruction* fwd_fmha_call,
                                   HloInstruction* bmm_1) {
   MatchBwdResult match_result = previous_result;
   match_result.has_match = false;
-  const HloInstruction* q_tensor = fwd_fmha_call->operand(0);
+  const HloInstruction* q_tensor = bmm_1->operand(0);
   for (int64_t i = 0; i < q_tensor->user_count(); i++) {
     HloInstruction* q_tensor_user_i = q_tensor->users()[i];
     if (IsBatchedMatmul(q_tensor_user_i) && q_tensor_user_i != bmm_1) {
@@ -695,40 +721,31 @@ MatchBwdResult MatchBmm1GradGemm2(MatchBwdResult previous_result,
   HloInstruction* bmm_1_grad_2 = nullptr;
   MatchBwdResult match_result = previous_result;
   match_result.has_match = false;
-  // bmm1 gradient gemm2 shares the same input as bmm1 gradient gemm1.
+  // bmm1 gradient gemm2 shares the same input d_s as bmm1 gradient gemm1.
   // Check to see if bmm1 grad gemm1 needs canonicalization or not, if not,
   // then the shared input is the first operand.
-  int64_t parent_nodex_index =
-      match_result.bmm_1_grad_1_need_canonicalization ? 1 : 0;
+  int64_t d_s_index = match_result.bmm_1_grad_1_need_canonicalization ? 1 : 0;
   HloInstruction* d_s_user_0 = match_result.matched_bmm_1_grad_1;
 
-  HloInstruction* parent_node = d_s_user_0->mutable_operand(parent_nodex_index);
-  if (parent_node->opcode() == HloOpcode::kBitcast &&
-      parent_node->user_count() == 1) {
-    d_s_user_0 = parent_node;
-    parent_node = parent_node->mutable_operand(0);
+  HloInstruction* d_s = d_s_user_0->mutable_operand(d_s_index);
+  if (d_s->opcode() == HloOpcode::kBitcast && d_s->user_count() == 1) {
+    d_s = d_s->mutable_operand(0);
   }
 
-  auto bmm_1_grad_2_it =
-      std::find_if(parent_node->users().begin(), parent_node->users().end(),
-                   [&](HloInstruction* instr) {
-                     return instr != match_result.matched_bmm_1_grad_1 &&
-                            instr->opcode() != HloOpcode::kReduce;
-                   });
-  if (bmm_1_grad_2_it != parent_node->users().end()) {
+  auto bmm_1_grad_2_it = std::find_if(
+      d_s->users().begin(), d_s->users().end(), [&](HloInstruction* instr) {
+        return instr != match_result.matched_bmm_1_grad_1 &&
+               instr->opcode() == HloOpcode::kDot;
+      });
+  if (bmm_1_grad_2_it != d_s->users().end()) {
     bmm_1_grad_2 = *bmm_1_grad_2_it;
   } else {
     return match_result;
   }
-  if (bmm_1_grad_2->opcode() == HloOpcode::kBitcast &&
-      bmm_1_grad_2->user_count() == 1) {
-    parent_node = bmm_1_grad_2;
-    bmm_1_grad_2 = bmm_1_grad_2->users()[0];
-  }
 
   match_result.matched_bmm_1_grad_2 = bmm_1_grad_2;
 
-  if (match_result.matched_bmm_1_grad_2->operand_index(parent_node) != 0) {
+  if (match_result.matched_bmm_1_grad_2->operand_index(d_s) != 0) {
     match_result.bmm_1_grad_2_need_canonicalization = true;
   }
   match_result.has_match = true;
@@ -787,6 +804,33 @@ MatchBwdResult MatchBmm2GradGemm2(MatchBwdResult previous_result,
   return match_result;
 }
 
+MatchBwdResult MatchDbias(MatchBwdResult previous_result,
+                          HloInstruction* d_intermediate,
+                          const absl::flat_hash_set<HloInstruction*> users) {
+  MatchBwdResult match_result = previous_result;
+  auto user_count = d_intermediate->user_count();
+  HloInstruction* dbias_user = nullptr;
+  HloInstruction* dbias = nullptr;
+  for (auto user : d_intermediate->users()) {
+    if (users.contains(user)) {
+      user_count -= 1;
+    } else {
+      dbias_user = user;
+    }
+  }
+  auto ConsumeExtraConvert = [](HloInstruction* instr) {
+    Match(instr->users()[0], m::Convert(&instr, m::Op()).WithOneUse());
+    return true;
+  };
+  // user_count == 1 && (reduce-> {convert} ->bitcast)
+  match_result.has_match =
+      user_count == 1 &&
+      Match(dbias_user, m::Reduce(&dbias, m::Op(), m::Op()).WithOneUse()) &&
+      dbias->shape().rank() == 3 && ConsumeExtraConvert(dbias);
+  match_result.matched_dbias = dbias;
+  return match_result;
+}
+
 MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
                                             HloInstruction* fwd_fmha_call,
                                             HloInstruction* mask) {
@@ -794,6 +838,7 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
   bool is_bmm1_grad1_canonicalized =
       match_result.bmm_1_grad_1_need_canonicalization;
   match_result.has_match = false;
+  bool has_scale = false;
   bool has_dropout = false;
   bool has_mask = false;
   // Backward dropout pattern
@@ -826,21 +871,31 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
   HloInstruction* exp_2;
   HloInstruction* d_softmax;
 
-  auto bwd_softmax_pattern =
-      OptionalBitcast(OptionalConvert(m::MultiplyAnyOrder(
+  // d_softmax = exp * (dy / s_b - sum(dy * exp * 1 / s^2))
+  // there could be at most 3 users of d_softmax: bmm1grad1 bmm1grad2 and dbias
+  auto bwd_softmax_pattern = OptionalBitcast(OptionalConvert(
+      m::MultiplyAnyOrder(
           &d_softmax,
           m::AddAnyOrder(
-              m::Divide(),
-              m::Broadcast(OptionalBitcast(
-                  OptionalConvert(OptionalConvert(m::Negate(OptionalBitcast(
-                      m::Op()
-                          .WithPredicate(IsReduceSum)
-                          .WithOperand(0, OptionalBitcast(m::MultiplyAnyOrder(
-                                              m::MultiplyAnyOrder(
-                                                  m::Op(&bwd_softmax_input),
-                                                  m::Broadcast()),
-                                              m::Exp(&exp_2, m::Op()))))))))))),
-          m::Exp(&exp_1, m::Op()))));
+              m::Divide().WithOneUse(),
+              m::Broadcast(OptionalBitcast(OptionalConvert(
+                  m::Negate(
+                      OptionalBitcast(
+                          m::Op()
+                              .WithPredicate(IsReduceSum)
+                              .WithOneUse()
+                              .WithOperand(
+                                  0, OptionalBitcast(
+                                         m::MultiplyAnyOrder(
+                                             m::MultiplyAnyOrder(
+                                                 m::Op(&bwd_softmax_input),
+                                                 m::Broadcast())
+                                                 .WithOneUse(),
+                                             m::Exp(&exp_2, m::Op()))
+                                             .WithOneUse()))))
+                      .WithOneUse())))),
+          m::Exp(&exp_1, m::Op()))
+          .WithAtMostNumUser(3)));
 
   // Backward mask input pattern
   // we already matched this in the fwd. Just make sure the same mask is used in
@@ -858,14 +913,17 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
 
   auto bwd_scale_pattern =
       m::MultiplyAnyOrder(m::Op(&bwd_scale_input),
-                          m::Broadcast(m::Constant().WithPredicate(IsScalar)));
+                          m::Broadcast(m::Constant().WithPredicate(IsScalar)))
+          .WithNumUser(2);
   int intermediate_input_pos = is_bmm1_grad1_canonicalized ? 1 : 0;
 
   HloInstruction* intermediate_input =
       match_result.matched_bmm_1_grad_1->mutable_operand(
           intermediate_input_pos);
 
-  if (Match(intermediate_input, bwd_scale_pattern)) {
+  has_scale = Match(intermediate_input, bwd_scale_pattern);
+
+  if (has_scale) {
     intermediate_input = bwd_scale_input;
   }
 
@@ -933,22 +991,32 @@ MatchBwdResult MatchBwdBmmSoftmaxDropoutBmm(MatchBwdResult previous_result,
       match_result.matched_custom_call_name =
           kCudnnfMHASoftmaxBackwardCallTarget;
   }
-
-  // If d_softmax tensor has 3 consumers, then we need to output the
-  // intermediate tensor.
-  bool need_d_intermediate = d_softmax->user_count() == 3;
-  if ((match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasMaskSoftmaxDropoutBackwardCallTarget ||
-       match_result.matched_custom_call_name ==
-           kCudnnfMHAScaleBiasMaskSoftmaxBackwardCallTarget) &&
-      need_d_intermediate) {
-    match_result.matched_d_intermediate = d_softmax;
+  // try to pattern match dbias
+  if (has_scale || has_mask) {
+    // bmm1-(scale)-(bias)-(mask)-softmax pattern
+    // users could be dbias besides mask bwd or scale bwd
+    if (d_softmax->user_count() == 1) {
+      // no dbias
+      match_result.has_match = true;
+    } else if (d_softmax->user_count() == 2) {
+      match_result = MatchDbias(match_result, d_softmax,
+                                {bwd_scale_input, bwd_mask_input});
+    } else {
+      match_result.has_match = false;
+    }
+  } else {
+    // bmm1-(bias)-softmax pattern
+    // users could be dbias besides bmm1grad1 bmm1grad2
+    if (d_softmax->user_count() == 2) {
+      match_result.has_match = true;
+    } else if (d_softmax->user_count() == 3) {
+      match_result = MatchDbias(match_result, d_softmax,
+                                {match_result.matched_bmm_1_grad_1,
+                                 match_result.matched_bmm_1_grad_2});
+    } else {
+      match_result.has_match = false;
+    }
   }
-  match_result.has_match = true;
   return match_result;
 }
 // First, we look for the bmm2 gradient gemm 1 which takes the activation
@@ -972,7 +1040,7 @@ MatchBwdResult MatchBackwardBmms(HloInstruction* fwd_fmha_call,
     return matched_result;
   }
 
-  matched_result = MatchBmm1GradGemm1(matched_result, fwd_fmha_call, bmm_1);
+  matched_result = MatchBmm1GradGemm1(matched_result, bmm_1);
   if (!matched_result.has_match) {
     return matched_result;
   }
@@ -1039,7 +1107,18 @@ StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1, HloInstruction* bmm_2,
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(bool is_bmm1_supported, IsSupportedBMM1(bmm_1));
+  if (bmm_1->shape().rank() != 4 || bmm_2->shape().rank() != 4) {
+    if (VLOG_IS_ON(2)) {
+      VLOG(2) << "Unsupported bmm rank for cuDNN MHA fusion:\n"
+              << bmm_1->ToString() << "\nOR\n"
+              << bmm_2->ToString() << "\n"
+              << "Only bmm with rank 4 is supported.";
+    }
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(bool is_bmm1_supported,
+                      IsSupportedBMM1(bmm_1, is_training));
   if (!is_bmm1_supported) return false;
   TF_ASSIGN_OR_RETURN(bool is_bmm2_supported,
                       IsSupportedBMM2(bmm_2, need_canonicalization));
@@ -1154,6 +1233,9 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   HloInstruction* lhs_bmm1;
   HloInstruction* rhs_bmm1;
   HloInstruction* rhs_bmm2;
+  DotDimensionNumbers orig_bmm1_dot_dim = bmm_1->dot_dimension_numbers();
+  DotDimensionNumbers orig_bmm2_dot_dim = bmm_2->dot_dimension_numbers();
+
   TF_ASSIGN_OR_RETURN(rhs_bmm1, ChangeCheckedDimToFastest(
                                     comp, bmm_1, false /*is_lhs*/,
                                     true /*should_contracting_be_fastest*/));
@@ -1176,6 +1258,11 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
       bmm_2->dot_dimension_numbers();
 
   TF_RET_CHECK((dropout_rate >= 0.0 && dropout_rate <= 1.0));
+  // Restore original DotDimensionNumbers.
+  *((DynCast<HloDotInstruction>(bmm_1))->mutable_dot_dimension_numbers()) =
+      orig_bmm1_dot_dim;
+  *((DynCast<HloDotInstruction>(bmm_2))->mutable_dot_dimension_numbers()) =
+      orig_bmm2_dot_dim;
 
   // If scale node is assigned, extract value from it.
   if (scale != nullptr) {
@@ -1288,9 +1375,15 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
       HloInstruction::CreateGetTupleElement(bmm_2->shape(), fmha_call, 0)));
 
   if (activation_output) {
-    TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-        activation_output, HloInstruction::CreateGetTupleElement(
-                               activation_output->shape(), fmha_call, 2)));
+    HloInstruction* activation_gte =
+        comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+            activation_output->shape(), fmha_call, 2));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstructionWithDifferentShape(
+                               activation_output, activation_gte,
+                               /*preserve_sharding=*/false,
+                               /*relay_control_dependency=*/false,
+                               /*remove_unused_operands=*/false)
+                           .status());
   }
 
   if (VLOG_IS_ON(2)) {
@@ -1300,41 +1393,11 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   return fmha_call;
 }
 
-bool IsDbiasOnlyUserBesidesGradGemm(HloInstruction* d_intermediate,
-                                    HloInstruction* bmm_1_grad_1,
-                                    HloInstruction* bmm_1_grad_2,
-                                    HloInstruction** dbias) {
-  auto user_count = d_intermediate->user_count();
-  HloInstruction* dbias_user = nullptr;
-  for (auto user : d_intermediate->users()) {
-    if (user == bmm_1_grad_1) {
-      user_count -= 1;
-    } else if (user == bmm_1_grad_2) {
-      user_count -= 1;
-    } else {
-      dbias_user = user;
-    }
-  }
-  HloInstruction* reduce;
-  auto ConsumeExtraConvert = [](HloInstruction** instr) {
-    Match((*instr)->users()[0], m::Convert(instr, m::Op()).WithOneUse());
-    return true;
-  };
-  // user_count == 1 && (reduce-> {convert} ->bitcast)
-  return user_count == 1 &&
-         Match(dbias_user, m::Reduce(&reduce, m::Op(), m::Op()).WithOneUse()) &&
-         ConsumeExtraConvert(&reduce) &&
-         Match(reduce->users()[0],
-               m::AnyOf<HloInstruction>(m::Reshape(dbias, m::Op()),
-                                        m::Bitcast(dbias, m::Op()))
-                   .WithOneUse());
-}
-
 StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
     HloComputation* comp, HloInstruction* bmm_1_grad_1,
     HloInstruction* bmm_1_grad_2, HloInstruction* bmm_2_grad_1,
     HloInstruction* bmm_2_grad_2, HloInstruction* fwd_fmha_call,
-    HloInstruction* d_intermediate, HloInstruction* mask,
+    HloInstruction* dbias, HloInstruction* mask,
     std::string& bwd_custom_call_name, bool fwd_bmm_2_canonicalized,
     bool is_bmm2_grad1_canonicalized) {
   HloInstruction* rhs_bmm1_grad_gemm1;
@@ -1342,6 +1405,14 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   HloInstruction* lhs_bmm2_grad_gemm1;
   HloInstruction* rhs_bmm2_grad_gemm2;
   HloInstruction* d_output_grad;
+  DotDimensionNumbers orig_bmm1_grad1_config =
+      bmm_1_grad_1->dot_dimension_numbers();
+  DotDimensionNumbers orig_bmm1_grad2_config =
+      bmm_1_grad_2->dot_dimension_numbers();
+  DotDimensionNumbers orig_bmm2_grad1_config =
+      bmm_2_grad_1->dot_dimension_numbers();
+  DotDimensionNumbers orig_bmm2_grad2_config =
+      bmm_2_grad_2->dot_dimension_numbers();
 
   // Q tensor
   TF_ASSIGN_OR_RETURN(
@@ -1425,6 +1496,16 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   *bwd_fmha_config.mutable_bmm2_grad_gemm2_dot_dimension_numbers() =
       bmm_2_grad_2->dot_dimension_numbers();
 
+  // Restore original DotDimensionNumbers
+  *((DynCast<HloDotInstruction>(bmm_1_grad_1))
+        ->mutable_dot_dimension_numbers()) = orig_bmm1_grad1_config;
+  *((DynCast<HloDotInstruction>(bmm_1_grad_2))
+        ->mutable_dot_dimension_numbers()) = orig_bmm1_grad2_config;
+  *((DynCast<HloDotInstruction>(bmm_2_grad_1))
+        ->mutable_dot_dimension_numbers()) = orig_bmm2_grad1_config;
+  *((DynCast<HloDotInstruction>(bmm_2_grad_2))
+        ->mutable_dot_dimension_numbers()) = orig_bmm2_grad2_config;
+
   bwd_fmha_config.set_fmha_scale(fwd_config.fmha_scale());
   bwd_fmha_config.set_dropout_rate(fwd_config.dropout_rate());
   // Set to an arbitrary seed for now, seed is not exposed to XLA in HLO
@@ -1458,13 +1539,16 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   // Reserved placeholder for workspace
   output_shapes.push_back(ShapeUtil::MakeShape(U8, {0}));
 
-  HloInstruction* dbias = nullptr;
-  if (d_intermediate &&
-      IsDbiasOnlyUserBesidesGradGemm(d_intermediate, bmm_1_grad_1, bmm_1_grad_2,
-                                     &dbias)) {
-    output_shapes.push_back(dbias->shape());
+  if (dbias) {
+    // Cudnn kernel only outputs dbias in this shape [1, num_heads, seq, seq],
+    // so we add a dimension of 1 to existing dbias' shape.
+    std::vector<int64_t> dbias_shape_vector =
+        SpanToVector(dbias->shape().dimensions());
+    dbias_shape_vector.insert(dbias_shape_vector.begin(), 1);
+    Shape cudnn_dbias_shape =
+        ShapeUtil::MakeShape(dbias->shape().element_type(), dbias_shape_vector);
+    output_shapes.push_back(cudnn_dbias_shape);
   }
-
   Shape call_shape = ShapeUtil::MakeTupleShape(output_shapes);
   HloInstruction* fmha_bwd_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1485,12 +1569,23 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
       bmm_2_grad_1, HloInstruction::CreateGetTupleElement(bmm_2_grad_1->shape(),
                                                           fmha_bwd_call, 2)));
-  // d_intermediate tensor
+
   if (dbias) {
-    // does not really need d_intermediate
-    TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-        dbias, HloInstruction::CreateGetTupleElement(dbias->shape(),
-                                                     fmha_bwd_call, 5)));
+    // Reshape fmha dbias output to original user's input shape.
+    // If the reshape doesn't involve physical data movement,
+    // algebraic simplifer can change it to a no-op bitcast.
+    Shape original_shape = dbias->shape();
+    HloInstruction* dbias_user = dbias->users()[0];
+    HloInstruction* cudnn_dbias_output =
+        comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+            output_shapes.back(), fmha_bwd_call, 5));
+    HloInstruction* reshape_dbias = comp->AddInstruction(
+        HloInstruction::CreateReshape(original_shape, cudnn_dbias_output));
+    TF_RETURN_IF_ERROR(dbias_user->ReplaceOperandWith(
+        dbias_user->operand_index(dbias), reshape_dbias));
+
+    TF_RETURN_IF_ERROR(
+        comp->ReplaceInstructionWithDifferentShape(dbias, cudnn_dbias_output));
   }
   return true;
 }
@@ -1526,6 +1621,28 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
               matched_result.need_canonicalization, matched_result.is_training,
               matched_result.matched_custom_call_name, debug_options));
       if (!is_mha_module_supported) continue;
+
+      // If we have an activation with more than 1 users in non-training mode,
+      // we cannot rewrite the graph. So skip processing the rest.
+      HloInstruction* activation =
+          matched_result.need_canonicalization
+              ? matched_result.matched_bmm_2->mutable_operand(1)
+              : matched_result.matched_bmm_2->mutable_operand(0);
+      if (!matched_result.is_training && activation->user_count() > 1) {
+        VLOG(2)
+            << "Activation: " << activation->ToString()
+            << " cannot have more than 1 users in non-training mode. Skipping.";
+        continue;
+      }
+      HloInstruction* original_bmm2_producer0 =
+          matched_result.matched_bmm_2->mutable_operand(0);
+      HloInstruction* original_bmm2_producer1 =
+          matched_result.matched_bmm_2->mutable_operand(1);
+
+      std::vector<HloInstruction*> original_activation_producers;
+      for (HloInstruction* operand : activation->mutable_operands()) {
+        original_activation_producers.push_back(operand);
+      }
       // If we need to canonicalize the bmm, we will assign the newly
       // canonicalized bmm to bmm_2.
       if (matched_result.need_canonicalization) {
@@ -1560,18 +1677,39 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
                 fwd_fmha_call, matched_result.matched_bmm_1,
                 matched_result.matched_mask, v_transposed);
         if (!matched_bwd_result.has_match) {
+          VLOG(2) << "Backward pattern not matching, skipping.";
+          // If backward pattern is not matched, we need to restore the
+          // original graph structure.
+          // Replacing new GTEs added by forward FMHA call with cloned old
+          // activations and bmm2.
+          HloInstruction* output_gte = fwd_fmha_call->users()[0];
+          HloInstruction* activation_gte = fwd_fmha_call->users()[1];
+          std::string suffix = "fmha_no_match_clone";
+          HloInstruction* cloned_activation =
+              comp->AddInstruction(activation->CloneWithNewOperands(
+                  activation->shape(), original_activation_producers, suffix));
+
+          // Since old activation is detached by forward FMHA rewrite, we need
+          // to use the newly cloned activation.
+          HloInstruction* lhs = activation == original_bmm2_producer0
+                                    ? cloned_activation
+                                    : original_bmm2_producer1;
+          HloInstruction* rhs = activation == original_bmm2_producer0
+                                    ? original_bmm2_producer1
+                                    : cloned_activation;
+          HloInstruction* cloned_bmm2 = comp->AddInstruction(
+              matched_result.matched_bmm_2->CloneWithNewOperands(
+                  matched_result.matched_bmm_2->shape(), {lhs, rhs}, suffix));
+
+          TF_RETURN_IF_ERROR(comp->ReplaceInstruction(output_gte, cloned_bmm2));
+          TF_RETURN_IF_ERROR(
+              comp->ReplaceInstruction(activation_gte, cloned_activation));
           continue;
         }
-        // check if dbias is the only user of d_intermediate besides
-        // bmm_1_grad_1 and bmm_1_grad_2 and the cudnn version is > 8.9.1. We
+        // check if dbias exist and the cudnn version is > 8.9.1. We
         // won't lower bwd if this condition is not met as we won't deal with
         // unswizzling now
-        HloInstruction* dbias = nullptr;
-        if (matched_bwd_result.matched_d_intermediate &&
-            !IsDbiasOnlyUserBesidesGradGemm(
-                matched_bwd_result.matched_d_intermediate,
-                matched_bwd_result.matched_bmm_1_grad_1,
-                matched_bwd_result.matched_bmm_1_grad_2, &dbias) &&
+        if (matched_bwd_result.matched_dbias &&
             !IsComputeCapabilityAndCudnnSupported(
                 compute_capability_, cudnn_version_, stream_executor_,
                 stream_executor::dnn::VersionInfo(8, 9, 1))) {
@@ -1611,8 +1749,7 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
                 matched_bwd_result.matched_bmm_1_grad_2,
                 matched_bwd_result.matched_bmm_2_grad_1,
                 matched_bwd_result.matched_bmm_2_grad_2, fwd_fmha_call,
-                matched_bwd_result.matched_d_intermediate,
-                matched_result.matched_mask,
+                matched_bwd_result.matched_dbias, matched_result.matched_mask,
                 matched_bwd_result.matched_custom_call_name,
                 matched_result.need_canonicalization,
                 matched_bwd_result.bmm_2_grad_1_need_canonicalization));

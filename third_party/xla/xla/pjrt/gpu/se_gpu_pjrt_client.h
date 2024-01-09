@@ -25,13 +25,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/distributed/client.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/statusor.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace stream_executor {
 
@@ -147,6 +150,10 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
 
   absl::StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
 
+  absl::Span<int const> coords() const;
+
+  int core_on_chip() const;
+
  private:
   std::string device_vendor_;
   int slice_index_;
@@ -169,7 +176,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
             std::move(allocator), std::move(host_memory_allocator),
             should_stage_host_to_device_transfers, std::move(gpu_run_options)),
         topology_(xla::StreamExecutorGpuTopologyDescription::Create(
-            xla::GpuId(), std::move(platform_name),
+            tsl::Fingerprint64(platform_name), platform_name,
             devices_.back()->device_kind(), devices_)) {}
 
   xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
@@ -209,6 +216,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       absl::string_view serialized, std::optional<CompileOptions> options,
       const LoadOptions& load_options);
 
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
+
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;
 };
@@ -217,18 +227,27 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id);
 
-// kv_get and kv_put are callbacks provided by the caller to access a key-value
-// store shared between nodes. kv_get and kv_put must be non-null if num_nodes
-// > 1.
+struct GpuClientOptions {
+  GpuAllocatorConfig allocator_config;
+
+  int node_id = 0;
+
+  int num_nodes = 1;
+
+  std::optional<std::set<int>> allowed_devices = std::nullopt;
+
+  std::optional<std::string> platform_name = std::nullopt;
+
+  bool should_stage_host_to_device_transfers = true;
+
+  // kv_store must be non-null if num_nodes > 1.
+  std::shared_ptr<KeyValueStoreInterface> kv_store = nullptr;
+
+  bool enable_mock_nccl = false;
+};
+
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
-    bool asynchronous, const GpuAllocatorConfig& allocator_config, int node_id,
-    int num_nodes = 1,
-    const std::optional<std::set<int>>& allowed_devices = std::nullopt,
-    std::optional<std::string> platform_name = std::nullopt,
-    bool should_stage_host_to_device_transfers = true,
-    PjRtClient::KeyValueGetCallback kv_get = nullptr,
-    PjRtClient::KeyValuePutCallback kv_put = nullptr,
-    bool enable_mock_nccl = false);
+    const GpuClientOptions& options);
 
 }  // namespace xla
 

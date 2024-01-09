@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is a registration-oriented interface for multiple platforms. It will
-// replace the MachineManager singleton interface, as MachineManager does not
-// currently support simultaneous use of multiple platforms.
+// This is a registration-oriented interface for multiple platforms.
 //
 // Usage:
 //
@@ -71,7 +69,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 

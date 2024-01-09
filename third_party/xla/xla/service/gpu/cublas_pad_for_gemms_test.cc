@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/cublas_pad_for_gemms.h"
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
@@ -32,6 +36,14 @@ class CublasGemmPadForTensorCoresTest : public HloTestBase {
                              PrimitiveType::F16, 8)
         .Run(module)
         .value();
+  }
+
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    // Some pads would not be added if we detect that Triton will handle the
+    // given dot operation.
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    return debug_options;
   }
 };
 

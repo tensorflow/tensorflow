@@ -12,6 +12,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_ASYNC_INTEROP_C_CONSTANTS_H_
 #define TENSORFLOW_LITE_ASYNC_INTEROP_C_CONSTANTS_H_
 
+/// For documentation, see
+/// third_party/tensorflow/lite/core/async/interop/c/constants.h
+
 #include "tensorflow/lite/core/async/interop/c/constants.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_LITE_ASYNC_INTEROP_C_CONSTANTS_H_

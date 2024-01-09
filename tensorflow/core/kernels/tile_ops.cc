@@ -256,7 +256,8 @@ class TileOp : public OpKernel {
                   const gtl::ArraySlice<Tmultiples> multiples_array,
                   Tensor* result);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TileOp);
+  TileOp(const TileOp&) = delete;
+  void operator=(const TileOp&) = delete;
 };
 
 template <typename Device, typename Tmultiples>
@@ -508,7 +509,8 @@ class TileGradientOp : public OpKernel {
         context->input(0).tensor<T, NDIM>(), reduce_dim, reshape_dim);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TileGradientOp);
+  TileGradientOp(const TileGradientOp&) = delete;
+  void operator=(const TileGradientOp&) = delete;
 };
 
 template <typename Device, typename Tmultiples>

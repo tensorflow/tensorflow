@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
 
+#include <cstdint>
+
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/core/framework/resource_handle.h"
 
 //===----------------------------------------------------------------------===//
 // _TfrtGetResourceOp
@@ -81,6 +86,35 @@ mlir::LogicalResult PwStreamResultsOp::verify() {
            << "has a mismatch between the number of arguments and their names ("
            << getArgs().size() << " vs. " << getNames().size() << ")";
   }
+  return mlir::success();
+}
+
+//===----------------------------------------------------------------------===//
+// IfrtProgramCall
+//===----------------------------------------------------------------------===//
+
+mlir::LogicalResult IfrtCallOp::verify() {
+  auto func = getOperation()->getParentOfType<mlir::func::FuncOp>();
+  if (func != nullptr && func->hasAttr("tfrt_ifrt_serving.program_id")) {
+    return emitOpError() << "cannot be nested inside an IFRT program";
+  }
+
+  for (mlir::Value arg : getArgs()) {
+    if (mlir::getElementTypeOrSelf(arg.getType())
+            .isa<mlir::TF::ResourceType>()) {
+      return emitOpError()
+             << "does not support passing '!tf.resource' values as arguments";
+    }
+  }
+
+  for (mlir::Value result : getResults()) {
+    if (mlir::getElementTypeOrSelf(result.getType())
+            .isa<mlir::TF::ResourceType>()) {
+      return emitOpError()
+             << "does not support returning '!tf.resource' values as results";
+    }
+  }
+
   return mlir::success();
 }
 

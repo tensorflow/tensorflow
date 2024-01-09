@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/hash/hash.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -214,6 +213,7 @@ enum StatType {
   kKpiValue,
   kElementId,
   kParentId,
+  kCoreType,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,
@@ -259,6 +259,7 @@ enum StatType {
   kModelVersion,
   kBytesTransferred,
   kDmaQueue,
+  kDcnCollectiveInfo,
   // Performance counter related.
   kRawValue,
   kScaledValue,
@@ -311,7 +312,32 @@ enum StatType {
   kDcnLoopIndex,
   kEdgeTpuModelInfo,
   kEdgeTpuModelProfileInfo,
-  kLastStatType = kEdgeTpuModelProfileInfo,
+  kEdgeTpuMlir,
+  kLastStatType = kEdgeTpuMlir,
+};
+
+enum MegaScaleStatType : uint8_t {
+  kMegaScaleGraphKey,
+  kFirstMegaScaleStatType = kMegaScaleGraphKey,
+  kMegaScaleLocalDeviceId,
+  kMegaScaleNumActions,
+  kMegaScaleCollectiveType,
+  kMegaScaleInputSize,
+  kMegaScaleSlackUs,
+  kMegaScaleActionType,
+  kMegaScaleStartEndType,
+  kMegaScaleActionIndex,
+  kMegaScaleActionDurationNs,
+  kMegaScaleActionInputs,
+  kMegaScaleTransferSource,
+  kMegaScaleTransferDestinations,
+  kMegaScaleBufferSizes,
+  kMegaScaleComputeOperation,
+  kMegaScaleChunk,
+  kMegaScaleLaunchId,
+  kMegaScaleLoopIteration,
+  kMegaScaleGraphProtos,
+  kLastMegaScaleStatType = kMegaScaleGraphProtos,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
@@ -358,6 +384,15 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
 }
 
 std::optional<int64_t> FindStatType(absl::string_view stat_name);
+
+absl::string_view GetMegaScaleStatTypeStr(MegaScaleStatType stat_type);
+
+inline bool IsMegaScaleStatType(MegaScaleStatType stat_type,
+                                absl::string_view stat_name) {
+  return GetMegaScaleStatTypeStr(stat_type) == stat_name;
+}
+
+std::optional<int64_t> FindMegaScaleStatType(absl::string_view stat_name);
 
 // Returns true if the given event shouldn't be shown in the trace viewer.
 bool IsInternalEvent(std::optional<int64_t> event_type);
@@ -439,6 +474,8 @@ class XFlow {
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnReceive;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSend;
 TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSendFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnMemAllocate;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnMemCopy;
 TF_CONST_INIT extern const absl::string_view kMegaScaleTopologyDiscovery;
 TF_CONST_INIT extern const absl::string_view kMegaScaleBarrier;
 TF_CONST_INIT extern const absl::string_view kMegaScaleHostCommand;
@@ -446,6 +483,8 @@ TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferStart;
 TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferFinished;
 TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferStart;
 TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleReductionStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleReductionFinished;
 TF_CONST_INIT extern const char kXProfMetadataKey[];
 TF_CONST_INIT extern const char kXProfMetadataFlow[];
 TF_CONST_INIT extern const char kXProfMetadataTransfers[];

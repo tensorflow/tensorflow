@@ -202,7 +202,9 @@ ENTRY main {
             HloOpcode::kCopy);
 
   NVPTXCompiler compiler;
-  TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(module.get(), 100000));
+  TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(
+      module.get(), 100000,
+      backend().default_stream_executor()->GetDeviceDescription()));
   EXPECT_EQ(CountCopies(*module), 3);
   while_op = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);

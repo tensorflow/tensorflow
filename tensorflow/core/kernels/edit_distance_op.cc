@@ -280,7 +280,8 @@ class EditDistanceOp : public OpKernel {
  private:
   bool normalize_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EditDistanceOp);
+  EditDistanceOp(const EditDistanceOp&) = delete;
+  void operator=(const EditDistanceOp&) = delete;
 };
 
 #define REGISTER_CPU_KERNEL(T)                                        \

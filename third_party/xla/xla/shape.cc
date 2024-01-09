@@ -137,6 +137,16 @@ bool Shape::is_static() const {
   return !absl::c_any_of(dynamic_dimensions_, [](bool b) { return b; });
 }
 
+bool Shape::is_unbounded_dynamic() const {
+  if (IsTuple() && absl::c_any_of(tuple_shapes_, [](const Shape& subshape) {
+        return subshape.is_unbounded_dynamic();
+      })) {
+    return true;
+  }
+  return absl::c_any_of(dimensions_,
+                        [](int64_t dim) { return dim == kUnboundedSize; });
+}
+
 void Shape::DeleteDimension(int64_t dim_to_delete) {
   CHECK(IsArray());
   CHECK_GE(dim_to_delete, 0);
@@ -149,7 +159,7 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
 }
 
 const Shape& Shape::tuple_shapes(int index) const {
-  return tuple_shapes_.at(index);
+  return tuple_shapes_[index];
 }
 
 Shape* Shape::add_tuple_shapes() {

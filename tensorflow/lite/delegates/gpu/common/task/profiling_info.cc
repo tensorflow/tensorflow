@@ -49,7 +49,7 @@ std::string ProfilingInfo::GetDetailedReport() const {
           dispatch.read_mem_size + dispatch.write_mem_size;
       const double giga_bytes = total_size / 1024.0 / 1024.0 / 1024.0;
       const double giga_bytes_per_sec = times_per_sec * giga_bytes;
-      result += ", " + std::to_string(giga_bytes_per_sec) + " Gb/s";
+      result += ", " + std::to_string(giga_bytes_per_sec) + " Gbyte/s";
     }
     if (dispatch.flops) {
       const double giga_flops = dispatch.flops / 1000.0 / 1000.0 / 1000.0;

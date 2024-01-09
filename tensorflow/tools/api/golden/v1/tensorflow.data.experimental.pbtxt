@@ -6,11 +6,11 @@ tf_module {
   }
   member {
     name: "AutoShardPolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "AutotuneAlgorithm"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "AutotuneOptions"
@@ -38,7 +38,7 @@ tf_module {
   }
   member {
     name: "ExternalStatePolicy"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "INFINITE_CARDINALITY"

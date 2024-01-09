@@ -13,6 +13,4 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import List
-
-def stack_tables(arg0: List[int], arg1: List[int], arg2: List[int], arg3: List[int], arg4: List[str], arg5: int) -> List[List[str]]: ...
+def stack_tables(arg0: list[int], arg1: list[int], arg2: list[int], arg3: list[int], arg4: list[str], arg5: int) -> list[list[str]]: ...

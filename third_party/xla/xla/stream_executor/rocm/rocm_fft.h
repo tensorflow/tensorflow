@@ -139,7 +139,8 @@ class ROCMFft : public fft::FftSupport {
                      const DeviceMemory<InputT> &input,
                      DeviceMemory<OutputT> *output);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ROCMFft);
+  ROCMFft(const ROCMFft &) = delete;
+  void operator=(const ROCMFft &) = delete;
 };
 
 }  // namespace gpu

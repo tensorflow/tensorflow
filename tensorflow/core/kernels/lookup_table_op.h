@@ -130,7 +130,8 @@ class LookupTableOp : public OpKernel {
   ContainerInfo cinfo_;
   bool use_node_name_sharing_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LookupTableOp);
+  LookupTableOp(const LookupTableOp&) = delete;
+  void operator=(const LookupTableOp&) = delete;
 };
 
 // An anonymous version of LookupTableOp, which creates a new table resource
@@ -164,7 +165,8 @@ class AnonymousLookupTableOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(AnonymousLookupTableOp);
+  AnonymousLookupTableOp(const AnonymousLookupTableOp&) = delete;
+  void operator=(const AnonymousLookupTableOp&) = delete;
 };
 
 namespace lookup {

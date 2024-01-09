@@ -167,7 +167,7 @@ enum DimLevelType {
   // The corresponding dimension is Compressed, but with potential trailing
   // zeros, thus an extra upper bound (high) is used to exclude those zeros.
   // E.g., indices = [1, 2, 0, 0, 3, 4, 0, 0], position = [(0, 2), (4, 6)].
-  DIM_COMPRESSED_WITH_HI = 3;
+  DIM_LOOSE_COMPRESSED = 3;
 }
 
 // Describes a tile used in tiling-based layout. Refer to
@@ -755,6 +755,11 @@ message CholeskyOptions {
   // If true, uses the lower triangle of `a`. If false, uses the upper triangle
   // of `a`.
   bool lower = 1;
+}
+
+// Attributes of the sort custom call (cub::DeviceRadixSort).
+message SortOptions {
+  bool descending = 1;
 }
 
 // Generic map of attributes used to pass hints / configuration options from

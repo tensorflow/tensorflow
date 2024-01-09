@@ -33,7 +33,7 @@ We recommend using a suitable docker container to build/test XLA, such as
 [TensorFlow's docker container](https://www.tensorflow.org/install/docker):
 
 ```
-docker run --name xla -w /xla -it -d --rm -v $PWD:/xla tensorflow/build:latest-python3.9 bash
+docker run --name xla -w /xla -it -d --rm -v $PWD:/xla tensorflow/tensorflow:latest-gpu bash
 ```
 
 Using a docker container you can build XLA with CPU support using the following commands:

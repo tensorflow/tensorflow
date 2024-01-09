@@ -2,11 +2,12 @@ syntax = "proto3";
 
 package xla;
 
+import "xla/stream_executor/device_description.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 16.
+// Next id: 18.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -83,6 +84,12 @@ message ExecutableBuildOptionsProto {
   bytes fdo_profile = 14;
 
   int64 device_memory_size = 15;
+
+  // Mesh shape in auto sharding options.
+  repeated int64 auto_spmd_partitioning_mesh_shape = 16;
+
+  // Mesh ids in auto sharding options.
+  repeated int64 auto_spmd_partitioning_mesh_ids = 17;
 }
 
 message OptionOverrideProto {
@@ -103,6 +110,8 @@ message CompileOptionsProto {
   int64 profile_version = 5;
   bytes serialized_multi_slice_config = 6;
   map<string, OptionOverrideProto> env_option_overrides = 7;
+
+  stream_executor.GpuTargetConfigProto target_config = 8;
 }
 
 // Helper for serializing opaque executables alongside CompileOptions.

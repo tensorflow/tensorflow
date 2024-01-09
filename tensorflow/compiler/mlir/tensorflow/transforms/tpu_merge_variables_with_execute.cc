@@ -65,11 +65,6 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 class TPUMergeVariablesWithExecutePass
     : public impl::TPUMergeVariablesWithExecutePassBase<
           TPUMergeVariablesWithExecutePass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    // We need this here because at the moment we deserialize the TPUCompileMlir
-    // operation which contains annotation like `mhlo.sharding` attributes.
-    registry.insert<mhlo::MhloDialect>();
-  }
   void runOnOperation() override;
 };
 

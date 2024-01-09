@@ -61,7 +61,8 @@ class TpuOpExecutable : public xla::TpuExecutableInterface {
 
   SE_OutsideCompilationParams* outside_compilation_params_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuOpExecutable);
+  TpuOpExecutable(const TpuOpExecutable&) = delete;
+  void operator=(const TpuOpExecutable&) = delete;
 };
 
 }  // namespace tensorflow

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/service/spmd/convolution_handler.h"
 
+#include <cstdint>
+#include <memory>
+
 #include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -904,7 +907,7 @@ StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
   return nullptr;
 }
 
-StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvConvolution(
+StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvolution(
     const HloInstruction& conv,
     const dot_as_convolution_util::DotConvolutionDimsInfo& dot_dnums,
     HloInstruction* sharded_lhs_hlo, HloInstruction* sharded_rhs_hlo,
@@ -954,10 +957,24 @@ StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvConvolution(
                               conv_dnums.kernel_input_feature_dimension());
   }
 
-  int64_t batch_group_count = conv.batch_group_count();
+  // We always have output_batch_size * batch_group_count = input_batch_size.
+  const int64_t old_input_batch_size =
+      conv.operand(0)->shape().dimensions(conv_dnums.input_batch_dimension());
+  const int64_t old_output_batch_size =
+      conv.shape().dimensions(conv_dnums.output_batch_dimension());
+  const int64_t old_batch_group_count = conv.batch_group_count();
+  CHECK_EQ(old_output_batch_size * old_batch_group_count, old_input_batch_size);
+
+  int64_t batch_group_count = old_batch_group_count;
   if (batch_group_count > 1) {
-    batch_group_count =
+    // For the new convolution instruction, we have the new_input_batch_size
+    // from sharded_lhs. We keep the output_batch_size and calculate the new
+    // batch_group_count accordingly.
+    const int64_t new_input_batch_size =
         sharded_lhs_hlo->shape().dimensions(conv_dnums.input_batch_dimension());
+    const int64_t new_output_batch_size = old_output_batch_size;
+    CHECK_EQ(new_input_batch_size % new_output_batch_size, 0);
+    batch_group_count = new_input_batch_size / new_output_batch_size;
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1053,8 +1070,8 @@ Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
       return b->AddInstruction(std::move(sharded_conv));
     } else {
       TF_ASSIGN_OR_RETURN(auto sharded_conv,
-                          CreateShardedConvConvolution(*hlo, dims_info, lhs_hlo,
-                                                       rhs_hlo, conv_window));
+                          CreateShardedConvolution(*hlo, dims_info, lhs_hlo,
+                                                   rhs_hlo, conv_window));
       return b->AddInstruction(std::move(sharded_conv));
     }
   };

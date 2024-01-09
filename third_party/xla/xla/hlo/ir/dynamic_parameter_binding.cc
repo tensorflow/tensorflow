@@ -20,21 +20,26 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 
 Status DynamicParameterBinding::Bind(
-    const DynamicParameter& dynamic_parameter,
+    const DynamicSizeParameter& dynamic_parameter,
     const DynamicDimension& dynamic_dimension) {
   auto result = bindings_.emplace(dynamic_dimension, dynamic_parameter);
   TF_RET_CHECK(result.second);
   return OkStatus();
 }
 
-std::optional<DynamicParameterBinding::DynamicParameter>
+std::optional<DynamicParameterBinding::DynamicSizeParameter>
 DynamicParameterBinding::GetBinding(
     const DynamicDimension& dynamic_dimension) const {
   auto param_iter = bindings_.find(dynamic_dimension);
@@ -49,7 +54,7 @@ std::string DynamicParameterBinding::ToString() const {
   pieces.push_back("DynamicParameterBinding: ");
   for (const auto& binding : bindings_) {
     const DynamicDimension& dynamic_dimension = binding.first;
-    const DynamicParameter& dynamic_param = binding.second;
+    const DynamicSizeParameter& dynamic_param = binding.second;
     pieces.push_back(absl::StrFormat(
         " -- Input param number %lld at %s has dim %lld as dynamic"
         " dimension, which is represented by param number %lld at "
@@ -69,24 +74,28 @@ Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
   return OkStatus();
 }
 
-Status DynamicParameterBinding::Verify(const HloModule& module) const {
-  const HloComputation* entry = module.entry_computation();
-  return ForEachBinding([&](const DynamicParameter& dynamic_parameter,
+Status DynamicParameterBinding::Verify(
+    const HloComputation& computation) const {
+  return ForEachBinding([&](const DynamicSizeParameter& dynamic_parameter,
                             const DynamicDimension& dynamic_dimension)
                             -> Status {
     TF_RET_CHECK(dynamic_parameter.parameter_num >= 0 &&
-                 dynamic_parameter.parameter_num < entry->num_parameters());
-    TF_RET_CHECK(dynamic_dimension.parameter_num < entry->num_parameters());
+                 dynamic_parameter.parameter_num <
+                     computation.num_parameters());
+    TF_RET_CHECK(dynamic_dimension.parameter_num <
+                 computation.num_parameters());
     TF_RET_CHECK(ShapeUtil::IndexIsValid(
-        entry->parameter_instruction(dynamic_parameter.parameter_num)->shape(),
+        computation.parameter_instruction(dynamic_parameter.parameter_num)
+            ->shape(),
         dynamic_parameter.parameter_index));
     TF_RET_CHECK(ShapeUtil::IndexIsValid(
-        entry->parameter_instruction(dynamic_dimension.parameter_num)->shape(),
+        computation.parameter_instruction(dynamic_dimension.parameter_num)
+            ->shape(),
         dynamic_dimension.parameter_index));
     TF_RET_CHECK(
         dynamic_dimension.dimension <
         ShapeUtil::GetSubshape(
-            entry->parameter_instruction(dynamic_dimension.parameter_num)
+            computation.parameter_instruction(dynamic_dimension.parameter_num)
                 ->shape(),
             dynamic_dimension.parameter_index)
             .rank());

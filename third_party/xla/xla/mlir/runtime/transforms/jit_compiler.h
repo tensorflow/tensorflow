@@ -104,6 +104,12 @@ class JitCompiler {
     // get the MLIR function type for the exported function(s), and then we
     // convert it to the corresponding run-time function type.
     TypeConverter type_converter;
+
+    // How much verification would you like to do?
+    int verification_level = 0;
+
+    // Whether to embed the LLVM IR generated in the executable
+    bool embed_ir_in_executable = false;
   };
 
   // Instantiates compiler from the serialized mlir source.
