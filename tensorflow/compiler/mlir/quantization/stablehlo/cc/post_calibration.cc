@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU: keep
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -32,21 +31,16 @@ namespace mlir::quant::stablehlo {
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::RunPasses;
 
-// Name of the post-training quantization post-calibration step. Used for
-// debugging purposes.
-constexpr absl::string_view kQuantPtqPostCalibrationStepName =
-    "quant_ptq_post_calibration";
-
 absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
   TF_RETURN_IF_ERROR(
-      RunPasses(/*name=*/kQuantPtqPostCalibrationStepName,
+      RunPasses(/*name=*/kName,
                 /*add_passes_func=*/[this](PassManager& pm) { AddPasses(pm); },
                 ctx_, module_op));
   return module_op;
 }
 
-void PostCalibrationComponent::AddPasses(OpPassManager& pm) {
+void PostCalibrationComponent::AddPasses(OpPassManager& pm) const {
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass());

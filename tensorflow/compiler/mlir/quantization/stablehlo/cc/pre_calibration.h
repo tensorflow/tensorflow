@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/component.h"
@@ -35,6 +36,10 @@ namespace mlir::quant::stablehlo {
 // lifted quantizable functions.
 class PreCalibrationComponent : public Component {
  public:
+  // Name of the post-training quantization pre-calibration step. Used for
+  // debugging purposes.
+  static constexpr absl::string_view kName = "quant_ptq_pre_calibration";
+
   PreCalibrationComponent(
       MLIRContext* ctx,
       tensorflow::quantization::CalibrationOptions calibration_options)

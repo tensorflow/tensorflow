@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
 
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -33,18 +32,12 @@ namespace {
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::RunPasses;
 
-// Name of the post-training quantization pre-calibration step. Used for
-// debugging purposes.
-constexpr absl::string_view kQuantPtqPreCalibrationStepName =
-    "quant_ptq_pre_calibration";
-
 }  // namespace
 
 absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
   TF_RETURN_IF_ERROR(RunPasses(
-      /*name=*/kQuantPtqPreCalibrationStepName,
-      /*add_passes_func=*/
+      /*name=*/kName, /*add_passes_func=*/
       [this](PassManager& pm) {
         pm.addPass(createLiftQuantizableSpotsAsFunctionsPass());
         pm.addNestedPass<func::FuncOp>(
