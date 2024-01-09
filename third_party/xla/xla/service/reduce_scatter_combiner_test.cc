@@ -153,6 +153,35 @@ ENTRY main {
   EXPECT_EQ(ReduceScatterCount(module.get()), 1);
 }
 
+TEST_F(ReduceScatterCombinerTest, DifferentDimensionsAndRanks) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8, 8] parameter(0)
+  p1 = f32[8] parameter(1)
+  rs0 = f32[8, 4] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={1},
+      to_apply=sum
+  rs1 = f32[8, 4] reduce-scatter(p0), replica_groups={{0,1}}, dimensions={1},
+      to_apply=sum
+  rs2 = f32[4] reduce-scatter(p1), replica_groups={{0,1}}, dimensions={0},
+      to_apply=sum
+  ROOT t = (f32[8, 4], f32[8, 4], f32[4])
+      tuple(rs0, rs1, rs2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, RunPass(hlo_string, /*expect_change=*/true, kMaxByteCount,
+                           kMaxCombineCount, /*combine_by_dim=*/false));
+  EXPECT_EQ(ReduceScatterCount(module.get()), 1);
+}
+
 // Test that dependent reduce-scatter do not get combined.
 TEST_F(ReduceScatterCombinerTest, DependentReduceScatter) {
   absl::string_view hlo_string = R"(

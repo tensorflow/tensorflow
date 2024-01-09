@@ -19,6 +19,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -47,22 +48,26 @@ limitations under the License.
 namespace xla {
 namespace {
 
+// Returns the most frequent all-gather dim if it can be a valid gather dim
+// for all shapes involved, else returns 0.
 int64_t FindMostFrequentGatherDim(
     absl::Span<HloInstruction* const> to_combine) {
   assert(!to_combine.empty());
 
   // Count frequencies.
+  int64_t min_rank = std::numeric_limits<int64_t>::max();
   std::vector<int64_t> frequency;
   for (const HloInstruction* it : to_combine) {
     int64_t dim = Cast<HloAllGatherInstruction>(it)->all_gather_dimension();
     frequency.resize(std::max(dim + 1, static_cast<int64_t>(frequency.size())),
                      0);
     frequency[dim]++;
+    min_rank = std::min(min_rank, it->shape().rank());
   }
 
   int64_t most_frequent_dim = std::distance(
       frequency.begin(), std::max_element(frequency.begin(), frequency.end()));
-  return most_frequent_dim;
+  return most_frequent_dim < min_rank ? most_frequent_dim : 0;
 }
 
 // Combines the elements of to_combine into a single AllGather op. All entries
