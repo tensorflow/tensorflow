@@ -24,8 +24,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -48,11 +50,11 @@ class CoalescingTest : public HloTestBase {
           << "If there are multiple instructions, they need to be wrapped in a "
              "fusion.";
     }
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
     TF_ASSERT_OK_AND_ASSIGN(
-        auto root_indexing,
-        ComputeOutputToInputIndexing(root, /*output_id=*/0, &mlir_context_));
-    auto grouped_indexing_maps =
-        GroupIndexingMapsByProducers(root_indexing, root);
+        auto grouped_indexing_maps,
+        ComputeGroupedOutputToInputIndexing(*fusion_adaptor, /*output_id=*/0,
+                                            &mlir_context_));
 
     std::vector<bool> actual_results;
     actual_results.reserve(expected_results.size());

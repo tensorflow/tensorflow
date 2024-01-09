@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/test_helpers.h"
@@ -97,7 +98,7 @@ class TileAnalysisTest : public HloTestBase {
   mlir::MLIRContext mlir_context_;
 };
 
-TEST_F(TileAnalysisTest, FuseProducerConsumerOutputToInputIndexing) {
+TEST_F(TileAnalysisTest, ComputeGroupedOutputToInputIndexing) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule m
     ENTRY e {
@@ -110,31 +111,23 @@ TEST_F(TileAnalysisTest, FuseProducerConsumerOutputToInputIndexing) {
   const HloInstruction* parameter = root->operand(0);
   const HloInstruction* transpose = root->operand(1);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto root_indexing,
-      ComputeOutputToInputIndexing(root, /*output_id=*/0, &mlir_context_));
+  auto fusion_adaptor = ProducerConsumerFusion(transpose, root);
 
-  auto grouped_by_key = GroupIndexingMapsByProducers(root_indexing, root);
-
+  TF_ASSERT_OK_AND_ASSIGN(auto grouped_indexing,
+                          ComputeGroupedOutputToInputIndexing(
+                              fusion_adaptor, /*output_id=*/0, &mlir_context_));
   EXPECT_THAT(
-      grouped_by_key,
+      grouped_indexing,
       UnorderedElementsAre(
-          Pair(parameter,
-               ElementsAre(MatchIndexingMap(
-                   "(d0, d1) -> (d0, d1)",
-                   ElementsAre(MatchRange(0, 1000), MatchRange(0, 1000)),
-                   IsEmpty()))),
+          Pair(root, ElementsAre(MatchIndexingMap(
+                         "(d0, d1) -> (d0, d1)",
+                         ElementsAre(MatchRange(0, 1000), MatchRange(0, 1000)),
+                         IsEmpty()))),
           Pair(transpose,
                ElementsAre(MatchIndexingMap(
                    "(d0, d1) -> (d0, d1)",
                    ElementsAre(MatchRange(0, 1000), MatchRange(0, 1000)),
-                   IsEmpty())))));
-
-  TF_CHECK_OK(FuseProducerConsumerOutputToInputIndexing(
-      transpose, &grouped_by_key, &mlir_context_));
-  EXPECT_THAT(
-      grouped_by_key,
-      UnorderedElementsAre(
+                   IsEmpty()))),
           Pair(parameter, UnorderedElementsAre(
                               MatchIndexingMap("(d0, d1) -> (d0, d1)",
                                                ElementsAre(MatchRange(0, 1000),

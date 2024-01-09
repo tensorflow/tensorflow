@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/indexing_map_simplifier.h"
 #include "xla/shape.h"
@@ -71,12 +72,17 @@ using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
 using mlir::MLIRContext;
 
+IndexingMap CreateIdentityMap(const Shape& shape, MLIRContext* ctx) {
+  auto dims = shape.dimensions();
+  IndexingMap identity_map{
+      .affine_map = AffineMap::getMultiDimIdentityMap(dims.size(), ctx),
+      .domain = Domain::FromUpperBounds(dims, {})};
+  return identity_map;
+}
+
 StatusOr<HloInstructionIndexing> ComputeOutputToInputCwiseOpIndexing(
     const HloInstruction* instr, MLIRContext* mlir_context) {
-  auto dims = instr->shape().dimensions();
-  IndexingMap identity_map{.affine_map = AffineMap::getMultiDimIdentityMap(
-                               dims.size(), mlir_context),
-                           .domain = Domain::FromUpperBounds(dims, {})};
+  IndexingMap identity_map = CreateIdentityMap(instr->shape(), mlir_context);
 
   HloInstructionIndexing instr_indexing;
   int64_t operand_count = instr->operand_count();
@@ -88,10 +94,7 @@ StatusOr<HloInstructionIndexing> ComputeOutputToInputCwiseOpIndexing(
 
 StatusOr<HloInstructionIndexing> ComputeInputToOutputCwiseOpIndexing(
     const HloInstruction* instr, MLIRContext* mlir_context) {
-  auto dims = instr->shape().dimensions();
-  IndexingMap identity_map{.affine_map = AffineMap::getMultiDimIdentityMap(
-                               dims.size(), mlir_context),
-                           .domain = Domain::FromUpperBounds(dims, {})};
+  IndexingMap identity_map = CreateIdentityMap(instr->shape(), mlir_context);
   return HloInstructionIndexing::FromIndexingMaps({identity_map});
 }
 
@@ -200,42 +203,16 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& producer_map,
 StatusOr<HloInstructionIndexing> ComputeOutputToInputFusionOpIndexing(
     const HloFusionInstruction* fusion, int output_id,
     MLIRContext* mlir_context) {
-  const HloInstruction* root =
-      fusion->shape().IsTuple()
-          ? fusion->fused_expression_root()->operand(output_id)
-          : fusion->fused_expression_root();
-  TF_ASSIGN_OR_RETURN(auto root_indexing, ComputeOutputToInputIndexing(
-                                              root, output_id, mlir_context));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+  TF_ASSIGN_OR_RETURN(auto grouped_indexing_maps,
+                      ComputeGroupedOutputToInputIndexing(
+                          *fusion_adaptor, output_id, mlir_context));
 
-  auto grouped_indexing_maps =
-      GroupIndexingMapsByProducers(root_indexing, root);
-
-  // `bfs` is initialized with all producer instructions of the fusion root that
-  // are not parameters of the fusion.
-  std::queue<const HloInstruction*> bfs;
-  for (const auto& [instr, indexing_maps] : grouped_indexing_maps) {
-    if (instr->opcode() == HloOpcode::kParameter) continue;
-    bfs.push(instr);
-  }
-  while (!bfs.empty()) {
-    const HloInstruction* producer_instr = bfs.front();
-    bfs.pop();
-    TF_CHECK_OK(FuseProducerConsumerOutputToInputIndexing(
-        producer_instr, &grouped_indexing_maps, mlir_context));
-
-    for (const HloInstruction* producer_operand_instr :
-         producer_instr->operands()) {
-      if (producer_operand_instr->opcode() != HloOpcode::kParameter) {
-        bfs.push(producer_operand_instr);
-      }
-    }
-  }
   // After the traversal, `grouped_indexing_maps` is keyed by
   // HloParameterInstructions. Convert them back to the operand id and return.
   HloInstructionIndexing fusion_indexing;
-  for (auto& [instr, indexing_maps] : grouped_indexing_maps) {
-    fusion_indexing.indexing_maps[instr->parameter_number()] =
-        std::move(indexing_maps);
+  for (auto [operand_id, operand] : llvm::enumerate(fusion->operands())) {
+    fusion_indexing.indexing_maps[operand_id] = grouped_indexing_maps[operand];
   }
   return fusion_indexing;
 }
@@ -864,36 +841,44 @@ GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
   return result;
 }
 
-Status FuseProducerConsumerOutputToInputIndexing(
-    const HloInstruction* producer_instr,
-    absl::flat_hash_map<const HloInstruction*,
-                        absl::flat_hash_set<IndexingMap>>* consumer_indexing,
-    MLIRContext* mlir_context) {
-  TF_ASSIGN_OR_RETURN(auto producer_indexing,
-                      ComputeOutputToInputIndexing(
-                          producer_instr, /*output_id=*/0, mlir_context));
-
-  auto consumer_indexing_maps = (*consumer_indexing)[producer_instr];
-  for (const auto& [producer_operand_id, producer_operand_indexing] :
-       producer_indexing.indexing_maps) {
-    const HloInstruction* producer_operand_instr =
-        producer_instr->operand(producer_operand_id);
-    for (const IndexingMap& producer_map : producer_operand_indexing) {
-      for (const IndexingMap& consumer_map : consumer_indexing_maps) {
-        (*consumer_indexing)[producer_operand_instr].insert(
-            ComposeIndexingMaps(producer_map, consumer_map));
-      }
-    }
-  }
-  consumer_indexing->erase(producer_instr);
-  return OkStatus();
-}
-
 AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
                                       MLIRContext* mlir_context) {
   return AffineMap::getPermutationMap(
       std::vector<unsigned>(permutation.begin(), permutation.end()),
       mlir_context);
+}
+
+StatusOr<GroupedByOpIndexingMap> ComputeGroupedOutputToInputIndexing(
+    const HloFusionAdaptor& fusion_adaptor, int output_id, MLIRContext* ctx) {
+  auto root = fusion_adaptor.GetRoots()[output_id];
+
+  auto initial_map = CreateIdentityMap(root.instruction().shape(), ctx);
+
+  GroupedByOpIndexingMap grouped_indexing_maps;
+  grouped_indexing_maps[&root.instruction()].insert(initial_map);
+
+  auto post_order = fusion_adaptor.MakeInstructionPostOrder();
+
+  // Iterator in reversed post-order (use-before-def).
+  for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
+    TF_ASSIGN_OR_RETURN(auto producer_indexing,
+                        ComputeOutputToInputIndexing(&it->instruction(),
+                                                     /*output_id=*/0, ctx));
+
+    auto consumer_indexing_maps = grouped_indexing_maps[&it->instruction()];
+    for (const auto& [producer_operand_id, producer_operand_indexing] :
+         producer_indexing.indexing_maps) {
+      auto producer_operand_adaptor = it->GetOperand(producer_operand_id);
+      for (const IndexingMap& producer_map : producer_operand_indexing) {
+        for (const IndexingMap& consumer_map : consumer_indexing_maps) {
+          grouped_indexing_maps[&producer_operand_adaptor.instruction()].insert(
+              ComposeIndexingMaps(producer_map, consumer_map));
+        }
+      }
+    }
+  }
+
+  return grouped_indexing_maps;
 }
 
 StatusOr<HloInstructionIndexing> ComputeOutputToInputIndexing(
