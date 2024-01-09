@@ -476,6 +476,10 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
     return Unimplemented("Fingerprinting executable is not supported.");
   }
 
+  StatusOr<CompileOptions> GetCompileOptions() const override {
+    return compile_options_;
+  }
+
  private:
   friend class TfrtCpuClient;
 
