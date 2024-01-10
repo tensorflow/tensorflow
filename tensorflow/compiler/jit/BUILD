@@ -80,7 +80,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core/tfrt/common:pjrt_cpu_client_registration",
-    ] + if_libtpu(
+    ] + if_with_tpu_support(
         if_false = ["@local_xla//xla/service:cpu_plugin"],
         if_true = [],
     ),
