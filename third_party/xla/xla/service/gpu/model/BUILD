@@ -142,7 +142,7 @@ cc_library(
     srcs = ["gpu_hlo_cost_analysis.cc"],
     hdrs = [
         "gpu_hlo_cost_analysis.h",
-        "hlo_op_profiles.h",
+        "hlo_op_profiles_data.h",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],

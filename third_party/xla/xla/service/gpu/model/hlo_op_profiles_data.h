@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILES_H_
-#define XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILES_H_
+#ifndef XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILES_DATA_H_
+#define XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILES_DATA_H_
 
 namespace xla {
 namespace gpu {
@@ -4137,4 +4137,4 @@ constexpr char kDeviceHloOpProfiles[] = R"pb(
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILES_H_
+#endif  // XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILES_DATA_H_
