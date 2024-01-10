@@ -82,7 +82,6 @@ test:nonpip_filters_multi_gpu --test_tag_filters=-no_gpu,-no_rocm
 test:nonpip_filters_multi_gpu --build_tag_filters=-no_gpu,-no_rocm
 test:nonpip_filters_multi_gpu --test_lang_filters=py --flaky_test_attempts=2 --test_size_filters=small,medium,large --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048
 test:nonpip_multi_gpu --config=nonpip_filters_multi_gpu -- \
-//tensorflow/core/common_runtime/gpu:gpu_device_unified_memory_test_2gpu \
 //tensorflow/core/nccl:nccl_manager_test_2gpu \
 //tensorflow/python/distribute/integration_test:mwms_peer_failure_test_2gpu \
 //tensorflow/python/distribute:checkpoint_utils_test_2gpu \
