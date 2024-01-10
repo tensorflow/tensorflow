@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -84,21 +83,18 @@ struct RendezvousState {
 // Rendezvous state ownership:
 //
 // (1) When rendezvous participant initiates a rendezvous with a particular key
-//     it gets back a strong reference (as std::shared_ptr) to a rendezvous
-//     state, and RendezvousMap keeps a weak reference to it (as std::weak_ptr).
+//     we create a new state for it, keep it in a map for tracking and return a
+//     shared pointer to the caller.
 //
 // (2) When rendezvous participant joins in-progress rendezvous it gets back
-//     a strong reference that is locked from a weak reference owned by a map.
+//     a shared pointer that is copied from a tracking map.
 //
-// (3) When all participants complete rendezvous they destroy all strong
-//     references to a state and it gets automatically destructed as the last
-//     remaining reference is weak (owned by a map).
+// (3) When the last rendezvous participant computes the result it completes the
+//     rendezvous and removes a shared pointer to a state. Remaining shared
+//     pointers destructed when all participants are notified.
 //
-// (4) Weak references lazily collected when new rendezvous start.
-//
-// This process guarantees that all completed rendezvous are getting garbage
-// collected and global rendezvous map has records only for rendezvous in
-// flight.
+// This process guarantees that all completed rendezvous are removed from a map
+// and a map has records only for rendezvous in progress.
 template <typename K, typename R, typename V>
 class RendezvousMap {
  public:
@@ -106,26 +102,39 @@ class RendezvousMap {
 
   std::shared_ptr<State> Join(const K& key, size_t num_threads) {
     absl::MutexLock lock(&mutex_);
-
-    // Erase completed rendezvous from the state map.
-    absl::InlinedVector<K, 4> completed;
-    for (auto& [k, v] : state_)
-      if (v.expired()) completed.push_back(k);
-    for (auto& k : completed) state_.erase(k);
-
-    std::weak_ptr<State>& state = state_[key];
+    std::shared_ptr<State>& state = state_[key];
 
     // Join an in-progress rendezvous.
-    if (auto in_progress = state.lock(); in_progress) return in_progress;
+    if (state) return state;
 
     // Join a newly created rendezvous.
-    auto new_rendezvous = std::make_shared<State>(num_threads);
-    return (state = new_rendezvous, new_rendezvous);
+    return state = std::make_shared<State>(num_threads);
+  }
+
+  void Complete(const K& key, std::shared_ptr<R> result) {
+    std::shared_ptr<State> state = [&] {
+      absl::MutexLock lock(&mutex_);
+
+      // Extract state from the map so we can immediately start a new round of
+      // rendezvous with the same key. A state for previous rendezvous will be
+      // destructed with the last copy of a shared pointer.
+      std::shared_ptr<State> state = state_.extract(key).mapped();
+
+      // Check that we have have exactly the number of participants we expected:
+      // +1 reference for all participants and a +1 reference we extracted.
+      CHECK_EQ(state.use_count(), 1 + state->values.size());  // NOLINT
+
+      return state;
+    }();
+
+    // Notify awaiting participants without holding a lock.
+    state->result = std::move(result);
+    state->ready.Notify();
   }
 
  private:
   absl::Mutex mutex_;
-  absl::flat_hash_map<K, std::weak_ptr<State>> state_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<K, std::shared_ptr<State>> state_ ABSL_GUARDED_BY(mutex_);
 };
 
 void AwaitAndLogIfStuck(absl::Notification& ready,
@@ -150,11 +159,11 @@ std::shared_ptr<R> RendezvousSingle(
   std::shared_ptr<State> state = rendezvous.Join(key, num_threads);
 
   // If we got an id larger than `num_threads` it means that we have multiple
-  // rendezvous running concurrently and using the same key.
+  // rendezvous sharing the same key running concurrently.
   int64_t id = state->id.fetch_add(1, std::memory_order_relaxed);
-  CHECK(id < num_threads)  // NOLINT
-      << "Id can't be larger than the number of participating threads: "
-      << num_threads;
+  CHECK_LT(id, num_threads)  // NOLINT
+      << "Id can't be larger than the number of participating threads"
+      << "; id=" << id << "; num_threads=" << num_threads;
 
   state->values[id] = &value;
 
@@ -164,11 +173,12 @@ std::shared_ptr<R> RendezvousSingle(
     internal::AwaitAndLogIfStuck(state->ready, warn_stuck_timeout,
                                  terminate_timeout);
   } else {
-    // Last thread to arrive executes the function and publishes result via
-    // `state` for awaiting participants.
-    CHECK(state->result == nullptr) << "result already set";  // NOLINT
-    state->result = std::make_shared<R>(fn(state->values));
-    state->ready.Notify();
+    // Last thread to arrive executes the function and completes rendezvous by
+    // making result available to all participants. All other participants will
+    // be notified via `state->ready` notification when result is ready, and we
+    // rely on the notification to create a memory barrier that makes access to
+    // `state->result` safe without any extra synchronization.
+    rendezvous.Complete(key, std::make_shared<R>(fn(state->values)));
   }
 
   return state->result;
