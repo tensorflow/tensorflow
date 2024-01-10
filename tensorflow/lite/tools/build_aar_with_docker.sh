@@ -112,7 +112,7 @@ else
     '/usr/lib/python3/dist-packages'
     'N'
     'N'
-    'N'
+    'Y'
     '-Wno-sign-compare -Wno-c++20-designator -Wno-gnu-inline-cpp-without-extern'
     'y'
     '/android/sdk'
