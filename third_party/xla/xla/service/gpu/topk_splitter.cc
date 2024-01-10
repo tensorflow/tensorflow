@@ -53,7 +53,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
   explicit TopkSplitterVisitor(size_t split_threshold)
       : split_threshold_(split_threshold) {}
 
-  Status HandleCustomCall(HloInstruction* inst) override {
+  absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "TopK") {
       return absl::OkStatus();

@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -34,8 +35,8 @@ using ::testing::IsTrue;
 // to the HLO module string.
 class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
  public:
-  Status RunPass(HloModule *module, bool expect_change,
-                 HloPredicate is_nop = {}) {
+  absl::Status RunPass(HloModule *module, bool expect_change,
+                       HloPredicate is_nop = {}) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         GpuConvertAsyncCollectivesToSync{is_nop}.Run(module));
     EXPECT_EQ(changed, expect_change);

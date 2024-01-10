@@ -36,7 +36,7 @@ namespace {
 
 class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   // Turn copy->pad into pad->copy
-  Status HandlePad(HloInstruction* hlo) override {
+  absl::Status HandlePad(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     HloInstruction* c = hlo->mutable_operand(1);
     if (operand->opcode() == HloOpcode::kCopy) {
@@ -54,7 +54,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   }
 
   // Turn copy->slice into slice->copy, as slice is layout-preserving.
-  Status HandleSlice(HloInstruction* hlo) override {
+  absl::Status HandleSlice(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (operand->opcode() == HloOpcode::kCopy) {
       HloInstruction* copied = operand->mutable_operand(0);
@@ -72,7 +72,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
 
   // Turn copy->reduce_window into reduce_window->copy, as reduce_window is
   // layout-preserving.
-  Status HandleReduceWindow(HloInstruction* hlo) override {
+  absl::Status HandleReduceWindow(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (operand->opcode() == HloOpcode::kCopy) {
       HloInstruction* copied = operand->mutable_operand(0);
@@ -89,7 +89,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  Status HandleReduce(HloInstruction* hlo) override {
+  absl::Status HandleReduce(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     // Reductions can handle transposes, e.g. via column reduction.
     if (operand->opcode() == HloOpcode::kCopy && !hlo->shape().IsTuple()) {
@@ -101,12 +101,12 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  Status HandleBitcastConvert(HloInstruction* hlo) override {
+  absl::Status HandleBitcastConvert(HloInstruction* hlo) override {
     return absl::OkStatus();
   }
 
   // Sink kCopy across elementwise unary.
-  Status HandleElementwiseUnary(HloInstruction* hlo) override {
+  absl::Status HandleElementwiseUnary(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (hlo->opcode() == HloOpcode::kReducePrecision) {
       return absl::OkStatus();
@@ -124,7 +124,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   }
 
   // Sink kCopy across reverse
-  Status HandleReverse(HloInstruction* hlo) override {
+  absl::Status HandleReverse(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (operand->opcode() == HloOpcode::kCopy) {
       HloInstruction* copied = operand->mutable_operand(0);
@@ -138,7 +138,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   }
 
   // Sink kCopy across convert.
-  Status HandleConvert(HloInstruction* hlo) override {
+  absl::Status HandleConvert(HloInstruction* hlo) override {
     HloInstruction* operand = hlo->mutable_operand(0);
     if (operand->opcode() == HloOpcode::kCopy) {
       HloInstruction* copied = operand->mutable_operand(0);
@@ -151,7 +151,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   }
 
   // Sink kCopy across elementwise binary.
-  Status HandleElementwiseBinary(HloInstruction* hlo) override {
+  absl::Status HandleElementwiseBinary(HloInstruction* hlo) override {
     HloInstruction* a = hlo->mutable_operand(0);
     HloInstruction* b = hlo->mutable_operand(1);
     if (a->opcode() == HloOpcode::kCopy && b->opcode() == HloOpcode::kCopy) {
@@ -178,7 +178,7 @@ class MoveCopyToUsersVisitor : public DfsHloRewriteVisitor {
   }
 
   // Move copy across kConcat if it occurs on all operands.
-  Status HandleConcatenate(HloInstruction* hlo) override {
+  absl::Status HandleConcatenate(HloInstruction* hlo) override {
     const HloInstruction* first = hlo->operand(0);
     if (first->opcode() != HloOpcode::kCopy) {
       return absl::OkStatus();

@@ -55,7 +55,7 @@ using xla::runtime::StridedMemrefView;
 
 namespace {
 
-Status RunRepeated(int32_t count, absl::FunctionRef<Status()> to_run) {
+absl::Status RunRepeated(int32_t count, absl::FunctionRef<Status()> to_run) {
   if (count != 0) {
     VLOG(3) << "Running each collective " << count << " times\n";
   }
@@ -209,13 +209,14 @@ absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
 }
 
 #if XLA_ENABLE_XCCL
-Status MockNcclImplCommon(const ServiceExecutableRunOptions* run_options,
-                          const DebugOptions* debug_options, se::Stream* stream,
-                          CustomCall::RemainingArgs args, int64_t group_mode,
-                          int64_t op_id,
-                          absl::Span<const int64_t> replica_group_offsets,
-                          absl::Span<const int64_t> replica_group_values,
-                          bool is_async, Thunk::Kind reduce_op) {
+absl::Status MockNcclImplCommon(const ServiceExecutableRunOptions* run_options,
+                                const DebugOptions* debug_options,
+                                se::Stream* stream,
+                                CustomCall::RemainingArgs args,
+                                int64_t group_mode, int64_t op_id,
+                                absl::Span<const int64_t> replica_group_offsets,
+                                absl::Span<const int64_t> replica_group_values,
+                                bool is_async, Thunk::Kind reduce_op) {
   NcclExecuteParams params(*run_options, stream->parent());
 
   TF_ASSIGN_OR_RETURN(
@@ -344,7 +345,8 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
       NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
 
   return RunRepeated(
-      debug_options->xla_gpu_collective_inflation_factor(), [&]() -> Status {
+      debug_options->xla_gpu_collective_inflation_factor(),
+      [&]() -> absl::Status {
         return runner(source_target, (*device_buffers)[0], *stream, **comm,
                       device_string, current_id);
       });

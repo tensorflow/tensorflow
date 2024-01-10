@@ -63,8 +63,8 @@ bool IsGlobalNcclConfig() {
   return global_nccl_config;
 }
 
-Status ToStatus(ncclResult_t s, const char* file, int64_t line,
-                const char* expr) {
+absl::Status ToStatus(ncclResult_t s, const char* file, int64_t line,
+                      const char* expr) {
   if (s == ncclSuccess) {
     return absl::OkStatus();
   }
@@ -163,7 +163,7 @@ struct NcclCliqueState {
   // synchronization.
   absl::Mutex mu;
   absl::Notification ready;
-  Status status;
+  absl::Status status;
   absl::flat_hash_map<int, std::unique_ptr<NcclComm>> communicators;
 };
 
@@ -246,7 +246,7 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
   // Runs an async error check for a `comm` and aborts it if it is in the error
   // state. It will free resources that are allocated to a communicator and
   // abort any uncompleted operations before destroying the communicator.
-  auto check_nccl_async_error = [](NcclComm* lockable_comm) -> Status {
+  auto check_nccl_async_error = [](NcclComm* lockable_comm) -> absl::Status {
     ncclComm_t comm = *lockable_comm->Acquire();
     if (comm == nullptr) return absl::OkStatus();
 
@@ -348,7 +348,8 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
             << nranks << "; id=" << absl::HashOf(absl::MakeSpan(id.internal));
 
     ncclComm_t comm = nullptr;
-    Status status = XLA_CUDA_STATUS(ncclCommInitRank(&comm, nranks, id, rank));
+    absl::Status status =
+        XLA_CUDA_STATUS(ncclCommInitRank(&comm, nranks, id, rank));
 
     size_t num_initialized = [&] {
       absl::MutexLock lock(&state.mu);

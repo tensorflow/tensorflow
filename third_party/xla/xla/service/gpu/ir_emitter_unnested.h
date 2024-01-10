@@ -113,7 +113,7 @@ class IrEmitterUnnested : public IrEmitter {
   // the generated code and so must be initialized by XLA. The value of these
   // constants will be stored in 'content'. Constants with initializers in the
   // generated code will have empty 'content'.
-  Status EmitLmhloRegion(
+  absl::Status EmitLmhloRegion(
       mlir::Region* region,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
@@ -122,117 +122,118 @@ class IrEmitterUnnested : public IrEmitter {
   // thunks for constructing command buffer. The plan is to replace
   // EmitLmhloRegion by this function altogether, after we support emitting
   // all instructions from HLO.
-  Status EmitHloComputation(const HloComputation* computation);
+  absl::Status EmitHloComputation(const HloComputation* computation);
 
   static void GetDependentDialects(mlir::DialectRegistry& registry);
 
  private:
   explicit IrEmitterUnnested(IrEmitterContext* ir_emitter_context);
 
-  Status EmitUnreachable(mlir::Operation* op, std::string error_message);
+  absl::Status EmitUnreachable(mlir::Operation* op, std::string error_message);
 
-  Status EmitCommandBufferThunk(const HloInstruction* instr);
+  absl::Status EmitCommandBufferThunk(const HloInstruction* instr);
 
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
-  Status EmitConstant(mlir::Operation* op, const Literal& literal);
-  Status EmitConstant(const HloConstantInstruction* instr);
+  absl::Status EmitConstant(mlir::Operation* op, const Literal& literal);
+  absl::Status EmitConstant(const HloConstantInstruction* instr);
 
-  Status EmitConditional(
+  absl::Status EmitConditional(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
-  Status EmitConvolutionThunk(mlir::Operation* op);
-  Status EmitConvolutionThunk(const HloCustomCallInstruction* instr);
-  Status EmitGemmThunk(mlir::Operation* op);
-  Status EmitGemmThunk(const HloCustomCallInstruction* instr);
+  absl::Status EmitConvolutionThunk(mlir::Operation* op);
+  absl::Status EmitConvolutionThunk(const HloCustomCallInstruction* instr);
+  absl::Status EmitGemmThunk(mlir::Operation* op);
+  absl::Status EmitGemmThunk(const HloCustomCallInstruction* instr);
 #if GOOGLE_CUDA || TF_HIPBLASLT
-  Status EmitCublasLtMatmulThunk(mlir::Operation* op);
+  absl::Status EmitCublasLtMatmulThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
-  Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
-  Status EmitConvolutionReorderThunk(mlir::Operation* op);
-  Status EmitNormThunk(mlir::Operation* op);
-  Status EmitFusedMHAThunk(mlir::Operation* op);
-  Status EmitFusedMHABackwardThunk(mlir::Operation* op);
+  absl::Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
+  absl::Status EmitConvolutionReorderThunk(mlir::Operation* op);
+  absl::Status EmitNormThunk(mlir::Operation* op);
+  absl::Status EmitFusedMHAThunk(mlir::Operation* op);
+  absl::Status EmitFusedMHABackwardThunk(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  Status EmitCubDeviceRadixSort(mlir::Operation* op);
-  Status EmitCholeskyThunk(mlir::Operation* op);
-  Status EmitCholeskyThunk(const HloInstruction* instr);
+  absl::Status EmitCubDeviceRadixSort(mlir::Operation* op);
+  absl::Status EmitCholeskyThunk(mlir::Operation* op);
+  absl::Status EmitCholeskyThunk(const HloInstruction* instr);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  Status EmitCustomCallThunk(mlir::Operation* op,
-                             const HloCustomCallInstruction* instr);
-  Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
-  Status EmitFftThunk(mlir::Operation* op);
-  Status EmitFusion(
+  absl::Status EmitCustomCallThunk(mlir::Operation* op,
+                                   const HloCustomCallInstruction* instr);
+  absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
+  absl::Status EmitFftThunk(mlir::Operation* op);
+  absl::Status EmitFusion(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
-  Status EmitFusion(const HloFusionInstruction* instr,
-                    HloFusionAnalysis& fusion_analysis);
-  Status EmitSelectAndScatter(
+  absl::Status EmitFusion(const HloFusionInstruction* instr,
+                          HloFusionAnalysis& fusion_analysis);
+  absl::Status EmitSelectAndScatter(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
-  Status EmitWhile(
+  absl::Status EmitWhile(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
-  Status EmitWhile(const HloInstruction* instr);
-  Status EmitInfeed(mlir::Operation* op);
-  Status EmitInfeed(const HloInfeedInstruction* instr);
-  Status EmitOutfeed(mlir::Operation* op);
-  Status EmitOutfeed(const HloOutfeedInstruction* instr);
-  Status EmitRngGetAndUpdateState(mlir::Operation* op);
-  Status EmitRngGetAndUpdateState(
+  absl::Status EmitWhile(const HloInstruction* instr);
+  absl::Status EmitInfeed(mlir::Operation* op);
+  absl::Status EmitInfeed(const HloInfeedInstruction* instr);
+  absl::Status EmitOutfeed(mlir::Operation* op);
+  absl::Status EmitOutfeed(const HloOutfeedInstruction* instr);
+  absl::Status EmitRngGetAndUpdateState(mlir::Operation* op);
+  absl::Status EmitRngGetAndUpdateState(
       const HloRngGetAndUpdateStateInstruction* instr);
 
-  Status EmitSort(mlir::Operation* op, const HloSortInstruction* sort);
-  Status EmitSort(const HloSortInstruction* sort);
+  absl::Status EmitSort(mlir::Operation* op, const HloSortInstruction* sort);
+  absl::Status EmitSort(const HloSortInstruction* sort);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  Status EmitTriangularSolveCustomCall(mlir::Operation* op);
-  Status EmitTriangularSolveCustomCall(const HloInstruction* instr);
+  absl::Status EmitTriangularSolveCustomCall(mlir::Operation* op);
+  absl::Status EmitTriangularSolveCustomCall(const HloInstruction* instr);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  Status EmitTopKCustomCall(const HloCustomCallInstruction* instr);
+  absl::Status EmitTopKCustomCall(const HloCustomCallInstruction* instr);
 
-  Status EmitSendThunk(const HloSendInstruction* instr);
-  Status EmitSendDoneThunk(const HloSendDoneInstruction* instr);
+  absl::Status EmitSendThunk(const HloSendInstruction* instr);
+  absl::Status EmitSendDoneThunk(const HloSendDoneInstruction* instr);
 
-  Status EmitRecvThunk(const HloRecvInstruction* instr);
-  Status EmitRecvDoneThunk(const HloRecvDoneInstruction* instr);
+  absl::Status EmitRecvThunk(const HloRecvInstruction* instr);
+  absl::Status EmitRecvDoneThunk(const HloRecvDoneInstruction* instr);
 
   template <typename NcclThunkType, typename OpT>
-  Status EmitNcclThunk(mlir::Operation* op);
+  absl::Status EmitNcclThunk(mlir::Operation* op);
 
-  Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op,
-                           mlir::Value token);
+  absl::Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op,
+                                 mlir::Value token);
 
   template <typename NcclThunkType, typename HloInstType>
-  Status EmitNcclThunk(Thunk::Kind kind, const HloInstruction* async_start,
-                       const HloInstType* inst,
-                       std::optional<bool> use_global_device_ids);
+  absl::Status EmitNcclThunk(Thunk::Kind kind,
+                             const HloInstruction* async_start,
+                             const HloInstType* inst,
+                             std::optional<bool> use_global_device_ids);
 
-  Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* instr);
+  absl::Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* instr);
 
   template <typename ThunkType, typename OpT>
-  Status EmitReplicaOrPartitionId(mlir::Operation* op);
+  absl::Status EmitReplicaOrPartitionId(mlir::Operation* op);
   template <typename ThunkType>
-  Status EmitReplicaOrPartitionId(const HloInstruction* instr);
+  absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 
-  Status EmitCollectivePermute(mlir::Operation* op);
+  absl::Status EmitCollectivePermute(mlir::Operation* op);
 
-  Status EmitOp(
+  absl::Status EmitOp(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
 
-  Status EmitHloInstruction(const HloInstruction* instr);
+  absl::Status EmitHloInstruction(const HloInstruction* instr);
 
   static Thunk::ThunkInfo GetThunkInfo(mlir::Operation* op);
 
-  Status EmitTargetElementLoop(
+  absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) override;
 
@@ -241,7 +242,7 @@ class IrEmitterUnnested : public IrEmitter {
     thunk_sequence_.emplace_back(std::move(thunk));
   }
 
-  Status AddThunksToThunkSequence(StatusOr<FusionEmissionResult> result) {
+  absl::Status AddThunksToThunkSequence(StatusOr<FusionEmissionResult> result) {
     TF_RETURN_IF_ERROR(result.status());
     for (auto& thunk : result->thunks) {
       AddThunkToThunkSequence(std::move(thunk));
@@ -317,7 +318,7 @@ class IrEmitterUnnested : public IrEmitter {
   //   return;
   // }
   //   ```
-  Status EmitPadToStatic(mlir::Operation* op);
+  absl::Status EmitPadToStatic(mlir::Operation* op);
 
   // Input = {dynamic array(with dynamic dimension meta data at the end)}
   // Output = {static array, dynamic_dim0, dynamic_dim1}
@@ -363,7 +364,7 @@ class IrEmitterUnnested : public IrEmitter {
   //   return;
   // }
   //   ```
-  Status EmitSliceToDynamic(mlir::Operation* op);
+  absl::Status EmitSliceToDynamic(mlir::Operation* op);
 
   StatusOr<BufferAllocation::Slice> GetAllocationSlice(mlir::Value v);
   StatusOr<std::vector<BufferAllocation::Slice>> GetAllocationSlices(
@@ -408,9 +409,11 @@ class IrEmitterUnnested : public IrEmitter {
       absl::Span<const HloInstruction* const> needed_operands,
       const LaunchDimensions& launch_dimensions);
 
-  Status BuildInitializerThunk(mlir::Operation* op, const HloInstruction* instr,
-                               const HloInstruction* init_value,
-                               mlir::Value init_value_mlir, mlir::Value dest);
+  absl::Status BuildInitializerThunk(mlir::Operation* op,
+                                     const HloInstruction* instr,
+                                     const HloInstruction* init_value,
+                                     mlir::Value init_value_mlir,
+                                     mlir::Value dest);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
@@ -439,7 +442,7 @@ class IrEmitterUnnested : public IrEmitter {
   StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
       const HloInstruction* conditional);
 
-  Status AssertNonDeterminismIsOkay(const std::string& op_name);
+  absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
   StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;

@@ -48,8 +48,8 @@ nvtxStringHandle_t RegisterString(const char* str) {
 }
 
 template <typename Visitor>
-Status VisitInstAndCalledButNotOperands(Visitor& visitor,
-                                        const HloInstruction& inst) {
+absl::Status VisitInstAndCalledButNotOperands(Visitor& visitor,
+                                              const HloInstruction& inst) {
   // Visit the given instruction, and the things it calls, but not its operands.
   TF_RETURN_IF_ERROR(visitor.DefaultAction(&inst));
   for (const HloComputation* called : inst.called_computations()) {
@@ -87,7 +87,7 @@ std::string_view LongestPrefix(std::string_view a, std::string_view b,
 // longest prefix is a/b not a/b/ca
 class OpNamePrefixVisitor : public ConstDfsHloVisitorWithDefault {
  public:
-  Status DefaultAction(const HloInstruction* inst) final {
+  absl::Status DefaultAction(const HloInstruction* inst) final {
     auto const& op_name = inst->metadata().op_name();
     if (!op_name.empty()) {
       prefix = prefix ? LongestPrefix(*prefix, op_name) : op_name;

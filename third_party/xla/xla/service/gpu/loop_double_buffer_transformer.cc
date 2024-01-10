@@ -84,8 +84,8 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
   }
 }
 
-Status PeelInstructionsForOddTripCount(HloModule* module,
-                                       HloInstruction* while_instr) {
+absl::Status PeelInstructionsForOddTripCount(HloModule* module,
+                                             HloInstruction* while_instr) {
   std::string suffix = "peeled_double_buffer";
   absl::flat_hash_map<HloInstruction*, HloInstruction*> old_to_new_map;
   HloComputation* while_body = while_instr->while_body();

@@ -37,7 +37,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
   std::set<std::string> GetUniqueOpcodes() { return opcodes_; }
 
  protected:
-  Status DefaultAction(const xla::HloInstruction* instr) final {
+  absl::Status DefaultAction(const xla::HloInstruction* instr) final {
     switch (instr->opcode()) {
       case HloOpcode::kConstant:
         break;
@@ -100,7 +100,7 @@ std::string HloOpcodeHistogram::ToString() {
   return result;
 }
 
-Status HloFusionStatsVisitor::RunOnModule(HloModule* module) {
+absl::Status HloFusionStatsVisitor::RunOnModule(HloModule* module) {
   TF_RETURN_IF_ERROR(module->entry_computation()->Accept(this));
   return absl::OkStatus();
 }
@@ -114,11 +114,12 @@ std::string HloFusionStatsVisitor::ToString() {
                       input_fusion_opcode_histogram_.ToString());
 }
 
-Status HloFusionStatsVisitor::DefaultAction(const xla::HloInstruction* instr) {
+absl::Status HloFusionStatsVisitor::DefaultAction(
+    const xla::HloInstruction* instr) {
   return absl::OkStatus();
 }
 
-Status HloFusionStatsVisitor::HandleFusion(const HloInstruction* fusion) {
+absl::Status HloFusionStatsVisitor::HandleFusion(const HloInstruction* fusion) {
   num_fusions_++;
   std::set<std::string> opcodes =
       GetUniqueOpcodes(fusion->fused_instructions_computation());

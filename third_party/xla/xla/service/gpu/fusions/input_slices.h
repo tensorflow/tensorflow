@@ -50,12 +50,12 @@ class InputSlicesFusion : public KernelFusionEmitterBase {
       int64_t output_id, mlir::MLIRContext* ctx) const override;
 
  protected:
-  Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    const HloFusionInstruction& fusion,
-                    const LaunchDimensions& launch_dims,
-                    std::vector<llvm_ir::IrArray> inputs,
-                    std::vector<llvm_ir::IrArray> outputs,
-                    llvm::IRBuilder<>* builder) const override;
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

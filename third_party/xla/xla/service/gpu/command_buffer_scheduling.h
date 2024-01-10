@@ -96,7 +96,8 @@ class CommandBufferScheduling : public HloModulePass {
   // the beginning of the computation. This simplifies the construction of
   // command buffer computations because we don't need to deal with parameters
   // and constants that have users outside of a command buffer.
-  static Status MoveParametersAndConstantsToFront(HloComputation* computation);
+  static absl::Status MoveParametersAndConstantsToFront(
+      HloComputation* computation);
 
   struct CommandBuffer {
     // Command buffer arguments (call instruction arguments).

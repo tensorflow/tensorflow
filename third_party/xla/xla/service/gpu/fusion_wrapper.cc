@@ -36,7 +36,7 @@ StatusOr<bool> FusionWrapper::Run(
   bool changed = false;
 
   std::function<Status(HloInstruction*)> handle_instruction;
-  handle_instruction = [&](HloInstruction* instruction) -> Status {
+  handle_instruction = [&](HloInstruction* instruction) -> absl::Status {
     switch (instruction->opcode()) {
       case HloOpcode::kConditional:
       case HloOpcode::kWhile:

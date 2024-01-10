@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "llvm/IR/Constants.h"
 #include "xla/primitive_util.h"
 #include "tsl/platform/errors.h"
@@ -225,9 +226,9 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   return array_indices;
 }
 
-Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
-                                           llvm::Type* index_type,
-                                           llvm::Value* base_indvar) {
+absl::Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
+                                                 llvm::Type* index_type,
+                                                 llvm::Value* base_indvar) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape_);
   bool check_bounds = num_elements % launch_config_.unroll_factor > 0;
   for (const llvm_ir::IrArray::Index& array_index :
@@ -255,8 +256,8 @@ Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
   return absl::OkStatus();
 }
 
-Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
-                                     llvm::Type* index_type) {
+absl::Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
+                                           llvm::Type* index_type) {
   if (index_type == nullptr) {
     index_type = b_->getInt64Ty();
   }

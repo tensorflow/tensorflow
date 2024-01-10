@@ -212,11 +212,11 @@ struct RunConvOptions {
 // allocator and take note of how much memory is used.  The next time you call
 // the same conv, you can provide an explicitly preallocated scratch buffer of
 // that size, if you like.
-Status RunGpuConv(const GpuConvConfig& conv_config,
-                  absl::Span<const se::DeviceMemoryBase> operand_buffers,
-                  absl::Span<const se::DeviceMemoryBase> result_buffers,
-                  se::DeviceMemoryBase scratch_memory, se::Stream* stream,
-                  RunConvOptions = {});
+absl::Status RunGpuConv(const GpuConvConfig& conv_config,
+                        absl::Span<const se::DeviceMemoryBase> operand_buffers,
+                        absl::Span<const se::DeviceMemoryBase> result_buffers,
+                        se::DeviceMemoryBase scratch_memory, se::Stream* stream,
+                        RunConvOptions = {});
 
 // Struct to describe properties of a convolution without being tied to specific
 // IR. Will be used to help build Convolution thunks from either XLA HLO or

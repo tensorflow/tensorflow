@@ -53,7 +53,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       d_scale_buffer_(d_scale),
       d_amax_buffer_(d_amax) {}
 
-Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
   TF_ASSIGN_OR_RETURN(auto algorithm, GetMatmulAlgorithm(plan));
 

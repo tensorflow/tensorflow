@@ -65,7 +65,7 @@ static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new AutotuneCacheMap();
 
-/*static*/ Status AutotunerUtil::SerializeAutotuneResults(
+/*static*/ absl::Status AutotunerUtil::SerializeAutotuneResults(
     AutotuneResults* results) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const auto& [k, result] : autotune_cache) {
@@ -88,7 +88,7 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
   return absl::OkStatus();
 }
 
-/*static*/ Status AutotunerUtil::LoadAutotuneResults(
+/*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
     const AutotuneResults& results) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const auto& result : results.results()) {
@@ -194,8 +194,8 @@ bool IsTextProtoPath(absl::string_view file_path) {
 
 }  // anonymous namespace
 
-/*static*/ Status AutotunerUtil::LoadAutotuneResults(absl::string_view data,
-                                                     bool as_textproto) {
+/*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
+    absl::string_view data, bool as_textproto) {
   AutotuneResults results;
   // The cast here is necessary for MacOS builds.
   bool parse_success =
@@ -232,7 +232,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
   return results.SerializeAsString();
 }
 
-/*static*/ Status AutotunerUtil::SerializeAutotuneResultsToFile(
+/*static*/ absl::Status AutotunerUtil::SerializeAutotuneResultsToFile(
     absl::string_view file_path) {
   TF_RET_CHECK(!file_path.empty());
 
@@ -250,7 +250,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
   return absl::OkStatus();
 }
 
-/*static*/ Status AutotunerUtil::LoadAutotuneResultsFromFile(
+/*static*/ absl::Status AutotunerUtil::LoadAutotuneResultsFromFile(
     absl::string_view file_path) {
   TF_RET_CHECK(!file_path.empty());
 

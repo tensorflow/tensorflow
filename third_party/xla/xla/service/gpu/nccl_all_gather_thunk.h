@@ -45,13 +45,13 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
 
   static const char* GetHloOpName() { return "all-gather-start"; }
 
-  static Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
+  static absl::Status CheckImplementable(mlir::lmhlo_gpu::AllGatherStartOp op,
+                                         int64_t replica_count,
+                                         int64_t partition_count);
 
-  static Status CheckImplementable(const HloAllGatherInstruction* inst,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
+  static absl::Status CheckImplementable(const HloAllGatherInstruction* inst,
+                                         int64_t replica_count,
+                                         int64_t partition_count);
 
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllGatherStartOp op);
@@ -63,16 +63,16 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
-                           ncclComm_t comm) override;
+  absl::Status RunNcclCollective(const ExecuteParams& params,
+                                 se::Stream& stream, ncclComm_t comm) override;
 
  private:
   const NcclAllGatherConfig config_;
   const std::vector<Buffer> buffers_;
 };
 
-Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-                    ncclComm_t comm);
+absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
+                          se::Stream& stream, ncclComm_t comm);
 
 }  // namespace gpu
 }  // namespace xla

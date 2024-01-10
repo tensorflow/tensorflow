@@ -41,7 +41,7 @@ class NormThunk : public Thunk {
   NormThunk(const NormThunk&) = delete;
   NormThunk& operator=(const NormThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   BufferAllocation::Slice input_buffer_;

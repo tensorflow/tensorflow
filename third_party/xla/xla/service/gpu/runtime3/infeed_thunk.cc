@@ -30,7 +30,7 @@ InfeedThunk::InfeedThunk(ThunkInfo thunk_info,
                          std::vector<ShapedSlice> dest_slices)
     : Thunk(Kind::kInfeed, thunk_info), dest_slices_(std::move(dest_slices)) {}
 
-Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::Stream& stream = *params.stream;
   const BufferAllocations& buffer_allocations = *params.buffer_allocations;
 
@@ -59,7 +59,7 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   CHECK_EQ(index, dest_slices_.size())
       << "Infeed did not populate all destination buffers";
 
-  Status block_status = stream.BlockHostUntilDone();
+  absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
                          &stream, block_status.message());

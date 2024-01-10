@@ -46,22 +46,24 @@ LaunchDimensions GetMatMulLaunchDimensions(const TritonFusionAnalysis& analysis,
                                            const HloFusionAdaptor& fusion,
                                            const TritonGemmConfig& config);
 // Use tiling and execution parameters from 'config'.
-Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
-                  const se::DeviceDescription& device_info,
-                  const TritonFusionAnalysis& analysis,
-                  const HloComputation* computation, mlir::triton::FuncOp fn,
-                  const TritonGemmConfig& config);
+absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
+                        const se::DeviceDescription& device_info,
+                        const TritonFusionAnalysis& analysis,
+                        const HloComputation* computation,
+                        mlir::triton::FuncOp fn,
+                        const TritonGemmConfig& config);
 
 // Compute the launch dimensions for the given Triton SoftMax.
 LaunchDimensions GetSoftMaxLaunchDimensions(const HloFusionAdaptor& fusion,
                                             const TritonGemmConfig& config);
 // Generate Softmax in Triton IR inside 'fn'.
 // Use execution parameters from 'config'.
-Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
-                   const se::DeviceDescription& device_info,
-                   const TritonFusionAnalysis& analysis,
-                   const HloComputation* computation, mlir::triton::FuncOp fn,
-                   const TritonGemmConfig& config);
+absl::Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
+                         const se::DeviceDescription& device_info,
+                         const TritonFusionAnalysis& analysis,
+                         const HloComputation* computation,
+                         mlir::triton::FuncOp fn,
+                         const TritonGemmConfig& config);
 
 using TritonIrEmitter = std::function<Status(
     mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,

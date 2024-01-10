@@ -86,7 +86,7 @@ StatusOr<HloInstruction*> SmallBufferOptimization(
 
 class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleCustomCall(HloInstruction* inst) override {
+  absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "TopK") {
       return absl::OkStatus();

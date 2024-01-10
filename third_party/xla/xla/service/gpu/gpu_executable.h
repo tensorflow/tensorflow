@@ -106,7 +106,7 @@ class GpuExecutable : public Executable {
   //
   // TODO(ezhulenev): Once Xla runtime enabled by default, hide this method as
   // an implementation detail of GpuExecutable.
-  static Status SetUpMlirAllocation(
+  static absl::Status SetUpMlirAllocation(
       mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
@@ -218,7 +218,7 @@ class GpuExecutable : public Executable {
   // clients, such as Tensorflow, that use a single stream of execution for
   // computations, and allow host-side deallocation from the allocator before
   // GPU execution completes.
-  Status ExecuteThunksOrXlaRuntime(
+  absl::Status ExecuteThunksOrXlaRuntime(
       const ServiceExecutableRunOptions* run_options,
       const BufferAllocations& buffer_allocations, bool block_host_until_done,
       NonAtomicallyUpgradeableRWLock& gpu_lock);
@@ -241,7 +241,7 @@ class GpuExecutable : public Executable {
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
-  Status CheckCompatibilityWithServiceExecutableRunOptions(
+  absl::Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
 
   StatusOr<BufferAllocations> GenerateBufferAllocations(

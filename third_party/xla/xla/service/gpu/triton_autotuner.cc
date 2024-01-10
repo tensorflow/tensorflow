@@ -114,7 +114,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   explicit TritonAutotunerVisitor(const AutotuneConfig& config)
       : config_(config) {}
 
-  Status HandleFusion(HloInstruction* hlo) override {
+  absl::Status HandleFusion(HloInstruction* hlo) override {
     TF_ASSIGN_OR_RETURN(auto backend_config,
                         hlo->backend_config<FusionBackendConfig>());
     if (backend_config.kind() != kTritonGemmFusionKind) {
@@ -204,7 +204,7 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
     return std::move(gemm_config_sets_);
   }
 
-  Status HandleFusion(const HloInstruction* hlo) override {
+  absl::Status HandleFusion(const HloInstruction* hlo) override {
     const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(hlo);
 
     TF_ASSIGN_OR_RETURN(auto backend_config,
@@ -225,7 +225,7 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
     return absl::OkStatus();
   }
 
-  Status DefaultAction(const HloInstruction* hlo) override {
+  absl::Status DefaultAction(const HloInstruction* hlo) override {
     return absl::OkStatus();
   }
 
@@ -840,10 +840,11 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   return best_triton;
 }
 
-Status DumpAutotunedFusion(const AutotuneConfig& config,
-                           AutotunerCompileUtil& util,
-                           const AutotuneResult result,
-                           const HloFusionInstruction* fusion, int fusion_id) {
+absl::Status DumpAutotunedFusion(const AutotuneConfig& config,
+                                 AutotunerCompileUtil& util,
+                                 const AutotuneResult result,
+                                 const HloFusionInstruction* fusion,
+                                 int fusion_id) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       util.ExtractModule([&](const DebugOptions& debug_opts) {
@@ -866,11 +867,11 @@ Status DumpAutotunedFusion(const AutotuneConfig& config,
   return absl::OkStatus();
 }
 
-Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
-                tsl::thread::ThreadPool* thread_pool,
-                const DebugOptions& debug_opts,
-                const absl::flat_hash_map<const HloFusionInstruction*,
-                                          GemmConfigSet>& gemm_config_sets) {
+absl::Status Autotune(
+    const AutotuneConfig& config, AutotunerCompileUtil& util,
+    tsl::thread::ThreadPool* thread_pool, const DebugOptions& debug_opts,
+    const absl::flat_hash_map<const HloFusionInstruction*, GemmConfigSet>&
+        gemm_config_sets) {
   absl::flat_hash_map<const HloFusionInstruction*, ExecutableSet>
       executable_sets;
   TF_ASSIGN_OR_RETURN(

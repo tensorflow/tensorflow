@@ -83,9 +83,9 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
 }
 
 // Modifies the given convolution to have the given input and result shapes.
-static Status PadConv(HloCustomCallInstruction* conv,
-                      absl::Span<const Shape> new_input_shapes,
-                      const Shape& new_result_shape) {
+static absl::Status PadConv(HloCustomCallInstruction* conv,
+                            absl::Span<const Shape> new_input_shapes,
+                            const Shape& new_result_shape) {
   CHECK_EQ(0, conv->shape().tuple_shapes(1).dimensions(0))
       << "conv must use 0 scratch bytes, i.e. this pass must be run "
          "before CudnnConvAlgorithmPicker.";

@@ -23,7 +23,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
@@ -178,7 +180,7 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
 #endif
 }
 
-/* static */ Status NcclCollectiveThunk::CheckImplementable() {
+/* static */ absl::Status NcclCollectiveThunk::CheckImplementable() {
   if (!NcclIsEnabled()) {
     return tsl::errors::Unimplemented("NCCL is not enabled");
   }
@@ -259,7 +261,7 @@ StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
-Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
@@ -271,7 +273,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
                    /*enable_clique_optimization=*/false));
 
   // Run the collective on main stream or using the async executor.
-  Status status = [&]() {
+  absl::Status status = [&]() {
     if (!IsAsync()) {
       return RunNcclCollective(params, *params.stream, *comm);
     }
@@ -314,7 +316,7 @@ std::string NcclCollectiveThunk::GetDeviceString(
                          global_device_id.value(), device_ordinal);
 }
 
-Status NcclCollectiveThunk::AsyncExecutor::Execute(
+absl::Status NcclCollectiveThunk::AsyncExecutor::Execute(
     absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)> fn,
     const ExecuteParams& params, ncclComm_t comm, AsyncStreamKind stream_kind) {
   se::Stream& async_comms_stream = *params.async_comms_streams[stream_kind];
@@ -336,7 +338,8 @@ Status NcclCollectiveThunk::AsyncExecutor::Execute(
   return absl::OkStatus();
 }
 
-Status NcclCollectiveThunk::AsyncExecutor::Await(const ExecuteParams& params) {
+absl::Status NcclCollectiveThunk::AsyncExecutor::Await(
+    const ExecuteParams& params) {
   int device_ordinal = params.stream->parent()->device_ordinal();
   auto done_event = [this, device_ordinal] {
     absl::MutexLock lock(&mu_);
@@ -352,16 +355,17 @@ NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
     NcclCollectiveThunk::AsyncExecutor& async)
     : Thunk(kind, std::move(thunk_info)), async_(async) {}
 
-Status NcclCollectiveDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status NcclCollectiveDoneThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
   return async_.Await(params);
 }
 
-Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
+absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op) {
   Shape shape = GetShape(operand);
   return IsValidOperand(shape, reduction_op);
 }
 
-Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
+absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
   if (!LayoutUtil::IsDenseArray(shape)) {
     return tsl::errors::Unimplemented(
         absl::StrFormat("input is not a dense array: %s",

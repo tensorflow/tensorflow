@@ -162,7 +162,7 @@ GpuExecutable::~GpuExecutable() {
   }
 }
 
-Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
+absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     const ServiceExecutableRunOptions* run_options) {
   se::Stream* main_stream = run_options->stream();
 
@@ -193,16 +193,18 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 
 namespace {
 
-Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64_t start_nanos, se::Stream* stream_to_sync);
+absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
+                                 uint64_t start_nanos,
+                                 se::Stream* stream_to_sync);
 
-Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
-                     const ThunkSequence& thunk_sequence,
-                     Thunk::ExecutableSource executable_source,
-                     const ServiceExecutableRunOptions* run_options,
-                     const BufferAllocations& buffer_allocations,
-                     bool block_host_until_done,
-                     bool use_highest_priority_for_async_stream) {
+absl::Status ExecuteThunks(const std::string& module_name,
+                           ModuleIdentifier module_id,
+                           const ThunkSequence& thunk_sequence,
+                           Thunk::ExecutableSource executable_source,
+                           const ServiceExecutableRunOptions* run_options,
+                           const BufferAllocations& buffer_allocations,
+                           bool block_host_until_done,
+                           bool use_highest_priority_for_async_stream) {
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
   stream_executor::StreamPriority stream_priority =
@@ -268,15 +270,15 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
                              block_host_until_done ? main_stream : nullptr);
 }
 
-Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                           uint64_t start_nanos,
-                           se::Stream* stream_to_sync = nullptr) {
+absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
+                                 uint64_t start_nanos,
+                                 se::Stream* stream_to_sync = nullptr) {
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
   // buffers until a different computation is executed.
   if (stream_to_sync) {
-    Status block_status = stream_to_sync->BlockHostUntilDone();
+    absl::Status block_status = stream_to_sync->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s",
@@ -441,8 +443,8 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
   }
 }
 
-static Status CheckAlignment(const BufferAllocation& allocation,
-                             se::DeviceMemoryBase buffer, int arg_idx) {
+static absl::Status CheckAlignment(const BufferAllocation& allocation,
+                                   se::DeviceMemoryBase buffer, int arg_idx) {
   const int64_t expected_alignment = [&] {
     if (allocation.is_entry_computation_parameter()) {
       return kEntryParameterAlignBytes;
@@ -501,16 +503,14 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
   return out.ConsumeResult();
 }
 
-static Status ExecuteXlaRuntime(const std::string& module_name,
-                                ModuleIdentifier module_id,
-                                GpuRuntimeExecutable& gpu_runtime_executable,
-                                const ServiceExecutableRunOptions* run_options,
-                                const std::string& asm_text,
-                                const std::vector<uint8_t>& binary,
-                                const BufferAllocations& buffer_allocations,
-                                const BufferAllocation* temp_buffer,
-                                bool block_host_until_done,
-                                NonAtomicallyUpgradeableRWLock& gpu_lock) {
+static absl::Status ExecuteXlaRuntime(
+    const std::string& module_name, ModuleIdentifier module_id,
+    GpuRuntimeExecutable& gpu_runtime_executable,
+    const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
+    const std::vector<uint8_t>& binary,
+    const BufferAllocations& buffer_allocations,
+    const BufferAllocation* temp_buffer, bool block_host_until_done,
+    NonAtomicallyUpgradeableRWLock& gpu_lock) {
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
   tsl::profiler::TraceMe hlo_module_activity(
@@ -719,7 +719,7 @@ struct ModuleAnnotationManager {
 };
 }  // namespace
 
-Status GpuExecutable::ExecuteThunksOrXlaRuntime(
+absl::Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
     NonAtomicallyUpgradeableRWLock& gpu_lock) {
@@ -788,7 +788,7 @@ int64_t GpuExecutable::SizeOfGeneratedCodeInBytes() const {
   return size;
 }
 
-Status GpuExecutable::SetUpMlirAllocation(
+absl::Status GpuExecutable::SetUpMlirAllocation(
     mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
     std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
@@ -878,7 +878,7 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
   OutputInfoMap output;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       root->shape(),
-      [&](const Shape& /*sub_shape*/, const ShapeIndex& index) -> Status {
+      [&](const Shape& /*sub_shape*/, const ShapeIndex& index) -> absl::Status {
         const auto& sources = root_value_set.element(index);
         // The points-to set is unambiguous so the set should be a
         // singleton. That is, we know exactly which instruction
@@ -940,7 +940,7 @@ GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
   // Converts function type and adds load function metadata. In XLA:GPU exported
   // function runtime signature is the same as regular signature with an extra
   // execution context argument at index 0.
-  auto convert = [&](mlir::func::FuncOp func) -> Status {
+  auto convert = [&](mlir::func::FuncOp func) -> absl::Status {
     auto signature = type_converter.Convert(func.getFunctionType());
     if (!signature.ok())
       return InternalError("Failed to convert entry function type: %s",

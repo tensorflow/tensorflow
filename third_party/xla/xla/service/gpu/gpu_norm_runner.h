@@ -127,15 +127,15 @@ struct RunNormOptions {
   NormRunner* norm_runner;
 };
 
-Status RunGpuNorm(const GpuNormConfig& conv_config,
-                  const se::DeviceMemoryBase& input_buffer,
-                  const se::DeviceMemoryBase& scale_buffer,
-                  const se::DeviceMemoryBase& bias_buffer,
-                  const se::DeviceMemoryBase& output_buffer,
-                  std::optional<se::DeviceMemoryBase> exepctation_buffer,
-                  std::optional<se::DeviceMemoryBase> norm_factor_buffer,
-                  const se::DeviceMemoryBase& scratch_memory,
-                  se::Stream* stream, RunNormOptions options = {});
+absl::Status RunGpuNorm(const gpu::GpuNormConfig& config,
+                        const se::DeviceMemoryBase& input_buffer,
+                        const se::DeviceMemoryBase& scale_buffer,
+                        const se::DeviceMemoryBase& bias_buffer,
+                        const se::DeviceMemoryBase& output_buffer,
+                        std::optional<se::DeviceMemoryBase> expectation_buffer,
+                        std::optional<se::DeviceMemoryBase> norm_factor_buffer,
+                        const se::DeviceMemoryBase& scratch_memory,
+                        se::Stream* stream, RunNormOptions options = {});
 
 }  // namespace gpu
 }  // namespace xla

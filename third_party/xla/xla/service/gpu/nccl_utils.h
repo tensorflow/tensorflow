@@ -62,8 +62,8 @@ StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
 
 bool IsGlobalNcclConfig();
 
-Status ToStatus(ncclResult_t s, const char* file, int64_t line,
-                const char* expr);
+absl::Status ToStatus(ncclResult_t s, const char* file, int64_t line,
+                      const char* expr);
 
 // Macros to return or warn on CUDA/NCCL errors.  (The same macro works for both
 // NCCL and CUDA errors.)
@@ -73,20 +73,20 @@ Status ToStatus(ncclResult_t s, const char* file, int64_t line,
 #define XLA_CUDA_STATUS(expr) \
   xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
 
-#define XLA_CUDA_RETURN_IF_ERROR(expr) \
-  do {                                 \
-    Status s = XLA_CUDA_STATUS(expr);  \
-    if (!s.ok()) {                     \
-      return s;                        \
-    }                                  \
+#define XLA_CUDA_RETURN_IF_ERROR(expr)      \
+  do {                                      \
+    absl::Status s = XLA_CUDA_STATUS(expr); \
+    if (!s.ok()) {                          \
+      return s;                             \
+    }                                       \
   } while (0)
 
-#define XLA_CUDA_WARN_IF_ERROR(expr)  \
-  do {                                \
-    Status s = XLA_CUDA_STATUS(expr); \
-    if (!s.ok()) {                    \
-      LOG(ERROR) << s.ToString();     \
-    }                                 \
+#define XLA_CUDA_WARN_IF_ERROR(expr)        \
+  do {                                      \
+    absl::Status s = XLA_CUDA_STATUS(expr); \
+    if (!s.ok()) {                          \
+      LOG(ERROR) << s.ToString();           \
+    }                                       \
   } while (0)
 
 size_t GetNumLocalParticipants(

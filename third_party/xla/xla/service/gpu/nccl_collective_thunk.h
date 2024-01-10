@@ -114,13 +114,13 @@ class NcclCollectiveThunk : public Thunk {
    public:
     // Executes the function on the async communications stream and records a
     // completion event.
-    Status Execute(
+    absl::Status Execute(
         absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
             fn,
         const ExecuteParams& params, ncclComm_t comm,
         AsyncStreamKind stream_kind);
     // Blocks the compute stream until async communication is complete.
-    Status Await(const ExecuteParams& params);
+    absl::Status Await(const ExecuteParams& params);
 
    private:
     absl::Mutex mu_;
@@ -135,17 +135,18 @@ class NcclCollectiveThunk : public Thunk {
   // When this is false, the ExecuteOnStream() call will simply return a status
   // error.
   static bool NcclIsEnabled();
-  static Status CheckImplementable();
+  static absl::Status CheckImplementable();
 
   // Logging support.
   static std::string GetDeviceString(const NcclExecuteParams& params);
 
   AsyncExecutor* async_executor() { return async_.get(); }
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
-  virtual Status RunNcclCollective(const ExecuteParams& params,
-                                   se::Stream& stream, ncclComm_t comm) = 0;
+  virtual absl::Status RunNcclCollective(const ExecuteParams& params,
+                                         se::Stream& stream,
+                                         ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
     return kAsyncStreamCollective;
@@ -168,19 +169,19 @@ class NcclCollectiveDoneThunk : public Thunk {
   NcclCollectiveDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
                           NcclCollectiveThunk::AsyncExecutor& async);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   NcclCollectiveThunk::AsyncExecutor& async_;
 };
 
-Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
+absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
 
-Status IsValidOperand(Shape shape, Thunk::Kind reduction_op);
+absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op);
 
 template <typename NcclThunkType, typename OpT>
-Status AddOpDescription(Status status, OpT op, int64_t replica_count,
-                        int64_t partition_count) {
+absl::Status AddOpDescription(absl::Status status, OpT op,
+                              int64_t replica_count, int64_t partition_count) {
   if (status.ok()) {
     return status;
   }

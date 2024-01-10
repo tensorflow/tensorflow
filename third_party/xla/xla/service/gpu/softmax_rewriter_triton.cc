@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -327,7 +328,7 @@ HloInstruction* FindFirstNonFusibleDiamondProducer(
   return diamond_producer;
 }
 
-Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
+absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
   auto [root, producer] = diamond_chain;
 
   std::string suggested_name = "triton_softmax";
@@ -520,7 +521,7 @@ SoftmaxRewriterTriton::FindAllFusibleDiamondChains(
   return diamond_chains;
 }
 
-Status SoftmaxRewriterTriton::FuseDiamondChain(
+absl::Status SoftmaxRewriterTriton::FuseDiamondChain(
     const DiamondChainDescriptor& diamond_chain) {
   return FuseDiamondChainImpl(diamond_chain);
 }

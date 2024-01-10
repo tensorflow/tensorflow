@@ -290,6 +290,7 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )

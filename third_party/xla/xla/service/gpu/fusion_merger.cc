@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -50,13 +51,13 @@ class FusionInstructionMerger {
                                        .debug_options()
                                        .xla_dump_fusion_visualization()) {}
 
-  Status Run();
+  absl::Status Run();
 
   bool changed() const { return changed_; }
 
  private:
   FusionDecision ShouldFuse(HloInstruction* producer);
-  Status FuseIntoAllUsers(HloInstruction* producer);
+  absl::Status FuseIntoAllUsers(HloInstruction* producer);
 
   HloComputation* computation_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
@@ -83,7 +84,8 @@ class FusionInstructionMerger {
   FusionInstructionMerger& operator=(const FusionInstructionMerger&) = delete;
 };
 
-Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
+absl::Status FusionInstructionMerger::FuseIntoAllUsers(
+    HloInstruction* producer) {
   // Merge fused instructions from 'fusion' into each user.
   std::vector<HloInstruction*> users = producer->users();
   for (HloInstruction* user : users) {
@@ -134,7 +136,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
   return absl::OkStatus();
 }
 
-Status FusionInstructionMerger::Run() {
+absl::Status FusionInstructionMerger::Run() {
   for (HloInstruction* producer : computation_->MakeInstructionPostOrder()) {
     if (producer->opcode() != HloOpcode::kFusion) {
       continue;

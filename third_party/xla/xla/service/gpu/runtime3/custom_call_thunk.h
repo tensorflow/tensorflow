@@ -84,11 +84,11 @@ class CustomCallThunk : public Thunk {
                   AttributesMap attributes,
                   const HloComputation* called_computation);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  Status ExecuteCustomCall(const ExecuteParams& params);
-  Status ExecuteFfiHandler(const ExecuteParams& params);
+  absl::Status ExecuteCustomCall(const ExecuteParams& params);
+  absl::Status ExecuteFfiHandler(const ExecuteParams& params);
 
   std::vector<std::optional<Slice>> operands_;
   std::vector<std::optional<Slice>> results_;

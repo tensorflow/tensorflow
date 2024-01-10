@@ -225,12 +225,12 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
   return result;
 }
 
-Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
-                              const HloFusionInstruction& fusion,
-                              const LaunchDimensions& launch_dims,
-                              std::vector<llvm_ir::IrArray> inputs,
-                              std::vector<llvm_ir::IrArray> outputs,
-                              llvm::IRBuilder<>* builder) const {
+absl::Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                    const HloFusionInstruction& fusion,
+                                    const LaunchDimensions& launch_dims,
+                                    std::vector<llvm_ir::IrArray> inputs,
+                                    std::vector<llvm_ir::IrArray> outputs,
+                                    llvm::IRBuilder<>* builder) const {
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   FusedIrEmitter fused_emitter(elemental_emitter);
   for (int i = 0; i < fusion.fused_parameters().size(); i++) {

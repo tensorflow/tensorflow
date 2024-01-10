@@ -86,9 +86,10 @@ StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
-Status ExecuteKernelOnStream(const se::Kernel& kernel,
-                             absl::Span<const se::DeviceMemoryBase> args,
-                             const LaunchDimensions& dims, se::Stream* stream);
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   se::Stream* stream);
 
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.

@@ -39,8 +39,8 @@ class CommandBufferThunk : public Thunk {
   explicit CommandBufferThunk(CommandBufferCmdSequence commands,
                               ThunkInfo thunk_info);
 
-  Status Initialize(const InitializeParams& params) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   // Return the allocation address that was lazilly allocated inside command
   // buffer. This API is required when the buffers are allocated inside command

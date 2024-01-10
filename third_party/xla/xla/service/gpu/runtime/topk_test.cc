@@ -94,7 +94,7 @@ class TopkTest : public HloTestBase, public ParameterizedInterface {
 
 class GeneralizeTopkVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleCustomCall(HloInstruction* inst) override {
+  absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "__gpu$TopK") {
       return absl::OkStatus();

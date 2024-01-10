@@ -671,7 +671,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
   // and replaces the original dot() with a call to the computation.
-  Status HandleDot(HloInstruction* dot) override {
+  absl::Status HandleDot(HloInstruction* dot) override {
     CHECK_EQ(dot->opcode(), HloOpcode::kDot);
 
     std::string fusion_name = absl::StrCat("triton_gemm_", dot->name());

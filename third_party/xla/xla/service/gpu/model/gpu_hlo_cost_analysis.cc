@@ -69,7 +69,7 @@ static constexpr absl::string_view kCollNumDevicesKey =
 // type of hardware below.
 // TODO TJ this needs to be hosted somewhere more centralized.
 
-Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(HloCostAnalysis::Preprocess(hlo));
 
   current_properties_[kIRSizeKey] = 1;
@@ -98,7 +98,7 @@ int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
   return GetShapeSize(hlo->shape()) * utilization;
 }
 
-Status GpuHloCostAnalysis::FusionCalculateUtilizations(
+absl::Status GpuHloCostAnalysis::FusionCalculateUtilizations(
     const HloInstruction* fusion) {
   const HloInstruction* root = fusion->fused_expression_root();
   // Traverse through the computation from the root till parameters propagating
@@ -230,7 +230,8 @@ bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
   return merged_ir_size > kMaxIRSize;
 }
 
-Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
+absl::Status GpuHloCostAnalysis::HandleCustomCall(
+    const HloInstruction* custom_call) {
   if (IsCublasGemm(*custom_call)) {
     // The naming conventions and meanings of gemm parameters are documented
     // here:
@@ -379,7 +380,8 @@ int64_t GetFlopsForElementwiseOp(const se::DeviceDescription* gpu_device_info,
                                   instr->shape());
 }
 
-Status GpuHloCostAnalysis::HandleAllReduce(const HloInstruction* allreduce) {
+absl::Status GpuHloCostAnalysis::HandleAllReduce(
+    const HloInstruction* allreduce) {
   const HloModuleConfig& config = allreduce->GetModule()->config();
   TF_ASSIGN_OR_RETURN(
       CollectiveOpGroupMode group_mode,
@@ -439,7 +441,7 @@ Status GpuHloCostAnalysis::HandleAllReduce(const HloInstruction* allreduce) {
   return absl::OkStatus();
 }
 
-Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
   // Concat turns into a compare plus branch instruction.
   int64_t flop_per_element = 6;
   // If a warp crosses the operands boundary, both branches are executed. This
@@ -463,16 +465,19 @@ Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
   return absl::OkStatus();
 }
 
-Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::HandleElementwiseOp(
+    const HloInstruction* hlo) {
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(device_info_, hlo);
   return absl::OkStatus();
 }
 
-Status GpuHloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::HandleElementwiseUnary(
+    const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 
-Status GpuHloCostAnalysis::HandleElementwiseBinary(const HloInstruction* hlo) {
+absl::Status GpuHloCostAnalysis::HandleElementwiseBinary(
+    const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
 

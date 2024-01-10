@@ -102,8 +102,8 @@ void CopyIncrementingAboveThreshold(absl::Span<const int64_t> source,
   }
 }
 
-Status UncompilableMatmul(absl::string_view explanation) {
-  Status s = absl::CancelledError(explanation);
+absl::Status UncompilableMatmul(absl::string_view explanation) {
+  absl::Status s = absl::CancelledError(explanation);
   s.SetPayload(kUncompilableFusion, absl::Cord(explanation));
   return s;
 }
@@ -214,9 +214,9 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
 // Apply split K configuration from the tiling config to the fused dot()
 // computation: bitcast the operands, change the output shape and the dot
 // dimensions.
-Status MakeDotComputationSplitKBatch(HloComputation* computation,
-                                     const TritonGemmConfig& config,
-                                     bool disable_reduced_precision_reduction) {
+absl::Status MakeDotComputationSplitKBatch(
+    HloComputation* computation, const TritonGemmConfig& config,
+    bool disable_reduced_precision_reduction) {
   HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
   TF_ASSIGN_OR_RETURN(const auto analysis,
@@ -353,8 +353,8 @@ Status MakeDotComputationSplitKBatch(HloComputation* computation,
   return absl::OkStatus();
 }
 
-Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
-                          const TritonGemmConfig& config) {
+absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
+                                const TritonGemmConfig& config) {
   CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
 
   if (dot_fusion->shape().IsTuple()) {

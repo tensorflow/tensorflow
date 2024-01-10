@@ -68,7 +68,7 @@ namespace {
 //   Write to output of slice1
 // }
 //
-Status EmitElementForInputFusibleSlices(
+absl::Status EmitElementForInputFusibleSlices(
     ElementalIrEmitter& elemental_emitter,
     const HloComputation* fused_computation,
     const std::vector<llvm_ir::IrArray>& inputs,
@@ -200,18 +200,16 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   return result;
 }
 
-Status InputSlicesFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
-                                     const HloFusionInstruction& fusion,
-                                     const LaunchDimensions& launch_dims,
-                                     std::vector<llvm_ir::IrArray> inputs,
-                                     std::vector<llvm_ir::IrArray> outputs,
-                                     llvm::IRBuilder<>* builder) const {
+absl::Status InputSlicesFusion::EmitKernel(
+    IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
+    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
+    std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder) const {
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(
                           fusion.fused_instructions_computation()));
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   return ParallelLoopEmitter(
-             [&](const llvm_ir::IrArray::Index index) -> Status {
+             [&](const llvm_ir::IrArray::Index index) -> absl::Status {
                return EmitElementForInputFusibleSlices(
                    elemental_emitter, fusion.fused_instructions_computation(),
                    inputs, outputs, index, builder);

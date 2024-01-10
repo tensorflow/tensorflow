@@ -143,8 +143,8 @@ cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
   }
 }
 
-// Converts a cuSolver status to a Status.
-Status ConvertStatus(cusolverStatus_t status) {
+// Converts a cuSolver absl::Status to a Status.
+absl::Status ConvertStatus(cusolverStatus_t status) {
   switch (status) {
     case CUSOLVER_STATUS_SUCCESS:
       return absl::OkStatus();
@@ -187,7 +187,7 @@ hipsolverFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
   }
 }
 
-Status ConvertStatus(hipsolverStatus_t status) {
+absl::Status ConvertStatus(hipsolverStatus_t status) {
   switch (status) {
     case HIPSOLVER_STATUS_SUCCESS:
       return absl::OkStatus();
@@ -229,7 +229,7 @@ rocblas_fill GpuBlasUpperLower(se::blas::UpperLower uplo) {
   }
 }
 
-Status ConvertStatus(rocblas_status status) {
+absl::Status ConvertStatus(rocblas_status status) {
   switch (status) {
     case rocblas_status_success:
       return absl::OkStatus();
@@ -313,7 +313,7 @@ StatusOr<GpuSolverContext> GpuSolverContext::Create() {
   return GpuSolverContext(handle);
 }
 
-Status GpuSolverContext::SetStream(se::Stream* stream) {
+absl::Status GpuSolverContext::SetStream(se::Stream* stream) {
   return ConvertStatus(
       GpuSolverSetStream(handle_.get(), se::gpu::AsGpuStreamValue(stream)));
 }
@@ -323,7 +323,7 @@ GpuSolverContext::GpuSolverContext(gpusolverHandle_t handle)
 
 void GpuSolverContext::Deleter::operator()(gpusolverHandle_t handle) {
   if (handle) {
-    Status status = ConvertStatus(GpuSolverDestroy(handle));
+    absl::Status status = ConvertStatus(GpuSolverDestroy(handle));
     if (!status.ok()) {
       LOG(ERROR) << "GpuSolverDestroy failed: " << status;
     }
@@ -380,10 +380,11 @@ StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
 #endif
 }
 
-Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
-                                      se::DeviceMemory<float*> as, int lda,
-                                      se::DeviceMemory<int> lapack_info,
-                                      int batch_size) {
+absl::Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
+                                            se::DeviceMemory<float*> as,
+                                            int lda,
+                                            se::DeviceMemory<int> lapack_info,
+                                            int batch_size) {
   return ConvertStatus(GpuSolverSpotrfBatched(
       handle_.get(), GpuBlasUpperLower(uplo), n, ToDevicePointer(as), lda,
 #if TENSORFLOW_USE_HIPSOLVER
@@ -392,10 +393,11 @@ Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
       ToDevicePointer(lapack_info), batch_size));
 }
 
-Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
-                                      se::DeviceMemory<double*> as, int lda,
-                                      se::DeviceMemory<int> lapack_info,
-                                      int batch_size) {
+absl::Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
+                                            se::DeviceMemory<double*> as,
+                                            int lda,
+                                            se::DeviceMemory<int> lapack_info,
+                                            int batch_size) {
   return ConvertStatus(GpuSolverDpotrfBatched(
       handle_.get(), GpuBlasUpperLower(uplo), n, ToDevicePointer(as), lda,
 #if TENSORFLOW_USE_HIPSOLVER
@@ -404,11 +406,9 @@ Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
       ToDevicePointer(lapack_info), batch_size));
 }
 
-Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
-                                      se::DeviceMemory<std::complex<float>*> as,
-                                      int lda,
-                                      se::DeviceMemory<int> lapack_info,
-                                      int batch_size) {
+absl::Status GpuSolverContext::PotrfBatched(
+    se::blas::UpperLower uplo, int n, se::DeviceMemory<std::complex<float>*> as,
+    int lda, se::DeviceMemory<int> lapack_info, int batch_size) {
   return ConvertStatus(GpuSolverCpotrfBatched(
       handle_.get(), GpuBlasUpperLower(uplo), n, ToDevicePointer(as), lda,
 #if TENSORFLOW_USE_HIPSOLVER
@@ -417,7 +417,7 @@ Status GpuSolverContext::PotrfBatched(se::blas::UpperLower uplo, int n,
       ToDevicePointer(lapack_info), batch_size));
 }
 
-Status GpuSolverContext::PotrfBatched(
+absl::Status GpuSolverContext::PotrfBatched(
     se::blas::UpperLower uplo, int n,
     se::DeviceMemory<std::complex<double>*> as, int lda,
     se::DeviceMemory<int> lapack_info, int batch_size) {

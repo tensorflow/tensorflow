@@ -217,7 +217,7 @@ class Thunk {
   // This may be called multiple times.  Its main purpose is to give us a chance
   // to do initialization outside of ExecuteOnStream() so that the
   // time spent initializing doesn't count towards our execution profile.
-  virtual Status Initialize(const InitializeParams& params) {
+  virtual absl::Status Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
@@ -226,7 +226,7 @@ class Thunk {
   // lifetime.
   //
   // Precondition: Initialize(stream->parent()) has been called.
-  virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
+  virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
   // Clears metadata that is only valid during compile time.
   virtual void ClearCompileTimeInfo() { op_ = nullptr; }

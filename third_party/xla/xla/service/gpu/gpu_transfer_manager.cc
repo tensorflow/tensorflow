@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/outfeed_manager.h"
 #include "xla/service/gpu/target_constants.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
@@ -57,13 +58,13 @@ GpuTransferManager::~GpuTransferManager() {
   }
 }
 
-Status GpuTransferManager::TransferLiteralToInfeed(
+absl::Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
   return gpu::GetOrCreateInfeedManager(executor)->TransferLiteralToInfeed(
       executor, literal);
 }
 
-Status GpuTransferManager::TransferLiteralFromOutfeed(
+absl::Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   return gpu::GetOrCreateOutfeedManager(executor)->TransferLiteralFromOutfeed(
       executor, literal);
@@ -86,9 +87,9 @@ void GpuTransferManager::EnsurePinnedBuffersAllocated(
   }
 }
 
-Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
-                                             const ShapedBuffer* device_buffer,
-                                             Shape* device_shape) {
+absl::Status GpuTransferManager::ReadDynamicShapes(
+    se::Stream* stream, const ShapedBuffer* device_buffer,
+    Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
 

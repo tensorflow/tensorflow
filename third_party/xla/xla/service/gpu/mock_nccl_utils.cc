@@ -126,9 +126,9 @@ StatusOr<ncclFunc_t> ToNcclFunctionType(Thunk::Kind reduce_op) {
   }
 }
 
-Status LaunchSleepKernel(se::StreamExecutor* executor,
-                         se::gpu::GpuStreamHandle gpu_stream, ncclInfo_t info,
-                         int64_t sleep_duration) {
+absl::Status LaunchSleepKernel(se::StreamExecutor* executor,
+                               se::gpu::GpuStreamHandle gpu_stream,
+                               ncclInfo_t info, int64_t sleep_duration) {
   void* kernel = GetSleepKernel();
   int64_t clock_cycles =
       sleep_duration * executor->GetDeviceDescription().clock_rate_ghz();
@@ -144,7 +144,7 @@ Status LaunchSleepKernel(se::StreamExecutor* executor,
   return absl::OkStatus();
 }
 
-inline Status MockNcclInfoSetDerived(ncclInfo_t info, int nRanks) {
+inline absl::Status MockNcclInfoSetDerived(ncclInfo_t info, int nRanks) {
   TF_ASSIGN_OR_RETURN(int dtype_size, GetNcclDataTypeSize(info->datatype));
   info->nBytes = info->count * dtype_size;
   if (info->coll == ncclFuncAllGather || info->coll == ncclFuncBroadcast) {
@@ -251,9 +251,9 @@ StatusOr<NcclComm::Lock> LockMockNcclComm(
       global_rank, stream_id, /*enable_clique_optimization=*/false);
 }
 
-Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, ncclComm_t mock_comm,
-                              Thunk::Kind reduce_op) {
+absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
+                                    se::Stream& stream, ncclComm_t mock_comm,
+                                    Thunk::Kind reduce_op) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing the mock nccl collective call from device ordinal: "
           << device_ordinal;
@@ -303,9 +303,9 @@ Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
   return absl::OkStatus();
 }
 
-Status RunMockNcclAllToAll(bool has_split_dimension,
-                           std::vector<DeviceBufferPair>& buffers,
-                           se::Stream& stream, ncclComm_t mock_comm) {
+absl::Status RunMockNcclAllToAll(bool has_split_dimension,
+                                 std::vector<DeviceBufferPair>& buffers,
+                                 se::Stream& stream, ncclComm_t mock_comm) {
   se::StreamExecutor* executor = stream.parent();
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
   int num_participants = mock_comm->nRanks;
@@ -416,7 +416,7 @@ Status RunMockNcclAllToAll(bool has_split_dimension,
   return absl::OkStatus();
 }
 
-Status RunMockCollectivePermute(
+absl::Status RunMockCollectivePermute(
     NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
     se::Stream& stream, ncclComm_t mock_comm, absl::string_view device_string,
     int64_t current_id) {
@@ -495,7 +495,7 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
   ncclComm_t comm = *lockable_comm.Acquire();
   if (comm == nullptr) return;
 
-  Status status = [comm] {
+  absl::Status status = [comm] {
     ncclResult_t async_err;
     XLA_CUDA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
     if (async_err != ncclSuccess) {
@@ -519,7 +519,7 @@ struct NcclCliqueState {
   // synchronization.
   absl::Mutex mu;
   absl::Notification ready;
-  Status status;
+  absl::Status status;
   absl::flat_hash_map<int, std::unique_ptr<NcclComm>> communicators;
 };
 
@@ -577,7 +577,7 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
                                : absl::InfiniteDuration());
 }
 
-Status InitializeMockNcclCostModel(
+absl::Status InitializeMockNcclCostModel(
     ncclComm_t local_comm, ncclComm_t* comm_ptr, int nRanks, int rank,
     int num_local_participants,
     absl::Span<const std::pair<int, int>> local_ranks) {
@@ -705,7 +705,7 @@ StatusOr<NcclComm::Lock> AcquireMockNcclComm(
 
   if (!state.ready.HasBeenNotified()) {
     ncclComm_t comm = nullptr;
-    Status status = InitializeMockNcclCostModel(
+    absl::Status status = InitializeMockNcclCostModel(
         local_comm, &comm, nRanks, rank, num_local_participants, local_ranks);
     size_t num_initialized = [&] {
       absl::MutexLock lock(&state.mu);

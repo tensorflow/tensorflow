@@ -83,10 +83,10 @@ void AnnotateWithInt32Value(std::string name, int64_t value,
 
 // Annotates the launch dimensions of the corresponding IR kernel in
 // `llvm_module`.
-Status AnnotateKernelLaunchDimensions(const se::DeviceDescription& device_info,
-                                      const LaunchDimensions& launch_dims,
-                                      const std::string& kernel_name,
-                                      llvm::Module* llvm_module) {
+absl::Status AnnotateKernelLaunchDimensions(
+    const se::DeviceDescription& device_info,
+    const LaunchDimensions& launch_dims, const std::string& kernel_name,
+    llvm::Module* llvm_module) {
   TF_RET_CHECK(device_info.block_dim_limit().x == 0 ||
                launch_dims.block_counts().x < device_info.block_dim_limit().x)
       << "Kernel '" << kernel_name << "' launch needs more blocks ("

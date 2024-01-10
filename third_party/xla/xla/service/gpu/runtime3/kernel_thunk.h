@@ -79,8 +79,8 @@ class KernelThunk : public Thunk {
 
   std::string ToStringExtra(int indent) const override;
 
-  Status Initialize(const InitializeParams& params) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ClearCompileTimeInfo() override {
     Thunk::ClearCompileTimeInfo();
@@ -141,8 +141,8 @@ class CustomKernelThunk : public Thunk {
 
   std::string ToStringExtra(int indent) const override;
 
-  Status Initialize(const InitializeParams& params) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   const CustomKernel& custom_kernel() const { return custom_kernel_; }
 

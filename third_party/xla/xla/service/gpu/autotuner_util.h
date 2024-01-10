@@ -232,24 +232,25 @@ struct AutotunerUtil {
   static StatusOr<std::string> SerializeAutotuneResults(
       bool as_textproto = false);
 
-  static Status SerializeAutotuneResults(AutotuneResults* results);
-  static Status LoadAutotuneResults(absl::string_view data,
-                                    bool as_textproto = false);
+  static absl::Status SerializeAutotuneResults(AutotuneResults* results);
+  static absl::Status LoadAutotuneResults(absl::string_view data,
+                                          bool as_textproto = false);
 
-  static Status LoadAutotuneResults(const AutotuneResults& results);
+  static absl::Status LoadAutotuneResults(const AutotuneResults& results);
 
   // Serializes autotune results into a file.
   //
   // If `file_path` ends with ".txt" or ".textproto", then the textproto format
   // is used, otherwise the binary protobuf format.
-  static Status SerializeAutotuneResultsToFile(absl::string_view file_path);
+  static absl::Status SerializeAutotuneResultsToFile(
+      absl::string_view file_path);
 
   // Loads autotune results from a file.
   //
   // If `file_path` ends with ".txt" or ".textproto", then the file is
   // considered to be in the textproto format, otherwise the binary protobuf
   // format.
-  static Status LoadAutotuneResultsFromFile(absl::string_view file_path);
+  static absl::Status LoadAutotuneResultsFromFile(absl::string_view file_path);
 
   static void ClearAutotuneResults();
 

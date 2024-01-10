@@ -205,7 +205,7 @@ bool IsCustomCallTofMHA(const HloInstruction& hlo);
 StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(const HloCustomCallInstruction* instr);
 
 std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
-Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
+absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 
 bool MHACallHasDropout(absl::string_view fmha_call_name);
 

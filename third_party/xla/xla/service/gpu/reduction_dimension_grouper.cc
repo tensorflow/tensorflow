@@ -34,7 +34,7 @@ namespace gpu {
 
 class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleReduce(HloInstruction *hlo) override {
+  absl::Status HandleReduce(HloInstruction *hlo) override {
     auto reduce = Cast<HloReduceInstruction>(hlo);
 
     VLOG(4) << "Input: " << reduce->ToString();

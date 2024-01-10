@@ -143,7 +143,7 @@ class ConvBfloat16Support : public FloatSupport {
 
 }  // namespace
 
-Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
+absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -216,7 +216,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
-Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
+absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
@@ -317,7 +317,7 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
   return false;
 }
 
-Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
+absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
@@ -327,14 +327,14 @@ Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
   return absl::OkStatus();
 }
 
-Status NVPTXCompiler::AddTritonGemmAutotuningPasses(
+absl::Status NVPTXCompiler::AddTritonGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   pipeline->AddPass<TritonAutotuner>(autotune_config, thread_pool);
   return absl::OkStatus();
 }
 
-Status NVPTXCompiler::AddCustomKernelReplacementPasses(
+absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
     HloPassPipeline* pipeline, const DebugOptions& debug_options) {
   if (debug_options.xla_gpu_enable_cub_radix_sort()) {
     pipeline->AddPass<GpuSortRewriter>();

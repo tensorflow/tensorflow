@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/collective_ops_utils.h"
@@ -52,19 +53,19 @@ StatusOr<NcclComm::Lock> LockMockNcclComm(
   return Unimplemented("LockMockNcclComm is not implemented.");
 }
 
-Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, ncclComm_t mock_comm,
-                              Thunk::Kind reduce_op) {
+absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
+                                    se::Stream& stream, ncclComm_t mock_comm,
+                                    Thunk::Kind reduce_op) {
   return Unimplemented("Mock nccl collectives is not implemented.");
 }
 
-Status RunMockNcclAllToAll(bool has_split_dimension,
-                           std::vector<DeviceBufferPair>& buffers,
-                           se::Stream& stream, ncclComm_t mock_comm) {
+absl::Status RunMockNcclAllToAll(bool has_split_dimension,
+                                 std::vector<DeviceBufferPair>& buffers,
+                                 se::Stream& stream, ncclComm_t mock_comm) {
   return Unimplemented("Mock nccl AllToAll is not implemented.");
 }
 
-Status RunMockCollectivePermute(
+absl::Status RunMockCollectivePermute(
     NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
     se::Stream& stream, ncclComm_t mock_comm, absl::string_view device_string,
     int64_t current_id) {

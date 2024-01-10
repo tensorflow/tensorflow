@@ -380,18 +380,18 @@ struct RunFusedMHABackwardOptions {
   FusedMultiHeadedAttentionBackwardRunner* runner_cache;
 };
 
-Status RunGpuFMHA(const GpufMHAConfig& fmha_config,
-                  se::DeviceMemoryBase lhs_bmm1_buffer,
-                  se::DeviceMemoryBase rhs_bmm1_buffer,
-                  se::DeviceMemoryBase rhs_bmm2_buffer,
-                  se::DeviceMemoryBase output_buffer,
-                  se::DeviceMemoryBase scratch_buffer,
-                  std::optional<se::DeviceMemoryBase> mask_buffer,
-                  std::optional<se::DeviceMemoryBase> bias_buffer,
-                  std::optional<se::DeviceMemoryBase> activation_buffer,
-                  se::Stream* stream, RunFusedMHAOptions = {});
+absl::Status RunGpuFMHA(const GpufMHAConfig& fmha_config,
+                        se::DeviceMemoryBase lhs_bmm1_buffer,
+                        se::DeviceMemoryBase rhs_bmm1_buffer,
+                        se::DeviceMemoryBase rhs_bmm2_buffer,
+                        se::DeviceMemoryBase output_buffer,
+                        se::DeviceMemoryBase scratch_buffer,
+                        std::optional<se::DeviceMemoryBase> mask_buffer,
+                        std::optional<se::DeviceMemoryBase> bias_buffer,
+                        std::optional<se::DeviceMemoryBase> activation_buffer,
+                        se::Stream* stream, RunFusedMHAOptions = {});
 
-Status RunGpuFMHABackward(
+absl::Status RunGpuFMHABackward(
     const GpufMHABackwardConfig& fmha_config,
     se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer,
     se::DeviceMemoryBase bmm1_grad_gemm2_rhs_buffer,

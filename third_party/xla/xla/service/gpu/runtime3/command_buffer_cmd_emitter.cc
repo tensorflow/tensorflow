@@ -41,13 +41,13 @@ limitations under the License.
 namespace xla::gpu {
 
 // Appends command(s) converted from `thunk` to `cmd_sequence`.
-static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                             const Thunk& thunk, bool force_barriers);
+static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                                   const Thunk& thunk, bool force_barriers);
 
 // Appends command(s) converted from `sequence` to `cmd_sequence`.
-static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                             const ThunkSequence& sequence,
-                             bool force_barriers);
+static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                                   const ThunkSequence& sequence,
+                                   bool force_barriers);
 
 //===----------------------------------------------------------------------===//
 // Conversions from Thunk to Command
@@ -137,9 +137,9 @@ static StatusOr<Command> Convert(const Thunk& thunk, bool force_barriers) {
   return Convert(static_cast<const ThunkType&>(thunk), force_barriers);
 }
 
-static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                             const Thunk& thunk, bool force_barriers) {
-  auto append = [&](StatusOr<Command> command) -> Status {
+static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                                   const Thunk& thunk, bool force_barriers) {
+  auto append = [&](StatusOr<Command> command) -> absl::Status {
     if (command.ok()) {
       cmd_sequence.Append(std::move(*command));
       return absl::OkStatus();
@@ -189,9 +189,9 @@ static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
   }
 }
 
-static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
-                             const ThunkSequence& sequence,
-                             bool force_barriers) {
+static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
+                                   const ThunkSequence& sequence,
+                                   bool force_barriers) {
   for (const std::unique_ptr<Thunk>& thunk : sequence)
     TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, *thunk, force_barriers));
   return absl::OkStatus();

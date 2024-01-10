@@ -36,13 +36,13 @@ class GpuTransferManager : public GenericTransferManager {
   GpuTransferManager(se::Platform::Id id, unsigned pointer_size);
   ~GpuTransferManager() override;
 
-  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const LiteralSlice& literal) override;
-  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    MutableBorrowingLiteral literal) override;
-  Status ReadDynamicShapes(se::Stream* stream,
-                           const ShapedBuffer* device_buffer,
-                           Shape* device_shape) override;
+  absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                       const LiteralSlice& literal) override;
+  absl::Status TransferLiteralFromOutfeed(
+      se::StreamExecutor* executor, MutableBorrowingLiteral literal) override;
+  absl::Status ReadDynamicShapes(se::Stream* stream,
+                                 const ShapedBuffer* device_buffer,
+                                 Shape* device_shape) override;
 
  private:
   GpuTransferManager(const GpuTransferManager&) = delete;

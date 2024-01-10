@@ -37,7 +37,7 @@ namespace m = match;
 
 class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleCustomCall(HloInstruction *instr) override {
+  absl::Status HandleCustomCall(HloInstruction *instr) override {
     HloInstruction *existing_gemm;
     HloInstruction *bcast;
     if (Match(instr, m::CustomCall(&existing_gemm,

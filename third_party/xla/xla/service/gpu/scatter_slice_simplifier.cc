@@ -161,7 +161,7 @@ HloInstruction* CreateScatterFrom(HloScatterInstruction* scatter,
 
 class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleScatter(HloInstruction* instruction) override {
+  absl::Status HandleScatter(HloInstruction* instruction) override {
     auto* scatter = Cast<HloScatterInstruction>(instruction);
 
     // Infer scatter shape from the slice users.
@@ -182,8 +182,8 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
  private:
   // Create a replacement for every user. If the user is a slice operation,
   // replace it in the computation graph, the old branch will be removed.
-  Status ReplaceAllUsersRecursive(HloInstruction* old_instruction,
-                                  HloInstruction* new_instruction) {
+  absl::Status ReplaceAllUsersRecursive(HloInstruction* old_instruction,
+                                        HloInstruction* new_instruction) {
     // Maintain the replacement map, needed for non-unary elementwise users.
     replacements_[old_instruction] = new_instruction;
 
@@ -203,7 +203,8 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
   // Replace the slice user with a new scatter (or a new chain of operations
   // starting with a scatter). For elementwise operations, create a new user
   // with updated operands (build the chain).
-  Status ReplaceUserRecursive(HloInstruction* user, HloInstruction* operand) {
+  absl::Status ReplaceUserRecursive(HloInstruction* user,
+                                    HloInstruction* operand) {
     VLOG(3) << "Replacing scatter user " << user->name();
     if (user->opcode() == HloOpcode::kSlice) {
       return ReplaceInstruction(user, operand);

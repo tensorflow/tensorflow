@@ -36,8 +36,8 @@ class ForThunk : public Thunk {
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
-  Status Initialize(const InitializeParams& params) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   SequentialThunk* body_thunk_sequence() { return body_thunk_sequence_.get(); }
 

@@ -148,7 +148,7 @@ class DumpAfterPassIfEnabled : public mlir::PassInstrumentation {
 };
 
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
-static Status LowerToXlaGpuRuntime(
+static absl::Status LowerToXlaGpuRuntime(
     mlir::ModuleOp module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
     const HloModule* hlo_module, se::GpuComputeCapability compute_capability) {
@@ -266,7 +266,7 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
 //
 // This function also serves as a half-baked verifier for function arg
 // attributes, since a full verifier doesn't exist yet.
-static Status GetMlirAllocationInfo(
+static absl::Status GetMlirAllocationInfo(
     mlir::func::FuncOp func, std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
     Shape* output_shape) {

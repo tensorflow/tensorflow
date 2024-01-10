@@ -73,7 +73,7 @@ class FftThunk : public Thunk {
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_
 
   // Does the FFT for the thunk on "stream".
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const se::fft::Type fft_type_;
@@ -88,11 +88,12 @@ class FftThunk : public Thunk {
   const Shape output_shape_;
 };
 
-Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
-              se::DeviceMemoryBase output, const Shape& output_shape,
-              se::fft::Type fft_type, absl::Span<const int64_t> fft_length,
-              int device_ordinal, FftPlanCache* fft_plan_cache,
-              se::Stream* stream, se::DeviceMemoryAllocator* memory_allocator);
+absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
+                    se::DeviceMemoryBase output, const Shape& output_shape,
+                    se::fft::Type fft_type,
+                    absl::Span<const int64_t> fft_length, int device_ordinal,
+                    FftPlanCache* fft_plan_cache, se::Stream* stream,
+                    se::DeviceMemoryAllocator* memory_allocator);
 
 }  // namespace gpu
 }  // namespace xla

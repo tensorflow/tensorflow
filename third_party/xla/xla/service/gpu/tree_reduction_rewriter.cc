@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -45,7 +46,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   explicit ReductionRewriterVisitor(se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
 
-  Status HandleReduce(HloInstruction *hlo) override {
+  absl::Status HandleReduce(HloInstruction *hlo) override {
     if (IsMinMaxReduction(hlo)) {
       // TODO(cheshire): Also enable for integers.
       VLOG(1) << "Not performing tree expansion on min/max-reduction: "
@@ -70,7 +71,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     return false;
   }
 
-  Status RewriteReduction(HloInstruction *hlo) {
+  absl::Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
     VLOG(5) << "Input: " << hlo->ToString();
@@ -253,7 +254,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   // Rewrites batch dimension reduction into a separate reduce operation.
-  Status RewriteBatchDimensionLargerThanTile(
+  absl::Status RewriteBatchDimensionLargerThanTile(
       HloReduceInstruction *hlo,
       const ReductionDimensions &reduction_dimensions,
       int64_t reduced_input_dimension) {

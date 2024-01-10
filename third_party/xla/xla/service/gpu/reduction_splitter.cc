@@ -33,7 +33,7 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
  public:
   explicit ReductionSplitterVisitor(bool ignore_small_dims)
       : ignore_small_dims_(ignore_small_dims) {}
-  Status HandleReduce(HloInstruction *reduce) override {
+  absl::Status HandleReduce(HloInstruction *reduce) override {
     VLOG(4) << "Input: " << reduce->ToString();
 
     // Reductions with contiguous dimensions are lowered to efficient code. No

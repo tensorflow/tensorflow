@@ -42,7 +42,7 @@ OutfeedManager *GetOrCreateOutfeedManager(se::StreamExecutor *executor) {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-Status OutfeedManager::TransferLiteralFromOutfeed(
+absl::Status OutfeedManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
   ShapeTree<std::unique_ptr<gpu::OutfeedBuffer>> outfeed_buffers(
       &literal.shape());

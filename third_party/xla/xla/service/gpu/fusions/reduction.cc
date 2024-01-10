@@ -520,9 +520,9 @@ class ReductionEmitter {
 
   StatusOr<FusionEmissionResult> EmitInitializers(
       mlir::lmhlo::FusionOp fusion_op);
-  Status EmitKernel(const LaunchDimensions& launch_dims,
-                    std::vector<llvm_ir::IrArray> inputs,
-                    std::vector<llvm_ir::IrArray> outputs);
+  absl::Status EmitKernel(const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs);
 
  private:
   friend class ReductionGroupEmitter;
@@ -539,7 +539,7 @@ class ReductionEmitter {
       mlir::lmhlo::FusionOp fusion_op, const HloInstruction* fusion_root,
       mlir::Value dest, BufferAllocation::Slice dest_slice, int output_index);
 
-  Status EmitIRForReduction(
+  absl::Status EmitIRForReduction(
       absl::Span<const HloInstruction* const> instr_index_group,
       FusedIrEmitter& fused_emitter, const ReductionOutputMap& result_ir_arrays,
       const Shape& input_shape);
@@ -625,7 +625,7 @@ class ReductionGroupEmitter {
       const llvm_ir::IrArray::Index& input_index,
       int num_partial_results) const;
 
-  Status EmitExtraOutputsForReduce(
+  absl::Status EmitExtraOutputsForReduce(
       const Shape& reduction_operand_shape,
       const llvm_ir::IrArray::Index& index,
       const ExtraOutputGensMap& extra_output_gens) const;
@@ -840,7 +840,7 @@ StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildKernelThunkForFusion(
       /*shmem_bytes=*/0);
 }
 
-Status ReductionGroupEmitter::EmitExtraOutputsForReduce(
+absl::Status ReductionGroupEmitter::EmitExtraOutputsForReduce(
     const Shape& reduction_operand_shape, const llvm_ir::IrArray::Index& index,
     const ExtraOutputGensMap& extra_output_gens) const {
   if (extra_output_gens.empty()) {
@@ -902,7 +902,7 @@ StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildFusedInitializerThunk(
       fusion_.fused_instructions_computation();
 
   auto builder_fn = [&](std::vector<llvm_ir::IrArray> inputs,
-                        std::vector<llvm_ir::IrArray> outputs) -> Status {
+                        std::vector<llvm_ir::IrArray> outputs) -> absl::Status {
     FusedIrEmitter fused_emitter(elemental_emitter_);
     for (int i = 0; i < fused_computation->num_parameters(); i++) {
       fused_emitter.BindGenerator(
@@ -1391,7 +1391,7 @@ void ReductionGroupEmitter::GenerateElementForReducer(
 }
 
 // Emits code for reductions in the output_instructions.
-Status ReductionEmitter::EmitIRForReduction(
+absl::Status ReductionEmitter::EmitIRForReduction(
     absl::Span<const HloInstruction* const> instr_index_group,
     FusedIrEmitter& fused_emitter, const ReductionOutputMap& result_ir_arrays,
     const Shape& input_shape) {
@@ -1556,9 +1556,9 @@ StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers(
   return result;
 }
 
-Status ReductionEmitter::EmitKernel(const LaunchDimensions& launch_dims,
-                                    std::vector<llvm_ir::IrArray> inputs,
-                                    std::vector<llvm_ir::IrArray> outputs) {
+absl::Status ReductionEmitter::EmitKernel(
+    const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
+    std::vector<llvm_ir::IrArray> outputs) {
   const HloComputation* fused_computation =
       fusion_.fused_instructions_computation();
   FusedIrEmitter fused_emitter(elemental_emitter_);
@@ -1624,12 +1624,12 @@ StatusOr<FusionEmissionResult> ReductionFusion::EmitInitializers(
       .EmitInitializers(fusion_op);
 }
 
-Status ReductionFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
-                                   const HloFusionInstruction& fusion,
-                                   const LaunchDimensions& launch_dims,
-                                   std::vector<llvm_ir::IrArray> inputs,
-                                   std::vector<llvm_ir::IrArray> outputs,
-                                   llvm::IRBuilder<>* builder) const {
+absl::Status ReductionFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                         const HloFusionInstruction& fusion,
+                                         const LaunchDimensions& launch_dims,
+                                         std::vector<llvm_ir::IrArray> inputs,
+                                         std::vector<llvm_ir::IrArray> outputs,
+                                         llvm::IRBuilder<>* builder) const {
   return ReductionEmitter(analysis_, reduction_codegen_info_,
                           ir_emitter_context, fusion, builder)
       .EmitKernel(launch_dims, inputs, outputs);

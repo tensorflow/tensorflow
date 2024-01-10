@@ -730,9 +730,9 @@ StatusOr<Value> EmitScope(
   return values[instructions.back()];
 }
 
-Status CreateTritonPipeline(mlir::OpPassManager& pm,
-                            const se::CudaComputeCapability& cc,
-                            const TritonGemmConfig& config) {
+absl::Status CreateTritonPipeline(mlir::OpPassManager& pm,
+                                  const se::CudaComputeCapability& cc,
+                                  const TritonGemmConfig& config) {
   const int ccAsInt = cc.major * 10 + cc.minor;
   const int threadsPerWarp = 32;
   mlir::triton::nvidia_gpu::ClusterInfo clusterInfo;
@@ -1149,8 +1149,8 @@ Value EmitMultiSelect(ImplicitLocOpBuilder b, Value index, ValueRange limits,
   return result;
 }
 
-Status UncompilableMatmul(absl::string_view explanation) {
-  Status s = absl::CancelledError(explanation);
+absl::Status UncompilableMatmul(absl::string_view explanation) {
+  absl::Status s = absl::CancelledError(explanation);
   s.SetPayload(kUncompilableFusion, absl::Cord(explanation));
   return s;
 }
@@ -1540,11 +1540,13 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
 }
 
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
-Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
-                  const se::DeviceDescription& device_info,
-                  const TritonFusionAnalysis& analysis,
-                  const HloComputation* computation, mlir::triton::FuncOp fn,
-                  const TritonGemmConfig& config) {
+absl::Status EmitMatMul(mlir::OpBuilder builder,
+                        absl::string_view libdevice_path,
+                        const se::DeviceDescription& device_info,
+                        const TritonFusionAnalysis& analysis,
+                        const HloComputation* computation,
+                        mlir::triton::FuncOp fn,
+                        const TritonGemmConfig& config) {
   const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   // Use 32-bit indexing if addressing any of the inputs or the output (which
@@ -1808,11 +1810,13 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   return absl::OkStatus();
 }
 
-Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
-                   const se::DeviceDescription& device_info,
-                   const TritonFusionAnalysis& analysis,
-                   const HloComputation* computation, mlir::triton::FuncOp fn,
-                   const TritonGemmConfig& config) {
+absl::Status EmitSoftMax(mlir::OpBuilder builder,
+                         absl::string_view libdevice_path,
+                         const se::DeviceDescription& device_info,
+                         const TritonFusionAnalysis& analysis,
+                         const HloComputation* computation,
+                         mlir::triton::FuncOp fn,
+                         const TritonGemmConfig& config) {
   const HloInstruction* root = computation->root_instruction();
   auto loc = mlir::NameLoc::get(builder.getStringAttr(root->name()));
   ImplicitLocOpBuilder b(loc, builder);

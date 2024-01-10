@@ -58,7 +58,7 @@ class SoftmaxRewriterTriton : public HloModulePass {
   // Constructs a Softmax fusion containing all the instructions between the
   // root and the producer of a diamond chain. The producer is excluded from the
   // fusion.
-  Status FuseDiamondChain(const DiamondChainDescriptor& diamond_chain);
+  absl::Status FuseDiamondChain(const DiamondChainDescriptor& diamond_chain);
 
  private:
   se::GpuComputeCapability gpu_version_;

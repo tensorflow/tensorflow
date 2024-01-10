@@ -106,12 +106,12 @@ class GpuRuntimeExecutable {
       runtime::Executable executable, DebugOptions debug_options);
 
   // Executes entry function with the given buffer arguments.
-  Status Execute(const ServiceExecutableRunOptions* run_options,
-                 const std::string& asm_text,
-                 const std::vector<uint8_t>& binary,
-                 const BufferAllocations& buffer_allocations,
-                 NonAtomicallyUpgradeableRWLock& gpu_lock,
-                 const BufferAllocation* temp_alloc = nullptr);
+  absl::Status Execute(const ServiceExecutableRunOptions* run_options,
+                       const std::string& asm_text,
+                       const std::vector<uint8_t>& binary,
+                       const BufferAllocations& buffer_allocations,
+                       NonAtomicallyUpgradeableRWLock& gpu_lock,
+                       const BufferAllocation* temp_alloc = nullptr);
 
   // Returns object file behind the runtime executable. This object file can
   // be exported and loaded later to instantiate another executable.

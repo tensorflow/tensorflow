@@ -70,7 +70,7 @@ CustomCallThunk::CustomCallThunk(ThunkInfo thunk_info, XLA_FFI_Handler* handler,
       attributes_(std::move(attributes)),
       called_computation_(called_computation) {}
 
-Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
+absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   // gpu_stream is CUstream or e.g. the equivalent type in ROCm.
   std::vector<void*> buffers;
   buffers.reserve(operands_.size() + results_.size());
@@ -107,7 +107,7 @@ Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
 #endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
-Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
+absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
   // TODO(ezhulenev): This is not the most optimal approach, as we'll be doing
   // a lot of extra allocation on every call. We have to keep attributes
   // separate from arguments, as they do not change after thunk is constructed.
@@ -145,7 +145,7 @@ Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
   return Call(handler_, call_frame, options);
 }
 
-Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   return handler_ ? ExecuteFfiHandler(params) : ExecuteCustomCall(params);
 }
 

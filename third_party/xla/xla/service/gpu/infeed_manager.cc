@@ -55,8 +55,8 @@ static StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
   return std::move(buffer);
 }
 
-Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                              const LiteralSlice& literal) {
+absl::Status InfeedManager::TransferLiteralToInfeed(
+    se::StreamExecutor* executor, const LiteralSlice& literal) {
   const Shape& literal_shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(literal_shape);
@@ -78,7 +78,7 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   // TODO(b/30467474): Since this stream is shared across different infeed
   // requests, blocking on the stream might be heavy-handed. Figure out if
   // finer-grained acknowledgement is possible.
-  Status block_status = stream()->BlockHostUntilDone();
+  absl::Status block_status = stream()->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
                          stream(), block_status.message());

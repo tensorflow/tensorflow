@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringSet.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_libdevice_path.h"
@@ -231,7 +233,7 @@ bool CouldNeedDeviceBitcode(const llvm::Module& module) {
 
 // Links the module with a vector of path to bitcode modules.
 // The caller must guarantee that the paths exist.
-Status LinkWithBitcodeVector(
+absl::Status LinkWithBitcodeVector(
     llvm::Module* module, const std::vector<std::string>& bitcode_path_vector) {
   llvm::Linker linker(*module);
 
@@ -262,10 +264,10 @@ Status LinkWithBitcodeVector(
   return absl::OkStatus();
 }
 
-Status NVPTXTargetModuleLinker(llvm::Module* module,
-                               se::GpuComputeCapability gpu_version,
-                               const DebugOptions& debug_options,
-                               const std::string& device_bitcode_path) {
+absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
+                                     se::GpuComputeCapability gpu_version,
+                                     const DebugOptions& debug_options,
+                                     const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
   TF_RETURN_IF_ERROR(
@@ -352,7 +354,7 @@ auto DumpCallbackForModule(std::string module_identifier,
   };
 }
 
-Status LinkAndOptimizeModule(
+absl::Status LinkAndOptimizeModule(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& device_bitcode_path,
     TargetModuleLinker module_linker, llvm::Triple default_target_triple,
@@ -535,8 +537,8 @@ std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
 }
 
 // Links libdevice into the given module if the module needs libdevice.
-Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                const std::string& libdevice_path) {
+absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                      const std::string& libdevice_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
     return absl::OkStatus();
   }
@@ -809,8 +811,9 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 }
 
 // Links ROCm-Device-Libs into the given module if the module needs it.
-Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
-                            const std::string& rocdl_dir_path) {
+absl::Status LinkROCDLIfNecessary(llvm::Module* module,
+                                  std::string gcn_arch_name,
+                                  const std::string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
     return absl::OkStatus();
   }
@@ -819,10 +822,10 @@ Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
                                GetROCDLPaths(gcn_arch_name, rocdl_dir_path));
 }
 
-Status AMDGPUTargetModuleLinker(llvm::Module* module,
-                                se::GpuComputeCapability gpu_version,
-                                const DebugOptions& debug_options,
-                                const std::string& device_bitcode_dir_path) {
+absl::Status AMDGPUTargetModuleLinker(
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options,
+    const std::string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
 
   auto compute_capability =

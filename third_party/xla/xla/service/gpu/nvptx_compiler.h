@@ -39,12 +39,12 @@ class NVPTXCompiler : public GpuCompiler {
  public:
   NVPTXCompiler();
 
-  Status OptimizeHloConvolutionCanonicalization(
+  absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  Status OptimizeHloPostLayoutAssignment(
+  absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override;
@@ -52,17 +52,17 @@ class NVPTXCompiler : public GpuCompiler {
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
-  Status AddConvAndGemmAutotuningPasses(
+  absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  Status AddTritonGemmAutotuningPasses(
+  absl::Status AddTritonGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  Status AddCustomKernelReplacementPasses(
+  absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;

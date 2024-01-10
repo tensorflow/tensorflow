@@ -98,7 +98,7 @@ class GpuCompiler : public LLVMCompiler {
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
 
-  Status RunPostSchedulingPipelines(
+  absl::Status RunPostSchedulingPipelines(
       HloModule* module, int64_t scheduler_mem_limit,
       const se::DeviceDescription& gpu_device_info) const;
 
@@ -115,7 +115,7 @@ class GpuCompiler : public LLVMCompiler {
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.
   // thread_pool is used to speed up compilation during autotuning.
-  virtual Status OptimizeHloPostLayoutAssignment(
+  virtual absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool);
@@ -132,21 +132,21 @@ class GpuCompiler : public LLVMCompiler {
   }
 
   // Add autotuning passes for convolution and gemm (except triton).
-  virtual Status AddConvAndGemmAutotuningPasses(
+  virtual absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return absl::OkStatus();
   }
 
   // Add autotuning passes for triton gemm.
-  virtual Status AddTritonGemmAutotuningPasses(
+  virtual absl::Status AddTritonGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return absl::OkStatus();
   }
 
   // Add passes that convert HLO operations to custom kernels.
-  virtual Status AddCustomKernelReplacementPasses(
+  virtual absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) {
     return absl::OkStatus();
   }
@@ -174,18 +174,19 @@ class GpuCompiler : public LLVMCompiler {
       llvm::Module* llvm_module, bool relocatable,
       const CompileOptions& options, std::optional<int> shard_number);
 
-  Status LoadAutotuneResultsFromFile(const DebugOptions& debug_options);
-  Status SerializeAutotuneResultsToFile(const DebugOptions& debug_options);
+  absl::Status LoadAutotuneResultsFromFile(const DebugOptions& debug_options);
+  absl::Status SerializeAutotuneResultsToFile(
+      const DebugOptions& debug_options);
 
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.
-  Status OptimizeHloModule(HloModule* hlo_module,
-                           se::StreamExecutor* stream_exec,
-                           const CompileOptions& options,
-                           const TargetConfig& gpu_target_config);
+  absl::Status OptimizeHloModule(HloModule* hlo_module,
+                                 se::StreamExecutor* stream_exec,
+                                 const CompileOptions& options,
+                                 const TargetConfig& gpu_target_config);
 
-  virtual Status OptimizeHloConvolutionCanonicalization(
+  virtual absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) = 0;
@@ -201,7 +202,7 @@ class GpuCompiler : public LLVMCompiler {
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) = 0;
 
-  Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
+  absl::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
   virtual StatusOr<bool> CanUseLinkModules(const HloModuleConfig& config) {
     return false;

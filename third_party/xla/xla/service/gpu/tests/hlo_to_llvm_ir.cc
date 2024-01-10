@@ -53,8 +53,8 @@ will be emitted and printed instead of the non-optimized LLVM.
 By default SM 70 is targeted. But this can be changed with `--sm=SM`.)";
 
 namespace {
-xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
-                                  bool generate_ptx, int sm) {
+absl::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
+                                   bool generate_ptx, int sm) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::HloModule> hlo_module,
       xla::LoadModuleFromData(/*data=*/hlo_text, /*format=*/"hlo"));
@@ -118,8 +118,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
   return absl::OkStatus();
 }
 
-xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
-                                          bool ptx, int sm) {
+absl::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
+                                           bool ptx, int sm) {
   std::string full_text;
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), file_name, &full_text));

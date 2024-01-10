@@ -42,7 +42,7 @@ namespace gpu {
 namespace {
 
 // Sort contracting dimensions of a dot() instruction preserving lhs-rhs pairs.
-Status SortDotDimensions(HloInstruction* dot) {
+absl::Status SortDotDimensions(HloInstruction* dot) {
   const DotDimensionNumbers& dims = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dims(dims);
   new_dims.clear_lhs_contracting_dimensions();

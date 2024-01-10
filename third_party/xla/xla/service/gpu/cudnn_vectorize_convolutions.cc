@@ -281,7 +281,8 @@ static ConvolutionDimensionNumbers VectorizeDnums(
 // Reorders the convolution's filter and bias (if present) according to
 // cudnnReorderFilterAndBias.  Also marks that the filter + bias are reordered
 // in the conv's backend-config.
-Status ReorderInt8NchwVect(HloCustomCallInstruction* conv, XlaOp* operands) {
+absl::Status ReorderInt8NchwVect(HloCustomCallInstruction* conv,
+                                 XlaOp* operands) {
   bool has_bias = conv->operand_count() > 2;
   VLOG(1) << "Reordering filter" << (has_bias ? " and bias" : "")
           << " (replacement for cudnnReorderFilterAndBias)";

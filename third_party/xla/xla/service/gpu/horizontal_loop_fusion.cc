@@ -63,9 +63,9 @@ class HorizontalLoopFusionImpl {
   StatusOr<bool> Run();
 
  private:
-  Status Fuse(absl::Span<HloInstruction*> fused_fusion_instrs,
-              bool sliced_input_fusion,
-              std::vector<HloInstruction*>& to_fuse_candidates);
+  absl::Status Fuse(absl::Span<HloInstruction*> fused_fusion_instrs,
+                    bool sliced_input_fusion,
+                    std::vector<HloInstruction*>& to_fuse_candidates);
 
   // If `sliced_input_fusion` is true, Horizontally fuses `fused_fusion_instrs`
   // into kInput computation, else fuses `fused_fusion_instrs` into kLoop
@@ -79,7 +79,7 @@ class HorizontalLoopFusionImpl {
   //
   // Returns the fused computation in `uniq_computation` and the operands that
   // are used by `uniq_computation`.
-  Status CreateFusedComputation(
+  absl::Status CreateFusedComputation(
       absl::Span<HloInstruction*> fused_fusion_instrs,
       std::unique_ptr<HloComputation>* uniq_computation,
       std::vector<HloInstruction*>* bound_operands, bool sliced_input_fusion);
@@ -438,7 +438,7 @@ StatusOr<bool> HorizontalLoopFusionImpl::FuseConsumerOperands(
   return changed;
 }
 
-Status HorizontalLoopFusionImpl::CreateFusedComputation(
+absl::Status HorizontalLoopFusionImpl::CreateFusedComputation(
     absl::Span<HloInstruction*> fused_fusion_instrs,
     std::unique_ptr<HloComputation>* uniq_computation,
     std::vector<HloInstruction*>* bound_operands, bool sliced_input_fusion) {
@@ -587,7 +587,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
   return absl::OkStatus();
 }
 
-Status HorizontalLoopFusionImpl::Fuse(
+absl::Status HorizontalLoopFusionImpl::Fuse(
     absl::Span<HloInstruction*> fused_fusion_instrs, bool sliced_input_fusion,
     std::vector<HloInstruction*>& to_fuse_candidates) {
   // Fuse fused_fusion_instrs and replace them with the new fused computation.

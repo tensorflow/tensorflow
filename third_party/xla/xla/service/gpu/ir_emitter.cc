@@ -47,7 +47,7 @@ IrEmitter::IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested)
       b_(module_->getContext()),
       bindings_(&b_, module_, is_nested) {}
 
-Status IrEmitter::DefaultAction(HloInstruction* hlo) {
+absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : hlo->operands()) {
     operand_to_generator[operand] = [=](const llvm_ir::IrArray::Index& index) {
@@ -60,11 +60,11 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
                 .MakeElementGenerator(hlo, operand_to_generator));
 }
 
-Status IrEmitter::HandleConstant(HloInstruction* constant) {
+absl::Status IrEmitter::HandleConstant(HloInstruction* constant) {
   return absl::OkStatus();
 }
 
-Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
+absl::Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   VLOG(2) << "HandleAddDependency: " << add_dependency->ToString();
   const HloInstruction* operand = add_dependency->operand(0);
   // Add_Dependency is a no-op, but we still want to bind it to an llvm::Value
@@ -76,7 +76,8 @@ Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   return absl::OkStatus();
 }
 
-Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
+absl::Status IrEmitter::HandleGetTupleElement(
+    HloInstruction* get_tuple_element) {
   auto operand = get_tuple_element->operand(0);
   CHECK(bindings_.BoundToIrValue(*operand));
   bindings_.BindHloToIrValue(
@@ -90,27 +91,27 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   return absl::OkStatus();
 }
 
-Status IrEmitter::HandleSend(HloInstruction*) {
+absl::Status IrEmitter::HandleSend(HloInstruction*) {
   return Unimplemented("Send is not implemented on GPU");
 }
 
-Status IrEmitter::HandleSendDone(HloInstruction*) {
+absl::Status IrEmitter::HandleSendDone(HloInstruction*) {
   return Unimplemented("Send-Done is not implemented on GPU");
 }
 
-Status IrEmitter::HandleRecv(HloInstruction*) {
+absl::Status IrEmitter::HandleRecv(HloInstruction*) {
   return Unimplemented("Recv is not implemented on GPU");
 }
 
-Status IrEmitter::HandleRecvDone(HloInstruction*) {
+absl::Status IrEmitter::HandleRecvDone(HloInstruction*) {
   return Unimplemented("Recv-done is not implemented on GPU");
 }
 
-Status IrEmitter::HandleScatter(HloInstruction*) {
+absl::Status IrEmitter::HandleScatter(HloInstruction*) {
   return Unimplemented("Scatter is not implemented on GPUs.");
 }
 
-Status IrEmitter::HandleTuple(HloInstruction* tuple) {
+absl::Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   std::vector<llvm::Value*> base_ptrs;
   for (const HloInstruction* operand : tuple->operands()) {
     base_ptrs.push_back(GetBasePointer(*operand));
@@ -150,7 +151,7 @@ std::pair<llvm::Value*, llvm::Value*> MultiplyComplex(llvm::Value* lhs_value,
 }
 }  // namespace
 
-Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
+absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
     return absl::OkStatus();
@@ -160,7 +161,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       "Hit a case for convolution that is not implemented on GPU.");
 }
 
-Status IrEmitter::HandleFft(HloInstruction* fft) {
+absl::Status IrEmitter::HandleFft(HloInstruction* fft) {
   if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
     return absl::OkStatus();
@@ -168,16 +169,16 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return Unimplemented("Hit a case for fft that is not implemented on GPU.");
 }
 
-Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
+absl::Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   return Unimplemented(
       "AllReduce cannot be nested inside of fusion, map, etc.");
 }
 
-Status IrEmitter::HandleParameter(HloInstruction* parameter) {
+absl::Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   return absl::OkStatus();
 }
 
-Status IrEmitter::HandleFusion(HloInstruction* fusion) {
+absl::Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   // kFusion for library calls should be handled by
   // IrEmitterUnnested::HandleFusion.
   CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
@@ -189,7 +190,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   return EmitTargetElementLoop(*fusion, generator);
 }
 
-Status IrEmitter::HandleCall(HloInstruction* call) {
+absl::Status IrEmitter::HandleCall(HloInstruction* call) {
   std::vector<llvm::Value*> operand_addresses;
   for (HloInstruction* operand : call->operands()) {
     operand_addresses.push_back(GetBasePointer(*operand));
@@ -198,35 +199,35 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
                                operand_addresses, GetBasePointer(*call));
 }
 
-Status IrEmitter::HandleCustomCall(HloInstruction*) {
+absl::Status IrEmitter::HandleCustomCall(HloInstruction*) {
   return Unimplemented("custom-call");
 }
 
-Status IrEmitter::HandleInfeed(HloInstruction*) {
+absl::Status IrEmitter::HandleInfeed(HloInstruction*) {
   // TODO(b/30467474): Implement infeed on GPU.
   return Unimplemented("Infeed is not supported on GPU.");
 }
 
-Status IrEmitter::HandleOutfeed(HloInstruction*) {
+absl::Status IrEmitter::HandleOutfeed(HloInstruction*) {
   // TODO(b/34359662): Implement outfeed on GPU.
   return Unimplemented("Outfeed is not supported on GPU.");
 }
 
-Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
+absl::Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormInference directly.  It "
       "should be lowered before IR emission to HLO-soup using "
       "BatchNormRewriter.");
 }
 
-Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
+absl::Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormTraining directly.  It "
       "should be lowered before IR emission to HLO-soup using "
       "BatchNormRewriter.");
 }
 
-Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
+absl::Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
   return Unimplemented(
       "The GPU backend does not implement BatchNormGrad directly.  It should "
       "be lowered before IR emission to HLO-soup using BatchNormRewriter.");

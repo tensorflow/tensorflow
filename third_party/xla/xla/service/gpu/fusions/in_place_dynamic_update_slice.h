@@ -74,12 +74,12 @@ class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
   }
 
  protected:
-  Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    const HloFusionInstruction& fusion,
-                    const LaunchDimensions& launch_dims,
-                    std::vector<llvm_ir::IrArray> inputs,
-                    std::vector<llvm_ir::IrArray> outputs,
-                    llvm::IRBuilder<>* builder) const override;
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 
   const HloFusionAnalysis& analysis_;
   std::vector<const HloInstruction*> dus_ops_;

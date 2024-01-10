@@ -538,10 +538,9 @@ void SetInstructionMetadata(HloModule* module) {
 }  // namespace
 
 // Runs optimization passes on the given HLO module.
-Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
-                                      se::StreamExecutor* stream_exec,
-                                      const CompileOptions& options,
-                                      const TargetConfig& gpu_target_config) {
+absl::Status GpuCompiler::OptimizeHloModule(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    const CompileOptions& options, const TargetConfig& gpu_target_config) {
   CHECK(!hlo_module->has_schedule())
       << "\nThe current HLO module " << hlo_module->name()
       << " is scheduled and optimized. \n"
@@ -1158,13 +1157,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
+absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   return PrepareHloModuleForIrEmittingPipeline(*hlo_module, GetCanShareBuffer())
       .Run(hlo_module)
       .status();
 }
 
-Status GpuCompiler::OptimizeHloPostLayoutAssignment(
+absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
@@ -1425,7 +1424,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 }
 
 namespace {
-Status RunPostSchedulingCopyInsertion(
+absl::Status RunPostSchedulingCopyInsertion(
     HloModule* module,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
   // We run a separate pass of copy elision here because the sequential ordering
@@ -2014,7 +2013,7 @@ StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
   }
 }
 
-Status GpuCompiler::RunPostSchedulingPipelines(
+absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit,
     const se::DeviceDescription& gpu_device_info) const {
   TF_RETURN_IF_ERROR(
@@ -2083,14 +2082,14 @@ Status GpuCompiler::RunPostSchedulingPipelines(
   return absl::OkStatus();
 }
 
-Status GpuCompiler::LoadAutotuneResultsFromFile(
+absl::Status GpuCompiler::LoadAutotuneResultsFromFile(
     const DebugOptions& debug_options) {
   // We are doing this before the timer is started.
   if (absl::string_view file_path =
           debug_options.xla_gpu_load_autotune_results_from();
       !file_path.empty()) {
     static absl::once_flag once;
-    Status status = absl::OkStatus();
+    absl::Status status = absl::OkStatus();
     absl::call_once(once, [&file_path, &status] {
       status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
     });
@@ -2099,7 +2098,7 @@ Status GpuCompiler::LoadAutotuneResultsFromFile(
   return absl::OkStatus();
 }
 
-Status GpuCompiler::SerializeAutotuneResultsToFile(
+absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
     const DebugOptions& debug_options) {
   // We are doing this after the timer is finished.
   if (absl::string_view file_path =

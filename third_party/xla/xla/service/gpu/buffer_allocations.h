@@ -61,12 +61,12 @@ class BufferAllocations {
 
     // Adds an external allocation for a given buffer index. Returns error if
     // allocation already exists.
-    virtual Status AddAllocation(BufferAllocation::Index index,
-                                 se::DeviceMemoryBase memory) = 0;
+    virtual absl::Status AddAllocation(BufferAllocation::Index index,
+                                       se::DeviceMemoryBase memory) = 0;
 
     // Erases an external allocation for a given buffer index. Returns error if
     // allocation does not exists.
-    virtual Status EraseAllocation(BufferAllocation::Index index) = 0;
+    virtual absl::Status EraseAllocation(BufferAllocation::Index index) = 0;
   };
 
   BufferAllocations(absl::Span<se::DeviceMemoryBase const> buffers,
@@ -104,16 +104,16 @@ class BufferAllocations {
       const BufferAllocation::Slice& buffer_slice) const;
 
   // Add new allocation allocated by external allocator.
-  Status AddExternalAllocation(BufferAllocation::Index index,
-                               se::DeviceMemoryBase memory) const;
+  absl::Status AddExternalAllocation(BufferAllocation::Index index,
+                                     se::DeviceMemoryBase memory) const;
 
   // Remove allocation freed by external allocator.
-  Status EraseExternalAllocation(BufferAllocation::Index index) const;
+  absl::Status EraseExternalAllocation(BufferAllocation::Index index) const;
 
   // Tears down all buffers allocated by this object that are not in
   // `live_addresses`.
-  Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
-                  absl::Span<const BufferAllocation> allocations);
+  absl::Status TearDown(const std::set<se::DeviceMemoryBase>& live_addresses,
+                        absl::Span<const BufferAllocation> allocations);
 
   std::string ToString() const {
     std::string out;

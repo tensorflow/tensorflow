@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout_util.h"
 #include "xla/stream_executor/kernel.h"
@@ -336,9 +337,10 @@ StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   return std::move(kernel_base);
 }
 
-Status ExecuteKernelOnStream(const se::Kernel& kernel,
-                             absl::Span<const se::DeviceMemoryBase> args,
-                             const LaunchDimensions& dims, se::Stream* stream) {
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
       se::PackKernelArgs(args, kernel.metadata()));

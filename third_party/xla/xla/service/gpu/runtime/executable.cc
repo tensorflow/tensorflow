@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/runtime/executable.h"
 #include "xla/runtime/jit_executable.h"
@@ -312,7 +313,7 @@ static void InitializeCallFrame(runtime::Executable::CallFrame& call_frame,
   }
 }
 
-Status GpuRuntimeExecutable::Execute(
+absl::Status GpuRuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,

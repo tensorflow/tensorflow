@@ -309,7 +309,7 @@ void PrintPlatformInfo(const se::Stream* stream) {
 // If the redzones are modified, logs an error, sets the appropriate failure
 // bits on `result`, and returns false.
 //
-// Returns a status if an unexpected error has occurred, and the stream
+// Returns a absl::Status if an unexpected error has occurred, and the stream
 // has been poisoned.
 //
 // `name` is a user-friendly name for the set of redzones being checked, e.g.
@@ -601,7 +601,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // https://github.com/NVIDIA/cudnn-frontend/blob/60496f42fdc7a4ccc059f5934e306e728a756755/include/cudnn_frontend_find_plan.h
   float max_time = 0;
   float min_time = std::numeric_limits<float>::max();
-  Status launch_status;
+  absl::Status launch_status;
   std::vector<se::DeviceMemoryBase> operand_buffers =
       runtime_arguments.operand_buffers;
   std::vector<se::DeviceMemoryBase> result_buffers =
@@ -1033,7 +1033,7 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       RunConvOptions options;
       options.profile_result = &profile_result;
       options.runner_cache = &runner_cache;
-      Status launch_status =
+      absl::Status launch_status =
           RunGpuConv(config, absl::MakeSpan(operand_buffers), result_buffers,
                      scratch_memory, stream, options);
 

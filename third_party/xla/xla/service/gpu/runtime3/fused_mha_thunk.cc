@@ -63,7 +63,7 @@ std::optional<se::DeviceMemoryBase> AssignBufferIfNotNull(
              : std::nullopt;
 }
 
-Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
   se::DeviceMemoryBase lhs_bmm1_buffer =
       buffer_allocations.GetDeviceAddress(lhs_bmm1_buffer_);
@@ -141,7 +141,8 @@ FusedMHABackwardThunk::GetOrCreateRunner(
   return *it->second;
 }
 
-Status FusedMHABackwardThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status FusedMHABackwardThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
   se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer =
       buffer_allocations.GetDeviceAddress(bmm1_grad_gemm1_rhs_buffer_);

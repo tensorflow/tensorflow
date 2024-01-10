@@ -98,7 +98,7 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
   return should_update;
 }
 
-Status CommandBufferThunk::Initialize(const InitializeParams& params) {
+absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) return absl::OkStatus();
@@ -148,7 +148,7 @@ Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) return absl::OkStatus();

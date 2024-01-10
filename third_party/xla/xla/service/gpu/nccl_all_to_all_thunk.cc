@@ -45,7 +45,7 @@ NcclAllToAllConfig GetNcclAllToAllConfig(AllToAllStartOp op) {
   return config;
 }
 
-Status CheckImplementable(AllToAllStartOp op) {
+absl::Status CheckImplementable(AllToAllStartOp op) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   std::optional<uint64_t> split_dim = op.getSplitDimension();
   for (mlir::Value operand : op.getInputs()) {
@@ -72,7 +72,7 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
-/*static*/ Status NcclAllToAllStartThunk::CheckImplementable(
+/*static*/ absl::Status NcclAllToAllStartThunk::CheckImplementable(
     AllToAllStartOp op, int64_t replica_count, int64_t partition_count) {
   return AddOpDescription<NcclAllToAllStartThunk>(
       impl::CheckImplementable(op), op, replica_count, partition_count);
@@ -83,9 +83,8 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
   return impl::GetNcclAllToAllConfig(op).config.group_mode;
 }
 
-Status NcclAllToAllStartThunk::RunNcclCollective(const ExecuteParams& params,
-                                                 se::Stream& stream,
-                                                 ncclComm_t comm) {
+absl::Status NcclAllToAllStartThunk::RunNcclCollective(
+    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -94,9 +93,9 @@ Status NcclAllToAllStartThunk::RunNcclCollective(const ExecuteParams& params,
                                stream, comm);
 }
 
-Status RunAllToAll(bool has_split_dimension,
-                   std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-                   ncclComm_t comm) {
+absl::Status RunAllToAll(bool has_split_dimension,
+                         std::vector<DeviceBufferPair>& buffers,
+                         se::Stream& stream, ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;

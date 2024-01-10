@@ -124,12 +124,12 @@ TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
       tiling_scheme_(ComputeTransposeTilingScheme(analysis.tiled_transpose())) {
 }
 
-Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
-                                   const HloFusionInstruction& fusion,
-                                   const LaunchDimensions& launch_dims,
-                                   std::vector<llvm_ir::IrArray> inputs,
-                                   std::vector<llvm_ir::IrArray> outputs,
-                                   llvm::IRBuilder<>* builder) const {
+absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                         const HloFusionInstruction& fusion,
+                                         const LaunchDimensions& launch_dims,
+                                         std::vector<llvm_ir::IrArray> inputs,
+                                         std::vector<llvm_ir::IrArray> outputs,
+                                         llvm::IRBuilder<>* builder) const {
   const auto& hlo_roots = analysis_.fusion_roots();
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   FusedIrEmitter fused_emitter(elemental_emitter);

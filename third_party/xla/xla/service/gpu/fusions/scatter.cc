@@ -53,12 +53,12 @@ LaunchDimensions ScatterFusion::launch_dimensions() const {
   return CalculateLaunchDimensions(updates_shape, analysis_.device_info());
 }
 
-Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
-                                 const HloFusionInstruction& fusion,
-                                 const LaunchDimensions& launch_dims,
-                                 std::vector<llvm_ir::IrArray> inputs,
-                                 std::vector<llvm_ir::IrArray> outputs,
-                                 llvm::IRBuilder<>* builder) const {
+absl::Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
+                                       const HloFusionInstruction& fusion,
+                                       const LaunchDimensions& launch_dims,
+                                       std::vector<llvm_ir::IrArray> inputs,
+                                       std::vector<llvm_ir::IrArray> outputs,
+                                       llvm::IRBuilder<>* builder) const {
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   // Spin up a new fused emitter for the scatter kernel and emit it.
   FusedIrEmitter scatter_fused_emitter(elemental_emitter);
@@ -88,7 +88,8 @@ Status ScatterFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
   TF_ASSIGN_OR_RETURN(auto updates_gen,
                       scatter_fused_emitter.GetGenerator(*root->operand(2)));
 
-  auto loop_body_emitter = [&](const llvm_ir::IrArray::Index& index) -> Status {
+  auto loop_body_emitter =
+      [&](const llvm_ir::IrArray::Index& index) -> absl::Status {
     std::vector<llvm::Value*> raw_window_multidim;
     std::vector<llvm::Value*> input_scatter_multidim;
     std::vector<int64_t> raw_window_bounds;

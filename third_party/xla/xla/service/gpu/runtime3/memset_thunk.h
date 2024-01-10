@@ -36,7 +36,7 @@ class MemzeroThunk : public Thunk {
         dest_(dest),
         dest_value_(dest_value) {}
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ClearCompileTimeInfo() override {
     Thunk::ClearCompileTimeInfo();
@@ -63,7 +63,7 @@ class Memset32BitValueThunk : public Thunk {
         dest_(dest),
         dest_value_(dest_value) {}
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ClearCompileTimeInfo() override {
     Thunk::ClearCompileTimeInfo();

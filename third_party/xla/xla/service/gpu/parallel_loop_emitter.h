@@ -56,8 +56,8 @@ class ParallelLoopEmitter {
       absl::string_view loop_name, llvm::Type* index_type,
       llvm::Value* base_index);
 
-  Status EmitLoop(absl::string_view loop_name = "",
-                  llvm::Type* index_type = nullptr);
+  absl::Status EmitLoop(absl::string_view loop_name = "",
+                        llvm::Type* index_type = nullptr);
 
  private:
   struct LinearBaseAndThreadIdx {
@@ -67,8 +67,9 @@ class ParallelLoopEmitter {
 
   LinearBaseAndThreadIdx EmitLinearBaseAndThreadIdx(llvm::Type* index_type,
                                                     llvm::Value* base_index);
-  Status EmitSerialLoop(absl::string_view loop_name, llvm::Type* index_type,
-                        llvm::Value* base_indvar = nullptr);
+  absl::Status EmitSerialLoop(absl::string_view loop_name,
+                              llvm::Type* index_type,
+                              llvm::Value* base_indvar = nullptr);
 
   // The thread and block dimension to parallelize the loop on.
   const LaunchDimensions launch_dimensions_;

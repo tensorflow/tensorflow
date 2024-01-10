@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/xla_data.pb.h"
@@ -45,9 +47,9 @@ namespace gpu {
 using mlir::lmhlo_gpu::AllReduceStartOp;
 using mlir::lmhlo_gpu::ReduceScatterStartOp;
 
-Status RunAllReduce(ReductionKind reduction_kind,
-                    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-                    ncclComm_t comm) {
+absl::Status RunAllReduce(ReductionKind reduction_kind,
+                          std::vector<DeviceBufferPair>& buffers,
+                          se::Stream& stream, ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
@@ -138,8 +140,8 @@ StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
 
 namespace impl {
 
-Status CheckImplementableInst(const HloInstruction* inst,
-                              Thunk::Kind reduction_op) {
+absl::Status CheckImplementableInst(const HloInstruction* inst,
+                                    Thunk::Kind reduction_op) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
 
   for (HloInstruction* operand : inst->operands()) {
@@ -155,7 +157,7 @@ Status CheckImplementableInst(const HloInstruction* inst,
 }
 
 template <typename OpT>
-Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
+absl::Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   for (mlir::Value operand : op.getInputs()) {
     TF_RETURN_IF_ERROR(IsValidOperand(operand, reduction_op));
@@ -275,15 +277,14 @@ NcclAllReduceStartThunk::NcclAllReduceStartThunk(
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<CollectiveBackendConfig>()->is_sync()) {}
 
-Status NcclAllReduceStartThunk::CheckImplementable(AllReduceStartOp op,
-                                                   int64_t replica_count,
-                                                   int64_t partition_count) {
+absl::Status NcclAllReduceStartThunk::CheckImplementable(
+    AllReduceStartOp op, int64_t replica_count, int64_t partition_count) {
   return AddOpDescription<NcclAllReduceStartThunk>(
       impl::CheckImplementable(op, Thunk::kNcclAllReduceStart), op,
       replica_count, partition_count);
 }
 
-Status NcclAllReduceStartThunk::CheckImplementable(
+absl::Status NcclAllReduceStartThunk::CheckImplementable(
     const HloAllReduceInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
   return AddOpDescription<NcclAllReduceStartThunk>(
@@ -301,9 +302,8 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
   return impl::GetGroupModeInst(inst);
 }
 
-Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
-                                                  se::Stream& stream,
-                                                  ncclComm_t comm) {
+absl::Status NcclAllReduceStartThunk::RunNcclCollective(
+    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -328,14 +328,14 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<CollectiveBackendConfig>()->is_sync()) {}
 
-/*static*/ Status NcclReduceScatterStartThunk::CheckImplementable(
+/*static*/ absl::Status NcclReduceScatterStartThunk::CheckImplementable(
     ReduceScatterStartOp op, int64_t replica_count, int64_t partition_count) {
   return AddOpDescription<NcclReduceScatterStartThunk>(
       impl::CheckImplementable(op, Thunk::kNcclReduceScatterStart), op,
       replica_count, partition_count);
 }
 
-/*static*/ Status NcclReduceScatterStartThunk::CheckImplementable(
+/*static*/ absl::Status NcclReduceScatterStartThunk::CheckImplementable(
     const HloReduceScatterInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
   return AddOpDescription<NcclReduceScatterStartThunk>(
@@ -353,7 +353,7 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
   return impl::GetGroupModeInst(inst);
 }
 
-Status NcclReduceScatterStartThunk::RunNcclCollective(
+absl::Status NcclReduceScatterStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
@@ -363,9 +363,9 @@ Status NcclReduceScatterStartThunk::RunNcclCollective(
                                       stream, comm);
 }
 
-Status RunReduceScatter(ReductionKind reduction_kind,
-                        std::vector<DeviceBufferPair>& buffers,
-                        se::Stream& stream, ncclComm_t comm) {
+absl::Status RunReduceScatter(ReductionKind reduction_kind,
+                              std::vector<DeviceBufferPair>& buffers,
+                              se::Stream& stream, ncclComm_t comm) {
 #if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -84,7 +85,7 @@ NcclP2PConfig GetNcclP2PConfig(CollectivePermuteStartOp op,
   return collective_permute_config;
 }
 
-Status CheckImplementable(CollectivePermuteStartOp op) {
+absl::Status CheckImplementable(CollectivePermuteStartOp op) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
 }
@@ -105,7 +106,7 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
   return impl::GetNcclP2PConfig(op, replica_count, partition_count);
 }
 
-/*static*/ Status NcclCollectivePermuteStartThunk::CheckImplementable(
+/*static*/ absl::Status NcclCollectivePermuteStartThunk::CheckImplementable(
     CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
   return AddOpDescription<NcclCollectivePermuteStartThunk>(
@@ -136,7 +137,7 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
   return impl::GetGroupMode(op);
 }
 
-Status NcclCollectivePermuteStartThunk::RunNcclCollective(
+absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
@@ -163,10 +164,10 @@ Status NcclCollectivePermuteStartThunk::RunNcclCollective(
                                           current_id);
 }
 
-Status RunCollectivePermute(NcclP2PConfig::SourceTargetMapEntry source_target,
-                            DeviceBufferPair& buffer, se::Stream& stream,
-                            ncclComm_t comm, absl::string_view device_string,
-                            int64_t current_id) {
+absl::Status RunCollectivePermute(
+    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
+    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
+    int64_t current_id) {
 #if XLA_ENABLE_XCCL
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -151,7 +152,7 @@ bool FusionContext::CombineDimOrdersAndReqs(const DimOrdersAndReqs& update) {
   return true;
 }
 
-Status FusionContext::PropagateDimensionOrdersToParameters(
+absl::Status FusionContext::PropagateDimensionOrdersToParameters(
     const HloInstruction& origin, ConstHloInstructionSet& parameters,
     ConstHloInstructionMap<TensorIterationSpec>& iter_specs) {
   absl::flat_hash_set<const HloInstruction*> visited;
@@ -209,7 +210,7 @@ StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
   return analysis;
 }
 
-Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
+absl::Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
     const HloInstruction& root) {
   auto context = FusionContext::FromSoftmaxRoot(root);
   // Softmax fusion uses one tiled scope.
@@ -220,8 +221,8 @@ Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
   return absl::OkStatus();
 }
 
-Status TritonFusionAnalysis::ExecuteForDotFusion(const HloInstruction& dot,
-                                                 const int split_k) {
+absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
+    const HloInstruction& dot, const int split_k) {
   DotRequirements lhs_requirements(kNoSplitRequirement);
   for (const Scope scope : {Scope::LHS, Scope::RHS}) {
     const int operand_number = static_cast<int>(scope);

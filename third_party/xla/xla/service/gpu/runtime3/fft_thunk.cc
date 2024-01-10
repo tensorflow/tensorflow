@@ -83,7 +83,7 @@ FftThunk::FftThunk(ThunkInfo thunk_info, FftType fft_type,
       input_shape_(input_shape),
       output_shape_(output_shape) {}
 
-Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
 
   return RunFft(
@@ -93,11 +93,12 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
       &fft_plan_cache_, params.stream, buffer_allocations.memory_allocator());
 }
 
-Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
-              se::DeviceMemoryBase output, const Shape& output_shape,
-              se::fft::Type fft_type, absl::Span<const int64_t> fft_len,
-              int device_ordinal, FftPlanCache* fft_plan_cache,
-              se::Stream* stream, se::DeviceMemoryAllocator* memory_allocator) {
+absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
+                    se::DeviceMemoryBase output, const Shape& output_shape,
+                    se::fft::Type fft_type, absl::Span<const int64_t> fft_len,
+                    int device_ordinal, FftPlanCache* fft_plan_cache,
+                    se::Stream* stream,
+                    se::DeviceMemoryAllocator* memory_allocator) {
   VLOG(3) << "FFT type: " << FftTypeToString(fft_type);
   VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
   VLOG(3) << "Output shape: " << ShapeUtil::HumanStringWithLayout(output_shape);

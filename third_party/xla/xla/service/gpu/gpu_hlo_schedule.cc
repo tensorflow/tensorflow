@@ -545,7 +545,7 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
                                          const std::string& binary_path)
       -> std::optional<tensorflow::profiler::ProfiledInstructionsProto> {
     if (env->FileExists(text_path).ok()) {
-      Status s = tsl::ReadTextProto(env, text_path, &profile);
+      absl::Status s = tsl::ReadTextProto(env, text_path, &profile);
       if (s.ok()) {
         LOG(INFO) << "Using PGLE profile from " << text_path;
         return GetProfileForFingerprint(profile, fingerprint);
@@ -556,7 +556,7 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
       profile.Clear();
     }
     if (env->FileExists(binary_path).ok()) {
-      Status s = tsl::ReadBinaryProto(env, binary_path, &profile);
+      absl::Status s = tsl::ReadBinaryProto(env, binary_path, &profile);
       if (s.ok()) {
         LOG(INFO) << "Using PGLE profile from " << binary_path;
         return GetProfileForFingerprint(profile, fingerprint);
@@ -594,7 +594,7 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
 
 // Return true if the profile is applicable to the module. That is true if every
 // instruction in the profile is present in the module.
-Status IsProfileApplicable(
+absl::Status IsProfileApplicable(
     const HloModule* module,
     const tensorflow::profiler::ProfiledInstructionsProto& profile) {
   absl::flat_hash_set<absl::string_view> instruction_names;
@@ -636,9 +636,9 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   return size + metadata_size;
 }
 
-Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                         int64_t memory_limit,
-                         const se::DeviceDescription& gpu_device_info) {
+absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
+                               int64_t memory_limit,
+                               const se::DeviceDescription& gpu_device_info) {
   if (module->has_schedule()) {
     return absl::OkStatus();
   }
@@ -686,7 +686,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
     latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value());
     LOG(INFO) << "Found profile, using profile guided latency estimator";
-    Status s = IsProfileApplicable(module, profile.value());
+    absl::Status s = IsProfileApplicable(module, profile.value());
     if (!s.ok()) {
       LOG(INFO) << "PGLE profile may not applicable to the module, but will "
                    "still be used : "

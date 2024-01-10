@@ -40,11 +40,11 @@ namespace gpu {
 //   - N pointers to the buffers of each of the N parameters to the computation,
 //   - a pointer to the output buffer of the computation, and
 //   - a pointer to the top-level temp buffer.
-Status CallNestedComputation(llvm::IRBuilder<>* builder,
-                             IrEmitterContext& ir_emitter_context,
-                             const HloComputation& computation,
-                             absl::Span<llvm::Value* const> operands,
-                             llvm::Value* output);
+absl::Status CallNestedComputation(llvm::IRBuilder<>* builder,
+                                   IrEmitterContext& ir_emitter_context,
+                                   const HloComputation& computation,
+                                   absl::Span<llvm::Value* const> operands,
+                                   llvm::Value* output);
 
 // Like CallNestedComputation, but parameters and results are scalars.
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
@@ -67,7 +67,7 @@ StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
 // will, otherwise it will be emitted as a compare-and-swap and a loop.
 //
 // The computation must have exactly two parameters.
-Status EmitAtomicOperationForNestedComputation(
+absl::Status EmitAtomicOperationForNestedComputation(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation, llvm::Value* output_address,
     llvm::Value* source_address, llvm::Type* element_type);

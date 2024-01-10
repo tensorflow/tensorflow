@@ -50,12 +50,13 @@ class CubSortKeysImpl : public CubSortRunnerInterface {
   explicit CubSortKeysImpl(SortKeysFn sort_keys_fn, PrimitiveType type)
       : sort_keys_fn_(sort_keys_fn), type_(type) {}
 
-  Status Run(se::DeviceMemoryBase input_keys, se::DeviceMemoryBase input_values,
-             se::DeviceMemoryBase output_keys,
-             se::DeviceMemoryBase output_values, se::DeviceMemoryBase scratch,
-             bool descending) override;
-  Status Run(const Thunk::ExecuteParams& params,
-             const CubSortThunk* thunk) override;
+  absl::Status Run(se::DeviceMemoryBase input_keys,
+                   se::DeviceMemoryBase input_values,
+                   se::DeviceMemoryBase output_keys,
+                   se::DeviceMemoryBase output_values,
+                   se::DeviceMemoryBase scratch, bool descending) override;
+  absl::Status Run(const Thunk::ExecuteParams& params,
+                   const CubSortThunk* thunk) override;
   StatusOr<int64_t> GetScratchSize(int64_t num_items) override;
 
  private:
@@ -63,11 +64,12 @@ class CubSortKeysImpl : public CubSortRunnerInterface {
   PrimitiveType type_;
 };
 
-Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
-                            se::DeviceMemoryBase input_values,
-                            se::DeviceMemoryBase output_keys,
-                            se::DeviceMemoryBase output_values,
-                            se::DeviceMemoryBase scratch, bool descending) {
+absl::Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
+                                  se::DeviceMemoryBase input_values,
+                                  se::DeviceMemoryBase output_keys,
+                                  se::DeviceMemoryBase output_values,
+                                  se::DeviceMemoryBase scratch,
+                                  bool descending) {
   size_t temp_bytes = scratch.size();
   size_t num_items = input_keys.size() * 8 / primitive_util::BitWidth(type_);
   CHECK(input_values.is_null());
@@ -82,8 +84,8 @@ Status CubSortKeysImpl::Run(se::DeviceMemoryBase input_keys,
   return absl::OkStatus();
 }
 
-Status CubSortKeysImpl::Run(const Thunk::ExecuteParams& params,
-                            const CubSortThunk* thunk) {
+absl::Status CubSortKeysImpl::Run(const Thunk::ExecuteParams& params,
+                                  const CubSortThunk* thunk) {
   const BufferAllocations& allocs = *params.buffer_allocations;
   return Run(allocs.GetDeviceAddress(thunk->operand(0)), se::DeviceMemoryBase(),
              allocs.GetDeviceAddress(thunk->result(0)), se::DeviceMemoryBase(),
@@ -110,12 +112,13 @@ class CubSortPairsImpl : public CubSortRunnerInterface {
   explicit CubSortPairsImpl(SortPairsFn sort_pairs_fn, PrimitiveType type)
       : sort_pairs_fn_(sort_pairs_fn), type_(type) {}
 
-  Status Run(se::DeviceMemoryBase input_keys, se::DeviceMemoryBase input_values,
-             se::DeviceMemoryBase output_keys,
-             se::DeviceMemoryBase output_values, se::DeviceMemoryBase scratch,
-             bool descending) override;
-  Status Run(const Thunk::ExecuteParams& params,
-             const CubSortThunk* thunk) override;
+  absl::Status Run(se::DeviceMemoryBase input_keys,
+                   se::DeviceMemoryBase input_values,
+                   se::DeviceMemoryBase output_keys,
+                   se::DeviceMemoryBase output_values,
+                   se::DeviceMemoryBase scratch, bool descending) override;
+  absl::Status Run(const Thunk::ExecuteParams& params,
+                   const CubSortThunk* thunk) override;
   StatusOr<int64_t> GetScratchSize(int64_t num_items) override;
 
  private:
@@ -123,11 +126,12 @@ class CubSortPairsImpl : public CubSortRunnerInterface {
   PrimitiveType type_;
 };
 
-Status CubSortPairsImpl::Run(se::DeviceMemoryBase input_keys,
-                             se::DeviceMemoryBase input_values,
-                             se::DeviceMemoryBase output_keys,
-                             se::DeviceMemoryBase output_values,
-                             se::DeviceMemoryBase scratch, bool descending) {
+absl::Status CubSortPairsImpl::Run(se::DeviceMemoryBase input_keys,
+                                   se::DeviceMemoryBase input_values,
+                                   se::DeviceMemoryBase output_keys,
+                                   se::DeviceMemoryBase output_values,
+                                   se::DeviceMemoryBase scratch,
+                                   bool descending) {
   size_t temp_bytes = scratch.size();
   size_t num_items = input_keys.size() * 8 / primitive_util::BitWidth(type_);
   const char* error = sort_pairs_fn_(
@@ -140,8 +144,8 @@ Status CubSortPairsImpl::Run(se::DeviceMemoryBase input_keys,
   return absl::OkStatus();
 }
 
-Status CubSortPairsImpl::Run(const Thunk::ExecuteParams& params,
-                             const CubSortThunk* thunk) {
+absl::Status CubSortPairsImpl::Run(const Thunk::ExecuteParams& params,
+                                   const CubSortThunk* thunk) {
   const BufferAllocations& allocs = *params.buffer_allocations;
   return Run(allocs.GetDeviceAddress(thunk->operand(0)),
              allocs.GetDeviceAddress(thunk->operand(1)),
@@ -256,12 +260,13 @@ CubSortThunk::CubSortThunk(ThunkInfo thunk_info, PrimitiveType type,
       scratch_(scratch),
       descending_(descending) {}
 
-Status RunCubSort(PrimitiveType type, std::optional<PrimitiveType> value_type,
-                  se::DeviceMemoryBase input_keys,
-                  se::DeviceMemoryBase input_values,
-                  se::DeviceMemoryBase output_keys,
-                  se::DeviceMemoryBase output_values,
-                  se::DeviceMemoryBase scratch, bool descending) {
+absl::Status RunCubSort(PrimitiveType type,
+                        std::optional<PrimitiveType> value_type,
+                        se::DeviceMemoryBase input_keys,
+                        se::DeviceMemoryBase input_values,
+                        se::DeviceMemoryBase output_keys,
+                        se::DeviceMemoryBase output_values,
+                        se::DeviceMemoryBase scratch, bool descending) {
   auto runner = CubSortRunnerInterface::Create(type, value_type).value();
   return runner->Run(input_keys, input_values, output_keys, output_values,
                      scratch, descending);

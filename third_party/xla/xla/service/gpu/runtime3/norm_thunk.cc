@@ -54,7 +54,7 @@ NormRunner& NormThunk::GetOrCreateRunner(
   return *it->second;
 }
 
-Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
   se::DeviceMemoryBase input_se_buffer =

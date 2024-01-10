@@ -47,8 +47,8 @@ std::string GetGpuPlatformName() {
       PlatformUtil::CanonicalPlatformName("gpu").value());
 }
 
-Status AssertOnGpu(void* stream_handle, void* buffer,
-                   absl::string_view error_msg) {
+absl::Status AssertOnGpu(void* stream_handle, void* buffer,
+                         absl::string_view error_msg) {
   TF_ASSIGN_OR_RETURN(
       se::Platform * platform,
       se::MultiPlatformManager::PlatformWithName(GetGpuPlatformName()));
@@ -78,7 +78,7 @@ Status AssertOnGpu(void* stream_handle, void* buffer,
 void AssertionCustomCall(void* stream_handle, void** buffers,
                          const char* opaque, int opaque_len,
                          XlaCustomCallStatus* status) {
-  Status s =
+  absl::Status s =
       AssertOnGpu(stream_handle, buffers[0],
                   absl::string_view{opaque, static_cast<uint64_t>(opaque_len)});
   if (!s.ok()) {

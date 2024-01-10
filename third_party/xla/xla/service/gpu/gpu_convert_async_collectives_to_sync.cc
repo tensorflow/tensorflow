@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
+absl::Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
     HloComputation* computation,
     absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs)
     const {

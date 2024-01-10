@@ -20,7 +20,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-Status ReplicaOrPartitionIdThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status ReplicaOrPartitionIdThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
   auto dest_addr = params.buffer_allocations->GetDeviceAddress(dest_);
 
   TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,

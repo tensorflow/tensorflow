@@ -33,7 +33,7 @@ class OutfeedThunk : public Thunk {
   OutfeedThunk(const OutfeedThunk&) = delete;
   OutfeedThunk& operator=(const OutfeedThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const std::vector<ShapedSlice> source_slices_;

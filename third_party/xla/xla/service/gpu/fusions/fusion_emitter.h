@@ -112,12 +112,12 @@ class KernelFusionEmitterBase : public KernelFusionInterface {
     return FusionEmissionResult{};
   }
 
-  virtual Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                            const HloFusionInstruction& fusion,
-                            const LaunchDimensions& launch_dims,
-                            std::vector<llvm_ir::IrArray> inputs,
-                            std::vector<llvm_ir::IrArray> outputs,
-                            llvm::IRBuilder<>* builder) const = 0;
+  virtual absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                                  const HloFusionInstruction& fusion,
+                                  const LaunchDimensions& launch_dims,
+                                  std::vector<llvm_ir::IrArray> inputs,
+                                  std::vector<llvm_ir::IrArray> outputs,
+                                  llvm::IRBuilder<>* builder) const = 0;
 };
 
 StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,

@@ -44,9 +44,10 @@ namespace make_batch_pointers {
 void* kernel();  // returns a pointer to a CUDA C++ device function
 }  // namespace make_batch_pointers
 
-Status MakeBatchPointers(se::Stream* stream, se::DeviceMemoryBase base_ptr,
-                         size_t stride_bytes, size_t n,
-                         se::DeviceMemoryBase ptrs_out) {
+absl::Status MakeBatchPointers(se::Stream* stream,
+                               se::DeviceMemoryBase base_ptr,
+                               size_t stride_bytes, size_t n,
+                               se::DeviceMemoryBase ptrs_out) {
   static constexpr size_t kThreads = 128;
 
   se::StreamExecutor* executor = stream->parent();

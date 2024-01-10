@@ -37,13 +37,13 @@ WhileThunk::WhileThunk(
       body_thunk_sequence_(std::make_unique<SequentialThunk>(
           ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
 
-Status WhileThunk::Initialize(const InitializeParams& params) {
+absl::Status WhileThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(params));
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
   return absl::OkStatus();
 }
 
-Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
   se::DeviceMemoryBase condition_result_data =
@@ -59,7 +59,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     bool condition_result;
     stream.ThenMemcpy(&condition_result, condition_result_data, sizeof(bool));
     VLOG(3) << "condition_result = " << condition_result;
-    Status block_status = stream.BlockHostUntilDone();
+    absl::Status block_status = stream.BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s", &stream,

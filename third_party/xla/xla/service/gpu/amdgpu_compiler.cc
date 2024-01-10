@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/dot_dimension_merger.h"
@@ -81,7 +82,7 @@ std::string GetROCDLDir(const HloModuleConfig& config) {
 
 }  // namespace
 
-Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
+absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -115,7 +116,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
-Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
+absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
@@ -167,7 +168,7 @@ bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
   return false;
 }
 
-Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
+absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {

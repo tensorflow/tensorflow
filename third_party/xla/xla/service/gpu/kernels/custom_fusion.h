@@ -119,7 +119,7 @@ class CustomFusionRegistry {
 
   // Registers custom fusion in the registry. Returns error if fusion with the
   // given name already registered.
-  Status Register(std::string name, std::unique_ptr<CustomFusion> fusion);
+  absl::Status Register(std::string name, std::unique_ptr<CustomFusion> fusion);
 
   // Looks up custom fusion by name. Return nullptr if it's not found.
   CustomFusion* Lookup(std::string_view name) const;
@@ -141,7 +141,7 @@ class CustomFusionRegistry {
 #define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)              \
   ABSL_ATTRIBUTE_UNUSED static const bool                          \
       xla_custom_fusion_##N##_registered_ = [] {                   \
-        ::xla::Status status =                                     \
+        absl::Status status =                                      \
             ::xla::gpu::CustomFusionRegistry::Default()->Register( \
                 NAME, std::make_unique<FUSION>());                 \
         if (!status.ok()) LOG(ERROR) << status;                    \

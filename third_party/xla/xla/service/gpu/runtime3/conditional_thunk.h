@@ -55,8 +55,8 @@ class ConditionalThunk : public Thunk {
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
-  Status Initialize(const InitializeParams& params) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() const {
     return config_.branch_thunks;

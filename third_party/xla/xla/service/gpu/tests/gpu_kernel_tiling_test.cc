@@ -841,7 +841,7 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   }
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
-  Status status = CompileToExecutable(std::move(hlo_module)).status();
+  absl::Status status = CompileToExecutable(std::move(hlo_module)).status();
   EXPECT_THAT(status.message(),
               ::testing::HasSubstr(
                   "Kernel 'wrapped_reduce' launch needs more blocks "

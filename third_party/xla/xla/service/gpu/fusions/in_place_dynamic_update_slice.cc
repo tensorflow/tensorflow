@@ -39,7 +39,7 @@ LaunchDimensions InPlaceDynamicUpdateSliceEmitter::launch_dimensions() const {
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }
 
-Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
+absl::Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
     std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder) const {

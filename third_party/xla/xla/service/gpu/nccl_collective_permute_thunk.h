@@ -32,9 +32,9 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
       mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
       int64_t partition_count);
 
-  static Status CheckImplementable(mlir::lmhlo_gpu::CollectivePermuteStartOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
+  static absl::Status CheckImplementable(
+      mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
+      int64_t partition_count);
 
   static bool IsDegenerate(mlir::lmhlo_gpu::CollectivePermuteStartOp op,
                            int64_t replica_count, int64_t partition_count);
@@ -51,18 +51,18 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
-  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
-                           ncclComm_t comm) override;
+  absl::Status RunNcclCollective(const ExecuteParams& params,
+                                 se::Stream& stream, ncclComm_t comm) override;
 
  private:
   const NcclP2PConfig config_;
   const Buffer buffer_;
 };
 
-Status RunCollectivePermute(NcclP2PConfig::SourceTargetMapEntry source_target,
-                            DeviceBufferPair& buffer, se::Stream& stream,
-                            ncclComm_t comm, absl::string_view device_string,
-                            int64_t current_id);
+absl::Status RunCollectivePermute(
+    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
+    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
+    int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

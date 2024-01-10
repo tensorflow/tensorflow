@@ -69,7 +69,7 @@ namespace {
 namespace m = match;
 
 // Give this instruction a more useful name than "custom-call.42".
-Status SetName(HloModule *module, HloInstruction *gemm) {
+absl::Status SetName(HloModule *module, HloInstruction *gemm) {
   if (IsCublasLtMatmul(*gemm)) {
     module->SetAndUniquifyInstrName(gemm, "cublas-lt-matmul");
     return absl::OkStatus();
@@ -477,7 +477,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   explicit GemmRewriterVisitor(const se::GpuComputeCapability &gpu_version)
       : gpu_version_(gpu_version) {}
 
-  Status HandleDot(HloInstruction *instr) override {
+  absl::Status HandleDot(HloInstruction *instr) override {
     if (!IsMatrixMultiplication(*instr)) {
       return absl::OkStatus();
     }
@@ -562,7 +562,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  Status HandleMultiply(HloInstruction *instr) override {
+  absl::Status HandleMultiply(HloInstruction *instr) override {
     HloInstruction *alpha, *existing_gemm;
     if (Match(instr,
               m::MultiplyAnyOrder(
@@ -636,7 +636,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  Status HandleAdd(HloInstruction *instr) override {
+  absl::Status HandleAdd(HloInstruction *instr) override {
     HloInstruction *bias, *existing_gemm = nullptr;
     HloInstruction *optional_slice = nullptr;
     HloInstruction *optional_convert = nullptr;
@@ -778,7 +778,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  Status HandleMaximum(HloInstruction *instr) override {
+  absl::Status HandleMaximum(HloInstruction *instr) override {
     HloInstruction *existing_gemm, *zeros;
     HloInstruction *optional_slice_or_bitcast = nullptr;
     // Attempt to elide maximum and fuse ReLU activation into GEMM, including
@@ -801,7 +801,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  Status HandleConvert(HloInstruction *instr) override {
+  absl::Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *clamp_lower, *clamp_upper, *d_scale, *existing_gemm,
         *binary;
     // Attempt to elide the scaling and conversion of the result of an FP8
@@ -1070,9 +1070,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 #endif
   }
 
-  Status F8ConvertD(HloInstruction *instr, HloInstruction *existing_gemm,
-                    HloInstruction *d_scale, HloInstruction *clamp_lower,
-                    HloInstruction *clamp_upper, bool mult_scale = false) {
+  absl::Status F8ConvertD(HloInstruction *instr, HloInstruction *existing_gemm,
+                          HloInstruction *d_scale, HloInstruction *clamp_lower,
+                          HloInstruction *clamp_upper,
+                          bool mult_scale = false) {
     // Verify the data types and the operands of clamp.
     if (instr->shape().element_type() == F8E4M3FN) {
       if (!clamp_lower->literal().IsAllFloat(static_cast<float>(
@@ -1185,8 +1186,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   // Adds a scalar DAmax return value to an FP8 GEMM.
-  Status F8AddDAmax(HloInstruction *instr, HloInstruction *existing_gemm,
-                    HloInstruction *reduce_damax) {
+  absl::Status F8AddDAmax(HloInstruction *instr, HloInstruction *existing_gemm,
+                          HloInstruction *reduce_damax) {
     // Change the output shape of the Custom Call to tuple(D, DAmax).
     Shape damax_shape = ShapeUtil::MakeScalarShape(F32);
     Shape tuple_shape =
@@ -1216,10 +1217,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // where 'gemm' is expected to be a cuBLAS custom_call. Slice is introduced
   // when the inputs of the gemm are possibly padded. Bitcast is introduced to
   // handle high rank input.
-  Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
-                           const HloInstruction *gemm,
-                           HloInstruction *bitcast = nullptr,
-                           HloInstruction *slice = nullptr) {
+  absl::Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
+                                 const HloInstruction *gemm,
+                                 HloInstruction *bitcast = nullptr,
+                                 HloInstruction *slice = nullptr) {
     TF_RET_CHECK(Shape::Equal().IgnoreElementType()(bias->shape(),
                                                     bitcast ? bitcast->shape()
                                                     : slice ? slice->shape()
@@ -1473,9 +1474,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return true;
   }
 
-  Status FuseReluActivation(HloInstruction *instr, HloInstruction *broadcast,
-                            HloInstruction *gemm,
-                            HloInstruction *slice_or_bitcast = nullptr) {
+  absl::Status FuseReluActivation(HloInstruction *instr,
+                                  HloInstruction *broadcast,
+                                  HloInstruction *gemm,
+                                  HloInstruction *slice_or_bitcast = nullptr) {
     TF_RET_CHECK(ShapeUtil::Compatible(
         broadcast->shape(),
         (slice_or_bitcast ? slice_or_bitcast->shape() : gemm->shape())));
@@ -1510,8 +1512,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return ReplaceWithNewInstruction(instr, std::move(result));
   }
 
-  Status FuseGeluActivation(HloInstruction *multiply, HloInstruction *gemm,
-                            HloInstruction *slice_or_bitcast = nullptr) {
+  absl::Status FuseGeluActivation(HloInstruction *multiply,
+                                  HloInstruction *gemm,
+                                  HloInstruction *slice_or_bitcast = nullptr) {
     if (!SupportsEpilogueFusion(gemm->shape().element_type())) {
       return absl::OkStatus();
     }
@@ -1972,7 +1975,7 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
       const se::GpuComputeCapability &gpu_version)
       : gpu_version_(gpu_version) {}
 
-  Status HandleCustomCall(HloInstruction *instr) override {
+  absl::Status HandleCustomCall(HloInstruction *instr) override {
     if (instr->custom_call_target() != kGemmCallTarget ||
         !instr->shape().IsArray()) {
       return absl::OkStatus();

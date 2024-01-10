@@ -538,16 +538,16 @@ StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
 namespace {
 
 template <typename Scale, typename Input, typename Output>
-Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
-                           const se::gpu::MatrixDescriptor& rhs,
-                           const se::gpu::OutputMatrixDescriptor& output,
-                           se::DeviceMemoryBase workspace, Scale alpha,
-                           Scale beta, se::Stream* stream,
-                           se::blas::AlgorithmType algorithm,
-                           se::blas::ComputePrecision compute_precision,
-                           const se::NumericOptions& numeric_options,
-                           se::blas::ProfileResult* profile_result,
-                           se::blas::CallContext context) {
+absl::Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
+                                 const se::gpu::MatrixDescriptor& rhs,
+                                 const se::gpu::OutputMatrixDescriptor& output,
+                                 se::DeviceMemoryBase workspace, Scale alpha,
+                                 Scale beta, se::Stream* stream,
+                                 se::blas::AlgorithmType algorithm,
+                                 se::blas::ComputePrecision compute_precision,
+                                 const se::NumericOptions& numeric_options,
+                                 se::blas::ProfileResult* profile_result,
+                                 se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType lhs_type = primitive_util::NativeToPrimitiveType<Input>();
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
@@ -578,16 +578,16 @@ Status DoGemmWithAlgorithm(const se::gpu::MatrixDescriptor& lhs,
 }
 
 template <typename Scale, typename Input, typename Output>
-Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
-              const se::gpu::MatrixDescriptor& rhs,
-              const se::gpu::OutputMatrixDescriptor& output,
-              se::DeviceMemoryBase workspace, Scale alpha, Scale beta,
-              se::Stream* stream,
-              std::optional<se::blas::AlgorithmType> algorithm,
-              se::blas::ComputePrecision compute_precision,
-              const se::NumericOptions& numeric_options,
-              se::blas::ProfileResult* profile_result,
-              se::blas::CallContext context) {
+absl::Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
+                    const se::gpu::MatrixDescriptor& rhs,
+                    const se::gpu::OutputMatrixDescriptor& output,
+                    se::DeviceMemoryBase workspace, Scale alpha, Scale beta,
+                    se::Stream* stream,
+                    std::optional<se::blas::AlgorithmType> algorithm,
+                    se::blas::ComputePrecision compute_precision,
+                    const se::NumericOptions& numeric_options,
+                    se::blas::ProfileResult* profile_result,
+                    se::blas::CallContext context) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Output> output_data(output.data);
 
@@ -622,13 +622,13 @@ Status DoGemm(const se::gpu::MatrixDescriptor& lhs,
 
 }  // namespace
 
-Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
-               se::DeviceMemoryBase rhs_buffer,
-               se::DeviceMemoryBase output_buffer,
-               se::DeviceMemoryBase workspace_buffer, bool deterministic_ops,
-               se::Stream* stream,
-               std::optional<se::blas::AlgorithmType> algorithm,
-               se::blas::ProfileResult* profile_result) {
+absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
+                     se::DeviceMemoryBase rhs_buffer,
+                     se::DeviceMemoryBase output_buffer,
+                     se::DeviceMemoryBase workspace_buffer,
+                     bool deterministic_ops, se::Stream* stream,
+                     std::optional<se::blas::AlgorithmType> algorithm,
+                     se::blas::ProfileResult* profile_result) {
   VLOG(2) << "Executing a GemmThunk";
 
   TF_ASSIGN_OR_RETURN(

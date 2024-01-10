@@ -90,7 +90,7 @@ struct GemmWithDynamicSlice {
 }  // namespace
 
 // Returns OK if dot instruction is a simple 2D row-major gemm.
-static Status MatchRowMajorGemm(HloDotInstruction* dot) {
+static absl::Status MatchRowMajorGemm(HloDotInstruction* dot) {
   if (dot->operand(0)->shape().dimensions_size() != 2 ||
       dot->operand(1)->shape().dimensions_size() != 2) {
     return absl::InternalError("operands must have rank 2");
@@ -113,8 +113,8 @@ static Status MatchRowMajorGemm(HloDotInstruction* dot) {
 
 // Return OK if dot instruction is a simple gemm with all operands and result
 // having the same data type.
-static Status MatchSimpleGemm(HloDotInstruction* dot,
-                              absl::Span<const PrimitiveType> support_dtypes) {
+static absl::Status MatchSimpleGemm(
+    HloDotInstruction* dot, absl::Span<const PrimitiveType> support_dtypes) {
   TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
   for (PrimitiveType dtype : support_dtypes) {

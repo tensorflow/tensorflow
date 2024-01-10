@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "google/protobuf/wrappers.pb.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -345,18 +346,18 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       const se::CudaComputeCapability cuda_compute_capability)
       : cuda_compute_capability_(cuda_compute_capability) {}
 
-  Status HandleAdd(HloInstruction* instr) override {
+  absl::Status HandleAdd(HloInstruction* instr) override {
     return MatchLayerNorm(instr);
   }
 
-  Status HandleSubtract(HloInstruction* instr) override {
+  absl::Status HandleSubtract(HloInstruction* instr) override {
     return MatchLayerNorm(instr);
   }
 
   // Matches and rewrites layer norm patterns,
   // (X - expectation(X))/(variance(X) + epsilon)^1/2 * scale + bias,
   // into Custom Calls to cuDNN.
-  Status MatchLayerNorm(HloInstruction* instr) {
+  absl::Status MatchLayerNorm(HloInstruction* instr) {
     HloInstruction *input, *input0, *input1, *input2, *scale, *bias, *epsilon,
         *expectation, *expectation0, *reduce, *norm_factor, *variance,
         *broadcast_scale, *broadcast_bias;
@@ -579,9 +580,11 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
   // as the norm factor and its cube, (variance + epsilon)^-1/2 and (variance +
   // epsilon)^-3/2. When identified in the graph, these quantities are fused
   // into the layer norm Custom Call.
-  Status MatchNormFactor(HloInstruction* instr, HloInstruction* custom_call,
-                         HloInstruction* variance, HloInstruction* expectation,
-                         HloInstruction* epsilon) {
+  absl::Status MatchNormFactor(HloInstruction* instr,
+                               HloInstruction* custom_call,
+                               HloInstruction* variance,
+                               HloInstruction* expectation,
+                               HloInstruction* epsilon) {
     HloInstruction *variance0, *epsilon0, *gte = custom_call->users()[0];
     if (Match(instr,
               m::Divide(m::Op(), AddAnyOrder(m::Op(&variance0),
@@ -636,7 +639,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       auto replace_with_new_cc = [new_custom_call, this](
                                      HloInstruction* old_instr,
-                                     int tuple_index) -> Status {
+                                     int tuple_index) -> absl::Status {
         TF_ASSIGN_OR_RETURN(
             HloInstruction * new_gte,
             MakeGetTupleElementHlo(new_custom_call, tuple_index));

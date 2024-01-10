@@ -266,7 +266,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 // the beginning of the computation. This simplifies the construction of command
 // buffer computations because we don't need to deal with parameters and
 // constants that have users outside of a command buffer.
-Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
+absl::Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
     HloComputation* computation) {
   HloInstructionSequence new_sequence;
   HloSchedule& schedule = computation->parent()->schedule();

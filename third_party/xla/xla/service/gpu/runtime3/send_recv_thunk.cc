@@ -111,7 +111,7 @@ SendThunk::SendThunk(
       frontend_attrs_(std::move(frontend_attrs)),
       device_constraint_(device_constraint) {}
 
-Status SendThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status SendThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Send buffer: channel_id=" << channel_id_
           << "; shape=" << shape_.ToString();
 
@@ -158,7 +158,7 @@ SendDoneThunk::SendDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
       events_(std::move(events)),
       device_constraint_(device_constraint) {}
 
-Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Wait for send completion: channel_id=" << channel_id_;
 
   TF_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for send completion",
@@ -200,7 +200,7 @@ RecvThunk::RecvThunk(
       frontend_attrs_(std::move(frontend_attrs)),
       device_constraint_(device_constraint) {}
 
-Status RecvThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status RecvThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Recv buffer: channel_id=" << channel_id_
           << "; shape=" << shape_.ToString();
 
@@ -246,7 +246,7 @@ RecvDoneThunk::RecvDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
       channel_id_(channel_id),
       events_(std::move(events)) {}
 
-Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Wait for recv completion: channel_id=" << channel_id_;
 
   TF_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for recv completion",

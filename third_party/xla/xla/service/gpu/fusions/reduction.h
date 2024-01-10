@@ -116,12 +116,12 @@ class ReductionFusion : public KernelFusionEmitterBase {
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion) const override;
 
-  Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    const HloFusionInstruction& fusion,
-                    const LaunchDimensions& launch_dims,
-                    std::vector<llvm_ir::IrArray> inputs,
-                    std::vector<llvm_ir::IrArray> outputs,
-                    llvm::IRBuilder<>* builder) const override;
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

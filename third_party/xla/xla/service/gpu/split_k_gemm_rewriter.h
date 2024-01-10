@@ -34,8 +34,8 @@ bool HasDivisibleSuffixAllowingSplit(absl::Span<int64_t const> span,
 // Apply split K configuration from the tiling config to the fusion instruction:
 // in addition to MakeDotComputationSplitKBatch on its computation add the
 // necessary reduction after it.
-Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
-                          const TritonGemmConfig& config);
+absl::Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
+                                const TritonGemmConfig& config);
 
 }  // namespace gpu
 }  // namespace xla

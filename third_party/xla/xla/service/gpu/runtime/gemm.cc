@@ -51,13 +51,13 @@ using xla::runtime::StridedMemrefView;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // TODO(ezhulenev): Delete run time auto tuning from XLA.
-Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
-                           se::DeviceMemoryBase lhs_buffer,
-                           se::DeviceMemoryBase rhs_buffer,
-                           se::DeviceMemoryBase output_buffer,
-                           const Shape& output_shape, double beta,
-                           const DebugOptions* debug_options,
-                           NonAtomicallyUpgradeableRWLock* gpu_lock) {
+absl::Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
+                                 se::DeviceMemoryBase lhs_buffer,
+                                 se::DeviceMemoryBase rhs_buffer,
+                                 se::DeviceMemoryBase output_buffer,
+                                 const Shape& output_shape, double beta,
+                                 const DebugOptions* debug_options,
+                                 NonAtomicallyUpgradeableRWLock* gpu_lock) {
   VLOG(3) << "Running GEMM runtime autotuning";
   std::vector<se::blas::AlgorithmType> algorithms;
   stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms);

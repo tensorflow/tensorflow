@@ -1301,7 +1301,7 @@ StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
   return changed;
 }
 
-Status CheckNoIllegalIntegerConvs(HloComputation* comp) {
+absl::Status CheckNoIllegalIntegerConvs(HloComputation* comp) {
   auto is_integral_not_s8 = [](const Shape& s) {
     return primitive_util::IsIntegralType(s.element_type()) &&
            s.element_type() != S8;
