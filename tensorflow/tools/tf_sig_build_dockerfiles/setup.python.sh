@@ -63,21 +63,6 @@ $VERSION-distutils
 EOF
 /setup.packages.sh pythons.txt
 
-if [[ $3 ]]; then
-    echo "Runtime mode"
-else
-    echo "Dev mode"
-    # Re-link pyconfig.h from x86_64-linux-gnu into the devtoolset directory
-    # for any Python version present
-    pushd /usr/include/x86_64-linux-gnu
-    for f in $(ls | grep python); do
-      # set up symlink for devtoolset-9
-      rm -f /dt9/usr/include/x86_64-linux-gnu/$f
-      ln -s /usr/include/x86_64-linux-gnu/$f /dt9/usr/include/x86_64-linux-gnu/$f
-    done
-    popd
-fi
-
 # Setup links for TensorFlow to compile.
 # Referenced in devel.usertools/*.bazelrc
 ln -sf /usr/bin/$VERSION /usr/bin/python3
@@ -102,7 +87,6 @@ python3 -m pip install -U setuptools
 
 if [[ $3 ]]; then
     echo "Runtime mode"
-    python3 -m pip install --no-cache-dir portpicker numpy==1.26.0 scipy -U
 else
     echo "Install Requirements"
     # Disable the cache dir to save image space, and install packages
