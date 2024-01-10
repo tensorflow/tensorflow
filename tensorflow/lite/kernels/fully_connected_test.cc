@@ -455,6 +455,10 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
     SignedSymmetricQuantizeAndPopulate(weights_, f);
   }
 
+  void SetSignedPerChannelWeights(std::initializer_list<float> f) {
+    PerChannelSymmetricQuantizeAndPopulate(weights_, f);
+  }
+
   void SetSignedWeights4Bit(std::initializer_list<float> f) {
     SignedSymmetricQuantizeAndPopulate4Bit(weights_, f);
   }
@@ -1436,6 +1440,46 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt4) {
                                  {
                                      36, 37, 38,  //
                                      52, 53, 54,  //
+                                 },
+                                 /*max_abs_error=*/1.3f)));
+}
+
+TEST(HybridAsymmetricInputPerChannelWeightsFullyConnectedOpTest,
+     SimpleTestQuantizedPerChannelInt8) {
+  HybridFullyConnectedOpModel m(
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 10}},
+      /*weights=*/
+      {TensorType_INT8,
+       {3, 10},
+       0,
+       0,
+       0.0f,
+       0,
+       true,
+       {10.0 / 127.0, 20.0 / 127.0, 30.0 / 127.0},
+       {0, 0, 0}},
+      {TensorType_FLOAT32},
+      /*asymmetric_quantize_input*/ true);
+
+  m.SetSignedPerChannelWeights({
+      1,  2,  3,  4,  5,  6,  7,  8,  9,  10,  // u = 0
+      11, 12, 13, 14, 15, 16, 17, 18, 19, 20,  // u = 1
+      21, 22, 23, 24, 25, 26, 27, 28, 29, 30,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     24, 195, 366,  //
+                                     58, 251, 441,  //
                                  },
                                  /*max_abs_error=*/1.3f)));
 }
