@@ -3947,6 +3947,12 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
     case HloOpcode::kPartitionId:
       return EmitReplicaOrPartitionId<PartitionIdThunk>(instr);
+
+    case HloOpcode::kRecv:
+      return EmitRecvThunk(Cast<HloRecvInstruction>(instr));
+    case HloOpcode::kRecvDone:
+      return EmitRecvDoneThunk(Cast<HloRecvDoneInstruction>(instr));
+
     case HloOpcode::kReplicaId:
       return EmitReplicaOrPartitionId<ReplicaIdThunk>(instr);
     case HloOpcode::kRngGetAndUpdateState:
