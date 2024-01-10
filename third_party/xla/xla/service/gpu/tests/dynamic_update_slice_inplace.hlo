@@ -46,7 +46,7 @@
 // CHECK:         %[[VAL_37:.*]] = add i64 %[[VAL_36]], %[[VAL_24]]
 // CHECK:         %[[VAL_38:.*]] = getelementptr half, ptr %[[VAL_39:.*]], i64 %[[VAL_20]]
 // CHECK:         %[[VAL_40:.*]] = getelementptr inbounds half, ptr %[[VAL_38]], i64 0
-// CHECK:         %[[VAL_41:.*]] = load half, ptr %[[VAL_40]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_41:.*]] = load half, ptr %[[VAL_40]], align 2, !invariant.load
 // CHECK:         %[[VAL_42:.*]] = getelementptr inbounds [50 x [96 x [1024 x half]]], ptr %[[VAL_43:.*]], i64 0, i64 %[[VAL_33]], i64 %[[VAL_35]], i64 %[[VAL_37]]
 // CHECK:         store half %[[VAL_41]], ptr %[[VAL_42]], align 2
 // CHECK:         br label %[[VAL_30]]

@@ -60,7 +60,7 @@
 // CHECK:         %[[VAL_48:.*]] = mul i32 %[[VAL_45]], %[[VAL_0]]
 // CHECK:         %[[VAL_49:.*]] = udiv i32 %[[VAL_40]], %[[VAL_48]]
 // CHECK:         %[[VAL_50:.*]] = getelementptr inbounds [2 x [2 x [2 x i32]]], ptr %[[VAL_51:.*]], i32 0, i32 %[[VAL_49]], i32 %[[VAL_47]], i32 %[[VAL_44]]
-// CHECK:         %[[VAL_52:.*]] = load i32, ptr %[[VAL_50]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_52:.*]] = load i32, ptr %[[VAL_50]], align 4, !invariant.load
 // CHECK:         %[[VAL_53:.*]] = getelementptr i32, ptr %[[VAL_32]], i32 %[[VAL_19]]
 // CHECK:         %[[VAL_54:.*]] = getelementptr inbounds i32, ptr %[[VAL_53]], i32 0
 // CHECK:         store i32 %[[VAL_52]], ptr %[[VAL_54]], align 4

@@ -22,18 +22,18 @@
 // CHECK:         %[[VAL_14:.*]] = phi i32 [ 0, %[[VAL_13]] ]
 // CHECK:         %[[VAL_15:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_14]]
 // CHECK:         %[[VAL_16:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_17:.*]], i32 0, i32 %[[VAL_15]]
-// CHECK:         %[[VAL_18:.*]] = load half, ptr %[[VAL_16]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_18:.*]] = load half, ptr %[[VAL_16]], align 2, !invariant.load
 // CHECK:         %[[VAL_19:.*]] = getelementptr inbounds [1024 x half], ptr %[[VAL_20:.*]], i32 0, i32 %[[VAL_15]]
-// CHECK:         %[[VAL_21:.*]] = load half, ptr %[[VAL_19]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_21:.*]] = load half, ptr %[[VAL_19]], align 2, !invariant.load
 // CHECK:         %[[VAL_22:.*]] = fmul half %[[VAL_18]], %[[VAL_21]]
 // CHECK:         br label %[[VAL_23:.*]]
 // CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_24:.*]]
 // CHECK:         %[[VAL_25:.*]] = phi i32 [ 1024, %[[VAL_24]] ]
 // CHECK:         %[[VAL_26:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_25]]
 // CHECK:         %[[VAL_27:.*]] = getelementptr inbounds [1023 x half], ptr %[[VAL_28:.*]], i32 0, i32 %[[VAL_26]]
-// CHECK:         %[[VAL_29:.*]] = load half, ptr %[[VAL_27]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_29:.*]] = load half, ptr %[[VAL_27]], align 2, !invariant.load
 // CHECK:         %[[VAL_30:.*]] = getelementptr inbounds [1023 x half], ptr %[[VAL_31:.*]], i32 0, i32 %[[VAL_26]]
-// CHECK:         %[[VAL_32:.*]] = load half, ptr %[[VAL_30]], align 2, !invariant.load !4
+// CHECK:         %[[VAL_32:.*]] = load half, ptr %[[VAL_30]], align 2, !invariant.load
 // CHECK:         %[[VAL_33:.*]] = fadd half %[[VAL_29]], %[[VAL_32]]
 // CHECK:         br label %[[VAL_23]]
 // CHECK:       concatenate.pivot.1024.:                          ; preds = %[[VAL_8]]

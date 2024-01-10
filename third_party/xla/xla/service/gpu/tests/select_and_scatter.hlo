@@ -64,7 +64,7 @@
 // CHECK:         br label %[[VAL_30]]
 // CHECK:       initialized-false:                                ; preds = %[[VAL_28]]
 // CHECK:         %[[VAL_44:.*]] = getelementptr inbounds [6 x float], ptr %[[VAL_39]], i32 0, i32 %[[VAL_25]]
-// CHECK:         %[[VAL_45:.*]] = load float, ptr %[[VAL_44]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_45:.*]] = load float, ptr %[[VAL_44]], align 4, !invariant.load
 // CHECK:         store float %[[VAL_45]], ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_4]], align 4
 // CHECK:         %[[VAL_46:.*]] = getelementptr inbounds i32, ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_3]], i32 0
 // CHECK:         store i32 %[[VAL_25]], ptr [[ADDRSPACE_ANNOTATION]]%[[VAL_46]], align 4

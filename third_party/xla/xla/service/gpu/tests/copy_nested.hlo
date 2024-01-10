@@ -51,27 +51,27 @@
 // CHECK:         %[[VAL_41:.*]] = icmp ult i32 %[[VAL_16]], 6000000
 // CHECK:         br i1 %[[VAL_41]], label %[[VAL_42:.*]], label %[[VAL_2]]
 // CHECK:       wrapped_b.in_bounds-after:                        ; preds = %[[VAL_42]], %[[VAL_7]]
-// CHECK:         br label %[[VAL_1]], !llvm.loop !4
+// CHECK:         br label %[[VAL_1]], !llvm.loop
 // CHECK:       loop.loop_exit:                                   ; preds = %[[VAL_1]]
 // CHECK:         ret void
 // CHECK:       wrapped_b.in_bounds-true:                         ; preds = %[[VAL_7]]
 // CHECK:         %[[VAL_43:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_44:.*]], i32 0, i32 %[[VAL_21]], i32 %[[VAL_22]], i32 %[[VAL_19]]
-// CHECK:         %[[VAL_45:.*]] = load float, ptr %[[VAL_43]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_45:.*]] = load float, ptr %[[VAL_43]], align 4, !invariant.load
 // CHECK:         %[[VAL_46:.*]] = getelementptr float, ptr %[[VAL_47:.*]], i32 %[[VAL_16]]
 // CHECK:         %[[VAL_48:.*]] = getelementptr inbounds float, ptr %[[VAL_46]], i32 0
 // CHECK:         store float %[[VAL_45]], ptr %[[VAL_48]], align 4
 // CHECK:         %[[VAL_49:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_44]], i32 0, i32 %[[VAL_27]], i32 %[[VAL_28]], i32 %[[VAL_25]]
-// CHECK:         %[[VAL_50:.*]] = load float, ptr %[[VAL_49]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_50:.*]] = load float, ptr %[[VAL_49]], align 4, !invariant.load
 // CHECK:         %[[VAL_51:.*]] = getelementptr float, ptr %[[VAL_47]], i32 %[[VAL_16]]
 // CHECK:         %[[VAL_52:.*]] = getelementptr inbounds float, ptr %[[VAL_51]], i32 1
 // CHECK:         store float %[[VAL_50]], ptr %[[VAL_52]], align 4
 // CHECK:         %[[VAL_53:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_44]], i32 0, i32 %[[VAL_33]], i32 %[[VAL_34]], i32 %[[VAL_31]]
-// CHECK:         %[[VAL_54:.*]] = load float, ptr %[[VAL_53]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_54:.*]] = load float, ptr %[[VAL_53]], align 4, !invariant.load
 // CHECK:         %[[VAL_55:.*]] = getelementptr float, ptr %[[VAL_47]], i32 %[[VAL_16]]
 // CHECK:         %[[VAL_56:.*]] = getelementptr inbounds float, ptr %[[VAL_55]], i32 2
 // CHECK:         store float %[[VAL_54]], ptr %[[VAL_56]], align 4
 // CHECK:         %[[VAL_57:.*]] = getelementptr inbounds [100 x [200 x [300 x float]]], ptr %[[VAL_44]], i32 0, i32 %[[VAL_39]], i32 %[[VAL_40]], i32 %[[VAL_37]]
-// CHECK:         %[[VAL_58:.*]] = load float, ptr %[[VAL_57]], align 4, !invariant.load !6
+// CHECK:         %[[VAL_58:.*]] = load float, ptr %[[VAL_57]], align 4, !invariant.load
 // CHECK:         %[[VAL_59:.*]] = getelementptr float, ptr %[[VAL_47]], i32 %[[VAL_16]]
 // CHECK:         %[[VAL_60:.*]] = getelementptr inbounds float, ptr %[[VAL_59]], i32 3
 // CHECK:         store float %[[VAL_58]], ptr %[[VAL_60]], align 4

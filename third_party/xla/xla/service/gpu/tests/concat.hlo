@@ -22,77 +22,77 @@
 // CHECK:         %[[VAL_14:.*]] = phi i32 [ 0, %[[VAL_13]] ]
 // CHECK:         %[[VAL_15:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_14]]
 // CHECK:         %[[VAL_16:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_17:.*]], i32 0, i32 %[[VAL_15]]
-// CHECK:         %[[VAL_18:.*]] = load float, ptr %[[VAL_16]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_18:.*]] = load float, ptr %[[VAL_16]], align 4, !invariant.load
 // CHECK:         %[[VAL_19:.*]] = fptrunc float %[[VAL_18]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id1:                    ; preds = %[[VAL_20:.*]]
 // CHECK:         %[[VAL_21:.*]] = phi i32 [ 1000, %[[VAL_20]] ]
 // CHECK:         %[[VAL_22:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_21]]
 // CHECK:         %[[VAL_23:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_24:.*]], i32 0, i32 %[[VAL_22]]
-// CHECK:         %[[VAL_25:.*]] = load float, ptr %[[VAL_23]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_25:.*]] = load float, ptr %[[VAL_23]], align 4, !invariant.load
 // CHECK:         %[[VAL_26:.*]] = fptrunc float %[[VAL_25]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id2:                    ; preds = %[[VAL_27:.*]]
 // CHECK:         %[[VAL_28:.*]] = phi i32 [ 2000, %[[VAL_27]] ]
 // CHECK:         %[[VAL_29:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_28]]
 // CHECK:         %[[VAL_30:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_31:.*]], i32 0, i32 %[[VAL_29]]
-// CHECK:         %[[VAL_32:.*]] = load float, ptr %[[VAL_30]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_32:.*]] = load float, ptr %[[VAL_30]], align 4, !invariant.load
 // CHECK:         %[[VAL_33:.*]] = fptrunc float %[[VAL_32]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id3:                    ; preds = %[[VAL_34:.*]]
 // CHECK:         %[[VAL_35:.*]] = phi i32 [ 3000, %[[VAL_34]] ]
 // CHECK:         %[[VAL_36:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_35]]
 // CHECK:         %[[VAL_37:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_38:.*]], i32 0, i32 %[[VAL_36]]
-// CHECK:         %[[VAL_39:.*]] = load float, ptr %[[VAL_37]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_39:.*]] = load float, ptr %[[VAL_37]], align 4, !invariant.load
 // CHECK:         %[[VAL_40:.*]] = fptrunc float %[[VAL_39]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id4:                    ; preds = %[[VAL_41:.*]]
 // CHECK:         %[[VAL_42:.*]] = phi i32 [ 4000, %[[VAL_41]] ]
 // CHECK:         %[[VAL_43:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_42]]
 // CHECK:         %[[VAL_44:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_45:.*]], i32 0, i32 %[[VAL_43]]
-// CHECK:         %[[VAL_46:.*]] = load float, ptr %[[VAL_44]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_46:.*]] = load float, ptr %[[VAL_44]], align 4, !invariant.load
 // CHECK:         %[[VAL_47:.*]] = fptrunc float %[[VAL_46]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id5:                    ; preds = %[[VAL_48:.*]]
 // CHECK:         %[[VAL_49:.*]] = phi i32 [ 5000, %[[VAL_48]] ]
 // CHECK:         %[[VAL_50:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_49]]
 // CHECK:         %[[VAL_51:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_52:.*]], i32 0, i32 %[[VAL_50]]
-// CHECK:         %[[VAL_53:.*]] = load float, ptr %[[VAL_51]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_53:.*]] = load float, ptr %[[VAL_51]], align 4, !invariant.load
 // CHECK:         %[[VAL_54:.*]] = fptrunc float %[[VAL_53]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id6:                    ; preds = %[[VAL_55:.*]]
 // CHECK:         %[[VAL_56:.*]] = phi i32 [ 6000, %[[VAL_55]] ]
 // CHECK:         %[[VAL_57:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_56]]
 // CHECK:         %[[VAL_58:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_59:.*]], i32 0, i32 %[[VAL_57]]
-// CHECK:         %[[VAL_60:.*]] = load float, ptr %[[VAL_58]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_60:.*]] = load float, ptr %[[VAL_58]], align 4, !invariant.load
 // CHECK:         %[[VAL_61:.*]] = fptrunc float %[[VAL_60]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id7:                    ; preds = %[[VAL_62:.*]]
 // CHECK:         %[[VAL_63:.*]] = phi i32 [ 7000, %[[VAL_62]] ]
 // CHECK:         %[[VAL_64:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_63]]
 // CHECK:         %[[VAL_65:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_66:.*]], i32 0, i32 %[[VAL_64]]
-// CHECK:         %[[VAL_67:.*]] = load float, ptr %[[VAL_65]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_67:.*]] = load float, ptr %[[VAL_65]], align 4, !invariant.load
 // CHECK:         %[[VAL_68:.*]] = fptrunc float %[[VAL_67]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id8:                    ; preds = %[[VAL_69:.*]]
 // CHECK:         %[[VAL_70:.*]] = phi i32 [ 8000, %[[VAL_69]] ]
 // CHECK:         %[[VAL_71:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_70]]
 // CHECK:         %[[VAL_72:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_73:.*]], i32 0, i32 %[[VAL_71]]
-// CHECK:         %[[VAL_74:.*]] = load float, ptr %[[VAL_72]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_74:.*]] = load float, ptr %[[VAL_72]], align 4, !invariant.load
 // CHECK:         %[[VAL_75:.*]] = fptrunc float %[[VAL_74]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id9:                    ; preds = %[[VAL_76:.*]]
 // CHECK:         %[[VAL_77:.*]] = phi i32 [ 9000, %[[VAL_76]] ]
 // CHECK:         %[[VAL_78:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_77]]
 // CHECK:         %[[VAL_79:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_80:.*]], i32 0, i32 %[[VAL_78]]
-// CHECK:         %[[VAL_81:.*]] = load float, ptr %[[VAL_79]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_81:.*]] = load float, ptr %[[VAL_79]], align 4, !invariant.load
 // CHECK:         %[[VAL_82:.*]] = fptrunc float %[[VAL_81]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concat_index_from_operand_id10:                   ; preds = %[[VAL_83:.*]]
 // CHECK:         %[[VAL_84:.*]] = phi i32 [ 10000, %[[VAL_83]] ]
 // CHECK:         %[[VAL_85:.*]] = sub nsw i32 %[[VAL_6]], %[[VAL_84]]
 // CHECK:         %[[VAL_86:.*]] = getelementptr inbounds [1000 x float], ptr %[[VAL_87:.*]], i32 0, i32 %[[VAL_85]]
-// CHECK:         %[[VAL_88:.*]] = load float, ptr %[[VAL_86]], align 4, !invariant.load !4
+// CHECK:         %[[VAL_88:.*]] = load float, ptr %[[VAL_86]], align 4, !invariant.load
 // CHECK:         %[[VAL_89:.*]] = fptrunc float %[[VAL_88]] to half
 // CHECK:         br label %[[VAL_10]]
 // CHECK:       concatenate.pivot.5000.:                          ; preds = %[[VAL_8]]
