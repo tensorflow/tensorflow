@@ -637,7 +637,12 @@ CHECK-SAME: __triton_gemm
 })");
 }
 
-TEST_F(GemmRewriterTritonLevel2Test, TheFusionIsATree) {
+// The 2 inputs of the add operation are the same and they are iterated the same
+// way, so the same parameter node is reused for them.
+// The reuse happens per "operand fusion", so the add of the LHS and RHS still
+// use different nodes.
+TEST_F(GemmRewriterTritonLevel2Test,
+       ParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
@@ -651,16 +656,83 @@ ENTRY e {
 
   MatchHloModule(*module, R"(
 CHECK-DAG: %[[P0:.*]] = f32[2,4]{1,0} parameter(0)
+CHECK-DAG: %[[ADD0:.*]] = f32[2,4]{1,0} add(f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P0]])
 CHECK-DAG: %[[P1:.*]] = f32[2,4]{1,0} parameter(1)
-CHECK-DAG: %[[ADD0:.*]] = f32[2,4]{1,0} add(f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P1]])
-CHECK-DAG: %[[P2:.*]] = f32[2,4]{1,0} parameter(2)
-CHECK-DAG: %[[P3:.*]] = f32[2,4]{1,0} parameter(3)
-CHECK-DAG: %[[ADD1:.*]] = f32[2,4]{1,0} add(f32[2,4]{1,0} %[[P2]], f32[2,4]{1,0} %[[P3]])
+CHECK-DAG: %[[ADD1:.*]] = f32[2,4]{1,0} add(f32[2,4]{1,0} %[[P1]], f32[2,4]{1,0} %[[P1]])
 CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0} dot(f32[2,4]{1,0} %[[ADD0]], f32[2,4]{1,0} %[[ADD1]])
 CHECK: ENTRY
 CHECK-DAG: %[[P0:.*]] = f32[2,4]{1,0} parameter(0)
 CHECK-DAG: ROOT {{.*}} = f32[2,2]{1,0}
-CHECK-SAME: fusion(f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P0]]),
+CHECK-SAME: fusion(f32[2,4]{1,0} %[[P0]], f32[2,4]{1,0} %[[P0]])
+CHECK-SAME: kind=kCustom
+CHECK-SAME: __triton_gemm
+})");
+}
+
+// NEGATE has the same iteration spec at both usages, so the node is reused
+// (implying that P0 is also reused).
+TEST_F(GemmRewriterTritonLevel2Test,
+       NonParamNodesAreReusedIfTheyHaveTheSameIterSpec) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  a = f32[4,4]{1,0} parameter(0)
+  b = f32[4,4]{1,0} parameter(1)
+  negate = f32[4,4]{1,0} negate(a)
+  sine = f32[4,4]{1,0} sine(negate)
+  add = f32[4,4]{1,0} add(negate, sine)
+  ROOT r = f32[4,4]{1,0} dot(add, b),
+           lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+
+  MatchHloModule(*module, R"(
+CHECK-DAG: %[[P0:.*]] = f32[4,4]{1,0} parameter(0)
+CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
+CHECK-DAG: %[[NEGATE:.*]] = f32[4,4]{1,0} negate(f32[4,4]{1,0} %[[P0]])
+CHECK-DAG: %[[SINE:.*]] = f32[4,4]{1,0} sine(f32[4,4]{1,0} %[[NEGATE]])
+CHECK-DAG: %[[ADD:.*]] = f32[4,4]{1,0} add(f32[4,4]{1,0} %[[NEGATE]], f32[4,4]{1,0} %[[SINE]])
+CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0} dot(f32[4,4]{1,0} %[[ADD]], f32[4,4]{1,0} %[[P1]])
+CHECK: ENTRY
+CHECK-DAG: %[[P0:.*]] = f32[4,4]{1,0} parameter(0)
+CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
+CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0}
+CHECK-SAME: fusion(f32[4,4]{1,0} %[[P0]], f32[4,4]{1,0} %[[P1]])
+CHECK-SAME: kind=kCustom
+CHECK-SAME: __triton_gemm
+})");
+}
+
+// The direct read of the input and the transposed read of the input have
+// different iteration specs, so we don't reuse the node.
+TEST_F(GemmRewriterTritonLevel2Test,
+       NodesAreNotReusedIfTheyHaveDifferentIterSpecs) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  a = f32[4,4]{1,0} parameter(0)
+  b = f32[4,4]{1,0} parameter(1)
+  tr_a = f32[4,4]{1,0} transpose(a), dimensions={1,0}
+  add = f32[4,4]{1,0} add(a, tr_a)
+  ROOT r = f32[4,4]{1,0} dot(add, b),
+           lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+
+  MatchHloModule(*module, R"(
+CHECK-DAG: %[[P0:.*]] = f32[4,4]{1,0} parameter(0)
+CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
+CHECK-DAG: %[[P2:.*]] = f32[4,4]{1,0} parameter(2)
+CHECK-DAG: %[[TRANSPOSE:.*]] = f32[4,4]{1,0} transpose(f32[4,4]{1,0} %[[P1]])
+CHECK-DAG: %[[ADD:.*]] = f32[4,4]{1,0} add(f32[4,4]{1,0} %[[P0]], f32[4,4]{1,0} %[[TRANSPOSE]])
+CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0} dot(f32[4,4]{1,0} %[[ADD]], f32[4,4]{1,0} %[[P2]])
+CHECK: ENTRY
+CHECK-DAG: %[[P0:.*]] = f32[4,4]{1,0} parameter(0)
+CHECK-DAG: %[[P1:.*]] = f32[4,4]{1,0} parameter(1)
+CHECK-DAG: ROOT {{.*}} = f32[4,4]{1,0}
+CHECK-SAME: fusion(f32[4,4]{1,0} %[[P0]], f32[4,4]{1,0} %[[P0]], f32[4,4]{1,0} %[[P1]])
 CHECK-SAME: kind=kCustom
 CHECK-SAME: __triton_gemm
 })");
@@ -738,16 +810,15 @@ ENTRY e {
                                      se::CudaComputeCapability::AMPERE, 0})
                   .Run(module.get())
                   .value());
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter()))));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter()))));
   TF_ASSERT_OK_AND_ASSIGN(
       const auto analysis,
       TritonFusionAnalysis::Execute(*module->entry_computation()
                                          ->root_instruction()
                                          ->called_computations()[0]));
   EXPECT_EQ(analysis.ScopeParameters(TritonFusionAnalysis::Scope::LHS).size(),
-            2);
+            1);
   EXPECT_EQ(analysis.ScopeParameters(TritonFusionAnalysis::Scope::RHS).size(),
             1);
 }
