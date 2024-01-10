@@ -22,10 +22,10 @@ from the `envs` directory that is filled with configuration options:
 
 These "env" files match up with an environment matrix that roughly covers:
 
+-   Different Python versions
 -   Linux, MacOS, and Windows machines (these pool definitions are internal)
 -   x86 and arm64
 -   CPU-only, or with NVIDIA CUDA support (Linux only), or with TPUs
--   Different Python versions
 
 ## How to Test Your Changes to TensorFlow
 
