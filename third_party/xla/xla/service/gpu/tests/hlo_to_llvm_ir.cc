@@ -110,8 +110,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                                       hlo_module->config().debug_options()));
     std::cout << ptx << std::endl;
 #elif TENSORFLOW_USE_ROCM
-    return {absl::StatusCode::kUnimplemented,
-            "Feature not yet implemented in ROCm"};
+    return absl::kUnimplementedError("Feature not yet implemented in ROCm"
+  };
 #endif
   }
 #endif

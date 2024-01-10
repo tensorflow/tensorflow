@@ -694,8 +694,7 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
   // since we are fetching the ptxas version anyway. Catching the error
   // elsewhere might introduce unnecessary overhead.
   if (ptxas_version_tuple < std::array<int64_t, 3>{11, 8, 0}) {
-    return Status(absl::StatusCode::kInternal,
-                  "XLA requires ptxas version 11.8 or higher");
+    return absl::InternalError("XLA requires ptxas version 11.8 or higher");
   }
 
   static const std::optional<std::array<int64_t, 3>> nvlink_version =

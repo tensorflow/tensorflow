@@ -115,11 +115,9 @@ StatusOr<se::DeviceMemory<uint8_t>> ScratchAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
-    return Status(
-        absl::StatusCode::kResourceExhausted,
-        absl::StrFormat(
-            "Allocating %d bytes exceeds the memory limit of %d bytes.",
-            byte_size, GetMemoryLimitInBytes()));
+    return absl::ResourceExhaustedError(absl::StrFormat(
+        "Allocating %d bytes exceeds the memory limit of %d bytes.", byte_size,
+        GetMemoryLimitInBytes()));
   }
 
   TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,

@@ -226,8 +226,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
     if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
       return textproto;
     } else {
-      return Status(absl::StatusCode::kInternal,
-                    "Failed to serialize autotune results.");
+      return InternalError("Failed to serialize autotune results.");
     }
   }
   return results.SerializeAsString();
