@@ -465,8 +465,32 @@ TEST(HloShardingUtilTest, UngroupSharding_Replicated2) {
 TEST(HloShardingUtilTest, GroupedAndUngroupedReplicatedSharding) {
   GroupedSharding group_sharding = GetGroupedReplicatedSharding(
       /*num_groups=*/3, /*num_tiles=*/12, /*data_rank=*/2);
-  HloSharding ungroup_sharding = UngroupSharding(group_sharding);
-  EXPECT_EQ(ungroup_sharding, HloSharding::Replicate());
+  EXPECT_EQ(UngroupSharding(group_sharding), HloSharding::Replicate());
+}
+
+TEST(HloShardingUtilTest, GroupedAndUngroupedIotaSharding) {
+  std::vector<std::vector<int64_t>> device_groups = {{0, 1, 2, 3, 4, 5},
+                                                     {6, 7, 8, 9, 10, 11}};
+  GroupedSharding group_sharding = GroupedSharding(
+      device_groups, /*group_dims=*/{0}, /*group_dim_sizes=*/{2},
+      /*data_rank=*/2, HloSharding::IotaTile({1, 2, 3}, {2, 3}, {1, 0}));
+  EXPECT_EQ(UngroupSharding(group_sharding),
+            HloSharding::IotaTile({2, 2, 3}, {2, 2, 3}, {0, 2, 1}));
+}
+
+TEST(HloShardingUtilTest, GroupedAndUngroupedShardingWithUnsortedGroupDims) {
+  HloSharding sharding = HloSharding::IotaTile({4, 3, 5, 7});
+  GroupedSharding group_sharding =
+      GroupShardingOnDims(sharding, {2, 0}, {1, 2});
+  EXPECT_EQ(group_sharding.sharding, HloSharding::IotaTile({2, 3, 1, 7}));
+  EXPECT_EQ(UngroupSharding(group_sharding), sharding);
+}
+
+TEST(HloShardingUtilTest, UngroupShardingWithUnsortedGroupDims) {
+  GroupedSharding group_sharding({{0}, {1}, {2}, {3}}, {1, 0}, {2, 2}, 4,
+                                 HloSharding::Replicate());
+  EXPECT_EQ(UngroupSharding(group_sharding),
+            HloSharding::IotaTile({2, 2, 1, 1}, {2, 2}, {1, 0}));
 }
 
 TEST(HloShardingUtilTest, DeviceGroupsDoesNotMatch) {
