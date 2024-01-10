@@ -173,8 +173,16 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
         // to be more realistic.
         int64_t operand_elements =
             ShapeUtil::ElementsInRecursive(operand->shape());
-        cur_operand_utilization =
-            ceil(cur_operand_utilization * operand_elements) / operand_elements;
+
+        if (operand_elements == 0) {
+          // Element count should not be 0 in any production use case, but there
+          // are valid HLO inputs that occur in tests.
+          cur_operand_utilization = 0;
+        } else {
+          cur_operand_utilization =
+              ceil(cur_operand_utilization * operand_elements) /
+              operand_elements;
+        }
         root_utilizations_[operand] += cur_operand_utilization;
         root_ir_sizes[operand] += cur_instr_times_emitted;
       }
