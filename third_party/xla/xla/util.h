@@ -289,10 +289,29 @@ Status InternalErrorStrCat(Args&&... concat) {
 }
 
 template <typename... Args>
-Status ResourceExhaustedStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::ResourceExhausted(std::forward<Args>(concat)...));
-}
+struct ResourceExhaustedStrCat {
+  Status status;
+#if defined(PLATFORM_GOOGLE)
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  ResourceExhaustedStrCat(Args&&... concat, absl::SourceLocation loc =
+                                                absl::SourceLocation::current())
+      : status(WithLogBacktrace(
+            tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)
+                .WithSourceLocation(loc))) {}
+#else
+  ResourceExhaustedStrCat(Args&&... concat)
+      : status(WithLogBacktrace(
+            tsl::errors::ResourceExhausted(std::forward<Args>(concat)...))) {}
+#endif
+
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  operator Status() const { return status; }
+};
+
+// Deduction guide to make variadic arguments play nice with default
+// absl::SourceLocation argument.
+template <typename... Args>
+ResourceExhaustedStrCat(Args&&...) -> ResourceExhaustedStrCat<Args...>;
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
