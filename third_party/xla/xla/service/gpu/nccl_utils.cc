@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -168,13 +169,23 @@ struct NcclCliqueState {
 
 using NcclClique = Lockable<NcclCliqueState>;
 
+struct NcclCliques {
+  NcclClique& operator[](const NcclCliqueKey& key) {
+    absl::MutexLock lock(&mu);
+    return cliques[key];
+  }
+
+  absl::Mutex mu;
+  absl::node_hash_map<NcclCliqueKey, NcclClique> cliques ABSL_GUARDED_BY(mu);
+};
+
 std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
     const NcclUniqueIdCallback& unique_id_callback,
     size_t num_local_participants, bool may_skip_rendezvous) {
-  static auto& cliques = *new ThreadSafeMap<NcclCliqueKey, NcclClique>;
+  static auto& cliques = *new NcclCliques;
 
-  VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key:"
+  VLOG(2) << "AcquireNcclClique Rendezvous key (clique_key: "
           << clique_key.ToString() << ", run" << run_id.ToString() << ", op"
           << op_id.value() << ")";
 

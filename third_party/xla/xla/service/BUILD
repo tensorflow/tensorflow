@@ -6938,12 +6938,29 @@ cc_library(
     hdrs = ["rendezvous.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "rendezvous_test",
+    srcs = ["rendezvous_test.cc"],
+    deps = [
+        ":rendezvous",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
