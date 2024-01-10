@@ -922,10 +922,10 @@ GpuDriver::GraphGetMemAllocNodeParams(GpuGraphNodeHandle node) {
   hipMemcpy3DParms params{
       .srcArray = {},
       .srcPos = {},
-      .srcPtr = {.ptr = gpu_src},
+      .srcPtr = {.ptr = gpu_src, .pitch = size, .xsize = size, .ysize = 1},
       .dstArray = {},
       .dstPos = {},
-      .dstPtr = {.ptr = gpu_dst},
+      .dstPtr = {.ptr = gpu_dst, .pitch = size, .xsize = size, .ysize = 1},
       .extent = hipExtent{.width = size, .height = 1, .depth = 1},
       .kind = hipMemcpyDeviceToDevice};
 
@@ -947,10 +947,10 @@ GpuDriver::GraphGetMemAllocNodeParams(GpuGraphNodeHandle node) {
   hipMemcpy3DParms params{
       .srcArray = {},
       .srcPos = {},
-      .srcPtr = {.ptr = gpu_src},
+      .srcPtr = {.ptr = gpu_src, .pitch = size, .xsize = size, .ysize = 1},
       .dstArray = {},
       .dstPos = {},
-      .dstPtr = {.ptr = gpu_dst},
+      .dstPtr = {.ptr = gpu_dst, .pitch = size, .xsize = size, .ysize = 1},
       .extent = hipExtent{.width = size, .height = 1, .depth = 1},
       .kind = hipMemcpyDeviceToDevice};
 
