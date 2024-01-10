@@ -166,6 +166,7 @@ cc_library(
     ],
     deps = [
         ":runtime_passes_inc_gen",
+        ":tpu_merge_variable_with_execute",
         ":tpu_rewrite_pass",
         ":tpu_variable_runtime_reformatting",
         "@llvm-project//llvm:Support",
@@ -249,6 +250,29 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "tpu_merge_variable_with_execute",
+    srcs = ["tpu_merge_variables_with_execute.cc"],
+    hdrs = [
+        "runtime_passes.h",
+    ],
+    deps = [
+        ":runtime_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_analysis",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo",
     ],

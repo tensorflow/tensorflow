@@ -206,3 +206,43 @@ def TPUVariableRuntimeReformattingPass : Pass<"tf-tpu-variable-runtime-reformatt
     "tf_device::TensorFlowDeviceDialect"
   ];
 }
+
+def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute", "ModuleOp"> {
+  let summary = "Merges device variable reads and updates into TPU execute ops";
+
+  let description = [{
+    This pass finds on-device resource variable reads and updates surrounding a
+    `tf.TPUExecute` op and merges them into a `tf.TPUExecuteAndUpdateVariables`
+    op. This allows the TPU execution to perform more efficient in-place
+    variable updates.
+
+    For example,
+
+    ```mlir
+      %0 = "tf.ReadVariableOp"(%arg0)
+      %1 = "tf.ReadVariableOp"(%arg1)
+      %2 = "tf.TPUExecute"(%0, %1, %compile)
+      %3 = "tf.AssignVariableOp"(%arg0, %2)
+    ```
+
+    will be transformed into
+
+    ```mlir
+      %2 = "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %compile)
+        { device_var_reads_indices = [0, 1],
+          device_var_updates_indices = [0, -1] }
+    ````
+
+    The transformation happens only for on-device variables. The above
+    transformation requires `%arg0`, `%arg1` to have the same device assignment
+    as the `TPUExecute` op.
+  }];
+
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
+
+  let constructor = "TFTPU::CreateTPUMergeVariablesWithExecutePass()";
+}
+

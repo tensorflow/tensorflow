@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,13 +15,11 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
-#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -37,16 +35,13 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
@@ -60,7 +55,7 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
 #define GEN_PASS_DEF_TPUMERGEVARIABLESWITHEXECUTEPASS
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/runtime_passes.h.inc"
 
 class TPUMergeVariablesWithExecutePass
     : public impl::TPUMergeVariablesWithExecutePassBase<

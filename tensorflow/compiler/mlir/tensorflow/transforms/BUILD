@@ -526,7 +526,6 @@ cc_library(
         "tpu_dynamic_layout_pass.cc",
         "tpu_host_computation_expansion.cc",
         "tpu_identity_pruning.cc",
-        "tpu_merge_variables_with_execute.cc",
         "tpu_parallel_execute_sink_resource_write.cc",
         "tpu_partitioned_op_conversion.cc",
         "tpu_reorder_replicate_and_partitioned_inputs.cc",
