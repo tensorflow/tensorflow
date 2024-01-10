@@ -2691,9 +2691,9 @@ absl::Status MIOpenSupport::DoPrepareForCtcLoss(
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
              "error";
-      return absl::InternalError(
+      return absl::InternalError(absl::StrCat(
           "Failed to allocate scratch memory for MIOpen CTC Loss, of size: ",
-          workspace_size_in_bytes);
+          workspace_size_in_bytes));
     }
   }
 
@@ -3136,8 +3136,8 @@ absl::Status MIOpenSupport::DoPrepareForConvolution(
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
              "error";
-      return absl::InternalError("Failed to allocate scratch memory of size: ",
-                                 scratch_memory_size);
+      return absl::InternalError(absl::StrCat(
+          "Failed to allocate scratch memory of size: ", scratch_memory_size));
     }
   }
 
@@ -3260,8 +3260,8 @@ class RocmConvRunner : public dnn::ConvRunner {
         break;
       }
       default:
-        return absl::InternalError("Unexpected convolution kind ",
-                                   static_cast<int>(kind_));
+        return absl::InternalError(absl::StrCat("Unexpected convolution kind ",
+                                                static_cast<int>(kind_)));
     }
 
     if (is_profiling) {
@@ -3277,8 +3277,9 @@ class RocmConvRunner : public dnn::ConvRunner {
     }
 
     if (status != miopenStatusSuccess) {
-      return absl::InternalError("Failed to enqueue convolution on stream: ",
-                                 ::stream_executor::gpu::ToString(status));
+      return absl::InternalError(
+          absl::StrCat("Failed to enqueue convolution on stream: ",
+                       ::stream_executor::gpu::ToString(status)));
     }
 
     return absl::OkStatus();
@@ -4250,9 +4251,9 @@ absl::Status MIOpenSupport::DoPoolForward(
     auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
         pooling_desc.handle(), dest_desc.handle(), &workspace_size);
     if (status != miopenStatusSuccess) {
-      return absl::InternalError(
+      return absl::InternalError(absl::StrCat(
           "Failed to obtain workspace size for backward pooling on stream: ",
-          ToString(status));
+          ToString(status)));
     }
     if (workspace_size != 0) {
       PoolingWorkspaceDescriptor* pdesc = 0;
@@ -4282,8 +4283,8 @@ absl::Status MIOpenSupport::DoPoolForward(
       input_data.opaque(), &beta, dest_desc.handle(), output_data.opaque(),
       do_backward, workspace, workspace_size);
   if (status != miopenStatusSuccess) {
-    return absl::InternalError("Failed to enqueue forward pooling on stream: ",
-                               ToString(status));
+    return absl::InternalError(absl::StrCat(
+        "Failed to enqueue forward pooling on stream: ", ToString(status)));
   }
   return absl::OkStatus();
 }
@@ -4409,9 +4410,9 @@ absl::Status MIOpenSupport::DoPoolBackward(
   auto status = wrap::miopenPoolingGetWorkSpaceSizeV2(
       pooling_desc.handle(), dest_desc.handle(), &workspace_size_in_bytes);
   if (status != miopenStatusSuccess) {
-    return absl::InternalError(
+    return absl::InternalError(absl::StrCat(
         "Failed to obtain workspace size for backward pooling on stream: ",
-        ToString(status));
+        ToString(status)));
   }
 
   // Allocate the workspace.
@@ -4466,9 +4467,9 @@ absl::Status MIOpenSupport::DoPoolBackward(
           workspace.opaque(), workspace_size_in_bytes);
 
       if (status != miopenStatusSuccess) {
-        return absl::InternalError(
+        return absl::InternalError(absl::StrCat(
             "Failed to enqueue forward pooling (before backward) on stream: ",
-            ToString(status));
+            ToString(status)));
       }
       workspace_ptr = reinterpret_cast<uint8*>(workspace.opaque());
     }
@@ -4481,8 +4482,8 @@ absl::Status MIOpenSupport::DoPoolBackward(
       output_diff_data.opaque(), workspace_ptr);
 
   if (status != miopenStatusSuccess) {
-    return absl::InternalError("Failed to enqueue backward pooling on stream: ",
-                               ToString(status));
+    return absl::InternalError(absl::StrCat(
+        "Failed to enqueue backward pooling on stream: ", ToString(status)));
   }
   return absl::OkStatus();
 }
