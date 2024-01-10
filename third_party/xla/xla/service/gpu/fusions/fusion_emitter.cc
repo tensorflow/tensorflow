@@ -114,8 +114,8 @@ Status AnnotateKernelLaunchDimensions(const se::DeviceDescription& device_info,
 }  // namespace
 
 mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
-    const LaunchDimensions& launch_dims, const Shape& output_shape,
-    mlir::MLIRContext* ctx) {
+    const LaunchDimensions& launch_dims, int unroll_factor,
+    const Shape& output_shape, mlir::MLIRContext* ctx) {
   std::vector<mlir::AffineExpr> output_dims(output_shape.rank());
 
   std::array<uint64_t, 3> thread_counts{
@@ -150,6 +150,11 @@ mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     stride *= total_sizes[i];
   }
 
+  if (unroll_factor > 1) {
+    linear_index =
+        linear_index * unroll_factor + mlir::getAffineSymbolExpr(0, ctx);
+  }
+
   // See IndexUtil::LinearIndexToMultidimensionalIndex.
   uint64_t divisor = 1;
   for (auto dimension : LayoutUtil::MinorToMajor(output_shape)) {
@@ -159,12 +164,13 @@ mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
     divisor *= output_shape.dimensions(dimension);
   }
 
-  return mlir::AffineMap::get(/*dimCount=*/6, /*symbolCount=*/0, output_dims,
-                              ctx);
+  return mlir::AffineMap::get(/*dimCount=*/6,
+                              /*symbolCount=*/unroll_factor > 1 ? 1 : 0,
+                              output_dims, ctx);
 }
 
 Domain KernelFusionInterface::GetThreadIdDomain(
-    const LaunchDimensions& launch_dims) {
+    const LaunchDimensions& launch_dims, int unroll_factor) {
   Domain result;
   result.dimension_ranges = {
       {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x)},
@@ -174,6 +180,9 @@ Domain KernelFusionInterface::GetThreadIdDomain(
       {0, static_cast<int64_t>(launch_dims.block_counts().y)},
       {0, static_cast<int64_t>(launch_dims.block_counts().z)},
   };
+  if (unroll_factor > 1) {
+    result.symbol_ranges.push_back({0, unroll_factor});
+  }
   return result;
 }
 

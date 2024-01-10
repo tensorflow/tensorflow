@@ -32,13 +32,12 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/llvm_ir/fused_ir_emitter.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -214,6 +213,17 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
 
 LoopFusion::LoopFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
+
+std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
+    int64_t output_id, mlir::MLIRContext* ctx) const {
+  auto launch_dims = launch_dimensions();
+  const auto& shape = analysis_.fusion_roots()[output_id]->shape();
+  IndexingMap result{GetDefaultThreadIdToOutputIndexingMap(
+                         launch_dims, config_.unroll_factor, shape, ctx),
+                     GetThreadIdDomain(launch_dims, config_.unroll_factor)};
+  result.Simplify();
+  return result;
+}
 
 Status LoopFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                               const HloFusionInstruction& fusion,

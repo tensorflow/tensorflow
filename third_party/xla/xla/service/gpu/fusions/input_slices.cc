@@ -174,12 +174,13 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
   return first_slice_operand_shape;
 }
 
+constexpr int kUnrollFactor = 1;
+
 }  // namespace
 
 LaunchDimensions InputSlicesFusion::launch_dimensions() const {
   auto* root = analysis_.fusion_roots().front();
   const auto& shape = root->operands()[0]->shape();
-  constexpr int kUnrollFactor = 1;
   return CalculateLaunchDimensions(shape, analysis_.device_info(),
                                    {kUnrollFactor});
 }
@@ -192,9 +193,9 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   // The implementation requires the shapes and layouts to be the same, but we
   // still use the requested output's shape for clarity.
   const auto& shape = analysis_.fusion_roots()[output_id]->shape();
-  IndexingMap result{
-      GetDefaultThreadIdToOutputIndexingMap(launch_dims, shape, ctx),
-      GetThreadIdDomain(launch_dims)};
+  IndexingMap result{GetDefaultThreadIdToOutputIndexingMap(
+                         launch_dims, kUnrollFactor, shape, ctx),
+                     GetThreadIdDomain(launch_dims, kUnrollFactor)};
   result.Simplify();
   return result;
 }
