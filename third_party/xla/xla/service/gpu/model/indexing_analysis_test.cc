@@ -291,6 +291,72 @@ TEST_F(IndexingAnalysisTest, ConstantOp) {
   EXPECT_THAT(input_indexing.value().indexing_maps, IsEmpty());
 }
 
+TEST_F(IndexingAnalysisTest, ConcatenateOp) {
+  auto ir = R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[2, 5, 7] parameter(0)
+      p1 = f32[2, 11, 7] parameter(1)
+      p2 = f32[2, 17, 7] parameter(2)
+      ROOT concat = f32[2, 33, 7] concatenate(
+        f32[2, 5, 7] p0, f32[2, 11, 7] p1, f32[2, 17, 7] p2), dimensions={1}
+    }
+  )";
+  auto input_indexing = GetOutputToInputIndexingForEntryComputation(ir);
+  EXPECT_TRUE(input_indexing.has_value());
+  EXPECT_THAT(input_indexing->indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d0, d1, d2)",
+                              ElementsAre(MatchRange(0, 2), MatchRange(0, 5),
+                                          MatchRange(0, 7)),
+                              IsEmpty()))),
+                  Pair(1, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d0, d1 - 5, d2)",
+                              ElementsAre(MatchRange(0, 2), MatchRange(5, 16),
+                                          MatchRange(0, 7)),
+                              IsEmpty()))),
+                  Pair(2, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d0, d1 - 16, d2)",
+                              ElementsAre(MatchRange(0, 2), MatchRange(16, 33),
+                                          MatchRange(0, 7)),
+                              IsEmpty())))));
+
+  auto output_indexing_0 =
+      GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/0);
+  EXPECT_TRUE(output_indexing_0.has_value());
+  EXPECT_THAT(
+      output_indexing_0->indexing_maps,
+      UnorderedElementsAre(Pair(
+          0,
+          ElementsAre(MatchIndexingMap(
+              "(d0, d1, d2) -> (d0, d1, d2)",
+              ElementsAre(MatchRange(0, 2), MatchRange(0, 5), MatchRange(0, 7)),
+              IsEmpty())))));
+
+  auto output_indexing_1 =
+      GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/1);
+  EXPECT_TRUE(output_indexing_1.has_value());
+  EXPECT_THAT(output_indexing_1->indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d0, d1 + 5, d2)",
+                              ElementsAre(MatchRange(0, 2), MatchRange(0, 11),
+                                          MatchRange(0, 7)),
+                              IsEmpty())))));
+
+  auto output_indexing_2 =
+      GetInputToOutputIndexingForEntryComputation(ir, /*input_id=*/2);
+  EXPECT_TRUE(output_indexing_2.has_value());
+  EXPECT_THAT(output_indexing_2->indexing_maps,
+              UnorderedElementsAre(
+                  Pair(0, ElementsAre(MatchIndexingMap(
+                              "(d0, d1, d2) -> (d0, d1 + 16, d2)",
+                              ElementsAre(MatchRange(0, 2), MatchRange(0, 17),
+                                          MatchRange(0, 7)),
+                              IsEmpty())))));
+}
+
 TEST_F(IndexingAnalysisTest, FusionOpWithSingleBinaryOp) {
   auto input_indexing = GetOutputToInputIndexingForEntryComputation(R"(
     HloModule m

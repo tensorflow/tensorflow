@@ -141,7 +141,63 @@ std::optional<HloInstructionIndexing> ComputeInputToOutputBroadcastOpIndexing(
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
 }
 
+std::optional<HloInstructionIndexing> ComputeOutputToInputConcatenateOpIndexing(
+    const HloConcatenateInstruction* concat, MLIRContext* mlir_context) {
+  const auto& operand_0_dims = concat->operand(0)->shape().dimensions();
+
+  // Initialize affine map and domain. Only concat_dim elements of both have to
+  // be adjusted for a particular operand_id.
+  mlir::MutableAffineMap affine_map =
+      AffineMap::getMultiDimIdentityMap(operand_0_dims.size(), mlir_context);
+  Domain domain = Domain::FromUpperBounds(operand_0_dims, {});
+
+  HloInstructionIndexing concat_indexing;
+  int64_t concat_dim = concat->concatenate_dimension();
+  AffineExpr concat_dim_expr = getAffineDimExpr(concat_dim, mlir_context);
+  int64_t offset = 0;
+  for (const auto [operand_id, operand] : llvm::enumerate(concat->operands())) {
+    affine_map.setResult(
+        concat_dim,
+        getAffineBinaryOpExpr(AffineExprKind::Add,
+                              getAffineConstantExpr(-offset, mlir_context),
+                              concat_dim_expr));
+    int64_t operand_concat_dim = operand->shape().dimensions()[concat_dim];
+    domain.dimension_ranges[concat_dim] = Range{
+        .lower_bound = offset, .upper_bound = offset + operand_concat_dim};
+    concat_indexing.indexing_maps[operand_id].insert(
+        IndexingMap{.affine_map = affine_map.getAffineMap(), .domain = domain});
+    offset += operand_concat_dim;
+  }
+  return {std::move(concat_indexing)};
+}
+
+std::optional<HloInstructionIndexing> ComputeInputToOutputConcatenateOpIndexing(
+    const HloConcatenateInstruction* concat, int input_id,
+    MLIRContext* mlir_context) {
+  int64_t concat_dim = concat->concatenate_dimension();
+  int64_t offset = 0;
+  for (int64_t operand_id = 0; operand_id < input_id; ++operand_id) {
+    offset += concat->operand(operand_id)->shape().dimensions()[concat_dim];
+  }
+  // Initialize affine map. Only concat_dim element has to be adjusted for a
+  // particular operand_id.
+  const auto& operand_dims = concat->operand(input_id)->shape().dimensions();
+  mlir::MutableAffineMap affine_map =
+      AffineMap::getMultiDimIdentityMap(operand_dims.size(), mlir_context);
+  affine_map.setResult(
+      concat_dim,
+      getAffineBinaryOpExpr(AffineExprKind::Add,
+                            getAffineConstantExpr(offset, mlir_context),
+                            getAffineDimExpr(concat_dim, mlir_context)));
+  IndexingMap indexing_map{.affine_map = affine_map.getAffineMap(),
+                           .domain = Domain::FromUpperBounds(operand_dims, {})};
+  return HloInstructionIndexing::FromIndexingMaps({indexing_map});
+}
+
 // Composes affine maps, i.e. consumer_map ∘ producer_map.
+// Right now the ranges of the composed indexing map are correct only when there
+// is no composition with concat.
+// TODO(b/319410501): Generalize domain modelling.
 IndexingMap ComposeIndexingMaps(const IndexingMap& producer_map,
                                 const IndexingMap& consumer_map) {
   // AffineMap::compose(some_affine_map) actually computes some_affine_map ∘
@@ -892,6 +948,9 @@ std::optional<HloInstructionIndexing> ComputeOutputToInputIndexing(
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
     return ComputeOutputToInputBroadcastOpIndexing(broadcast, ctx);
   }
+  if (auto concat = DynCast<HloConcatenateInstruction>(instr)) {
+    return ComputeOutputToInputConcatenateOpIndexing(concat, ctx);
+  }
   if (auto constant = DynCast<HloConstantInstruction>(instr)) {
     return HloInstructionIndexing{};
   }
@@ -932,6 +991,9 @@ std::optional<HloInstructionIndexing> ComputeInputToOutputIndexing(
   }
   if (auto broadcast = DynCast<HloBroadcastInstruction>(instr)) {
     return ComputeInputToOutputBroadcastOpIndexing(broadcast, ctx);
+  }
+  if (auto concat = DynCast<HloConcatenateInstruction>(instr)) {
+    return ComputeInputToOutputConcatenateOpIndexing(concat, input_id, ctx);
   }
   if (auto reduce = DynCast<HloReduceInstruction>(instr)) {
     return ComputeInputToOutputReduceOpIndexing(reduce, input_id, ctx);
