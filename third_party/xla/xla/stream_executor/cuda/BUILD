@@ -133,7 +133,7 @@ cc_library(
     name = "cuda_driver",
     srcs = if_cuda_is_configured(["cuda_driver.cc"]),
     hdrs = if_cuda_is_configured(["cuda_driver.h"]),
-    defines = if_cuda(["XLA_ENABLE_CUDA"]) + if_nccl(["XLA_ENABLE_XCCL"]),
+    defines = if_nccl(["XLA_ENABLE_XCCL"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_diagnostics",
