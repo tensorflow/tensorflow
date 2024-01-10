@@ -60,6 +60,7 @@ class TestCluster {
   // Creates a new test cluster with a dispatcher and `num_workers` workers.
   explicit TestCluster(int num_workers);
   explicit TestCluster(const Config& config);
+  virtual ~TestCluster();
 
   // Initializes the test cluster. This must be called before interacting with
   // the cluster. Initialize should be called only once.

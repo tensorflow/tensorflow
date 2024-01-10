@@ -34,6 +34,7 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:tstring",

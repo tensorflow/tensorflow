@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/error_codes.pb.h"
@@ -74,7 +75,10 @@ DataServiceMetadata GetDefaultMetadata() {
 class DispatcherClientTest : public ::testing::Test {
  protected:
   Status SetUpTfDataService(int64_t num_workers) {
-    test_cluster_ = std::make_unique<TestCluster>(num_workers);
+    TestCluster::Config config;
+    config.num_workers = num_workers;
+    config.work_dir = tsl::io::JoinPath(tsl::testing::TmpDir(), "work_dir");
+    test_cluster_ = std::make_unique<TestCluster>(config);
     TF_RETURN_IF_ERROR(test_cluster_->Initialize());
     dispatcher_client_ = std::make_unique<DataServiceDispatcherClient>(
         test_cluster_->DispatcherAddress(), kProtocol);

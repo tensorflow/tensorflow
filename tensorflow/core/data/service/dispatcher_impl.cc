@@ -1163,6 +1163,14 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
 
 Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                            SnapshotResponse* response) {
+  if (!config_.fault_tolerant_mode()) {
+    return errors::InvalidArgument(
+        "tf.data distributed snapshot requires running tf.data service in the "
+        "fault tolerant mode. To enable the fault tolerant mode, set "
+        "`DispatcherConfig.fault_tolerant_mode` to true and provide a valid "
+        "`DispatcherConfig.work_dir`.");
+  }
+
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   if (snapshots_.contains(request->path())) {
