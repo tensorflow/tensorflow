@@ -93,7 +93,8 @@ void ConvertF64ToEf57(absl::Span<const double> input,
 
     uint32x2_t x_is_finite =
         vcalt_f32(x_hi_f32, vdup_n_f32(std::numeric_limits<float>::infinity()));
-    x_lo_f32 = vand_u32(x_lo_f32, x_is_finite);
+    x_lo_f32 = vreinterpret_f32_u32(
+        vand_u32(vreinterpret_u32_f32(x_lo_f32), x_is_finite));
 
     float32x2x2_t to_store;
     to_store.val[0] = x_hi_f32;
