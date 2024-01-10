@@ -3552,23 +3552,34 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         "Select's pred operand must have PRED element type; got %s.",
         ShapeUtil::HumanString(pred));
   }
-  if (!Shape::Equal()
-           .IgnoreElementType()
-           .IgnoreLayout()
-           .IgnoreDynamicDimension()(pred, on_true)) {
+  if (!ShapeUtil::CompatibleIgnoringElementType(pred, on_true) ||
+      !ShapeUtil::CompatibleIgnoringElementType(pred, on_false)) {
     return InvalidArgument(
         "Operands to select and predicate must be the same shape; got %s and "
-        "%s.",
-        ShapeUtil::HumanString(on_true), ShapeUtil::HumanString(pred));
+        "%s and %s.",
+        ShapeUtil::HumanString(on_true), ShapeUtil::HumanString(on_false),
+        ShapeUtil::HumanString(pred));
   }
 
   Shape result = ShapeUtil::ChangeElementType(
       pred, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
   for (int64_t dimension = 0; dimension < pred.rank(); ++dimension) {
-    result.set_dynamic_dimension(dimension,
-                                 pred.is_dynamic_dimension(dimension) ||
-                                     on_true.is_dynamic_dimension(dimension) ||
-                                     on_false.is_dynamic_dimension(dimension));
+    if (on_true.is_unbounded_dynamic_dimension(dimension) ||
+        on_false.is_unbounded_dynamic_dimension(dimension)) {
+      StatusOr<DimAndBound> inferred = InferMostSpecificDimAndBound(
+          dimension, on_true.dimensions(dimension),
+          on_false.dimensions(dimension), on_true.dimensions(dimension),
+          on_false.dimensions(dimension));
+      result.set_dimensions(dimension, (*inferred).dimension);
+      result.set_dynamic_dimension(
+          dimension, on_true.is_dynamic_dimension(dimension) &&
+                         on_false.is_dynamic_dimension(dimension));
+    } else {
+      result.set_dynamic_dimension(
+          dimension, pred.is_dynamic_dimension(dimension) ||
+                         on_true.is_dynamic_dimension(dimension) ||
+                         on_false.is_dynamic_dimension(dimension));
+    }
   }
   return std::move(result);
 }

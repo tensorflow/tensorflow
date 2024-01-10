@@ -2139,6 +2139,74 @@ TEST_F(XlaBuilderTest, UnboundedRsqrt) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
+TEST_F(XlaBuilderTest, UnboundedSelect) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("pred[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("f32[1, 1, 2, 2, <=2, <=2, ?]"));
+  Select(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+         Parameter(&b, 2, ehs, "ehs"));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto result = module->entry_computation()->root_instruction()->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "result: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
+TEST_F(XlaBuilderTest, UnboundedSelectUnsupportedImplicitBroadcast1) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[1]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[?, 10]"));
+  Select(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+         Parameter(&b, 2, ehs, "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_THAT(build_status.status().message(),
+              HasSubstr("ShapeUtil::SameDimensions(non_scalar_shape.value(), "
+                        "*shape) Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedSelectUnsupportedImplicitBroadcast2) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[]"));
+  Select(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+         Parameter(&b, 2, ehs, "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_THAT(
+      build_status.status().message(),
+      HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedSelectUnsupportedImplicitBroadcast3) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 10]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[]"));
+  Select(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+         Parameter(&b, 2, ehs, "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_THAT(
+      build_status.status().message(),
+      HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
+}
+
+TEST_F(XlaBuilderTest, UnboundedSelectUnsupportedImplicitBroadcast4) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape ehs, ParseShape("f32[?, 10]"));
+  Select(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+         Parameter(&b, 2, ehs, "ehs"));
+  StatusOr<std::unique_ptr<HloModule>> build_status = BuildHloModule(&b);
+  EXPECT_THAT(
+      build_status.status().message(),
+      HasSubstr("!is_unbounded_dynamic Unimplemented implicit broadcast."));
+}
+
 TEST_F(XlaBuilderTest, UnboundedSin) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[1, 2, <=2, ?]"));
