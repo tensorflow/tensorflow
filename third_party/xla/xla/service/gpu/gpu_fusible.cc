@@ -934,16 +934,6 @@ std::vector<const HloInstruction*> GetFusionRoots(
   return out;
 }
 
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero) {
-  if (!IsReductionFromOrToContiguousDimensions(hero)) {
-    return false;
-  }
-  return &root == &hero ||
-         ReductionIsRaceFree(hero.GetModule()->config(),
-                             GetReductionKindAndContiguousComponents(hero));
-}
-
 bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion &&
          instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&

@@ -219,5 +219,15 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
   return {/*is_row_reduction=*/false, shape_partition};
 }
 
+bool IsRealReductionHero(const HloInstruction& root,
+                         const HloInstruction& hero) {
+  if (!IsReductionFromOrToContiguousDimensions(hero)) {
+    return false;
+  }
+  return &root == &hero ||
+         ReductionIsRaceFree(hero.GetModule()->config(),
+                             GetReductionKindAndContiguousComponents(hero));
+}
+
 }  // namespace gpu
 }  // namespace xla

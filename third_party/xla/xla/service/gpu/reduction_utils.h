@@ -74,6 +74,10 @@ int64_t ReductionDimensionRaceFreeBound(
 bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
                          const ReductionDimensions& reduction_dimensions);
 
+// Whether the instruction is a reduction hero for the given root.
+bool IsRealReductionHero(const HloInstruction& root,
+                         const HloInstruction& hero);
+
 }  // namespace gpu
 }  // namespace xla
 #endif  // XLA_SERVICE_GPU_REDUCTION_UTILS_H_

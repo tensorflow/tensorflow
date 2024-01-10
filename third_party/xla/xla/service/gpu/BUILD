@@ -4033,10 +4033,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":backend_configs_cc",
-        ":gpu_fusible",
         ":hlo_traversal",
         ":ir_emission_utils",
         ":launch_dimensions",
+        ":reduction_utils",
         "//xla:shape_util",
         "//xla:statusor",
         "//xla:util",
