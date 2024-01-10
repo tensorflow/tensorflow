@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/pjrt/cpu/cpu_client.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
