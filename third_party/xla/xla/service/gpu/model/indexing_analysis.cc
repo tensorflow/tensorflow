@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -57,12 +57,8 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
-using mlir::AffineBinaryOpExpr;
 using mlir::AffineExpr;
-using mlir::AffineExprKind;
 using mlir::AffineMap;
-using mlir::AffineSymbolExpr;
-using mlir::getAffineBinaryOpExpr;
 using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
 using mlir::MLIRContext;
@@ -156,11 +152,7 @@ std::optional<HloInstructionIndexing> ComputeOutputToInputConcatenateOpIndexing(
   AffineExpr concat_dim_expr = getAffineDimExpr(concat_dim, mlir_context);
   int64_t offset = 0;
   for (const auto [operand_id, operand] : llvm::enumerate(concat->operands())) {
-    affine_map.setResult(
-        concat_dim,
-        getAffineBinaryOpExpr(AffineExprKind::Add,
-                              getAffineConstantExpr(-offset, mlir_context),
-                              concat_dim_expr));
+    affine_map.setResult(concat_dim, concat_dim_expr - offset);
     int64_t operand_concat_dim = operand->shape().dimensions()[concat_dim];
     domain.dimension_ranges[concat_dim] = Range{
         .lower_bound = offset, .upper_bound = offset + operand_concat_dim};
@@ -184,11 +176,8 @@ std::optional<HloInstructionIndexing> ComputeInputToOutputConcatenateOpIndexing(
   const auto& operand_dims = concat->operand(input_id)->shape().dimensions();
   mlir::MutableAffineMap affine_map =
       AffineMap::getMultiDimIdentityMap(operand_dims.size(), mlir_context);
-  affine_map.setResult(
-      concat_dim,
-      getAffineBinaryOpExpr(AffineExprKind::Add,
-                            getAffineConstantExpr(offset, mlir_context),
-                            getAffineDimExpr(concat_dim, mlir_context)));
+  affine_map.setResult(concat_dim,
+                       getAffineDimExpr(concat_dim, mlir_context) + offset);
   IndexingMap indexing_map{.affine_map = affine_map.getAffineMap(),
                            .domain = Domain::FromUpperBounds(operand_dims, {})};
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
@@ -457,11 +446,7 @@ AffineExpr LinearizeShape(absl::Span<const int64_t> dims,
 
   auto strides = ComputeStrides(dims);
   for (auto [stride, dimension_expr] : llvm::zip(strides, dimension_exprs)) {
-    linear_index = getAffineBinaryOpExpr(
-        AffineExprKind::Add, linear_index,
-        getAffineBinaryOpExpr(AffineExprKind::Mul,
-                              getAffineConstantExpr(stride, mlir_context),
-                              dimension_expr));
+    linear_index = linear_index + dimension_expr * stride;
   }
   return linear_index;
 }
@@ -475,11 +460,8 @@ std::vector<AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
 
   AffineExpr remainder = linear_index;
   for (int64_t stride : ComputeStrides(dims)) {
-    AffineExpr stride_expr = getAffineConstantExpr(stride, mlir_context);
-    multi_index.push_back(getAffineBinaryOpExpr(AffineExprKind::FloorDiv,
-                                                remainder, stride_expr));
-    remainder =
-        getAffineBinaryOpExpr(AffineExprKind::Mod, remainder, stride_expr);
+    multi_index.push_back(remainder.floorDiv(stride));
+    remainder = remainder % stride;
   }
   return multi_index;
 }
@@ -631,11 +613,7 @@ std::optional<HloInstructionIndexing> ComputeReverseOpIndexing(
       exprs.push_back(dim_expr);
       continue;
     }
-    auto dim_bound = getAffineConstantExpr(output_dim - 1, mlir_context);
-    auto neg_dim_expr = getAffineBinaryOpExpr(
-        AffineExprKind::Mul, getAffineConstantExpr(-1, mlir_context), dim_expr);
-    exprs.push_back(
-        getAffineBinaryOpExpr(AffineExprKind::Add, neg_dim_expr, dim_bound));
+    exprs.push_back(-dim_expr + output_dim - 1);
   }
 
   IndexingMap indexing_map{
@@ -653,15 +631,9 @@ std::optional<HloInstructionIndexing> ComputeOutputToInputSliceOpIndexing(
   std::vector<AffineExpr> exprs;
   exprs.reserve(output_rank);
   for (int64_t dim = 0; dim < output_rank; ++dim) {
-    AffineExpr offset =
-        getAffineConstantExpr(slice->slice_starts()[dim], mlir_context);
-    AffineExpr stride =
-        getAffineConstantExpr(slice->slice_strides()[dim], mlir_context);
     AffineExpr dim_expr = getAffineDimExpr(dim, mlir_context);
-
-    AffineExpr mul =
-        getAffineBinaryOpExpr(AffineExprKind::Mul, stride, dim_expr);
-    exprs.push_back(getAffineBinaryOpExpr(AffineExprKind::Add, offset, mul));
+    exprs.push_back(dim_expr * slice->slice_strides()[dim] +
+                    slice->slice_starts()[dim]);
   }
   IndexingMap indexing_map{
       .affine_map =
