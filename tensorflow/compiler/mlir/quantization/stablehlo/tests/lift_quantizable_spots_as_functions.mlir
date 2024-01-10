@@ -590,7 +590,7 @@ func.func @dot_general_with_bias_and_relu6_dynamic_fn(%arg0: tensor<?x12544xf32>
   %8 = stablehlo.clamp %2, %7, %3 : (tensor<f32>, tensor<?x10xf32>, tensor<f32>) -> tensor<?x10xf32>
   func.return %8: tensor<?x10xf32>
 }
-/// CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<2.000000e+00>
+// CHECK: %[[CONST_0:.*]] = stablehlo.constant dense<2.000000e+00>
 // CHECK: %[[CONST_1:.*]] = stablehlo.constant dense<2.000000e+00>
 // CHECK: %[[XLA_CALL_MODULE:.*]] = "tf.XlaCallModule"(%arg0, %[[CONST_0]], %[[CONST_1]])
 // CHECK: return %[[XLA_CALL_MODULE:.*]] : tensor<?x10xf32>
@@ -605,4 +605,32 @@ func.func @dot_general_with_bias_and_relu6_dynamic_fn(%arg0: tensor<?x12544xf32>
 // CHECK: %[[ADD:.*]] = stablehlo.add %[[DOT_GENERAL]], %[[DYNAMIC_BROADCAST_IN_DIM_0]]
 // CHECK: %[[CLAMP:.*]] = stablehlo.clamp %[[CONST_0]], %[[ADD]], %[[CONST_1]]
 // CHECK: return %[[CLAMP]] : tensor<?x10xf32>
+// CHECK: }
+
+// -----
+
+// CHECK-LABEL: @gather_fn(
+func.func @gather_fn() -> tensor<2x3x2x2xi32> {
+  %0 = stablehlo.constant dense<1> : tensor<3x4x2xi32>
+  %1 = stablehlo.constant dense<1> : tensor<2x3x2xi64>
+  %2 = "stablehlo.gather"(%0, %1) {
+  dimension_numbers = #stablehlo.gather<
+    offset_dims = [2, 3],
+    collapsed_slice_dims = [0],
+    start_index_map = [1, 0],
+    index_vector_dim = 2>,
+  slice_sizes = dense<[1, 2, 2]> : tensor<3xi64>,
+  indices_are_sorted = false
+} : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
+  func.return %2: tensor<2x3x2x2xi32>
+}
+// CHECK: %[[OPERAND:.*]] = stablehlo.constant
+// CHECK: %[[INDICES:.*]] = stablehlo.constant
+// CHECK: %[[XLA_CALL_MODULE:.*]] = "tf.XlaCallModule"(%[[OPERAND]], %[[INDICES]])
+// CHECK: return %[[XLA_CALL_MODULE:.*]] : tensor<2x3x2x2xi32>
+// CHECK: }
+
+// CHECK-LABEL: private @composite_gather_fn_1
+// CHECK: %[[GATHER:.*]] = "stablehlo.gather"(%arg0, %arg1)
+// CHECK: return %[[GATHER]] : tensor<2x3x2x2xi32>
 // CHECK: }
