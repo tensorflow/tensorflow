@@ -122,10 +122,10 @@ struct XentFunctorBase {
                   typename TTypes<T>::Matrix scratch,
                   typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-      T* scratch_ptr = (T*)scratch.data();
-      T* backprop_ptr = (T*)backprop.data();
+      T* scratch_ptr = scratch.data();
+      T* backprop_ptr = backprop.data();
 
-      T* loss_ptr = (T*)loss.data();
+      T* loss_ptr = loss.data();
 
       int row_size = shape[1];
 
