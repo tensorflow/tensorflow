@@ -78,7 +78,7 @@ class DistributedSaveLoadFtTest(
     # Dynamic sharding may lose splits if the dispatcher fails.
     if sharding_policy == data_service_ops.ShardingPolicy.DYNAMIC:
       self.assertNotEmpty(output)
-      self.assertContainsSubset(set(range(num_elements)), set(output))
+      self.assertContainsSubset(output, range(num_elements))
 
   @combinations.generate(
       combinations.times(
