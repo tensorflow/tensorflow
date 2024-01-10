@@ -96,15 +96,15 @@ class SoftmaxXentWithLogitsOp : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 1, shape_in, &back_out));
 
-    if (shape_in.dim_size(0) <= 0) return;
-
-    functor::XentFunctor<Device, T> functor;
-    functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
-        BCast::ToIndexArray<2>(bcast.x_bcast()),
-        BCast::ToIndexArray<2>(bcast.y_bcast()),
-        logits_in.template shaped<T, 2>(bcast.x_reshape()),
-        labels_in.template shaped<T, 2>(bcast.y_reshape()),
-        scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
+    if (shape_in.dim_size(0) > 0) {
+      functor::XentFunctor<Device, T> functor;
+      functor(context->eigen_device<Device>(), shape_in.AsEigenDSizes<2>(),
+              BCast::ToIndexArray<2>(bcast.x_bcast()),
+              BCast::ToIndexArray<2>(bcast.y_bcast()),
+              logits_in.template shaped<T, 2>(bcast.x_reshape()),
+              labels_in.template shaped<T, 2>(bcast.y_reshape()),
+              scratch.matrix<T>(), loss_out->vec<T>(), back_out->matrix<T>());
+    }
   }
 };
 
