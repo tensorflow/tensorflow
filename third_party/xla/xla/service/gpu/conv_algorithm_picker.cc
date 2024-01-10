@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/conv_algorithm_picker.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -608,10 +609,9 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   // Dry-run to warmup the plan.
   launch_status = RunGpuConv(config, operand_buffers, result_buffers,
                              scratch_memory, stream, options);
-  constexpr float kThreshold = 0.95f;
   constexpr int kMaxIter = 10;
-  // Iterate until new measurement is less than
-  // kThreshold * min(prev measurements).
+  // Iterate until the new measurement is within kThreshold of the current
+  // minimum.
   int num_iters = 0;
   for (;
        num_iters < kMaxIter && launch_status.ok() && profile_result.is_valid();
@@ -621,7 +621,11 @@ StatusOr<AutotuneResult> GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     float old_min_time = min_time;
     min_time = std::min(min_time, profile_result.elapsed_time_in_ms());
     max_time = std::max(max_time, profile_result.elapsed_time_in_ms());
-    if (profile_result.elapsed_time_in_ms() / old_min_time >= kThreshold) {
+
+    constexpr float kThreshold = 0.05f;
+    if (std::abs(profile_result.elapsed_time_in_ms() - old_min_time) /
+            old_min_time <
+        kThreshold) {
       break;
     }
   }
