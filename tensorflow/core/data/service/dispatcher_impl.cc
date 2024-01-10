@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/time/time.h"
@@ -73,8 +75,10 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace data {
@@ -261,14 +265,7 @@ Status DataServiceDispatcherImpl::Start() {
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
-
-  for (const auto& path : state_.ListSnapshotPaths()) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<SnapshotManager> snapshot_manager,
-        SnapshotManager::Resume(path, snapshot_assignment_manager_, env_));
-    snapshots_.insert({path, std::move(snapshot_manager)});
-  }
-
+  TF_RETURN_IF_ERROR(RestoreSnapshots());
   started_ = true;
   return OkStatus();
 }
@@ -1223,6 +1220,34 @@ Status DataServiceDispatcherImpl::GetSnapshotSplit(
     }
   }
   return it->second->GetSnapshotSplit(*request, *response);
+}
+
+absl::Status DataServiceDispatcherImpl::RestoreSnapshots()
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (state_.ListSnapshotPaths().empty()) {
+    return absl::OkStatus();
+  }
+
+  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
+      env_, tsl::ThreadOptions{}, "restore_snapshot_thread",
+      state_.ListSnapshotPaths().size());
+  absl::Status snapshot_status;
+  mutex snapshot_mu;  // Protects `snapshot_status` and `snapshots_`.
+  for (const std::string& path : state_.ListSnapshotPaths()) {
+    thread_pool->Schedule([this, &path, &snapshot_status,
+                           &snapshot_mu]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      absl::StatusOr<std::unique_ptr<SnapshotManager>> snapshot_manager =
+          SnapshotManager::Resume(path, snapshot_assignment_manager_, env_);
+      mutex_lock snapshot_lock(snapshot_mu);
+      if (!snapshot_manager.status().ok()) {
+        snapshot_status.Update(snapshot_manager.status());
+        return;
+      }
+      snapshots_.insert({path, std::move(snapshot_manager.value())});
+    });
+  }
+  thread_pool.reset();
+  return snapshot_status;
 }
 
 Status DataServiceDispatcherImpl::DisableCompressionAtRuntime(
