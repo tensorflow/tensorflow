@@ -193,13 +193,12 @@ absl::Status SnapshotManager::Resume() TF_LOCKS_EXCLUDED(mu_) {
   tsl::mutex_lock l(mu_);
   if (!env_->FileExists(path_).ok()) {
     return absl::InternalError(
-        absl::StrCat("Failed to recover snapshot at ", path_,
-                     ": the snapshot path doesn't exist"));
+        absl::StrCat("Failed to recover tf.data snapshot at ", path_,
+                     ": the snapshot path doesn't exist."));
   }
   if (env_->FileExists(SnapshotDoneFilePath(path_)).ok()) {
     mode_ = Mode::kDone;
-    LOG(INFO) << "Attempted to recover snapshot at " << path_
-              << " but it's already done";
+    LOG(INFO) << "Recovered finished tf.data snapshot at " << path_;
     return absl::OkStatus();
   }
   if (env_->FileExists(SnapshotErrorFilePath(path_)).ok()) {
@@ -257,7 +256,7 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &stream_index) ||
         stream_index < 0) {
       return absl::InternalError(absl::StrCat(
-          "Can't parse the name of ", stream_path,
+          "Can't parse tf.data snapshot stream directory ", stream_path,
           ": filename must have the format stream_<stream_index>."));
     }
 
@@ -278,8 +277,9 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
 
   for (int64_t i = 0; i < global_split_indices.size(); ++i) {
     if (!global_split_indices.contains(i)) {
-      return absl::InternalError(absl::StrCat(
-          "Found missing global split index, ", i, ", in ", path_));
+      return absl::InternalError(
+          absl::StrCat("Failed to restore tf.data snapshot at ", path_,
+                       ": Found missing global split index ", i, "."));
     }
   }
   num_assigned_splits_ = global_split_indices.size();
@@ -330,8 +330,8 @@ absl::Status SnapshotManager::ReadOnDiskStream(
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &source_index) ||
         source_index < 0) {
       return absl::InternalError(absl::StrCat(
-          "Can't parse the name of ", source_path,
-          ": filename must have the format source_<source_index>"));
+          "Can't parse tf.data snapshot source directory ", source_path,
+          ": filename must have the format source_<source_index>."));
     }
     if (source_index >= num_sources()) {
       return absl::InternalError(
@@ -449,7 +449,8 @@ absl::Status SnapshotManager::ReadOnDiskSplit(
   auto [local_split_index, global_split_index] = split_indices;
   if (global_split_indices.contains(global_split_index)) {
     return absl::InternalError(absl::StrCat(
-        "Found duplicate global split index in name of ", split_file));
+        "Failed to restore tf.data snapshot at ", path_,
+        ": Found duplicate global split index in split ", split_file, "."));
   }
   global_split_indices.insert(global_split_index);
   return absl::OkStatus();
