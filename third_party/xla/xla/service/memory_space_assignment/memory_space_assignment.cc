@@ -2751,7 +2751,7 @@ bool MemoryBoundLoopOptimizer::AllocateTemporary(LoopValue& value) {
 }
 
 bool MemoryBoundLoopOptimizer::AllocatePinned(LoopValue& value) {
-  bool success = AllocateBetween(0, loop_size_, value.size);
+  bool success = AllocateBetween(0, loop_size_ - 1, value.size);
   if (success) {
     CHECK(value.header_position);
     value.allocations.push_back(
