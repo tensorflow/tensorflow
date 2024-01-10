@@ -12,6 +12,7 @@ load(
 )
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
+    "if_static",
     "tf_exec_properties",
 )
 load(
@@ -45,33 +46,36 @@ def xla_py_test_deps():
 # `framework_shared_object` in the bazelrc all of this should be able to go
 # away. The problem is making sure that all these impl deps are `if_static`'d
 # appropriately throughout XLA.
-_XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_oss([_tsl_clean_dep("@com_google_protobuf//:protobuf")]) + [
-    clean_dep("//xla:xla_proto_cc_impl"),
+_XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
+    clean_dep("//xla:autotune_results_proto_cc_impl"),
+    clean_dep("//xla:autotuning_proto_cc_impl"),
     clean_dep("//xla:xla_data_proto_cc_impl"),
-    clean_dep("//xla/service:hlo_proto_cc_impl"),
+    clean_dep("//xla:xla_proto_cc_impl"),
     clean_dep("//xla/service:buffer_assignment_proto_cc_impl"),
-    clean_dep("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
+    clean_dep("//xla/service:hlo_proto_cc_impl"),
     clean_dep("//xla/service/gpu:backend_configs_cc_impl"),
     clean_dep("//xla/service/gpu/model:hlo_op_profile_proto_cc_impl"),
+    clean_dep("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
     clean_dep("//xla/stream_executor:device_description_proto_cc_impl"),
     clean_dep("//xla/stream_executor:stream_executor_impl"),
     clean_dep("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
-    clean_dep("//xla/stream_executor/gpu:gpu_init_impl"),
-    clean_dep("@local_tsl//tsl/profiler/utils:time_utils_impl"),
-    clean_dep("@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl"),
-    clean_dep("@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl"),
+    clean_dep("@local_tsl//tsl/framework:allocator"),
     clean_dep("@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl"),
     clean_dep("@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl"),
-    clean_dep("//xla:autotune_results_proto_cc_impl"),
-    clean_dep("//xla:autotuning_proto_cc_impl"),
     clean_dep("@local_tsl//tsl/protobuf:protos_all_cc_impl"),
-    clean_dep("@local_tsl//tsl/platform:env_impl"),
-    clean_dep("@local_tsl//tsl/framework:allocator"),
-    clean_dep("@local_tsl//tsl/framework:allocator_registry_impl"),
     clean_dep("@local_tsl//tsl/util:determinism"),
-] + if_cuda_is_configured([
-    clean_dep("//xla/stream_executor/cuda:cuda_stream"),
+] + if_oss([
+    _tsl_clean_dep("@com_google_protobuf//:protobuf"),
+]) + if_static(extra_deps = [], otherwise = [
+    clean_dep("//xla/stream_executor/gpu:gpu_init_impl"),
+    clean_dep("@local_tsl//tsl/framework:allocator_registry_impl"),
+    clean_dep("@local_tsl//tsl/platform:env_impl"),
+    clean_dep("@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl"),
+    clean_dep("@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl"),
+    clean_dep("@local_tsl//tsl/profiler/utils:time_utils_impl"),
+]) + if_cuda_is_configured([
     clean_dep("//xla/stream_executor/cuda:all_runtime"),
+    clean_dep("//xla/stream_executor/cuda:cuda_stream"),
     clean_dep("//xla/stream_executor/cuda:stream_executor_cuda"),
 ]) + if_rocm_is_configured([
     clean_dep("//xla/stream_executor/gpu:gpu_stream"),

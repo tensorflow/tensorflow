@@ -485,6 +485,7 @@ xla_cc_test(
     ],
     deps = [
         ":gpu_asm_opts",
+        ":gpu_init",
         ":redzone_allocator",
         "//xla/stream_executor",
         "//xla/stream_executor:device_memory_allocator",
