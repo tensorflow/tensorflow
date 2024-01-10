@@ -19,6 +19,9 @@ limitations under the License.
 namespace xla::gpu {
 // This structure is used to support C++17 overload pattern as described in
 // https://en.cppreference.com/w/cpp/utility/variant/visit
+//
+// TODO(b/319202112): Replace with absl::Overload once abs lts_2024_XXX is
+// tagged.
 template <class... Ts>
 struct VariantVisitor : Ts... {
   using Ts::operator()...;
