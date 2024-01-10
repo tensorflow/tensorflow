@@ -2584,6 +2584,11 @@ XLA_NULLOP_PATTERN(ReplicaId)
 #define XLA_UNOP_PATTERN(NAME)                                       \
   inline auto NAME() { return Op().WithOpcode(HloOpcode::k##NAME); } \
                                                                      \
+  template <typename HloInstructionType>                             \
+  inline auto NAME(HloInstructionType** matched_inst) {              \
+    return Op(matched_inst).WithOpcode(HloOpcode::k##NAME);          \
+  }                                                                  \
+                                                                     \
   template <typename Arg>                                            \
   inline auto NAME(Arg&& arg) {                                      \
     return Op()                                                      \
@@ -2638,6 +2643,7 @@ XLA_UNOP_PATTERN(Sqrt)
 XLA_UNOP_PATTERN(Tan)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
+XLA_UNOP_PATTERN(While)
 #undef XLA_UNOP_PATTERN
 
 // Helpers for binary instructions.
