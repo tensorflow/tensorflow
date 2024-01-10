@@ -18,16 +18,17 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
@@ -53,9 +55,11 @@ CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
     : command_buffer(std::move(command_buffer)) {}
 
 CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
-                                       ThunkInfo thunk_info)
+                                       ThunkInfo thunk_info,
+                                       std::optional<ThunkSequence> thunks)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
       commands_(std::move(commands)),
+      thunks_(std::move(thunks)),
       state_(std::make_shared<State>()) {
   // When we create a new command buffer thunk (which happens when we
   // instantiate a new Gpu executable) we evict command buffers for all
@@ -105,6 +109,14 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
 
   TF_RETURN_IF_ERROR(commands_.Initialize(params.executor, params.src));
 
+  // Always initialize thunks if they are present so we are ready to fall back
+  // on them if we detect profiling activity.
+  if (thunks_.has_value()) {
+    for (auto& thunk : *thunks_) {
+      TF_RETURN_IF_ERROR(thunk->Initialize(params));
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
                       GetOrCreateCommandBuffer(params.executor));
 
@@ -152,6 +164,17 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
   if (commands_.empty()) return absl::OkStatus();
+
+  // TODO(b/290773547): Profiler (CUPTI) + CUDA graphs lead to memory
+  // corruption. As a work around disable command buffers (CUDA graphs) and run
+  // everything in op-by-op mode.
+  if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_.has_value()) {
+    VLOG(1) << "Execute command buffer thunk as a regular thunk sequence "
+               "because we detected active profiling session";
+    for (auto& thunk : *thunks_) {
+      TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+    }
+  }
 
   se::StreamExecutor* executor = params.stream->parent();
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,
