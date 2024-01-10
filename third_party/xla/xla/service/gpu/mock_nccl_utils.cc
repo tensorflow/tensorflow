@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -44,19 +45,22 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "third_party/gpus/cuda/include/vector_types.h"
+#include "third_party/gpus/nccl/graph/topo.h"
+#include "third_party/gpus/nccl/graph/xml.h"
+#include "third_party/gpus/nccl/include/alloc.h"
 #include "third_party/gpus/nccl/include/comm.h"
 #include "third_party/gpus/nccl/include/graph.h"
 #include "third_party/gpus/nccl/include/info.h"
 #include "third_party/gpus/nccl/include/nccl_common.h"
 #include "third_party/nccl/nccl.h"
-#include "third_party/gpus/nccl/src/include/alloc.h"
-#include "third_party/gpus/nccl/src/include/graph.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/mock_nccl_sleep_kernel.h"
+#include "xla/service/gpu/mock_nccl_topo_config.h"
+#include "xla/service/gpu/mock_nccl_xml.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/nccl_utils.h"
@@ -201,7 +205,8 @@ StatusOr<NcclComm::Lock> LockMockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization) {
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
 
@@ -229,14 +234,6 @@ StatusOr<NcclComm::Lock> LockMockNcclComm(
   TF_ASSIGN_OR_RETURN(
       const NcclUniqueIdCallback* unique_id_callback,
       GetNcclUniqueIdCallback(params.nccl_unique_id_callback, true));
-  auto local_it = absl::c_find(local_devices, global_device_id);
-  TF_RET_CHECK(local_it != local_devices.end());
-  int local_rank = local_it - local_devices.begin();
-  se::gpu::ScopedActivateExecutorContext scoped_context(params.stream_executor);
-  auto local_comm =
-      AcquireNcclComm(params.run_id, OpId(op_id), local_devices,
-                      local_devices.size(), *unique_id_callback, local_rank,
-                      stream_id, /*enable_clique_optimization=*/false);
 
   size_t num_local_participants = GetNumLocalParticipants(
       participants, params.gpu_global_device_ids ? &local_devices : nullptr);
@@ -245,10 +242,14 @@ StatusOr<NcclComm::Lock> LockMockNcclComm(
   TF_RET_CHECK(global_it != participants.end());
   int global_rank = global_it - participants.begin();
 
-  return AcquireMockNcclComm(
-      **local_comm, params.run_id, OpId(op_id), std::move(participants),
-      std::move(local_devices), num_local_participants, *unique_id_callback,
-      global_rank, stream_id, /*enable_clique_optimization=*/false);
+  if (global_rank != 0) {
+    return absl::CancelledError("Only mock nccl call for gpu rank 0");
+  }
+
+  return AcquireMockNcclComm(params.run_id, OpId(op_id),
+                             std::move(participants), std::move(local_devices),
+                             num_local_participants, *unique_id_callback,
+                             global_rank, stream_id, false, topo_model);
 }
 
 absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
@@ -490,6 +491,7 @@ absl::Status RunMockCollectivePermute(
   }
   return absl::OkStatus();
 }
+
 namespace {
 void CheckNcclAsyncError(NcclComm& lockable_comm) {
   ncclComm_t comm = *lockable_comm.Acquire();
@@ -565,10 +567,6 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
       [&]() -> StatusOr<NcclClique::Lock> {
         const NcclCliqueKey& clique_key = std::get<2>(rendezvous_key);
         NcclClique::Lock clique = cliques[clique_key].Acquire();
-        if (clique->run_id < 0) {
-          TF_ASSIGN_OR_RETURN(std::string id, unique_id_callback(clique_key));
-          TF_ASSIGN_OR_RETURN(clique->unique_id, ToNcclUniqueId(id));
-        }
         clique->run_id = run_id.ToInt();
         return clique;
       },
@@ -578,39 +576,53 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
 }
 
 absl::Status InitializeMockNcclCostModel(
-    ncclComm_t local_comm, ncclComm_t* comm_ptr, int nRanks, int rank,
-    int num_local_participants,
-    absl::Span<const std::pair<int, int>> local_ranks) {
+    int nRanks, int rank, int num_local_participants,
+    absl::Span<const std::pair<int, int>> local_ranks,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model,
+    ncclComm_t* comm_ptr) {
   XLA_CUDA_RETURN_IF_ERROR(ncclCalloc(comm_ptr, 1));
   ncclComm_t comm = *comm_ptr;
-  comm->collNetSupport = local_comm->collNetSupport;
-  comm->nvlsSupport = local_comm->nvlsSupport;
-  comm->ncclNet = local_comm->ncclNet;
   comm->nChannels = 1;
   comm->nRanks = nRanks;
   comm->rank = rank;
-  comm->minCompCap = local_comm->minCompCap;
-  comm->maxCompCap = local_comm->maxCompCap;
-  XLA_CUDA_RETURN_IF_ERROR(ncclCalloc(&comm->peerInfo, nRanks + 1));
-  // Based on which local gpu devices participate the input clique, update the
-  // peer information.
-  for (auto rank : local_ranks) {
-    *(comm->peerInfo + rank.first) = *(local_comm->peerInfo + rank.second);
-    (comm->peerInfo + rank.first)->rank = rank.first;
+  absl::string_view xml_str;
+  switch (topo_model) {
+    case GpuExecutableRunOptions::MockNcclTopoModel::kGCPA3:
+      comm->collNetSupport = false;
+      comm->nvlsSupport = false;
+      comm->minCompCap = comm->maxCompCap = stream_executor::
+          CudaComputeCapability::CudaComputeCapabilities::HOPPER;
+      XLA_CUDA_RETURN_IF_ERROR(ncclCalloc(&comm->peerInfo, nRanks + 1));
+      xml_str = kGCPA3;
+      break;
+    case GpuExecutableRunOptions::MockNcclTopoModel::kNvidia:
+      comm->collNetSupport = false;
+      comm->nvlsSupport = false;
+      comm->minCompCap = comm->maxCompCap = stream_executor::
+          CudaComputeCapability::CudaComputeCapabilities::AMPERE;
+      XLA_CUDA_RETURN_IF_ERROR(ncclCalloc(&comm->peerInfo, nRanks + 1));
+      xml_str = kNvidia;
+      break;
+    default:
+      return absl::InvalidArgumentError("Unknown MockNcclTopoModel");
   }
 
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoGetSystem(comm, &comm->topo));
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoComputePaths(comm->topo, comm));
+  auto xml = std::make_unique<ncclXml>();
+  TF_RETURN_IF_ERROR(MockTopoGetXml(xml_str, xml.get()));
+  TF_RETURN_IF_ERROR(MockNcclTopoUpdateXml(local_ranks, xml.get()));
+  XLA_CUDA_RETURN_IF_ERROR(ncclTopoTrimXml(xml.get()));
+  XLA_CUDA_RETURN_IF_ERROR(ncclTopoGetSystemFromXml(xml.get(), &comm->topo));
+  XLA_CUDA_RETURN_IF_ERROR(ncclTopoComputePaths(comm->topo, nullptr));
   XLA_CUDA_RETURN_IF_ERROR(ncclTopoTrimSystem(comm->topo, comm));
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoComputePaths(comm->topo, comm));
+  XLA_CUDA_RETURN_IF_ERROR(ncclTopoComputePaths(comm->topo, nullptr));
   XLA_CUDA_RETURN_IF_ERROR(ncclTopoSearchInit(comm->topo));
 
-  struct ncclTopoGraph ringGraph;
-  struct ncclTopoGraph treeGraph;
-  struct ncclTopoGraph collNetGraph;
-  struct ncclTopoGraph nvlsGraph;
-  struct ncclTopoGraph* graphs[] = {&treeGraph,    &ringGraph, &collNetGraph,
-                                    &collNetGraph, &nvlsGraph, &nvlsGraph};
+  ncclTopoGraph ringGraph;
+  ncclTopoGraph treeGraph;
+  ncclTopoGraph collNetGraph;
+  ncclTopoGraph nvlsGraph;
+  ncclTopoGraph* graphs[] = {&treeGraph,    &ringGraph, &collNetGraph,
+                             &collNetGraph, &nvlsGraph, &nvlsGraph};
 
   // Get rings and trees
   ringGraph.id = 0;
@@ -653,14 +665,15 @@ absl::Status InitializeMockNcclCostModel(
       ncclTopoTuneModel(comm, comm->minCompCap, comm->maxCompCap, graphs));
   return absl::OkStatus();
 }
+
 }  // namespace
 
 StatusOr<NcclComm::Lock> AcquireMockNcclComm(
-    ncclComm_t local_comm, RunId run_id, OpId op_id,
-    std::vector<GlobalDeviceId> participants,
+    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     std::vector<GlobalDeviceId> local_devices, size_t num_local_participants,
     const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
-    bool enable_clique_optimization) {
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
   int nRanks = participants.size();
   std::vector<std::pair<int, int>> local_ranks;
   for (int i = 0; i < local_devices.size(); i++) {
@@ -673,10 +686,10 @@ StatusOr<NcclComm::Lock> AcquireMockNcclComm(
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
-  auto clique = AcquireNcclClique(
-      run_id, op_id, clique_key, unique_id_callback, num_local_participants,
-      enable_clique_optimization ||
-          stream_id == GetStreamId(true, kAsyncStreamP2P));
+  auto clique =
+      AcquireNcclClique(run_id, op_id, clique_key, unique_id_callback, 1,
+                        enable_clique_optimization ||
+                            stream_id == GetStreamId(true, kAsyncStreamP2P));
 
   if (!clique->ok()) return clique->status();
 
@@ -706,7 +719,7 @@ StatusOr<NcclComm::Lock> AcquireMockNcclComm(
   if (!state.ready.HasBeenNotified()) {
     ncclComm_t comm = nullptr;
     absl::Status status = InitializeMockNcclCostModel(
-        local_comm, &comm, nRanks, rank, num_local_participants, local_ranks);
+        nRanks, rank, num_local_participants, local_ranks, topo_model, &comm);
     size_t num_initialized = [&] {
       absl::MutexLock lock(&state.mu);
       state.status.Update(status);
@@ -719,7 +732,7 @@ StatusOr<NcclComm::Lock> AcquireMockNcclComm(
     // which may block on the completion of device activity on a peer device,
     // which may depend on the completion of this collective if we do not have a
     // barrier to prevent it.
-    if (num_initialized == num_local_participants) {
+    if (num_initialized == 1) {
       state.ready.Notify();
     } else {
       TF_RETURN_IF_ERROR(status);

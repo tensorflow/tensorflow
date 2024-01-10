@@ -955,6 +955,46 @@ cuda_library(
     ],
 )
 
+cc_library(
+    name = "mock_nccl_xml_google",
+    srcs = ["mock_nccl_xml.cc"],
+    hdrs = ["mock_nccl_xml.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:regexp",
+    ] + if_cuda_is_configured([
+        "@local_config_nccl//:nccl",
+    ]),
+)
+
+xla_cc_test(
+    name = "mock_nccl_xml_test",
+    size = "small",
+    srcs = if_google(["mock_nccl_xml_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//xla:status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+    ] + if_google([
+        ":mock_nccl_xml_google",
+    ]) + if_cuda_is_configured([
+        "@local_config_nccl//:nccl",
+    ]),
+)
+
 alias(
     name = "mock_nccl_utils",
     actual = if_google(
@@ -970,7 +1010,10 @@ alias(
 cc_library(
     name = "_mock_nccl_utils_google",
     srcs = if_cuda_is_configured(["mock_nccl_utils.cc"]),
-    hdrs = if_cuda_is_configured(["mock_nccl_utils.h"]),
+    hdrs = if_cuda_is_configured([
+        "mock_nccl_utils.h",
+        "mock_nccl_topo_config.h",
+    ]),
     # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
     defines = if_cuda_is_configured(["XLA_ENABLE_XCCL"]),
@@ -979,6 +1022,7 @@ cc_library(
     deps = if_cuda_is_configured([
         ":gpu_executable_run_options",
         ":mock_nccl_sleep_kernel_cuda",
+        ":mock_nccl_xml_google",
         ":nccl_collective_thunks",
         ":nccl_utils",
         ":thunk",
@@ -1029,6 +1073,7 @@ cc_library(
         ":nccl_collective_thunks",
         ":nccl_utils",
         ":thunk",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "//xla:executable_run_options",
         "//xla:status",

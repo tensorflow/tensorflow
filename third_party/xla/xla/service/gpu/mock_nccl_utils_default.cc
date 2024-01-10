@@ -37,11 +37,11 @@ namespace xla {
 namespace gpu {
 
 StatusOr<NcclComm::Lock> AcquireMockNcclComm(
-    ncclComm_t local_comm, RunId run_id, OpId op_id,
-    std::vector<GlobalDeviceId> participants,
+    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     std::vector<GlobalDeviceId> local_devices, size_t num_local_participants,
     const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
-    bool enable_clique_optimization) {
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
   return Unimplemented("AcquireMockNcclComm is not implemented.");
 }
 
@@ -49,7 +49,8 @@ StatusOr<NcclComm::Lock> LockMockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization) {
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
   return Unimplemented("LockMockNcclComm is not implemented.");
 }
 
