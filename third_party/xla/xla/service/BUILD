@@ -6086,6 +6086,41 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "fusion_constant_sinking",
+    srcs = ["fusion_constant_sinking.cc"],
+    hdrs = ["fusion_constant_sinking.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":hlo_dce",
+        ":hlo_pass",
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "fusion_constant_sinking_test",
+    srcs = ["fusion_constant_sinking_test.cc"],
+    deps = [
+        ":fusion_constant_sinking",
+        ":pattern_matcher",
+        ":pattern_matcher_gmock",
+        "//xla:test",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "while_loop_constant_sinking",
     srcs = ["while_loop_constant_sinking.cc"],
     hdrs = ["while_loop_constant_sinking.h"],
