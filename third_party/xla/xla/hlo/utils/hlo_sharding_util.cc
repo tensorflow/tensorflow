@@ -2451,7 +2451,7 @@ GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
     absl::c_iota(device_group, device_id);
     device_id = device_group.back() + 1;
   }
-  return GroupedSharding(std::move(device_groups), {data_rank}, {group_size},
+  return GroupedSharding(std::move(device_groups), {data_rank}, {num_groups},
                          data_rank, HloSharding::Replicate(),
                          /*subgroup_manual=*/false);
 }
@@ -2615,6 +2615,8 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
     tiling_dims[dim] *= grouped_sharding.group_dim_sizes[i];
   }
   Array<int64_t> tiling(tiling_dims);
+  CHECK_EQ(tiling.num_elements(), grouped_sharding.device_groups.size() *
+                                      grouped_sharding.device_groups[0].size());
   grouped_tiling.Each([&](absl::Span<const int64_t> indices, int64_t device) {
     std::vector<int64_t> ungrouped_inds(indices.begin(), indices.end());
     for (int64_t g = 0; g < grouped_sharding.device_groups.size(); ++g) {

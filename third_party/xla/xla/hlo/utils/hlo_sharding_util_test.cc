@@ -462,6 +462,13 @@ TEST(HloShardingUtilTest, UngroupSharding_Replicated2) {
             "{devices=[1,1,2,2]0,2,1,3 last_tile_dims={manual, replicated}}");
 }
 
+TEST(HloShardingUtilTest, GroupedAndUngroupedReplicatedSharding) {
+  GroupedSharding group_sharding = GetGroupedReplicatedSharding(
+      /*num_groups=*/3, /*num_tiles=*/12, /*data_rank=*/2);
+  HloSharding ungroup_sharding = UngroupSharding(group_sharding);
+  EXPECT_EQ(ungroup_sharding, HloSharding::Replicate());
+}
+
 TEST(HloShardingUtilTest, DeviceGroupsDoesNotMatch) {
   HloSharding sharding = HloSharding::PartialTile(
       TileAssignment((absl::Span<const int64_t>){2, 2}));
