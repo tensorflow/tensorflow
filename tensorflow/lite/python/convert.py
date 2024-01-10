@@ -802,24 +802,26 @@ def build_conversion_flags(
 
   # Transfer debug options. Check for existence before populating in order to
   # leverage defaults specified in proto definition.
+  # TODO: b/319329480 - Match the debug_options fields with the user-facing
+  # flags.
   if mlir_dump_dir is not None:
-    conversion_flags.debug_options.mlir_dump_dir = mlir_dump_dir
+    conversion_flags.debug_options.ir_dump_dir = mlir_dump_dir
   if mlir_dump_pass_regex is not None:
-    conversion_flags.debug_options.mlir_dump_pass_regex = mlir_dump_pass_regex
+    conversion_flags.debug_options.ir_dump_pass_regex = mlir_dump_pass_regex
   if mlir_dump_func_regex is not None:
-    conversion_flags.debug_options.mlir_dump_func_regex = mlir_dump_func_regex
+    conversion_flags.debug_options.ir_dump_func_regex = mlir_dump_func_regex
   if mlir_enable_timing is not None:
-    conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
+    conversion_flags.debug_options.enable_timing = mlir_enable_timing
   if mlir_print_ir_before is not None:
-    conversion_flags.debug_options.mlir_print_ir_before = mlir_print_ir_before
+    conversion_flags.debug_options.print_ir_before = mlir_print_ir_before
   if mlir_print_ir_after is not None:
-    conversion_flags.debug_options.mlir_print_ir_after = mlir_print_ir_after
+    conversion_flags.debug_options.print_ir_after = mlir_print_ir_after
   if mlir_print_ir_module_scope is not None:
-    conversion_flags.debug_options.mlir_print_ir_module_scope = (
+    conversion_flags.debug_options.print_ir_module_scope = (
         mlir_print_ir_module_scope
     )
   if mlir_elide_elementsattrs_if_larger is not None:
-    conversion_flags.debug_options.mlir_elide_elementsattrs_if_larger = (
+    conversion_flags.debug_options.elide_elementsattrs_if_larger = (
         mlir_elide_elementsattrs_if_larger
     )
 
