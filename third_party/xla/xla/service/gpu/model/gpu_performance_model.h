@@ -157,10 +157,14 @@ class GpuPerformanceModel {
       const HloInstruction* producer, const HloInstruction* consumer,
       const EstimateRunTimeData& producer_runtime,
       const EstimateRunTimeData& consumer_runtime,
-      const LaunchDimensions& launch_dimensions,
-      float utilization_by_this_consumer,
       const GpuHloCostAnalysis* cost_analysis,
-      const std::optional<HloFusionAnalysis>& fusion_analysis,
+      const GpuPerformanceModelOptions& config);
+
+  static absl::Duration EstimateRunTimeForFusionCached(
+      const HloInstruction* producer, const HloInstruction* consumer,
+      const EstimateRunTimeData& producer_runtime,
+      const EstimateRunTimeData& consumer_runtime,
+      const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
   static absl::Duration EstimateUnfusedExecTime(
