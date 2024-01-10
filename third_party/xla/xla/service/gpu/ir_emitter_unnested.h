@@ -143,6 +143,7 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
+  absl::Status EmitConditional(const HloInstruction* instr);
   absl::Status EmitConvolutionThunk(mlir::Operation* op);
   absl::Status EmitConvolutionThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitGemmThunk(mlir::Operation* op);
