@@ -608,10 +608,15 @@ tf_cc_test(
     ],
 )
 
+# OSS only: This target is header-only. Link `quantization_options_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link
+# `quantization_options_proto_cc_impl` directly unless the target does not link
+# `libtensorflow_framework.so`.
 tf_proto_library(
     name = "quantization_options_proto",
     srcs = ["quantization_options.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
