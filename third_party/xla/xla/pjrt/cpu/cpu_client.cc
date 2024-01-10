@@ -27,6 +27,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/pjrt/cpu/cpu_topology.h"
+#include "xla/pjrt/pjrt_compiler.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/base/dynamic_annotations.h"
@@ -97,6 +100,7 @@ limitations under the License.
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
@@ -263,6 +267,28 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
   return to_string_;
 }
 
+/*static*/ TfrtCpuTopologyDescription TfrtCpuTopologyDescription::Create(
+    PjRtPlatformId platform_id, absl::string_view platform_name,
+    absl::string_view platform_version,
+    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices;
+  cpu_devices.reserve(devices.size());
+  for (auto& device : devices) {
+    cpu_devices.push_back(
+        {device->id(), device->process_index(), device->local_hardware_id()});
+  }
+  return TfrtCpuTopologyDescription(platform_id, platform_name,
+                                    platform_version, cpu_devices);
+}
+
+absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
+  std::string result;
+  if (!tsl::SerializeToStringDeterministic(cpu_topology_.ToProto(), &result)) {
+    return absl::InternalError("Failed to serialize cpu_topology");
+  }
+  return result;
+}
+
 TfrtCpuDevice::TfrtCpuDevice(int id, int process_index, int local_hardware_id,
                              int max_inflight_computations)
     : description_(id, process_index, local_hardware_id),
@@ -354,7 +380,9 @@ TfrtCpuClient::TfrtCpuClient(
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024),
-      collectives_(std::move(collectives)) {
+      collectives_(std::move(collectives)),
+      topology_(TfrtCpuTopologyDescription::Create(
+          platform_id(), platform_name(), platform_version(), owned_devices_)) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)

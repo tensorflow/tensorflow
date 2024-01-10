@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -38,9 +39,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
+#include "xla/pjrt/cpu/cpu_topology.h"
 #include "xla/pjrt/cpu/tracked_tfrt_cpu_device_buffer.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/semaphore.h"
@@ -54,6 +58,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/async_value_ref.h"
@@ -62,6 +67,8 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
+
+class TfrtCpuDevice;  // forward declare
 
 class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
  public:
@@ -91,6 +98,92 @@ class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
   std::string debug_string_;
   std::string to_string_;
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
+};
+
+class TfrtCpuTopologyDescription : public PjRtTopologyDescription {
+ public:
+  static TfrtCpuTopologyDescription Create(
+      PjRtPlatformId platform_id, absl::string_view platform_name,
+      absl::string_view platform_version,
+      absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices);
+
+  // `cpu_device_ids` is the list of logical device ids for the CPU devices and
+  // will be used to initialize the CPU topology.
+  TfrtCpuTopologyDescription(
+      const PjRtPlatformId platform_id, const absl::string_view platform_name,
+      const absl::string_view platform_version,
+      const std::vector<CpuTopology::CpuDevice> cpu_devices)
+      : platform_id_(platform_id),
+        platform_name_(platform_name),
+        platform_version_(platform_version),
+        cpu_topology_(std::move(cpu_devices)) {}
+
+  bool operator==(const TfrtCpuTopologyDescription& other) const {
+    return this->platform_id() == other.platform_id() &&
+           this->platform_name() == other.platform_name() &&
+           this->platform_version() == other.platform_version() &&
+           this->cpu_topology().devices() == other.cpu_topology().devices();
+  }
+
+  PjRtPlatformId platform_id() const override { return platform_id_; }
+
+  absl::string_view platform_name() const override { return platform_name_; }
+
+  absl::string_view platform_version() const override {
+    return platform_version_;
+  }
+
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const override {
+    std::vector<std::unique_ptr<const PjRtDeviceDescription>> devices;
+    devices.reserve(cpu_topology_.number_of_devices());
+    for (const CpuTopology::CpuDevice& device : cpu_topology_.devices()) {
+      devices.push_back(std::make_unique<TfrtCpuDeviceDescription>(
+          device.id, device.process_index, device.local_hardware_id));
+    }
+    return devices;
+  }
+
+  const CpuTopology& cpu_topology() const { return cpu_topology_; }
+  const CpuTopology* cpu_topology_ptr() const { return &cpu_topology_; }
+
+  // No subslice is supported.
+  bool is_subslice_topology() const override { return false; }
+
+  // TODO(b/319478189): We support multi-host CPU computations and should
+  // correctly report process count.
+  absl::StatusOr<int> ProcessCount() const override { return 1; }
+
+  absl::StatusOr<int> CoreCountOfDefaultType() const override {
+    return cpu_topology_.number_of_devices();
+  }
+
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
+    return cpu_topology_.number_of_devices();
+  }
+
+  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
+    return cpu_topology_.number_of_devices();
+  }
+
+  absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
+    return 1;
+  }
+
+  absl::StatusOr<std::string> Serialize() const override;
+
+  // Returns vendor specific attributes about the topology.
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ private:
+  const PjRtPlatformId platform_id_;
+  const std::string platform_name_;
+  const std::string platform_version_;
+  const CpuTopology cpu_topology_;
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
 
 class TfrtCpuDevice final : public PjRtDevice {
@@ -301,6 +394,11 @@ class TfrtCpuClient final : public PjRtClient {
     last_collective_launch_event_ = std::move(event);
   }
 
+  StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return &topology_;
+  }
+
  private:
   friend class TfrtCpuExecutable;
 
@@ -344,6 +442,8 @@ class TfrtCpuClient final : public PjRtClient {
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
 
   std::shared_ptr<cpu::CollectivesInterface> collectives_;
+
+  xla::TfrtCpuTopologyDescription topology_;
 };
 
 class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
