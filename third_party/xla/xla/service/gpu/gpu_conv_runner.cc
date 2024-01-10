@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/layout_util.h"
@@ -233,7 +234,7 @@ Status RunGpuConvInternalImpl(const GpuConvParams& params, se::Stream* stream,
                                output_buf, scratch_memory);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Specialization for integer types.  Only two forward convolutions are allowed.
@@ -259,7 +260,7 @@ Status RunGpuConvInternalImpl(const GpuConvParams& params, se::Stream* stream,
           "Only convolution kinds kForward and kForwardActivation are "
           "supported for integer types");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -274,7 +275,7 @@ Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
       params, stream, options, input_buf, filter_buf, output_buf,
       scratch_memory);
 
-  if (run_status != OkStatus()) {
+  if (!run_status.ok()) {
     return run_status;
   }
 
@@ -287,7 +288,7 @@ Status RunGpuConvImpl(const GpuConvParams& params, se::Stream* stream,
         "Unable to launch convolution with type %s and algorithm %s",
         CudnnConvKindToString(params.config->kind), algorithm.ToString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t GetVectCSize(DataLayout layout) {

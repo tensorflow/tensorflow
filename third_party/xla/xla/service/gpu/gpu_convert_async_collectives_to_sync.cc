@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla {
@@ -62,7 +63,7 @@ Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
     new_sequence.push_back(instr);
   }
   module->schedule().set_sequence(computation, new_sequence);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

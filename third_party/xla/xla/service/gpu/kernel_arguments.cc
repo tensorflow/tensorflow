@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -79,13 +80,13 @@ StatusOr<KernelArguments> KernelArguments::Create(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       fusion->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                             buffer_assignment.GetUniqueSlice(fusion, index));
         kernel_arguments.emplace_back(KernelArgument(
             /*value=*/nullptr, subshape, slice, /*written=*/true));
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   return KernelArguments{std::move(kernel_arguments)};
@@ -179,7 +180,7 @@ StatusOr<KernelArguments> KernelArguments::Create(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       non_fusion_hlo->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) return OkStatus();
+        if (!subshape.IsArray()) return absl::OkStatus();
 
         TF_ASSIGN_OR_RETURN(
             BufferAllocation::Slice slice,
@@ -187,7 +188,7 @@ StatusOr<KernelArguments> KernelArguments::Create(
 
         kernel_arguments.emplace_back(KernelArgument(
             /*value=*/nullptr, subshape, slice, /*written=*/true));
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   return KernelArguments{std::move(kernel_arguments)};

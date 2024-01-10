@@ -210,7 +210,7 @@ StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
 }
 
 Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterNested::EmitTargetElementLoop(
@@ -224,7 +224,7 @@ Status IrEmitterNested::EmitTargetElementLoop(
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
-    return OkStatus();
+    return absl::OkStatus();
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
@@ -258,7 +258,7 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
             absl::MakeSpan(base, base + literal.size_bytes())),
         &b_);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Casts the provided llvm::Value* to the default address space. This is useful
@@ -662,7 +662,7 @@ Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
   // Set the insertion point to the exit basic block so that the caller of
   // this method can continue emitting code to the right place.
   llvm_ir::SetToFirstInsertPoint(loop_exit_bb, builder);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -691,7 +691,7 @@ Status CallNestedComputation(llvm::IRBuilder<>* builder,
 
   builder->CreateCall(emitted_function, arguments);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
@@ -759,7 +759,7 @@ Status EmitAtomicOperationForNestedComputation(
 
   if (MaybeEmitDirectAtomicOperation(builder, ir_emitter_context, computation,
                                      output_address, source_address)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return EmitAtomicOperationUsingCAS(builder, ir_emitter_context, computation,

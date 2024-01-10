@@ -59,7 +59,7 @@ Status GemmThunk::Initialize(const InitializeParams& params) {
   if (!params.executor->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

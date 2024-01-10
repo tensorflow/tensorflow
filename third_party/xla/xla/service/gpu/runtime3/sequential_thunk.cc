@@ -37,7 +37,7 @@ Status SequentialThunk::Initialize(const InitializeParams& params) {
   for (auto& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->Initialize(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -45,7 +45,7 @@ Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

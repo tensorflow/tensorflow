@@ -489,7 +489,7 @@ Status GpuRuntimeExecutable::Execute(
                          diagnostic);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//

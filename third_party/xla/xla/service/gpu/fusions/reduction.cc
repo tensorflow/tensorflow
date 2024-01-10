@@ -804,7 +804,7 @@ StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildKernelThunkForFusion(
           : KernelArguments::Create(ir_emitter_context_.allocations(),
                                     fusion_op));
 
-  auto kernel_builder_status = OkStatus();
+  auto kernel_builder_status = absl::OkStatus();
   auto [entry, cached] = ir_emitter_context_.kernel_cache().GetWithStatus(
       fused_computation, kernel_arguments.args(), discriminator,
       [&]() -> StatusOr<KernelReuseCache::Entry> {
@@ -844,7 +844,7 @@ Status ReductionGroupEmitter::EmitExtraOutputsForReduce(
     const Shape& reduction_operand_shape, const llvm_ir::IrArray::Index& index,
     const ExtraOutputGensMap& extra_output_gens) const {
   if (extra_output_gens.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   auto* builder = reduction_emitter_.builder_;
@@ -875,7 +875,7 @@ Status ReductionGroupEmitter::EmitExtraOutputsForReduce(
         get_index(instr), generator, builder, /*use_linear_index=*/
         reduction_emitter_.reduction_codegen_info_.GetNumPartialResults() == 1);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildFusedInitializerThunk(
@@ -924,7 +924,7 @@ StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildFusedInitializerThunk(
     TF_RETURN_IF_ERROR(ParallelLoopEmitter(generator, {outputs[output_index]},
                                            launch_dimensions, builder_)
                            .EmitLoop(fusion_.name()));
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   return BuildKernelThunkForFusion(fusion_op, launch_dimensions,
@@ -1488,7 +1488,7 @@ Status ReductionEmitter::EmitIRForReduction(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers(
@@ -1517,7 +1517,7 @@ StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers(
     TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
         fusion_.shape(), [&](const Shape& subshape, ShapeIndex index) {
           if (!ShapeUtil::IsLeafIndex(fusion_.shape(), index)) {
-            return OkStatus();
+            return absl::OkStatus();
           }
 
           TF_ASSIGN_OR_RETURN(
@@ -1525,7 +1525,7 @@ StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers(
               ir_emitter_context_.buffer_assignment().GetUniqueSlice(&fusion_,
                                                                      index));
           slices.push_back(slice);
-          return OkStatus();
+          return absl::OkStatus();
         }));
   }
 
@@ -1606,7 +1606,7 @@ Status ReductionEmitter::EmitKernel(const LaunchDimensions& launch_dims,
         }));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

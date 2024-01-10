@@ -131,7 +131,7 @@ Status FusionInstructionMerger::FuseIntoAllUsers(HloInstruction* producer) {
                              absl::StrAppend(out, user->name());
                            })
           << " }";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FusionInstructionMerger::Run() {
@@ -171,7 +171,7 @@ Status FusionInstructionMerger::Run() {
           << num_fail_inefficient_fusion_emitter_
           << " slower_if_fused: " << num_fail_slower_if_fused_
           << " fusion_too_large: " << num_fail_fusion_too_large_ << " }";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TransposesMostData(const HloInstruction& fusion) {

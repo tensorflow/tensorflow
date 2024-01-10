@@ -248,7 +248,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
         instr->ToString());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -460,7 +460,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           all_to_all));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GpuLayoutAssignment::SetDotOperandLayout(

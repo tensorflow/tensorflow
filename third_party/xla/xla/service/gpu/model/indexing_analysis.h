@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project

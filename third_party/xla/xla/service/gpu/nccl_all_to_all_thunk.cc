@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
@@ -57,7 +58,7 @@ Status CheckImplementable(AllToAllStartOp op) {
           *split_dim, shape.ToString(/*print_layout=*/true));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace impl
 
@@ -190,7 +191,7 @@ Status RunAllToAll(bool has_split_dimension,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all-to-all for ordinal: " << device_ordinal;
-  return OkStatus();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

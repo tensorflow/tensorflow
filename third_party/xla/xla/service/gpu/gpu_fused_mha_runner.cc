@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/layout_util.h"
@@ -115,7 +116,7 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
     algorithm = options.runner_cache->ToAlgorithmDesc();
   }
 
-  Status run_status = OkStatus();
+  Status run_status = absl::OkStatus();
   switch (params.config->kind) {
     case CudnnfMHAKind::kBmmBmm:
     case CudnnfMHAKind::kSoftmaxDropout:
@@ -135,7 +136,7 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
       return InternalError("Invalid cuDNN fMHA kind");
   }
 
-  if (run_status != OkStatus()) {
+  if (!run_status.ok()) {
     return run_status;
   }
 
@@ -145,7 +146,7 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
                          algorithm.ToString());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AssignScale(GpufMHAConfig &config,
@@ -270,7 +271,7 @@ Status RunFusedMHABackward(
                    d_bmm2_rhs_buffer, d_s_buffer, softmax_buffer,
                    d_Q_accum_buffer, mask_buffer, d_bias_buffer,
                    fwd_output_buffer, bias_buffer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
@@ -330,7 +331,7 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
     algorithm = options.runner_cache->ToAlgorithmDesc();
   }
 
-  Status run_status = OkStatus();
+  Status run_status = absl::OkStatus();
   switch (params.config->kind) {
     case CudnnfMHAKind::kBackwardBmmBmm:
     case CudnnfMHAKind::kBackwardSoftmaxDropout:
@@ -353,7 +354,7 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
       return InternalError("Invalid cuDNN fMHA kind");
   }
 
-  if (run_status != OkStatus()) {
+  if (!run_status.ok()) {
     return run_status;
   }
 
@@ -700,7 +701,7 @@ Status RunGpuFMHA(const GpufMHAConfig &fmha_config,
       return absl::UnimplementedError(absl::StrFormat(
           "Unimplemented fused MHA with %s", ToString(fmha_config)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RunGpuFMHABackward(
@@ -741,7 +742,7 @@ Status RunGpuFMHABackward(
     default:
       return Unimplemented("Unimplemented fused MHA backward");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string ToString(const GpufMHAConfig &config) {

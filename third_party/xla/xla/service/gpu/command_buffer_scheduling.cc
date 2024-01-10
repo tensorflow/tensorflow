@@ -296,7 +296,7 @@ Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
   }
 
   schedule.set_sequence(computation, new_sequence);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//

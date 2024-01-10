@@ -246,7 +246,7 @@ class IrEmitterUnnested : public IrEmitter {
     for (auto& thunk : result->thunks) {
       AddThunkToThunkSequence(std::move(thunk));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Load data from potentially unaligned address. If address is offset by

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -383,7 +384,7 @@ Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha) {
   TF_ASSIGN_OR_RETURN(std::string fmha_prefix,
                       GetFMHAInstructionPrefix(fmha->custom_call_target()));
   module->SetAndUniquifyInstrName(fmha, fmha_prefix);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace gpu
 }  // namespace xla

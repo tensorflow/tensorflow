@@ -62,7 +62,7 @@ Status RunRepeated(int32_t count, absl::FunctionRef<Status()> to_run) {
   for (int32_t i = 0; i < count; ++i) {
     TF_RETURN_IF_ERROR(to_run());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper function to run a collective either synchronously on main stream or

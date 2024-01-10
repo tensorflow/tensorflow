@@ -50,7 +50,7 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
                                       : instr->shape();
 
       if (!ShapeUtil::HasDegenerateDimensions(reduced_op->shape())) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       Shape canonical_input_shape =
           ShapeUtil::DropDegenerateDimensions(input_shape);

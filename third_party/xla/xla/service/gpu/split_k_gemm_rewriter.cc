@@ -127,7 +127,7 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
         analysis.IterSpec(scope, &hlo, contracting_dim_idx);
     if (spec == nullptr) {
       // No contracting dimension - no checks needed.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (spec->size() != 1) {
       return UncompilableMatmul("Unsupported case.");
@@ -145,7 +145,7 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
       return UncompilableMatmul(
           "Too small divisible part of the contracting dimension.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // The divisibility check is only used to ensure that the TritonFusionAnalysis
@@ -350,7 +350,7 @@ Status MakeDotComputationSplitKBatch(HloComputation* computation,
         TritonFusionAnalysis::Execute(*computation, config.split_k).status());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
@@ -403,7 +403,7 @@ Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

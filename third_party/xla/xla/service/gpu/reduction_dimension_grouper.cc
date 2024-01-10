@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -82,7 +83,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
       }
 
       if (!changed) {  // Since all inputs have same shape dimensions.
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Shape grouped_shape =

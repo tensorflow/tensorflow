@@ -370,7 +370,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 #if CUDNN_VERSION < 8905
       // Layer norm kernels are available with cuDNN 8.9.5 and above.
       VLOG(1) << "Layer norm Custom Calls require cuDNN 8.9.5.";
-      return OkStatus();
+      return absl::OkStatus();
 #endif  // CUDNN_VERSION < 8905
 
       if (!instr->GetModule()
@@ -378,7 +378,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                .debug_options()
                .xla_gpu_enable_cudnn_layer_norm()) {
         VLOG(1) << "Layer norm Custom Calls disabled.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Layer norm kernels require Ampere or Hopper architectures.
@@ -386,7 +386,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           cuda_compute_capability_.major != se::CudaComputeCapability::HOPPER) {
         VLOG(1) << "Layer norm Custom Calls require Ampere or Hopper "
                    "architectures.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Verify the uniqueness of the inputs.
@@ -398,7 +398,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       if (!is_input(input0) || !is_input(input1) || !is_input(input2) ||
           expectation->unique_id() != expectation0->unique_id()) {
         VLOG(1) << "Layer norm operands not unique.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Skip initial convert, if present.
@@ -413,7 +413,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           !LayoutUtil::IsMonotonicWithDim0Major(bias->shape().layout()) ||
           !LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout())) {
         VLOG(1) << "Layer norm input and/or output layouts nor supported.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Verify the element types. The types and shapes of the scale and bias
@@ -422,7 +422,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           !CompatibleElementType(scale) || !CompatibleElementType(bias) ||
           !ShapeUtil::Equal(scale->shape(), bias->shape())) {
         VLOG(1) << "Layer norm input types or shapes not supported.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Verify that the shapes of scale and bias are compatible with the
@@ -431,13 +431,13 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                                      reduce->dimensions().end());
       if (norm_dims.size() != scale->shape().dimensions_size()) {
         VLOG(1) << "Layer norm input dimensions not supported.";
-        return OkStatus();
+        return absl::OkStatus();
       }
       for (int i = 0; i < norm_dims.size(); ++i) {
         if (input->shape().dimensions(norm_dims[i]) !=
             scale->shape().dimensions(i)) {
           VLOG(1) << "Layer norm input dimensions not supported.";
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
 
@@ -449,7 +449,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           reduce->dimensions() != broadcast_scale->dimensions() ||
           reduce->dimensions() != broadcast_bias->dimensions()) {
         VLOG(1) << "Layer norm operand broadcast not supported.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // If necessary, transpose the input so that the dimensions not being
@@ -572,7 +572,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // The layer norm training graph separately contains the expectation as well
@@ -591,14 +591,14 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       if (variance->unique_id() != variance0->unique_id() ||
           epsilon->unique_id() != epsilon0->unique_id()) {
         VLOG(1) << "Layer norm operands not unique.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Verify the element types.
       if (!CompatibleElementType(instr) ||
           !CompatibleElementType(expectation)) {
         VLOG(1) << "Layer norm input types not compatible.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // The shape of the expectation and norm factor return values of the
@@ -663,7 +663,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
               MakeBinaryHlo(HloOpcode::kMultiply, new_multiply0, new_instr));
           TF_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_multiply1));
         }
-        return OkStatus();
+        return absl::OkStatus();
       };
 
       // Replace the result of the original Custom Call as well as the
@@ -675,7 +675,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       VLOG(1)
           << "Expectation and norm factor fused into layer norm Custom Call.";
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

@@ -61,7 +61,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status IrEmitter::HandleConstant(HloInstruction* constant) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
@@ -73,7 +73,7 @@ Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
   if (bindings_.BoundToIrValue(*operand)) {
     bindings_.BindHloToIrValue(*add_dependency, GetBasePointer(*operand));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
@@ -87,7 +87,7 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           // based on the real element type.
           /*alignment=*/1, GetBasePointer(*operand),
           llvm_ir::ShapeToIrType(operand->shape(), module_), &b_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitter::HandleSend(HloInstruction*) {
@@ -116,7 +116,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
   llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool IrEmitter::IsEmittingForAMDGPU() const {
@@ -153,7 +153,7 @@ std::pair<llvm::Value*, llvm::Value*> MultiplyComplex(llvm::Value* lhs_value,
 Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   if (ShapeUtil::IsZeroElementArray(convolution->shape())) {
     // Emit no code for an empty output.
-    return OkStatus();
+    return absl::OkStatus();
   }
   // TODO(b/31409998): Support convolution with dilation.
   return Unimplemented(
@@ -163,7 +163,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 Status IrEmitter::HandleFft(HloInstruction* fft) {
   if (ShapeUtil::IsZeroElementArray(fft->shape())) {
     // Emit no code for an empty output.
-    return OkStatus();
+    return absl::OkStatus();
   }
   return Unimplemented("Hit a case for fft that is not implemented on GPU.");
 }
@@ -174,7 +174,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {

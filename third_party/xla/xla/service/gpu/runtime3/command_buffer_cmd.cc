@@ -134,7 +134,7 @@ Status CommandBufferCmdSequence::Initialize(
   for (auto& command : commands_) {
     TF_RETURN_IF_ERROR(command.cmd->Initialize(executor, source));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool CommandBufferCmdSequence::HasConflicts(
@@ -222,7 +222,7 @@ Status CommandBufferCmdSequence::Record(
           << " commands into command buffer in " << (end_micros - start_micros)
           << " μs; mode=" << RecordModeString(mode);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const absl::flat_hash_set<CommandBufferCmd::BufferUsage>&
@@ -260,7 +260,7 @@ Status LaunchCmd::Initialize(se::StreamExecutor* executor,
                              ExecutableSource source) {
   {
     absl::MutexLock lock(&mutex_);
-    if (kernels_.contains(executor)) return OkStatus();
+    if (kernels_.contains(executor)) return absl::OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
@@ -269,7 +269,7 @@ Status LaunchCmd::Initialize(se::StreamExecutor* executor,
 
   absl::MutexLock lock(&mutex_);
   kernels_.emplace(executor, std::move(kernel));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LaunchCmd::Record(const RecordParams& params,
@@ -324,7 +324,7 @@ Status CustomKernelLaunchCmd::Initialize(se::StreamExecutor* executor,
                                          ExecutableSource source) {
   {
     absl::MutexLock lock(&mutex_);
-    if (kernels_.contains(executor)) return OkStatus();
+    if (kernels_.contains(executor)) return absl::OkStatus();
   }
 
   auto kernel = std::make_unique<se::Kernel>(executor);
@@ -333,7 +333,7 @@ Status CustomKernelLaunchCmd::Initialize(se::StreamExecutor* executor,
 
   absl::MutexLock lock(&mutex_);
   kernels_.emplace(executor, std::move(kernel));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CustomKernelLaunchCmd::Record(const RecordParams& params,
@@ -394,7 +394,7 @@ Status MemcpyDeviceToDeviceCmd::Record(const RecordParams& params,
 
   if (num_bytes_ == 0) {
     VLOG(5) << "Skip recording MemcpyDeviceToDeviceCmd command of 0 bytes";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return command_buffer->MemcpyDeviceToDevice(&dst, src, num_bytes_);
@@ -419,7 +419,7 @@ Status MemzeroCmd::Record(const RecordParams& params,
 
   if (dst_.size() == 0) {
     VLOG(5) << "Skip recording MemzeroCmd command of 0 bytes";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return command_buffer->Memset(&dst, uint8_t{0}, /*num_elements=*/dst_.size());
@@ -445,7 +445,7 @@ Status Memset32Cmd::Record(const RecordParams& params,
 
   if (dst_.size() == 0) {
     VLOG(5) << "Skip recording Memset32Cmd command of 0 bytes";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   size_t num_elements = dst_.size() / sizeof(uint32_t);
@@ -501,7 +501,7 @@ Status IfElseCmd::Initialize(se::StreamExecutor* executor,
                              ExecutableSource source) {
   TF_RETURN_IF_ERROR(then_commands_.Initialize(executor, source));
   TF_RETURN_IF_ERROR(else_commands_.Initialize(executor, source));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IfElseCmd::Record(const RecordParams& params,
@@ -537,7 +537,7 @@ Status CaseCmd::Initialize(se::StreamExecutor* executor,
   for (auto& branch : branches_commands_) {
     TF_RETURN_IF_ERROR(branch.Initialize(executor, source));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CaseCmd::Record(const RecordParams& params,
@@ -693,7 +693,7 @@ Status GemmCmd::Initialize(se::StreamExecutor* executor,
   if (!executor->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support for GemmCmd");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GemmCmd::Record(const RecordParams& params,

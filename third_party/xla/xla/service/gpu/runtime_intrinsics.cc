@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/collective_ops_utils.h"
@@ -71,7 +72,7 @@ Status AssertOnGpu(void* stream_handle, void* buffer,
     return InternalError("%s", error_msg);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AssertionCustomCall(void* stream_handle, void** buffers,

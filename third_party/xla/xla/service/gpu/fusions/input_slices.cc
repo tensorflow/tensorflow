@@ -139,7 +139,7 @@ Status EmitElementForInputFusibleSlices(
 
     ksl.If(absl::StrCat("slice", i), guarding_cond, emit_slice_elem_func);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Gets the input shape of the ROOT slices, which will be used as the kernel

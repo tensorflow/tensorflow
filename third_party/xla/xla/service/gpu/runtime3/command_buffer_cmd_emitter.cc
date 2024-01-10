@@ -142,7 +142,7 @@ static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
   auto append = [&](StatusOr<Command> command) -> Status {
     if (command.ok()) {
       cmd_sequence.Append(std::move(*command));
-      return OkStatus();
+      return absl::OkStatus();
     }
     return command.status();
   };
@@ -181,7 +181,7 @@ static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
     case Thunk::Kind::kNcclAllReduceDone:
     case Thunk::Kind::kNcclReduceScatterDone:
     case Thunk::Kind::kNcclAllGatherDone:
-      return OkStatus();
+      return absl::OkStatus();
 
     default:
       return InternalError("Unsupported thunk kind: %s",
@@ -194,7 +194,7 @@ static Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
                              bool force_barriers) {
   for (const std::unique_ptr<Thunk>& thunk : sequence)
     TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, *thunk, force_barriers));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<CommandBufferCmdSequence> ConvertToCommands(

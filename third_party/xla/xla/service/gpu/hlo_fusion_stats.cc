@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -73,7 +74,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       default:
         opcodes_.insert(std::string(HloOpcodeString(instr->opcode())));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -82,7 +83,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
 
 std::set<std::string> GetUniqueOpcodes(HloComputation* computation) {
   OpcodeCollector collector;
-  if (computation->Accept(&collector) != OkStatus()) {
+  if (!computation->Accept(&collector).ok()) {
     return {};
   }
   return collector.GetUniqueOpcodes();
@@ -101,7 +102,7 @@ std::string HloOpcodeHistogram::ToString() {
 
 Status HloFusionStatsVisitor::RunOnModule(HloModule* module) {
   TF_RETURN_IF_ERROR(module->entry_computation()->Accept(this));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string HloFusionStatsVisitor::ToString() {
@@ -114,7 +115,7 @@ std::string HloFusionStatsVisitor::ToString() {
 }
 
 Status HloFusionStatsVisitor::DefaultAction(const xla::HloInstruction* instr) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status HloFusionStatsVisitor::HandleFusion(const HloInstruction* fusion) {
@@ -128,7 +129,7 @@ Status HloFusionStatsVisitor::HandleFusion(const HloInstruction* fusion) {
     num_input_fusions_++;
     input_fusion_opcode_histogram_[opcodes]++;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

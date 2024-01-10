@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/reduction_utils.h"
@@ -39,14 +40,14 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
     // need to split such ops.
     if (IsReductionFromOrToContiguousDimensions(*reduce)) {
       VLOG(4) << "Reduction with contiguous dimensions. Return.";
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (reduce->dimensions().size() < 2) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (!reduce->shape().IsArray()) {
       // TODO(cheshire): Handle variadic reduction.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloInstruction *operand = reduce->mutable_operand(0);
@@ -75,7 +76,7 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
       }
     }
     if (ignore_small_dims_ && max_shape_dim <= 8) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Split the reduction into a pre-reduction and a final reduction.

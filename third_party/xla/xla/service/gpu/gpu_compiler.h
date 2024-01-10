@@ -135,20 +135,20 @@ class GpuCompiler : public LLVMCompiler {
   virtual Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Add autotuning passes for triton gemm.
   virtual Status AddTritonGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Add passes that convert HLO operations to custom kernels.
   virtual Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

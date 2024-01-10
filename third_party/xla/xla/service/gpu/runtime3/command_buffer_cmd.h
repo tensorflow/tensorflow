@@ -107,7 +107,7 @@ class CommandBufferCmd {
   // loading) to happen before a command buffer thunk execution.
   virtual Status Initialize(se::StreamExecutor* executor,
                             ExecutableSource source) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Records command into the command buffer.

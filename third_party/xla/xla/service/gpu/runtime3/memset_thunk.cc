@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/memset_thunk.h"
 
+#include "absl/status/status.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -24,14 +25,14 @@ Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   params.stream->ThenMemZero(&dest_data, dest_data.size());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Memset32BitValueThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_);
   params.stream->ThenMemset32(&dest_data, value_, dest_data.size());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -167,7 +168,7 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
     std::optional<Shape> result_shape =
         ScatterSliceMatcher(scatter).InferShape();
     if (!result_shape.has_value()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     VLOG(2) << "Matched scatter " << scatter->name() << " with shape "
             << scatter->shape().ToString() << ", inferred result shape "
@@ -196,7 +197,7 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
       }
       TF_RETURN_IF_ERROR(ReplaceUserRecursive(user, new_instruction));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Replace the slice user with a new scatter (or a new chain of operations

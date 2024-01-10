@@ -47,7 +47,7 @@ Status CommandBufferAllocations::AddAllocation(BufferAllocation::Index index,
     return absl::InternalError(absl::StrCat("Command buffer allocation #",
                                             index, " was already allocated"));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CommandBufferAllocations::EraseAllocation(
@@ -58,7 +58,7 @@ Status CommandBufferAllocations::EraseAllocation(
     return absl::InternalError(absl::StrCat("Command buffer allocation #",
                                             index, " was not allocated"));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

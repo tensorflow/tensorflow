@@ -581,7 +581,7 @@ StatusOr<FusionDecision> CreateDotFusion(
       // Stop iterating.
       return absl::CancelledError();
     }
-    return OkStatus();
+    return absl::OkStatus();
   });
   if (!is_pure_matmul) {
     return FusionDecision{};
@@ -612,14 +612,14 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_, builder,
                         fusion_inputs, &fusion_output));
     if (builder.last_added_instruction() == nullptr) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // If a GEMM requiring padding for cuBLAS is encountered here this
     // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
     // was skipped. Accept it ignoring profitability checks.
     if (!CublasRequiresPadding(*Cast<HloDotInstruction>(dot), gpu_version_) &&
         !should_fuse) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloComputation* computation =
@@ -646,7 +646,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(ReplaceInstruction(fusion_output, dot_fusion));
     }
     XLA_VLOG_LINES(5, computation->ToString(HloPrintOptions::ShortParsable()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

@@ -93,7 +93,7 @@ Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("FusedMHAThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 FusedMHABackwardThunk::FusedMHABackwardThunk(
     ThunkInfo thunk_info, GpufMHABackwardConfig config,
@@ -198,7 +198,7 @@ Status FusedMHABackwardThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("FusedMHABackwardThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

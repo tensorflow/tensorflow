@@ -77,7 +77,7 @@ absl::Status SendRecvAsyncEvents::Emplace(se::StreamExecutor* executor,
 
   absl::MutexLock lock(&mutex_);
   if (auto it = events_.try_emplace(key, std::move(event)); it.second)
-    return OkStatus();
+    return absl::OkStatus();
 
   return absl::InternalError(absl::StrFormat(
       "Async send/recv event already exists (channel_id=%d)", channel_id));
@@ -117,7 +117,7 @@ Status SendThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(bool skip,
                       ShouldSkip("sending buffer", params, device_constraint_));
-  if (skip) return OkStatus();
+  if (skip) return absl::OkStatus();
 
   TraceMe trace([&] {
     return TraceMeEncode("Send", {{"channel_id", channel_id_}});
@@ -163,7 +163,7 @@ Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for send completion",
                                             params, device_constraint_));
-  if (skip) return OkStatus();
+  if (skip) return absl::OkStatus();
 
   TraceMe trace([&] {
     return TraceMeEncode("SendDone", {{"channel_id", channel_id_}});
@@ -180,7 +180,7 @@ Status SendDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Once event is recorded we can add a stream dependency.
   params.stream->ThenWaitFor(&done_event.get());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -206,7 +206,7 @@ Status RecvThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(
       bool skip, ShouldSkip("receiving buffer", params, device_constraint_));
-  if (skip) return OkStatus();
+  if (skip) return absl::OkStatus();
 
   TraceMe trace([&] {
     return TraceMeEncode("Recv", {{"channel_id", channel_id_}});
@@ -251,7 +251,7 @@ Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   TF_ASSIGN_OR_RETURN(bool skip, ShouldSkip("waiting for recv completion",
                                             params, device_constraint_));
-  if (skip) return OkStatus();
+  if (skip) return absl::OkStatus();
 
   TraceMe trace([&] {
     return TraceMeEncode("RecvDone", {{"channel_d", channel_id_}});
@@ -268,7 +268,7 @@ Status RecvDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   // Once event is recorded we can add a stream dependency.
   params.stream->ThenWaitFor(&done_event.get());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

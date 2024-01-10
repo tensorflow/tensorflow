@@ -58,7 +58,7 @@ Status VisitInstAndCalledButNotOperands(Visitor& visitor,
                                     true /* ignore_control_predecessors */,
                                     true /* cross_computation */));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Split `a` and `b` by `delim` into two lists of possibly-empty tokens, then
@@ -92,7 +92,7 @@ class OpNamePrefixVisitor : public ConstDfsHloVisitorWithDefault {
     if (!op_name.empty()) {
       prefix = prefix ? LongestPrefix(*prefix, op_name) : op_name;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::string_view longest_op_name_prefix() const {
     return prefix.value_or(std::string_view{});

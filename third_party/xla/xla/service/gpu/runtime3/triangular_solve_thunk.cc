@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/triangular_solve_thunk.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/service/gpu/make_batch_pointers.h"
 #include "xla/stream_executor/blas.h"
@@ -217,7 +218,7 @@ Status RunTriangularSolve(se::DeviceMemoryBase a_data,
   if (!launch_ok) {
     return InternalError("Unable to launch triangular solve");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

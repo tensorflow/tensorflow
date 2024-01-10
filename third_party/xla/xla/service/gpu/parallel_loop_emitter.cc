@@ -264,7 +264,7 @@ Status ParallelLoopEmitter::EmitSerialLoop(absl::string_view loop_name,
       llvm_ir::SetToFirstInsertPoint(if_in_bounds.after_block, b_);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
@@ -297,7 +297,7 @@ Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
   // code emitted for later instructions will be correctly placed.
   CHECK(exit_bb_->getTerminator());
   b_->SetInsertPoint(exit_bb_->getTerminator());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

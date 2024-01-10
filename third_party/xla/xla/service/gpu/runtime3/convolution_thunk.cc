@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/status/status.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -77,7 +78,7 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ConvolutionReorderThunk::ConvolutionReorderThunk(
@@ -115,7 +116,7 @@ Status ConvolutionReorderThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("ConvolutionReorderThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 se::dnn::FilterDescriptor ConvolutionReorderThunk::CreateFilterDescriptor(

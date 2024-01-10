@@ -621,7 +621,7 @@ Status IsProfileApplicable(
           "cost name %s not in module %s", latency.target(), module->name()));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace
@@ -640,7 +640,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
                          int64_t memory_limit,
                          const se::DeviceDescription& gpu_device_info) {
   if (module->has_schedule()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
   prepare_pipeline.AddPass<P2PSchedulePreparation>();
@@ -668,7 +668,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
           .xla_gpu_enable_latency_hiding_scheduler();
 
   if (!enable_latency_hiding_scheduler) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   SchedulerConfig config = GetSchedulerConfig(memory_limit);
@@ -729,7 +729,7 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   postprocessing_pipeline.AddPass<GpuSchedulePostprocessing>();
   TF_RETURN_IF_ERROR(postprocessing_pipeline.Run(module).status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 HloInstructionSequence PostProcessSchedule(

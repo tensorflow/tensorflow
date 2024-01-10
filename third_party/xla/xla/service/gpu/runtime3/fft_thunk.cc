@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -237,7 +238,7 @@ Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
       LOG(FATAL) << "unsupported fft type";
   }
   if (launch_ok) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return InternalError("Unable to launch fft with type %s",
                        FftTypeToString(fft_type));

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/shape_util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -84,7 +85,7 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   }
 
   EnqueueDestination(std::move(buffer_tree));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor) {

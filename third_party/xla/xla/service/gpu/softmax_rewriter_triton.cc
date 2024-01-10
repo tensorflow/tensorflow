@@ -381,7 +381,7 @@ Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
   }
 
   VLOG(5) << softmax_fusion->ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 using DiamondDescriptor = DiamondChainDescriptor;

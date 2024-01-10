@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/infeed_thunk.h"
 
+#include "absl/status/status.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/infeed_manager.h"
 #include "xla/shape_util.h"
@@ -65,7 +66,7 @@ Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   VLOG(2) << "Infeeding to GPU complete";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

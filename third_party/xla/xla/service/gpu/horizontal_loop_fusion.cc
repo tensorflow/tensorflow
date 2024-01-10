@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -583,7 +584,7 @@ Status HorizontalLoopFusionImpl::CreateFusedComputation(
     TF_RETURN_IF_ERROR(comp->RemoveInstruction(dummy_root));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status HorizontalLoopFusionImpl::Fuse(
@@ -653,7 +654,7 @@ Status HorizontalLoopFusionImpl::Fuse(
 
   VLOG(1) << "Fused " << fused_fusion_instrs.size()
           << " instructions into: " << hori_fusion_instr->ToString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<bool> HorizontalLoopFusionImpl::Run() {

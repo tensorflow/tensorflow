@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -88,7 +89,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
   Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "TopK") {
-      return OkStatus();
+      return absl::OkStatus();
     }
     TF_RET_CHECK(topk->operand_count() == 1);
 
@@ -99,7 +100,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
               << small_topk.status();
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

@@ -301,7 +301,7 @@ Status IrEmitterUnnested::EmitUnreachable(mlir::Operation* op,
                                           std::string error_message) {
   AddThunkToThunkSequence(std::unique_ptr<Thunk>(
       new UnreachableThunk(op, std::move(error_message))));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitConstant(mlir::Operation* op,
@@ -325,7 +325,7 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op,
   ir_emitter_context_->emit_constant(num_elements, element_bytes,
                                      global.getSymName(), allocation_index,
                                      std::move(content), &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitConstant(const HloConstantInstruction* instr) {
@@ -344,7 +344,7 @@ Status IrEmitterUnnested::EmitConstant(const HloConstantInstruction* instr) {
 
   ir_emitter_context_->emit_constant(num_elements, element_bytes, global_name,
                                      slice.index(), std::move(content), &b_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static ConditionalThunkConfig GetConditionalThunkConfig(
@@ -393,7 +393,7 @@ Status IrEmitterUnnested::EmitConditional(
   TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(conditional.getIndex()));
   AddThunkToThunkSequence(std::unique_ptr<Thunk>(new ConditionalThunk(
       Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(config), slice)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 llvm::Value* IrEmitterUnnested::CreateLoad(llvm::Value* address,
@@ -563,7 +563,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
         dyn_index,
         source_array.EmitReadArrayElement(array_index, &b_, /*name=*/""), &b_,
         /*use_linear_index=*/false);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   const Shape& data_shape = GetShape(pad_to_static.getOutput().front());
@@ -571,7 +571,7 @@ Status IrEmitterUnnested::EmitPadToStatic(mlir::Operation* op) {
                                          launch_dimensions, &b_,
                                          {unroll_factor})
                          .EmitLoop(ir_name, index_ty));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Input = {dynamic array(with dynamic dimension meta data at the end)}
@@ -683,14 +683,14 @@ Status IrEmitterUnnested::EmitSliceToDynamic(mlir::Operation* op) {
         input_arrays[0].EmitReadArrayElement(dyn_index, &b_, /*name=*/"",
                                              /*use_linear_index=*/false),
         &b_);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                          launch_dimensions, &b_,
                                          {unroll_factor})
                          .EmitLoop(ir_name, index_ty));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitCommandBufferThunk(const HloInstruction* instr) {
@@ -716,7 +716,7 @@ Status IrEmitterUnnested::EmitCommandBufferThunk(const HloInstruction* instr) {
   AddThunkToThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_sequence), Thunk::ThunkInfo::WithProfileAnnotation(instr)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitConvolutionThunk(
@@ -869,7 +869,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(stream_executor::dnn::ActivationMode activation_mode,
                         ConvertConvActivationMode(op.getActivationMode()));
     descriptor.backend_config.set_activation_mode(activation_mode);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (auto conv = dyn_cast<ConvForwardOp>(op)) {
@@ -905,7 +905,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   AddThunkToThunkSequence(std::make_unique<ConvolutionThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(config),
       std::move(operand_slices), std::move(result_slices), scratch_slice));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
@@ -924,7 +924,7 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
       std::nullopt, deterministic_ops);
 
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitGemmThunk(const HloCustomCallInstruction* instr) {
@@ -956,7 +956,7 @@ Status IrEmitterUnnested::EmitGemmThunk(const HloCustomCallInstruction* instr) {
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(config), a, b,
       c, workspace, deterministic_ops);
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
@@ -989,7 +989,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunk(mlir::Operation* op) {
       c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
@@ -1033,7 +1033,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
       c_scale, d_scale, d_amax);
 
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitConvolutionReorderThunk(mlir::Operation* op) {
@@ -1056,7 +1056,7 @@ Status IrEmitterUnnested::EmitConvolutionReorderThunk(mlir::Operation* op) {
 
     auto filter_dims_values = op.getFilterDims().template getValues<int64_t>();
     filter_dims.assign(filter_dims_values.begin(), filter_dims_values.end());
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (auto reorder = dyn_cast<CudnnConvReorderFilterAndBiasOp>(op)) {
@@ -1080,7 +1080,7 @@ Status IrEmitterUnnested::EmitConvolutionReorderThunk(mlir::Operation* op) {
       std::move(operand_slices), std::move(result_slices));
 
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitNormThunk(mlir::Operation* op) {
@@ -1134,7 +1134,7 @@ Status IrEmitterUnnested::EmitNormThunk(mlir::Operation* op) {
 
   AddThunkToThunkSequence(std::move(thunk));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
@@ -1245,7 +1245,7 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
     descriptor.is_flash_attention = fmha.getIsFlashAttention();
     // set if causal mask here
     descriptor.is_causal_mask = fmha.getIsCausalMask();
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (auto fmha_op = dyn_cast<fusedMHAOp>(op)) {
@@ -1262,7 +1262,7 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
       Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(config),
       lhs_bmm1_slice, rhs_bmm1_slice, rhs_bmm2_slice, output_slice,
       scratch_slice, mask_slice, bias_slice, activation_slice));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
@@ -1451,7 +1451,7 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
       TF_ASSIGN_OR_RETURN(fwd_output_slice,
                           GetAllocationSlice(fmha.getFwdOutput()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (auto fmha_backward_op = dyn_cast<fusedMHABackwardOp>(op)) {
@@ -1475,7 +1475,7 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
       d_s_slice, softmax_sum_slice, d_Q_accum_slice, mask_slice, d_bias_slice,
       fwd_output_slice, bias_slice));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // GOOGLE_CUDA
 
@@ -1511,7 +1511,7 @@ Status IrEmitterUnnested::EmitCubDeviceRadixSort(mlir::Operation* op) {
       operands, results, scratch, radix_sort_op.getDescending());
 
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
@@ -1563,7 +1563,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
         Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(thunks)));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
@@ -1613,7 +1613,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
         Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(thunks)));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -1629,10 +1629,10 @@ static StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
       switch (integer.getType().getIntOrFloatBitWidth()) {
         case 32:
           attributes[name] = static_cast<int32_t>(integer.getInt());
-          return OkStatus();
+          return absl::OkStatus();
         case 64:
           attributes[name] = static_cast<int64_t>(integer.getInt());
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return absl::InvalidArgumentError(absl::StrCat(
               "Unsupported integer attribute bit width for attribute: ", name));
@@ -1643,7 +1643,7 @@ static StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
       switch (fp.getType().getIntOrFloatBitWidth()) {
         case 32:
           attributes[name] = static_cast<float>(fp.getValue().convertToFloat());
-          return OkStatus();
+          return absl::OkStatus();
         default:
           return absl::InvalidArgumentError(absl::StrCat(
               "Unsupported float attribute bit width for attribute: ", name));
@@ -1652,7 +1652,7 @@ static StatusOr<CustomCallThunk::AttributesMap> BuildAttributesMap(
 
     auto str = [&](mlir::StringAttr str) {
       attributes[name] = str.getValue().str();
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     TF_RETURN_IF_ERROR(
@@ -1697,13 +1697,13 @@ Status IrEmitterUnnested::EmitCustomCallThunk(
     // If true, then all custom calls that are not found in custom call or FFI
     // registries will become no-op (we don't emit any thunks for them).
     if (debug_options.xla_gpu_mock_custom_calls()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // TODO(ezhulenev): Custom calls registered with an XLA runtime are not part
     // of a legacy registry, or an FFI registry. For now we simply ignore them.
     if (debug_options.xla_gpu_enable_xla_runtime_executable()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     return absl::UnimplementedError(
@@ -1719,7 +1719,7 @@ Status IrEmitterUnnested::EmitCustomCallThunk(
       TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(value));
       slices->push_back(CustomCallThunk::Slice{slice, GetShape(value)});
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // Initialize slices and shapes from the value range with token holes.
@@ -1731,7 +1731,7 @@ Status IrEmitterUnnested::EmitCustomCallThunk(
       TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(value));
       (*slices)[index] = CustomCallThunk::Slice{slice, GetShape(value)};
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   Slices operands, results;
@@ -1842,7 +1842,7 @@ Status IrEmitterUnnested::EmitCustomCallThunk(
 
   AddThunkToThunkSequence(found_ffi_handler ? ffi_thunk() : legacy_thunk());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitCustomCallThunk(
@@ -1870,13 +1870,13 @@ Status IrEmitterUnnested::EmitCustomCallThunk(
     // If true, then all custom calls that are not found in custom call or FFI
     // registries will become no-op (we don't emit any thunks for them).
     if (debug_options.xla_gpu_mock_custom_calls()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // TODO(ezhulenev): Custom calls registered with an XLA runtime are not part
     // of a legacy registry, or an FFI registry. For now we simply ignore them.
     if (debug_options.xla_gpu_enable_xla_runtime_executable()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     return absl::UnimplementedError(
@@ -1892,15 +1892,15 @@ Status IrEmitterUnnested::EmitCustomCallThunk(
         operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (subshape.IsToken()) {
             operands.push_back(std::nullopt);
-            return OkStatus();
+            return absl::OkStatus();
           }
           if (!subshape.IsArray()) {
-            return OkStatus();
+            return absl::OkStatus();
           }
           TF_ASSIGN_OR_RETURN(auto slice,
                               GetAllocationSliceForHlo(operand, index));
           operands.push_back(CustomCallThunk::Slice{slice, subshape});
-          return OkStatus();
+          return absl::OkStatus();
         }));
   }
 
@@ -1909,14 +1909,14 @@ Status IrEmitterUnnested::EmitCustomCallThunk(
       instr->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (subshape.IsToken()) {
           results.push_back(std::nullopt);
-          return OkStatus();
+          return absl::OkStatus();
         }
         if (!subshape.IsArray()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForHlo(instr, index));
         results.push_back(CustomCallThunk::Slice{slice, subshape});
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   // For legacy custom calls we convert all API versions into the latest
@@ -2008,7 +2008,7 @@ Status IrEmitterUnnested::EmitCustomCallThunk(
 
   AddThunkToThunkSequence(found_ffi_handler ? ffi_thunk() : legacy_thunk());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
@@ -2035,7 +2035,7 @@ Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
       /*output_buffer=*/dest_slice,
       /*input_shape=*/operand_shape,
       /*output_shape=*/output_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -2127,7 +2127,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(mlir::Operation* op) {
     AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(thunks)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
@@ -2205,7 +2205,7 @@ Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
     AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(thunks)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -2252,7 +2252,7 @@ Status IrEmitterUnnested::EmitTopKCustomCall(
       instr, std::move(kernel), std::move(kernel_arguments.args()));
   AddThunkToThunkSequence(std::move(thunk));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Convert the following form of fusion region:
@@ -2311,7 +2311,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
   auto b = mlir::OpBuilder::atBlockEnd(&region->back());
   auto loc = returned_values[0].getLoc();
   b.create<mlir::mhlo::ReturnOp>(loc, returned_values);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitFusion(const HloFusionInstruction* instr,
@@ -2354,7 +2354,7 @@ Status IrEmitterUnnested::AssertNonDeterminismIsOkay(
         "--xla_gpu_deterministic_ops.",
         op_name);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitSelectAndScatter(
@@ -2633,7 +2633,7 @@ Status IrEmitterUnnested::EmitWhile(
                         hlo_for_lmhlo));
     AddThunkToThunkSequence(std::move(thunk));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
@@ -2643,14 +2643,14 @@ Status IrEmitterUnnested::EmitWhile(const HloInstruction* instr) {
     int64_t trip_count = config.known_trip_count().n();
     TF_ASSIGN_OR_RETURN(auto thunk, BuildForThunk(instr, trip_count));
     AddThunkToThunkSequence(std::move(thunk));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(
       auto thunk,
       BuildWhileThunk(instr, Thunk::ThunkInfo::WithProfileAnnotation(instr)));
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitRngGetAndUpdateState(mlir::Operation* op) {
@@ -2673,7 +2673,7 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(mlir::Operation* op) {
       &b_, "rng_state_address");
   Store(old_state, output_address);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitRngGetAndUpdateState(
@@ -2689,7 +2689,7 @@ Status IrEmitterUnnested::EmitRngGetAndUpdateState(
           /*linear=*/b_.getInt64(0), instr->shape(), &b_),
       &b_, "rng_state_address");
   Store(old_state, output_address);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitSort(mlir::Operation* op,
@@ -2884,7 +2884,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op,
   if (!xor_masks.empty()) {
     TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
@@ -2900,7 +2900,7 @@ Status IrEmitterUnnested::EmitReplicaOrPartitionId(mlir::Operation* op) {
   auto thunk = std::make_unique<ThunkType>(
       Thunk::ThunkInfo::WithProfileAnnotation(op), result_slice);
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ThunkType>
@@ -2953,7 +2953,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     AddThunkToThunkSequence(std::move(thunk));
   }
   async_executors_.insert({op, async_executor});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename NcclThunkType, typename OpT>
@@ -3002,7 +3002,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
         /*buffers=*/std::move(buffers));
     async_executors_.insert({untyped_op, thunk->async_executor()});
     AddThunkToThunkSequence(std::move(thunk));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!is_degenerate) {
@@ -3034,7 +3034,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(thunks)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
@@ -3051,7 +3051,7 @@ Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
         kind, Thunk::ThunkInfo::WithProfileAnnotation(op),
         *async_executor.mapped()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename NcclThunkType, typename HloInstType>
@@ -3122,7 +3122,7 @@ Status IrEmitterUnnested::EmitNcclThunk(
         /*buffers=*/std::move(buffers));
     async_executors_.insert({async_start, thunk->async_executor()});
     AddThunkToThunkSequence(std::move(thunk));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!is_degenerate) {
@@ -3153,7 +3153,7 @@ Status IrEmitterUnnested::EmitNcclThunk(
     AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(inst), std::move(thunks)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
@@ -3170,7 +3170,7 @@ Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
         kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
         *async_executor.mapped()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::vector<ShapedSlice>> IrEmitterUnnested::GetShapedSlices(
@@ -3192,7 +3192,7 @@ Status IrEmitterUnnested::EmitInfeed(mlir::Operation* op) {
       Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(shaped_slices));
   AddThunkToThunkSequence(std::move(thunk));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
@@ -3201,13 +3201,13 @@ Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
   std::vector<ShapedSlice> shaped_slices;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       instr->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (subshape.IsTuple() || subshape.IsToken()) return OkStatus();
+        if (subshape.IsTuple() || subshape.IsToken()) return absl::OkStatus();
         if (subshape.IsArray()) {
           TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
                               GetAllocationSliceForHlo(instr, index));
           ShapedSlice shaped_slice = {data, subshape};
           shaped_slices.push_back(shaped_slice);
-          return OkStatus();
+          return absl::OkStatus();
         }
         return InternalError("Unexpected shape kind for %s and shape index %s",
                              instr->ToString(), index.ToString());
@@ -3216,7 +3216,7 @@ Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
   auto thunk = std::make_unique<InfeedThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(shaped_slices));
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
@@ -3227,7 +3227,7 @@ Status IrEmitterUnnested::EmitOutfeed(mlir::Operation* op) {
       Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(shaped_slices));
   AddThunkToThunkSequence(std::move(thunk));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitOutfeed(const HloOutfeedInstruction* instr) {
@@ -3237,13 +3237,13 @@ Status IrEmitterUnnested::EmitOutfeed(const HloOutfeedInstruction* instr) {
   std::vector<ShapedSlice> shaped_slices;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       source->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (subshape.IsTuple()) return OkStatus();
+        if (subshape.IsTuple()) return absl::OkStatus();
         if (subshape.IsArray()) {
           TF_ASSIGN_OR_RETURN(BufferAllocation::Slice data,
                               GetAllocationSliceForHlo(source, index));
           ShapedSlice shaped_slice = {data, subshape};
           shaped_slices.push_back(shaped_slice);
-          return OkStatus();
+          return absl::OkStatus();
         }
         return InternalError("Unexpected shape kind for %s and shape index %s",
                              source->ToString(), index.ToString());
@@ -3252,7 +3252,7 @@ Status IrEmitterUnnested::EmitOutfeed(const HloOutfeedInstruction* instr) {
   auto thunk = std::make_unique<OutfeedThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(shaped_slices));
   AddThunkToThunkSequence(std::move(thunk));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<
@@ -3343,7 +3343,7 @@ Status IrEmitterUnnested::BuildInitializerThunk(
                                     dest, dest_slice));
   if (constant_init_thunk) {
     AddThunkToThunkSequence(*std::move(constant_init_thunk));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Otherwise fall back to our slow initializer code. The thunk in this case
@@ -3365,7 +3365,7 @@ Status IrEmitterUnnested::BuildInitializerThunk(
                          },
                          {inputs[1]}, launch_dimensions, &b_)
                          .EmitLoop(GetIrNameFromLoc(op->getLoc())));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildWhileThunk(
@@ -3478,7 +3478,7 @@ Status IrEmitterUnnested::EmitSendThunk(const HloSendInstruction* instr) {
       ConvertFrontendAttributes(instr->frontend_attributes()),
       DeviceConstraint(instr)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitSendDoneThunk(
@@ -3490,7 +3490,7 @@ Status IrEmitterUnnested::EmitSendDoneThunk(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
@@ -3507,7 +3507,7 @@ Status IrEmitterUnnested::EmitRecvThunk(const HloRecvInstruction* instr) {
       ConvertFrontendAttributes(instr->frontend_attributes()),
       DeviceConstraint(instr)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitRecvDoneThunk(
@@ -3519,7 +3519,7 @@ Status IrEmitterUnnested::EmitRecvDoneThunk(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitOp(
@@ -3530,7 +3530,7 @@ Status IrEmitterUnnested::EmitOp(
                 mlir::arith::ConstantOp, mlir::memref::ReinterpretCastOp,
                 mlir::func::ReturnOp, mlir::lmhlo::TerminatorOp,
                 mlir::memref::ViewOp>(op)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (mlir::isa<mlir::memref::GetGlobalOp>(op)) {
@@ -3801,7 +3801,7 @@ Status IrEmitterUnnested::EmitOp(
   // of inlining the fusion region after lowering. They can safely be skipped
   // because constants have no side effects.
   if (mlir::isa<mlir::arith::ConstantOp>(op)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (mlir::isa<mlir::lmhlo::CommandBufferOp>(op)) {
@@ -3847,7 +3847,7 @@ Status IrEmitterUnnested::EmitLmhloRegion(
   for (mlir::Operation& op : llvm::make_early_inc_range(region->front())) {
     TF_RETURN_IF_ERROR(EmitOp(&op, hlo_for_lmhlo));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
@@ -3963,7 +3963,7 @@ Status IrEmitterUnnested::EmitHloInstruction(const HloInstruction* instr) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
     case HloOpcode::kTuple:
-      return OkStatus();
+      return absl::OkStatus();
     default:
       return InternalError("Unsupported instruction opcode: %s",
                            HloOpcodeString(instr->opcode()));
@@ -3983,7 +3983,7 @@ Status IrEmitterUnnested::EmitHloComputation(
   for (HloInstruction* instr : sequence.instructions()) {
     TF_RETURN_IF_ERROR(EmitHloInstruction(instr));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {

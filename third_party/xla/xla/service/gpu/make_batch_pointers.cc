@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
@@ -67,7 +68,7 @@ Status MakeBatchPointers(se::Stream* stream, se::DeviceMemoryBase base_ptr,
                          se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
                          base_ptr, stride_bytes, n, ptrs_out));
 #endif
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

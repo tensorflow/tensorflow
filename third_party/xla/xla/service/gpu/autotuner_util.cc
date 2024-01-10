@@ -85,7 +85,7 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
                                     absl::string_view(b->hlo()));
             });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ Status AutotunerUtil::LoadAutotuneResults(
@@ -95,7 +95,7 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     autotune_cache[AutotuneCacheKey(result.device(), result.hlo())] =
         result.result();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ void AutotunerUtil::ClearAutotuneResults() {
@@ -213,7 +213,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
   }
 
   TF_RETURN_IF_ERROR(LoadAutotuneResults(results));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ StatusOr<std::string> AutotunerUtil::SerializeAutotuneResults(
@@ -248,7 +248,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
                                             autotune_results_str));
   LOG(INFO) << "Autotune results serialized to file: " << resolved_path;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ Status AutotunerUtil::LoadAutotuneResultsFromFile(
@@ -273,7 +273,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
 
   LOG(INFO) << "Autotune results loaded from file: " << resolved_path;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ std::unique_ptr<HloModule>

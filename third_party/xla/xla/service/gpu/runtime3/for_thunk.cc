@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/status.h"
 #include "tsl/platform/errors.h"
 
@@ -37,7 +38,7 @@ ForThunk::ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
 
 Status ForThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ForThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -47,7 +48,7 @@ Status ForThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Invoke loop body thunk sequence.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

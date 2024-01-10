@@ -54,7 +54,7 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
       : buffer_usage(buffer_usage) {}
 
   Status Record(const RecordParams&, se::CommandBuffer*) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   BufferUsageVector buffers() override { return buffer_usage; }

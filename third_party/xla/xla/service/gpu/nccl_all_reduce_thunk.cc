@@ -151,7 +151,7 @@ Status CheckImplementableInst(const HloInstruction* inst,
     return tsl::errors::Unimplemented("Unrecognized reduction computation");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename OpT>
@@ -165,7 +165,7 @@ Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
            .has_value()) {
     return tsl::errors::Unimplemented("Unrecognized reduction computation");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename HloInstType>
@@ -410,7 +410,7 @@ Status RunReduceScatter(ReductionKind reduction_kind,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
-  return OkStatus();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

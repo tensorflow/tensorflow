@@ -108,7 +108,7 @@ Status AnnotateKernelLaunchDimensions(const se::DeviceDescription& device_info,
                            kernel_name, llvm_module);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

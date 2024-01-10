@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
 
@@ -136,7 +137,7 @@ Status RunRecv(NcclP2PConfig::SourceTargetMapEntry source_target,
                                   device_string);
     stream.ThenMemZero(&dest_addr, dest_addr.size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

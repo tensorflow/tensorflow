@@ -120,7 +120,7 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
         if (*it != shape.layout().minor_to_major()[i++])
           return InvalidArgument("dims not physically_sequential");
       }
-      return OkStatus();
+      return absl::OkStatus();
     };
 
     int64_t dim = shape.layout().minor_to_major()[i];
@@ -662,7 +662,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   if (config.alpha.real() == 0.0 && config.alpha.imag() == 0.0 &&
       config.beta == 0.0) {
     stream->ThenMemZero(&output_buffer, output_buffer.size());
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
 #define TYPED_GEMM(SCALENTYPE, ATYPE, BTYPE, CTYPE)                          \

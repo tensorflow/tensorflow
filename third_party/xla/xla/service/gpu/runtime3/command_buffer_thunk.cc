@@ -101,7 +101,7 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
 Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
-  if (commands_.empty()) return OkStatus();
+  if (commands_.empty()) return absl::OkStatus();
 
   TF_RETURN_IF_ERROR(commands_.Initialize(params.executor, params.src));
 
@@ -145,13 +145,13 @@ Status CommandBufferThunk::Initialize(const InitializeParams& params) {
             << " μs; num_commands=" << commands_.size();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
-  if (commands_.empty()) return OkStatus();
+  if (commands_.empty()) return absl::OkStatus();
 
   se::StreamExecutor* executor = params.stream->parent();
   TF_ASSIGN_OR_RETURN(std::shared_ptr<ExecutorCommandBuffer> cmd_buffer,

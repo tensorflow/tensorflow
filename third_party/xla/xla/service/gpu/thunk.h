@@ -218,7 +218,7 @@ class Thunk {
   // to do initialization outside of ExecuteOnStream() so that the
   // time spent initializing doesn't count towards our execution profile.
   virtual Status Initialize(const InitializeParams& params) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Execute the kernel for the thunk on the given stream. This method must be

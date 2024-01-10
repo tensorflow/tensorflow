@@ -41,7 +41,7 @@ Status CustomFusionRegistry::Register(std::string name,
                                       std::unique_ptr<CustomFusion> fusion) {
   absl::MutexLock lock(&mutex_);
   if (auto it = registry_.try_emplace(name, std::move(fusion)); it.second)
-    return OkStatus();
+    return absl::OkStatus();
   return absl::InternalError(
       absl::StrCat("Custom fusion ", name, " already registered."));
 }

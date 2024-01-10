@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -63,11 +64,11 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       // dimensions are >= num_bcast_dims.
       for (int64_t bcast_dim : bcast->dimensions()) {
         if (bcast_dim < num_bcast_dims) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         // bcast_dim should not be in batch_dimensions.
         if (absl::c_linear_search(batch_dimensions, bcast_dim)) {
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
 
@@ -75,7 +76,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       // there is at least one batch dimension.
       CHECK_GT(num_bcast_dims, 0);
       if (num_bcast_dims != num_batch_dims) {
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       if (bcast_operand_index == 1) {
@@ -94,7 +95,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
       MarkAsChanged();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

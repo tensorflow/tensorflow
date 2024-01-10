@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
@@ -97,7 +98,7 @@ Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   if (message) {
     return InternalError("CustomCall failed: %s", *message);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 #else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return Unavailable(

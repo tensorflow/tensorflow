@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/client/xla_builder.h"
@@ -319,7 +320,7 @@ Status ReorderInt8NchwVect(HloCustomCallInstruction* conv, XlaOp* operands) {
     transpose = Transpose(reshape, reorder.permutation);
     operands[2] = Reshape(reorder.result_shape, transpose);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Tries to vectorize an already-vectorized convolution.

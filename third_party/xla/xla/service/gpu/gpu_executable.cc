@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -187,7 +188,7 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     return InternalError("Unknown platform");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -294,7 +295,7 @@ Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
     profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -458,7 +459,7 @@ static Status CheckAlignment(const BufferAllocation& allocation,
         "was %p",
         arg_idx, expected_alignment, buffer.opaque());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
@@ -857,7 +858,7 @@ Status GpuExecutable::SetUpMlirAllocation(
                      .getValue()
                      .str()));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
@@ -896,7 +897,7 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
         output[index].alias_config =
             hlo_module.input_output_alias_config().GetAliasedParameter(index);
 
-        return OkStatus();
+        return absl::OkStatus();
       }));
   return output;
 }
@@ -953,7 +954,7 @@ GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
     functions.push_back({func.getName().str(), std::move(*signature),
                          std::move(*rt_signature)});
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   mlir::SymbolTable sym_table(module);

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/status.h"
 #include "xla/util.h"
@@ -41,7 +42,7 @@ Status ConditionalThunk::Initialize(const InitializeParams& params) {
   for (auto& branch_thunk : config_.branch_thunks) {
     TF_RETURN_IF_ERROR(branch_thunk->Initialize(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -77,7 +78,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_RETURN_IF_ERROR(
       config_.branch_thunks[branch_index]->ExecuteOnStream(params));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

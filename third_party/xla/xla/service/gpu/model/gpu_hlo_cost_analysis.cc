@@ -76,7 +76,7 @@ Status GpuHloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   current_properties_[kBasicBlockSplitCountKey] =
       ElementalIrEmitter::OpInvalidatesCache(hlo);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 float GpuHloCostAnalysis::ScalingRatio(const HloInstruction& hlo) const {
@@ -181,7 +181,7 @@ Status GpuHloCostAnalysis::FusionCalculateUtilizations(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 float GpuHloCostAnalysis::CommonElementwiseUtilization(
@@ -256,7 +256,7 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     current_properties_[kFlopsKey] =
         GetDotFlops(custom_call->operand(0)->shape(), output_shape,
                     gemm_config.dot_dimension_numbers());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (IsCustomCallToDnnConvolution(*custom_call)) {
@@ -289,7 +289,7 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
       current_properties_[kBytesAccessedKey] += output_size;
       current_properties_.set_output_bytes_accessed(output_size);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return HloCostAnalysis::HandleCustomCall(custom_call);
@@ -428,7 +428,7 @@ Status GpuHloCostAnalysis::HandleAllReduce(const HloInstruction* allreduce) {
   float scaling_ratio = (1.0 * num_ranks) / num_intra_steps;
   current_properties_[kCollAlgoScaleRatioKey] = scaling_ratio;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
@@ -452,12 +452,12 @@ Status GpuHloCostAnalysis::HandleConcatenate(const HloInstruction* hlo) {
   }
   current_properties_[kFlopsKey] =
       flop_per_element * ShapeUtil::ElementsInRecursive(hlo->shape());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GpuHloCostAnalysis::HandleElementwiseOp(const HloInstruction* hlo) {
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(device_info_, hlo);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GpuHloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {

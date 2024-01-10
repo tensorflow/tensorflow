@@ -259,7 +259,7 @@ Status LinkWithBitcodeVector(
                                 bitcode_path);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status NVPTXTargetModuleLinker(llvm::Module* module,
@@ -283,7 +283,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
@@ -425,7 +425,7 @@ Status LinkAndOptimizeModule(
 
   mpm.run(*module, mam);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // One-time module initializer.
@@ -538,7 +538,7 @@ std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
                                 const std::string& libdevice_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
@@ -812,7 +812,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
                             const std::string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return LinkWithBitcodeVector(module,
@@ -842,7 +842,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The following routine maps a feature token extracted from the

@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -190,7 +191,7 @@ static Status LowerToXlaGpuRuntime(
     return InternalError("Failed to lower LMHLO to Gpu runtime custom calls.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

@@ -97,7 +97,7 @@ class GeneralizeTopkVisitor : public DfsHloRewriteVisitor {
   Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "__gpu$TopK") {
-      return OkStatus();
+      return absl::OkStatus();
     }
     HloComputation* comp = topk->parent();
     auto original_shape = ShapeUtil::SliceTuple(topk->shape(), 0, 2);

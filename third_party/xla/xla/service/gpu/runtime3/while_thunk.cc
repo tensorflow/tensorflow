@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/status.h"
 #include "tsl/platform/errors.h"
 
@@ -39,7 +40,7 @@ WhileThunk::WhileThunk(
 Status WhileThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(params));
   TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -73,7 +74,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Invoke thunk sequence for while 'body' computation.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

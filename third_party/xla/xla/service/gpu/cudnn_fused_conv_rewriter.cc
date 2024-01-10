@@ -1322,7 +1322,7 @@ Status CheckNoIllegalIntegerConvs(HloComputation* comp) {
   }
 
   if (bad_convs.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return Unimplemented(

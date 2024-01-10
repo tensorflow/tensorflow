@@ -1153,7 +1153,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
@@ -1344,7 +1344,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                            /*ignore_control_dependencies=*/true);
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get the target config for compilation. Returns std::nullopt if no deviceless
@@ -1465,7 +1465,7 @@ Status RunPostSchedulingCopyInsertion(
   TF_RETURN_IF_ERROR(saved_schedule.Update());
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(saved_schedule)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -2080,7 +2080,7 @@ Status GpuCompiler::RunPostSchedulingPipelines(
     TF_RETURN_IF_ERROR(pipeline.Run(module).status());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GpuCompiler::LoadAutotuneResultsFromFile(
@@ -2090,13 +2090,13 @@ Status GpuCompiler::LoadAutotuneResultsFromFile(
           debug_options.xla_gpu_load_autotune_results_from();
       !file_path.empty()) {
     static absl::once_flag once;
-    Status status = OkStatus();
+    Status status = absl::OkStatus();
     absl::call_once(once, [&file_path, &status] {
       status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
     });
     TF_RETURN_IF_ERROR(status);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GpuCompiler::SerializeAutotuneResultsToFile(
@@ -2110,7 +2110,7 @@ Status GpuCompiler::SerializeAutotuneResultsToFile(
     TF_RETURN_IF_ERROR(
         AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StatusOr<std::unique_ptr<AotCompilationResult>>

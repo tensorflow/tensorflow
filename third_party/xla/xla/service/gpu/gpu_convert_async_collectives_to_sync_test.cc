@@ -39,7 +39,7 @@ class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
     TF_ASSIGN_OR_RETURN(bool changed,
                         GpuConvertAsyncCollectivesToSync{is_nop}.Run(module));
     EXPECT_EQ(changed, expect_change);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns true if the instruction with the given name is synchronous.

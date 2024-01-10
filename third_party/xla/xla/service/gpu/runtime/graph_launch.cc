@@ -288,7 +288,7 @@ Status GraphInstances::InstantiateAllGraphs(
     absl::Span<const std::vector<int64_t>> allocation_indices,
     std::optional<uint64_t> eviction_timeout_seconds) {
   // We have only "main" function in the executable.
-  if (executable.num_functions() == 1) return OkStatus();
+  if (executable.num_functions() == 1) return absl::OkStatus();
 
   absl::MutexLock lock(&impl_->mu);
   se::StreamExecutor* executor = run_options->stream()->parent();
@@ -296,7 +296,7 @@ Status GraphInstances::InstantiateAllGraphs(
   Impl::State& state = impl_->graphs[executor];
 
   // All Gpu graphs are already instantiated for a given executor.
-  if (state.instantiated) return OkStatus();
+  if (state.instantiated) return absl::OkStatus();
 
   TraceMe trace("gpu.graph.instantiate_all");
 
@@ -386,7 +386,7 @@ Status GraphInstances::InstantiateAllGraphs(
       } else {
         LOG(WARNING) << "InstantiateAllGraph failed due to insufficient memory."
                         " Unitialized graphs will run in op-by-op mode.";
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
 
@@ -396,7 +396,7 @@ Status GraphInstances::InstantiateAllGraphs(
   }
 
   state.instantiated = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 CapturedFunctionExecutionCount* CapturedFunctionExecutionCounts::operator()(
@@ -453,7 +453,7 @@ static absl::Status ForwardArguments(CustomCall::RemainingArgs fwd_args,
     return absl::InvalidArgumentError("Unsupported argument type");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static absl::StatusOr<OwnedGpuGraph> CaptureGraph(

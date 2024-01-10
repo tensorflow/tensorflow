@@ -182,7 +182,7 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
   if (!NcclIsEnabled()) {
     return tsl::errors::Unimplemented("NCCL is not enabled");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if XLA_ENABLE_XCCL
@@ -295,7 +295,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
   }
-  return OkStatus();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
@@ -333,7 +333,7 @@ Status NcclCollectiveThunk::AsyncExecutor::Execute(
   auto [_, was_inserted] =
       done_events_.insert({device_ordinal, std::move(done_event)});
   TF_RET_CHECK(was_inserted) << "done event has not been consumed";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status NcclCollectiveThunk::AsyncExecutor::Await(const ExecuteParams& params) {
@@ -344,7 +344,7 @@ Status NcclCollectiveThunk::AsyncExecutor::Await(const ExecuteParams& params) {
   }();
   TF_RET_CHECK(done_event) << "done event not found";
   params.stream->ThenWaitFor(&done_event.mapped());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 NcclCollectiveDoneThunk::NcclCollectiveDoneThunk(
@@ -372,7 +372,7 @@ Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
         "element type %s not suppored by NCCL",
         primitive_util::LowercasePrimitiveTypeName(shape.element_type())));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

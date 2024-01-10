@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/status/status.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
@@ -90,7 +91,7 @@ Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("NormThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

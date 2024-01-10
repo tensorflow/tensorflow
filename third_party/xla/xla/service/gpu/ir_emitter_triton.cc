@@ -1805,7 +1805,7 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
     b.create<mt::StoreOp>(tensor_pointer, values_out[producer], boundary_checks,
                           mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
@@ -1948,7 +1948,7 @@ Status EmitSoftMax(mlir::OpBuilder builder, absl::string_view libdevice_path,
 
   b.create<mt::StoreOp>(store_tensor, result, std::vector<int32_t>{0},
                         mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Simplified copy of translateLLVMToLLVMIR which in addition takes

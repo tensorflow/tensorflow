@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -123,7 +124,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
           new_reduce_shape_layout);
 
       if (new_operand_shape == operand_shape && reduce->inputs().size() == 1) {
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       HloInstruction *canonical_reduce_input =

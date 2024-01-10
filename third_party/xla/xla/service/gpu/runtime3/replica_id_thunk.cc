@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/replica_id_thunk.h"
 
+#include "absl/status/status.h"
+
 namespace xla {
 namespace gpu {
 
@@ -29,7 +31,7 @@ Status ReplicaOrPartitionIdThunk::ExecuteOnStream(const ExecuteParams& params) {
   int id = kind() == Kind::kReplicaId ? logical_id.replica_id
                                       : logical_id.computation_id;
   params.stream->ThenMemset32(&dest_addr, id, /*size=*/4);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

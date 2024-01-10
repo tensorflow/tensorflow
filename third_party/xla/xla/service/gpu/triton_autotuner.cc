@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -117,7 +118,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(auto backend_config,
                         hlo->backend_config<FusionBackendConfig>());
     if (backend_config.kind() != kTritonGemmFusionKind) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     VLOG(4) << "Processing " << hlo->ToString();
@@ -161,7 +162,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     }
 
     MarkAsChanged();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -210,22 +211,22 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
                         hlo->backend_config<FusionBackendConfig>());
     if (backend_config.kind() != kTritonGemmFusionKind ||
         backend_config.has_triton_gemm_config()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     AutotuneCacheKey key = AutotunerUtil::GetKey(hlo, config_);
     if (AutotunerUtil::IsInCache(key) || handled_fusions_.contains(key)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     CHECK(gemm_config_sets_.insert({fusion, GetGemmConfigSet(fusion)}).second);
 
     handled_fusions_.insert(key);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status DefaultAction(const HloInstruction* hlo) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -862,7 +863,7 @@ Status DumpAutotunedFusion(const AutotuneConfig& config,
       absl::StrCat("triton_fusion_", fusion_id, ".", module->name(),
                    ".optimized.txt"),
       /*contents=*/module->ToString());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
@@ -909,7 +910,7 @@ Status Autotune(const AutotuneConfig& config, AutotunerCompileUtil& util,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // anonymous namespace

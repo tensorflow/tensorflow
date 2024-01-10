@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
 #include "llvm/IR/DataLayout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -105,12 +106,12 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         Shape& device_sub_shape =
             *ShapeUtil::GetMutableSubshape(device_shape, index);
         if (device_sub_shape.is_static()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // Read the dynamic shape metadata from the device stream.  The dynamic
@@ -126,7 +127,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
         auto metadata_buffer = buffer_8.GetSlice(offset, metadata_size);
         copies.push_back(std::make_pair(metadata_buffer, &device_sub_shape));
 
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   // Check out pinned memory for each buffer we want to copy.  If there aren't
@@ -186,7 +187,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   device_shape->clear_dynamic_dimensions();
   TF_RET_CHECK(ShapeUtil::DynamicShapeIsCompatible(*device_shape,
                                                    original_device_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

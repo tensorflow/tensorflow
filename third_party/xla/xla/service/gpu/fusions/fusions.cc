@@ -134,12 +134,12 @@ HloFusionInfo::GetCopyFusion() const {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       instr_->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                             buffer_assignment_->GetUniqueSlice(instr_, index));
         dst_buffers.push_back(slice);
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   DCHECK(src_buffers.size() == dst_buffers.size());

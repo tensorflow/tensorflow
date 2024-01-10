@@ -17,6 +17,7 @@ limitations under the License.
 #include <functional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -132,7 +133,7 @@ StatusOr<bool> FusionWrapper::Run(
       default:
         break;
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (auto* instruction : instructions) {

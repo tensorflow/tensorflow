@@ -108,7 +108,7 @@ static Status MatchRowMajorGemm(HloDotInstruction* dot) {
     return absl::InternalError("rhs contracting dimensions must be 0");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Return OK if dot instruction is a simple gemm with all operands and result
@@ -121,7 +121,7 @@ static Status MatchSimpleGemm(HloDotInstruction* dot,
     if (dot->operand(0)->shape().element_type() == dtype &&
         dot->operand(1)->shape().element_type() == dtype &&
         dot->shape().element_type() == dtype) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 

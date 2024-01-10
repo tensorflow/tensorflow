@@ -74,7 +74,7 @@ Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CheckImplementable(AllGatherStartOp op) {
@@ -89,7 +89,7 @@ Status CheckImplementable(AllGatherStartOp op) {
           op.getAllGatherDimension(), shape.ToString(/*print_layout=*/true)));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace impl
 
@@ -180,7 +180,7 @@ Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
-  return OkStatus();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

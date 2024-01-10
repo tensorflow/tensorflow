@@ -189,7 +189,7 @@ Status FusionContext::PropagateDimensionOrdersToParameters(
       to_process.push(operand);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace triton_fusion
@@ -217,7 +217,7 @@ Status TritonFusionAnalysis::ExecuteForSoftmaxFusion(
       root, parameters_[Scope::OUTPUT], iter_specs_[Scope::OUTPUT]));
   iter_specs_[Scope::LHS] = {};
   iter_specs_[Scope::RHS] = {};
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TritonFusionAnalysis::ExecuteForDotFusion(const HloInstruction& dot,
@@ -260,7 +260,7 @@ Status TritonFusionAnalysis::ExecuteForDotFusion(const HloInstruction& dot,
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *output, parameters_[Scope::OUTPUT], iter_specs_[Scope::OUTPUT]));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const TensorIterationSpec::DimIterationSpec* TritonFusionAnalysis::IterSpec(

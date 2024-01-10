@@ -112,7 +112,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
@@ -146,7 +146,7 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Linearize collective schedule under if online autotuning of convolutions is
@@ -174,7 +174,7 @@ Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 AMDGPUCompiler::AMDGPUCompiler()

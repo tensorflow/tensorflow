@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
@@ -114,7 +115,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
 #endif
   }
 #endif
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
 xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
@@ -129,7 +130,7 @@ xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
     TF_RETURN_IF_ERROR(CompileAndPrintLlvmIr(hlo_module_text, ptx, sm));
   }
 
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

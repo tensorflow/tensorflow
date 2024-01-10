@@ -107,7 +107,7 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
 
   if (best_algorithm.has_gemm()) {
     config->algorithm = algorithms[best_algorithm.gemm().algorithm()];
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return InternalError("Runtime autotuning failed to select an algorithm");
   }

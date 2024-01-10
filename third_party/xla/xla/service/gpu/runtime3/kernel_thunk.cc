@@ -117,7 +117,7 @@ Status KernelThunk::Initialize(const InitializeParams& params) {
     kernel_cache_.emplace(params.executor, std::move(kernel));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static void PrintBufferContents(
@@ -221,7 +221,7 @@ Status CustomKernelThunk::Initialize(const InitializeParams& params) {
     kernel_cache_.emplace(params.executor, std::move(kernel));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {

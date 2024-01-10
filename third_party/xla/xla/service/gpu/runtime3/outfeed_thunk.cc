@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/outfeed_thunk.h"
 
+#include "absl/status/status.h"
 #include "xla/service/gpu/outfeed_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -41,7 +42,7 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Note: Cannot do this before `BlockingGetNextDestination` above to dequeue
   // an entry from the outfeed manager.
   if (source_slices_.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const int64_t leaf_count = output_buffers->leaf_count();
@@ -99,7 +100,7 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   }
 
   VLOG(2) << "Outfeeding from GPU complete";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

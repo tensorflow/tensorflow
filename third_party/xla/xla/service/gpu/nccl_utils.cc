@@ -65,7 +65,7 @@ bool IsGlobalNcclConfig() {
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr) {
   if (s == ncclSuccess) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return absl::InternalError(absl::StrFormat(
       "%s:%d: NCCL operation %s failed: %s."
@@ -237,7 +237,7 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
   // abort any uncompleted operations before destroying the communicator.
   auto check_nccl_async_error = [](NcclComm* lockable_comm) -> Status {
     ncclComm_t comm = *lockable_comm->Acquire();
-    if (comm == nullptr) return OkStatus();
+    if (comm == nullptr) return absl::OkStatus();
 
     ncclResult_t async_err;
     XLA_CUDA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));

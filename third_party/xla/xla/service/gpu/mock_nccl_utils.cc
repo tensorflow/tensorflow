@@ -412,7 +412,7 @@ Status RunMockNcclAllToAll(bool has_split_dimension,
   }
 
   VLOG(3) << "Done performing mock all-to-all ";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RunMockCollectivePermute(
@@ -487,7 +487,7 @@ Status RunMockCollectivePermute(
         "%s : mock collective-Permute: Issuing MemZero", device_string);
     stream.ThenMemZero(&dest_addr, dest_addr.size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 namespace {
 void CheckNcclAsyncError(NcclComm& lockable_comm) {
