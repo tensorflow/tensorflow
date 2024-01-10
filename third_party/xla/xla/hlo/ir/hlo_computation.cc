@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -89,19 +90,19 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
   HloInstruction* root =
       root_instruction ? root_instruction : last_added_instruction();
   CHECK_NE(nullptr, root);
-  return absl::WrapUnique(new HloComputation(
-      name_, parameter_count, &instructions_, root, fusion_instruction_));
+  return absl::WrapUnique(
+      new HloComputation(name_, parameter_count, &instructions_, root));
 }
 
 HloComputation::HloComputation(
     const std::string& name, int parameter_count,
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
-    HloInstruction* root_instruction, HloInstruction* fusion_instruction)
+    HloInstruction* root_instruction)
     : name_(NameUniquer::GetSanitizedName(name)),
       unique_id_(-1),
       root_instruction_(root_instruction),
-      fusion_instruction_(fusion_instruction),
-      is_fusion_computation_(fusion_instruction != nullptr),
+      fusion_instruction_(nullptr),
+      is_fusion_computation_(false),
       custom_call_instruction_(nullptr),
       is_custom_call_computation_(false),
       collective_call_instruction_(nullptr),
@@ -880,8 +881,7 @@ HloComputation::CreateFromProto(
   }());
 
   auto computation = absl::WrapUnique(
-      new HloComputation(proto.name(), parameter_count, &instructions, root,
-                         /*fusion_instruction=*/nullptr));
+      new HloComputation(proto.name(), parameter_count, &instructions, root));
   computation->unique_id_ = proto.id();
   computation->is_fusion_computation_ = proto.is_fusion_computation();
   if (!proto.execution_thread().empty()) {

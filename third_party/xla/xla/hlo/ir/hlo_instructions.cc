@@ -1749,12 +1749,15 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   if (called_computations().empty()) {
     // New fusion instruction. It should not be a multioutput instruction.
     CHECK(!add_output);
-    auto builder = HloComputation::Builder(
-        default_called_computation_name(),
-        opcode() == HloOpcode::kFusion ? this : nullptr);
+    auto builder = HloComputation::Builder(default_called_computation_name());
     builder.AddInstruction(instruction_to_append->Clone(/*suffix=*/""));
-    AppendComputation(
-        CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
+    auto* new_computation =
+        CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build());
+    AppendComputation(new_computation);
+    if (opcode() == HloOpcode::kFusion) {
+      new_computation->SetFusionInstruction(this);
+    }
+
     clone = called_computation_root();
   } else {
     // When add_output is false, instruction_to_append is necessarily an

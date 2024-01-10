@@ -69,9 +69,7 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(absl::string_view name,
-                     HloInstruction* fusion_instruction = nullptr)
-        : name_(name), fusion_instruction_(fusion_instruction) {}
+    explicit Builder(absl::string_view name) : name_(name) {}
     Builder(Builder&& b) = default;
     virtual ~Builder() = default;
 
@@ -122,7 +120,6 @@ class HloComputation {
 
    private:
     const std::string name_;
-    HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
     absl::flat_hash_set<int> parameter_numbers_;
 
@@ -854,7 +851,7 @@ class HloComputation {
   explicit HloComputation(
       const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, HloInstruction* fusion_instruction);
+      HloInstruction* root_instruction);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
