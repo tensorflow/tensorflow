@@ -1,1 +1,38 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/include/clang/Analysis/FlowSensitive/Formula.h b/clang/include/clang/Analysis/FlowSensitive/Formula.h
+--- a/clang/include/clang/Analysis/FlowSensitive/Formula.h
++++ b/clang/include/clang/Analysis/FlowSensitive/Formula.h
+@@ -75,10 +75,6 @@
+     return static_cast<bool>(Value);
+   }
+ 
+-  bool isLiteral(bool b) const {
+-    return kind() == Literal && static_cast<bool>(Value) == b;
+-  }
+-
+   ArrayRef<const Formula *> operands() const {
+     return ArrayRef(reinterpret_cast<Formula *const *>(this + 1),
+                     numOperands(kind()));
+diff -ruN --strip-trailing-cr a/clang/lib/Analysis/FlowSensitive/DataflowAnalysisContext.cpp b/clang/lib/Analysis/FlowSensitive/DataflowAnalysisContext.cpp
+--- a/clang/lib/Analysis/FlowSensitive/DataflowAnalysisContext.cpp
++++ b/clang/lib/Analysis/FlowSensitive/DataflowAnalysisContext.cpp
+@@ -174,9 +174,6 @@
+ 
+ bool DataflowAnalysisContext::flowConditionImplies(Atom Token,
+                                                    const Formula &F) {
+-  if (F.isLiteral(true))
+-    return true;
+-
+   // Returns true if and only if truth assignment of the flow condition implies
+   // that `F` is also true. We prove whether or not this property holds by
+   // reducing the problem to satisfiability checking. In other words, we attempt
+@@ -191,9 +188,6 @@
+ 
+ bool DataflowAnalysisContext::flowConditionAllows(Atom Token,
+                                                   const Formula &F) {
+-  if (F.isLiteral(true))
+-    return true;
+-
+   llvm::SetVector<const Formula *> Constraints;
+   Constraints.insert(&arena().makeAtomRef(Token));
+   Constraints.insert(&F);
