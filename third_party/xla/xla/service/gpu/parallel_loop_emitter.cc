@@ -176,49 +176,37 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
       EmitLinearBaseAndThreadIdx(index_type, base_index);
 
   llvm::Value* linear_index_base = linear_base_and_thread_idx.linear_base;
-  llvm::Value* thread_id_x = linear_base_and_thread_idx.thread_idx;
 
-  // When enable_row_index is true, it means the inner most dimensions
-  // match the block sizes.  So we can generate a simpler indexing
-  // for that dimensions.  This helps LLVM generate vectorized codes
-  // in that cases.
-  llvm::Value* row_index = nullptr;
-  if (!launch_config_.row_vectorized) {
+  llvm::Value* row_index =
+      launch_config_.row_vectorized
+          ? b_->CreateMul(linear_base_and_thread_idx.thread_idx,
+                          llvm::ConstantInt::get(index_type,
+                                                 launch_config_.unroll_factor),
+                          "row_index", /*HasNUW=*/true, /*HasNSW=*/true)
+          : nullptr;
+
+  std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
+  for (int i = 0; i < launch_config_.unroll_factor; ++i) {
     // The add operation is needed even if the offset is 0, since when the
     // kernel is unrolled, the following GEP instruction shares the same pointer
     // and sequential indices with others, allowing the default SLP pass to
     // optimize them into vectorized load/store operations.
     llvm::Value* linear_index =
-        b_->CreateAdd(linear_index_base, llvm::ConstantInt::get(index_type, 0),
-                      absl::StrCat("linear_index", 0),
-                      /*HasNUW=*/true, /*HasNSW=*/true);
-    array_indices.emplace_back(linear_index, shape_, b_);
-  } else {
-    // Simpler index for row computation.
-    // This will allow LLVM to vectorize.
-    row_index = b_->CreateMul(
-        thread_id_x,
-        llvm::ConstantInt::get(index_type, launch_config_.unroll_factor),
-        "row_index", /*HasNUW=*/true, /*HasNSW=*/true);
-    std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
-    multidim.back() = row_index;
-    array_indices.emplace_back(linear_index_base, multidim, shape_, b_);
-  }
-
-  for (int i = 1; i < launch_config_.unroll_factor; ++i) {
-    llvm::Value* linear_index =
         b_->CreateAdd(linear_index_base, llvm::ConstantInt::get(index_type, i),
                       absl::StrCat("linear_index", i),
                       /*HasNUW=*/true, /*HasNSW=*/true);
-    if (!launch_config_.row_vectorized) {
-      array_indices.emplace_back(linear_index, shape_, b_);
-    } else {
-      std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
-      multidim.back() = b_->CreateAdd(
-          row_index, llvm::ConstantInt::get(index_type, i),
-          absl::StrCat("row_index_plus", i), /*HasNUW=*/true, /*HasNSW=*/true);
-      array_indices.emplace_back(linear_index, multidim, shape_, b_);
+    if (launch_config_.row_vectorized) {
+      // This lets us avoid emitting the division for the last dimension of the
+      // index. The check for i > 0 is here for historical reasons, it might not
+      // do anything.
+      multidim.back() =
+          i == 0 ? row_index
+                 : b_->CreateAdd(
+                       row_index, llvm::ConstantInt::get(index_type, i),
+                       absl::StrCat("row_index_plus", i), /*HasNUW=*/true,
+                       /*HasNSW=*/true);
     }
+    array_indices.emplace_back(linear_index, multidim, shape_, b_);
   }
 
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
