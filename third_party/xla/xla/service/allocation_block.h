@@ -52,6 +52,8 @@ struct SlicedAllocationData {
 
   std::vector<int64_t> SortedInclusiveStartTimes() const;
 
+  int64_t num_slices() const { return slices_sorted_by_offset.size(); }
+
   std::string ToString() const;
 
   bool operator==(const SlicedAllocationData& rhs) const;

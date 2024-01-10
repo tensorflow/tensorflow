@@ -2200,8 +2200,10 @@ The full buffer goes in the smallest chunk that fits.
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(45, 3),
@@ -2234,8 +2236,10 @@ The max colocation size does not fit in the smallest free chunk.
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(60, 3),
@@ -2269,8 +2273,10 @@ Multiple free chunks have size 3. We pick the one with the smallest offset.
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(10, 3),
@@ -2317,8 +2323,10 @@ t0 |xxxxx  xxx                              xxxxx000xxxxxxxxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2366,8 +2374,10 @@ t0 |xxxxx  xxx                              xxxxxxxxxxx222xxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2415,8 +2425,10 @@ t0 |xxxxx  xxx                              xxxxxxxx111xxxxxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2469,8 +2481,10 @@ subsliced by MSA.)
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2515,8 +2529,10 @@ t0 |xxxxxx                                          111                 xxx
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2564,8 +2580,10 @@ t0 |xxxxx  xxx                              xxxxxx 111 xxxxxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2613,8 +2631,10 @@ t0 |xxxxx  xxx00000                         xxxxxx   xxxxxxxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2662,8 +2682,10 @@ t0 |xxxxxxxxxx                              xxxxxxxxxxxxxxxxxxxx000       x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2711,8 +2733,10 @@ t0 |xxxxx  xxx                              xxxxxxxx   xxxxxxxxx000       x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2760,8 +2784,10 @@ t0 |xxxxx  xxx          000                 xxxxxxxx   xxxxxxxxx          x
   int64_t preferred_offset = 20;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2811,8 +2837,10 @@ The sliced allocation does not fit at the preferred offset.
   int64_t preferred_offset = 35;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2863,8 +2891,10 @@ on spatial boundaries of 2.
   int64_t preferred_offset = -1;
   int64_t alignment = 2;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2915,8 +2945,10 @@ on spatial boundaries of 2.
   int64_t preferred_offset = 21;
   int64_t alignment = 2;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2952,8 +2984,10 @@ t0 |xxxxx000   xxxx      xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(5, 3),
@@ -2991,8 +3025,10 @@ t0 |xxxxx000        xxxx      xxxxxxxxxxxxxx   xxxxxxxxxxxxxxxxxxxxxxxxxxxx
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
-                max_colocation_size, preferred_offset, alignment);
+  Finder finder(
+      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
+      preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(5, 3),
@@ -3043,6 +3079,7 @@ t0 |xxxxx  xxx                              xxxxx 000xxxxxxxxxxx          x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
 
   EXPECT_THAT(finder.Find(),
@@ -3094,6 +3131,7 @@ t0 |xxxxx  xxx                              xxxxx000xxxxxxxxxxxx          x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
       // We're not allowed to start at offset 46, but we can include it.
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 46; });
 
@@ -3146,6 +3184,7 @@ t0 |xxxxx  xxx                              xxxxxxxxxxx 222xxxxx          x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
 
   EXPECT_THAT(finder.Find(),
@@ -3197,6 +3236,7 @@ t0 |xxxxx  xxx                              xxxxxxxxxxx   xxxxxx000       x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
 
   EXPECT_THAT(finder.Find(),
@@ -3248,6 +3288,7 @@ t0 |xxxxx  xxx                              xxxxx    xxxxxxxxxxx          x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
+      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
 
   EXPECT_THAT(finder.FindForOffset(10),

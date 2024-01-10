@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iostream>
+#include <list>
 #include <memory>
 #include <optional>
 #include <set>
@@ -387,6 +388,39 @@ class BufferIntervalTree {
   std::list<BufferIntervalTreeNode> node_storage_;
 };
 
+// An iterator that is passed to
+// GlobalDecreasingSizeBestFitHeap::CreateSlicedAllocationFinder() when trying
+// to place a buffer, telling the finder which permutations of starting slice
+// times to try (and in which order to try them). Note, the set of slice times
+// is the set {x : x ∈ [0, num_slices - 1]}. If a buffer is not sliced, it will
+// only have 1 permutation, containing slice time 0.
+//
+// Begin() must be called to initialize the iterator before it can be used.
+class SliceTimePermutationIterator {
+ public:
+  // A new iterator is typically created for each buffer to be placed.
+  // - num_slices: number of slices in the buffer. 1 if not sliced.
+  // - original_sliced_allocation: For a repacking scenario, the original
+  //   details of each slice in a sliced buffer. nullptr is used if this is not
+  //   a repacking scenario or the buffer is not sliced.
+  static std::unique_ptr<SliceTimePermutationIterator> Create(
+      int64_t num_slices,
+      const SlicedAllocationData* original_sliced_allocation = nullptr);
+
+  virtual ~SliceTimePermutationIterator() = default;
+
+  virtual void Begin() = 0;
+  virtual bool Done() const = 0;
+  virtual void Next() = 0;
+
+  // A permutation of starting slice times. The ith value is the slice time for
+  // the slice at the ith smallest offset.
+  virtual absl::Span<const int64_t> Get() const = 0;
+
+ protected:
+  SliceTimePermutationIterator() = default;
+};
+
 // GlobalDecreasingSizeBestFitHeap collects the live intervals of all buffers,
 // then allocates them in decreasing spatial or temporal size regardless of the
 // alloc/free time. It internally tracks the allocated buffers and their live
@@ -613,14 +647,6 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // SlicedAllocationFinder() that permits placement at any offset.
     static bool AllOffsetsAllowed(int64_t offset) { return true; }
 
-    // A method that can be passed to SlicedAllocationFinder's
-    // is_slice_time_permutation_allowed parameter that permits any
-    // permutation.
-    static bool AllSliceTimePermutationsAllowed(
-        const std::vector<int64_t>& permutation_of_slice_times) {
-      return true;
-    }
-
     // Arguments:
     // - free_chunks_per_slice_time[i]: Describes free chunks at slice time i.
     // - sorted_slice_sizes: A sliced allocation request. In space, the i+1th
@@ -629,12 +655,13 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     //   with the fully allocated sliced allocation.
     // - preferred_offset: The preferred starting offset for the fully allocated
     //   sliced allocation.
+    // - slice_time_permutation_iterator: An iterator for iterating over the
+    //   different slice time permutations for slices. Users may specify the
+    //   order in which different permutations are tried by the HeapSimulator.
+    //   Users are also responsbile for ensuring that returned permutations are
+    //   legal.
     // - is_offset_allowed: Indicates if a the entire sliced allocation is
     //   allowed to be allocated at a given offset.
-    // - is_slice_time_permutation_allowed: Indicates if the permutation of a
-    //   vector of slice times is allowed. The vector V of slice times contains
-    //   the values {0, ..., num_slices-1}. If V[i] = j, the slice at the ith
-    //   smallest offset will start at the jth earliest slice start time.
     //
     // REQUIRES:
     // - sorted_slice_sizes.size() == free_chunks_per_slice_time.size()
@@ -649,11 +676,10 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
         absl::Span<const FreeChunks> free_chunks_per_slice_time,
         std::vector<int64_t> sorted_slice_sizes, int64_t max_colocation_size,
         int64_t preferred_offset, int64_t alignment,
+        std::unique_ptr<SliceTimePermutationIterator>
+            slice_time_permutation_iterator,
         absl::AnyInvocable<bool(int64_t) const> is_offset_allowed =
-            &AllOffsetsAllowed,
-        absl::AnyInvocable<bool(const std::vector<int64_t>&) const>
-            is_slice_time_permutation_allowed =
-                &AllSliceTimePermutationsAllowed);
+            &AllOffsetsAllowed);
 
     std::string FreeChunksToAsciiArt() const;
     std::string ToString() const;
@@ -690,14 +716,14 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // sorted_slice_sizes_[i] and would be allocated at offset +
     // sum(sorted_slice_sizes[j], for j in [0, i-1]).
     Status DoesPermutationFit(
-        const std::vector<int64_t>& permutation_of_slice_times,
+        absl::Span<const int64_t> permutation_of_slice_times,
         const FreeChunkRoot& root, int64_t offset) const;
 
     // Only DoesSlicedPermutationFit() should call this method directly. Other
     // callers should call DoesSlicedPermutationFit(), which contains some
     // wrapper VLOGGING.
     Status DoesPermutationFitImpl(
-        const std::vector<int64_t>& permutation_of_slice_times,
+        absl::Span<const int64_t> permutation_of_slice_times,
         const FreeChunkRoot& root, int64_t offset) const;
 
     // Same as Find() except only checks root, to see if it can hold the sliced
@@ -717,7 +743,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // end of the result to account for an additional colocation space that
     // need to be allocated. This Chunk is added, even if it is of size 0.
     ChunksSortedBySliceTime PermutationToChunks(
-        const std::vector<int64_t>& permutation_of_slice_times,
+        absl::Span<const int64_t> permutation_of_slice_times,
         int64_t offset) const;
 
     std::vector<int64_t> sorted_slice_sizes_;
@@ -726,9 +752,9 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     int64_t preferred_offset_;
     int64_t alignment_;
     FreeChunkRoots free_chunks_;
+    std::unique_ptr<SliceTimePermutationIterator>
+        slice_time_permutation_iterator_;
     absl::AnyInvocable<bool(int64_t) const> is_offset_allowed_;
-    absl::AnyInvocable<bool(const std::vector<int64_t>&) const>
-        is_slice_time_permutation_allowed_;
   };
 
   explicit GlobalDecreasingSizeBestFitHeap(
@@ -809,11 +835,10 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
   SlicedAllocationFinder CreateSlicedAllocationFinder(
       const SlicedBufferInterval& sliced_interval, int64_t max_colocation_size,
       int64_t preferred_offset,
+      std::unique_ptr<SliceTimePermutationIterator>
+          slice_time_permutation_iterator,
       absl::AnyInvocable<bool(int64_t) const> is_offset_allowed =
-          &SlicedAllocationFinder::AllOffsetsAllowed,
-      absl::AnyInvocable<bool(const std::vector<int64_t>&) const>
-          is_slice_time_permutation_allowed =
-              &SlicedAllocationFinder::AllSliceTimePermutationsAllowed) const;
+          &SlicedAllocationFinder::AllOffsetsAllowed) const;
   std::vector<Chunk> PostProcessFindChunkCandidatesResult(
       const SlicedBufferInterval& sliced_interval,
       std::vector<Chunk> chunks) const;
