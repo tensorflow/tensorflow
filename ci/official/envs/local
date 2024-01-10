@@ -1,5 +1,0 @@
-# Base settings for a local execution
-# Don't generate the summary index
-TFCI_INDEX_HTML_ENABLE=
-# Don't try and upload anything, since permissions won't work anyway
-source ci/official/envs/no_upload

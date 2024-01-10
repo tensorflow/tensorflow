@@ -49,7 +49,7 @@ if [[ -n "${TF_ANY_SCRIPT:-}" ]]; then
   "$TF_ANY_SCRIPT"
 elif [[ -n "${TF_ANY_TARGETS:-}" ]]; then
   source "${BASH_SOURCE%/*}/utilities/setup.sh"
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $TF_ANY_TARGETS
+  tfrun bazel "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $TF_ANY_TARGETS
 else
   echo 'Looks like $TF_ANY_TARGETS are $TF_ANY_SCRIPT are both empty. That is an error.'
   exit 1

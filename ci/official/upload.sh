@@ -23,9 +23,9 @@ source "${BASH_SOURCE%/*}/utilities/setup.sh"
 if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
   tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
 fi
-source ci/official/envs/ci_versions
+source ci/official/utilities/get_versions.sh
 
-DOWNLOADS="$(mktemp -d)/$TFCI_VER_FULL"
+DOWNLOADS="$(mktemp -d)/$TF_VER_FULL"
 gsutil -m cp -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$STAGED"
 ls "$STAGED"
 
