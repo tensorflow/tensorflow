@@ -137,18 +137,11 @@ Status Writer::Create(Env* env, const std::string& filename,
 }
 
 TFRecordWriter::TFRecordWriter(const std::string& filename,
-                               const std::string& compression_type,
-                               bool overwrite_existing)
-    : filename_(filename),
-      compression_type_(compression_type),
-      overwrite_existing_(overwrite_existing) {}
+                               const std::string& compression_type)
+    : filename_(filename), compression_type_(compression_type) {}
 
 Status TFRecordWriter::Initialize(tensorflow::Env* env) {
-  if (overwrite_existing_) {
-    TF_RETURN_IF_ERROR(env->NewWritableFile(filename_, &dest_));
-  } else {
-    TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
-  }
+  TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
 
   record_writer_ = std::make_unique<io::RecordWriter>(
       dest_.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
