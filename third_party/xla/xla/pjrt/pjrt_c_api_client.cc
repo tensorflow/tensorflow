@@ -619,11 +619,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateViewOfDeviceBuffer(
     args.stream = reinterpret_cast<intptr_t>(nullptr);
   }
   const PJRT_Api* c_api = pjrt_c_api();
-  // TODO(jieying): To be removed after 12/29/2023.
-  if (c_api->pjrt_api_version.minor_version < 33) {
-    return Unimplemented(
-        "The plugin does not support CreateViewOfDeviceBuffer");
-  }
+
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api->PJRT_Client_CreateViewOfDeviceBuffer(&args), c_api);
 
@@ -977,11 +973,6 @@ PjRtCApiExecutable::GetOutputElementTypes() const {
 
   const PJRT_Api* c_api = pjrt_c_api();
 
-  // TODO(yueshengys): To be removed after 11/29/2023.
-  if (c_api->PJRT_Executable_OutputElementTypes == nullptr) {
-    return Unimplemented("PJRT C API does not support GetOutputElementTypes");
-  }
-
   RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_OutputElementTypes(&args),
                               c_api);
 
@@ -1001,11 +992,6 @@ PjRtCApiExecutable::GetOutputDimensions() const {
   args.executable = c_executable();
 
   const PJRT_Api* c_api = pjrt_c_api();
-
-  // TODO(yueshengys): To be removed after 11/29/2023.
-  if (c_api->PJRT_Executable_OutputDimensions == nullptr) {
-    return Unimplemented("PJRT C API does not support GetOutputDimensions");
-  }
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_OutputDimensions(&args),
                               c_api);
@@ -1935,12 +1921,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory) {
   const PJRT_Api* api = pjrt_c_api();
-  // TODO(yueshengys): Remove this after 12/20/2023.
-  if (api->pjrt_api_version.minor_version < 32) {
-    return Unimplemented(
-        "The plugin has PJRT API version 0.32 which does not support "
-        "CopyToMemorySpace");
-  }
+
   if (dst_memory->client() == client_) {
     PJRT_Buffer_CopyToMemory_Args args;
     args.struct_size = PJRT_Buffer_CopyToMemory_Args_STRUCT_SIZE;
