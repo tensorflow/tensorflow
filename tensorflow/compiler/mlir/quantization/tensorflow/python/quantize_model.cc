@@ -150,7 +150,8 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForQuantization();
+  std::unique_ptr<mlir::MLIRContext> context =
+      CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -158,12 +159,13 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
-  // TODO(b/213406917): Add support for the object graph based saved model input
+  // TODO: b/213406917 - Add support for the object graph based saved model
+  // input
   std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
-                                          absl::MakeSpan(exported_names),
-                                          &context, import_options, &bundle);
+      SavedModelSignatureDefsToMlirImport(
+          saved_model_path, tags, absl::MakeSpan(exported_names), context.get(),
+          import_options, &bundle);
   if (!module.status().ok()) {
     return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
                                             module.status().message()));
@@ -184,8 +186,9 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
-      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(),
+      context.get(), bundle ? bundle->GetSession() : nullptr,
+      /*run_tf_to_stablehlo=*/false,
       /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(RunPasses(
@@ -193,7 +196,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       [&quantization_options](mlir::PassManager &pm) {
         AddQuantizeQatPasses(pm, quantization_options, kTfQuantQatStepName);
       },
-      context, *module_ref));
+      *context, *module_ref));
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
 
@@ -205,7 +208,7 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
       /*debug_name=*/absl::StrCat(kTfQuantQatStepName, kExportStepSuffix)};
 
   TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
-                      RunExportPasses(export_opts, context, *module_ref));
+                      RunExportPasses(export_opts, *context, *module_ref));
 
   return ConvertMlirModuleToExportedModel(
       *module_ref, checkpoint_dir, updated_function_aliases,
@@ -219,7 +222,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForQuantization();
+  std::unique_ptr<mlir::MLIRContext> context =
+      CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -227,12 +231,13 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
-  // TODO(b/213406917): Add support for the object graph based saved model input
+  // TODO: b/213406917 - Add support for the object graph based saved model
+  // input
   std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
-                                          absl::MakeSpan(exported_names),
-                                          &context, import_options, &bundle);
+      SavedModelSignatureDefsToMlirImport(
+          saved_model_path, tags, absl::MakeSpan(exported_names), context.get(),
+          import_options, &bundle);
 
   if (!module.status().ok()) {
     return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
@@ -254,14 +259,14 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kTfQuantPtqPreCalibrationStepName,
       /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      module_ref.get(), context.get(), bundle ? bundle->GetSession() : nullptr,
       /*run_tf_to_stablehlo=*/is_stablehlo,
       /*deserialize_xla_call_module=*/false));
 
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
     PreCalibrationComponent pre_calibration_component(
-        &context, quantization_options.calibration_options());
+        context.get(), quantization_options.calibration_options());
     TF_ASSIGN_OR_RETURN(*module_ref, pre_calibration_component.Run(
                                          *module_ref, QuantizationConfig()));
   } else {
@@ -270,7 +275,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
         [&quantization_options](mlir::PassManager &pm) {
           AddQuantizePtqPreCalibrationPasses(pm, quantization_options);
         },
-        context, *module_ref));
+        *context, *module_ref));
   }
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
@@ -285,7 +290,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
       absl::StrCat(kTfQuantPtqPreCalibrationStepName, kExportStepSuffix)};
 
   TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
-                      RunExportPasses(export_opts, context, *module_ref));
+                      RunExportPasses(export_opts, *context, *module_ref));
 
   return ConvertMlirModuleToExportedModel(
       *module_ref, checkpoint_dir, updated_function_aliases,
@@ -299,7 +304,8 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForQuantization();
+  std::unique_ptr<mlir::MLIRContext> context =
+      CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -307,12 +313,13 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
-  // TODO(b/213406917): Add support for the object graph based saved model input
+  // TODO: b/213406917 - Add support for the object graph based saved model
+  // input
   std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
-                                          absl::MakeSpan(exported_names),
-                                          &context, import_options, &bundle);
+      SavedModelSignatureDefsToMlirImport(
+          saved_model_path, tags, absl::MakeSpan(exported_names), context.get(),
+          import_options, &bundle);
 
   if (!module.status().ok()) {
     return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
@@ -339,13 +346,13 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kTfQuantPtqPostCalibrationStepName,
       /*is_inliner_run=*/false, /*noinline_functions=*/aliased_function_names,
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      module_ref.get(), context.get(), bundle ? bundle->GetSession() : nullptr,
       /*run_tf_to_stablehlo=*/false,
       /*deserialize_xla_call_module=*/is_stablehlo));
 
   // Use StableHLO Quantizer option if opset is specified.
   if (is_stablehlo) {
-    PostCalibrationComponent post_calibration_component(&context);
+    PostCalibrationComponent post_calibration_component(context.get());
     TF_ASSIGN_OR_RETURN(*module_ref, post_calibration_component.Run(
                                          *module_ref, QuantizationConfig()));
   } else {
@@ -355,7 +362,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
           AddQuantizePtqPostCalibrationPasses(
               pm, quantization_options, kTfQuantPtqPostCalibrationStepName);
         },
-        context, *module_ref));
+        *context, *module_ref));
   }
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
@@ -368,7 +375,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       absl::StrCat(kTfQuantPtqPostCalibrationStepName, kExportStepSuffix)};
 
   TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
-                      RunExportPasses(export_opts, context, *module_ref));
+                      RunExportPasses(export_opts, *context, *module_ref));
 
   return ConvertMlirModuleToExportedModel(
       *module_ref, checkpoint_dir, updated_function_aliases,
@@ -382,7 +389,8 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForQuantization();
+  std::unique_ptr<mlir::MLIRContext> context =
+      CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -390,12 +398,13 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
-  // TODO(b/213406917): Add support for the object graph based saved model input
+  // TODO: b/213406917 - Add support for the object graph based saved model
+  // input
   std::vector<std::string> exported_names = signature_keys;
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module =
-      SavedModelSignatureDefsToMlirImport(saved_model_path, tags,
-                                          absl::MakeSpan(exported_names),
-                                          &context, import_options, &bundle);
+      SavedModelSignatureDefsToMlirImport(
+          saved_model_path, tags, absl::MakeSpan(exported_names), context.get(),
+          import_options, &bundle);
 
   if (!module.status().ok()) {
     return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
@@ -418,7 +427,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
-      module_ref.get(), &context, bundle ? bundle->GetSession() : nullptr,
+      module_ref.get(), context.get(), bundle ? bundle->GetSession() : nullptr,
       /*run_tf_to_stablehlo=*/false, /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(RunPasses(
@@ -427,7 +436,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
         AddQuantizePtqDynamicRangePasses(pm, quantization_options,
                                          kTfQuantPtqDynamicRangeStepName);
       },
-      context, *module_ref));
+      *context, *module_ref));
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
@@ -438,7 +447,7 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
       /*debug_name=*/
       absl::StrCat(kTfQuantPtqDynamicRangeStepName, kExportStepSuffix)};
   TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
-                      RunExportPasses(export_opts, context, *module_ref));
+                      RunExportPasses(export_opts, *context, *module_ref));
 
   return ConvertMlirModuleToExportedModel(
       *module_ref, checkpoint_dir, updated_function_aliases,
@@ -452,7 +461,8 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
     const QuantizationOptions &quantization_options,
     const absl::flat_hash_map<std::string, std::string> &function_aliases) {
   // Convert the SavedModelBundle to an MLIR module.
-  mlir::MLIRContext context = CreateMlirContextForQuantization();
+  std::unique_ptr<mlir::MLIRContext> context =
+      CreateMlirContextForQuantization();
 
   MLIRImportOptions import_options;
   import_options.upgrade_legacy = true;
@@ -460,7 +470,8 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
   import_options.include_variables_in_initializers = true;
   auto bundle = std::make_unique<SavedModelBundle>();
 
-  // TODO(b/213406917): Add support for the object graph based saved model input
+  // TODO: b/213406917 - Add support for the object graph based saved model
+  // input
   std::vector<std::string> exported_names{
       quantization_options.signature_keys().begin(),
       quantization_options.signature_keys().end()};
@@ -469,7 +480,8 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
                                           {quantization_options.tags().begin(),
                                            quantization_options.tags().end()},
                                           absl::MakeSpan(exported_names),
-                                          &context, import_options, &bundle);
+                                          context.get(), import_options,
+                                          &bundle);
 
   if (!module.status().ok()) {
     return absl::InternalError(absl::StrCat("Failed to import SavedModel: ",
@@ -492,8 +504,9 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/kDefaultTfQuantMlirDumpFilePrefix,
       /*is_inliner_run=*/true,
-      /*noinline_functions=*/aliased_function_names, module_ref.get(), &context,
-      bundle ? bundle->GetSession() : nullptr, /*run_tf_to_stablehlo=*/false,
+      /*noinline_functions=*/aliased_function_names, module_ref.get(),
+      context.get(), bundle ? bundle->GetSession() : nullptr,
+      /*run_tf_to_stablehlo=*/false,
       /*deserialize_xla_call_module=*/false));
 
   TF_RETURN_IF_ERROR(
@@ -502,7 +515,7 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
                   AddQuantizeWeightOnlyPasses(pm, quantization_options,
                                               kTfQuantWeightOnlyStepName);
                 },
-                context, *module_ref));
+                *context, *module_ref));
 
   const bool unfreeze_constants = !quantization_options.freeze_all_variables();
   TF_ASSIGN_OR_RETURN(const std::string checkpoint_dir, GetLocalTmpFileName());
@@ -513,7 +526,7 @@ absl::StatusOr<ExportedModel> QuantizeWeightOnly(
       /*debug_name=*/
       absl::StrCat(kTfQuantWeightOnlyStepName, kExportStepSuffix)};
   TF_ASSIGN_OR_RETURN(const llvm::SmallVector<AssetFileDef> asset_file_defs,
-                      RunExportPasses(export_opts, context, *module_ref));
+                      RunExportPasses(export_opts, *context, *module_ref));
 
   return ConvertMlirModuleToExportedModel(
       *module_ref, checkpoint_dir, updated_function_aliases,
