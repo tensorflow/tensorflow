@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -83,6 +84,19 @@ ElementsAttr FlattenTo1D(Attribute a) {
   const std::array<int64_t, 1> flattened_shape = {elements.getNumElements()};
   auto new_type = RankedTensorType::get(flattened_shape,
                                         elements.getType().getElementType());
+  return elements.reshape(new_type);
+}
+
+// This assumes that the bias is of shape NxCx1x1 and doesn't require transpose
+// Its corresponding constraint is optimize_patterns.td:IsBiasShape()
+ElementsAttr ReshapeNCHWBiasToNHWC(Value v, Attribute a) {
+  auto elements = a.cast<DenseElementsAttr>();
+  auto shape = v.getType().cast<ShapedType>().getShape();
+  if (shape.size() != 4 || shape[2] != 1 || shape[3] != 1) return elements;
+  const std::array<int64_t, 4> new_shape = {shape[0], shape[2], shape[3],
+                                            shape[1]};
+  auto new_type =
+      RankedTensorType::get(new_shape, elements.getType().getElementType());
   return elements.reshape(new_type);
 }
 
@@ -674,6 +688,18 @@ TypedAttr ConvertSingleElementAttrToFloatAttr(Attribute attr) {
   return DenseFPElementsAttr::get(
       RankedTensorType::get({}, builder.getF32Type()),
       {llvm::APFloat(float_val)});
+}
+
+bool IsPermutationNCHW(Value perm) {
+  DenseIntElementsAttr perm_const;
+  if (!matchPattern(perm, m_Constant(&perm_const))) return false;
+
+  SmallVector<int64_t, 4> axes;
+  for (const auto &axis_int : perm_const.getValues<APInt>()) {
+    axes.push_back(axis_int.getSExtValue());
+  }
+
+  return (axes == SmallVector<int64_t>({0, 3, 1, 2}));
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
