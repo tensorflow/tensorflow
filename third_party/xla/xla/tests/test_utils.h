@@ -74,6 +74,10 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
 //
 // These constraints are best-effort only.
 //
+// If max_bits_of_precision is set to a number, then floating point & integer
+// types will be constrained to be represented in that number of bits. Setting
+// it to 5 for integers would mean it only creates integers between -32 and 32.
+//
 // If pseudo_random is true, the generated numbers will be generated
 // deterministically in a pseudo random way unless the values are constrated to
 // be e.g. init values as above. If pseudo_random is false, the returned values
@@ -91,14 +95,16 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
 // parameter can be removed.
 StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random = true,
-    bool use_large_range = false, bool treat_gte_as_data_formatting = false);
+    bool use_large_range = false, bool treat_gte_as_data_formatting = false,
+    std::optional<int64_t> max_bits_of_precision = std::nullopt);
 
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing
 // the same generator.
 StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine,
-    bool use_large_range = false, bool treat_gte_as_data_formatting = false);
+    bool use_large_range = false, bool treat_gte_as_data_formatting = false,
+    std::optional<int64_t> max_bits_of_precision = std::nullopt);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.

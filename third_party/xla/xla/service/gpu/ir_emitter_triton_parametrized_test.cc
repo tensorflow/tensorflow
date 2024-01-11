@@ -339,7 +339,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(
       hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
-      /*run_hlo_passes=*/false));
+      /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/6));
 }
 
 std::vector<HloOpcode> TestedBinaryElementwise(PrimitiveType element_type) {
@@ -354,28 +354,28 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuitePRED, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(PRED),
                        ::testing::ValuesIn(TestedBinaryElementwise(PRED)),
-                       ::testing::Values(3e-2)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS8, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S8),
                        ::testing::ValuesIn(TestedBinaryElementwise(S8)),
-                       ::testing::Values(3e-2)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS16, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S16),
                        ::testing::ValuesIn(TestedBinaryElementwise(S16)),
-                       ::testing::Values(1e-3)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS32, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S32),
                        ::testing::ValuesIn(TestedBinaryElementwise(S32)),
-                       ::testing::Values(1e-5)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
@@ -572,33 +572,9 @@ ENTRY e {
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
       primitive_util::LowercasePrimitiveTypeName(data_type2));
 
-  float tolerance;
-  switch (data_type1) {
-    case F32:
-      tolerance = 1e-6;
-      break;
-    case BF16:
-      tolerance = 1e-6;
-      break;
-    case F16:
-      tolerance = 2e-4;
-      break;
-    case PRED:
-    case S8:
-      tolerance = 3e-2;
-      break;
-    case S16:
-      tolerance = 1e-3;
-      break;
-    case S32:
-      tolerance = 1e-5;
-      break;
-    default:
-      ABSL_UNREACHABLE();
-  }
   EXPECT_TRUE(RunAndCompareTwoModules(
-      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
-      /*run_hlo_passes=*/false));
+      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/0, /*arel=*/0},
+      /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/9));
 }
 
 std::string TwoPrimitiveTypesToString(
