@@ -1621,11 +1621,19 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    se::StreamExecutor* stream_exec,
                                    const CompileOptions& options,
                                    const HloModule* debug_module) {
-  MaybeOwningThreadPool thread_pool = MaybeOwningThreadPool::GetOrCreate(
-      /*parallelism=*/module_config.debug_options()
-          .xla_gpu_force_compilation_parallelism(),
-      /*default_thread_pool=*/options.thread_pool,
-      /*default_parallelism=*/1);
+  // We disable this until b/319271534 is fixed due to errors during linking.
+  // This flag is intentionally not a command line argument for now.
+  //
+  // TODO(b/319271534): Re-enable once we use libnvjitlink.
+  constexpr bool kEnableLlvmModuleCompilationParallelism = false;
+  MaybeOwningThreadPool thread_pool =
+      kEnableLlvmModuleCompilationParallelism
+          ? MaybeOwningThreadPool::GetOrCreate(
+                /*parallelism=*/module_config.debug_options()
+                    .xla_gpu_force_compilation_parallelism(),
+                /*default_thread_pool=*/options.thread_pool,
+                /*default_parallelism=*/1)
+          : MaybeOwningThreadPool(nullptr);
 
   // Test whether LinkModules is supported.
   TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
