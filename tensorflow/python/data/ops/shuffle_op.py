@@ -26,7 +26,7 @@ def _shuffle(  # pylint: disable=unused-private-name
     input_dataset,
     buffer_size,
     seed=None,
-    reshuffle_each_iteration=None,
+    reshuffle_each_iteration=True,
     name=None):
   return _ShuffleDataset(
       input_dataset, buffer_size, seed, reshuffle_each_iteration, name=name)
@@ -39,15 +39,13 @@ class _ShuffleDataset(dataset_ops.UnaryUnchangedStructureDataset):
                input_dataset,
                buffer_size,
                seed=None,
-               reshuffle_each_iteration=None,
+               reshuffle_each_iteration=True,
                name=None):
     """See `Dataset.shuffle()` for details."""
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
     self._seed, self._seed2 = random_seed.get_seed(seed)
-    if reshuffle_each_iteration is None:
-      reshuffle_each_iteration = True
     self._reshuffle_each_iteration = reshuffle_each_iteration
     self._name = name
 

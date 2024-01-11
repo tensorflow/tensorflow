@@ -1390,7 +1390,7 @@ class DatasetV2(
     return Dataset.zip((range_dataset, self), name=name)
 
   def shuffle(
-      self, buffer_size, seed=None, reshuffle_each_iteration=None, name=None
+      self, buffer_size, seed=None, reshuffle_each_iteration=True, name=None
   ) -> "DatasetV2":
     """Randomly shuffles the elements of this dataset.
 
