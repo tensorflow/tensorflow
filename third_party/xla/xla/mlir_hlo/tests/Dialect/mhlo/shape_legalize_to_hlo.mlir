@@ -135,6 +135,16 @@ func.func @tensor_from_elements_i8(%arg0: i8) -> tensor<2xi8> {
 
 // -----
 
+// CHECK-LABEL: func.func @tensor_from_elements_scalar
+func.func @tensor_from_elements_scalar(%arg0: i64) -> tensor<i64> {
+  %0 = tensor.from_elements %arg0 : tensor<i64>
+  func.return %0 : tensor<i64>
+  //      CHECK: %[[RESULT:.*]] = builtin.unrealized_conversion_cast %arg0 : i64 to tensor<i64>
+  // CHECK-NEXT: return %[[RESULT]] : tensor<i64>
+}
+
+// -----
+
 func.func @tensor_from_elements_rank2(%arg0: index) -> tensor<2x1xindex> {
   %c0 = arith.constant 0 : index
   // expected-error@+1 {{failed to legalize operation 'tensor.from_elements' that was explicitly marked illegal}}
@@ -246,6 +256,29 @@ func.func @index_cast_i32_to_index(%arg0: tensor<2xi32>) -> tensor<2xindex> {
 
 // -----
 
+// CHECK-LABEL: func @index_cast_scalar_index_to_i32
+func.func @index_cast_scalar_index_to_i32(%arg0: index) -> i32 {
+  //      CHECK: %[[CAST_I32:.*]] = builtin.unrealized_conversion_cast %arg0 : index to tensor<i32>
+  // CHECK-NEXT: %[[CAST_INDEX:.*]] = builtin.unrealized_conversion_cast %[[CAST_I32]] : tensor<i32> to i32
+  // CHECK-NEXT: return %[[CAST_INDEX]] : i32
+  %0 = arith.index_cast %arg0 : index to i32
+  return %0 : i32
+}
+
+// -----
+
+// CHECK-LABEL: func @index_cast_scalar_index_to_i64
+func.func @index_cast_scalar_index_to_i64(%arg0: index) -> i64 {
+  //      CHECK: %[[CAST_I32:.*]] = builtin.unrealized_conversion_cast %arg0 : index to tensor<i32>
+  // CHECK-NEXT: %[[CONVERT:.*]] = mhlo.convert %[[CAST_I32]] : (tensor<i32>) -> tensor<i64>
+  // CHECK-NEXT: %[[CAST_INDEX:.*]] = builtin.unrealized_conversion_cast %[[CONVERT]] : tensor<i64> to i64
+  // CHECK-NEXT: return %[[CAST_INDEX]] : i64
+  %0 = arith.index_cast %arg0 : index to i64
+  return %0 : i64
+}
+
+// -----
+
 func.func @index_cast_index_to_i8(%arg0: tensor<2xindex>) -> tensor<2xi8> {
   // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
   %0 = arith.index_cast %arg0 : tensor<2xindex> to tensor<2xi8>
@@ -260,19 +293,46 @@ func.func @index_cast_i8_to_index(%arg0: tensor<2xi8>) -> tensor<2xindex> {
   return %0 : tensor<2xindex>
 }
 
-
-// -----
-
-func.func @index_cast_scalar_index_to_i32(%arg0: index) -> i32 {
-  // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
-  %0 = arith.index_cast %arg0 : index to i32
-  return %0 : i32
-}
-
 // -----
 
 func.func @index_cast_scalar_i32_to_index(%arg0: i32) -> index {
   // expected-error@+1 {{failed to legalize operation 'arith.index_cast' that was explicitly marked illegal}}
   %0 = arith.index_cast %arg0 : i32 to index
   return %0 : index
+}
+
+// -----
+
+// CHECK-LABEL: func @muli
+func.func @muli(%arg0: index, %arg1: index) -> index {
+  %0 = arith.muli %arg0, %arg1 : index
+  return %0 : index
+  //      CHECK: %[[LHS:.*]] = builtin.unrealized_conversion_cast %arg0 : index to tensor<i32>
+  // CHECK-NEXT: %[[RHS:.*]] = builtin.unrealized_conversion_cast %arg1 : index to tensor<i32>
+  // CHECK-NEXT: %[[RES:.*]] = mhlo.multiply %[[LHS]], %[[RHS]] : tensor<i32>
+  // CHECK-NEXT: %[[RES_INDEX:.*]] = builtin.unrealized_conversion_cast %[[RES]] : tensor<i32> to index
+  // CHECK-NEXT: return %[[RES_INDEX]] : index
+}
+
+// -----
+
+// CHECK-LABEL: func @muli_const
+func.func @muli_const() -> index {
+  %c1 = arith.constant 1 : index
+  %c2 = arith.constant 2 : index
+  %0 = arith.muli %c1, %c2 : index
+  return %0 : index
+  //      CHECK: %[[LHS:.*]] = mhlo.constant dense<1> : tensor<i32>
+  // CHECK-NEXT: %[[RHS:.*]] = mhlo.constant dense<2> : tensor<i32>
+  // CHECK-NEXT: %[[RES:.*]] = mhlo.multiply %[[LHS]], %[[RHS]] : tensor<i32>
+  // CHECK-NEXT: %[[RES_INDEX:.*]] = builtin.unrealized_conversion_cast %[[RES]] : tensor<i32> to index
+  // CHECK-NEXT: return %[[RES_INDEX]] : index
+}
+
+// -----
+
+func.func @muli_i32(%arg0: i32, %arg1: i32) -> i32 {
+  // expected-error@+1 {{failed to legalize operation 'arith.muli' that was explicitly marked illegal}}
+  %0 = arith.muli %arg0, %arg1 : i32
+  return %0 : i32
 }
