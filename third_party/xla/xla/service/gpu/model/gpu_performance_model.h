@@ -91,13 +91,6 @@ class GpuPerformanceModelCache {
 };
 
 struct GpuPerformanceModelOptions {
-  // Whether to attempt to model the effect of uncoalesced reads.
-  bool consider_coalescing = false;
-
-  // Use better read modelling, when first read always happends from DRAM and
-  // re-reads can happen from cache.
-  bool first_read_from_dram = false;
-
   // Factor for how much parallelism between compute and memory accesses should
   // be assumed. If 1.0, assume perfect parallelism (the run time is the maximum
   // of both times). If 0.0, assume no parallelism (the run time is the sum of
@@ -117,8 +110,6 @@ struct GpuPerformanceModelOptions {
       HloFusionAnalysisCache* fusion_analysis_cache = nullptr,
       GpuPerformanceModelCache* gpu_performance_model_cache = nullptr) {
     GpuPerformanceModelOptions config;
-    config.consider_coalescing = true;
-    config.first_read_from_dram = true;
     config.fusion_analysis_cache = fusion_analysis_cache;
     config.gpu_performance_model_cache = gpu_performance_model_cache;
     // This constant was chosen empirically in early 2024, based on runtime

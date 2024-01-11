@@ -348,11 +348,35 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
       ShapeUtil::ElementsInRecursive(instr->shape()), fusion_analysis,
       *device_info);
   int64_t num_threads = launch_dimensions.launch_bound();
+  int64_t num_blocks = launch_dimensions.num_blocks();
 
   absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
-  absl::Duration read_time = ProducerInputAccessTime(
-      cost_analysis, *device_info, launch_dimensions.num_blocks(),
-      /*producer=*/instr, fusion_analysis, config);
+
+  // TODO(jreiffers): We should be checking each operand.
+  bool coalesced = IsReadCoalescedHeuristic(fusion_analysis, instr,
+                                            /*consumer=*/nullptr);
+
+  absl::Duration read_time;
+  for (int i = 0; i < instr->operand_count(); ++i) {
+    auto element_type = instr->operand(i)->shape().element_type();
+    // Information about data read taking into account utilization.
+    // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
+    int64_t n_bytes_total = cost_analysis->operand_bytes_accessed(*instr, i);
+    float operand_utilization = cost_analysis->operand_utilization(*instr, i);
+
+    // An estimate how much data would need to fit into L1/L2 cache to speed up
+    // the operand access.
+    // If `operand_utilization` < 1, only a part of the full operand size should
+    // be read. Otherwise, `n_bytes_total / operand_utilization` is the
+    // size of the operand without reuse.
+    int64_t n_bytes_net =
+        std::llround(n_bytes_total / std::max(operand_utilization, 1.0f));
+
+    read_time +=
+        ReadTime(*device_info, num_blocks, n_bytes_net, n_bytes_total,
+                 element_type, coalesced, /*first_read_from_dram=*/true);
+  }
+
   absl::Duration write_time =
       absl::Seconds(1.0f * bytes_written / device_info->memory_bandwidth());
   absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
@@ -486,11 +510,6 @@ float GetSharedUtilization(const GpuHloCostAnalysis* cost_analysis,
           ? GetOperandUtilization(cost_analysis, fused_consumer, producer)
           : 1.f;
 
-  // TODO(jreiffers): We should be checking each operand.
-  bool coalesced =
-      config.consider_coalescing
-          ? IsReadCoalescedHeuristic(fusion_analysis, producer, fused_consumer)
-          : true;
   for (int i = 0; i < producer->operand_count(); ++i) {
     // Information about data read taking into account utilization.
     // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
@@ -518,8 +537,8 @@ float GetSharedUtilization(const GpuHloCostAnalysis* cost_analysis,
     float n_bytes_total = operand_bytes_accessed *
                           (producer_output_utilization - common_utilization);
     ret += ReadTime(gpu_device_info, num_blocks, /*n_bytes_net=*/n_bytes_net,
-                    n_bytes_total, operand_shape.element_type(), coalesced,
-                    config.first_read_from_dram);
+                    n_bytes_total, operand_shape.element_type(),
+                    /*coalesced=*/true, /*first_read_from_dram=*/false);
   }
   return ret;
 }
@@ -571,14 +590,10 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     int64_t n_bytes_net =
         std::min(producer_runtime.bytes_written, n_bytes_total);
 
-    bool coalesced = config.consider_coalescing
-                         ? IsReadCoalescedHeuristic(analysis_unfused,
-                                                    /*producer=*/fused_consumer)
-                         : true;
     auto read_time_unfused = ReadTime(
         *device_info, launch_dimensions_unfused.num_blocks(), n_bytes_net,
-        n_bytes_total, fused_consumer->shape().element_type(), coalesced,
-        config.first_read_from_dram);
+        n_bytes_total, fused_consumer->shape().element_type(),
+        /*coalesced=*/true, /*first_read_from_dram=*/false);
 
     VLOG(10) << "  Read time unfused: " << read_time_unfused;
     time_unfused += read_time_unfused;
@@ -641,14 +656,12 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
 
     bool coalesced =
-        config.consider_coalescing
-            ? IsReadCoalescedHeuristic(fusion_analysis, producer, consumer)
-            : true;
+        IsReadCoalescedHeuristic(fusion_analysis, producer, consumer);
 
     read_time +=
         ReadTime(*device_info, launch_dimensions.num_blocks(), n_bytes_net,
                  n_bytes_total, operand->shape().element_type(), coalesced,
-                 config.first_read_from_dram);
+                 /*first_read_from_dram=*/true);
   }
 
   if (VLOG_IS_ON(8)) {
