@@ -3003,6 +3003,52 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   return absl::OkStatus();
 }
 
+Status IrEmitterUnnested::EmitCollectivePermute(
+    const HloCollectivePermuteInstruction* instr) {
+  TF_RET_CHECK(instr->operand_count() == 1);
+  auto* operand = instr->operand(0);
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice source_slice,
+                      GetAllocationSliceForHlo(operand));
+  // First output is aliased.
+  TF_RET_CHECK(
+      instr->shape().IsTuple() && instr->shape().tuple_shapes_size() == 2 &&
+      instr->shape().tuple_shapes(0) == instr->shape().tuple_shapes(1));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice result_slice,
+                      GetAllocationSliceForHlo(instr, {1}));
+
+  const Shape shape = operand->shape();
+  const auto& hlo_config = ir_emitter_context_->hlo_module().config();
+  const int64_t replica_count = hlo_config.replica_count();
+  const int64_t partition_count = hlo_config.num_partitions();
+
+  NcclCollectiveThunk::AsyncExecutor* async_executor;
+  if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
+                                                    partition_count)) {
+    // For a degenerate collective permute, just generate a copy thunk.
+    AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        /*source_buffer=*/source_slice,
+        /*destination_buffer=*/result_slice,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
+        /*source_value=*/nullptr,
+        /*destination_value=*/nullptr));
+    // Signal that start thunk not created with nullptr.
+    async_executor = nullptr;
+  } else {
+    const NcclCollectiveThunk::Buffer buffer = {
+        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*source_buffer=*/source_slice,
+        /*destination_buffer=*/result_slice};
+    auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
+        partition_count, buffer);
+    async_executor = thunk->async_executor();
+    AddThunkToThunkSequence(std::move(thunk));
+  }
+  async_executors_.insert({instr, async_executor});
+  return absl::OkStatus();
+}
+
 template <typename NcclThunkType, typename OpT>
 absl::Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   OpT op = mlir::cast<OpT>(untyped_op);
@@ -3733,10 +3779,18 @@ absl::Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::CollectivePermuteStartOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitCollectivePermute(
+          Cast<HloCollectivePermuteInstruction>(hlo_for_lmhlo.at(op)));
+    }
     return EmitCollectivePermute(op);
   }
 
   if (mlir::isa<mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitNcclAsyncDone(Thunk::kNcclCollectivePermuteDone,
+                               hlo_for_lmhlo.at(op));
+    }
     return EmitNcclAsyncDone(
         Thunk::kNcclCollectivePermuteDone, op,
         mlir::cast<mlir::lmhlo_gpu::CollectivePermuteDoneOp>(op).getToken());
@@ -3949,6 +4003,13 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
 
     case HloOpcode::kCall:
       return EmitCommandBufferThunk(instr);
+
+    case HloOpcode::kCollectivePermuteDone:
+      return EmitNcclAsyncDone(Thunk::kNcclCollectivePermuteDone, instr);
+    case HloOpcode::kCollectivePermuteStart:
+      return EmitCollectivePermute(
+          Cast<HloCollectivePermuteInstruction>(instr));
+
     case HloOpcode::kConditional:
       return EmitConditional(instr);
     case HloOpcode::kConstant:

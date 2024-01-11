@@ -224,6 +224,8 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 
   absl::Status EmitCollectivePermute(mlir::Operation* op);
+  absl::Status EmitCollectivePermute(
+      const HloCollectivePermuteInstruction* instr);
 
   absl::Status EmitOp(
       mlir::Operation* op,
