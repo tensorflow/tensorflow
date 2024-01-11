@@ -1,7 +1,0 @@
-# Combine TF public build cache and local disk cache
-# The cache configs are different for MacOS and Linux
-if [[ $(uname -s) == "Darwin" ]]; then
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache --disk_cache=$TFCI_OUTPUT_DIR/cache"
-else
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_cache --disk_cache=$TFCI_OUTPUT_DIR/cache"
-fi

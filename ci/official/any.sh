@@ -38,18 +38,15 @@
 #       ...
 set -euxo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
-REQUESTED_TFCI="$TFCI"
-export TFCI=$(mktemp)
-echo >>$TFCI "source $REQUESTED_TFCI"
-echo >>$TFCI "source ci/official/envs/disable_all_uploads"
+export TFCI="$TFCI,no_upload"
 if [[ -n "${TF_ANY_EXTRA_ENV:-}" ]]; then
-  echo >>$TFCI "source $TF_ANY_EXTRA_ENV"
+  export TFCI="$TFCI,$TF_ANY_EXTRA_ENV"
 fi
 if [[ -n "${TF_ANY_SCRIPT:-}" ]]; then
   "$TF_ANY_SCRIPT"
 elif [[ -n "${TF_ANY_TARGETS:-}" ]]; then
   source "${BASH_SOURCE%/*}/utilities/setup.sh"
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $TF_ANY_TARGETS
+  tfrun bazel "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $TF_ANY_TARGETS
 else
   echo 'Looks like $TF_ANY_TARGETS are $TF_ANY_SCRIPT are both empty. That is an error.'
   exit 1

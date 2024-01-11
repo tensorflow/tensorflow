@@ -1,4 +1,3 @@
-#!/bin/bash
 # Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-source "${BASH_SOURCE%/*}/utilities/setup.sh"
-
-tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --profile "$TFCI_OUTPUT_DIR/profile.json.gz" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
-
-# Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.
-# See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
-tfrun bazel analyze-profile "$TFCI_OUTPUT_DIR/profile.json.gz"
+source ci/official/envs/linux_x86
+TFCI_BAZEL_COMMON_ARGS="--repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION --config release_gpu_linux"
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_cuda
+TFCI_BUILD_PIP_PACKAGE_ARGS=
+TFCI_DOCKER_ARGS="--gpus all"
+TFCI_LIB_SUFFIX="-gpu-linux-x86_64"
+TFCI_WHL_SIZE_LIMIT=580M
