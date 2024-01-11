@@ -3949,6 +3949,7 @@ xla_cc_test(
     name = "gpu_schedule_postprocessing_test",
     srcs = ["gpu_schedule_postprocessing_test.cc"],
     deps = [
+        ":backend_configs_cc",
         ":gpu_schedule_postprocessing",
         "//xla:util",
         "//xla/hlo/ir:hlo",
@@ -4132,6 +4133,7 @@ xla_cc_test(
         ":hlo_fusion_analysis",
         ":hlo_traversal",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/platform:statusor",

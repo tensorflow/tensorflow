@@ -35,6 +35,12 @@ def xla_py_test_deps():
 # away. The problem is making sure that all these impl deps are `if_static`'d
 # appropriately throughout XLA.
 _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
+    Label("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
+    "@local_tsl//tsl/framework:allocator",
+    "@local_tsl//tsl/util:determinism",
+] + if_oss([
+    "@com_google_protobuf//:protobuf",
+]) + if_static(extra_deps = [], otherwise = [
     Label("//xla:autotune_results_proto_cc_impl"),
     Label("//xla:autotuning_proto_cc_impl"),
     Label("//xla:xla_data_proto_cc_impl"),
@@ -46,21 +52,15 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
     Label("//xla/stream_executor:device_description_proto_cc_impl"),
     Label("//xla/stream_executor:stream_executor_impl"),
-    Label("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
-    "@local_tsl//tsl/framework:allocator",
-    "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
-    "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
-    "@local_tsl//tsl/protobuf:protos_all_cc_impl",
-    "@local_tsl//tsl/util:determinism",
-] + if_oss([
-    "@com_google_protobuf//:protobuf",
-]) + if_static(extra_deps = [], otherwise = [
     Label("//xla/stream_executor/gpu:gpu_init_impl"),
     "@local_tsl//tsl/framework:allocator_registry_impl",
     "@local_tsl//tsl/platform:env_impl",
     "@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl",
     "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",
+    "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
+    "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
     "@local_tsl//tsl/profiler/utils:time_utils_impl",
+    "@local_tsl//tsl/protobuf:protos_all_cc_impl",
 ]) + if_cuda_is_configured([
     Label("//xla/stream_executor/cuda:all_runtime"),
     Label("//xla/stream_executor/cuda:cuda_stream"),
