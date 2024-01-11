@@ -349,6 +349,12 @@ bool IsUnrollingColumnReductionBeneficial(const HloFusionAnalysis& analysis,
   return MaxBeneficialColumnReductionUnrollBasedOnBlockSize(analysis) > 1;
 }
 
+// Experimentally determined values to achieve optimal number of
+// bytes-in-flight. With a bound of #warps/SM which can be concurrently
+// scheduled, for small reduced values it can be hard to achieve optimal
+// number of bytes-in-flight. In order to address it, we increase the # of
+// threads/block (physically, while keeping logical mapping the same), which
+// allows larger # of bytes-in-flight.
 int CalculateVirtualThreadScalingFactorForReduction(
     const HloFusionAnalysis& analysis,
     const ReductionDimensions& reduction_dimensions) {
