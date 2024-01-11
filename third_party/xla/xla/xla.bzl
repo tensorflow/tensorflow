@@ -35,7 +35,6 @@ def xla_py_test_deps():
 # away. The problem is making sure that all these impl deps are `if_static`'d
 # appropriately throughout XLA.
 _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
-    Label("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
     "@local_tsl//tsl/framework:allocator",
     "@local_tsl//tsl/util:determinism",
 ] + if_oss([
@@ -65,6 +64,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
     Label("//xla/stream_executor/cuda:all_runtime"),
     Label("//xla/stream_executor/cuda:cuda_stream"),
     Label("//xla/stream_executor/cuda:stream_executor_cuda"),
+    Label("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
 ]) + if_rocm_is_configured([
     Label("//xla/stream_executor/gpu:gpu_stream"),
     Label("//xla/stream_executor/rocm:all_runtime"),
