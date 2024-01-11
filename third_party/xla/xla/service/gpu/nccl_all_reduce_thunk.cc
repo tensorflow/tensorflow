@@ -23,9 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
@@ -94,7 +98,7 @@ namespace {
 // the terminator. However, if the type is bf16, the `FloatNormalization`
 // pass will have converted the op to float32 and added type conversions.
 // TODO(cjfj): Can we prevent the bf16 conversion for this computation?
-StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
+absl::StatusOr<mlir::Operation*> FindReductionOp(mlir::Block& block) {
   TF_RET_CHECK(block.getNumArguments() == 2);
   mlir::Operation* terminator = block.getTerminator();
   TF_RET_CHECK(terminator);
@@ -212,9 +216,9 @@ std::optional<ReductionKind>
 NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
     mlir::Region& computation) {
   mlir::Block& block = computation.front();
-  StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
+  absl::StatusOr<mlir::Operation*> reduction_op = FindReductionOp(block);
   if (!reduction_op.ok()) return std::nullopt;
-  StatusOr<HloOpcode> opcode = MhloToHloOpcode(*reduction_op);
+  absl::StatusOr<HloOpcode> opcode = MhloToHloOpcode(*reduction_op);
   if (!opcode.ok()) return std::nullopt;
   // Match the operation to a reduction kind. We can represent and/or of pred as
   // min/max. This works because pred is stored as an 8-bit int of value 0 or 1.

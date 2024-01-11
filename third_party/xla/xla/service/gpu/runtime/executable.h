@@ -96,11 +96,11 @@ class GpuRuntimeExecutable {
 
  public:
   // Creates GpuRuntimeExecutable from the Xla Gpu Program.
-  static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
+  static absl::StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
       std::string module_name, std::unique_ptr<GpuRuntimeProgram> program);
 
   // Creates GpuRuntimeExecutable from the AOT compiled binary.
-  static StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
+  static absl::StatusOr<std::unique_ptr<GpuRuntimeExecutable>> Create(
       std::string module_name, std::vector<int64_t> buffer_sizes,
       std::vector<std::vector<int64_t>> allocation_indices,
       runtime::Executable executable, DebugOptions debug_options);
@@ -115,10 +115,10 @@ class GpuRuntimeExecutable {
 
   // Returns object file behind the runtime executable. This object file can
   // be exported and loaded later to instantiate another executable.
-  StatusOr<std::string_view> GetObjFile() const;
+  absl::StatusOr<std::string_view> GetObjFile() const;
 
   // Returns MLIR module behind this executable if it is available.
-  StatusOr<std::string_view> GetMlirModule() const;
+  absl::StatusOr<std::string_view> GetMlirModule() const;
 
   std::string_view module_name() const { return module_name_; }
 

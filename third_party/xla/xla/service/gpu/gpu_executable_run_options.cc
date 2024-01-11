@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "xla/status_macros.h"
 
 namespace xla {
@@ -63,7 +64,7 @@ NcclExecuteParams::NcclExecuteParams(
           : nullptr;
 }
 
-StatusOr<GlobalDeviceId> NcclExecuteParams::GetGlobalDeviceId() const {
+absl::StatusOr<GlobalDeviceId> NcclExecuteParams::GetGlobalDeviceId() const {
   int64_t local_device_ordinal = stream_executor->device_ordinal();
   if (gpu_global_device_ids) {
     auto it = gpu_global_device_ids->find(local_device_ordinal);

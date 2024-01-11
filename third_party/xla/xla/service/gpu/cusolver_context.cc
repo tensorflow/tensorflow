@@ -307,7 +307,7 @@ absl::Status ConvertStatus(rocblas_status status) {
 
 }  // namespace
 
-StatusOr<GpuSolverContext> GpuSolverContext::Create() {
+absl::StatusOr<GpuSolverContext> GpuSolverContext::Create() {
   gpusolverHandle_t handle;
   TF_RETURN_IF_ERROR(ConvertStatus(GpuSolverCreate(&handle)));
   return GpuSolverContext(handle);
@@ -333,10 +333,9 @@ void GpuSolverContext::Deleter::operator()(gpusolverHandle_t handle) {
 // Note: NVidia have promised that it is safe to pass 'nullptr' as the argument
 // buffers to cuSolver buffer size methods and this will be a documented
 // behavior in a future cuSolver release.
-StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(PrimitiveType type,
-                                                    se::blas::UpperLower uplo,
-                                                    int n, int lda,
-                                                    int batch_size) {
+absl::StatusOr<int64_t> GpuSolverContext::PotrfBufferSize(
+    PrimitiveType type, se::blas::UpperLower uplo, int n, int lda,
+    int batch_size) {
 #if TENSORFLOW_USE_CUSOLVER_OR_HIPSOLVER
   int size = -1;
   switch (type) {

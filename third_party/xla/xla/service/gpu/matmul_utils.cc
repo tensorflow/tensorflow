@@ -54,7 +54,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<std::vector<int64_t>> GetNonContractingDims(
+absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> contracting_dims) {
   std::vector<int64_t> non_contracting_dims;
@@ -94,7 +94,7 @@ int64_t ContractingDimensionIndex(const HloInstruction& dot,
 
 int64_t NonContractingDimensionIndex(const HloInstruction& dot,
                                      const int operand_number) {
-  StatusOr<std::vector<int64_t>> non_contracting_dims =
+  absl::StatusOr<std::vector<int64_t>> non_contracting_dims =
       GetNonContractingDims(dot.operand(operand_number)->shape(),
                             BatchDimensionsForOperand(dot, operand_number),
                             {ContractingDimensionIndex(dot, operand_number)});
@@ -103,10 +103,9 @@ int64_t NonContractingDimensionIndex(const HloInstruction& dot,
   return non_contracting_dims->front();
 }
 
-StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
-                                       absl::Span<const int64_t> batch_dims,
-                                       absl::Span<const int64_t> row_dims,
-                                       absl::Span<const int64_t> col_dims) {
+absl::StatusOr<Shape> GetBatchRowColumnShape(
+    const Shape& shape, absl::Span<const int64_t> batch_dims,
+    absl::Span<const int64_t> row_dims, absl::Span<const int64_t> col_dims) {
   TF_RET_CHECK(shape.has_layout());
 
   std::vector<int64_t> minor_to_major;
@@ -155,7 +154,7 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
 }
 
 // Returns the matrix layout for a logical shape (batch, rows, columns).
-/*static*/ StatusOr<MatrixLayout> MatrixLayout::For(const Shape& shape) {
+/*static*/ absl::StatusOr<MatrixLayout> MatrixLayout::For(const Shape& shape) {
   TF_RET_CHECK(shape.rank() == 3);
   TF_RET_CHECK(shape.has_layout());
 
@@ -198,7 +197,7 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
                                             leading_dim_stride, batch_stride}};
 }
 
-/*static*/ StatusOr<MatrixLayout> MatrixLayout::For(
+/*static*/ absl::StatusOr<MatrixLayout> MatrixLayout::For(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> row_dims, absl::Span<const int64_t> col_dims) {
   TF_ASSIGN_OR_RETURN(
@@ -207,11 +206,9 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
   return MatrixLayout::For(batch_row_col_shape);
 }
 
-/*static*/ StatusOr<MatrixLayout> MatrixLayout::For(const Shape& shape,
-                                                    size_t lhs_num_batch_dims,
-                                                    size_t lhs_num_row_dims,
-                                                    size_t rhs_num_batch_dims,
-                                                    size_t rhs_num_col_dims) {
+/*static*/ absl::StatusOr<MatrixLayout> MatrixLayout::For(
+    const Shape& shape, size_t lhs_num_batch_dims, size_t lhs_num_row_dims,
+    size_t rhs_num_batch_dims, size_t rhs_num_col_dims) {
   size_t num_batch_dims = std::max(lhs_num_batch_dims, rhs_num_batch_dims);
 
   TF_RET_CHECK(shape.rank() ==
@@ -243,8 +240,8 @@ std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
 }
 }  // namespace
 
-StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
-                                              int64_t operand_idx) {
+absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
+                                                    int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
   TF_RET_CHECK(dot.operand_count() > operand_idx);
 
@@ -288,7 +285,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       .ok();
 }
 
-/*static*/ StatusOr<GemmConfig> GemmConfig::For(
+/*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
     const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
@@ -303,7 +300,7 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                          compute_precision, grad_x, grad_y);
 }
 
-/*static*/ StatusOr<GemmConfig> GemmConfig::For(
+/*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
     const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
@@ -423,7 +420,8 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                     grad_y};
 }
 
-/*static*/ StatusOr<GemmConfig> GemmConfig::For(const HloInstruction* gemm) {
+/*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
+    const HloInstruction* gemm) {
   TF_ASSIGN_OR_RETURN(GemmBackendConfig config,
                       gemm->backend_config<GemmBackendConfig>());
 
@@ -457,7 +455,8 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                          config.beta(), algorithm, precision, grad_x, grad_y);
 }
 
-/*static*/ StatusOr<GemmConfig> GemmConfig::For(mlir::lmhlo_gpu::GEMMOp op) {
+/*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
+    mlir::lmhlo_gpu::GEMMOp op) {
   mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
   std::optional<int64_t> algorithm;
@@ -492,12 +491,12 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       grad_y);
 }
 
-StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
+absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
     se::DeviceMemoryBase lhs_buf, se::DeviceMemoryBase rhs_buf,
     se::DeviceMemoryBase out_buf) const {
-  auto create_matrix_desc =
-      [](const se::gpu::MatrixLayout& layout,
-         se::DeviceMemoryBase data) -> StatusOr<se::gpu::MatrixDescriptor> {
+  auto create_matrix_desc = [](const se::gpu::MatrixLayout& layout,
+                               se::DeviceMemoryBase data)
+      -> absl::StatusOr<se::gpu::MatrixDescriptor> {
     TF_ASSIGN_OR_RETURN(se::blas::DataType type,
                         se::gpu::AsBlasDataType(layout.dtype));
     return se::gpu::MatrixDescriptor{
@@ -722,7 +721,8 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
 namespace gpublas_lt {
 
-StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue) {
+absl::StatusOr<bool> EpilogueAddsVectorBias(
+    GemmBackendConfig_Epilogue epilogue) {
   switch (epilogue) {
     case GemmBackendConfig::DEFAULT:
     case GemmBackendConfig::RELU:
@@ -739,7 +739,8 @@ StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue) {
   }
 }
 
-StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue) {
+absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
+    GemmBackendConfig_Epilogue epilogue) {
   switch (epilogue) {
     case GemmBackendConfig::DEFAULT:
     case GemmBackendConfig::RELU:
@@ -756,7 +757,7 @@ StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue) {
   }
 }
 
-StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
+absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
   using mlir::lmhlo_gpu::CublasLtMatmulEpilogue;
   switch (epilogue) {

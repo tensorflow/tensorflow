@@ -195,7 +195,7 @@ absl::Status FusionContext::PropagateDimensionOrdersToParameters(
 
 }  // namespace triton_fusion
 
-StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
+absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
     const HloComputation& computation, const int split_k) {
   VLOG(5) << computation.ToString(HloPrintOptions::ShortParsable());
   TritonFusionAnalysis analysis;

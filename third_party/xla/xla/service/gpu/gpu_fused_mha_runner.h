@@ -88,7 +88,7 @@ struct GpufMHABackwardDescriptor {
 // Structure to describe static properties of a GPU fused Multi-Headed
 // Attention.
 struct GpufMHAConfig {
-  static StatusOr<GpufMHAConfig> For(const GpufMHADescriptor& fmha_desc);
+  static absl::StatusOr<GpufMHAConfig> For(const GpufMHADescriptor& fmha_desc);
   PrimitiveType
       input_type;  // Capture the primitive type of one of the inputs of BMM1
   PrimitiveType output_type;
@@ -116,7 +116,7 @@ struct GpufMHAConfig {
 // Structure to describe static properties of a GPU fused Multi-Headed
 // Attention backward.
 struct GpufMHABackwardConfig {
-  static StatusOr<GpufMHABackwardConfig> For(
+  static absl::StatusOr<GpufMHABackwardConfig> For(
       const GpufMHABackwardDescriptor& fmha_desc);
   PrimitiveType
       input_type;  // Capture the primitive type of one of the inputs of BMM1
@@ -148,7 +148,7 @@ struct GpufMHABackwardConfig {
 
 // Implementation struct exposed for debugging and log analysis.
 struct GpufMHAParams {
-  static StatusOr<GpufMHAParams> For(
+  static absl::StatusOr<GpufMHAParams> For(
       const GpufMHAConfig& config, se::DeviceMemoryBase lhs_bmm1_buffer,
       se::DeviceMemoryBase rhs_bmm1_buffer,
       se::DeviceMemoryBase rhs_bmm2_buffer, se::DeviceMemoryBase output_buffer,
@@ -167,7 +167,7 @@ struct GpufMHAParams {
 };
 
 struct GpufMHABackwardParams {
-  static StatusOr<GpufMHABackwardParams> For(
+  static absl::StatusOr<GpufMHABackwardParams> For(
       const GpufMHABackwardConfig& config,
       se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer,
       se::DeviceMemoryBase bmm1_grad_gemm2_rhs_buffer,

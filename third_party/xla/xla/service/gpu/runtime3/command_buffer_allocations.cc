@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-StatusOr<se::DeviceMemoryBase> CommandBufferAllocations::GetDeviceAddress(
+absl::StatusOr<se::DeviceMemoryBase> CommandBufferAllocations::GetDeviceAddress(
     BufferAllocation::Index index) const {
   auto base = allocs_.find(index);
   if (base == allocs_.end()) {

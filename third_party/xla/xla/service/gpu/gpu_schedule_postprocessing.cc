@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,7 +61,7 @@ bool MayInvokeCustomCall(
 
 // Returns true if this is an asynchronous collective start operation, excluding
 // P2P operations.
-StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
+absl::StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
   HloOpcode opcode = hlo->opcode();
   if (!hlo_query::IsAsyncCollectiveStartOp(opcode,
                                            /*include_send_recv=*/false)) {
@@ -73,7 +74,7 @@ StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
 
 // Returns true if this is a collective done operation, excluding P2P
 // operations.
-StatusOr<bool> IsRelevantAsynchronousDone(const HloInstruction* hlo) {
+absl::StatusOr<bool> IsRelevantAsynchronousDone(const HloInstruction* hlo) {
   HloOpcode opcode = hlo->opcode();
   return hlo_query::IsAsyncCollectiveDoneOp(opcode,
                                             /*include_send_recv=*/false);
@@ -83,7 +84,7 @@ StatusOr<bool> IsRelevantAsynchronousDone(const HloInstruction* hlo) {
 // that aren't parallel with custom-calls and sets its no_parallel_custom_call
 // attribute to true. Also records whether the given computation may invoke
 // custom-calls.
-StatusOr<bool> ProcessComputation(
+absl::StatusOr<bool> ProcessComputation(
     const HloSchedule& schedule, HloComputation* computation,
     CustomCallInComputation& custom_call_in_computation) {
   bool changed = false;
@@ -132,7 +133,7 @@ StatusOr<bool> ProcessComputation(
 
 }  // anonymous namespace
 
-StatusOr<bool> GpuSchedulePostprocessing::Run(
+absl::StatusOr<bool> GpuSchedulePostprocessing::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!module->has_schedule()) return false;

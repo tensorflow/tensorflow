@@ -156,7 +156,7 @@ static absl::Status LaunchImpl(
 // Define the custom kernel (fusion) launch custom call.
 //===----------------------------------------------------------------------===//
 
-static StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
+static absl::StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
     se::StreamExecutor* executor, std::string_view name,
     std::string_view custom_fusion_computation) {
   auto* registry = CustomFusionRegistry::Default();

@@ -85,7 +85,7 @@ namespace gpu {
 
 using ncclInfo_t = ncclInfo*;
 
-StatusOr<int> GetNcclDataTypeSize(ncclDataType_t dtype) {
+absl::StatusOr<int> GetNcclDataTypeSize(ncclDataType_t dtype) {
   switch (dtype) {
     case ncclInt8:
     case ncclUint8:
@@ -112,7 +112,7 @@ StatusOr<int> GetNcclDataTypeSize(ncclDataType_t dtype) {
   }
 }
 
-StatusOr<ncclFunc_t> ToNcclFunctionType(Thunk::Kind reduce_op) {
+absl::StatusOr<ncclFunc_t> ToNcclFunctionType(Thunk::Kind reduce_op) {
   switch (reduce_op) {
     case Thunk::kNcclAllReduce:
       return ncclFuncAllReduce;
@@ -162,9 +162,11 @@ inline absl::Status MockNcclInfoSetDerived(ncclInfo_t info, int nRanks) {
 
 // Return estimated sleep time in nano seconds for simulating the nccl
 // collective calls
-StatusOr<int64_t> GetMockNcclSleepTime(size_t count, ncclDataType_t datatype,
-                                       ncclComm_t comm, cudaStream_t stream,
-                                       ncclInfo_t info) {
+absl::StatusOr<int64_t> GetMockNcclSleepTime(size_t count,
+                                             ncclDataType_t datatype,
+                                             ncclComm_t comm,
+                                             cudaStream_t stream,
+                                             ncclInfo_t info) {
   info->count = count;
   info->datatype = datatype;
   info->nChannels = 1;
@@ -201,7 +203,7 @@ StatusOr<int64_t> GetMockNcclSleepTime(size_t count, ncclDataType_t datatype,
 // We first create a local nccl communicator for gpus within a single host; then
 // together with the input clique, we re-run nccl algorithms to construct the
 // target nccl topology graphs.
-StatusOr<NcclComm::Lock> LockMockNcclComm(
+absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
@@ -537,7 +539,7 @@ struct NcclCliques {
   absl::node_hash_map<NcclCliqueKey, NcclClique> cliques ABSL_GUARDED_BY(mu);
 };
 
-StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
+absl::StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
   static_assert(sizeof(ncclUniqueId) == NCCL_UNIQUE_ID_BYTES,
                 "NCCL_UNIQUE_ID_BYTES");
 
@@ -547,7 +549,7 @@ StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
   return id;
 }
 
-std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
+std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
     const NcclUniqueIdCallback& unique_id_callback,
     size_t num_local_participants, bool may_skip_rendezvous) {
@@ -562,9 +564,9 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
   int64_t terminate_timeout = xla::GetDebugOptionsFromFlags()
                                   .xla_gpu_nccl_termination_timeout_seconds();
 
-  return RendezvousSingle<StatusOr<NcclClique::Lock>>(
+  return RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
       rendezvous_key, num_local_participants,
-      [&]() -> StatusOr<NcclClique::Lock> {
+      [&]() -> absl::StatusOr<NcclClique::Lock> {
         const NcclCliqueKey& clique_key = std::get<2>(rendezvous_key);
         NcclClique::Lock clique = cliques[clique_key].Acquire();
         clique->run_id = run_id.ToInt();
@@ -668,7 +670,7 @@ absl::Status InitializeMockNcclCostModel(
 
 }  // namespace
 
-StatusOr<NcclComm::Lock> AcquireMockNcclComm(
+absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     std::vector<GlobalDeviceId> local_devices, size_t num_local_participants,
     const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,

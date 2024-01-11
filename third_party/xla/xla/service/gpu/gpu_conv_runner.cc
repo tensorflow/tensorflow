@@ -315,7 +315,7 @@ int64_t GetVectCSize(FilterLayout layout) {
 
 }  // anonymous namespace
 
-StatusOr<GpuConvConfig> GetGpuConvConfig(
+absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
     const GpuConvDescriptor& desc, const absl::string_view inst_as_string) {
   GpuConvConfig config;
 
@@ -526,7 +526,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   return config;
 }
 
-StatusOr<GpuConvConfig> GetGpuConvConfig(
+absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
     const HloCustomCallInstruction* cudnn_call) {
   GpuConvDescriptor descriptor;
 
@@ -545,7 +545,7 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   return GetGpuConvConfig(descriptor, cudnn_call->ToString());
 }
 
-StatusOr<GpuConvParams> GetGpuConvParams(
+absl::StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& config,
     absl::Span<const se::DeviceMemoryBase> operand_buffers,
     absl::Span<const se::DeviceMemoryBase> result_buffers) {

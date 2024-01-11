@@ -34,13 +34,13 @@ class HloOpProfiler {
   static std::unique_ptr<HloModule> MakeModuleForMeasurements(
       HloOpcode op, PrimitiveType data_type, int chain_length);
 
-  StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
-                                                  PrimitiveType data_type,
-                                                  int chain_length);
+  absl::StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
+                                                        PrimitiveType data_type,
+                                                        int chain_length);
 
  public:
   explicit HloOpProfiler(HloRunner& runner);
-  StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
+  absl::StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
       HloOpcode op, PrimitiveType data_type);
 
  private:

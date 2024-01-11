@@ -50,7 +50,7 @@ struct GpuNormDescriptor {
 
 // Structure to describe static properties of a fused norm op.
 struct GpuNormConfig {
-  static StatusOr<GpuNormConfig> For(const GpuNormDescriptor& desc) {
+  static absl::StatusOr<GpuNormConfig> For(const GpuNormDescriptor& desc) {
     std::vector<PrimitiveType> output_types;
 
     GpuNormConfig config;
@@ -58,7 +58,7 @@ struct GpuNormConfig {
     config.algorithm = se::dnn::AlgorithmDesc(desc.backend_config.algorithm());
 
     auto tensor_descriptor_from_shape =
-        [](Shape shape) -> StatusOr<se::dnn::TensorDescriptor> {
+        [](Shape shape) -> absl::StatusOr<se::dnn::TensorDescriptor> {
       TF_ASSIGN_OR_RETURN(
           se::dnn::DataType data_type,
           GetDNNDataTypeFromPrimitiveType(shape.element_type()));

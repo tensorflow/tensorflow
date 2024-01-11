@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/array4d.h"
@@ -70,7 +71,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
     if (!dnn) {
       return se::dnn::VersionInfo(0, 0, 0);
     }
-    StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
+    absl::StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
     if (se_cudnn_version.ok()) {
       cudnn_version = (*se_cudnn_version);
     } else {

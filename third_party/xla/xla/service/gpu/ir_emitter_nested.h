@@ -47,13 +47,13 @@ absl::Status CallNestedComputation(llvm::IRBuilder<>* builder,
                                    llvm::Value* output);
 
 // Like CallNestedComputation, but parameters and results are scalars.
-StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
+absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements);
 
 // Like CallNestedComputationWithScalars, but parameters are scalar addresses.
-StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
+absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs);

@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "llvm/IR/Module.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/dot_dimension_merger.h"
@@ -182,10 +184,13 @@ AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
-StatusOr<GpuCompiler::BackendCompileResult> AMDGPUCompiler::CompileTargetBinary(
-    const HloModuleConfig& module_config, llvm::Module* llvm_module,
-    se::GpuComputeCapability gpu_version, bool relocatable,
-    const HloModule* debug_module, const CompileOptions& options) {
+absl::StatusOr<GpuCompiler::BackendCompileResult>
+AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
+                                    llvm::Module* llvm_module,
+                                    se::GpuComputeCapability gpu_version,
+                                    bool relocatable,
+                                    const HloModule* debug_module,
+                                    const CompileOptions& options) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module_config);

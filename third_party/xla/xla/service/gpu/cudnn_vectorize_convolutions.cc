@@ -100,7 +100,7 @@ static std::vector<HloCustomCallInstruction*> GetRelevantConvs(
 // `sibling_computation`.
 //
 // Yes, we serialize/deserialize as a proto.  :)
-static StatusOr<HloComputation*> BuilderToHloComputation(
+static absl::StatusOr<HloComputation*> BuilderToHloComputation(
     XlaBuilder& b, XlaOp root, HloComputation* sibling_computation) {
   TF_ASSIGN_OR_RETURN(XlaComputation comp, b.Build(root));
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, comp.GetProgramShape());
@@ -332,7 +332,7 @@ absl::Status ReorderInt8NchwVect(HloCustomCallInstruction* conv,
 //
 // (The dimensions can appear in any order; which is N/C/etc is determined by
 // the convolutions' dnums.)
-static StatusOr<bool> TryRevectorizeConv(
+static absl::StatusOr<bool> TryRevectorizeConv(
     const se::CudaComputeCapability& compute_capability,
     const se::dnn::VersionInfo& cudnn_version, HloCustomCallInstruction* conv,
     int vect_size) {
@@ -493,7 +493,7 @@ static StatusOr<bool> TryRevectorizeConv(
 //
 // This requires that C be a multiple of vect_size.  CudnnPadForConvolutions can
 // add padding to make this true.
-static StatusOr<bool> TryVectorizeConv(
+static absl::StatusOr<bool> TryVectorizeConv(
     const se::CudaComputeCapability& compute_capability,
     const se::dnn::VersionInfo& cudnn_version, HloCustomCallInstruction* conv,
     int64_t vect_size) {
@@ -613,7 +613,7 @@ static StatusOr<bool> TryVectorizeConv(
 
 }  // namespace
 
-StatusOr<bool> CudnnVectorizeConvolutions::Run(
+absl::StatusOr<bool> CudnnVectorizeConvolutions::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

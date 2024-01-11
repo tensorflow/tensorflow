@@ -112,7 +112,7 @@ class ReductionFusion : public KernelFusionEmitterBase {
   }
 
  protected:
-  StatusOr<FusionEmissionResult> EmitInitializers(
+  absl::StatusOr<FusionEmissionResult> EmitInitializers(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion) const override;
 

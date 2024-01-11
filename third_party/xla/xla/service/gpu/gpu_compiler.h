@@ -67,18 +67,18 @@ class GpuCompiler : public LLVMCompiler {
   // from the attached device OR from the `options` struct (in which case the
   // attached device is ignored during the compilation).
   // If you call this directly, follow it with RunBackend rather than Compile.
-  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+  absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       HloModule* hlo_module, const se::StreamExecutor* stream_exec) override;
 
-  StatusOr<std::unique_ptr<Executable>> RunBackend(
+  absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      AotCompilationOptions const& options) override;
 
@@ -88,14 +88,14 @@ class GpuCompiler : public LLVMCompiler {
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
-  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
-      const std::string& serialized_aot_result) override;
+  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
+  LoadAotCompilationResult(const std::string& serialized_aot_result) override;
 
   // Stateless version of the same function.
-  static StatusOr<std::unique_ptr<AotCompilationResult>>
+  static absl::StatusOr<std::unique_ptr<AotCompilationResult>>
   LoadAotCompilationResultStatic(const std::string& serialized_aot_result);
 
-  StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+  absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
 
   absl::Status RunPostSchedulingPipelines(
@@ -158,17 +158,17 @@ class GpuCompiler : public LLVMCompiler {
   };
 
   // Schedule and compile the module.
-  StatusOr<CompileResultWithMetadata> CompileToBackendResult(
+  absl::StatusOr<CompileResultWithMetadata> CompileToBackendResult(
       HloModule* module, llvm::LLVMContext* llvm_context,
       se::StreamExecutor* executor, const CompileOptions& options,
       const se::DeviceDescription& gpu_device_info);
 
-  StatusOr<BackendCompileResult> CompileToTargetBinary(
+  absl::StatusOr<BackendCompileResult> CompileToTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const HloModule* debug_module);
 
-  StatusOr<BackendCompileResult> CompileSingleModule(
+  absl::StatusOr<BackendCompileResult> CompileSingleModule(
       const HloModuleConfig& module_config,
       se::GpuComputeCapability gpu_version, const HloModule* debug_module,
       llvm::Module* llvm_module, bool relocatable,
@@ -197,18 +197,19 @@ class GpuCompiler : public LLVMCompiler {
 
   // TODO(timshen): Replace `debug_module` with some portable debug information
   // that accommodates both HLO and MLIR.
-  virtual StatusOr<BackendCompileResult> CompileTargetBinary(
+  virtual absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) = 0;
 
   absl::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
-  virtual StatusOr<bool> CanUseLinkModules(const HloModuleConfig& config) {
+  virtual absl::StatusOr<bool> CanUseLinkModules(
+      const HloModuleConfig& config) {
     return false;
   }
 
-  virtual StatusOr<std::vector<uint8_t>> LinkModules(
+  virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) {

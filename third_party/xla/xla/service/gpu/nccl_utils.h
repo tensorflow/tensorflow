@@ -57,7 +57,7 @@ namespace gpu {
 
 ncclRedOp_t ToNcclReduction(ReductionKind kind);
 
-StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+absl::StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op);
 
 bool IsGlobalNcclConfig();
@@ -93,7 +93,7 @@ size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
-StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
+absl::StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
     const NcclUniqueIdCallback* unique_id_callback,  // may be null
     bool is_local);
 
@@ -134,7 +134,7 @@ struct NcclComm : public Lockable<ncclComm_t> {
   explicit NcclComm(ncclComm_t comm) : Lockable(comm) {}
 };
 
-StatusOr<NcclComm::Lock> AcquireNcclComm(
+absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
     const NcclUniqueIdCallback& unique_id_callback, int32_t rank,

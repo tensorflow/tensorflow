@@ -231,7 +231,7 @@ static void ForwardCollectiveAttrs(mlir::ModuleOp module,
   func->setAttr("num_partitions", b.getI64IntegerAttr(config.num_partitions()));
 }
 
-StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
+absl::StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes,
     std::unique_ptr<ThunkSequence> thunk_sequence, const HloModule* hlo_module,
@@ -303,7 +303,7 @@ static absl::Status GetMlirAllocationInfo(
 
 // The order of `thunk_sequence` corresponds to
 // `hlo_schedule->ThunkLaunchOrder()`.
-StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
+absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,

@@ -41,7 +41,7 @@ class InputSlicesTest : public HloTestBase {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 };
 
-StatusOr<std::unique_ptr<LoopFusion>> GetLoopFusion(
+absl::StatusOr<std::unique_ptr<LoopFusion>> GetLoopFusion(
     const std::optional<HloFusionAnalysis>& analysis) {
   TF_RET_CHECK(analysis != std::nullopt);
 

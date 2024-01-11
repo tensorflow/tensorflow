@@ -279,7 +279,7 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
   return std::nullopt;
 }
 
-StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
+absl::StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
   // Match one of the following patterns.
   //   conv -> slice -> pad
   //   conv -> reshape -> slice-> pad
@@ -462,7 +462,7 @@ StatusOr<bool> TrySimplifyPadding(HloInstruction* instr) {
 
 }  // anonymous namespace
 
-StatusOr<bool> CudnnSimplifyPadding::Run(
+absl::StatusOr<bool> CudnnSimplifyPadding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

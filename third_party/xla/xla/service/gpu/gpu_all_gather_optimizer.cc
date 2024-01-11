@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> AllGatherOptimizer::Run(
+absl::StatusOr<bool> AllGatherOptimizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

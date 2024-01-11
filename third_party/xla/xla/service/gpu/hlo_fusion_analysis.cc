@@ -138,7 +138,7 @@ HloFusionAnalysis::HloFusionAnalysis(
       input_output_info_(std::move(input_output_info)) {}
 
 // static
-StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
+absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
     FusionBackendConfig backend_config,
     std::unique_ptr<HloFusionAdaptor> fusion,
     const se::DeviceDescription* device_info) {
@@ -173,7 +173,7 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
 }
 
 // static
-StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
+absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription* device_info) {
   CHECK(device_info != nullptr);

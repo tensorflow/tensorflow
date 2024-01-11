@@ -170,7 +170,7 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
 }
 }  // namespace
 
-StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
+absl::StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
   switch (op) {
     case HloOpcode::kAtan2:
       return TargetDeviceFunctionID::kAtan2;

@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/infeed_manager.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/xla_executor_state.h"
@@ -36,7 +39,7 @@ InfeedManager::InfeedManager(se::StreamExecutor* executor)
   stream_->Init();
 }
 
-static StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
+static absl::StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
     se::Stream* stream, int64_t size, const void* source) {
   if (size > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",

@@ -196,7 +196,7 @@ bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
          hlo.custom_call_target() == kCubDeviceRadixSortTarget;
 }
 
-StatusOr<CudnnConvKind> GetCudnnConvKind(
+absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();
   if (target == kCudnnConvForwardCallTarget) {
@@ -232,7 +232,7 @@ std::string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
+absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();
   if (target == kCudnnfMHABmmBmmCallTarget) return CudnnfMHAKind::kBmmBmm;
@@ -315,7 +315,7 @@ std::string CudnnfMHAKindToString(CudnnfMHAKind kind) {
   }
 }
 
-StatusOr<std::string> GetFMHAInstructionPrefix(
+absl::StatusOr<std::string> GetFMHAInstructionPrefix(
     const std::string& custom_call_target) {
   if (custom_call_target == kCudnnfMHABmmBmmCallTarget) {
     return "fmha-bmm-bmm";

@@ -65,7 +65,7 @@ struct DecomposedReplicaGroups {
   std::vector<ReplicaGroup> new_all_reduce_groups;
 };
 
-StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
+absl::StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
     const ReplicaGroup& replica_group,
     const DeviceAssignment& device_assignment, size_t num_devices_per_host) {
   int group_size = replica_group.replica_ids_size();
@@ -116,8 +116,9 @@ StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
                                   std::move(new_all_reduce_groups)}};
 }
 
-StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
-    const HloAllReduceInstruction& all_reduce, size_t num_devices_per_host) {
+absl::StatusOr<std::optional<DecomposedReplicaGroups>>
+TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
+                          size_t num_devices_per_host) {
   const DeviceAssignment& device_assignment =
       all_reduce.GetModule()->config().static_device_assignment();
 
@@ -192,8 +193,8 @@ StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
 //
 // When applied repeatedly, this transformation will reproduce the same pattern
 // as described in the BlueConnect paper.
-StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
-                                     size_t num_devices_per_host) {
+absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
+                                           size_t num_devices_per_host) {
   TF_RET_CHECK(all_reduce);
   TF_RET_CHECK(!all_reduce->has_sharding());
 
@@ -274,7 +275,7 @@ StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
 
 }  // namespace
 
-StatusOr<bool> AllReduceBlueConnect::Run(
+absl::StatusOr<bool> AllReduceBlueConnect::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running AllReduceBlueConnect";

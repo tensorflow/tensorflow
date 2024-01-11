@@ -94,7 +94,7 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
       d_scale, d_amax, *algorithm, scratch_allocator);
 }
 
-StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
+absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
     const stream_executor::Stream* stream) {
   absl::MutexLock lock(&matmul_plans_cache_mutex_);
   auto it = matmul_plans_cache_.find(stream);
@@ -106,7 +106,7 @@ StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
   return it->second.get();
 }
 
-StatusOr<std::optional<se::gpu::BlasLt::MatmulAlgorithm> >
+absl::StatusOr<std::optional<se::gpu::BlasLt::MatmulAlgorithm> >
 CublasLtMatmulThunk::GetMatmulAlgorithm(
     const se::gpu::BlasLt::MatmulPlan* plan) {
   absl::MutexLock lock(&matmul_algorithm_cache_mutex_);

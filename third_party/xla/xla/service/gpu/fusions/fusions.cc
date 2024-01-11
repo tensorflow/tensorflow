@@ -73,7 +73,7 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 
 }  // namespace
 
-std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
+std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
 LmhloFusionInfo::GetCopyFusion() const {
   auto params = GetHloOperands(fusion_op_);
   auto outputs = GetHloOutputs(fusion_op_);
@@ -112,7 +112,7 @@ LmhloFusionInfo::GetCopyFusion() const {
                                         std::move(dsts));
 }
 
-std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
+std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
 HloFusionInfo::GetCopyFusion() const {
   std::vector<BufferAllocation::Slice> src_buffers;
   for (auto* root : analysis().fusion_roots()) {
@@ -161,7 +161,7 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   return ret.ok() && *ret;
 }
 
-StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
+absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     const FusionInfo& fusion_info) {
   const auto& analysis = fusion_info.analysis();
   switch (analysis.GetEmitterFusionKind()) {

@@ -369,7 +369,7 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
 }
 }  // namespace
 
-/*static*/ StatusOr<GpufMHAConfig> GpufMHAConfig::For(
+/*static*/ absl::StatusOr<GpufMHAConfig> GpufMHAConfig::For(
     const GpufMHADescriptor &desc) {
   // Get shapes from desc.
   const Shape &lhs_bmm1_shape = desc.lhs_bmm1_shape;
@@ -465,7 +465,7 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   return config;
 }
 
-/*static*/ StatusOr<GpufMHABackwardConfig> GpufMHABackwardConfig::For(
+/*static*/ absl::StatusOr<GpufMHABackwardConfig> GpufMHABackwardConfig::For(
     const GpufMHABackwardDescriptor &desc) {
   // Get shapes from desc.
 
@@ -618,7 +618,7 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   return config;
 }
 
-/*static*/ StatusOr<GpufMHAParams> GpufMHAParams::For(
+/*static*/ absl::StatusOr<GpufMHAParams> GpufMHAParams::For(
     const GpufMHAConfig &config, se::DeviceMemoryBase lhs_bmm1_buffer,
     se::DeviceMemoryBase rhs_bmm1_buffer, se::DeviceMemoryBase rhs_bmm2_buffer,
     se::DeviceMemoryBase output_buffer,
@@ -638,7 +638,7 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   return params;
 }
 
-/*static*/ StatusOr<GpufMHABackwardParams> GpufMHABackwardParams::For(
+/*static*/ absl::StatusOr<GpufMHABackwardParams> GpufMHABackwardParams::For(
     const GpufMHABackwardConfig &config,
     se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer,
     se::DeviceMemoryBase bmm1_grad_gemm2_rhs_buffer,

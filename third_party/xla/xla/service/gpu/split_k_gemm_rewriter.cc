@@ -110,7 +110,7 @@ absl::Status UncompilableMatmul(absl::string_view explanation) {
 
 }  // namespace
 
-StatusOr<HloInstruction*> MakeSplitKOperand(
+absl::StatusOr<HloInstruction*> MakeSplitKOperand(
     HloInstruction& dot, const TritonFusionAnalysis& analysis,
     const TritonGemmConfig& config, const int64_t contracting_dim_idx,
     const int operand_number) {

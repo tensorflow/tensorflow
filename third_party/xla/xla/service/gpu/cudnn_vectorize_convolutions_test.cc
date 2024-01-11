@@ -43,8 +43,8 @@ namespace m = ::xla::match;
 class CudnnVectorizeConvolutionsTest : public HloTestBase {
  protected:
   // Runs this pass and some cleanup to make pattern-matching easier.
-  StatusOr<bool> Run(std::pair<int, int> compute_capability,
-                     HloModule* module) {
+  absl::StatusOr<bool> Run(std::pair<int, int> compute_capability,
+                           HloModule* module) {
     CudnnVectorizeConvolutions pass(
         se::CudaComputeCapability{compute_capability.first,
                                   compute_capability.second},

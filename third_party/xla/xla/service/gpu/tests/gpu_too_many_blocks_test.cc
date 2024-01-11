@@ -48,7 +48,7 @@ ENTRY primitive_computation_mul.8 {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo_text));
 
-  StatusOr<std::unique_ptr<Executable>> failed_executable =
+  absl::StatusOr<std::unique_ptr<Executable>> failed_executable =
       backend().compiler()->RunBackend(
           std::move(optimized_module), backend().default_stream_executor(),
           backend().default_stream_executor()->GetAllocator());

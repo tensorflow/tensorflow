@@ -103,7 +103,7 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
   autotune_cache.clear();
 }
 
-/* static*/ StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
+/* static*/ absl::StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
     se::RedzoneAllocator& allocator, const Shape& shape,
     const AutotuneConfig& config, int64_t& rng_state) {
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
@@ -164,7 +164,7 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
   return inserted;
 }
 
-/*static*/ StatusOr<AutotuneResult> AutotunerUtil::Autotune(
+/*static*/ absl::StatusOr<AutotuneResult> AutotunerUtil::Autotune(
     const HloInstruction* instr, const AutotuneConfig& config,
     const AutotuneNoCacheFn& autotune_fn) {
   AutotuneCacheKey key = GetKey(instr, config);
@@ -216,7 +216,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
   return absl::OkStatus();
 }
 
-/*static*/ StatusOr<std::string> AutotunerUtil::SerializeAutotuneResults(
+/*static*/ absl::StatusOr<std::string> AutotunerUtil::SerializeAutotuneResults(
     bool as_textproto) {
   AutotuneResults results;
   results.set_version(kVersion);
@@ -311,9 +311,10 @@ AutotunerUtil::ExtractComputationIntoNewModule(
   return new_hlo_module;
 }
 
-/*static*/ StatusOr<se::RedzoneAllocator> AutotunerUtil::CreateRedzoneAllocator(
-    const AutotuneConfig& config, const DebugOptions& opts,
-    se::Stream* force_stream) {
+/*static*/ absl::StatusOr<se::RedzoneAllocator>
+AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
+                                      const DebugOptions& opts,
+                                      se::Stream* force_stream) {
   se::Stream* stream = force_stream;
   if (stream == nullptr) {
     TF_ASSIGN_OR_RETURN(stream, config.GetStream());

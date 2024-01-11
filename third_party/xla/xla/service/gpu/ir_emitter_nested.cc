@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
@@ -66,7 +67,7 @@ class IrEmitterNested : public IrEmitter {
   //
   // The allocation index for these constants will always be -1 (i.e. doesn't
   // correspond to any allocation)
-  StatusOr<llvm::Function*> CodegenNestedComputation();
+  absl::StatusOr<llvm::Function*> CodegenNestedComputation();
 
  protected:
   absl::Status EmitTargetElementLoop(
@@ -89,7 +90,7 @@ IrEmitterNested::IrEmitterNested(const HloComputation& nested_computation,
 
 // Nested function serves the same purpose on GPU as a thread-local function on
 // a CPU.
-StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
+absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   // Include a fingerprint of the HLO in the function name. Currently, codegen
   // is invoked on temporary HLO objects, which means the address of the
   // computation is not necessarily unique.
@@ -695,7 +696,7 @@ absl::Status CallNestedComputation(llvm::IRBuilder<>* builder,
   return absl::OkStatus();
 }
 
-StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
+absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements) {
@@ -710,7 +711,7 @@ StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
                                               computation, parameter_buffers);
 }
 
-StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
+absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs) {

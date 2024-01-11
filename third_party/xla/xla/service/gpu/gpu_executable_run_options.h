@@ -63,7 +63,7 @@ class NcclCliqueKey {
 };
 
 using NcclUniqueIdCallback =
-    std::function<StatusOr<std::string>(const NcclCliqueKey&)>;
+    std::function<absl::StatusOr<std::string>(const NcclCliqueKey&)>;
 
 // GPU-specific executable options.
 // We keep these separate from ExecutableRunOptions to avoid adding
@@ -136,7 +136,7 @@ struct NcclExecuteParams {
   const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null
   const NcclUniqueIdCallback* nccl_unique_id_callback;         // may be null
 
-  StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
+  absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
 };
 
 }  // namespace gpu

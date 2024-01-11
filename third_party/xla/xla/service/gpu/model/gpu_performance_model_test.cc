@@ -327,7 +327,7 @@ ENTRY fusion {
 )";
 
   auto run = [&](absl::string_view hlo_text)
-      -> StatusOr<GpuPerformanceModel::RunTimes> {
+      -> absl::StatusOr<GpuPerformanceModel::RunTimes> {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_text));
     GpuHloCostAnalysis analysis(options_, &dev_info_);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));

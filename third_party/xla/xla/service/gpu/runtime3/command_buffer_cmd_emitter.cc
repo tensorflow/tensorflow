@@ -65,31 +65,32 @@ static auto ArgsAccess(const std::vector<bool>& written) {
   return args_access;
 }
 
-static StatusOr<Command> Convert(const KernelThunk& thunk) {
+static absl::StatusOr<Command> Convert(const KernelThunk& thunk) {
   return std::make_unique<LaunchCmd>(
       thunk.kernel_name(), thunk.arguments(), ArgsAccess(thunk.written()),
       thunk.launch_dimensions(), thunk.shmem_bytes());
 }
 
-static StatusOr<Command> Convert(const CustomKernelThunk& thunk) {
+static absl::StatusOr<Command> Convert(const CustomKernelThunk& thunk) {
   return std::make_unique<CustomKernelLaunchCmd>(
       thunk.arguments(), ArgsAccess(thunk.written()), thunk.custom_kernel());
 }
 
-static StatusOr<Command> Convert(const DeviceToDeviceCopyThunk& thunk) {
+static absl::StatusOr<Command> Convert(const DeviceToDeviceCopyThunk& thunk) {
   return std::make_unique<MemcpyDeviceToDeviceCmd>(
       thunk.destination(), thunk.source(), thunk.size_bytes());
 }
 
-static StatusOr<Command> Convert(const MemzeroThunk& thunk) {
+static absl::StatusOr<Command> Convert(const MemzeroThunk& thunk) {
   return std::make_unique<MemzeroCmd>(thunk.destination());
 }
 
-static StatusOr<Command> Convert(const Memset32BitValueThunk& thunk) {
+static absl::StatusOr<Command> Convert(const Memset32BitValueThunk& thunk) {
   return std::make_unique<Memset32Cmd>(thunk.destination(), thunk.value());
 }
 
-static StatusOr<Command> Convert(const WhileThunk& thunk, bool force_barriers) {
+static absl::StatusOr<Command> Convert(const WhileThunk& thunk,
+                                       bool force_barriers) {
   TF_ASSIGN_OR_RETURN(
       CommandBufferCmdSequence cond_cmds,
       ConvertToCommands(thunk.condition_thunk_sequence()->thunks(),
@@ -101,7 +102,7 @@ static StatusOr<Command> Convert(const WhileThunk& thunk, bool force_barriers) {
                                     std::move(cond_cmds), std::move(body_cmds));
 }
 
-static StatusOr<Command> Convert(const GemmThunk& thunk) {
+static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {
   if (!thunk.workspace().has_value()) {
     return absl::InternalError(
         "Gemm thunk does not contain a workspace buffer");
@@ -111,35 +112,37 @@ static StatusOr<Command> Convert(const GemmThunk& thunk) {
       thunk.output_buffer(), thunk.workspace().value(), thunk.deterministic());
 }
 
-static StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
   return std::make_unique<AllReduceCmd>(thunk.config(), thunk.reduction_kind(),
                                         thunk.buffers());
 }
 
-static StatusOr<Command> Convert(const NcclReduceScatterStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(
+    const NcclReduceScatterStartThunk& thunk) {
   return std::make_unique<ReduceScatterCmd>(
       thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
-static StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
+static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
   return std::make_unique<AllGatherCmd>(thunk.config(), thunk.buffers());
 }
 
 //===----------------------------------------------------------------------===//
 
 template <typename ThunkType>
-static StatusOr<Command> Convert(const Thunk& thunk) {
+static absl::StatusOr<Command> Convert(const Thunk& thunk) {
   return Convert(static_cast<const ThunkType&>(thunk));
 }
 
 template <typename ThunkType>
-static StatusOr<Command> Convert(const Thunk& thunk, bool force_barriers) {
+static absl::StatusOr<Command> Convert(const Thunk& thunk,
+                                       bool force_barriers) {
   return Convert(static_cast<const ThunkType&>(thunk), force_barriers);
 }
 
 static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
                                    const Thunk& thunk, bool force_barriers) {
-  auto append = [&](StatusOr<Command> command) -> absl::Status {
+  auto append = [&](absl::StatusOr<Command> command) -> absl::Status {
     if (command.ok()) {
       cmd_sequence.Append(std::move(*command));
       return absl::OkStatus();
@@ -197,7 +200,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
   return absl::OkStatus();
 }
 
-StatusOr<CommandBufferCmdSequence> ConvertToCommands(
+absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
     const ThunkSequence& sequence, bool force_barriers) {
   CommandBufferCmdSequence cmd_sequence(force_barriers);
   TF_RETURN_IF_ERROR(AppendCommands(cmd_sequence, sequence, force_barriers));

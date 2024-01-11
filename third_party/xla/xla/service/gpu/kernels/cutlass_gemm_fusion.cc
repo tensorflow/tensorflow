@@ -130,7 +130,8 @@ static absl::Status MatchSimpleGemm(
 
 // Returns matched GEMM with one of the operands upcasted to the accumulator
 // data type with an HLO convert instruction.
-static StatusOr<GemmWithUpcast> MatchGemmWithUpcast(HloDotInstruction* dot) {
+static absl::StatusOr<GemmWithUpcast> MatchGemmWithUpcast(
+    HloDotInstruction* dot) {
   TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
   GemmWithUpcast match(dot);
@@ -151,7 +152,7 @@ static StatusOr<GemmWithUpcast> MatchGemmWithUpcast(HloDotInstruction* dot) {
 }
 
 // Returns matched GEMM with result used to update a slice.
-static StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
+static absl::StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
     HloDynamicUpdateSliceInstruction* update_slice) {
   GemmWithDynamicSlice match(update_slice);
 
@@ -237,7 +238,7 @@ CutlassGemmWithUpcastPattern::TryMatch(const se::DeviceDescription& device,
 
 class CutlassGemmFusion : public CustomFusion {
  public:
-  StatusOr<std::vector<CustomKernel>> LoadKernels(
+  absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto* dot = DynCast<HloDotInstruction>(computation->root_instruction());
@@ -275,7 +276,7 @@ class CutlassGemmFusion : public CustomFusion {
 
 class CutlassGemmWithUpcastFusion : public CustomFusion {
  public:
-  StatusOr<std::vector<CustomKernel>> LoadKernels(
+  absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto* dot = DynCast<HloDotInstruction>(computation->root_instruction());
@@ -303,7 +304,7 @@ class CutlassGemmWithUpcastFusion : public CustomFusion {
 
 class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
  public:
-  StatusOr<std::vector<CustomKernel>> LoadKernels(
+  absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto [root, workspace] =

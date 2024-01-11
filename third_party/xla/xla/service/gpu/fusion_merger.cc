@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -291,7 +292,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   return {};
 }
 
-StatusOr<bool> FusionMerger::Run(
+absl::StatusOr<bool> FusionMerger::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

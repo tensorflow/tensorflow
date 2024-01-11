@@ -284,7 +284,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   se::GpuComputeCapability gpu_version_;
 };
 
-StatusOr<bool> GpuTreeReductionRewriter::Run(
+absl::StatusOr<bool> GpuTreeReductionRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();

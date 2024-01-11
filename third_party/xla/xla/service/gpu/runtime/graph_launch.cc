@@ -473,7 +473,7 @@ static absl::StatusOr<OwnedGpuGraph> CaptureGraph(
     }
   }
 
-  StatusOr<StreamPool::Ptr> capture_stream =
+  absl::StatusOr<StreamPool::Ptr> capture_stream =
       run_options->BorrowStream(executor->device_ordinal());
 
   if (!capture_stream.ok())

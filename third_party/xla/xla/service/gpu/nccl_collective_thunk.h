@@ -211,7 +211,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 
 #if XLA_ENABLE_XCCL
 // TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
-StatusOr<NcclComm::Lock> LockNcclComm(
+absl::StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
@@ -225,12 +225,12 @@ struct DeviceBufferPair {
   se::DeviceMemoryBase destination_buffer;
 };
 
-StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const Thunk::ExecuteParams& params,
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
 
-StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);

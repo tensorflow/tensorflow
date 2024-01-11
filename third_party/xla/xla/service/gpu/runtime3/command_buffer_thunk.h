@@ -46,7 +46,7 @@ class CommandBufferThunk : public Thunk {
   // Return the allocation address that was lazilly allocated inside command
   // buffer. This API is required when the buffers are allocated inside command
   // buffer but will be consumed by non-command buffer operations.
-  StatusOr<se::DeviceMemoryBase> GetCommandBufferAllocationAddress(
+  absl::StatusOr<se::DeviceMemoryBase> GetCommandBufferAllocationAddress(
       const ExecuteParams& params, int64_t index);
 
  private:
@@ -100,8 +100,8 @@ class CommandBufferThunk : public Thunk {
   };
 
   // Returns a command buffer instantiated for `executor` or creates new one.
-  StatusOr<std::shared_ptr<ExecutorCommandBuffer>> GetOrCreateCommandBuffer(
-      se::StreamExecutor* executor);
+  absl::StatusOr<std::shared_ptr<ExecutorCommandBuffer>>
+  GetOrCreateCommandBuffer(se::StreamExecutor* executor);
 
   // Each individual command buffer allocates state on device (CUDA graph) and
   // it adds up pretty quickly. To prevent OOM errors we proactively evict

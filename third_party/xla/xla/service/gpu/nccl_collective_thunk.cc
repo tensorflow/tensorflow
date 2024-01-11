@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/layout_util.h"
@@ -188,7 +189,7 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
 }
 
 #if XLA_ENABLE_XCCL
-StatusOr<NcclComm::Lock> LockNcclComm(
+absl::StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
@@ -235,7 +236,7 @@ StatusOr<NcclComm::Lock> LockNcclComm(
 }
 #endif  // XLA_ENABLE_XCCL
 
-StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const Thunk::ExecuteParams& params,
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types) {
@@ -243,7 +244,7 @@ StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
                                 element_types);
 }
 
-StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types) {

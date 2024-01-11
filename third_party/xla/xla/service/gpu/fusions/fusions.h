@@ -45,7 +45,7 @@ class FusionInfo {
   // fusion failed to pattern match. Returns an error if the fusion successfully
   // pattern matched, but buffer assignment failed.
   // TODO(b/204548848): Find a proper abstraction for this once LMHLO is gone.
-  virtual std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
+  virtual std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
   GetCopyFusion() const = 0;
 
  private:
@@ -62,8 +62,8 @@ class LmhloFusionInfo : public FusionInfo {
         allocations_(allocations) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override;
-  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
-      const override;
+  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
+  GetCopyFusion() const override;
 
  private:
   mlir::lmhlo::FusionOp fusion_op_;
@@ -80,8 +80,8 @@ class HloFusionInfo : public FusionInfo {
         buffer_assignment_(buffer_assignment) {}
 
   bool CanEmitDynamicUpdateSliceInPlace() const override;
-  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
-      const override;
+  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
+  GetCopyFusion() const override;
 
  private:
   const HloFusionInstruction* instr_;
@@ -98,8 +98,8 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
     return true;
   }
 
-  std::optional<StatusOr<std::unique_ptr<FusionInterface>>> GetCopyFusion()
-      const override {
+  std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
+  GetCopyFusion() const override {
     // Copy fusions can't be created without buffer assignment. Note:
     // technically, this is only needed to generate the chunk, the validation
     // itself could be done without a buffer assignment. However, we currently
@@ -110,7 +110,7 @@ class PreBufferAssignmentFusionInfo : public FusionInfo {
 
 // Returns the emitter for the given fusion. Returns nullopt if the fusion
 // type is not yet supported.
-StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
+absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     const FusionInfo& fusion_info);
 
 }  // namespace gpu

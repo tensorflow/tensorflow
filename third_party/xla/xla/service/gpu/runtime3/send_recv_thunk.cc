@@ -49,7 +49,7 @@ using tsl::profiler::TraceMeEncode;
 
 // For sharded buffers we should execute Send/Recv operations only on devices
 // with maximal sharding, and do nothing on every other device.
-static StatusOr<bool> ShouldSkip(
+static absl::StatusOr<bool> ShouldSkip(
     std::string_view operation, const Thunk::ExecuteParams& params,
     const std::optional<GlobalDeviceId>& device_constraint) {
   if (!device_constraint.has_value()) return false;

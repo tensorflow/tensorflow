@@ -30,10 +30,12 @@ namespace gpu {
 
 // Attempts to build an initializer constant for the given value. Returns an
 // empty optional if the value is not a constant.
-StatusOr<std::optional<std::unique_ptr<Thunk>>> BuildConstantInitializerThunk(
-    IrEmitterContext& ir_emitter_context, mlir::Operation* op,
-    const HloInstruction* instr, const HloInstruction* init_value,
-    mlir::Value dest, BufferAllocation::Slice dest_slice);
+absl::StatusOr<std::optional<std::unique_ptr<Thunk>>>
+BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
+                              mlir::Operation* op, const HloInstruction* instr,
+                              const HloInstruction* init_value,
+                              mlir::Value dest,
+                              BufferAllocation::Slice dest_slice);
 
 }  // namespace gpu
 }  // namespace xla

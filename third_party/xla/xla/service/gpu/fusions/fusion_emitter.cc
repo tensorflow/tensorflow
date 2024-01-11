@@ -186,8 +186,8 @@ Domain KernelFusionInterface::GetThreadIdDomain(
   return result;
 }
 
-StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
-                    std::vector<llvm_ir::IrArray>>>
+absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
+                          std::vector<llvm_ir::IrArray>>>
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const std::string& suggested_name,
                      absl::Span<const KernelArgument> arguments,
@@ -283,7 +283,7 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
   return {{kernel, std::move(inputs), std::move(outputs)}};
 }
 
-StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
+absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());
@@ -304,7 +304,7 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
   std::vector<llvm_ir::IrArray> inputs, outputs;
   auto [entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
       fused_computation, kernel_arguments.args(), /*discriminator=*/"",
-      [&]() -> StatusOr<KernelReuseCache::Entry> {
+      [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
         llvm::Function* kernel;
         TF_ASSIGN_OR_RETURN(std::tie(kernel, inputs, outputs),
                             BuildKernelPrototype(

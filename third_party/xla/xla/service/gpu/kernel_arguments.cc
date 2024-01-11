@@ -36,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<KernelArgument> KernelArgument::Create(
+absl::StatusOr<KernelArgument> KernelArgument::Create(
     absl::Span<const BufferAllocation* const> allocations, mlir::Value value,
     bool is_written) {
   TF_ASSIGN_OR_RETURN(
@@ -44,7 +44,7 @@ StatusOr<KernelArgument> KernelArgument::Create(
   return KernelArgument(value, GetShape(value), slice, is_written);
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> KernelArguments::Create(
     absl::Span<const BufferAllocation* const> allocations,
     mlir::lmhlo::FusionOp fusion) {
   auto operands = GetHloOperands(fusion);
@@ -66,7 +66,7 @@ StatusOr<KernelArguments> KernelArguments::Create(
   return KernelArguments{std::move(kernel_arguments)};
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const HloFusionInstruction* fusion) {
   std::vector<KernelArgument> kernel_arguments;
@@ -151,7 +151,7 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
   return kernel_arguments;
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> KernelArguments::Create(
     absl::Span<const BufferAllocation* const> allocations,
     mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands) {
   std::vector<KernelArgument> kernel_arguments;
@@ -165,7 +165,7 @@ StatusOr<KernelArguments> KernelArguments::Create(
   return KernelArguments{std::move(kernel_arguments)};
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const HloInstruction* non_fusion_hlo,
     absl::Span<const HloInstruction* const> needed_operands) {

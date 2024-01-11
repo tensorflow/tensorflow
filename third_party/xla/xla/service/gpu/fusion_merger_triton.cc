@@ -248,7 +248,7 @@ bool TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(
 
 }  // anonymous namespace
 
-StatusOr<bool> FusionMergerTriton::Run(
+absl::StatusOr<bool> FusionMergerTriton::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   int fused_comps = 0;

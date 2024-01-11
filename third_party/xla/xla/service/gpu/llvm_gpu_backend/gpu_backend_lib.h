@@ -50,7 +50,7 @@ absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
 // The Compile.* interfaces each create their own llvm::LLVMContext objects for
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
-StatusOr<std::string> CompileToPtx(
+absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
@@ -60,7 +60,7 @@ namespace amdgpu {
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.
-StatusOr<std::vector<uint8_t>> CompileToHsaco(
+absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& rocdl_dir_path,
     const std::string& module_config_cache_key);

@@ -61,7 +61,7 @@ size_t EstimateOptimalNumThreads(size_t n, size_t k, size_t batch_size) {
 
 // Gets the right version of TopK kernel based on the value of `k`.
 template <typename T>
-StatusOr<void*> GetKernel(int n, int k) {
+absl::StatusOr<void*> GetKernel(int n, int k) {
   if (k <= 1) return GetTopKKernelForK<T, 1>(n);
   if (k <= 2) return GetTopKKernelForK<T, 2>(n);
   if (k <= 4) return GetTopKKernelForK<T, 4>(n);
@@ -73,7 +73,7 @@ StatusOr<void*> GetKernel(int n, int k) {
 // Returns the function creating packed arguments for TopK kernel.
 template <typename T>
 KernelArgsPacking CreateTopKArgsPacking(size_t num_elements, size_t k) {
-  using Packed = StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
+  using Packed = absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
     auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
@@ -90,8 +90,8 @@ KernelArgsPacking CreateTopKArgsPacking(size_t num_elements, size_t k) {
 // Implementation for creating a CustomKernel for TopK operation with element
 // type `T`.
 template <typename T>
-StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
-                                    size_t k, size_t batch_size) {
+absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
+                                          size_t k, size_t batch_size) {
   constexpr size_t kMaxKVSize = sizeof(uint64_t);
   constexpr size_t kWavefrontSize = 32;
   // Allocate shmem assuming we have a full reduction.
@@ -116,9 +116,10 @@ StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
 
 }  // namespace
 
-StatusOr<CustomKernel> GetTopKKernel(std::string name, PrimitiveType dtype,
-                                     size_t num_elements, size_t k,
-                                     size_t batch_size) {
+absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
+                                           PrimitiveType dtype,
+                                           size_t num_elements, size_t k,
+                                           size_t batch_size) {
   switch (dtype) {
     case PrimitiveType::F32:
       return GetTypedTopK<float>(std::move(name), num_elements, k, batch_size);

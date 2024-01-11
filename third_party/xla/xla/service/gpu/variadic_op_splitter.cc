@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,7 +36,8 @@ namespace {
 // how big these buffers are.
 constexpr int32_t kMaxParameters = 128;
 
-StatusOr<bool> SplitConcatenate(HloInstruction* concat, HloComputation* comp) {
+absl::StatusOr<bool> SplitConcatenate(HloInstruction* concat,
+                                      HloComputation* comp) {
   auto operands = concat->operands();
   std::vector<HloInstruction*> operands_to_split(operands.begin(),
                                                  operands.end());
@@ -89,7 +91,7 @@ std::vector<HloInstruction*> GetRelevantVariadicOps(HloComputation* comp) {
 
 }  // namespace
 
-StatusOr<bool> VariadicOpSplitter::Run(
+absl::StatusOr<bool> VariadicOpSplitter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

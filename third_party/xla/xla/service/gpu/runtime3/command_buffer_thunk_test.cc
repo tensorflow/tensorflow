@@ -73,7 +73,7 @@ static CommandBufferCmd::ExecutableSource ExecutableSource() {
 }
 
 KernelArgsPacking CreateDefaultArgsPacking() {
-  using Packed = StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
+  using Packed = absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
     auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);

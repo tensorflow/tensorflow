@@ -52,13 +52,13 @@ using ComparisonKernelT =
 //
 // Returns `true` if two buffers are equal, `false` otherwise.
 template <typename ElementT>
-static StatusOr<bool> DeviceCompare(se::Stream* stream,
-                                    se::DeviceMemoryBase current,
-                                    se::DeviceMemoryBase expected,
-                                    const Shape& buffer_shape,
-                                    const HloModuleConfig& config,
-                                    std::string_view kernel_name,
-                                    void* kernel_symbol) {
+static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
+                                          se::DeviceMemoryBase current,
+                                          se::DeviceMemoryBase expected,
+                                          const Shape& buffer_shape,
+                                          const HloModuleConfig& config,
+                                          std::string_view kernel_name,
+                                          void* kernel_symbol) {
   se::StreamExecutor* executor = stream->parent();
 
   se::ScopedDeviceMemory<uint64_t> out_param =
@@ -104,8 +104,9 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
 //
 // Returns true if no differences were seen, false otherwise.
 template <typename ElementType, typename ComparisonType>
-StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase current,
-                           se::DeviceMemoryBase expected) {
+absl::StatusOr<bool> HostCompare(se::Stream* stream,
+                                 se::DeviceMemoryBase current,
+                                 se::DeviceMemoryBase expected) {
   int64_t n = current.size() / sizeof(ElementType);
   std::vector<ElementType> host_current(n), host_expected(n);
   stream->ThenMemcpy(host_current.data(), current, current.size());
@@ -153,13 +154,11 @@ StatusOr<bool> HostCompare(se::Stream* stream, se::DeviceMemoryBase current,
 }
 
 template <typename ElementT, typename ComparisonT>
-static StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
-                                                se::DeviceMemoryBase current,
-                                                se::DeviceMemoryBase expected,
-                                                const Shape& shape,
-                                                const HloModuleConfig& config,
-                                                std::string_view kernel_name,
-                                                void* kernel_symbol) {
+static absl::StatusOr<bool> CompareEqualParameterized(
+    se::Stream* stream, se::DeviceMemoryBase current,
+    se::DeviceMemoryBase expected, const Shape& shape,
+    const HloModuleConfig& config, std::string_view kernel_name,
+    void* kernel_symbol) {
   XLA_SCOPED_LOGGING_TIMER("BufferComparator::CompareEqual");
   TF_ASSIGN_OR_RETURN(
       bool result, DeviceCompare<ElementT>(stream, current, expected, shape,
@@ -176,7 +175,7 @@ static StatusOr<bool> CompareEqualParameterized(se::Stream* stream,
   return false;
 }
 
-StatusOr<bool> BufferComparator::CompareEqual(
+absl::StatusOr<bool> BufferComparator::CompareEqual(
     se::Stream* stream, se::DeviceMemoryBase current,
     se::DeviceMemoryBase expected) const {
   switch (shape_.element_type()) {

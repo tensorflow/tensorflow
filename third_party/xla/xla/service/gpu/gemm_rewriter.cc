@@ -830,7 +830,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  StatusOr<bool> CreateF8CustomCall(
+  absl::StatusOr<bool> CreateF8CustomCall(
       HloInstruction *instr, GemmBackendConfig &gemm_backend_config,
       HloInstruction *a, HloInstruction *b, HloInstruction *a_scale,
       HloInstruction *b_scale, bool a_mult_scale, bool b_mult_scale,
@@ -1352,12 +1352,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   // convert is only used for F8 matmuls as cublasLt has specific constraints
   // on the vector bias type for such matmuls. The optional bitcast is
   // necessary to handle high rank input cases.
-  StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
-                                   HloInstruction *broadcast,
-                                   HloInstruction *gemm,
-                                   HloInstruction *slice = nullptr,
-                                   HloInstruction *convert = nullptr,
-                                   HloInstruction *bitcast = nullptr) {
+  absl::StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
+                                         HloInstruction *broadcast,
+                                         HloInstruction *gemm,
+                                         HloInstruction *slice = nullptr,
+                                         HloInstruction *convert = nullptr,
+                                         HloInstruction *bitcast = nullptr) {
     if (!bitcast) {
       TF_RET_CHECK(ShapeUtil::Compatible(
           broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
@@ -1561,7 +1561,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
   // be rewritten into.
-  StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
+  absl::StatusOr<absl::string_view> GetNonFp8GemmCustomCallTarget(
       const HloInstruction &instr,
       const GemmBackendConfig &gemm_backend_config) const {
     if (!instr.GetModule()
@@ -1594,7 +1594,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::string_view(kGemmCallTarget);
   }
 
-  StatusOr<bool> TypesAreSupportedByLegacyCublas(
+  absl::StatusOr<bool> TypesAreSupportedByLegacyCublas(
       const HloInstruction &instr, const GemmBackendConfig &gemm_backend_config,
       const HloInstruction *bias = nullptr) const {
     // Figure out the Atype/Btype.
@@ -1681,7 +1681,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         output_dtype));
   }
 
-  StatusOr<bool> TypesAreSupportedByCublasLt(
+  absl::StatusOr<bool> TypesAreSupportedByCublasLt(
       const HloInstruction &instr, const GemmBackendConfig &backend_config,
       const HloInstruction *bias = nullptr) const {
     // Figure out the Atype/Btype.
@@ -1809,7 +1809,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         output_dtype));
   }
 
-  StatusOr<bool> MatrixIsColumnMajor(
+  absl::StatusOr<bool> MatrixIsColumnMajor(
       const HloInstruction &instr, const GemmBackendConfig &gemm_backend_config,
       const std::string matrix_name = "output") const {
     const HloInstruction *lhs = instr.operand(0);
@@ -1841,7 +1841,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
   }
 
-  StatusOr<bool> GemmIsSupportedByCublasLt(
+  absl::StatusOr<bool> GemmIsSupportedByCublasLt(
       const HloInstruction &instr,
       const GemmBackendConfig &gemm_backend_config) const {
     const HloInstruction *lhs = instr.operand(0);
@@ -1936,7 +1936,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
   // Turns an F8 dot into an F16 dot, converting operands to F16 and
   // converting the output back to F8.
-  StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
+  absl::StatusOr<HloInstruction *> TurnF8DotIntoF16Dot(HloInstruction *instr) {
     DCHECK(IsF8Type(instr->operand(0)));
     DCHECK(IsF8Type(instr->operand(1)));
 
@@ -2028,8 +2028,8 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
   se::GpuComputeCapability gpu_version_;
 };
 
-StatusOr<bool> RunOnComputation(HloComputation *computation,
-                                se::GpuComputeCapability gpu_version) {
+absl::StatusOr<bool> RunOnComputation(HloComputation *computation,
+                                      se::GpuComputeCapability gpu_version) {
   GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   GemmWorkspaceRewriteVisitor workspace_visitor(gpu_version);
@@ -2042,7 +2042,7 @@ StatusOr<bool> RunOnComputation(HloComputation *computation,
 GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version)
     : gpu_version_(gpu_version) {}
 
-StatusOr<bool> GemmRewriter::Run(
+absl::StatusOr<bool> GemmRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;

@@ -24,6 +24,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -146,7 +147,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
     EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.01}))
         << pre_hlo_string;
 
-    StatusOr<bool> filecheck_result =
+    absl::StatusOr<bool> filecheck_result =
         RunFileCheck(optimized_hlo_string, post_hlo_string);
     ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
     EXPECT_TRUE(*filecheck_result);
@@ -177,7 +178,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       EXPECT_TRUE(RunAndCompare(pre_hlo_string, ErrorSpec{0.15, 0.15}))
           << pre_hlo_string;
 
-      StatusOr<bool> filecheck_result =
+      absl::StatusOr<bool> filecheck_result =
           RunFileCheck(optimized_hlo_string, custom_call_string);
       ASSERT_TRUE(filecheck_result.ok()) << filecheck_result.status();
       EXPECT_TRUE(*filecheck_result);

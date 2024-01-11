@@ -104,7 +104,8 @@ absl::Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
                          CholeskyParams* cholesky_params, se::Stream* stream) {
-  thread_local StatusOr<GpuSolverContext> context = GpuSolverContext::Create();
+  thread_local absl::StatusOr<GpuSolverContext> context =
+      GpuSolverContext::Create();
   TF_RETURN_IF_ERROR(context.status());
   TF_RETURN_IF_ERROR(context->SetStream(stream));
 

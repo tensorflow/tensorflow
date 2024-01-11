@@ -234,17 +234,17 @@ struct GpuConvDescriptor {
 };
 
 // Returns the convolution configuration given a XLA HLO instruction.
-StatusOr<GpuConvConfig> GetGpuConvConfig(
+absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
     const HloCustomCallInstruction* cudnn_call);
 
 // Returns the convolution configuration given a convolution descriptor `desc`
 // and a string representation of the convolution instruction `inst_as_string`
 // (for error reporting).
-StatusOr<GpuConvConfig> GetGpuConvConfig(const GpuConvDescriptor& desc,
-                                         absl::string_view inst_as_string);
+absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
+    const GpuConvDescriptor& desc, absl::string_view inst_as_string);
 
 // Implementation details exposed for debugging and log analysis.
-StatusOr<GpuConvParams> GetGpuConvParams(
+absl::StatusOr<GpuConvParams> GetGpuConvParams(
     const GpuConvConfig& conv_config,
     absl::Span<const se::DeviceMemoryBase> operand_buffers,
     absl::Span<const se::DeviceMemoryBase> result_buffers);

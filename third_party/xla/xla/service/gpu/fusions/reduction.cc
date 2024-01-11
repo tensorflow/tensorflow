@@ -518,7 +518,7 @@ class ReductionEmitter {
         index_ty_(GetIndexType(fusion, reduction_codegen_info.GetTilingScheme(),
                                elemental_emitter_.builder())) {}
 
-  StatusOr<FusionEmissionResult> EmitInitializers(
+  absl::StatusOr<FusionEmissionResult> EmitInitializers(
       mlir::lmhlo::FusionOp fusion_op);
   absl::Status EmitKernel(const LaunchDimensions& launch_dims,
                           std::vector<llvm_ir::IrArray> inputs,
@@ -527,7 +527,7 @@ class ReductionEmitter {
  private:
   friend class ReductionGroupEmitter;
 
-  StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
+  absl::StatusOr<std::unique_ptr<Thunk>> BuildKernelThunkForFusion(
       mlir::lmhlo::FusionOp fusion_op,
       const LaunchDimensions& launch_dimensions,
       absl::string_view discriminator,
@@ -535,7 +535,7 @@ class ReductionEmitter {
                            std::vector<llvm_ir::IrArray>)>
           kernel_builder_fn);
 
-  StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
+  absl::StatusOr<std::unique_ptr<Thunk>> BuildFusedInitializerThunk(
       mlir::lmhlo::FusionOp fusion_op, const HloInstruction* fusion_root,
       mlir::Value dest, BufferAllocation::Slice dest_slice, int output_index);
 
@@ -786,7 +786,8 @@ void ReductionEmitter::EmitSyncThreads() {
 //                             ...));
 // AddThunkToThunkSequence(std::move(thunk))
 // ```
-StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildKernelThunkForFusion(
+absl::StatusOr<std::unique_ptr<Thunk>>
+ReductionEmitter::BuildKernelThunkForFusion(
     mlir::lmhlo::FusionOp fusion_op, const LaunchDimensions& launch_dimensions,
     absl::string_view discriminator,
     std::function<Status(std::vector<llvm_ir::IrArray>,
@@ -807,7 +808,7 @@ StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildKernelThunkForFusion(
   auto kernel_builder_status = absl::OkStatus();
   auto [entry, cached] = ir_emitter_context_.kernel_cache().GetWithStatus(
       fused_computation, kernel_arguments.args(), discriminator,
-      [&]() -> StatusOr<KernelReuseCache::Entry> {
+      [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
         llvm::Function* kernel;
         std::vector<llvm_ir::IrArray> input_arrays;
         std::vector<llvm_ir::IrArray> output_arrays;
@@ -878,9 +879,12 @@ absl::Status ReductionGroupEmitter::EmitExtraOutputsForReduce(
   return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<Thunk>> ReductionEmitter::BuildFusedInitializerThunk(
-    mlir::lmhlo::FusionOp fusion_op, const HloInstruction* fusion_root,
-    mlir::Value dest, BufferAllocation::Slice dest_slice, int output_index) {
+absl::StatusOr<std::unique_ptr<Thunk>>
+ReductionEmitter::BuildFusedInitializerThunk(mlir::lmhlo::FusionOp fusion_op,
+                                             const HloInstruction* fusion_root,
+                                             mlir::Value dest,
+                                             BufferAllocation::Slice dest_slice,
+                                             int output_index) {
   const HloReduceInstruction* reduce =
       DynCast<HloReduceInstruction>(fusion_root);
   TF_RET_CHECK(reduce);
@@ -996,7 +1000,7 @@ void ReductionGroupEmitter::EmitFullWarpShuffleDownLoopForReduce(
           convert_pointer_for_shuffle(result_from_other_lane));
     }
 
-    StatusOr<std::vector<llvm::Value*>> returned_scalars =
+    absl::StatusOr<std::vector<llvm::Value*>> returned_scalars =
         CallNestedComputationWithScalarAddrs(
             builder, reduction_emitter_.ir_emitter_context_, *reducer,
             reduction_params);
@@ -1379,7 +1383,7 @@ void ReductionGroupEmitter::GenerateElementForReducer(
   // pointers as last parameters, the called computation writes into
   // those pointers, and we have returned values on the stack (as well
   // as pointers to them).
-  StatusOr<std::vector<llvm::Value*>> returned_scalars =
+  absl::StatusOr<std::vector<llvm::Value*>> returned_scalars =
       CallNestedComputationWithScalarAddrs(
           builder, reduction_emitter_.ir_emitter_context_, *reducer,
           reduction_params);
@@ -1491,7 +1495,7 @@ absl::Status ReductionEmitter::EmitIRForReduction(
   return absl::OkStatus();
 }
 
-StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers(
+absl::StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers(
     mlir::lmhlo::FusionOp fusion_op) {
   FusionEmissionResult result;
   if (reduction_codegen_info_.IsRaceFree()) {
@@ -1615,7 +1619,7 @@ ReductionFusion::ReductionFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
       reduction_codegen_info_(ComputeReductionCodegenInfo(analysis)) {}
 
-StatusOr<FusionEmissionResult> ReductionFusion::EmitInitializers(
+absl::StatusOr<FusionEmissionResult> ReductionFusion::EmitInitializers(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder<> builder(ir_emitter_context.llvm_module()->getContext());

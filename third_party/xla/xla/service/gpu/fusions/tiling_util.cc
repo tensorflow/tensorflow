@@ -205,9 +205,9 @@ llvm::Value* EmitThreadId(llvm::IRBuilder<>* builder, int64_t threads_per_block,
 // In the presence of thread scaling in tiling scheme may return early if the
 // combination of thread_id/block_id does not correspond to a real block.
 // Assumes the current function returns void.
-StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(llvm::IRBuilder<>* builder,
-                                              const TilingScheme& tiling_scheme,
-                                              llvm::Type* index_ty) {
+absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
+    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
+    llvm::Type* index_ty) {
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
@@ -252,7 +252,7 @@ StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(llvm::IRBuilder<>* builder,
 
 }  // namespace
 
-StatusOr<TilingKernelInfo> EmitTilingKernel(
+absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
     llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
     llvm::Type* index_ty, const TileElementGenerator& tile_element_generator) {
   absl::Span<const int64_t> dims_in_elems = tiling_scheme.GetDimsInElems();

@@ -608,7 +608,7 @@ HlosAndRequirements FuseDotOutput(
 // get populated with the non-fused instructions that become operands of the
 // call to this fusion. fusion_output_ptr (if not nullptr) gets assigned the
 // original instruction that has to be replaced by the call to the fusion.
-StatusOr<FusionDecision> CreateDotFusion(
+absl::StatusOr<FusionDecision> CreateDotFusion(
     const HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
     HloComputation::Builder& builder,
     std::vector<HloInstruction*>& fusion_inputs,
@@ -724,8 +724,8 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   se::GpuComputeCapability gpu_version_;
 };
 
-StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                const se::GpuComputeCapability& gpu_version) {
+absl::StatusOr<bool> RunOnComputation(
+    HloComputation* computation, const se::GpuComputeCapability& gpu_version) {
   GemmRewriterTritonVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -813,7 +813,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
       ->CanFuse();
 }
 
-StatusOr<bool> GemmRewriterTriton::Run(
+absl::StatusOr<bool> GemmRewriterTriton::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,7 +61,7 @@ class HorizontalLoopFusionImpl {
 
   ~HorizontalLoopFusionImpl() = default;
 
-  StatusOr<bool> Run();
+  absl::StatusOr<bool> Run();
 
  private:
   absl::Status Fuse(absl::Span<HloInstruction*> fused_fusion_instrs,
@@ -90,7 +91,7 @@ class HorizontalLoopFusionImpl {
   // stack that we want to try horizontally fuse its operands, when we create a
   // new fusion instruction, we push it to the stack in hope to further fuse its
   // operands.
-  StatusOr<bool> FuseConsumerOperands(
+  absl::StatusOr<bool> FuseConsumerOperands(
       HloInstruction* consumer, bool sliced_input_fusion,
       std::vector<HloInstruction*>& to_fuse_candidates);
 
@@ -403,7 +404,7 @@ HorizontalLoopFusionImpl::FusionCandidates::GetNextSpanOfFusions() {
   return absl::MakeSpan(fusible_instrs_).subspan(left, right - left);
 }
 
-StatusOr<bool> HorizontalLoopFusionImpl::FuseConsumerOperands(
+absl::StatusOr<bool> HorizontalLoopFusionImpl::FuseConsumerOperands(
     HloInstruction* consumer, bool sliced_input_fusion,
     std::vector<HloInstruction*>& to_fuse_candidates) {
   bool changed = false;
@@ -657,7 +658,7 @@ absl::Status HorizontalLoopFusionImpl::Fuse(
   return absl::OkStatus();
 }
 
-StatusOr<bool> HorizontalLoopFusionImpl::Run() {
+absl::StatusOr<bool> HorizontalLoopFusionImpl::Run() {
   bool changed = false;
   XLA_VLOG_LINES(3, computation_->ToString());
 
@@ -697,13 +698,13 @@ StatusOr<bool> HorizontalLoopFusionImpl::Run() {
 
 }  // namespace
 
-StatusOr<bool> GpuHorizontalLoopFusion::RunOnComputation(
+absl::StatusOr<bool> GpuHorizontalLoopFusion::RunOnComputation(
     HloComputation* computation) {
   HorizontalLoopFusionImpl horizontal_fusion_impl(computation, prefix_);
   return horizontal_fusion_impl.Run();
 }
 
-StatusOr<bool> GpuHorizontalLoopFusion::Run(
+absl::StatusOr<bool> GpuHorizontalLoopFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Run horizontal fusion.";

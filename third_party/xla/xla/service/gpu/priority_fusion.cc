@@ -623,7 +623,7 @@ bool IsSmallConstant(const HloInstruction* instr) {
          ShapeUtil::ElementsIn(instr->shape()) <= 1;
 }
 
-StatusOr<bool> GpuPriorityFusion::Run(
+absl::StatusOr<bool> GpuPriorityFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool dump_enabled = DumpingEnabledForHloModule(*module);

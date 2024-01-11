@@ -93,7 +93,7 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
                               const ArgsIndices& indices,
                               const DynamicSliceIndices& slices,
                               int32_t device_sms, Adaptor<Tag> adaptor) {
-  using Packed = StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
+  using Packed = absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
   // TODO(ezhulenev): CUTLASS kernel Params struct not necessarily trivially
   // destructible or even trivially copyable, we have to own the life time of an
@@ -171,12 +171,12 @@ KernelArgsPacking ArgsPacking(int32_t m, int32_t n, int32_t k,
 //===----------------------------------------------------------------------===//
 
 template <typename Tag>
-static StatusOr<CustomKernel> Load(std::string name, int32_t m, int32_t n,
-                                   int32_t k, const ArgsIndices& indices,
-                                   const DynamicSliceIndices& slices,
-                                   const se::DeviceDescription& device,
-                                   Adaptor<Tag> adaptor = {},
-                                   DeviceKernel<Tag> kernel = {}) {
+static absl::StatusOr<CustomKernel> Load(std::string name, int32_t m, int32_t n,
+                                         int32_t k, const ArgsIndices& indices,
+                                         const DynamicSliceIndices& slices,
+                                         const se::DeviceDescription& device,
+                                         Adaptor<Tag> adaptor = {},
+                                         DeviceKernel<Tag> kernel = {}) {
   // Get the dispatch grid size and shared memory requirements.
   auto cluster_dim = As<se::ClusterDim>(adaptor.ClusterDim());
   auto block_dim = As<se::BlockDim>(adaptor.BlockDim(m, n, k));
@@ -198,7 +198,7 @@ static StatusOr<CustomKernel> Load(std::string name, int32_t m, int32_t n,
   }
 }
 
-StatusOr<CustomKernel> GetCutlassGemmKernel(
+absl::StatusOr<CustomKernel> GetCutlassGemmKernel(
     std::string name, PrimitiveType dtype, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device) {
@@ -225,7 +225,7 @@ StatusOr<CustomKernel> GetCutlassGemmKernel(
   }
 }
 
-StatusOr<CustomKernel> LoadCutlassGemmKernel(
+absl::StatusOr<CustomKernel> LoadCutlassGemmKernel(
     std::string name, const std::string& library_path, PrimitiveType dtype,
     int32_t m, int32_t n, int32_t k, const ArgsIndices& indices,
     const DynamicSliceIndices& slices, const se::DeviceDescription& device) {

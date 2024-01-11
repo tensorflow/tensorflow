@@ -73,7 +73,7 @@ using TritonIrEmitter = std::function<Status(
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.
 // MatMul and SoftMax above are some such IR generators.
-StatusOr<TritonWrapperResult> TritonWrapper(
+absl::StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, absl::string_view fusion_kind,
     const se::CudaComputeCapability& cc,
@@ -83,7 +83,7 @@ StatusOr<TritonWrapperResult> TritonWrapper(
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation,
     const se::DeviceDescription& device_info, const TritonGemmConfig& config,

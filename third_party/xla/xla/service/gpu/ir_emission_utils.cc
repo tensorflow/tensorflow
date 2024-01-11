@@ -439,7 +439,7 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
   return func_arg.getArgNumber();
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name) {
   if (constant_name) {
@@ -556,7 +556,7 @@ absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
   return result;
 }
 
-StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
     const std::vector<const HloInstruction*>& roots) {
@@ -1188,7 +1188,8 @@ bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
 }
 
-StatusOr<DenseDataIntermediate> LiteralToXlaFormat(const Literal& literal) {
+absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
+    const Literal& literal) {
   PrimitiveType element_type = literal.shape().element_type();
   if (!primitive_util::IsArrayType(element_type)) {
     return Internal("Unsupported type in LiteralToXlaFormat");

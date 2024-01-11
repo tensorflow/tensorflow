@@ -101,7 +101,7 @@ class GpuMultiOutputFusion : public HloModulePass {
   absl::string_view name() const override { return "multi_output_fusion"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -109,7 +109,7 @@ class GpuMultiOutputFusion : public HloModulePass {
   bool FuseSiblings(HloInstruction* parent, FusionInfoCache* fusion_info_cache,
                     GpuHloCostAnalysis* cost_analysis);
 
-  StatusOr<bool> DoMultiOutputFusion();
+  absl::StatusOr<bool> DoMultiOutputFusion();
 
   // Recompute reachability for the current computation.
   void RecomputeReachability();

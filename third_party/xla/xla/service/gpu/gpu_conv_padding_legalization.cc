@@ -402,7 +402,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   return true;
 }
 
-StatusOr<bool> GpuConvPaddingLegalization::RunOnComputation(
+absl::StatusOr<bool> GpuConvPaddingLegalization::RunOnComputation(
     HloComputation* computation) {
   bool changed = false;
   std::vector<HloCustomCallInstruction*> convs;
@@ -429,7 +429,7 @@ StatusOr<bool> GpuConvPaddingLegalization::RunOnComputation(
   return changed;
 }
 
-StatusOr<bool> GpuConvPaddingLegalization::Run(
+absl::StatusOr<bool> GpuConvPaddingLegalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

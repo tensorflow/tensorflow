@@ -84,10 +84,12 @@ std::optional<std::unique_ptr<Thunk>> BuildConstantInitializerThunk(
 
 }  // namespace
 
-StatusOr<std::optional<std::unique_ptr<Thunk>>> BuildConstantInitializerThunk(
-    IrEmitterContext& ir_emitter_context, mlir::Operation* op,
-    const HloInstruction* instr, const HloInstruction* init_value,
-    mlir::Value dest, BufferAllocation::Slice dest_slice) {
+absl::StatusOr<std::optional<std::unique_ptr<Thunk>>>
+BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
+                              mlir::Operation* op, const HloInstruction* instr,
+                              const HloInstruction* init_value,
+                              mlir::Value dest,
+                              BufferAllocation::Slice dest_slice) {
   if (const HloConstantInstruction* constant =
           DynCast<HloConstantInstruction>(init_value)) {
     const Literal& literal = constant->literal();

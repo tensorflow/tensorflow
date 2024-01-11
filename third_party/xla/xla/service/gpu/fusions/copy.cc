@@ -27,7 +27,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
+absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) const {
   FusionEmissionResult result;

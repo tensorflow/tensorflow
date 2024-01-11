@@ -55,7 +55,7 @@ bool IsBwdFMHACustomCall(const HloInstruction* instr) {
   return IsBwdCustomCallTofMHA(*instr);
 }
 
-StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
+absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
     HloInstruction* fmha, int64_t operand_index, bool is_lhs,
     bool should_contracting_be_fastest) {
   HloInstruction* transpose_arg = fmha->mutable_operand(operand_index);
@@ -308,7 +308,7 @@ the new lhs_contracting dim ,if A were to be the new lhs, would be 2.
 
 Similarly, we need to find corresponding batch dimensions as well.
 */
-StatusOr<bool> FusePrologueTransposeWithcuDNNFMHA(HloComputation* comp) {
+absl::StatusOr<bool> FusePrologueTransposeWithcuDNNFMHA(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction *transpose_arg0, *transpose_arg0_operand;
@@ -491,7 +491,7 @@ perm as the permutation will generate an output shape whose dimensions match
 exactly what we want.
 */
 
-StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
+absl::StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* fmha;
@@ -612,7 +612,7 @@ StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
 }
 }  // namespace
 
-StatusOr<bool> CudnnFusedMHATransposeFusion::Run(
+absl::StatusOr<bool> CudnnFusedMHATransposeFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;

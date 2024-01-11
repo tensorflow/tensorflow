@@ -229,7 +229,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   return executor->Submit(params.stream, cmd_buffer->command_buffer);
 }
 
-StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
+absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>
 CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   absl::MutexLock lock(&state_->mutex);
 

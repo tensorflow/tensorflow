@@ -224,8 +224,9 @@ ENTRY AddDotsFunc {
           *get_module(), backend().default_stream_executor(),
           backend().default_stream_executor()->GetAllocator()));
 
-  StatusOr<bool> filecheck_result = RunFileCheck(optimized_module->ToString(),
-                                                 R"(
+  absl::StatusOr<bool> filecheck_result =
+      RunFileCheck(optimized_module->ToString(),
+                   R"(
 ; CHECK:    custom_call_target="__cublas${{(lt\$matmul|gemm)}}"
     )");
   TF_ASSERT_OK(filecheck_result.status());

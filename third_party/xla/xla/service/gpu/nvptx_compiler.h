@@ -67,16 +67,16 @@ class NVPTXCompiler : public GpuCompiler {
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 
-  StatusOr<BackendCompileResult> CompileTargetBinary(
+  absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override;
 
  private:
-  StatusOr<bool> CanUseLinkModules(
+  absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config) override;
 
-  StatusOr<std::vector<uint8_t>> LinkModules(
+  absl::StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) override;
@@ -91,12 +91,12 @@ class NVPTXCompiler : public GpuCompiler {
   absl::flat_hash_map<std::string, LinkingMethod> linking_methods_
       ABSL_GUARDED_BY(mutex_);
 
-  StatusOr<LinkingMethod> ChooseLinkingMethod(
+  absl::StatusOr<LinkingMethod> ChooseLinkingMethod(
       const std::string& preferred_cuda_dir);
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin if compilation succeeded.
-  StatusOr<std::vector<uint8_t>> CompileGpuAsmOrGetCachedResult(
+  absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmOrGetCachedResult(
       const std::string& ptx, se::CudaComputeCapability cc,
       const HloModuleConfig& hlo_module_config, absl::string_view module_name,
       bool relocatable, const CompileOptions& options);

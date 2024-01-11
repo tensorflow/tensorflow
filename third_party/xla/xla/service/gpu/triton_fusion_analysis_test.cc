@@ -595,7 +595,7 @@ ENTRY e {
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
 
-  StatusOr<TritonFusionAnalysis> analysis =
+  absl::StatusOr<TritonFusionAnalysis> analysis =
       TritonFusionAnalysis::Execute(*dot_computation);
   // It can fail but shouldn't crash.
   (void)analysis;

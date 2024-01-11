@@ -37,7 +37,7 @@ class MemcpyFusion : public FusionInterface {
         srcs_(std::move(srcs)),
         dsts_(std::move(dsts)) {}
 
-  StatusOr<FusionEmissionResult> Emit(
+  absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion) const final;
 

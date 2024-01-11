@@ -228,7 +228,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   return result;
 }
 
-StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
+absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
     const HloModule* module, int64_t pointer_size) {
   return ScheduleModule(
       module,

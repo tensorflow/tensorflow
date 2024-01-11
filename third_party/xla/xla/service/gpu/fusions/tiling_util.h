@@ -134,7 +134,7 @@ void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
 
 // Emits a kernel for the hlo instruction using the given kernel mapping
 // scheme.
-StatusOr<TilingKernelInfo> EmitTilingKernel(
+absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
     llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
     llvm::Type* index_ty, const TileElementGenerator& tile_element_generator);
 

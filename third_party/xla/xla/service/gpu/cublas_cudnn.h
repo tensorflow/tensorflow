@@ -69,7 +69,8 @@ enum class CudnnfMHAKind {
   kBackwardScaleBiasSoftmaxDropout,
 };
 
-StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
+absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
+    const HloCustomCallInstruction* instr);
 
 // Converts a CudnnConvKind value to a string.
 std::string CudnnConvKindToString(CudnnConvKind kind);
@@ -202,7 +203,8 @@ bool IsFwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsBwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsCustomCallTofMHA(const HloInstruction& hlo);
 
-StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(const HloCustomCallInstruction* instr);
+absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
+    const HloCustomCallInstruction* instr);
 
 std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
 absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);

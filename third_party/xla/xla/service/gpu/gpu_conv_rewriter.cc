@@ -662,7 +662,8 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 
 // Helper function to create a custom_call instruction to replace the given
 // conv instruction
-static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
+static absl::StatusOr<HloInstruction*> CreateCustomCallHelper(
+    HloInstruction* conv) {
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
@@ -696,7 +697,7 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
 }
 
 // Tries to rewrite a single convolution into a call to cudnn/miopen.
-StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
+absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
   CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
 
   TF_ASSIGN_OR_RETURN(HloInstruction * custom_call,
@@ -722,7 +723,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
 // Rewrites the convolutions in the given computation into calls to
 // cudnn/miopen.
 // Returns true if it made any changes.
-StatusOr<bool> RunOnComputation(HloComputation* computation) {
+absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
   std::vector<HloInstruction*> convs;
   for (auto* hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kConvolution) {
@@ -739,7 +740,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation) {
 }
 }  // namespace
 
-StatusOr<bool> GpuConvRewriter::Run(
+absl::StatusOr<bool> GpuConvRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "GpuConvRewriter::Run(), before:\n" + module->ToString());

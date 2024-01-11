@@ -48,7 +48,7 @@ namespace gpu {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
 
-StatusOr<HloInstruction*> SmallBufferOptimization(
+absl::StatusOr<HloInstruction*> SmallBufferOptimization(
     HloCustomCallInstruction* topk) {
   Shape data_shape = topk->operand(0)->shape();
   auto supported_dtypes = {F32, BF16};
@@ -106,7 +106,7 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-StatusOr<bool> TopkSpecializer::Run(
+absl::StatusOr<bool> TopkSpecializer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return SpecializeTopkVisitor().RunOnModule(module, execution_threads);
@@ -114,7 +114,7 @@ StatusOr<bool> TopkSpecializer::Run(
 
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-StatusOr<bool> TopkSpecializer::Run(
+absl::StatusOr<bool> TopkSpecializer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return false;

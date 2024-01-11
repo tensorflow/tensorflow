@@ -44,7 +44,7 @@ namespace xla {
 namespace gpu {
 
 // Ordered non-contracting dimensions for a dot instruction operand.
-StatusOr<std::vector<int64_t>> GetNonContractingDims(
+absl::StatusOr<std::vector<int64_t>> GetNonContractingDims(
     const Shape& shape, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> contracting_dims);
 
@@ -62,30 +62,29 @@ int64_t NonContractingDimensionIndex(const HloInstruction& dot,
                                      int operand_number);
 
 // Normalize shape to (batch, rows, columns) logical dimensions.
-StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
-                                       absl::Span<const int64_t> batch_dims,
-                                       absl::Span<const int64_t> row_dims,
-                                       absl::Span<const int64_t> col_dims);
+absl::StatusOr<Shape> GetBatchRowColumnShape(
+    const Shape& shape, absl::Span<const int64_t> batch_dims,
+    absl::Span<const int64_t> row_dims, absl::Span<const int64_t> col_dims);
 
 // GPU folding rule for the `TransposeFolding` pass.
-StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
-                                              int64_t operand_idx);
+absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
+                                                    int64_t operand_idx);
 
 // extending plain MatrixLayout struct with creator functions
 struct MatrixLayout : public se::gpu::MatrixLayout {
   // Returns the matrix layout for a logical shape (batch, rows, columns).
-  static StatusOr<MatrixLayout> For(const Shape& shape);
+  static absl::StatusOr<MatrixLayout> For(const Shape& shape);
   // Returns the matrix layout with the given batch, row, col dimensions.
-  static StatusOr<MatrixLayout> For(const Shape& shape,
-                                    absl::Span<const int64_t> batch_dims,
-                                    absl::Span<const int64_t> row_dims,
-                                    absl::Span<const int64_t> col_dims);
+  static absl::StatusOr<MatrixLayout> For(const Shape& shape,
+                                          absl::Span<const int64_t> batch_dims,
+                                          absl::Span<const int64_t> row_dims,
+                                          absl::Span<const int64_t> col_dims);
   // Returns the matrix layout for the output.
-  static StatusOr<MatrixLayout> For(const Shape& shape,
-                                    size_t lhs_num_batch_dims,
-                                    size_t lhs_num_row_dims,
-                                    size_t rhs_num_batch_dims,
-                                    size_t rhs_num_col_dims);
+  static absl::StatusOr<MatrixLayout> For(const Shape& shape,
+                                          size_t lhs_num_batch_dims,
+                                          size_t lhs_num_row_dims,
+                                          size_t rhs_num_batch_dims,
+                                          size_t rhs_num_col_dims);
 };
 
 struct GemmConfig : public se::gpu::GemmConfig {
@@ -97,10 +96,10 @@ struct GemmConfig : public se::gpu::GemmConfig {
   static constexpr int64_t kHopperWorkspace = 32 * 1024 * 1024;  // 32 MiB
   static constexpr int64_t kDefaultWorkspace = 4 * 1024 * 1024;  // 4 MiB
 
-  static StatusOr<GemmConfig> For(const HloInstruction* gemm);
-  static StatusOr<GemmConfig> For(mlir::lmhlo_gpu::GEMMOp op);
+  static absl::StatusOr<GemmConfig> For(const HloInstruction* gemm);
+  static absl::StatusOr<GemmConfig> For(mlir::lmhlo_gpu::GEMMOp op);
 
-  static StatusOr<GemmConfig> For(
+  static absl::StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
       absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
       absl::Span<const int64_t> rhs_batch_dims,
@@ -111,7 +110,7 @@ struct GemmConfig : public se::gpu::GemmConfig {
 
   // As above with additional `c_shape` and `bias_shape_ptr` parameter, both
   // which are only necessarily for F8 gemms.
-  static StatusOr<GemmConfig> For(
+  static absl::StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
       absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
       absl::Span<const int64_t> rhs_batch_dims,
@@ -126,7 +125,7 @@ struct GemmConfig : public se::gpu::GemmConfig {
                              mlir::lmhlo_gpu::CublasLtMatmulOp>::value ||
                 std::is_same<CublasLtMatmulMaybeF8Op,
                              mlir::lmhlo_gpu::CublasLtMatmulF8Op>::value>>
-  static StatusOr<GemmConfig> For(CublasLtMatmulMaybeF8Op op) {
+  static absl::StatusOr<GemmConfig> For(CublasLtMatmulMaybeF8Op op) {
     mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
 
     int64_t compute_precision = 0;  // Default
@@ -163,7 +162,7 @@ struct GemmConfig : public se::gpu::GemmConfig {
     se::gpu::OutputMatrixDescriptor output;
     bool operands_swapped;
   };
-  StatusOr<DescriptorsTuple> GetMatrixDescriptors(
+  absl::StatusOr<DescriptorsTuple> GetMatrixDescriptors(
       se::DeviceMemoryBase lhs_buf, se::DeviceMemoryBase rhs_buf,
       se::DeviceMemoryBase out_buf) const;
 };
@@ -182,10 +181,12 @@ absl::Status RunGemm(
 
 namespace gpublas_lt {
 
-StatusOr<bool> EpilogueAddsVectorBias(GemmBackendConfig_Epilogue epilogue);
-StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue);
+absl::StatusOr<bool> EpilogueAddsVectorBias(
+    GemmBackendConfig_Epilogue epilogue);
+absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
+    GemmBackendConfig_Epilogue epilogue);
 
-StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
+absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
 
 }  // namespace gpublas_lt

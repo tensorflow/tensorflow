@@ -99,7 +99,7 @@ static absl::InlinedVector<HloInstruction*, 4> GetPatternCaptures(
 }
 
 // Creates custom fusion computation and moves all matched instructions into it.
-static StatusOr<HloComputation*> CreateFusionBody(
+static absl::StatusOr<HloComputation*> CreateFusionBody(
     HloModule* module, const CustomFusionPattern::Match& match,
     absl::Span<HloInstruction* const> captures) {
   HloComputation::Builder builder(match.config().name());
@@ -148,7 +148,7 @@ static StatusOr<HloComputation*> CreateFusionBody(
   return module->AddComputationAndUnifyNamesAndIds(builder.Build(), false);
 }
 
-static StatusOr<HloInstruction*> CreateFusionInstruction(
+static absl::StatusOr<HloInstruction*> CreateFusionInstruction(
     HloModule* module, const CustomFusionPattern::Match& match,
     absl::Span<HloInstruction* const> captures, HloComputation* body) {
   // We'll be replacing the root operation of a custom fusion with a fusion
@@ -176,7 +176,7 @@ static StatusOr<HloInstruction*> CreateFusionInstruction(
       HloInstruction::CreateGetTupleElement(fusion, 0));
 }
 
-StatusOr<bool> CustomFusionRewriter::Run(
+absl::StatusOr<bool> CustomFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<CustomFusionPattern::Match> matches;

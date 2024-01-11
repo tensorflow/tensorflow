@@ -104,7 +104,7 @@ bool ShouldEnableCliqueOptimization(const NcclExecuteParams& params,
           debug_options->xla_gpu_enable_nccl_clique_optimization());
 }
 
-StatusOr<NcclComm::Lock> GetNcclComm(
+absl::StatusOr<NcclComm::Lock> GetNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, int64_t stream_id,
@@ -128,7 +128,7 @@ StatusOr<NcclComm::Lock> GetNcclComm(
                       stream_id, enable_clique_optimization);
 }
 
-StatusOr<NcclComm::Lock> GetMockNcclComm(
+absl::StatusOr<NcclComm::Lock> GetMockNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, int64_t stream_id,
@@ -154,7 +154,7 @@ StatusOr<NcclComm::Lock> GetMockNcclComm(
 }
 #endif  // XLA_ENABLE_XCCL
 
-StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
+absl::StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     CustomCall::RemainingArgs& args) {
   // Add MemRef arguments as buffer arguments.
   TF_RET_CHECK(args.size() % 2 == 0);
@@ -179,7 +179,7 @@ StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
 
 // Expects a single argument, and returns a device buffer pair with that
 // argument replicated in both source and destination buffer.
-StatusOr<std::vector<DeviceBufferPair>> GetSingleArgAsDeviceBufferPair(
+absl::StatusOr<std::vector<DeviceBufferPair>> GetSingleArgAsDeviceBufferPair(
     CustomCall::RemainingArgs& args) {
   TF_RET_CHECK(args.size() == 1);
   auto buffer = args.get<StridedMemrefView>(0);
@@ -245,7 +245,7 @@ using NcclP2PRunner = absl::FunctionRef<absl::Status(
     int64_t current_id)>;
 
 using DeviceBuffersGetter =
-    absl::FunctionRef<StatusOr<std::vector<DeviceBufferPair>>(
+    absl::FunctionRef<absl::StatusOr<std::vector<DeviceBufferPair>>(
         CustomCall::RemainingArgs& args)>;
 
 absl::Status MockNcclP2PImplCommon(

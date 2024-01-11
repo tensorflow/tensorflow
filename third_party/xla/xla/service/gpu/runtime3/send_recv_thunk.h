@@ -67,8 +67,8 @@ class SendRecvAsyncEvents {
                        tsl::AsyncValueRef<se::Event> event);
 
   // Extract a send/recv completion event.
-  StatusOr<tsl::AsyncValueRef<se::Event>> Extract(se::StreamExecutor* executor,
-                                                  int32_t channel_id);
+  absl::StatusOr<tsl::AsyncValueRef<se::Event>> Extract(
+      se::StreamExecutor* executor, int32_t channel_id);
 
  private:
   using Key = std::pair<se::StreamExecutor*, /*channel_id=*/int64_t>;

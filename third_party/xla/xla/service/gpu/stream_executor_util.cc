@@ -28,7 +28,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -65,7 +67,7 @@ int64_t FindMissingDnum(absl::Span<const int64_t> vals) {
   return vals.size();
 }
 
-StatusOr<Layout> DataLayoutToXlaLayout(
+absl::StatusOr<Layout> DataLayoutToXlaLayout(
     DataLayout data_layout, int64_t batch_dimension, int64_t feature_dimension,
     absl::Span<int64_t const> spatial_dimensions) {
   std::vector<int64_t> layout;
@@ -98,7 +100,7 @@ StatusOr<Layout> DataLayoutToXlaLayout(
 
 }  // anonymous namespace
 
-StatusOr<std::tuple<Layout, Layout, Layout>>
+absl::StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout input, FilterLayout filter,
                                       DataLayout output) {
@@ -148,7 +150,7 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                          output_layout);
 }
 
-StatusOr<std::tuple<DataLayout, FilterLayout, DataLayout>>
+absl::StatusOr<std::tuple<DataLayout, FilterLayout, DataLayout>>
 XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
                                      const Shape& input, const Shape& filter,
                                      const Shape& output) {
@@ -317,7 +319,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
   return it->second;
 }
 
-StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
+absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes) {
@@ -444,7 +446,7 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       buffer_type);
 }
 
-StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
+absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
@@ -463,7 +465,7 @@ StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
   return InternalError("Unexpected convolution kind");
 }
 
-StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
+absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind) {
   switch (kind) {
     case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
@@ -492,7 +494,7 @@ StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
   return InternalError("Unexpected fMHA kind");
 }
 
-StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
+absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     PrimitiveType type) {
   switch (type) {
     case F16:
@@ -530,7 +532,7 @@ bool RequireDeterminism(const HloModuleConfig& config) {
          config.debug_options().xla_gpu_deterministic_ops();
 }
 
-StatusOr<AutotuneResult> PickBestResult(
+absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
     std::optional<std::string_view> instr_str,
     HloModuleConfig hlo_module_config) {

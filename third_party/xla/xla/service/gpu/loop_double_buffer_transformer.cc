@@ -149,7 +149,7 @@ absl::Status PeelInstructionsForOddTripCount(HloModule* module,
 }
 }  // namespace
 
-StatusOr<bool> LoopDoubleBufferTransformer::Run(
+absl::StatusOr<bool> LoopDoubleBufferTransformer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

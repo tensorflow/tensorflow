@@ -54,7 +54,7 @@ namespace se = ::stream_executor;
 
 class GpuSolverContext {
  public:
-  static StatusOr<GpuSolverContext> Create();
+  static absl::StatusOr<GpuSolverContext> Create();
 
   absl::Status SetStream(se::Stream* stream);
 
@@ -90,9 +90,9 @@ class GpuSolverContext {
   //
   // In practice, this does not result in a notable increase in scratch space
   // needed, because both cases require a relatively small amount of scratch.
-  StatusOr<int64_t> PotrfBufferSize(PrimitiveType type,
-                                    se::blas::UpperLower uplo, int n, int lda,
-                                    int batch_size);
+  absl::StatusOr<int64_t> PotrfBufferSize(PrimitiveType type,
+                                          se::blas::UpperLower uplo, int n,
+                                          int lda, int batch_size);
 
  private:
   explicit GpuSolverContext(gpusolverHandle_t handle);

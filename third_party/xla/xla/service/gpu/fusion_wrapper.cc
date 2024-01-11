@@ -29,7 +29,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> FusionWrapper::Run(
+absl::StatusOr<bool> FusionWrapper::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto instructions = module->entry_computation()->MakeInstructionPostOrder();

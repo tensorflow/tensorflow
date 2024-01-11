@@ -268,7 +268,7 @@ bool ConvIsLowerable(HloInstruction* conv) {
   return GpuConvRewriter::ConvIsLowerable(conv);
 }
 
-StatusOr<AutotuneConfig> GetAutotuneConfig(
+absl::StatusOr<AutotuneConfig> GetAutotuneConfig(
     se::StreamExecutor* stream_exec, const DebugOptions& debug_options,
     const GpuCompiler::CompileOptions& options,
     const Compiler::TargetConfig& gpu_target_config) {
@@ -317,11 +317,11 @@ class GpuAotCompilationResult : public AotCompilationResult {
   explicit GpuAotCompilationResult(XlaRuntimeGpuExecutableProto executable)
       : xla_runtime_gpu_executable_(executable) {}
 
-  StatusOr<std::string> SerializeAsString() const override {
+  absl::StatusOr<std::string> SerializeAsString() const override {
     return xla_runtime_gpu_executable_.SerializeAsString();
   }
 
-  static StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromString(
+  static absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>> FromString(
       const std::string& serialized) {
     XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable;
     if (!xla_runtime_gpu_executable.ParseFromString(serialized)) {
@@ -331,7 +331,7 @@ class GpuAotCompilationResult : public AotCompilationResult {
         xla_runtime_gpu_executable);
   }
 
-  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       Compiler* compiler, const se::StreamExecutor* executor) const override;
 
  private:
@@ -353,12 +353,12 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
   explicit GpuThunkAotCompilationResult(CompilationResultProto proto)
       : proto_(proto) {}
 
-  StatusOr<std::string> SerializeAsString() const override {
+  absl::StatusOr<std::string> SerializeAsString() const override {
     return proto_.SerializeAsString();
   }
 
-  static StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>> FromString(
-      const std::string& serialized) {
+  static absl::StatusOr<std::unique_ptr<GpuThunkAotCompilationResult>>
+  FromString(const std::string& serialized) {
     CompilationResultProto proto;
     if (!proto.ParseFromString(serialized)) {
       return InternalError(
@@ -367,7 +367,7 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
     return std::make_unique<GpuThunkAotCompilationResult>(proto);
   }
 
-  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       Compiler* compiler, const se::StreamExecutor* stream_exec) const override;
 
  private:
@@ -376,7 +376,8 @@ class GpuThunkAotCompilationResult : public AotCompilationResult {
 
 }  // end anonymous namespace
 
-StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
+absl::StatusOr<std::unique_ptr<Executable>>
+GpuAotCompilationResult::LoadExecutable(
     Compiler* compiler, const se::StreamExecutor* executor) const {
   XlaRuntimeExecutableProto xla_runtime_executable =
       xla_runtime_gpu_executable_.xla_runtime_executable();
@@ -406,7 +407,7 @@ StatusOr<std::unique_ptr<Executable>> GpuAotCompilationResult::LoadExecutable(
       GetGpuVersion(executor));
 }
 
-StatusOr<std::unique_ptr<Executable>>
+absl::StatusOr<std::unique_ptr<Executable>>
 GpuThunkAotCompilationResult::LoadExecutable(
     Compiler* compiler, const se::StreamExecutor* stream_exec) const {
   // Recreate HloModule from proto.
@@ -1348,7 +1349,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
 // Get the target config for compilation. Returns std::nullopt if no deviceless
 // target config is specified: in this case, device is used.
-static StatusOr<std::optional<Compiler::TargetConfig>>
+static absl::StatusOr<std::optional<Compiler::TargetConfig>>
 GetDevicelessTargetConfig(const Compiler::CompileOptions& options,
                           const DebugOptions& debug_opts) {
   if (options.target_config.has_value()) {
@@ -1370,7 +1371,7 @@ GetDevicelessTargetConfig(const Compiler::CompileOptions& options,
   return std::nullopt;
 }
 
-StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
+absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   TF_RETURN_IF_ERROR(
@@ -1468,7 +1469,7 @@ absl::Status RunPostSchedulingCopyInsertion(
 }
 }  // namespace
 
-StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
+absl::StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
     HloModule* hlo_module, const se::StreamExecutor* stream_exec) {
   const se::DeviceDescription& gpu_device_info =
       stream_exec->GetDeviceDescription();
@@ -1537,10 +1538,13 @@ std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
 
 }  // namespace
 
-StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileSingleModule(
-    const HloModuleConfig& module_config, se::GpuComputeCapability gpu_version,
-    const HloModule* debug_module, llvm::Module* llvm_module, bool relocatable,
-    const CompileOptions& options, std::optional<int> shard_number) {
+absl::StatusOr<GpuCompiler::BackendCompileResult>
+GpuCompiler::CompileSingleModule(const HloModuleConfig& module_config,
+                                 se::GpuComputeCapability gpu_version,
+                                 const HloModule* debug_module,
+                                 llvm::Module* llvm_module, bool relocatable,
+                                 const CompileOptions& options,
+                                 std::optional<int> shard_number) {
   // This may print multiple lines per HLO compilation because of the
   // parallelized compilation of LLVM modules.
   XLA_SCOPED_LOGGING_TIMER_IF(
@@ -1610,10 +1614,13 @@ StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileSingleModule(
   return result;
 }
 
-StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileToTargetBinary(
-    const HloModuleConfig& module_config, llvm::Module* llvm_module,
-    se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const HloModule* debug_module) {
+absl::StatusOr<GpuCompiler::BackendCompileResult>
+GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
+                                   llvm::Module* llvm_module,
+                                   se::GpuComputeCapability gpu_version,
+                                   se::StreamExecutor* stream_exec,
+                                   const CompileOptions& options,
+                                   const HloModule* debug_module) {
   MaybeOwningThreadPool thread_pool = MaybeOwningThreadPool::GetOrCreate(
       /*parallelism=*/module_config.debug_options()
           .xla_gpu_force_compilation_parallelism(),
@@ -1682,7 +1689,7 @@ StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileToTargetBinary(
       },
       /*PreserveLocals=*/true);
 
-  std::vector<StatusOr<BackendCompileResult>> compile_results(
+  std::vector<absl::StatusOr<BackendCompileResult>> compile_results(
       llvm_modules.size());
   tsl::BlockingCounter counter(llvm_modules.size());
   for (int i = 0; i < llvm_modules.size(); i++) {
@@ -1728,7 +1735,7 @@ StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileToTargetBinary(
   return BackendCompileResult{ptx_snippets, std::move(*maybe_backend_result)};
 }
 
-StatusOr<GpuCompiler::CompileResultWithMetadata>
+absl::StatusOr<GpuCompiler::CompileResultWithMetadata>
 GpuCompiler::CompileToBackendResult(
     HloModule* module, llvm::LLVMContext* llvm_context,
     se::StreamExecutor* executor, const CompileOptions& options,
@@ -1778,7 +1785,7 @@ GpuCompiler::CompileToBackendResult(
                                    std::move(compile_module_results)};
 }
 
-StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
+absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
   TF_ASSIGN_OR_RETURN(
@@ -1894,7 +1901,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   return static_cast<std::unique_ptr<Executable>>(std::move(gpu_executable));
 }
 
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& options) {
 #if GOOGLE_CUDA
@@ -1994,7 +2001,7 @@ HloCostAnalysis::ShapeSizeFunction GpuCompiler::ShapeSizeBytesFunction() const {
   };
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
+absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
     Executable* executable) const {
   auto* gpu_executable = tensorflow::down_cast<GpuExecutable*>(executable);
   if (!gpu_executable) return Internal("GpuExecutable is null");
@@ -2112,13 +2119,13 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
   return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 GpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
   return LoadAotCompilationResultStatic(serialized_aot_result);
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 GpuCompiler::LoadAotCompilationResultStatic(
     const std::string& serialized_aot_result) {
   // TODO(anlunx): Remove the code that loads a GpuAotCompilationResult when we

@@ -59,7 +59,8 @@ namespace m = match;
 
 // Returns an architecture-specific constant for the calculation of an upper
 // bound for the size of the scratch space for layer norm kernels.
-StatusOr<int64_t> CConstant(se::CudaComputeCapability cuda_compute_capability) {
+absl::StatusOr<int64_t> CConstant(
+    se::CudaComputeCapability cuda_compute_capability) {
   if (cuda_compute_capability.major == se::CudaComputeCapability::AMPERE) {
     return 32 * 128;
   } else if (cuda_compute_capability.major ==
@@ -685,7 +686,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
   se::CudaComputeCapability cuda_compute_capability_;
 };
 
-StatusOr<bool> RunOnComputation(
+absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation,
     se::CudaComputeCapability cuda_compute_capability) {
   CudnnNormRewriterVisitor visitor(cuda_compute_capability);
@@ -699,7 +700,7 @@ CudnnNormRewriter::CudnnNormRewriter(
     se::CudaComputeCapability cuda_compute_capability)
     : cuda_compute_capability_(cuda_compute_capability) {}
 
-StatusOr<bool> CudnnNormRewriter::Run(
+absl::StatusOr<bool> CudnnNormRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

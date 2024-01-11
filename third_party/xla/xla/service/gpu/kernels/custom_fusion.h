@@ -99,7 +99,7 @@ class CustomFusion {
   virtual ~CustomFusion() = default;
 
   // Loads kernels implementing `hlo_computation` optimized for a given device.
-  virtual StatusOr<std::vector<CustomKernel>> LoadKernels(
+  virtual absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
       const HloComputation* computation) const = 0;
 };

@@ -41,7 +41,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
+absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     mlir::lmhlo::FusionOp fusion_op, CustomKernel custom_kernel) {
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
@@ -64,7 +64,7 @@ StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
 
 }  // namespace
 
-StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
+absl::StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) const {
   TF_ASSIGN_OR_RETURN(auto backend_config,

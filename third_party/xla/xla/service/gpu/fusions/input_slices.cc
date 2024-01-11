@@ -149,7 +149,7 @@ absl::Status EmitElementForInputFusibleSlices(
 // Returns the input shape of the ROOT slices if all the input shapes of ROOT
 // slices are the same and the slices are non-strided. Otherwise, returns
 // FailedPrecondition.
-StatusOr<Shape> GetConsistentInputShapeForRootSlices(
+absl::StatusOr<Shape> GetConsistentInputShapeForRootSlices(
     const HloComputation* fused_computation) {
   const HloInstruction& root = *fused_computation->root_instruction();
   if (root.opcode() == HloOpcode::kSlice) {

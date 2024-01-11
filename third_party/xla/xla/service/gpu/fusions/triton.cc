@@ -94,7 +94,7 @@ LaunchDimensions CalculateSoftMaxLaunchDimensions(
 
 }  // namespace
 
-StatusOr<FusionEmissionResult> TritonFusion::Emit(
+absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) const {
   llvm::IRBuilder builder(ir_emitter_context.llvm_module()->getContext());
@@ -119,7 +119,7 @@ StatusOr<FusionEmissionResult> TritonFusion::Emit(
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();
 
-  auto generate = [&]() -> StatusOr<KernelReuseCache::Entry> {
+  auto generate = [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
     VLOG(3) << "Generating: " << suggested_kernel_name;
 
     const std::string impl_fn_name =

@@ -40,7 +40,7 @@ class TritonFusionAnalysis {
   // Execute the analysis of a fusion computation.
   // `split_k` indicates whether this operation was converted to the split-K
   // form and tells the analysis how to interpret the batch dimensions.
-  static StatusOr<TritonFusionAnalysis> Execute(
+  static absl::StatusOr<TritonFusionAnalysis> Execute(
       const HloComputation& computation, int split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or

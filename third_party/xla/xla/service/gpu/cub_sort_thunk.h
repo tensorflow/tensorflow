@@ -41,9 +41,9 @@ class CubSortRunnerInterface {
                            se::DeviceMemoryBase scratch, bool descending) = 0;
   virtual absl::Status Run(const Thunk::ExecuteParams& params,
                            const class CubSortThunk* thunk) = 0;
-  virtual StatusOr<int64_t> GetScratchSize(int64_t num_items) = 0;
+  virtual absl::StatusOr<int64_t> GetScratchSize(int64_t num_items) = 0;
 
-  static StatusOr<std::unique_ptr<CubSortRunnerInterface>> Create(
+  static absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> Create(
       PrimitiveType type, std::optional<PrimitiveType> value_type);
 };
 

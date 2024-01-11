@@ -56,7 +56,7 @@ class BufferAllocations {
 
     // Return a device address for a given buffer allocation. Returns error if
     // corresponding allocation is not yet allocated.
-    virtual StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
+    virtual absl::StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
         BufferAllocation::Index index) const = 0;
 
     // Adds an external allocation for a given buffer index. Returns error if

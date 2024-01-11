@@ -58,7 +58,7 @@ struct NcclP2PConfig {
 };
 
 // Extracts source/target pairs for send/recv from frontend attributes.
-StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
+absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
     mlir::DictionaryAttr frontend_attributes);
 
 // Returns the GroupMode for Send and Recv.

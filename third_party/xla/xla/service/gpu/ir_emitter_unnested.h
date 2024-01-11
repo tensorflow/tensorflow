@@ -243,7 +243,8 @@ class IrEmitterUnnested : public IrEmitter {
     thunk_sequence_.emplace_back(std::move(thunk));
   }
 
-  absl::Status AddThunksToThunkSequence(StatusOr<FusionEmissionResult> result) {
+  absl::Status AddThunksToThunkSequence(
+      absl::StatusOr<FusionEmissionResult> result) {
     TF_RETURN_IF_ERROR(result.status());
     for (auto& thunk : result->thunks) {
       AddThunkToThunkSequence(std::move(thunk));
@@ -367,8 +368,8 @@ class IrEmitterUnnested : public IrEmitter {
   //   ```
   absl::Status EmitSliceToDynamic(mlir::Operation* op);
 
-  StatusOr<BufferAllocation::Slice> GetAllocationSlice(mlir::Value v);
-  StatusOr<std::vector<BufferAllocation::Slice>> GetAllocationSlices(
+  absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(mlir::Value v);
+  absl::StatusOr<std::vector<BufferAllocation::Slice>> GetAllocationSlices(
       mlir::OperandRange operands);
 
   int64_t ByteSizeOf(const Shape& shape) const {
@@ -378,7 +379,7 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Emits kernel thunk for a custom fusion implemented with hand written custom
   // device kernels.
-  StatusOr<FusionEmissionResult> EmitCustomFusion(
+  absl::StatusOr<FusionEmissionResult> EmitCustomFusion(
       const HloFusionInstruction* fusion, mlir::lmhlo::FusionOp fusion_op,
       const CustomFusionConfig& config);
 
@@ -387,8 +388,8 @@ class IrEmitterUnnested : public IrEmitter {
   // All input and output tensors of `op` are passed to the kernel.
   //
   // TODO(tdanyluk): Consider also reusing non-fusion kernels.
-  StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                     std::vector<llvm_ir::IrArray> /*outputs*/>>
+  absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                           std::vector<llvm_ir::IrArray> /*outputs*/>>
   BuildKernelThunkForNonFusionOp(mlir::Operation* op,
                                  const LaunchDimensions& launch_dimensions);
 
@@ -397,14 +398,14 @@ class IrEmitterUnnested : public IrEmitter {
   // Only the tensors specified in `needed_operands` are passed to the kernel.
   //
   // TODO(tdanyluk): Consider also reusing non-fusion kernels.
-  StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                     std::vector<llvm_ir::IrArray> /*outputs*/>>
+  absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                           std::vector<llvm_ir::IrArray> /*outputs*/>>
   BuildKernelThunkForNonFusionOp(mlir::Operation* op,
                                  mlir::ValueRange needed_operands,
                                  const LaunchDimensions& launch_dimensions);
 
-  StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
-                     std::vector<llvm_ir::IrArray> /*outputs*/>>
+  absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
+                           std::vector<llvm_ir::IrArray> /*outputs*/>>
   BuildKernelThunkForNonFusionOp(
       const HloInstruction* hlo,
       absl::Span<const HloInstruction* const> needed_operands,
@@ -418,20 +419,20 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction.
-  StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
+  absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
 
-  StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
+  absl::StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(
       const HloInstruction* instr, const Thunk::ThunkInfo& thunk_info);
 
   // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
   // sequence from the 'body' sub-computation of the while instruction.
-  StatusOr<std::unique_ptr<Thunk>> BuildForThunk(const HloInstruction* instr,
-                                                 int64_t loop_limit);
+  absl::StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
+      const HloInstruction* instr, int64_t loop_limit);
 
-  StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
+  absl::StatusOr<std::unique_ptr<Thunk>> BuildForThunk(
       mlir::lmhlo::WhileOp while_op, const Thunk::ThunkInfo& thunk_info,
       int64_t loop_limit,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -440,12 +441,12 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
   // given conditional instruction.
-  StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
+  absl::StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
       const HloInstruction* conditional);
 
   absl::Status AssertNonDeterminismIsOkay(const std::string& op_name);
 
-  StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
+  absl::StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
       const HloInstruction* instr, const ShapeIndex& index = {}) const;
 
   // The thunk sequence this IrEmitter generates for the input computation.
@@ -466,7 +467,7 @@ class IrEmitterUnnested : public IrEmitter {
   // End optional members for XLA HLO -> LMHLO.
 
   // Returns the ShapedSlices for the given operands.
-  StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
+  absl::StatusOr<std::vector<ShapedSlice>> GetShapedSlices(
       mlir::Operation::operand_range operands);
 
   GpuElementalIrEmitter elemental_emitter_;

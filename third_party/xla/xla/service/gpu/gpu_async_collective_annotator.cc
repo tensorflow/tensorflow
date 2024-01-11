@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_async_collective_annotator.h"
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> GpuAsyncCollectiveAnnotator::Run(
+absl::StatusOr<bool> GpuAsyncCollectiveAnnotator::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

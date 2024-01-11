@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -99,13 +100,13 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-static StatusOr<bool> RunOnComputation(HloComputation *computation) {
+static absl::StatusOr<bool> RunOnComputation(HloComputation *computation) {
   GemmBroadcastFoldingVisitor visitor;
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
 
-StatusOr<bool> GemmBroadcastFoldingRewriter::Run(
+absl::StatusOr<bool> GemmBroadcastFoldingRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;

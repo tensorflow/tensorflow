@@ -154,11 +154,11 @@ bool IsLosslesslyConvertibleTo(const HloInstruction* instr,
 
     // The only reason Convert() should fail is if we don't support converting
     // from x to y, which indeed means it's not losslessly-convertible.
-    StatusOr<Literal> converted1 = instr->literal().Convert(dst_ty);
+    absl::StatusOr<Literal> converted1 = instr->literal().Convert(dst_ty);
     if (!converted1.ok()) {
       return false;
     }
-    StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
+    absl::StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
     if (!converted2.ok()) {
       return false;
     }
@@ -187,7 +187,8 @@ bool IsLosslesslyConvertibleToF16(const HloInstruction* instr) {
 // conv-bias-activation.  If it's already a conv-bias-activation, does nothing.
 //
 // If `conv` is anything else, returns an error.
-StatusOr<HloInstruction*> EnsureIsConvBiasActivation(HloInstruction* conv) {
+absl::StatusOr<HloInstruction*> EnsureIsConvBiasActivation(
+    HloInstruction* conv) {
   CHECK_EQ(conv->opcode(), HloOpcode::kCustomCall);
 
   if (conv->custom_call_target() == kCudnnConvBiasActivationForwardCallTarget) {
@@ -229,9 +230,9 @@ StatusOr<HloInstruction*> EnsureIsConvBiasActivation(HloInstruction* conv) {
 
 // convert<cvt_type>(gte(custom-call<conv_type>(int8_x, int8_w))) ->
 // gte(custom-call<cvt_type>(int8_x, int8_w))
-StatusOr<bool> FuseConvertTypeIntoConv(HloComputation* comp,
-                                       PrimitiveType conv_type,
-                                       PrimitiveType cvt_type) {
+absl::StatusOr<bool> FuseConvertTypeIntoConv(HloComputation* comp,
+                                             PrimitiveType conv_type,
+                                             PrimitiveType cvt_type) {
   bool changed = false;
   for (auto instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* conv = nullptr;
@@ -273,7 +274,7 @@ struct ConvConvertTypes {
 // (custom call) to be the same as the conversion result.
 // For example: convert<float>(gte(custom-call<int32>(int8_x, int8_w))) ->
 // gte(custom-call<float>(int8_x, int8_w))
-StatusOr<bool> FuseRemoveConvertInConv(HloComputation* comp) {
+absl::StatusOr<bool> FuseRemoveConvertInConv(HloComputation* comp) {
   bool changed = false;
   // Note: We are eliminating F16->F32 because it fails on internal tests.
   std::array<ConvConvertTypes, 3> types{{
@@ -291,7 +292,7 @@ StatusOr<bool> FuseRemoveConvertInConv(HloComputation* comp) {
 
 // alpha * gte(custom-call(...)) ->
 // gte(custom-call(..., backend_config={alpha})).
-StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
+absl::StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
   bool changed = false;
   for (auto instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* conv = nullptr;
@@ -587,8 +588,9 @@ void CaptureConvGraphRecursive(HloInstruction* instr,
 
 // Captures in a GraphString the subgraph of pointwise operations operating on
 // the convolution that will be fused into the cuDNN convolution Custom Call.
-StatusOr<std::tuple<std::vector<HloInstruction*>, std::vector<HloInstruction*>,
-                    GraphString, HloInstruction*>>
+absl::StatusOr<
+    std::tuple<std::vector<HloInstruction*>, std::vector<HloInstruction*>,
+               GraphString, HloInstruction*>>
 CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
                  HloInstruction* wide_input, HloInstruction* wide_filter,
                  HloInstruction* input_scale, HloInstruction* filter_scale,
@@ -641,7 +643,8 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
 // multiplying or dividing by a broadcast scalar.
 // 5. Optionally calculate the maximum of the absolute of the result.
 // 6. Optionally cast the output back to FP8.
-StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
+absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
+                                 se::CudaComputeCapability cc) {
   bool changed = false;
 
 #if CUDA_VERSION >= 12000 && CUDNN_VERSION >= 8900
@@ -743,7 +746,7 @@ StatusOr<bool> F8GraphConv(HloComputation* comp, se::CudaComputeCapability cc) {
   return changed;
 }
 
-StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
+absl::StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
   bool changed = false;
   for (auto instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* conv = nullptr;
@@ -854,7 +857,7 @@ StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
 //
 // where `reshape` can be an arbitrary chain of reshapes+transposes.  This idiom
 // is created by the ReshapeMover pass.
-StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
+absl::StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* conv;
@@ -959,7 +962,8 @@ StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
   return changed;
 }
 
-StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
+absl::StatusOr<bool> FuseElu(HloComputation* comp,
+                             se::CudaComputeCapability cc) {
   if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
                                    cc)) {
     return false;
@@ -1020,7 +1024,7 @@ StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
   return changed;
 }
 
-StatusOr<bool> FuseRelu(HloComputation* comp) {
+absl::StatusOr<bool> FuseRelu(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte;
@@ -1055,7 +1059,8 @@ StatusOr<bool> FuseRelu(HloComputation* comp) {
   return changed;
 }
 
-StatusOr<bool> FuseRelu6(HloComputation* comp, se::CudaComputeCapability cc) {
+absl::StatusOr<bool> FuseRelu6(HloComputation* comp,
+                               se::CudaComputeCapability cc) {
   if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
                                    cc)) {
     return false;
@@ -1101,8 +1106,8 @@ StatusOr<bool> FuseRelu6(HloComputation* comp, se::CudaComputeCapability cc) {
   return changed;
 }
 
-StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
-                             se::CudaComputeCapability cc) {
+absl::StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
+                                   se::CudaComputeCapability cc) {
   if (!ShouldUseCudnnRuntimeFusion(comp->parent()->config().debug_options(),
                                    cc)) {
     return false;
@@ -1160,7 +1165,7 @@ StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
   return changed;
 }
 
-StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
+absl::StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte = nullptr;
@@ -1220,7 +1225,7 @@ StatusOr<bool> FuseConvertToF16(HloComputation* comp) {
   return changed;
 }
 
-StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
+absl::StatusOr<bool> FuseConvertToS8(HloComputation* comp) {
   bool changed = false;
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* gte = nullptr;
@@ -1435,7 +1440,7 @@ void VlogStats(HloModule* module) {
 
 }  // namespace
 
-StatusOr<bool> CudnnFusedConvRewriter::Run(
+absl::StatusOr<bool> CudnnFusedConvRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;

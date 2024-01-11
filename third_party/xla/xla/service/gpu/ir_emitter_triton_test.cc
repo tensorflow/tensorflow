@@ -93,13 +93,13 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
 
 class TritonFilecheckTest : public TritonTest {
  public:
-  StatusOr<bool> CreateTritonIrAndFileCheck(
+  absl::StatusOr<bool> CreateTritonIrAndFileCheck(
       absl::string_view hlo_text, const TritonGemmConfig& config,
       TritonIrEmitter emitter, absl::string_view triton_fusion_name,
       absl::string_view filecheck_pattern);
 };
 
-StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
+absl::StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
     absl::string_view hlo_text, const TritonGemmConfig& config,
     TritonIrEmitter emitter, absl::string_view triton_fusion_name,
     absl::string_view filecheck_pattern) {

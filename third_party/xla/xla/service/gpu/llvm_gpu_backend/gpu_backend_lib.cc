@@ -554,7 +554,7 @@ absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
   return LinkWithBitcodeVector(module, {libdevice_path});
 }
 
-StatusOr<std::string> CompileToPtx(
+absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target) {
@@ -707,7 +707,7 @@ void HsacoCache::Add(const std::string& ir, uint64_t hash,
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
+absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     llvm::Module* module, llvm::TargetMachine* target_machine) {
   auto* env = tsl::Env::Default();
   std::vector<std::string> tempdir_vector;
@@ -933,7 +933,7 @@ void AMDGPUBackendInit(const DebugOptions& debug_options) {
 }  // namespace
 
 namespace amdgpu {
-StatusOr<std::vector<uint8_t>> CompileToHsaco(
+absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& rocdl_dir_path,
     const std::string& module_config_cache_key) {

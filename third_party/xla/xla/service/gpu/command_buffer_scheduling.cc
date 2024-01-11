@@ -303,7 +303,7 @@ absl::Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
 // Prepares command buffer from sequence of instructions
 //===----------------------------------------------------------------------===//
 
-StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
+absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
     const HloInstructionSequence& seq) {
   auto builder = HloComputation::Builder("command_buffer");
 
@@ -404,7 +404,7 @@ StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 // Rewrites original computation into command buffer call
 //===----------------------------------------------------------------------===//
 
-StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
+absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     HloComputation* parent, const HloInstructionSequence& seq,
     CommandBuffer command_buffer) {
   if (command_buffer.results.empty())
@@ -523,7 +523,7 @@ CommandBufferScheduling::CommandBufferScheduling(
       gpu_toolkit_version_(gpu_toolkit_version),
       gpu_driver_version_(gpu_driver_version) {}
 
-StatusOr<bool> CommandBufferScheduling::Run(
+absl::StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We run command buffer scheduling after a regular scheduling to guarantee

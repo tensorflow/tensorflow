@@ -110,7 +110,7 @@ XLA_TEST_P(GpuAsyncCollectiveAnnotatorTest, Test) {
     if (!hlo_query::IsAsyncCollectiveStartOp(hlo->opcode())) {
       continue;
     }
-    StatusOr<CollectiveBackendConfig> backend_config =
+    absl::StatusOr<CollectiveBackendConfig> backend_config =
         hlo->backend_config<CollectiveBackendConfig>();
     ASSERT_TRUE(backend_config.ok());
     if (test_case.expected_async.contains(hlo->name())) {

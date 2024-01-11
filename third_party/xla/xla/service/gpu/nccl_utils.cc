@@ -89,8 +89,8 @@ ncclRedOp_t ToNcclReduction(ReductionKind kind) {
 
 namespace {
 
-StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
-                                        Thunk::Kind reduction_op) {
+absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
+                                              Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
     case F8E5M2:
@@ -138,7 +138,7 @@ StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
   }
 }
 
-StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
+absl::StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
   static_assert(sizeof(ncclUniqueId) == NCCL_UNIQUE_ID_BYTES,
                 "NCCL_UNIQUE_ID_BYTES");
 
@@ -148,7 +148,7 @@ StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
   return id;
 }
 
-StatusOr<std::string> LocalNcclUniqueIdCallback(const NcclCliqueKey&) {
+absl::StatusOr<std::string> LocalNcclUniqueIdCallback(const NcclCliqueKey&) {
   ncclUniqueId id;
   XLA_CUDA_RETURN_IF_ERROR(ncclGetUniqueId(&id));
   return std::string(id.internal, NCCL_UNIQUE_ID_BYTES);
@@ -179,7 +179,7 @@ struct NcclCliques {
   absl::node_hash_map<NcclCliqueKey, NcclClique> cliques ABSL_GUARDED_BY(mu);
 };
 
-std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
+std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
     const NcclUniqueIdCallback& unique_id_callback,
     size_t num_local_participants, bool may_skip_rendezvous) {
@@ -198,7 +198,8 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
     // Destruct clique if it hasn't been notified.
     NcclClique::Lock clique = cliques[clique_key].Acquire();
     if (clique->ready.HasBeenNotified() && clique->run_id == run_id.ToInt()) {
-      return std::make_shared<StatusOr<NcclClique::Lock>>(std::move(clique));
+      return std::make_shared<absl::StatusOr<NcclClique::Lock>>(
+          std::move(clique));
     }
   }
 
@@ -207,9 +208,9 @@ std::shared_ptr<StatusOr<NcclClique::Lock>> AcquireNcclClique(
   int64_t terminate_timeout = xla::GetDebugOptionsFromFlags()
                                   .xla_gpu_nccl_termination_timeout_seconds();
 
-  return RendezvousSingle<StatusOr<NcclClique::Lock>>(
+  return RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
       rendezvous_key, num_local_participants,
-      [&]() -> StatusOr<NcclClique::Lock> {
+      [&]() -> absl::StatusOr<NcclClique::Lock> {
         const NcclCliqueKey& clique_key = std::get<2>(rendezvous_key);
         NcclClique::Lock clique = cliques[clique_key].Acquire();
         if (clique->run_id < 0) {
@@ -288,7 +289,7 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
 
 }  // namespace
 
-StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+absl::StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op) {
   TF_ASSIGN_OR_RETURN(ncclDataType_t dtype,
                       ToNcclDataType(element_type, reduction_op));
@@ -306,7 +307,7 @@ size_t GetNumLocalParticipants(
   });
 }
 
-StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
+absl::StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
     const NcclUniqueIdCallback* unique_id_callback, bool is_local) {
   if (unique_id_callback != nullptr) return unique_id_callback;
 
@@ -319,7 +320,7 @@ StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
   return local_callback;
 }
 
-StatusOr<NcclComm::Lock> AcquireNcclComm(
+absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
     const NcclUniqueIdCallback& unique_id_callback, int32_t rank,
@@ -332,7 +333,7 @@ StatusOr<NcclComm::Lock> AcquireNcclComm(
   // the optimization, because we initially implement this optimization to
   // workaround an NCCL bug related to P2P operations.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
-  std::shared_ptr<StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
+  std::shared_ptr<absl::StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
       run_id, op_id, clique_key, unique_id_callback, num_local_participants,
       enable_clique_optimization ||
           stream_id != GetStreamId(/*is_async=*/true, kAsyncStreamCollective));

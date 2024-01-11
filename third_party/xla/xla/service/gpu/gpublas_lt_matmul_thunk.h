@@ -48,10 +48,10 @@ class CublasLtMatmulThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(
+  absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(
       const stream_executor::Stream* stream);
-  StatusOr<std::optional<se::gpu::BlasLt::MatmulAlgorithm> > GetMatmulAlgorithm(
-      const se::gpu::BlasLt::MatmulPlan* plan);
+  absl::StatusOr<std::optional<se::gpu::BlasLt::MatmulAlgorithm> >
+  GetMatmulAlgorithm(const se::gpu::BlasLt::MatmulPlan* plan);
 
   absl::Mutex matmul_plans_cache_mutex_;
   absl::flat_hash_map<const stream_executor::Stream*,

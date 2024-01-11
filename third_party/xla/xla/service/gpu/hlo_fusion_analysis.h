@@ -55,11 +55,11 @@ class HloFusionAnalysis {
     int smallest_input_dtype_bits;
   };
 
-  static StatusOr<HloFusionAnalysis> Create(
+  static absl::StatusOr<HloFusionAnalysis> Create(
       FusionBackendConfig backend_config,
       std::unique_ptr<HloFusionAdaptor> fusion,
       const se::DeviceDescription* device_info);
-  static StatusOr<HloFusionAnalysis> Create(
+  static absl::StatusOr<HloFusionAnalysis> Create(
       const HloFusionInstruction* fusion,
       const se::DeviceDescription* device_info);
 

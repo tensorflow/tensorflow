@@ -28,7 +28,7 @@ namespace gpu {
 // xla/service/gpu/kernels. See custom_fusion.h in that folder for details.
 class CustomFusionEmitter : public FusionInterface {
  public:
-  StatusOr<FusionEmissionResult> Emit(
+  absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
       const HloFusionInstruction& fusion) const final;
 };

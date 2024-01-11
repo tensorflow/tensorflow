@@ -104,7 +104,8 @@ bool NeedsAsyncCommsStream(Thunk& thunk) {
 
 }  // namespace
 
-StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
+absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
+    Params params) {
   auto executable = std::move(params.executable);
   std::unique_ptr<GpuExecutable> result(new GpuExecutable(std::move(params)));
 
@@ -216,8 +217,9 @@ absl::Status ExecuteThunks(const std::string& module_name,
   // Borrow streams required for NcclCollectiveThunk.
   absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams(
       kAsyncStreamTotal, nullptr);
-  StatusOr<std::vector<StreamPool::Ptr>> streams = run_options->BorrowStreams(
-      executor->device_ordinal(), kAsyncStreamTotal, stream_priority);
+  absl::StatusOr<std::vector<StreamPool::Ptr>> streams =
+      run_options->BorrowStreams(executor->device_ordinal(), kAsyncStreamTotal,
+                                 stream_priority);
   if (streams.ok()) {
     for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
       async_comms_streams[i] = streams->at(i).get();
@@ -226,7 +228,7 @@ absl::Status ExecuteThunks(const std::string& module_name,
 
   // Borrow stream for tracing command buffers.
   se::Stream* command_buffer_trace_stream = nullptr;
-  StatusOr<StreamPool::Ptr> borrowed_command_buffer_trace_stream =
+  absl::StatusOr<StreamPool::Ptr> borrowed_command_buffer_trace_stream =
       run_options->BorrowStream(executor->device_ordinal());
   if (borrowed_command_buffer_trace_stream.ok()) {
     command_buffer_trace_stream = borrowed_command_buffer_trace_stream->get();
@@ -302,7 +304,7 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
 
 }  // namespace
 
-StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
+absl::StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
 GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   se::StreamExecutor* executor = stream->parent();
 
@@ -333,7 +335,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   int submitted_mem_copies = 0;
 
   for (const ConstantInfo& info : constants_) {
-    StatusOr<stream_executor::DeviceMemoryBase> global_status;
+    absl::StatusOr<stream_executor::DeviceMemoryBase> global_status;
     if (static_cast<bool>(module_handle)) {
       global_status =
           executor->GetUntypedSymbol(info.symbol_name, module_handle);
@@ -388,7 +390,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
       .first->second.get();
 }
 
-StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
+absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
@@ -430,7 +432,7 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     const int64_t buffer_size = allocation.size();
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
-      StatusOr<se::OwningDeviceMemory> buffer =
+      absl::StatusOr<se::OwningDeviceMemory> buffer =
           memory_allocator->Allocate(device_ordinal, buffer_size);
       if (!buffer.ok()) {
         return ResourceExhausted("%s\n%s\n", buffer.status().message(),
@@ -464,7 +466,7 @@ static absl::Status CheckAlignment(const BufferAllocation& allocation,
   return absl::OkStatus();
 }
 
-StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
+absl::StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal) {
@@ -487,14 +489,14 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
   return {{buffers, device_ordinal, memory_allocator}};
 }
 
-StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
+absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   return ExecuteAsyncOnStreamImpl(run_options, absl::MakeSpan(arguments));
 }
 
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
+absl::StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -526,7 +528,7 @@ static absl::Status ExecuteXlaRuntime(
       block_host_until_done ? run_options->stream() : nullptr);
 }
 
-StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
+absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
     VariantArguments arguments) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
@@ -654,7 +656,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
                    "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
-        StatusOr<se::OwningDeviceMemory> allocated_buffer =
+        absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =
             memory_allocator->Allocate(device_ordinal, allocation_size);
         if (!allocated_buffer.ok()) {
           return ResourceExhausted("%s\n%s\n",
@@ -861,7 +863,7 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
   return absl::OkStatus();
 }
 
-StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
+absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
 GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
   const HloInstruction* root =
       hlo_module.entry_computation()->root_instruction();
@@ -929,7 +931,7 @@ GpuExecutable::GpuExecutable(
 
 // Returns a list of functions exported from the `module` that should be loaded
 // from the object file. Entrypoint functions always loaded with ordinal 0.
-static StatusOr<std::vector<runtime::Executable::LoadFunction>>
+static absl::StatusOr<std::vector<runtime::Executable::LoadFunction>>
 GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
   std::vector<runtime::Executable::LoadFunction> functions;
 
@@ -978,7 +980,8 @@ GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
 }
 
 // Get arguments buffer sizes from the entry function signature.
-static StatusOr<std::vector<int64_t>> GetBufferSizes(runtime::FunctionType& f) {
+static absl::StatusOr<std::vector<int64_t>> GetBufferSizes(
+    runtime::FunctionType& f) {
   std::vector<int64_t> buffer_sizes;
   for (unsigned i = 0; i < f.num_operands(); ++i) {
     auto* memref = llvm::dyn_cast<runtime::MemrefType>(f.operand(i));
@@ -1020,7 +1023,7 @@ static std::vector<std::vector<int64_t>> GetAllocationIndices(
   return res;
 }
 
-StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
+absl::StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
     absl::string_view mlir_module, DebugOptions debug_options,
     absl::string_view asm_text, absl::string_view binary,
@@ -1095,13 +1098,13 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
       std::move(gpu_runtime_executable)));
 }
 
-StatusOr<std::string_view> GpuExecutable::GetObjFile() const {
+absl::StatusOr<std::string_view> GpuExecutable::GetObjFile() const {
   if (!gpu_runtime_executable_)
     return Internal("gpu_runtime_executable is null");
   return gpu_runtime_executable_->GetObjFile();
 }
 
-StatusOr<std::string_view> GpuExecutable::GetMlirModule() const {
+absl::StatusOr<std::string_view> GpuExecutable::GetMlirModule() const {
   if (!gpu_runtime_executable_)
     return Internal("gpu_runtime_executable is null");
   return gpu_runtime_executable_->GetMlirModule();
