@@ -113,6 +113,7 @@ else
     'N'
     'N'
     'Y'
+    '/usr/lib/llvm-17/bin/clang'
     '-Wno-sign-compare -Wno-c++20-designator -Wno-gnu-inline-cpp-without-extern'
     'y'
     '/android/sdk'
