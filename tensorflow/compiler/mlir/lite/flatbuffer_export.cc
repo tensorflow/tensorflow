@@ -1577,8 +1577,9 @@ Translator::BuildStablehloReduceWindowOp(
   uint32_t opcode_index =
       GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_REDUCE_WINDOW);
 
-  auto window_dimensions = builder_.CreateVector(
-      mlir::GetVector<int64_t>(reduce_window_op.getWindowDimensions()));
+  auto wd = reduce_window_op.getWindowDimensions();
+  auto window_dimensions =
+      builder_.CreateVector(std::vector<int64_t>(wd.begin(), wd.end()));
   auto window_strides = builder_.CreateVector(
       mlir::GetOptionalVector<int64_t>(reduce_window_op.getWindowStrides()));
   auto base_dilations = builder_.CreateVector(

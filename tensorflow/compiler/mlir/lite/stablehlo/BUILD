@@ -465,6 +465,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:base",
         "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,

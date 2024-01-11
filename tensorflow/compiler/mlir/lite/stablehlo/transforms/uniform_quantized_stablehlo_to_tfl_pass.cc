@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/Base.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
@@ -688,13 +689,13 @@ class RewriteUpstreamQuantizedConvolutionOp
 
   // Returns the stride amount for the height and width, respectively.
   std::pair<int64_t, int64_t> GetStrides(stablehlo::ConvolutionOp op) const {
-    const DenseIntElementsAttr window_strides_attr = op.getWindowStridesAttr();
+    const Attribute window_strides_attr = op.getWindowStridesAttr();
     if (!window_strides_attr) {
       return {1, 1};  // Default values.
     }
 
     const auto window_strides_attr_value =
-        window_strides_attr.getValues<int64_t>();
+        hlo::getI64Array(window_strides_attr);
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {window_strides_attr_value[0], window_strides_attr_value[1]};
@@ -703,12 +704,12 @@ class RewriteUpstreamQuantizedConvolutionOp
   // Returns the dilation amount for the height and width, respectively.
   std::pair<int64_t, int64_t> GetDilationFactors(
       stablehlo::ConvolutionOp op) const {
-    const DenseIntElementsAttr lhs_dilation_attr = op.getLhsDilationAttr();
+    const Attribute lhs_dilation_attr = op.getLhsDilationAttr();
     if (!lhs_dilation_attr) {
       return {1, 1};  // Default values.
     }
 
-    const auto lhs_dilation_attr_value = lhs_dilation_attr.getValues<int64_t>();
+    const auto lhs_dilation_attr_value = hlo::getI64Array(lhs_dilation_attr);
     // It is guaranteed from the spec that it has two values:
     // https://github.com/openxla/stablehlo/blob/main/docs/spec.md#convolution.
     return {lhs_dilation_attr_value[0], lhs_dilation_attr_value[1]};

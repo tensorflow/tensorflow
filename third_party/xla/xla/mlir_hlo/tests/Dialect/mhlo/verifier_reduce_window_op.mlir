@@ -253,7 +253,7 @@ func.func @reduce_window_invalid_padding_attributes(%arg0: tensor<4x2xf32>,
 func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
                     %init0: tensor<f32>, %init1: tensor<i32>) ->
                       (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error @+1 {{expects the shape of window_dimensions attribute to be 1-D, but got {1, 2}}}
+  // expected-error @+1 {{window_dimensions has rank 2 instead of required rank 1}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -274,7 +274,7 @@ func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
 func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
                     %init0: tensor<f32>, %init1: tensor<i32>) ->
                       (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error @+1 {{expects the shape of window_strides attribute to be 1-D, but got {1, 2}}}
+  // expected-error @+1 {{window_strides has rank 2 instead of required rank 1}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -295,7 +295,7 @@ func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
 func.func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
     %arg1: tensor<4x?xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         (tensor<?x?xf32>, tensor<*xi32>) {
-  // expected-error @+1 {{expects the shape of base_dilations attribute to be 1-D, but got {1, 2}}}
+  // expected-error @+1 {{base_dilations has rank 2 instead of required rank 1}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -318,7 +318,7 @@ func.func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
 func.func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
     %arg1: tensor<4x?xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
         (tensor<?x?xf32>, tensor<*xi32>) {
-  // expected-error @+1 {{expects the shape of window_dilations attribute to be 1-D, but got {1, 2}}}
+  // expected-error @+1 {{window_dilations has rank 2 instead of required rank 1}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -341,7 +341,7 @@ func.func @reduce_window_with_unranked_dynamic_dims(%arg0: tensor<*xf32>,
 func.func @reduce_window_invalid_attributes(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
                     %init0: tensor<f32>, %init1: tensor<i32>) ->
                       (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error @+1 {{expects the shape of window_dimensions attribute to be 1-D}}
+  // expected-error @+1 {{window_dimensions has rank 2 instead of required rank 1}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
                 %b0: tensor<f32>, %b1: tensor<i32>):
@@ -668,7 +668,7 @@ func.func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
 func.func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
     (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<f32>' vs 'tensor<i32>'}}
+  // expected-error@+1 {{The element-type of reduction-region's result type at index 0 is expected to be promotable from the op's corresponding init-value element-type: 'tensor<f32>' vs 'tensor<i32>'}}
   %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init1, %init0) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>,
                 %b1: tensor<i32>):
@@ -689,7 +689,7 @@ func.func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
 func.func @reduce_window_invalid_reducer(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x2xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
     (tensor<2x2xf32>, tensor<2x2xi32>) {
-  // expected-error@+1 {{The element-type of reduction-region's argument at index 2 is expected to be 'i32', but got 'tensor<f32>' as its type.}}
+  // expected-error@+1 {{The element-type of reduction-region's argument at index 2 is expected to be promotable from 'i32', but got 'f32'}}
   %0:2 = "mhlo.reduce_window"(%arg1, %arg0, %init0, %init1) ({
          ^bb0(%a0: tensor<f32>, %a1: tensor<i32>, %b0: tensor<f32>,
                 %b1: tensor<i32>):

@@ -153,7 +153,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
   // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
-  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<i32>' vs 'tensor<f32>'}}
+  // expected-error@+1 {{The element-type of reduction-region's result type at index 0 is expected to be promotable from the op's corresponding init-value element-type: 'tensor<i32>' vs 'tensor<f32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
     %max = mhlo.maximum %arg0, %arg1 : tensor<i32>
@@ -169,7 +169,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
   // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
-  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<4xf32>' vs 'tensor<f32>'}}
+  // expected-error@+1 {{The shape of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<4xf32>' vs 'tensor<f32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>):
     %max = mhlo.maximum %arg0, %arg1 : tensor<4xf32>
@@ -468,7 +468,7 @@ func.func @reduce_scatter_c7(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
 // -----
 
 func.func @reduce_scatter_c7(%data: tensor<4x16xf32>) -> tensor<4x4xf32> {
-  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<i32>' vs 'tensor<f32>'}}
+  // expected-error@+1 {{The element-type of reduction-region's result type at index 0 is expected to be promotable from the op's corresponding init-value element-type: 'tensor<i32>' vs 'tensor<f32>'}}
   %0 = "mhlo.reduce_scatter"(%data) ({
     ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
     %1 = mhlo.add %arg2, %arg3 : tensor<i32>
@@ -1888,7 +1888,7 @@ func.func @mismatch_computation_output_type(%arg0: tensor<4x5xf32>, %arg1: tenso
 
 func.func @map_invalid_dimension_numbers(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xf32> {
   // @expected-error@+2 {{'mhlo.map' op failed to infer returned types}}
-  // expected-error@+1 {{requires monotonically increasing dimension numbers, but got: dense<[1, 0]> : tensor<2xi64>}}
+  // expected-error@+1 {{requires monotonically increasing dimension numbers, but got: 1, 0}}
   %0 = "mhlo.map"(%arg0, %arg1) ({
     ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = mhlo.add %arg2, %arg3 {name = "add"} : tensor<f32>
@@ -3805,7 +3805,7 @@ func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi3
 
 func.func @gather(%operand : tensor<2x4x9xi32>, %start_indices : tensor<1x5x2xi32>) -> tensor<1x5x8xi32> {
   // @expected-error@+2 {{'mhlo.gather' op failed to infer returned types}}
-  // expected-error@+1 {{slice_sizes.rank != 1}}
+  // expected-error@+1 {{slice_sizes has rank 2 instead of required rank 1}}
   %res = "mhlo.gather"(%operand, %start_indices) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0, 1],
