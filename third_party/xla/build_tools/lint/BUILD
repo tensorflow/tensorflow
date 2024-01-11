@@ -13,7 +13,7 @@
 # limitations under the License.
 # ============================================================================
 
-load("//xla:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
+load("//xla:pytype.default.bzl", "pytype_strict_library")
 # Placeholder: load py_test
 
 package(
@@ -34,7 +34,7 @@ pytype_strict_library(
     visibility = ["//visibility:public"],
 )
 
-pytype_strict_binary(
+pytype_strict_library(
     name = "generate_compile_commands",
     srcs = ["generate_compile_commands.py"],
 )
@@ -64,6 +64,16 @@ py_test(
     tags = ["no_oss"],
     deps = [
         ":diff_parser",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+py_test(
+    name = "generate_compile_commands_test",
+    srcs = ["generate_compile_commands_test.py"],
+    tags = ["no_oss"],
+    deps = [
+        ":generate_compile_commands",
         "@absl_py//absl/testing:absltest",
     ],
 )
