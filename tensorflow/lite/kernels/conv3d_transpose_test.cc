@@ -596,7 +596,19 @@ TEST_P(PerChannelQuantizedConv3dTransposeOpTest,
        /*per_channel_quantization_offsets=*/{0, 0},
        /*channel_index=*/3},
       {TensorType_INT8, {2, 3, 2, 1, 2}, 0, 0, 0.5f, 0},
-      {TensorType_INT32, {2}}, {TensorType_INT8, {}, 0, 0, 1.0f, 0},
+      // Quantisation scales for bias are computed as the product between the
+      // input scale (0.5f) and the filter quantisation scales (0.5f, 1.0f).
+      {TensorType_INT32,
+       {2},
+       0,
+       0,
+       0,
+       0,
+       /*per_channel_quantization=*/true,
+       /*per_channel_quantization_scales=*/{0.25f, 0.5f},
+       /*per_channel_quantization_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      {TensorType_INT8, {}, 0, 0, 1.0f, 0},
       PerChannelQuantizedConv3dTransposeOpTest::GetParam());
 
   m.SetInput<int8_t>(CreateRangeVector<float>(24));
