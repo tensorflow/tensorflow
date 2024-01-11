@@ -1,0 +1,25 @@
+Upstreamed in https://github.com/openai/triton/pull/2914
+
+diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+--- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
++++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
+@@ -284,15 +284,15 @@ SmallVector<unsigned> getCTASplitNum(Att
+ }
+ 
+ SmallVector<unsigned> getCTAOrder(Attribute layout) {
+-  ArrayRef<unsigned> ref;
++  SmallVector<unsigned> res;
+   if (auto distributedLayout = layout.dyn_cast<DistributedEncodingTrait>()) {
+-    ref = distributedLayout.getCTAOrder();
++    res = distributedLayout.getCTAOrder();
+   } else if (auto sharedLayout = layout.dyn_cast<SharedEncodingAttr>()) {
+-    ref = sharedLayout.getCTALayout().getCTAOrder();
++    res = SmallVector<unsigned>(sharedLayout.getCTALayout().getCTAOrder());
+   } else {
+     llvm::report_fatal_error("Unimplemented usage of getCTAOrder");
+   }
+-  return SmallVector<unsigned>(ref.begin(), ref.end());
++  return res;
+ }
+ 
+ SmallVector<int64_t> getShapePerCTA(ArrayRef<unsigned> CTASplitNum,
