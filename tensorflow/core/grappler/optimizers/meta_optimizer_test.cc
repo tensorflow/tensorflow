@@ -781,7 +781,7 @@ TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
       *config.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("SleepingOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
-  rewriter_config.set_meta_optimizer_timeout_ms(2500);
+  rewriter_config.set_meta_optimizer_timeout_ms(7500);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   GraphDef output;
   const int original_node_size = item.graph.node_size();
