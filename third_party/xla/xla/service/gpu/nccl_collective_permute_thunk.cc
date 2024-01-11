@@ -25,8 +25,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
@@ -44,12 +47,30 @@ namespace gpu {
 
 using mlir::lmhlo_gpu::CollectivePermuteStartOp;
 
+namespace {
+
+bool IsSyncCollective(const HloInstruction* instr) {
+  auto backend_config =
+      instr->backend_config<xla::gpu::CollectiveBackendConfig>().value();
+  return backend_config.is_sync();
+}
+
+}  // namespace
+
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     ThunkInfo thunk_info, CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
                           op.getIsSync()),
       config_(GetNcclP2PConfig(op, replica_count, partition_count)),
+      buffer_(buffer) {}
+
+NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
+    ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
+    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
+    : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
+                          IsSyncCollective(instr)),
+      config_(GetNcclP2PConfig(instr, replica_count, partition_count)),
       buffer_(buffer) {}
 
 /*static*/ NcclP2PConfig NcclCollectivePermuteStartThunk::GetNcclP2PConfig(
@@ -92,6 +113,46 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
   return collective_permute_config;
 }
 
+/*static*/ NcclP2PConfig NcclCollectivePermuteStartThunk::GetNcclP2PConfig(
+    const HloCollectivePermuteInstruction* instr, int64_t replica_count,
+    int64_t partition_count) {
+  NcclP2PConfig collective_permute_config;
+  auto& config = collective_permute_config.config;
+
+  config.operand_count = 1;
+  const Shape shape = instr->operand(0)->shape();
+  config.operand_element_type.push_back(shape.element_type());
+  config.SetCollectiveOpKindAndID(instr);
+  config.group_mode = GetGroupMode(instr);
+
+  // With a collective permute, all execution instances together form one
+  // replica group.
+  const int64_t num_participants =
+      config.group_mode == CollectiveOpGroupMode::kCrossReplica
+          ? replica_count
+          : partition_count;
+  config.replica_groups.emplace_back();
+  ReplicaGroup& replica_group = config.replica_groups.front();
+  for (int i = 0; i < num_participants; ++i) {
+    replica_group.add_replica_ids(i);
+  }
+
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+      instr->source_target_pairs();
+
+  for (const std::pair<int64_t, int64_t>& source_target : source_target_pairs) {
+    int64_t source = source_target.first;
+    int64_t target = source_target.second;
+
+    collective_permute_config.id_to_source_target.insert({target, {}})
+        .first->second.source = source;
+    collective_permute_config.id_to_source_target.insert({source, {}})
+        .first->second.target = target;
+  }
+
+  return collective_permute_config;
+}
+
 /*static*/ absl::Status NcclCollectivePermuteStartThunk::CheckImplementable(
     CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
@@ -120,9 +181,34 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
                         });
 }
 
+/*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(
+    const HloCollectivePermuteInstruction* instr, int64_t replica_count,
+    int64_t partition_count) {
+  // The collective permute is degenerate if all source-target pairs are
+  // identity, and all the IDs appear in the list.
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+      instr->source_target_pairs();
+  // Each ID can appear only once as a source and as a target. So if all pairs
+  // are identity, all IDs must appear in the list is the size == number of
+  // replicas/partitions.
+  const int64_t expected_size =
+      instr->channel_id().has_value() ? partition_count : replica_count;
+  return source_target_pairs.size() == expected_size &&
+         absl::c_all_of(source_target_pairs,
+                        [](const std::pair<int64_t, int64_t>& source_target) {
+                          return source_target.first == source_target.second;
+                        });
+}
+
 /*static*/ CollectiveOpGroupMode NcclCollectivePermuteStartThunk::GetGroupMode(
     CollectivePermuteStartOp op) {
   return GetCollectiveOpGroupMode(op.getChannelId().has_value(), std::nullopt)
+      .value();
+}
+
+/*static*/ CollectiveOpGroupMode NcclCollectivePermuteStartThunk::GetGroupMode(
+    const HloCollectivePermuteInstruction* instr) {
+  return GetCollectiveOpGroupMode(instr->channel_id().has_value(), std::nullopt)
       .value();
 }
 

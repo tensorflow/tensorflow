@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
@@ -136,6 +137,17 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
     default:
       CHECK(0) << "Invalid collective op mode";
       return false;
+  }
+}
+
+void NcclCollectiveConfig::SetCollectiveOpKindAndID(
+    const HloCollectivePermuteInstruction* instr) {
+  if (instr->channel_id().has_value()) {
+    collective_op_kind = RendezvousKey::kCrossModule;
+    op_id = instr->channel_id().value();
+  } else {
+    collective_op_kind = RendezvousKey::kCrossReplica;
+    op_id = static_cast<int64_t>(instr->GetModule()->unique_id());
   }
 }
 
