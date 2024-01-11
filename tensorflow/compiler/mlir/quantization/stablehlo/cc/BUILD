@@ -168,6 +168,12 @@ cc_library(
     srcs = ["pre_calibration.cc"],
     hdrs = ["pre_calibration.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         ":component",
         ":pass_pipeline",
@@ -236,5 +242,75 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@local_tsl//tsl/platform:errors",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+    ],
+)
+
+# OSS: This is a header-only target. Do NOT directly depend on `static_range_ptq_impl` unless it is
+# necessary (e.g. undefined symbol error), to avoid ODR violation.
+cc_library(
+    name = "static_range_ptq",
+    hdrs = ["static_range_ptq.h"],
+    compatible_with = get_compatible_with_portable(),
+    # Must be header-only or unique (i.e. the same target is not a dependency of
+    # tensorflow_framework, tensorflow_cc, or pywrap_tensorflow_internal) dependencies.
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "static_range_ptq_impl",
+    srcs = ["static_range_ptq.cc"],
+    hdrs = ["static_range_ptq.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
+        ":context",
+        ":export",
+        ":io",
+        ":post_calibration",
+        ":pre_calibration",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:assign_ids",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:statistics",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:convert_asset_args",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/python:unfreeze_constants",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )

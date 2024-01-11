@@ -21,7 +21,7 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import representati
 def static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quantization_options_serialized: bytes,
+    quantization_config_serialized: bytes,
     *,
     signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],

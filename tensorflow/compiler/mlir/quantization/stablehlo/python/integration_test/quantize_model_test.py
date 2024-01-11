@@ -18,18 +18,15 @@ from typing import Optional, Sequence
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as qc
 from tensorflow.compiler.mlir.quantization.stablehlo.python import quantization
 from tensorflow.compiler.mlir.quantization.stablehlo.python.integration_test import quantize_model_test_base
-from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import tag_constants
-
-# Type aliases for quantization method protobuf enums.
-_PresetMethod = quant_opts_pb2.QuantizationMethod.PresetMethod
 
 
 def parameter_combinations(test_parameters):
@@ -68,8 +65,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       has_bias: bool,
       dim_sizes: Sequence[int],
   ):
-    target_opset = quant_opts_pb2.STABLEHLO
-
     lhs_dim_size, rhs_dim_size = dim_sizes
     input_shape = (*lhs_dim_size,)
     filter_shape = (*rhs_dim_size,)
@@ -103,21 +98,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         {'serving_default': data_gen()}
     )
 
-    config = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
         ),
-        tags={tag_constants.SERVING},
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-        representative_datasets={
-            'serving_default': quant_opts_pb2.RepresentativeDatasetFile(
-                tfrecord_file_path=dataset_path
-            )
-        },
-        calibration_options=quant_opts_pb2.CalibrationOptions(
-            calibration_method=quant_opts_pb2.CalibrationOptions.CALIBRATION_METHOD_MIN_MAX
-        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -155,8 +144,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       self,
       same_scale_op: str,
   ):
-    target_opset = quant_opts_pb2.STABLEHLO
-
     input_shape = (2, 3, 1, 1024)
     filter_shape = (2, 3, 1024, 3)
     static_input_shape = [dim if dim is not None else 2 for dim in input_shape]
@@ -189,21 +176,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         {'serving_default': data_gen()}
     )
 
-    config = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
         ),
-        tags={tag_constants.SERVING},
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-        representative_datasets={
-            'serving_default': quant_opts_pb2.RepresentativeDatasetFile(
-                tfrecord_file_path=dataset_path
-            )
-        },
-        calibration_options=quant_opts_pb2.CalibrationOptions(
-            calibration_method=quant_opts_pb2.CalibrationOptions.CALIBRATION_METHOD_MIN_MAX
-        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
     quantization.quantize_saved_model(
         self._input_saved_model_path,
@@ -229,7 +210,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'activation_fn': None,
           'has_bias': False,
           'has_batch_norm': False,
-          'target_opset': quant_opts_pb2.STABLEHLO,
           'input_shape_dynamic': False,
           'enable_per_channel_quantization': False,
       },
@@ -240,7 +220,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       activation_fn: Optional[ops.Operation],
       has_bias: bool,
       has_batch_norm: bool,
-      target_opset: quant_opts_pb2.OpSet,
       input_shape_dynamic: bool,
       enable_per_channel_quantization: bool,
       dilations: Sequence[int] = None,
@@ -282,24 +261,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         {'serving_default': data_gen()}
     )
 
-    config = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
         ),
-        tags={tag_constants.SERVING},
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-        representative_datasets={
-            'serving_default': quant_opts_pb2.RepresentativeDatasetFile(
-                tfrecord_file_path=dataset_path
-            )
-        },
-        enable_per_channel_quantization=enable_per_channel_quantization,
-        calibration_options=quant_opts_pb2.CalibrationOptions(
-            calibration_method=quant_opts_pb2.CalibrationOptions.CALIBRATION_METHOD_MIN_MAX
-        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
-
     quantization.quantize_saved_model(
         self._input_saved_model_path,
         self._output_saved_model_path,
@@ -318,14 +289,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.05)
 
-  @parameterized.parameters(
-      ('abc,cde->abde', quant_opts_pb2.STABLEHLO),
-      ('abc,dce->abde', quant_opts_pb2.STABLEHLO),
-  )
+  @parameterized.parameters(('abc,cde->abde',), ('abc,dce->abde',))
   def test_einsum_ptq_model(
       self,
       equation: str,
-      target_opset: quant_opts_pb2.OpSet,
   ):
     _, y_shape, bias_shape, x_signature, y_signature = (
         self._prepare_sample_einsum_datashapes(equation, use_bias=True)
@@ -362,23 +329,16 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         {'serving_default': data_gen()}
     )
 
-    config = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+    config = qc.QuantizationConfig(
+        static_range_ptq_preset=qc.StaticRangePtqPreset(
+            representative_datasets=[
+                qc.RepresentativeDatasetConfig(
+                    tf_record=qc.TfRecordFile(path=dataset_path)
+                )
+            ]
         ),
-        tags={tag_constants.SERVING},
-        signature_keys=['serving_default'],
-        op_set=target_opset,
-        representative_datasets={
-            'serving_default': quant_opts_pb2.RepresentativeDatasetFile(
-                tfrecord_file_path=dataset_path
-            )
-        },
-        calibration_options=quant_opts_pb2.CalibrationOptions(
-            calibration_method=quant_opts_pb2.CalibrationOptions.CALIBRATION_METHOD_MIN_MAX
-        ),
+        tf_saved_model=qc.TfSavedModelConfig(tags=[tag_constants.SERVING]),
     )
-
     quantization.quantize_saved_model(
         self._input_saved_model_path,
         self._output_saved_model_path,
@@ -397,22 +357,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.02, atol=0.04)
 
-  def test_when_preset_not_srq_raise_error(self):
+  def test_when_preset_not_srq_raises_error(self):
     self._create_matmul_model(
         input_shape=(1, 1024),
         weight_shape=(1024, 3),
         saved_model_path=self._input_saved_model_path,
     )
 
-    config = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            preset_method=_PresetMethod.METHOD_NO_QUANTIZE
-        ),
-        tags={tag_constants.SERVING},
-        signature_keys=['serving_default'],
-        op_set=quant_opts_pb2.STABLEHLO,
-    )
-
+    config = qc.QuantizationConfig()
     with self.assertRaisesRegex(ValueError, 'only supports static-range PTQ'):
       quantization.quantize_saved_model(
           self._input_saved_model_path,
