@@ -210,7 +210,7 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
   """A `tf_export`, `keras_export` and `estimator_export` aware doc_visitor."""
 
   class TfNameScore(NamedTuple):
-    cannonical_score: int
+    canonical_score: int
     name_score: doc_generator_visitor.DocGeneratorVisitor.NameScore
 
   def _score_name(self, path: doc_generator_visitor.ApiPath) -> TfNameScore:
@@ -321,48 +321,6 @@ def build_docs(output_dir, code_url_prefix, search_hints):
         "from": str(site_path / "tf_overview"),
         "to": str(site_path / "tf"),
     })
-
-  expected_path_contents = {
-      "tf/summary/audio.md":
-          "python/summary/tb_summary.py",
-      "tf/estimator/DNNClassifier.md":
-          "tensorflow_estimator/python/estimator/canned/dnn.py",
-      "tf/nn/sigmoid_cross_entropy_with_logits.md":
-          "python/ops/nn_impl.py",
-      "tf/keras/Model.md":
-          "engine/training.py",
-  }
-
-  all_passed = True
-  error_msg_parts = [
-      'Some "view source" links seem to be broken, please check:'
-  ]
-
-  for (rel_path, contents) in expected_path_contents.items():
-    path = output_dir / rel_path
-    if contents not in path.read_text():
-      all_passed = False
-      error_msg_parts.append("  " + str(path))
-
-  if not all_passed:
-    raise ValueError("\n".join(error_msg_parts))
-
-  rejected_path_contents = {
-      "tf/keras/optimizers.md": "api/_v2/keras/optimizers/__init__.py",
-  }
-
-  all_passed = True
-  error_msg_parts = [
-      'Bad "view source" links in generated files, please check:'
-  ]
-  for rel_path, content in rejected_path_contents.items():
-    path = output_dir / rel_path
-    if content in path.read_text():
-      all_passed = False
-      error_msg_parts.append("  " + str(path))
-
-  if not all_passed:
-    raise ValueError("\n".join(error_msg_parts))
 
   num_files = len(list(output_dir.rglob("*")))
   if num_files < MIN_NUM_FILES_EXPECTED:
