@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -56,6 +58,13 @@ limitations under the License.
 #if XLA_ENABLE_XCCL
 #include "xla/service/gpu/nccl_utils.h"
 #endif  // XLA_ENABLE_XCCL
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_status_internal.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
+#endif
 
 namespace xla::gpu {
 
@@ -729,6 +738,94 @@ CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
           {rhs_buffer_, MemoryAccess::kRead},
           {output_buffer_, MemoryAccess::kWrite},
           {workspace_, MemoryAccess::kWrite}};
+}
+
+//===----------------------------------------------------------------------===//
+// CustomCallCmd
+//===----------------------------------------------------------------------===//
+
+CustomCallCmd::CustomCallCmd(CustomCallTarget call_target,
+                             std::vector<std::optional<Slice>> operands,
+                             std::vector<std::optional<Slice>> results,
+                             const std::string& opaque)
+    : call_target_(std::move(call_target)),
+      operands_(std::move(operands)),
+      results_(std::move(results)),
+      opaque_(opaque){};
+
+Status CustomCallCmd::Record(const RecordParams& params,
+                             se::CommandBuffer* command_buffer) {
+  std::vector<void*> buffers;
+  buffers.reserve(operands_.size() + results_.size());
+  for (auto& slices : {operands_, results_}) {
+    for (const std::optional<Slice>& slice : slices) {
+      if (!slice.has_value()) {
+        buffers.push_back(nullptr);
+        continue;
+      }
+
+      if (!slice->slice.allocation())
+        return InternalError("custom call input missing buffer allocation");
+
+      buffers.push_back(
+          params.buffer_allocations->GetDeviceAddress(slice->slice).opaque());
+    }
+  }
+
+  if (VLOG_IS_ON(5)) {
+    VLOG(5) << "CustomCallCmd: ";
+    for (int i = 0; i < operands_.size(); ++i) {
+      if (operands_[i].has_value()) {
+        VLOG(5) << "  Operand " << i << ": " << operands_[i]->slice << " ("
+                << buffers[i] << ")";
+      } else {
+        VLOG(5) << "  Operand " << i << ": null";
+      }
+    }
+    for (int i = 0; i < results_.size(); ++i) {
+      if (results_[i].has_value()) {
+        VLOG(5) << "  Result " << i << ": " << results_[i]->slice << " ("
+                << buffers[operands_.size() + i] << ")";
+      } else {
+        VLOG(5) << "  Result " << i << ": null";
+      }
+    }
+  }
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  TF_ASSIGN_OR_RETURN(
+      auto nested_buffer,
+      se::CommandBuffer::Trace(
+          params.executor, params.trace_stream, [&](se::Stream* stream) {
+            se::gpu::GpuStreamHandle gpu_stream =
+                se::gpu::AsGpuStreamValue(stream);
+            XlaCustomCallStatus custom_call_status;
+            call_target_(gpu_stream, buffers.data(), opaque_.data(),
+                         opaque_.size(), &custom_call_status);
+            auto message = CustomCallStatusGetMessage(&custom_call_status);
+            if (message) {
+              return absl::InternalError(
+                  absl::StrCat("CustomCall failed: ", *message));
+            }
+            return OkStatus();
+          }));
+  return command_buffer->AddNestedCommandBuffer(nested_buffer);
+#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return Unavailable(
+      "Custom calls on GPU are not supported in this configuration. Please "
+      "build with --config=cuda or --config=rocm");
+#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+}
+
+CommandBufferCmd::BufferUsageVector CustomCallCmd::buffers() {
+  CommandBufferCmd::BufferUsageVector buffer_usage;
+  for (auto& slices : {operands_, results_}) {
+    for (const std::optional<Slice>& slice : slices) {
+      if (!slice.has_value()) continue;
+      buffer_usage.push_back({slice->slice, MemoryAccess::kWrite});
+    }
+  }
+  return buffer_usage;
 }
 
 //===----------------------------------------------------------------------===//

@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -39,11 +42,16 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/gpu/gpu_types.h"
+#endif
 
 namespace xla::gpu {
 
@@ -508,6 +516,45 @@ class GemmCmd : public CommandBufferCmd {
   const BufferAllocation::Slice workspace_;
   // Whether to run deterministically.
   const bool deterministic_;
+};
+
+//===----------------------------------------------------------------------===//
+// CustomCallCmd
+//===----------------------------------------------------------------------===//
+
+class CustomCallCmd : public CommandBufferCmd {
+ public:
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  using Stream = stream_executor::gpu::GpuStreamHandle;
+#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  using Stream = void*;
+#endif  //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  using CustomCallTarget = std::function<void(Stream, void**, const char*,
+                                              size_t, XlaCustomCallStatus*)>;
+  struct Slice {
+    BufferAllocation::Slice slice;
+    Shape shape;
+  };
+
+  // This is a legacy custom call API that is discouraged, and will be
+  // deprecated once XLA:FFI mechanism is ready.
+  // TODO(anlunx): Support XLA:FFI calls as commands.
+  CustomCallCmd(CustomCallTarget call_target,
+                std::vector<std::optional<Slice>> operands,
+                std::vector<std::optional<Slice>> results,
+                const std::string& opaque);
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  CustomCallTarget call_target_;
+  std::vector<std::optional<Slice>> operands_;
+  std::vector<std::optional<Slice>> results_;
+  std::string opaque_;
 };
 
 //===----------------------------------------------------------------------===//
