@@ -484,8 +484,8 @@ absl::Status ROCMBlas::DoBlasGemm(
           cb_beta, static_cast<rocblas_double_complex *>(c->opaque()), ldc);
     }
     default:
-      return absl::InternalError("Unsupported datatype for GEMM: ",
-                                 blas::DataTypeString(dtype));
+      return absl::InternalError(absl::StrCat("Unsupported datatype for GEMM: ",
+                                              blas::DataTypeString(dtype)));
   }
 }
 
@@ -498,8 +498,9 @@ absl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::AlgorithmType algorithm, const NumericOptions &numeric_options,
     blas::ProfileResult *output_profile_result, blas::CallContext context) {
   // ROCM TODO: properly implement the interface
-  return absl::InternalError("DoBlasGemmWithAlgorithm ",
-                             "is not implemented on ROCm yet");
+  return absl::InternalError(
+      "DoBlasGemmWithAlgorithm "
+      "is not implemented on ROCm yet");
 }
 
 absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
@@ -512,8 +513,9 @@ absl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
     blas::AlgorithmType algorithm, const NumericOptions &numeric_options,
     blas::ProfileResult *output_profile_result, blas::CallContext context) {
   // ROCM TODO: properly implement the interface
-  return absl::InternalError("DoBlasGemmStridedBatchedWithAlgorithm ",
-                             "is not implemented on ROCm yet");
+  return absl::InternalError(
+      "DoBlasGemmStridedBatchedWithAlgorithm "
+      "is not implemented on ROCm yet");
 }
 
 bool ROCMBlas::GetBlasGemmAlgorithms(

@@ -1112,7 +1112,8 @@ struct BitPatternToValue {
         hipError_t res = wrap::hipModuleLoadData(module, hsaco_data);
 
         if (res != hipSuccess) {
-          ret = absl::InternalError("Failed to load HSACO: ", ToString(res));
+          ret = absl::InternalError(
+              absl::StrCat("Failed to load HSACO: ", ToString(res)));
           notification.Notify();
         }
 
