@@ -174,6 +174,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     for (auto& thunk : *thunks_) {
       TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
     }
+    return absl::OkStatus();
   }
 
   se::StreamExecutor* executor = params.stream->parent();
