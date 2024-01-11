@@ -35,7 +35,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class InputSlicesTest : public HloTestBase {
+class LoopTest : public HloTestBase {
  protected:
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -54,7 +54,7 @@ absl::StatusOr<std::unique_ptr<LoopFusion>> GetLoopFusion(
   return std::unique_ptr<LoopFusion>{fusion};
 }
 
-TEST_F(InputSlicesTest, ThreadIndexingUnrolled) {
+TEST_F(LoopTest, ThreadIndexingUnrolled) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule module
 
@@ -82,7 +82,7 @@ TEST_F(InputSlicesTest, ThreadIndexingUnrolled) {
                         "(d0 * 4 + d3 * 512 + s0) mod 300)"));
 }
 
-TEST_F(InputSlicesTest, ThreadIndexingNotUnrolled) {
+TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule module
 
