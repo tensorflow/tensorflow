@@ -920,6 +920,7 @@ tsl_gpu_library(
         "//xla:xla_data_proto_cc",
         "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
+        "//xla/service:lockable",
         "//xla/service:rendezvous",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
