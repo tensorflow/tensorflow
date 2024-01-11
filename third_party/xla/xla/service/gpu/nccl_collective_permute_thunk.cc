@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -27,8 +28,12 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 #if XLA_ENABLE_XCCL
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -39,15 +44,17 @@ namespace gpu {
 
 using mlir::lmhlo_gpu::CollectivePermuteStartOp;
 
-namespace impl {
+NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
+    ThunkInfo thunk_info, CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count, const Buffer& buffer)
+    : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
+                          op.getIsSync()),
+      config_(GetNcclP2PConfig(op, replica_count, partition_count)),
+      buffer_(buffer) {}
 
-CollectiveOpGroupMode GetGroupMode(CollectivePermuteStartOp op) {
-  return GetCollectiveOpGroupMode(op.getChannelId().has_value(), std::nullopt)
-      .value();
-}
-
-NcclP2PConfig GetNcclP2PConfig(CollectivePermuteStartOp op,
-                               int64_t replica_count, int64_t partition_count) {
+/*static*/ NcclP2PConfig NcclCollectivePermuteStartThunk::GetNcclP2PConfig(
+    CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
   NcclP2PConfig collective_permute_config;
   auto& config = collective_permute_config.config;
 
@@ -85,32 +92,13 @@ NcclP2PConfig GetNcclP2PConfig(CollectivePermuteStartOp op,
   return collective_permute_config;
 }
 
-absl::Status CheckImplementable(CollectivePermuteStartOp op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
-  return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
-}
-
-}  // namespace impl
-
-NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, CollectivePermuteStartOp op, int64_t replica_count,
-    int64_t partition_count, const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
-                          op.getIsSync()),
-      config_(GetNcclP2PConfig(op, replica_count, partition_count)),
-      buffer_(buffer) {}
-
-/*static*/ NcclP2PConfig NcclCollectivePermuteStartThunk::GetNcclP2PConfig(
-    CollectivePermuteStartOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return impl::GetNcclP2PConfig(op, replica_count, partition_count);
-}
-
 /*static*/ absl::Status NcclCollectivePermuteStartThunk::CheckImplementable(
     CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
+  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   return AddOpDescription<NcclCollectivePermuteStartThunk>(
-      impl::CheckImplementable(op), op, replica_count, partition_count);
+      IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute), op,
+      replica_count, partition_count);
 }
 
 /*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(
@@ -134,7 +122,8 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
 
 /*static*/ CollectiveOpGroupMode NcclCollectivePermuteStartThunk::GetGroupMode(
     CollectivePermuteStartOp op) {
-  return impl::GetGroupMode(op);
+  return GetCollectiveOpGroupMode(op.getChannelId().has_value(), std::nullopt)
+      .value();
 }
 
 absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
