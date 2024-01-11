@@ -1123,7 +1123,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "flags_pybind.pyi",
     ],
-    visibility = ["//tensorflow/core/config:__subpackages__"],
+    visibility = [
+        "//tensorflow/core/config:__subpackages__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/config:flags_headers",
@@ -1217,14 +1220,6 @@ tf_python_pybind_extension(
     ],
     static_deps = tf_python_pybind_static_deps(),
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
         "//tensorflow/compiler/jit:flags_headers_only",
@@ -1240,6 +1235,14 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
         "@pybind11",
         # copybara:uncomment "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ] + if_static(
@@ -1327,7 +1330,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_pywrap_parallel_device.pyi",
     ],
-    visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
+    visibility = [
+        "//tensorflow/python/distribute/parallel_device:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
     deps = [
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:tfe_cancellationmanager_internal_hdrs_only",

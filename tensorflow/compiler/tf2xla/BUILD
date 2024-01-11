@@ -221,7 +221,10 @@ filegroup(
         "@local_xla//xla/service:custom_call_status_hdrs",
         "@local_xla//xla/service/cpu:runtime_hdrs",
     ],
-    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+    visibility = [
+        "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
 )
 
 filegroup(
@@ -235,7 +238,10 @@ filegroup(
         "@local_xla//xla/service:custom_call_status_srcs",
         "@local_xla//xla/service/cpu:runtime_srcs",
     ],
-    visibility = ["//tensorflow/tools/pip_package:__pkg__"],
+    visibility = [
+        "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
 )
 
 # This stand-alone target is used to ensure that we can build tf_library type

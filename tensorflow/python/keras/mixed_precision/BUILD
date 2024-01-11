@@ -24,6 +24,7 @@ package(
         # TODO(scottzhu): Remove these two deps and convert the test to integration test.
         "//tensorflow/python/distribute:__pkg__",  # For collective_all_reduce_strategy_test
         "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
     licenses = ["notice"],

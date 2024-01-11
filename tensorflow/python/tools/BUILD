@@ -15,13 +15,6 @@ package(
 py_strict_library(
     name = "tools_pip",
     data = [
-        ":freeze_graph",
-        ":import_pb_to_tensorboard",
-        ":inspect_checkpoint",
-        ":optimize_for_inference",
-        ":print_selective_registration_header",
-        ":saved_model_cli",
-        ":strip_unused",
         # Include the TF upgrade script to users can run it directly after install TF
         "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
@@ -36,6 +29,13 @@ py_strict_library(
         ":optimize_for_inference_lib",
         ":selective_registration_header_lib",
         ":strip_unused_lib",
+        ":freeze_graph",
+        ":import_pb_to_tensorboard",
+        ":inspect_checkpoint",
+        ":optimize_for_inference",
+        ":print_selective_registration_header",
+        ":saved_model_cli",
+        ":strip_unused",
     ],
 )
 
