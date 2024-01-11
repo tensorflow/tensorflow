@@ -4727,6 +4727,7 @@ xla_cc_test(
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
     ],
 )

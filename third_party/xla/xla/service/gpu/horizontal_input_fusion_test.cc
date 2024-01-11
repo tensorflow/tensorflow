@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/test.h"
 
 namespace xla {
@@ -30,8 +31,9 @@ namespace m = ::xla::match;
 
 class HorizontalInputFusionTest : public GpuCodegenTest {
  public:
-  GpuHorizontalInputFusion horizontal_input_fusion_{
+  se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  GpuHorizontalInputFusion horizontal_input_fusion_{device_description_};
 };
 
 TEST_F(HorizontalInputFusionTest, BasicTest) {
