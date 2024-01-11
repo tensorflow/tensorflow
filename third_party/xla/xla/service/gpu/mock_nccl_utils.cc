@@ -180,14 +180,14 @@ absl::StatusOr<int64_t> GetMockNcclSleepTime(size_t count,
   float minTime = std::numeric_limits<float>::infinity();
   float time = 0.0f;
   if (info->coll == ncclFuncAllReduce) {
-    XLA_CUDA_RETURN_IF_ERROR(ncclTopoGetAlgoTime(
+    XLA_NCCL_RETURN_IF_ERROR(ncclTopoGetAlgoTime(
         info, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, numPipeOps, &time));
     info->algorithm = NCCL_ALGO_RING;
     info->protocol = NCCL_PROTO_SIMPLE;
     minTime = time;
   } else {
     for (int p = 0; p < 3; p++) {
-      XLA_CUDA_RETURN_IF_ERROR(
+      XLA_NCCL_RETURN_IF_ERROR(
           ncclTopoGetAlgoTime(info, NCCL_ALGO_RING, p, numPipeOps, &time));
       if (time > 0 && time < minTime) {
         info->algorithm = NCCL_ALGO_RING;
@@ -501,14 +501,14 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
 
   absl::Status status = [comm] {
     ncclResult_t async_err;
-    XLA_CUDA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
     if (async_err != ncclSuccess) {
       LOG(ERROR) << "Aborting communicator: " << comm
                  << " due to async NCCL error: "
                  << ncclGetErrorString(async_err);
-      XLA_CUDA_RETURN_IF_ERROR(ncclCommAbort(comm));
+      XLA_NCCL_RETURN_IF_ERROR(ncclCommAbort(comm));
     }
-    return XLA_CUDA_STATUS(async_err);
+    return XLA_NCCL_STATUS(async_err);
   }();
 
   if (!status.ok()) LOG(ERROR) << status;
@@ -582,7 +582,7 @@ absl::Status InitializeMockNcclCostModel(
     absl::Span<const std::pair<int, int>> local_ranks,
     GpuExecutableRunOptions::MockNcclTopoModel topo_model,
     ncclComm_t* comm_ptr) {
-  XLA_CUDA_RETURN_IF_ERROR(ncclCalloc(comm_ptr, 1));
+  XLA_NCCL_RETURN_IF_ERROR(ncclCalloc(comm_ptr, 1));
   ncclComm_t comm = *comm_ptr;
   comm->nChannels = 1;
   comm->nRanks = nRanks;
@@ -594,7 +594,7 @@ absl::Status InitializeMockNcclCostModel(
       comm->nvlsSupport = false;
       comm->minCompCap = comm->maxCompCap = stream_executor::
           CudaComputeCapability::CudaComputeCapabilities::HOPPER;
-      XLA_CUDA_RETURN_IF_ERROR(ncclCalloc(&comm->peerInfo, nRanks + 1));
+      XLA_NCCL_RETURN_IF_ERROR(ncclCalloc(&comm->peerInfo, nRanks + 1));
       xml_str = kGCPA3;
       break;
     case GpuExecutableRunOptions::MockNcclTopoModel::kNvidia:
@@ -602,7 +602,7 @@ absl::Status InitializeMockNcclCostModel(
       comm->nvlsSupport = false;
       comm->minCompCap = comm->maxCompCap = stream_executor::
           CudaComputeCapability::CudaComputeCapabilities::AMPERE;
-      XLA_CUDA_RETURN_IF_ERROR(ncclCalloc(&comm->peerInfo, nRanks + 1));
+      XLA_NCCL_RETURN_IF_ERROR(ncclCalloc(&comm->peerInfo, nRanks + 1));
       xml_str = kNvidia;
       break;
     default:
@@ -612,12 +612,12 @@ absl::Status InitializeMockNcclCostModel(
   auto xml = std::make_unique<ncclXml>();
   TF_RETURN_IF_ERROR(MockTopoGetXml(xml_str, xml.get()));
   TF_RETURN_IF_ERROR(MockNcclTopoUpdateXml(local_ranks, xml.get()));
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoTrimXml(xml.get()));
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoGetSystemFromXml(xml.get(), &comm->topo));
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoComputePaths(comm->topo, nullptr));
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoTrimSystem(comm->topo, comm));
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoComputePaths(comm->topo, nullptr));
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoSearchInit(comm->topo));
+  XLA_NCCL_RETURN_IF_ERROR(ncclTopoTrimXml(xml.get()));
+  XLA_NCCL_RETURN_IF_ERROR(ncclTopoGetSystemFromXml(xml.get(), &comm->topo));
+  XLA_NCCL_RETURN_IF_ERROR(ncclTopoComputePaths(comm->topo, nullptr));
+  XLA_NCCL_RETURN_IF_ERROR(ncclTopoTrimSystem(comm->topo, comm));
+  XLA_NCCL_RETURN_IF_ERROR(ncclTopoComputePaths(comm->topo, nullptr));
+  XLA_NCCL_RETURN_IF_ERROR(ncclTopoSearchInit(comm->topo));
 
   ncclTopoGraph ringGraph;
   ncclTopoGraph treeGraph;
@@ -632,21 +632,21 @@ absl::Status InitializeMockNcclCostModel(
   ringGraph.collNet = 0;
   ringGraph.minChannels = 1;
   ringGraph.maxChannels = MAXCHANNELS / 2;
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoCompute(comm->topo, &ringGraph));
+  XLA_NCCL_RETURN_IF_ERROR(ncclTopoCompute(comm->topo, &ringGraph));
 
   treeGraph.id = 1;
   treeGraph.pattern = NCCL_TOPO_PATTERN_BALANCED_TREE;
   treeGraph.collNet = 0;
   treeGraph.minChannels = ringGraph.nChannels;
   treeGraph.maxChannels = ringGraph.nChannels;
-  XLA_CUDA_RETURN_IF_ERROR(ncclTopoCompute(comm->topo, &treeGraph));
+  XLA_NCCL_RETURN_IF_ERROR(ncclTopoCompute(comm->topo, &treeGraph));
 
   collNetGraph.id = 2;
   collNetGraph.pattern = NCCL_TOPO_PATTERN_TREE;
   collNetGraph.collNet = 1;
   collNetGraph.minChannels = collNetGraph.maxChannels = ringGraph.nChannels;
   if (comm->collNetSupport) {
-    XLA_CUDA_RETURN_IF_ERROR(ncclTopoCompute(comm->topo, &collNetGraph));
+    XLA_NCCL_RETURN_IF_ERROR(ncclTopoCompute(comm->topo, &collNetGraph));
   } else {
     collNetGraph.nChannels = 0;
   }
@@ -657,13 +657,13 @@ absl::Status InitializeMockNcclCostModel(
   nvlsGraph.minChannels = 1;
   nvlsGraph.maxChannels = MAXCHANNELS;
   if (comm->nvlsSupport) {
-    XLA_CUDA_RETURN_IF_ERROR(ncclTopoCompute(comm->topo, &nvlsGraph));
+    XLA_NCCL_RETURN_IF_ERROR(ncclTopoCompute(comm->topo, &nvlsGraph));
   } else {
     nvlsGraph.nChannels = 0;
   }
 
   comm->nNodes = nRanks / num_local_participants;
-  XLA_CUDA_RETURN_IF_ERROR(
+  XLA_NCCL_RETURN_IF_ERROR(
       ncclTopoTuneModel(comm, comm->minCompCap, comm->maxCompCap, graphs));
   return absl::OkStatus();
 }

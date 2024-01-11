@@ -211,7 +211,7 @@ absl::Status RunCollectivePermute(
   // ncclRecv API calls.
   const bool is_nccl_group_needed = (target_id && source_id);
   if (is_nccl_group_needed) {
-    XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+    XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
   }
 
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
@@ -229,7 +229,7 @@ absl::Status RunCollectivePermute(
         "comm=%p, stream=%p)",
         device_string, src_addr.opaque(), element_count, *target_id,
         static_cast<const void*>(comm), gpu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
+    XLA_NCCL_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
                                       *target_id, comm, gpu_stream));
   }
 
@@ -240,11 +240,11 @@ absl::Status RunCollectivePermute(
         "stream=%p)",
         device_string, dest_addr.opaque(), element_count, *source_id,
         static_cast<const void*>(comm), gpu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
+    XLA_NCCL_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
                                       *source_id, comm, gpu_stream));
   }
   if (is_nccl_group_needed) {
-    XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
+    XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
   }
 
   if (!source_id) {

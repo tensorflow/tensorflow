@@ -131,7 +131,7 @@ absl::Status RunRecv(NcclP2PConfig::SourceTargetMapEntry source_target,
         "stream=%p)",
         device_string, dest_addr.opaque(), element_count, *source_id,
         static_cast<const void*>(comm), gpu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
+    XLA_NCCL_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
                                       *source_id, comm, gpu_stream));
   } else {
     // If there is no source peer, i.e. no sender to this instance, zero out

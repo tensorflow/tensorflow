@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/int_type.h"
-#include "tsl/platform/logging.h"
 
 // Common place for all collective thunks to include nccl/rccl headers.
 #if TENSORFLOW_USE_ROCM
@@ -61,30 +61,6 @@ bool IsGlobalNcclConfig();
 absl::Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                       const char* expr);
 
-// Macros to return or warn on CUDA/NCCL errors.  (The same macro works for both
-// NCCL and CUDA errors.)
-//
-// It's tempting to say these macros belong in an XLA header somewhere, but in
-// practice we don't do much direct-to-CUDA-API stuff outside of this file.
-#define XLA_CUDA_STATUS(expr) \
-  xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
-
-#define XLA_CUDA_RETURN_IF_ERROR(expr)      \
-  do {                                      \
-    absl::Status s = XLA_CUDA_STATUS(expr); \
-    if (!s.ok()) {                          \
-      return s;                             \
-    }                                       \
-  } while (0)
-
-#define XLA_CUDA_WARN_IF_ERROR(expr)        \
-  do {                                      \
-    absl::Status s = XLA_CUDA_STATUS(expr); \
-    if (!s.ok()) {                          \
-      LOG(ERROR) << s.ToString();           \
-    }                                       \
-  } while (0)
-
 size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
@@ -104,6 +80,31 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     size_t num_local_participants,
     const NcclUniqueIdCallback& unique_id_callback, int32_t rank,
     int64_t stream_id, bool enable_clique_optimization);
+
+//==-----------------------------------------------------------------------===//
+// Macros to return or warn on NCCL errors.
+//==-----------------------------------------------------------------------===//
+
+// It's tempting to say these macros belong in an XLA header somewhere, but in
+// practice we don't do much direct-to-CUDA-API stuff outside of this file.
+#define XLA_NCCL_STATUS(expr) \
+  xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
+
+#define XLA_NCCL_RETURN_IF_ERROR(expr)      \
+  do {                                      \
+    absl::Status s = XLA_NCCL_STATUS(expr); \
+    if (!s.ok()) {                          \
+      return s;                             \
+    }                                       \
+  } while (0)
+
+#define XLA_NCCL_WARN_IF_ERROR(expr)        \
+  do {                                      \
+    absl::Status s = XLA_NCCL_STATUS(expr); \
+    if (!s.ok()) {                          \
+      LOG(ERROR) << s.ToString();           \
+    }                                       \
+  } while (0)
 
 }  // namespace gpu
 }  // namespace xla

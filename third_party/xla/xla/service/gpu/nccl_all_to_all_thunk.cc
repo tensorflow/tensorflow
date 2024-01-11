@@ -103,9 +103,9 @@ absl::Status RunAllToAll(bool has_split_dimension,
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   int num_participants;
-  XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
+  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
 
-  XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
   // AllToAll can operate in two modes. Either it specifies a split dimension,
   // in which case inputs are split and outputs concatenated in that dimension
   // (here, we only support dimension 0), or it takes a list of inputs
@@ -136,7 +136,7 @@ absl::Status RunAllToAll(bool has_split_dimension,
             "comm=%p, stream=%p)",
             send_buffer + rank * chunk_bytes, chunk_elements * multiplier, rank,
             static_cast<const void*>(comm), gpu_stream);
-        XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer + rank * chunk_bytes,
+        XLA_NCCL_RETURN_IF_ERROR(ncclSend(send_buffer + rank * chunk_bytes,
                                           chunk_elements * multiplier, dtype,
                                           rank, comm, gpu_stream));
 
@@ -146,7 +146,7 @@ absl::Status RunAllToAll(bool has_split_dimension,
             recv_buffer + rank * chunk_bytes, chunk_elements * multiplier, rank,
             static_cast<const void*>(comm), gpu_stream);
 
-        XLA_CUDA_RETURN_IF_ERROR(ncclRecv(recv_buffer + rank * chunk_bytes,
+        XLA_NCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer + rank * chunk_bytes,
                                           chunk_elements * multiplier, dtype,
                                           rank, comm, gpu_stream));
       }
@@ -174,7 +174,7 @@ absl::Status RunAllToAll(bool has_split_dimension,
           send_buffer, element_count, i, static_cast<const void*>(comm),
           gpu_stream);
 
-      XLA_CUDA_RETURN_IF_ERROR(ncclSend(send_buffer, element_count, dtype,
+      XLA_NCCL_RETURN_IF_ERROR(ncclSend(send_buffer, element_count, dtype,
                                         /*rank=*/i, comm, gpu_stream));
 
       VLOG(3) << absl::StreamFormat(
@@ -183,11 +183,11 @@ absl::Status RunAllToAll(bool has_split_dimension,
           recv_buffer, element_count, i, static_cast<const void*>(comm),
           gpu_stream);
 
-      XLA_CUDA_RETURN_IF_ERROR(ncclRecv(recv_buffer, element_count, dtype,
+      XLA_NCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer, element_count, dtype,
                                         /*rank=*/i, comm, gpu_stream));
     }
   }
-  XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing all-to-all for ordinal: " << device_ordinal;
   return absl::OkStatus();

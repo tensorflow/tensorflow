@@ -131,7 +131,7 @@ absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
         "comm=%p, stream=%p)",
         device_string, src_addr.opaque(), element_count, *target_id,
         static_cast<const void*>(comm), gpu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
+    XLA_NCCL_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
                                       *target_id, comm, gpu_stream));
   }
   return absl::OkStatus();

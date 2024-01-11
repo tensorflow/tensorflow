@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/rendezvous.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "tsl/platform/env.h"
@@ -150,7 +149,7 @@ absl::StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
 
 absl::StatusOr<std::string> LocalNcclUniqueIdCallback(const NcclCliqueKey&) {
   ncclUniqueId id;
-  XLA_CUDA_RETURN_IF_ERROR(ncclGetUniqueId(&id));
+  XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
   return std::string(id.internal, NCCL_UNIQUE_ID_BYTES);
 }
 
@@ -252,7 +251,7 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
     if (comm == nullptr) return absl::OkStatus();
 
     ncclResult_t async_err;
-    XLA_CUDA_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
+    XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
 
     if (async_err != ncclSuccess) {
       LOG(ERROR) << "Aborting communicator: " << comm
@@ -260,10 +259,10 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
                  << ncclGetErrorString(async_err)
                  << ". Last NCCL warning(error) log entry (may be unrelated): "
                  << ncclGetLastError(nullptr);
-      XLA_CUDA_RETURN_IF_ERROR(ncclCommAbort(comm));
+      XLA_NCCL_RETURN_IF_ERROR(ncclCommAbort(comm));
     }
 
-    return XLA_CUDA_STATUS(async_err);
+    return XLA_NCCL_STATUS(async_err);
   };
 
   // Launch a thread that periodically checks all NCCL communicators for
@@ -350,7 +349,7 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
 
     ncclComm_t comm = nullptr;
     absl::Status status =
-        XLA_CUDA_STATUS(ncclCommInitRank(&comm, nranks, id, rank));
+        XLA_NCCL_STATUS(ncclCommInitRank(&comm, nranks, id, rank));
 
     size_t num_initialized = [&] {
       absl::MutexLock lock(&state.mu);

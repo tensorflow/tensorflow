@@ -62,7 +62,7 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
-  XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
     DeviceBufferPair& buffer = buffers[i];
     const void* send_buffer = buffer.source_buffer.opaque();
@@ -80,11 +80,11 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
         send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
         gpu_stream);
 
-    XLA_CUDA_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
+    XLA_NCCL_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
                                            element_count, dtype, reduce_op,
                                            comm, gpu_stream));
   }
-  return XLA_CUDA_STATUS(ncclGroupEnd());
+  return XLA_NCCL_STATUS(ncclGroupEnd());
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
@@ -380,9 +380,9 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   int num_participants = 0;
-  XLA_CUDA_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
+  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
 
-  XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
     DeviceBufferPair& buffer = buffers[i];
     const void* send_buffer = buffer.source_buffer.opaque();
@@ -407,11 +407,11 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
         "comm=%p, stream=%p)",
         send_buffer, recv_buffer, recv_count, static_cast<const void*>(comm),
         gpu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclReduceScatter(send_buffer, recv_buffer,
+    XLA_NCCL_RETURN_IF_ERROR(ncclReduceScatter(send_buffer, recv_buffer,
                                                recv_count, dtype, reduce_op,
                                                comm, gpu_stream));
   }
-  XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
+  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
 
   VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
   return absl::OkStatus();
