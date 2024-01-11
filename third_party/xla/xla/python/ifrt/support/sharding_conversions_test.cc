@@ -165,8 +165,9 @@ TEST_P(ShardingConversionsEquivalentTest, OpShardingReplicated) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_sharding,
                           xla::HloSharding::FromProto(op_sharding));
   const xla::Shape xla_shape(PrimitiveType::F16, /*dimensions=*/{4, 6}, {}, {});
-  TF_ASSERT_OK_AND_ASSIGN(auto actual, ToShardingParam(hlo_sharding, xla_shape,
-                                                       /*axis_sizes=*/{2, 3}));
+  TF_ASSERT_OK_AND_ASSIGN(auto actual,
+                          ToShardingParam(hlo_sharding, xla_shape.dimensions(),
+                                          /*axis_sizes=*/{2, 3}));
   ShardingParam expected{/*dim_shards=*/{1, 1},
                          {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
   EXPECT_EQ(actual, expected);
