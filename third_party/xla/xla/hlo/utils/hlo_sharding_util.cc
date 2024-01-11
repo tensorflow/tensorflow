@@ -704,21 +704,46 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
     // the range.
     for (int64_t end_dim = source_shape.rank(); end_dim > start_dim;
          --end_dim) {
-      std::vector<int64_t> preserved_dims(end_dim - start_dim);
-      absl::c_iota(preserved_dims, start_dim);
-      auto group = GroupShardingOnAllDimsExcept(sharding, preserved_dims);
+      std::vector<int64_t> grouped_tiling_dims(source_shape.rank(), 1);
+      for (int64_t i = start_dim; i < end_dim; ++i) {
+        grouped_tiling_dims[i] = sharding.tile_assignment().dim(i);
+      }
+      HloSharding grouped_sharding =
+          HloSharding::Tile(TileAssignment(grouped_tiling_dims));
       if (auto reshaped =
-              ReshapeSharding(source_shape, target_shape, group.sharding)) {
-        group.sharding = std::move(*reshaped);
-        group.group_dims.clear();
-        // Replication dim.
-        group.group_dims.push_back(target_shape.rank());
-        group.data_rank = target_shape.rank();
-        int64_t group_size = Product(group.group_dim_sizes);
-        group.group_dim_sizes.clear();
-        group.group_dim_sizes.push_back(group_size);
-        if (MergeShardingIfCompatible(UngroupSharding(group),
-                                      result.NumTiles() + 1, &result)) {
+              ReshapeSharding(source_shape, target_shape, grouped_sharding)) {
+        std::vector<int> perm;
+        perm.reserve(sharding.tile_assignment().num_dimensions());
+        for (int64_t i = start_dim; i < end_dim; i++) {
+          perm.push_back(i);
+        }
+        for (int64_t i = 0; i < start_dim; i++) {
+          perm.push_back(i);
+        }
+        for (int64_t i = end_dim;
+             i < sharding.tile_assignment().num_dimensions(); i++) {
+          perm.push_back(i);
+        }
+
+        std::vector<int64_t> reshape_dims(
+            reshaped->tile_assignment().dimensions().begin(),
+            reshaped->tile_assignment().dimensions().end());
+        CHECK_EQ(
+            sharding.tile_assignment().num_elements() % Product(reshape_dims),
+            0);
+        int64_t num_replicated_dims =
+            sharding.tile_assignment().num_elements() / Product(reshape_dims);
+        const int64_t diff = reshape_dims.size() - target_shape.rank();
+        CHECK(diff == 0 || diff == 1);
+        if (diff == 0) {
+          reshape_dims.push_back(num_replicated_dims);
+        } else {
+          reshape_dims.back() *= num_replicated_dims;
+        }
+        HloSharding ungrouped_sharding = HloSharding::PartialTile(
+            sharding.tile_assignment().Transpose(perm).Reshape(reshape_dims));
+        if (MergeShardingIfCompatible(ungrouped_sharding, result.NumTiles() + 1,
+                                      &result)) {
           // If the current interval works, we can skip all dimensions within
           // or before it in future intervals, since they have been considered
           // already. Set start_dim to end_dim to start with the next disjoint
