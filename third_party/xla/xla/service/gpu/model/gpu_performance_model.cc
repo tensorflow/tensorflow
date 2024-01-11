@@ -103,66 +103,76 @@ int GetCoalescingWasteFactor(PrimitiveType element_type) {
   return kDRAMToL2TransactionSizeBytes / element_size_bytes;
 }
 
+// Limit the bandwidth for low occupancy cases. Each SM can issue at most
+// one 32B memory transaction per clock. H100 needs at least 56.8 active SMs
+// (1830 MHz) to saturate the memory bandwidth (3.35 TB/s).
+float AdjustBandwidth(const se::DeviceDescription& gpu_device_info,
+                      float bandwidth, int64_t num_blocks) {
+  float per_block_bandwidth = gpu_device_info.clock_rate_ghz() * 1.0e9f * 32;
+  float max_bandwidth = num_blocks * per_block_bandwidth;
+
+  return std::min(bandwidth, max_bandwidth);
+}
+
+// Estimate read time of n_bytes_total bytes from global memory on a
+// given GPU.
+//
+// Assumes that the first n_bytes_net are always read from DRAM, but next reads
+// can be cached. Applies waste factor if read from DRAM is uncoalesced.
+absl::Duration ReadTimeWithDRAMHeuristic(
+    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
+    int64_t n_bytes_net, int64_t n_bytes_total, PrimitiveType element_type,
+    bool coalesced) {
+  int waste_factor = coalesced ? 1 : GetCoalescingWasteFactor(element_type);
+
+  // The first read of the input buffer always happens from DRAM. If reads are
+  // no coaleced, bandwidth is reduced by the waste factor.
+  float dram_bandwidth = gpu_device_info.memory_bandwidth() / waste_factor;
+
+  // Two things can happed on re-reading the buffer:
+  //   - If the buffer fits into cache, the L1/L2 cache speedup is applied.
+  //   - If the buffer doesn't fit, it will be read from DRAM and the same
+  //     coalessing waste factor is applied.
+  float rest_bandwidth = gpu_device_info.memory_bandwidth();
+  if (n_bytes_net < gpu_device_info.l2_cache_size()) {
+    rest_bandwidth *= kL2CacheSpeedup;
+    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
+      rest_bandwidth *= kL1CacheSpeedup;
+    }
+  } else {
+    rest_bandwidth /= waste_factor;
+  }
+
+  dram_bandwidth = AdjustBandwidth(gpu_device_info, dram_bandwidth, num_blocks);
+  rest_bandwidth = AdjustBandwidth(gpu_device_info, rest_bandwidth, num_blocks);
+
+  // n_bytes_net > n_bytes_total can happen when we compute read time of
+  // shared operand. This is a flaw in the interface that should be fixed.
+  int64_t n_bytes_read_dram = std::min(n_bytes_net, n_bytes_total);
+
+  // Number of bytes that we be re-read, potentially from cache.
+  int64_t n_bytes_read_cache = n_bytes_total - n_bytes_read_dram;
+
+  return absl::Seconds(n_bytes_read_dram / dram_bandwidth) +
+         absl::Seconds(n_bytes_read_cache / rest_bandwidth);
+}
+
 // Estimate read time of n_bytes_total bytes from global memory on a
 // given GPU. Account for L1 / L2 cache speedup if the input's nominal size
 // n_bytes_net is small.
 absl::Duration ReadTime(const se::DeviceDescription& gpu_device_info,
                         int64_t num_blocks, int64_t n_bytes_net,
-                        int64_t n_bytes_total, PrimitiveType element_type,
-                        bool coalesced, bool first_read_from_dram) {
-  int waste_factor = coalesced ? 1 : GetCoalescingWasteFactor(element_type);
-
-  // Limit the bandwidth for low occupancy cases. Each SM can issue at most
-  // one 32B memory transaction per clock. H100 needs at least 56.8 active SMs
-  // (1830 MHz) to saturate the memory bandwidth (3.35 TB/s).
-  float per_block_bandwidth = gpu_device_info.clock_rate_ghz() * 1.0e9f * 32;
-  float max_bandwidth = num_blocks * per_block_bandwidth;
-
-  if (first_read_from_dram) {
-    // The first read of the input buffer always happens from DRAM. If reads are
-    // no coaleced, bandwidth is reduced by the waste factor.
-    float dram_bandwidth = gpu_device_info.memory_bandwidth() / waste_factor;
-
-    // Two things can happed on re-reading the buffer:
-    //   - If the buffer fits into cache, the L1/L2 cache speedup is applied.
-    //   - If the buffer doesn't fit, it will be read from DRAM and the same
-    //     coalessing waste factor is applied.
-    float rest_bandwidth = gpu_device_info.memory_bandwidth();
-    if (n_bytes_net < gpu_device_info.l2_cache_size()) {
-      rest_bandwidth *= kL2CacheSpeedup;
-      if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
-        rest_bandwidth *= kL1CacheSpeedup;
-      }
-    } else {
-      rest_bandwidth /= waste_factor;
+                        int64_t n_bytes_total) {
+  float bandwidth = gpu_device_info.memory_bandwidth();
+  if (n_bytes_net < gpu_device_info.l2_cache_size()) {
+    bandwidth *= kL2CacheSpeedup;
+    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
+      bandwidth *= kL1CacheSpeedup;
     }
-
-    dram_bandwidth = std::min(dram_bandwidth, max_bandwidth);
-    rest_bandwidth = std::min(rest_bandwidth, max_bandwidth);
-
-    // n_bytes_net > n_bytes_total can happend when we compute read time of
-    // shared operand. This is a flaw in the interface that should be fixed.
-    int64_t n_bytes_read_dram = std::min(n_bytes_net, n_bytes_total);
-
-    // Number of bytes that we be re-read, potentially from cache.
-    int64_t n_bytes_read_cache = n_bytes_total - n_bytes_read_dram;
-
-    return absl::Seconds(n_bytes_read_dram / dram_bandwidth) +
-           absl::Seconds(n_bytes_read_cache / rest_bandwidth);
-  } else {
-    float bandwidth = gpu_device_info.memory_bandwidth();
-    if (n_bytes_net < gpu_device_info.l2_cache_size()) {
-      bandwidth *= kL2CacheSpeedup;
-      if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
-        bandwidth *= kL1CacheSpeedup;
-      }
-    } else if (!coalesced) {
-      bandwidth /= waste_factor;
-    }
-
-    bandwidth = std::min(bandwidth, max_bandwidth);
-    return absl::Seconds(n_bytes_total / bandwidth);
   }
+
+  bandwidth = AdjustBandwidth(gpu_device_info, bandwidth, num_blocks);
+  return absl::Seconds(n_bytes_total / bandwidth);
 }
 
 int64_t GetNcclMaxNumChannels(
@@ -373,8 +383,8 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
         std::llround(n_bytes_total / std::max(operand_utilization, 1.0f));
 
     read_time +=
-        ReadTime(*device_info, num_blocks, n_bytes_net, n_bytes_total,
-                 element_type, coalesced, /*first_read_from_dram=*/true);
+        ReadTimeWithDRAMHeuristic(*device_info, num_blocks, n_bytes_net,
+                                  n_bytes_total, element_type, coalesced);
   }
 
   absl::Duration write_time =
@@ -531,14 +541,10 @@ float GetSharedUtilization(const GpuHloCostAnalysis* cost_analysis,
     float common_utilization = GetCommonUtilization(
         cost_analysis, producer, /*producer_idx_of_operand=*/i, fused_consumer);
 
-    const auto& operand_shape = producer->operand(i)->shape();
-
     CHECK_LE(common_utilization, producer_output_utilization);
     float n_bytes_total = operand_bytes_accessed *
                           (producer_output_utilization - common_utilization);
-    ret += ReadTime(gpu_device_info, num_blocks, /*n_bytes_net=*/n_bytes_net,
-                    n_bytes_total, operand_shape.element_type(),
-                    /*coalesced=*/true, /*first_read_from_dram=*/false);
+    ret += ReadTime(gpu_device_info, num_blocks, n_bytes_net, n_bytes_total);
   }
   return ret;
 }
@@ -590,10 +596,9 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     int64_t n_bytes_net =
         std::min(producer_runtime.bytes_written, n_bytes_total);
 
-    auto read_time_unfused = ReadTime(
-        *device_info, launch_dimensions_unfused.num_blocks(), n_bytes_net,
-        n_bytes_total, fused_consumer->shape().element_type(),
-        /*coalesced=*/true, /*first_read_from_dram=*/false);
+    auto read_time_unfused =
+        ReadTime(*device_info, launch_dimensions_unfused.num_blocks(),
+                 n_bytes_net, n_bytes_total);
 
     VLOG(10) << "  Read time unfused: " << read_time_unfused;
     time_unfused += read_time_unfused;
@@ -658,10 +663,9 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
     bool coalesced =
         IsReadCoalescedHeuristic(fusion_analysis, producer, consumer);
 
-    read_time +=
-        ReadTime(*device_info, launch_dimensions.num_blocks(), n_bytes_net,
-                 n_bytes_total, operand->shape().element_type(), coalesced,
-                 /*first_read_from_dram=*/true);
+    read_time += ReadTimeWithDRAMHeuristic(
+        *device_info, launch_dimensions.num_blocks(), n_bytes_net,
+        n_bytes_total, operand->shape().element_type(), coalesced);
   }
 
   if (VLOG_IS_ON(8)) {
