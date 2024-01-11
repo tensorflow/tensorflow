@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_HEAP_SIMULATOR_H_
-#define XLA_SERVICE_HEAP_SIMULATOR_H_
+#ifndef XLA_SERVICE_HEAP_SIMULATOR_HEAP_SIMULATOR_H_
+#define XLA_SERVICE_HEAP_SIMULATOR_HEAP_SIMULATOR_H_
 
 #include <algorithm>
 #include <cstdint>
@@ -28,7 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/service/allocation_block.h"
+#include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo_value.h"
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
@@ -956,4 +956,4 @@ extern template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_HEAP_SIMULATOR_H_
+#endif  // XLA_SERVICE_HEAP_SIMULATOR_HEAP_SIMULATOR_H_

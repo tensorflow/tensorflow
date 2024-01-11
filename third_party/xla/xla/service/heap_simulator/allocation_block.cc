@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/allocation_block.h"
+#include "xla/service/heap_simulator/allocation_block.h"
 
 #include <cstdint>
 #include <string>

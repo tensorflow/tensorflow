@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 
 #include <cstdint>
 #include <functional>

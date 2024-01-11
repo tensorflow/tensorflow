@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/service/allocation_block.h"
+#include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "tsl/platform/test.h"
 

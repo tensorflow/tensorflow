@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_UTILS_H_
 
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 
 namespace xla {
 namespace memory_space_assignment {

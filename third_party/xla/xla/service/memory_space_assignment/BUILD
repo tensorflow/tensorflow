@@ -49,10 +49,8 @@ cc_library(
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
-        "//xla/service:allocation_block",
         "//xla/service:buffer_value",
         "//xla/service:call_graph",
-        "//xla/service:heap_simulator",
         "//xla/service:hlo_alias_analysis",
         "//xla/service:hlo_buffer",
         "//xla/service:hlo_cost_analysis",
@@ -61,6 +59,8 @@ cc_library(
         "//xla/service:hlo_value",
         "//xla/service:time_utils",
         "//xla/service:tuple_util",
+        "//xla/service/heap_simulator",
+        "//xla/service/heap_simulator:allocation_block",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -95,12 +95,12 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/hlo/utils:hlo_matchers",
-        "//xla/service:allocation_block",
-        "//xla/service:heap_simulator",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_value",
         "//xla/service:instruction_hoister",
         "//xla/service:time_utils",
+        "//xla/service/heap_simulator",
+        "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",
@@ -129,7 +129,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
-        "//xla/service:allocation_block",
+        "//xla/service/heap_simulator:allocation_block",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -143,8 +143,8 @@ cc_library(
         ":repacking",
         "//xla:comparison_util",
         "//xla:statusor",
-        "//xla/service:allocation_block",
-        "//xla/service:heap_simulator",
+        "//xla/service/heap_simulator",
+        "//xla/service/heap_simulator:allocation_block",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -163,8 +163,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
-        "//xla/service:heap_simulator",
         "//xla/service:hlo_value",
+        "//xla/service/heap_simulator",
     ],
 )
 
@@ -175,7 +175,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
-        "//xla/service:heap_simulator",
+        "//xla/service/heap_simulator",
     ],
 )
 
@@ -186,7 +186,7 @@ xla_cc_test(
         ":best_fit_repacker",
         ":repacking",
         "//xla:comparison_util",
-        "//xla/service:allocation_block",
+        "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",

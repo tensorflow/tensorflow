@@ -32,7 +32,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "xla/service/allocation_block.h"
+#include "xla/service/heap_simulator/allocation_block.h"
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
@@ -48,7 +48,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"

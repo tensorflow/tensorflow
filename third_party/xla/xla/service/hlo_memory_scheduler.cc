@@ -28,7 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/tuple_points_to_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
