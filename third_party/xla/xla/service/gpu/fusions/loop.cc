@@ -95,27 +95,27 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
       roots, fusion,
       [&](auto node) -> TraversalResult {
         if (!row_vectorized) {
-          return TraversalResult::kAbortTraversal;
+          return TraversalResult::kInterrupt;
         }
 
         if (node.instruction().IsElementwise()) {
-          return TraversalResult::kVisitOperands;
+          return TraversalResult::kAdvance;
         }
 
         switch (node.opcode()) {
           case HloOpcode::kConstant:
-            return TraversalResult::kDoNotVisitOperands;
+            return TraversalResult::kSkip;
           case HloOpcode::kParameter:
-            return TraversalResult::kVisitOperands;
+            return TraversalResult::kAdvance;
           case HloOpcode::kBroadcast: {
             auto dims = node.instruction().dimensions();
             if (dims.empty()) {
-              return TraversalResult::kVisitOperands;
+              return TraversalResult::kAdvance;
             }
 
             if (dims.size() == 1 && dims.front() == node.shape().rank() - 1) {
               some_row_broadcasting = true;
-              return TraversalResult::kVisitOperands;
+              return TraversalResult::kAdvance;
             }
             TF_FALLTHROUGH_INTENDED;
           }
@@ -123,7 +123,7 @@ std::pair<bool /*enabled*/, int> RowVectorizationEnabled(
             VLOG(2) << "Row vectorization not enabled due to: "
                     << node.ToString();
             row_vectorized = false;
-            return TraversalResult::kAbortTraversal;
+            return TraversalResult::kInterrupt;
         }
       },
       [&](auto argument) {

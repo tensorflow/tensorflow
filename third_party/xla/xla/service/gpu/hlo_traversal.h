@@ -120,14 +120,13 @@ class ProducerConsumerFusion : public HloFusionAdaptor {
 };
 
 enum class TraversalResult {
-  // Visit the operands of this node.
-  kVisitOperands,
+  // Visit the operands/users of this node.
+  kAdvance,
   // Do not visit any more nodes.
-  kAbortTraversal,
-  // Do not visit the operands of this node (but continue the traversal
-  // otherwise). If the node visitation function returns this, the `boundary`
-  // condition will not be evaluated.
-  kDoNotVisitOperands,
+  kInterrupt,
+  // Do not visit the operands/users of this node (but continue the traversal
+  // otherwise).
+  kSkip,
 };
 
 // Visit the HLO nodes starting from `roots` in BFS order (consumers before
@@ -139,6 +138,14 @@ void HloBfsConsumersFirstTraversal(
         visit_node,
     const std::function<void(HloInstructionAdaptor producer)>& visit_arg =
         [](HloInstructionAdaptor) {});
+
+// Visit the HLO nodes starting from `producers` in BFS order following the
+// `user` edges. Each node will be visited exactly once.
+void HloBfsProducersFirstTraversal(
+    absl::Span<const HloInstructionAdaptor> producers,
+    const HloFusionAdaptor& fusion,
+    const std::function<TraversalResult(HloInstructionAdaptor node)>&
+        visit_node);
 
 // Visit the HLO nodes starting from `roots`, returning true if the return value
 // of `visit` for any of nodes is true. Uses the same order as

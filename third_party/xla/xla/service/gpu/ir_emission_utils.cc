@@ -995,17 +995,17 @@ std::optional<HloInstructionAdaptor> FindTransposeHero(
       // hero.
       if (transpose) {
         transpose = std::nullopt;
-        return TraversalResult::kAbortTraversal;
+        return TraversalResult::kInterrupt;
       }
       transpose = node;
-      return TraversalResult::kDoNotVisitOperands;
+      return TraversalResult::kSkip;
     }
 
     if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
       non_trivial.push_back(node);
-      return TraversalResult::kDoNotVisitOperands;
+      return TraversalResult::kSkip;
     }
-    return TraversalResult::kVisitOperands;
+    return TraversalResult::kAdvance;
   };
   HloBfsConsumersFirstTraversal({root}, fusion, visit);
 
@@ -1017,9 +1017,9 @@ std::optional<HloInstructionAdaptor> FindTransposeHero(
     auto visit_nt = [&transpose](HloInstructionAdaptor node) {
       if (node == transpose) {
         transpose = std::nullopt;
-        return TraversalResult::kAbortTraversal;
+        return TraversalResult::kInterrupt;
       }
-      return TraversalResult::kVisitOperands;
+      return TraversalResult::kAdvance;
     };
     HloBfsConsumersFirstTraversal(non_trivial, fusion, visit_nt);
   }

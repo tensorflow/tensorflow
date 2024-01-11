@@ -227,40 +227,68 @@ bool operator==(const HloInstructionAdaptor& lhs,
          lhs.instruction_->unique_id() == rhs.instruction_->unique_id();
 }
 
-void HloBfsConsumersFirstTraversal(
+namespace {
+void HloBfsTraversal(
     absl::Span<const HloInstructionAdaptor> roots,
     const HloFusionAdaptor& fusion,
-    const std::function<TraversalResult(HloInstructionAdaptor node)>& visit,
-    const std::function<void(HloInstructionAdaptor producer)>& visit_arg) {
+    const std::function<TraversalResult(HloInstructionAdaptor node)>&
+        visit_node,
+    const std::function<void(HloInstructionAdaptor producer)>& visit_arg,
+    bool visit_operands) {
   absl::flat_hash_set<HloInstructionAdaptor> visited;
   std::queue<HloInstructionAdaptor> q;
-  auto enqueue_operands = [&](const HloInstructionAdaptor& node) {
-    for (auto operand : node.GetOperands()) {
-      if (visited.insert(operand).second) {
-        if (fusion.ContainsInstruction(operand)) {
-          q.push(operand);
+  auto enqueue = [&](const HloInstructionAdaptor& node) {
+    const auto& adjacent_nodes =
+        visit_operands ? node.GetOperands() : node.GetUsers();
+    for (const auto& node : adjacent_nodes) {
+      if (visited.insert(node).second) {
+        if (fusion.ContainsInstruction(node)) {
+          q.push(node);
         } else {
-          visit_arg(operand);
+          visit_arg(node);
         }
       }
     }
   };
   for (auto root : roots) {
-    q.push(root);
+    if (visited.insert(root).second) {
+      q.push(root);
+    }
   }
   while (!q.empty()) {
     HloInstructionAdaptor node = q.front();
     q.pop();
-    switch (visit(node)) {
-      case TraversalResult::kVisitOperands:
-        enqueue_operands(node);
+    switch (visit_node(node)) {
+      case TraversalResult::kAdvance:
+        enqueue(node);
         break;
-      case TraversalResult::kAbortTraversal:
+      case TraversalResult::kInterrupt:
         return;
-      case TraversalResult::kDoNotVisitOperands:
+      case TraversalResult::kSkip:
         break;
     }
   }
+}
+}  // namespace
+
+void HloBfsConsumersFirstTraversal(
+    absl::Span<const HloInstructionAdaptor> roots,
+    const HloFusionAdaptor& fusion,
+    const std::function<TraversalResult(HloInstructionAdaptor node)>&
+        visit_node,
+    const std::function<void(HloInstructionAdaptor producer)>& visit_arg) {
+  HloBfsTraversal(roots, fusion, visit_node, visit_arg,
+                  /*visit_operands=*/true);
+}
+
+void HloBfsProducersFirstTraversal(
+    absl::Span<const HloInstructionAdaptor> producers,
+    const HloFusionAdaptor& fusion,
+    const std::function<TraversalResult(HloInstructionAdaptor node)>&
+        visit_node) {
+  HloBfsTraversal(
+      producers, fusion, visit_node, [](HloInstructionAdaptor) {},
+      /*visit_operands=*/false);
 }
 
 void FindFusionArguments(
@@ -268,8 +296,7 @@ void FindFusionArguments(
     const std::function<void(HloInstructionAdaptor param)>& visit) {
   HloBfsConsumersFirstTraversal(
       fusion.GetRoots(), fusion,
-      [&](HloInstructionAdaptor) { return TraversalResult::kVisitOperands; },
-      visit);
+      [&](HloInstructionAdaptor) { return TraversalResult::kAdvance; }, visit);
 }
 
 bool HloAnyOf(absl::Span<const HloInstructionAdaptor> roots,
@@ -286,9 +313,9 @@ std::optional<HloInstructionAdaptor> HloFindIf(
   HloBfsConsumersFirstTraversal(roots, fusion, [&](HloInstructionAdaptor node) {
     if (visit(node)) {
       result = node;
-      return TraversalResult::kAbortTraversal;
+      return TraversalResult::kInterrupt;
     }
-    return TraversalResult::kVisitOperands;
+    return TraversalResult::kAdvance;
   });
   return result;
 }

@@ -193,7 +193,7 @@ std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions(
                                              consumer_reachable.end());
         }
         instructions.push_back(consumer);
-        return TraversalResult::kVisitOperands;
+        return TraversalResult::kAdvance;
       },
       [&](HloInstructionAdaptor argument) {
         instructions.push_back(argument);
@@ -321,7 +321,7 @@ bool IsUnrollingColumnReductionBeneficial(const HloFusionAnalysis& analysis,
             reachable_through_non_elementwise.insert(producer);
           }
         }
-        return TraversalResult::kVisitOperands;
+        return TraversalResult::kAdvance;
       });
 
   int64_t num_elements = ShapeUtil::ElementsIn(input_shape);
