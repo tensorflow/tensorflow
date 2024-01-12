@@ -129,6 +129,7 @@ xla_cc_test(
         ":hlo_sharding_util",
         "//xla:shape_util",
         "//xla:test",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:tile_assignment",
