@@ -189,14 +189,6 @@ def _validate_compression(compression) -> None:
                      f"Must be one of {valid_compressions}.")
 
 
-def _maybe_disable_compression_at_registration_time(compression: str) -> str:
-  if compression != COMPRESSION_AUTO:
-    return compression
-  if _pywrap_utils.TF_DATA_DisableCompressionAtRegistrationTime():
-    return COMPRESSION_NONE
-  return compression
-
-
 def _get_compression_proto(
     compression) -> data_service_pb2.DataServiceMetadata.Compression:
   if compression == COMPRESSION_AUTO:
@@ -817,7 +809,6 @@ def _register_dataset(
     A scalar string tensor representing the dataset ID.
   """
   _validate_compression(compression)
-  compression = _maybe_disable_compression_at_registration_time(compression)
 
   if isinstance(service, tuple):
     protocol, address = service
