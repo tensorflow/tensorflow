@@ -29,9 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
-#include "xla/service/async_op_canonicalizer.h"
 #include "xla/service/buffer_value.h"
-#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
@@ -957,16 +955,12 @@ TEST_F(HeapSimulatorTest, AsyncCallImplicitSharding) {
   ENTRY entry {
     p0 = f32[8] parameter(0)
     call-start = ((f32[8]), f32[8], s32[]) call-start(p0), async_execution_thread="foo", to_apply=called_computation
-    ROOT call-done = f32[8] call-done(call-start), async_execution_thread="foo", to_apply=called_computation
+    ROOT call-done = f32[8] call-done(call-start)
   }
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
-  AsyncOpCanonicalizer canonicalizer;
-  TF_ASSERT_OK(canonicalizer.Run(module.get()).status());
-  HloDCE dce;
-  TF_ASSERT_OK(dce.Run(module.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
                           HloAliasAnalysis::Run(module.get()));
   auto size_fn = [](const BufferValue& buffer) -> int64_t {

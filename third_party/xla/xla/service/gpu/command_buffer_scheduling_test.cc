@@ -277,9 +277,7 @@ TEST_F(CommandBufferSchedulingTest, ReduceScatterStartFollowedByDone) {
         channel_id=555, replica_groups={{0,1}}, dimensions={0}, to_apply=add,
         backend_config={"is_sync":true,"no_parallel_custom_call":false}
 
-      ROOT %done = s32[2]{0} reduce-scatter-done(%start),
-        channel_id=555, replica_groups={{0,1}}, dimensions={0}, to_apply=add,
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+      ROOT %done = s32[2]{0} reduce-scatter-done(%start)
     })";
 
   const char* expected = R"(

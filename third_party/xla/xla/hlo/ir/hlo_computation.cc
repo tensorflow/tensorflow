@@ -138,11 +138,8 @@ HloComputation::~HloComputation() {
     fusion_instruction_ = nullptr;
   }
   if (IsAsyncComputation()) {
-    for (auto* async_instr : async_instructions_) {
-      CHECK(async_instr->async_wrapped_computation() == this);
-      async_instr->ClearCalledComputations();
-    }
-    async_instructions_.clear();
+    CHECK(async_start_->async_wrapped_computation() == this);
+    async_start_->ClearCalledComputations();
   }
 }
 
@@ -958,11 +955,9 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   }
   HloInstruction* async_start = AddInstruction(HloInstruction::CreateAsyncStart(
       ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
-      async_computation, /*async_group_id=*/std::nullopt,
-      async_execution_thread));
-  HloInstruction* async_done = AddInstruction(HloInstruction::CreateAsyncDone(
-      root->shape(), async_start, async_computation,
-      /*async_group_id=*/std::nullopt, async_execution_thread));
+      async_computation, async_execution_thread));
+  HloInstruction* async_done = AddInstruction(
+      HloInstruction::CreateAsyncDone(root->shape(), async_start));
   if (override_names) {
     async_start->SetAndSanitizeName(absl::StrCat(root->name(), ".call-start"));
     async_done->SetAndSanitizeName(absl::StrCat(root->name(), ".call-done"));

@@ -90,20 +90,6 @@ StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
   TF_RETURN_IF_ERROR(async_start->DropAllControlDeps());
   TF_RETURN_IF_ERROR(async_done->DropAllControlDeps());
 
-  // For the generic async-start/done, we also need to disconnect them from
-  // the called computations.
-  if (async_start_op == HloOpcode::kAsyncStart) {
-    auto disconnect_called_computation =
-        [](HloInstruction* async_op) -> Status {
-      TF_RET_CHECK(async_op->called_computations().size() == 1);
-      HloComputation* called = async_op->called_computations().front();
-      called->RemoveAsyncInstruction(async_op);
-      return OkStatus();
-    };
-    TF_RETURN_IF_ERROR(disconnect_called_computation(async_start));
-    TF_RETURN_IF_ERROR(disconnect_called_computation(async_done));
-  }
-
   // When we remove the async-done (and its unused operands), in most cases,
   // the async-start may not be deleted if its considered as having side effects
   // but in some cases it will be (e.g., the generic HLO kAsyncStart). Track its

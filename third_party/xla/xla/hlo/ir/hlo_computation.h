@@ -773,35 +773,19 @@ class HloComputation {
   }
 
   // Returns if this computation is an async computation.
-  bool IsAsyncComputation() const { return !async_instructions_.empty(); }
+  bool IsAsyncComputation() const { return async_start_ != nullptr; }
 
-  // Returns the owning async instruction. It's empty if this is not an async
+  // Returns the owning async instruction. It's nullptr if this is not an async
   // computation.
-  const std::vector<HloInstruction*>& AsyncInstructions() const {
-    return async_instructions_;
+  HloInstruction* AsyncStart() const { return async_start_; }
+
+  void AddAsyncStart(HloInstruction* async_instruction) {
+    CHECK(!IsCalledComputation());
+    CHECK(async_instruction->opcode() == HloOpcode::kAsyncStart);
+    async_start_ = async_instruction;
   }
 
-  std::vector<HloInstruction*>& AsyncInstructions() {
-    return async_instructions_;
-  }
-
-  void AddAsyncInstruction(HloInstruction& async_instruction) {
-    CHECK(!IsFusionComputation() && !IsCustomCallComputation());
-    CHECK(async_instruction.opcode() == HloOpcode::kAsyncStart ||
-          async_instruction.opcode() == HloOpcode::kAsyncUpdate ||
-          async_instruction.opcode() == HloOpcode::kAsyncDone);
-    async_instructions_.push_back(&async_instruction);
-  }
-
-  void RemoveAsyncInstruction(HloInstruction* async_instruction) {
-    if (async_instruction == nullptr) {
-      return;
-    }
-    async_instructions_.erase(
-        std::remove(async_instructions_.begin(), async_instructions_.end(),
-                    async_instruction),
-        async_instructions_.end());
-  }
+  void RemoveAsyncStart() { async_start_ = nullptr; }
 
   // Returns if this computation is invoked by an Hlo instruction.
   bool IsCalledComputation() const {
@@ -944,9 +928,10 @@ class HloComputation {
   bool is_conditional_branch_computation_;
 
   // If this computation is an async computation, this field points to the
-  // corresponding async instructions (if live) that call this computation.
+  // first async instruction (async-start) in the asynchronous op chain that
+  // calls this computation.
   // Otherwise, this is empty.
-  std::vector<HloInstruction*> async_instructions_;
+  HloInstruction* async_start_ = nullptr;
 
   // Execution thread of this computation. By default, it's main thread.
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;

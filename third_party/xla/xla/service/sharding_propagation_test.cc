@@ -10443,8 +10443,8 @@ called_computation {
 ENTRY entry_computation {
   p0 = s32[8] parameter(0), sharding={manual}
   p1 = s32[8] parameter(1), sharding={manual}
-  async-start = ((s32[8], s32[8]), s32[8], u32[]) call-start(p0, p1), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
-  ROOT async-done = s32[8] call-done(async-start), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+  async-start = ((s32[8], s32[8]), s32[8], u32[]) call-start(p0, p1), async_execution_thread="thread_1", to_apply=called_computation
+  ROOT async-done = s32[8] call-done(async-start)
 }, execution_thread="thread_0" // entry_computation
 
 )";
@@ -10519,8 +10519,8 @@ called_computation {
 ENTRY entry_computation {
   p0 = s32[8] parameter(0), sharding={manual}
   p1 = s32[8] parameter(1), sharding={manual}
-  async-start = ((s32[8], s32[8]), (s32[8], s32[8]), u32[]) call-start(p0, p1), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
-  ROOT async-done = (s32[8], s32[8]) call-done(async-start), async_group_id=0, async_execution_thread="thread_1", to_apply=called_computation
+  async-start = ((s32[8], s32[8]), (s32[8], s32[8]), u32[]) call-start(p0, p1), async_execution_thread="thread_1", to_apply=called_computation
+  ROOT async-done = (s32[8], s32[8]) call-done(async-start)
 }, execution_thread="thread_0" // entry_computation
 
 )";

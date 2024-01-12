@@ -1063,18 +1063,16 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   for (auto* user : op.getResult().getUsers()) {
     if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
-      if (asyncOp.getGroupId() != op.getGroupId() ||
-          asyncOp.getCalledComputation() != op.getCalledComputation()) {
+      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
         return op.emitOpError()
                << "Users of AsyncStart's return value must have "
-                  "the same group_id and called_computation";
+                  "the same called_computation";
       }
     } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
-      if (asyncOp.getGroupId() != op.getGroupId() ||
-          asyncOp.getCalledComputation() != op.getCalledComputation()) {
+      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
         return op.emitOpError()
                << "Users of AsyncStart's return value must have "
-                  "the same group_id and called_computation";
+                  "the same called_computation";
       }
     } else {
       return op.emitOpError() << "Users of AsyncStart's return value must be "
@@ -1187,23 +1185,12 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
       ctx.converter->GetLoweredComputation(callee);
   computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
       op.getExecutionThread().str());
-  if (op.getGroupId()) {
-    auto [xla_op, computation_id] =
-        xla::internal::XlaBuilderFriend::BuildAsyncStart(
-            ctx.builder, operands, op.getExecutionThread().str(),
-            *op.getGroupId(), computation, xla::TypeToShape(result.getType()));
-    value_map[result] = xla_op;
-    computation.mutable_proto()->mutable_computations(0)->set_id(
-        computation_id);
-  } else {
-    auto [xla_op, computation_id] =
-        xla::internal::XlaBuilderFriend::BuildAsyncStart(
-            ctx.builder, operands, op.getExecutionThread().str(), computation,
-            xla::TypeToShape(result.getType()));
-    value_map[result] = xla_op;
-    computation.mutable_proto()->mutable_computations(0)->set_id(
-        computation_id);
-  }
+  auto [xla_op, computation_id] =
+      xla::internal::XlaBuilderFriend::BuildAsyncStart(
+          ctx.builder, operands, op.getExecutionThread().str(), computation,
+          xla::TypeToShape(result.getType()));
+  value_map[result] = xla_op;
+  computation.mutable_proto()->mutable_computations(0)->set_id(computation_id);
   return success();
 }
 
@@ -1222,15 +1209,13 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
 
   for (auto* user : op.getResult().getUsers()) {
     if (auto asyncOp = dyn_cast_or_null<AsyncDoneOp>(user)) {
-      if (asyncOp.getGroupId() != op.getGroupId() ||
-          asyncOp.getCalledComputation() != op.getCalledComputation()) {
+      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
         return op.emitOpError()
                << "Users of AsyncUpdate's return value must have "
                   "the same group_id and called_computation";
       }
     } else if (auto asyncOp = dyn_cast_or_null<AsyncUpdateOp>(user)) {
-      if (asyncOp.getGroupId() != op.getGroupId() ||
-          asyncOp.getCalledComputation() != op.getCalledComputation()) {
+      if (asyncOp.getCalledComputation() != op.getCalledComputation()) {
         return op.emitOpError()
                << "Users of AsyncUpdate's return value must have "
                   "the same group_id and called_computation";
@@ -1251,17 +1236,10 @@ LogicalResult ExportXlaOp(AsyncUpdateOp op, OpLoweringContext ctx) {
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
   xla::XlaComputation& computation =
       ctx.converter->GetLoweredComputation(callee);
-  if (op.getGroupId()) {
-    value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
-        ctx.builder, operand, op.getExecutionThread().str(), *op.getGroupId(),
-        computation.proto().computations(0).id(),
-        xla::TypeToShape(result.getType()));
-  } else {
-    value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
-        ctx.builder, operand, op.getExecutionThread().str(),
-        computation.proto().computations(0).id(),
-        xla::TypeToShape(result.getType()));
-  }
+  value_map[result] = xla::internal::XlaBuilderFriend::BuildAsyncUpdate(
+      ctx.builder, operand, op.getExecutionThread().str(),
+      computation.proto().computations(0).id(),
+      xla::TypeToShape(result.getType()));
   return success();
 }
 
@@ -1358,16 +1336,9 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   }
   xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
-  xla::XlaOp exportedOp;
-  if (op.getGroupId()) {
-    exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
-        ctx.builder, operand, op.getExecutionThread().str(), *op.getGroupId(),
-        computation.proto().computations(0).id(), data_shape);
-  } else {
-    exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
-        ctx.builder, operand, op.getExecutionThread().str(),
-        computation.proto().computations(0).id(), data_shape);
-  }
+  xla::XlaOp exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
+      ctx.builder, operand, op.getExecutionThread().str(),
+      computation.proto().computations(0).id(), data_shape);
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = exportedOp;
   } else {

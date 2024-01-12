@@ -351,10 +351,8 @@ message HloInstructionProto {
   // status-returning API.
   CustomCallApiVersion custom_call_api_version = 77;
 
-  // Represents a unique identifier for an async group which consists of an
-  // async start, async done, and zero or more async update operations.
-  // Negative async_group_id is equivalent to no async group id.
-  int64 async_group_id = 78;
+  // Used to be async_group_id.
+  reserved 78;
 
   // Represents a unique execution thread name for one or more async groups.
   // Each HLO module may contain a main thread and one or more parallel threads.

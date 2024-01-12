@@ -74,7 +74,6 @@ xla_cc_test(
         "//xla:literal",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
-        "//xla/service:async_op_canonicalizer",
         "//xla/service:buffer_value",
         "//xla/service:hlo_dce",
         "//xla/service:hlo_ordering",

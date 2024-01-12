@@ -10163,7 +10163,7 @@ TEST_F(AlgebraicSimplifierTest, DontSinkInstructionsInDSAsyncComputation) {
       dynamic_slice_sizes={1}
      ROOT %dynamic-slice-done = f32[1]{0}
       dynamic-slice-done(((f32[10]{0}, s32[]), f32[1]{0}, u32[])
-        %dynamic-slice-start), dynamic_slice_sizes={1}
+        %dynamic-slice-start)
    }
   )";
 

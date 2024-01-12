@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/literal_util.h"
-#include "xla/service/async_op_canonicalizer.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_dce.h"
@@ -66,8 +65,6 @@ class HloDataflowAnalysisTest : public HloTestBase,
   const HloDataflowAnalysis& RunAnalysis(bool ssa_form,
                                          bool bitcast_defines_value = false,
                                          bool run_dce = true) {
-    AsyncOpCanonicalizer async_op_canonicalizer;
-    EXPECT_TRUE(async_op_canonicalizer.Run(module_.get()).ok());
     if (run_dce) {
       HloDCE dce;
       EXPECT_TRUE(dce.Run(module_.get()).ok());
@@ -1085,8 +1082,8 @@ TEST_P(HloDataflowAnalysisTest, AsyncOps) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start), custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-update), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1151,10 +1148,10 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   %b = f32[4096]{0} parameter(1)
   %async-start = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), to_apply=%called_computation
   %negate_2 = f32[4096]{0} negate(f32[4096]{0} %a)
-  %async-update = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-update(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start), to_apply=%called_computation
+  %async-update = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-update(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start)
   %negate_3 = f32[4096]{0} negate(f32[4096]{0} %b)
   %add_0 = f32[4096]{0} add(f32[4096]{0} %negate_2, f32[4096]{0} %negate_3)
-  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-update), to_apply=%called_computation
+  %async-done = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-update)
   ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %add_0, f32[4096]{0} %async-done)
 }
 )";
@@ -1199,8 +1196,8 @@ TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
   ENTRY entry {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), (f32[2,3], f32[2,3]), u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update = ((f32[2,3]), (f32[2,3], f32[2,3]), u32[]) custom-call-update(async-start), custom_call_target="foo"
-    ROOT async-done = (f32[2,3], f32[2,3]) custom-call-done(async-update), custom_call_target="foo"
+    async-update = ((f32[2,3]), (f32[2,3], f32[2,3]), u32[]) custom-call-update(async-start)
+    ROOT async-done = (f32[2,3], f32[2,3]) custom-call-done(async-update)
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(

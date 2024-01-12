@@ -1817,23 +1817,18 @@ add {
   // CHECK:  %[[START:.*]] = "mhlo.async_start"(%[[ARG0]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
    %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(%p0),
-                                                    calls=%AsyncOp,
-                                                    async_group_id=1
+                                                    calls=%AsyncOp
   // CHECK: %[[UPDATE:.*]] = "mhlo.async_update"(%[[START]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
    %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(
                                                          %async-start),
-                                                     calls=%AsyncOp,
-                                                     async_group_id=1
+                                                     calls=%AsyncOp
   // CHECK: "mhlo.async_done"(%[[UPDATE]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
-   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp, async_group_id=1
+   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp
  }
 
 // CHECK-LABEL: func private @test_args_and_result_with_sharding

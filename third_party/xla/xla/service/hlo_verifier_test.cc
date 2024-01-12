@@ -330,7 +330,7 @@ TEST_F(HloVerifierTest, CheckConditionalBranchContainsAsyncThread) {
     branch1 {
       fparam = f32[4] parameter(0)
       %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
-      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start)
     }
 
     branch2 {
@@ -856,7 +856,7 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncStartAndAsyncDone) {
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
     async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-start), custom_call_target="foo"
+    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -873,9 +873,9 @@ TEST_F(HloVerifierTestLayoutSensitive, AsyncStartAndAsyncUpdateAndAsyncDone) {
   ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
     async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), custom_call_target="foo"
-    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), custom_call_target="foo"
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), custom_call_target="foo"
+    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start)
+    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1)
+    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -893,9 +893,9 @@ TEST_F(HloVerifierTestLayoutSensitive,
   ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
     p0 = f32[2,3]{1,0:S(1)} parameter(0)
     async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
-    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), async_execution_thread="parallel_thread", custom_call_target="foo"
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), async_execution_thread="parallel_thread", custom_call_target="foo"
+    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start)
+    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1)
+    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -912,7 +912,7 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), f32[3,2], u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-start), custom_call_target="foo"
+    ROOT async-done = f32[2,3] custom-call-done(async-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -921,47 +921,8 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("async-done expects the async shape at index {1} to "
-                        "match the async computation root shape"));
-}
-
-TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongThreadName) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY AsyncStartAndAsyncDone {
-    p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-start), async_execution_thread="main_thread", custom_call_target="bar"
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("thread name (main_thread vs parallel_thread)."));
-}
-
-TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongAttr) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY AsyncStartAndAsyncDone {
-    p0 = f32[2,3] parameter(0)
-    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(async-start), custom_call_target="bar"
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("async-done expects its wrapped async computation to "
-                        "be identical to its operand's"));
+              HasSubstr("async-done expects the shape of output to match the "
+                        "async shape at index {1}"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {
@@ -971,8 +932,8 @@ TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    async-done.1 = f32[2,3] custom-call-done(async-start), custom_call_target="foo"
-    async-done.2 = f32[2,3] custom-call-done(async-start), custom_call_target="foo"
+    async-done.1 = f32[2,3] custom-call-done(async-start)
+    async-done.2 = f32[2,3] custom-call-done(async-start)
     ROOT tuple = (f32[2,3], f32[2,3]) tuple(async-done.1, async-done.2)
   }
   )";
@@ -1012,7 +973,7 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncUpdateNoAsyncDone) {
   ENTRY AsyncStartAndAsyncDone {
     p0 = f32[2,3] parameter(0)
     async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
-    ROOT async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start), custom_call_target="foo"
+    ROOT async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1029,15 +990,26 @@ TEST_F(HloVerifierTest, AsyncDoneNoAsyncStart) {
   const char* const hlo_string = R"(
   HloModule Module
 
-  ENTRY AsyncStartAndAsyncDone {
+  ENTRY AsyncDoneNoAsyncStart {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
     tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
-    ROOT async-done = f32[2,3] custom-call-done(tuple), custom_call_target="foo"
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    ROOT async-done = f32[2,3] custom-call-done(async-start)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
+
+  // The parser checks that the async-{update,done} operand is an async op,
+  // so we need to invalidate it in the C++ representation.
+  HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  TF_ASSERT_OK(async_done->ReplaceOperandWith(0, tuple));
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  HloComputation* computation =
+      FindComputation(module.get(), "AsyncDoneNoAsyncStart");
+  TF_ASSERT_OK(computation->RemoveInstruction(async_start));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1050,16 +1022,29 @@ TEST_F(HloVerifierTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
   const char* const hlo_string = R"(
   HloModule Module
 
-  ENTRY AsyncStartAndAsyncDone {
+  ENTRY AsyncUpdateAndAsyncDoneNoAsyncStart {
     p0 = f32[2,3] parameter(0)
     p1 = u32[] parameter(1)
     tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
-    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(tuple), custom_call_target="foo"
-    ROOT async-done = f32[2,3] custom-call-done(tuple), custom_call_target="foo"
+    async-start = ((f32[2,3]), f32[2,3], u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(async-start)
+    ROOT async-done = f32[2,3] custom-call-done(async-update)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
+
+  // The parser checks that the async-{update,done} operand is an async op,
+  // so we need to invalidate it in the C++ representation.
+  HloInstruction* tuple = FindInstruction(module.get(), "tuple");
+  HloInstruction* async_update = FindInstruction(module.get(), "async-update");
+  TF_ASSERT_OK(async_update->ReplaceOperandWith(0, tuple));
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  TF_ASSERT_OK(async_done->ReplaceOperandWith(0, tuple));
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  HloComputation* computation =
+      FindComputation(module.get(), "AsyncUpdateAndAsyncDoneNoAsyncStart");
+  TF_ASSERT_OK(computation->RemoveInstruction(async_start));
 
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
@@ -1250,50 +1235,6 @@ TEST_F(HloVerifierTest, AsyncOpComputationNotTrivial) {
       status.message(),
       HasSubstr(
           "expected to contain only the root and parameter instructions"));
-}
-
-TEST_F(HloVerifierTestLayoutSensitive, AsyncDoneWrongGroupId) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
-    p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_group_id=0, custom_call_target="foo"
-    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), async_group_id=0, custom_call_target="foo"
-    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), async_group_id=0, custom_call_target="foo"
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), async_group_id=1, custom_call_target="foo"
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("async-done expects its operand to have the same group "
-                        "id (1 vs 0)."));
-}
-
-TEST_F(HloVerifierTestLayoutSensitive, AsyncUpdateWrongGroupId) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY AsyncStartAndAsyncUpdateAndAsyncDone {
-    p0 = f32[2,3]{1,0:S(1)} parameter(0)
-    async-start = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-start(p0), async_group_id=0, custom_call_target="foo"
-    async-update.1 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-start), custom_call_target="foo"
-    async-update.2 = ((f32[2,3]{1,0:S(1)}), f32[2,3]{1,0:S(2)}, u32[]) custom-call-update(async-update.1), async_group_id=0, custom_call_target="foo"
-    ROOT async-done = f32[2,3]{1,0:S(2)} custom-call-done(async-update.2), async_group_id=0, custom_call_target="foo"
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("async-update expects its operand to have the same "
-                        "group id (none vs 0)."));
 }
 
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
@@ -2574,7 +2515,7 @@ TEST_F(HloVerifierTest, CheckWhileContainsAsyncThread) {
       %constant.1 = s32[] constant(5)
       %prev.2 = s32[] parameter(0)
       %async-start = ((s32[]), s32[], s32[]) custom-call-start(s32[] %prev.2), async_execution_thread="parallel_thread", custom_call_target="async_add"
-      %async-done = s32[] custom-call-done(((s32[]), s32[], s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="async_add"
+      %async-done = s32[] custom-call-done(((s32[]), s32[], s32[]) %async-start)
       ROOT %greater-than = pred[] compare(s32[] %constant.1, s32[] %async-done), direction=GT
     }
 
