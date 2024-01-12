@@ -27,8 +27,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -532,49 +535,94 @@ bool RequireDeterminism(const HloModuleConfig& config) {
          config.debug_options().xla_gpu_deterministic_ops();
 }
 
+namespace {
+std::vector<AutotuneResult> KeepNonFailures(
+    absl::Span<AutotuneResult const> profile_results) {
+  // Filter out all failures except WRONG_RESULT, because false-positives are
+  // possible (e.g. perhaps the reference algorithm is the one that's
+  // incorrect!). Other failures can be detected with high accuracy. E.g.
+  // REDZONE_MODIFIED which is also quite severe.
+  std::vector<AutotuneResult> filtered_results;
+  absl::c_copy_if(profile_results, std::back_inserter(filtered_results),
+                  [](const AutotuneResult& r) {
+                    return !r.has_failure() ||
+                           r.failure().kind() == AutotuneResult::WRONG_RESULT;
+                  });
+  return filtered_results;
+}
+
+absl::Status AllAlgorithmsFailedInternalError(
+    std::optional<std::string_view> instr_str,
+    absl::Span<AutotuneResult const> profile_results) {
+  std::ostringstream msg;
+  if (instr_str.has_value()) {
+    msg << "All algorithms tried for " << instr_str.value()
+        << " failed. Falling back to default algorithm.  Per-algorithm "
+           "errors:";
+  } else {
+    msg << "All algorithms failed. Falling back to the default algorithm. "
+        << "Per-algorithm errors:";
+  }
+  for (const auto& result : profile_results) {
+    msg << "\n  " << result.failure().msg();
+  }
+  return InternalError("%s", msg.str());
+}
+
+void SortAutotuningResultsByRunTime(std::vector<AutotuneResult>& results) {
+  absl::c_sort(results,
+               [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+                 return tsl::proto_utils::FromDurationProto(lhs.run_time()) <
+                        tsl::proto_utils::FromDurationProto(rhs.run_time());
+               });
+}
+
+absl::Span<AutotuneResult const> TopResultsWithinMeasurementError(
+    std::vector<AutotuneResult>& results_sorted_by_runtime) {
+  // This value was picked by repeatedly running a few kernels that run for a
+  // short time and observing the run-time variance. A more rigorous analysis
+  // of the measurement error might yield a better error threshold.
+  constexpr absl::Duration kMeasurementError = absl::Microseconds(2);
+
+  absl::Duration min_time = tsl::proto_utils::FromDurationProto(
+      results_sorted_by_runtime.front().run_time());
+  absl::Duration limit_time = min_time + kMeasurementError;
+
+  auto limit_time_it = absl::c_find_if(
+      results_sorted_by_runtime, [limit_time](const AutotuneResult& x) {
+        return tsl::proto_utils::FromDurationProto(x.run_time()) > limit_time;
+      });
+  return absl::MakeSpan(&*results_sorted_by_runtime.begin(), &*limit_time_it);
+}
+}  // namespace
+
 absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
     std::optional<std::string_view> instr_str,
     HloModuleConfig hlo_module_config) {
-  std::vector<AutotuneResult> filtered_results;
-
-  // For now, we ignore WRONG_RESULT failures because false-positives are
-  // possible (e.g. perhaps the reference algorithm is the one that's
-  // incorrect!).  But we don't ignore REDZONE_MODIFIED failures because they're
-  // quite severe and can be detected with high accuracy.
-  absl::c_copy_if(
-      profile_results, std::back_inserter(filtered_results),
-      [](const AutotuneResult& r) {
-        return !(r.has_failure() &&
-                 r.failure().kind() != AutotuneResult::WRONG_RESULT);
-      });
+  std::vector<AutotuneResult> filtered_results =
+      KeepNonFailures(profile_results);
 
   if (filtered_results.empty()) {
-    std::ostringstream msg;
-    if (instr_str.has_value()) {
-      msg << "All algorithms tried for " << instr_str.value()
-          << " failed. Falling back to default algorithm.  Per-algorithm "
-             "errors:";
-    } else {
-      msg << "All algorithms failed. Falling back to the default algorithm. "
-          << "Per-algorithm errors:";
-    }
-    for (const auto& result : profile_results) {
-      msg << "\n  " << result.failure().msg();
-    }
-    return InternalError("%s", msg.str());
+    return AllAlgorithmsFailedInternalError(instr_str, profile_results);
   }
 
-  auto selected_result = filtered_results.begin();
-  if (!RequireDeterminism(hlo_module_config)) {
-    selected_result = absl::c_min_element(
-        filtered_results,
-        [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-          return tsl::proto_utils::FromDurationProto(lhs.run_time()) <
-                 tsl::proto_utils::FromDurationProto(rhs.run_time());
-        });
+  if (RequireDeterminism(hlo_module_config)) {
+    // If determinism is required (usually for debugging purposes) then always
+    // pick the first algorithm, instead of searching for the best, which can
+    // be noisy.
+    return *filtered_results.begin();
   }
-  return *selected_result;
+
+  // Kernel run-time measurements within kMeasurementError are not precise.
+  // Consider the lowest measurements within the error margin as equivalent and
+  // within them prefer algorithms that use the least amount of scratch memory.
+  SortAutotuningResultsByRunTime(filtered_results);
+  auto top_within_error = TopResultsWithinMeasurementError(filtered_results);
+  return *absl::c_min_element(top_within_error, [](const AutotuneResult& lhs,
+                                                   const AutotuneResult& rhs) {
+    return lhs.scratch_bytes() < rhs.scratch_bytes();
+  });
 }
 
 }  // namespace gpu

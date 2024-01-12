@@ -4082,12 +4082,28 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/stream_executor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/util:env_var",
+        "@local_tsl//tsl/util/proto:proto_utils",
+    ],
+)
+
+xla_cc_test(
+    name = "stream_executor_util_test",
+    srcs = ["stream_executor_util_test.cc"],
+    deps = [
+        ":stream_executor_util",
+        "//xla:autotuning_proto_cc",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/util/proto:proto_utils",
     ],
 )
