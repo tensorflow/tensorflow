@@ -3430,8 +3430,12 @@ absl::Status IrEmitterUnnested::BuildInitializerThunk(
   // initial value must be a scalar memref.
   TF_RET_CHECK(init_value->shape().rank() == 0);
 
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
-                      GetAllocationSlice(dest));
+  auto maybe_dest_slice = ir_emitter_context_->emit_ir_from_hlo()
+                              ? GetAllocationSliceForHlo(instr, {})
+                              : GetAllocationSlice(dest);
+  if (!maybe_dest_slice.ok()) return maybe_dest_slice.status();
+
+  BufferAllocation::Slice dest_slice = *maybe_dest_slice;
 
   TF_ASSIGN_OR_RETURN(
       std::optional<std::unique_ptr<Thunk>> constant_init_thunk,
@@ -3444,22 +3448,30 @@ absl::Status IrEmitterUnnested::BuildInitializerThunk(
 
   // Otherwise fall back to our slow initializer code. The thunk in this case
   // will just need the IR arrays for the initial value and the destination.
-  const Shape dest_shape = GetShape(dest);
+  const Shape dest_shape =
+      ir_emitter_context_->emit_ir_from_hlo() ? instr->shape() : GetShape(dest);
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
       dest_shape, ir_emitter_context_->gpu_device_info());
-  TF_ASSIGN_OR_RETURN(auto ir_arrays,
-                      BuildKernelThunkForNonFusionOp(
-                          op, {init_value_mlir, dest}, launch_dimensions));
+  TF_ASSIGN_OR_RETURN(
+      auto ir_arrays,
+      ir_emitter_context_->emit_ir_from_hlo()
+          ? BuildKernelThunkForNonFusionOp(instr, {init_value},
+                                           launch_dimensions)
+          : BuildKernelThunkForNonFusionOp(op, {init_value_mlir, dest},
+                                           launch_dimensions));
   auto& [inputs, outputs] = ir_arrays;
   auto init_array = inputs[0];
 
+  std::string name = ir_emitter_context_->emit_ir_from_hlo()
+                         ? llvm_ir::IrName(instr, "init")
+                         : GetIrNameFromLoc(op->getLoc());
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
                          [=](const llvm_ir::IrArray::Index& index) {
                            return init_array.EmitReadArrayElement(index, &b_);
                          },
                          {inputs[1]}, launch_dimensions, &b_)
-                         .EmitLoop(GetIrNameFromLoc(op->getLoc())));
+                         .EmitLoop(name));
   return absl::OkStatus();
 }
 
