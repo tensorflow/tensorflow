@@ -4724,6 +4724,27 @@ Status AlgebraicSimplifierVisitor::HandleConvert(HloInstruction* convert) {
   return TryRemoveUpcastAndDowncastSurroundingBinaryOp(convert);
 }
 
+Status AlgebraicSimplifierVisitor::HandleCustomCall(
+    HloInstruction* custom_call) {
+  // Remove redundant slice to dynamic of pad to static
+  HloInstruction *pad_to_static0, *pad_to_static1, *pad_to_static_operand;
+  if (Match(
+          custom_call,
+          m::CustomCall(
+              {"SliceToDynamic"},
+              m::GetTupleElement(m::CustomCall(&pad_to_static0, {"PadToStatic"},
+                                               m::Op(&pad_to_static_operand)),
+                                 0),
+              m::GetTupleElement(
+                  m::CustomCall(&pad_to_static1, {"PadToStatic"}, m::Op()),
+                  1))) &&
+      pad_to_static0 == pad_to_static1 &&
+      SameShape(custom_call->shape(), pad_to_static_operand->shape())) {
+    return ReplaceInstruction(custom_call, pad_to_static_operand);
+  }
+  return OkStatus();
+}
+
 // Complex(Real(c), Imag(c)) -> c
 Status AlgebraicSimplifierVisitor::HandleComplex(HloInstruction* complex) {
   HloInstruction *c0, *c1;
