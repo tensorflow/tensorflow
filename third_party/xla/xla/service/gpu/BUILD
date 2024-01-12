@@ -111,6 +111,20 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_memory_space_assignment",
+    hdrs = ["gpu_memory_space_assignment.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:status",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/service:hlo_alias_analysis",
+        "//xla/service:hlo_ordering",
+        "//xla/service:hlo_value",
+    ],
+)
+
+cc_library(
     name = "launch_dimensions",
     srcs = [
         "launch_dimensions.cc",
@@ -867,13 +881,16 @@ tsl_gpu_library(
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
         "//xla/translate/mhlo_to_hlo:type_to_shape",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
@@ -3065,6 +3082,7 @@ cc_library(
         ":executable_proto_cc",
         ":gpu_constants",
         ":gpu_executable",
+        ":gpu_memory_space_assignment",
         ":ir_emitter_context",
         ":ir_emitter_unnested",
         ":metrics",

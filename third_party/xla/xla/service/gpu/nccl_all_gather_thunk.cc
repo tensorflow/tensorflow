@@ -152,6 +152,7 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
 #if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 

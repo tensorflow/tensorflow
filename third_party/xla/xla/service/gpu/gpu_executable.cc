@@ -433,7 +433,9 @@ absl::StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     se::DeviceMemoryBase buffer_address;
     if (buffer_size > 0) {
       absl::StatusOr<se::OwningDeviceMemory> buffer =
-          memory_allocator->Allocate(device_ordinal, buffer_size);
+          memory_allocator->Allocate(device_ordinal, buffer_size,
+                                     /*retry_on_failure=*/true,
+                                     /*memory_space=*/allocation.color());
       if (!buffer.ok()) {
         return ResourceExhausted("%s\n%s\n", buffer.status().message(),
                                  buffer_assignment_->ToVerboseString(
@@ -657,7 +659,9 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         int64_t allocation_size =
             ShapeUtil::ByteSizeOf(ShapeUtil::GetSubshape(output_shape_, index));
         absl::StatusOr<se::OwningDeviceMemory> allocated_buffer =
-            memory_allocator->Allocate(device_ordinal, allocation_size);
+            memory_allocator->Allocate(device_ordinal, allocation_size,
+                                       /*retry_on_failure=*/true,
+                                       /*memory_space=*/allocation->color());
         if (!allocated_buffer.ok()) {
           return ResourceExhausted("%s\n%s\n",
                                    allocated_buffer.status().message(),
@@ -796,7 +800,10 @@ absl::Status GpuExecutable::SetUpMlirAllocation(
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
     Shape* output_shape) {
   for (int i = 0; i < buffer_sizes.size(); i++) {
-    allocations->emplace_back(i, buffer_sizes[i], 0);
+    // This code path is taken when using the non-thunk based runtime. Memory
+    // space is being set to 0 for all allocations. We need to copy over the
+    // value from BufferAssignment instead.
+    allocations->emplace_back(i, buffer_sizes[i], /*memory_space=*/0);
   }
 
   for (int i = 0; i < func.getNumArguments(); i++) {

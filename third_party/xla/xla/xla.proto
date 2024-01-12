@@ -665,7 +665,10 @@ message DebugOptions {
   // Enables currently disabled features within Triton for Hopper.
   bool xla_gpu_enable_triton_hopper = 266;
 
-  // Next id: 267
+  // Enable NCCL user buffers.
+  bool xla_gpu_enable_nccl_user_buffers = 267;
+
+  // Next id: 268
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -236,6 +236,16 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
 
+// When using ncclMemAlloc, register buffers with the communicator to enable
+// copyless collectives.
+// Registration is only needed when not using cudaGraphs. Remove this function
+// when cudagraphs + nccl is enabled.
+// See
+// https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
+Status MaybeRegisterBuffers(int device_ordinal,
+                            const std::vector<DeviceBufferPair>& buffers,
+                            ncclComm_t comm);
+
 }  // namespace gpu
 }  // namespace xla
 
