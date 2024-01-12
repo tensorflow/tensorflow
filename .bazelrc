@@ -647,6 +647,8 @@ build:release_linux_base --python_path="/usr/bin/python3"
 # Set Clang as compiler. Use the actual path to clang installed in container.
 build:release_cpu_linux_base --repo_env=CC="/usr/lib/llvm-17/bin/clang"
 build:release_cpu_linux_base --repo_env=BAZEL_COMPILER="/usr/lib/llvm-17/bin/clang"
+build:release_cpu_linux_base --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-17/bin/clang"
+build:release_cpu_linux_base --linkopt="-fuse-ld=lld"
 # Test-related settings below this point.
 test:release_linux_base --build_tests_only --keep_going --test_output=errors --verbose_failures=true
 test:release_linux_base --local_test_jobs=HOST_CPUS
@@ -656,9 +658,12 @@ test:release_linux_base --test_summary=short
 
 # Use the Clang toolchain to compile
 build:release_cpu_linux --config=release_linux_base
-build:release_cpu_linux --crosstool_top="@sigbuild-r2.16-clang_config_cuda//crosstool:toolchain"
+# GPU Toolchain is defined here for the CPU release config
+# This isn't very flexible and not needed
+# build:release_cpu_linux --crosstool_top="@sigbuild-r2.16-clang_config_cuda//crosstool:toolchain"
 
 build:release_gpu_linux --config=release_cpu_linux
+build:release_cpu_linux --config=release_cpu_linux_base
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 # Note that linux cpu and cuda builds share the same toolchain now.
 build:release_gpu_linux --config=cuda_clang_official
