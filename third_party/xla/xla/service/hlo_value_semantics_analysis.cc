@@ -329,12 +329,23 @@ Status EinsumDepthAnalysis::DefaultAction(HloInstruction* instruction) {
 }
 
 Status EinsumDepthAnalysis::HandleTuple(HloInstruction* tuple) {
-  auto depth_iter = einsum_depth_map_.find(tuple);
+  return HandleTupleLike(tuple);
+}
+
+Status EinsumDepthAnalysis::HandleAllReduce(HloInstruction* all_reduce) {
+  if (all_reduce->shape().IsArray()) {
+    return DefaultAction(all_reduce);
+  }
+  return HandleTupleLike(all_reduce);
+}
+
+Status EinsumDepthAnalysis::HandleTupleLike(HloInstruction* tuple_like) {
+  auto depth_iter = einsum_depth_map_.find(tuple_like);
   CHECK(depth_iter != einsum_depth_map_.end());
   const ShapeTree<int> depth_tree = depth_iter->second;
-  for (int operand_index = 0; operand_index < tuple->operand_count();
+  for (int operand_index = 0; operand_index < tuple_like->operand_count();
        ++operand_index) {
-    HloInstruction* operand = tuple->mutable_operand(operand_index);
+    HloInstruction* operand = tuple_like->mutable_operand(operand_index);
     auto operand_depth_iter = GetOrCreateDepthTree(operand);
     ShapeTree<int>& operand_depth = operand_depth_iter->second;
     SetDepthFromTupleDepth(operand_depth, depth_tree, operand_index);
@@ -1290,27 +1301,7 @@ Status HloValueSemanticsPropagation::HandleClamp(HloInstruction* clamp) {
 
 Status HloValueSemanticsPropagation::HandleTuple(HloInstruction* tuple) {
   RETURN_IF_ALREADY_PROPAGATED(tuple);
-  ShapeTree<const HloValueSemantics*> semantics_shape_tree(tuple->shape(),
-                                                           nullptr);
-  for (int operand_index = 0; operand_index < tuple->operand_count();
-       ++operand_index) {
-    const HloInstruction* operand = tuple->operand(operand_index);
-    const ShapeTree<const HloValueSemantics*>& operand_semantics =
-        analysis_->GetInstructionSemantics(operand);
-    analysis_->DeepCopyHloValueSemantics(
-        semantics_shape_tree, operand_semantics, {}, {operand_index});
-  }
-  semantics_shape_tree.ForEachMutableElement(
-      [tuple, this](const ShapeIndex& index,
-                    const HloValueSemantics** semantics) {
-        if (index.empty()) {
-          *semantics = analysis_->NewHloValueSemantics(
-              HloValueSemanticLabel::kTupleOrToken, {tuple, {}});
-          return;
-        }
-      });
-  analysis_->SetHloValueSemantics(tuple, semantics_shape_tree);
-  return OkStatus();
+  return HandleTupleLike(tuple);
 }
 
 Status HloValueSemanticsPropagation::HandleGetTupleElement(
@@ -1549,6 +1540,16 @@ Status HloValueSemanticsPropagation::HandleAfterAll(HloInstruction* after_all) {
   return OkStatus();
 }
 
+Status HloValueSemanticsPropagation::HandleAllReduce(
+    HloInstruction* all_reduce) {
+  RETURN_IF_ALREADY_PROPAGATED(all_reduce);
+  if (all_reduce->shape().IsArray()) {
+    return DefaultAction(all_reduce);
+  }
+  CHECK(all_reduce->shape().IsTuple());
+  return HandleTupleLike(all_reduce);
+}
+
 Status HloValueSemanticsPropagation::HandleAsyncStart(
     HloInstruction* async_start) {
   RETURN_IF_ALREADY_PROPAGATED(async_start);
@@ -1731,6 +1732,31 @@ Status HloValueSemanticsPropagation::HandleRecvDone(HloInstruction* recv_done) {
             HloValueSemanticLabel::kTupleOrToken, {recv_done, index});
       });
   analysis_->SetHloValueSemantics(recv_done, semantics_tree);
+  return OkStatus();
+}
+
+Status HloValueSemanticsPropagation::HandleTupleLike(
+    HloInstruction* tuple_like) {
+  ShapeTree<const HloValueSemantics*> semantics_shape_tree(tuple_like->shape(),
+                                                           nullptr);
+  for (int operand_index = 0; operand_index < tuple_like->operand_count();
+       ++operand_index) {
+    const HloInstruction* operand = tuple_like->operand(operand_index);
+    const ShapeTree<const HloValueSemantics*>& operand_semantics =
+        analysis_->GetInstructionSemantics(operand);
+    analysis_->DeepCopyHloValueSemantics(
+        semantics_shape_tree, operand_semantics, {}, {operand_index});
+  }
+  semantics_shape_tree.ForEachMutableElement(
+      [tuple_like, this](const ShapeIndex& index,
+                         const HloValueSemantics** semantics) {
+        if (index.empty()) {
+          *semantics = analysis_->NewHloValueSemantics(
+              HloValueSemanticLabel::kTupleOrToken, {tuple_like, {}});
+          return;
+        }
+      });
+  analysis_->SetHloValueSemantics(tuple_like, semantics_shape_tree);
   return OkStatus();
 }
 

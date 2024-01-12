@@ -103,6 +103,7 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
   Status HandleRecv(HloInstruction* recv) override;
   Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
+  Status HandleAllReduce(HloInstruction* all_reduce) override;
   const EinsumDepthMap& GetEinsumDepthMap() const { return einsum_depth_map_; }
 
  private:
@@ -118,6 +119,7 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
   Status HandleCalledComputation(const HloComputation& called_computation,
                                  const ShapeTree<int>& root_depth,
                                  absl::Span<HloInstruction* const> operands);
+  Status HandleTupleLike(HloInstruction* tuple_like);
   EinsumDepthMap einsum_depth_map_;
   const SendRecvGroupMap send_recv_group_map_;
 };
@@ -309,6 +311,7 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   Status HandleGather(HloInstruction* gather) override;
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
+  Status HandleAllReduce(HloInstruction* all_reduce) override;
   Status HandleAsyncStart(HloInstruction* async_start) override;
   Status HandleAsyncDone(HloInstruction* async_done) override;
   Status HandleInfeed(HloInstruction* infeed) override;
@@ -376,6 +379,7 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   StatusOr<HloValueSemantics> ComputeSemanticsFromOperands(
       HloInstruction* instruction, absl::Span<const int64_t> operand_indices,
       absl::Span<const ShapeIndex> operand_shape_indices = {}) const;
+  Status HandleTupleLike(HloInstruction* tuple_like);
   HloValueSemanticsAnalysis* analysis_;
 };
 
