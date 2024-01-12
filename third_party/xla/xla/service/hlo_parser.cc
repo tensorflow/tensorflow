@@ -4187,14 +4187,26 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
         // away. This is a best-effort approach to make sure replaying a HLO
         // gives us same optimized HLO graph.
         static uint32_t data = 0;
+
+        // According to the System V ABI not all 8 bit values are valid booleans
+        // - only the values 0 and 1 are allowed. So to avoid undefined
+        // behaviour we mask elements of type PRED accordingly. The mask assumes
+        // that the C++ data type `bool` is represented as a single byte.
+        static_assert(sizeof(bool) == 1);
+        constexpr uint32_t kBooleanMask = 0x01010101;
+
+        constexpr uint32_t kNoMask = 0xFFFFFFFF;
+        const uint32_t mask =
+            (shape.element_type() == PRED) ? kBooleanMask : kNoMask;
+
         uint32_t* raw_data = static_cast<uint32_t*>(literal->untyped_data());
         for (int64_t i = 0; i < literal->size_bytes() / 4; ++i) {
-          raw_data[i] = data++;
+          raw_data[i] = data++ & mask;
         }
         uint8_t* raw_data_int8 = static_cast<uint8_t*>(literal->untyped_data());
         static uint8_t data_int8 = 0;
         for (int64_t i = 0; i < literal->size_bytes() % 4; ++i) {
-          raw_data_int8[literal->size_bytes() / 4 + i] = data_int8++;
+          raw_data_int8[literal->size_bytes() / 4 + i] = data_int8++ & mask;
         }
         break;
       }
