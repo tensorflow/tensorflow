@@ -937,9 +937,10 @@ std::vector<const HloInstruction*> GetFusionRoots(
 bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion &&
          instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
-         instr.backend_config<FusionBackendConfig>().ok() &&
-         instr.backend_config<FusionBackendConfig>()->kind() ==
-             kTritonSoftmaxFusionKind;
+         instr.backend_config<GpuBackendConfig>().ok() &&
+         instr.backend_config<GpuBackendConfig>()
+                 ->fusion_backend_config()
+                 .kind() == kTritonSoftmaxFusionKind;
 }
 
 bool MayPreventVectorization(const HloFusionAdaptor& fusion) {

@@ -67,8 +67,10 @@ absl::StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
                                            /*include_send_recv=*/false)) {
     return false;
   }
-  TF_ASSIGN_OR_RETURN(CollectiveBackendConfig collective_backend_config,
-                      hlo->backend_config<CollectiveBackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      hlo->backend_config<GpuBackendConfig>());
+  CollectiveBackendConfig collective_backend_config =
+      gpu_config.collective_backend_config();
   return !collective_backend_config.is_sync();
 }
 
@@ -116,12 +118,12 @@ absl::StatusOr<bool> ProcessComputation(
       HloInstruction* async_start = hlo->mutable_operand(0);
       if (async_starts.contains(async_start)) {
         changed = true;
-        TF_ASSIGN_OR_RETURN(
-            CollectiveBackendConfig collective_backend_config,
-            async_start->backend_config<CollectiveBackendConfig>());
+        TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                            async_start->backend_config<GpuBackendConfig>());
+        CollectiveBackendConfig& collective_backend_config =
+            *gpu_config.mutable_collective_backend_config();
         collective_backend_config.set_no_parallel_custom_call(true);
-        TF_RETURN_IF_ERROR(
-            async_start->set_backend_config(collective_backend_config));
+        TF_RETURN_IF_ERROR(async_start->set_backend_config(gpu_config));
         async_starts.erase(async_start);
       }
     }

@@ -855,10 +855,12 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
   double cycles = absl::ToDoubleNanoseconds(data.exec_time) *
                   cost_analysis->device_info_->clock_rate_ghz();
 
-  auto backend_config = instruction->backend_config<FusionBackendConfig>();
-  TF_CHECK_OK(backend_config.status()) << instruction->ToString();
-  backend_config->mutable_reification_cost()->set_end_to_end_cycles(cycles);
-  TF_CHECK_OK(instruction->set_backend_config(*backend_config));
+  auto gpu_config = instruction->backend_config<GpuBackendConfig>();
+  TF_CHECK_OK(gpu_config.status()) << instruction->ToString();
+  FusionBackendConfig& backend_config =
+      *gpu_config->mutable_fusion_backend_config();
+  backend_config.mutable_reification_cost()->set_end_to_end_cycles(cycles);
+  TF_CHECK_OK(instruction->set_backend_config(*gpu_config));
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();
 }

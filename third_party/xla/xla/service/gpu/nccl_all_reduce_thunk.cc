@@ -281,7 +281,9 @@ NcclAllReduceStartThunk::NcclAllReduceStartThunk(
     : NcclAllReduceReduceScatterThunkBase(
           Thunk::kNcclAllReduceStart, thunk_info,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
-          inst->backend_config<CollectiveBackendConfig>()->is_sync()) {}
+          inst->backend_config<GpuBackendConfig>()
+              ->collective_backend_config()
+              .is_sync()) {}
 
 absl::Status NcclAllReduceStartThunk::CheckImplementable(
     AllReduceStartOp op, int64_t replica_count, int64_t partition_count) {
@@ -332,7 +334,9 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     : NcclAllReduceReduceScatterThunkBase(
           Thunk::kNcclReduceScatterStart, thunk_info,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
-          inst->backend_config<CollectiveBackendConfig>()->is_sync()) {}
+          inst->backend_config<GpuBackendConfig>()
+              ->collective_backend_config()
+              .is_sync()) {}
 
 /*static*/ absl::Status NcclReduceScatterStartThunk::CheckImplementable(
     ReduceScatterStartOp op, int64_t replica_count, int64_t partition_count) {

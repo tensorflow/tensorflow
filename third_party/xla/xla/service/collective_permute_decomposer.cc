@@ -77,8 +77,8 @@ bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
   }
 
   auto backend_config =
-      collective_permute.backend_config<xla::gpu::CollectiveBackendConfig>()
-          .value();
+      collective_permute.backend_config<xla::gpu::GpuBackendConfig>()
+          ->collective_backend_config();
   if (backend_config.is_sync()) {
     return false;
   }

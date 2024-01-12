@@ -176,8 +176,9 @@ absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription* device_info) {
   CHECK(device_info != nullptr);
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      fusion->backend_config<FusionBackendConfig>());
+  TF_ASSIGN_OR_RETURN(auto gpu_config,
+                      fusion->backend_config<GpuBackendConfig>());
+  FusionBackendConfig backend_config = gpu_config.fusion_backend_config();
   return Create(std::move(backend_config),
                 HloFusionAdaptor::ForInstruction(fusion), device_info);
 }
@@ -257,8 +258,9 @@ std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
     const se::DeviceDescription& device_info) {
   auto ret = HloFusionAnalysis::Create(
       consumer.has_backend_config()
-          ? *consumer.backend_config<FusionBackendConfig>()
-          : *producer.backend_config<FusionBackendConfig>(),
+          ? consumer.backend_config<GpuBackendConfig>()->fusion_backend_config()
+          : producer.backend_config<GpuBackendConfig>()
+                ->fusion_backend_config(),
       std::make_unique<ProducerConsumerFusion>(
           HloFusionAdaptor::ForInstruction(&producer),
           HloFusionAdaptor::ForInstruction(&consumer)),
@@ -270,7 +272,7 @@ std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
 std::optional<HloFusionAnalysis> AnalyzeFusion(
     const HloInstruction& consumer, const se::DeviceDescription& device_info) {
   auto ret = HloFusionAnalysis::Create(
-      *consumer.backend_config<FusionBackendConfig>(),
+      consumer.backend_config<GpuBackendConfig>()->fusion_backend_config(),
       HloFusionAdaptor::ForInstruction(&consumer), &device_info);
   if (!ret.ok()) return std::nullopt;
   return {std::move(*ret)};

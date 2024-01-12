@@ -11,6 +11,10 @@ import "tsl/protobuf/dnn.proto";
 // These are metadata that the GPU backend attaches to HloInstructions and later
 // uses during e.g. codegen.
 //
+// GpuBackendConfig serves as a parent config for all backend configs so
+// configs won't overwrite each other. Any new backend config proto
+// should be added to and used in GpuBackendConfig.
+//
 // Remember that proto3 doesn't give clients a way to tell the difference
 // between a field not being present and a field having the default value.
 // Choose your defaults carefully.
@@ -196,4 +200,23 @@ message CudnnfMHABackendConfig {
 
   // Is causal mask
   bool is_causal_mask = 21;
+}
+
+// Generic backend config for XLA:GPU
+message GpuBackendConfig {
+  oneof backend_config {
+    CudnnConvBackendConfig cudnn_conv_backend_config = 3;
+
+    GemmBackendConfig gemm_backend_config = 4;
+
+    BitcastBackendConfig bitcast_backend_config = 5;
+
+    CollectiveBackendConfig collective_backend_config = 6;
+
+    FusionBackendConfig fusion_backend_config = 7;
+
+    CudnnNormBackendConfig cudnn_norm_backend_config = 8;
+
+    CudnnfMHABackendConfig cudnn_fmha_backend_config = 9;
+  }
 }

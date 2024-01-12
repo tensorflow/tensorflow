@@ -143,7 +143,7 @@ ENTRY main {
   %B = f32[2,2]{1,0} parameter(1)
   ROOT %sgemm = f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %A, f32[2,2]{1,0} %B),
                               custom_call_target="__cublas$gemm",
-  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"HIGH\",\"HIGHEST\"]},\"selected_algorithm\":\"7\"}"
+  backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"HIGH\",\"HIGHEST\"]},\"selected_algorithm\":\"7\"}}"
 }
 
 // -----
@@ -166,7 +166,7 @@ ENTRY main {
   %A = f32[2,2]{1,0} parameter(0)
   %B = f32[2,2]{1,0} parameter(1)
   ROOT %custom-call = f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %A, f32[2,2]{1,0} %B), custom_call_target="__cublas$lt$matmul",
-    backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}}"
+    backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}}}"
 }
 
 // -----
@@ -194,7 +194,7 @@ ENTRY main {
   %C_SCALE = f32[] parameter(5)
   %D_SCALE = f32[] parameter(6)
   ROOT %custom-call = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call(f8e4m3fn[16,16]{1,0} %A, f8e4m3fn[16,16]{1,0} %B, f16[16,16]{1,0} %C, f32[] %A_SCALE, f32[] %B_SCALE, f32[] %C_SCALE, f32[] %D_SCALE), custom_call_target="__cublas$lt$matmul$f8",
-    backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1.0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}}"
+    backend_config="{ \"gemm_backend_config\": {\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1.0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}}}"
 }
 
 
@@ -282,7 +282,7 @@ ENTRY main {
   ROOT %custom-call.1 = (f32[4,256,2,2]{3,2, 1,0}, u8[65536]{0}) custom-call(f32[4,256,3,3]{3,2,1,0} %input, f32[256,256,2,2]{3,2,1,0} %filter),
                         window={size=2x2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01,
                         custom_call_target="__cudnn$convForward",
-                        backend_config="{\"algorithm\": {\"algo_id\":\"2\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}"
+                        backend_config="{ \"cudnn_conv_backend_config\": {\"algorithm\": {\"algo_id\":\"2\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}}"
 }
 
 // -----
@@ -309,7 +309,7 @@ ENTRY main {
   %input = f16[1,17,9,9]{1,3,2,0} parameter(0)
   %filter = f16[3,3,17,32]{2,1,0,3} parameter(1)
   %bias = f16[32]{0} parameter(2)
-  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\": {\"algo_id\":\"0\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":0}"
+  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{ \"cudnn_conv_backend_config\": {\"algorithm\": {\"algo_id\":\"0\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":0}}"
 }
 
 // -----
@@ -338,7 +338,7 @@ ENTRY main {
   %filter = f16[3,3,17,32]{2,1,0,3} parameter(1)
   %bias = f16[32]{0} parameter(2)
   %side = f16[32]{0} parameter(3)
-  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias, f16[32]{0} %side), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\":{\"algo_id\":\"0\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":1}"
+  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias, f16[32]{0} %side), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{ \"cudnn_conv_backend_config\": {\"algorithm\":{\"algo_id\":\"0\",\"math_type\":\"DEFAULT_MATH\"},\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":1}}"
 }
 
 // -----
@@ -731,6 +731,6 @@ HloModule TestAllGatherAsyncWithSyncFlagTrue
 ENTRY main {
   param0 = f32[10,20] parameter(0)
   ags = (f32[10,20], f32[10,80]) all-gather-start(param0), replica_groups={{0,1,2,3}},
-    dimensions={1}, backend_config="{\"is_sync\":true, \"no_parallel_custom_call\":true}"
+    dimensions={1}, backend_config="{ \"collective_backend_config\": {\"is_sync\":true, \"no_parallel_custom_call\":true}}"
   ROOT ag = f32[10,80] all-gather-done(ags)
 }

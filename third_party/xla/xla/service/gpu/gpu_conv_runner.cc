@@ -531,8 +531,9 @@ absl::StatusOr<GpuConvConfig> GetGpuConvConfig(
   GpuConvDescriptor descriptor;
 
   TF_ASSIGN_OR_RETURN(descriptor.kind, GetCudnnConvKind(cudnn_call));
-  TF_ASSIGN_OR_RETURN(descriptor.backend_config,
-                      cudnn_call->backend_config<CudnnConvBackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                      cudnn_call->backend_config<GpuBackendConfig>());
+  descriptor.backend_config = gpu_backend_config.cudnn_conv_backend_config();
   descriptor.operand0_shape = cudnn_call->operand(0)->shape();
   descriptor.operand1_shape = cudnn_call->operand(1)->shape();
   descriptor.result_shape = cudnn_call->shape().tuple_shapes(0);

@@ -108,9 +108,10 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
     ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
     std::vector<Buffer> buffers)
-    : NcclCollectiveThunk(
-          Thunk::kNcclAllGatherStart, thunk_info,
-          inst->backend_config<CollectiveBackendConfig>()->is_sync()),
+    : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
+                          inst->backend_config<GpuBackendConfig>()
+                              ->collective_backend_config()
+                              .is_sync()),
       config_(impl::GetNcclAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());

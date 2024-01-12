@@ -783,8 +783,10 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(
   }
 
   TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      instr->backend_config<CudnnConvBackendConfig>());
+  TF_ASSIGN_OR_RETURN(auto gpu_config,
+                      instr->backend_config<GpuBackendConfig>());
+  const CudnnConvBackendConfig& backend_config =
+      gpu_config.cudnn_conv_backend_config();
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch_slice,
                       GetAllocationSliceForHlo(
                           instr, {instr->shape().tuple_shapes_size() - 1}));
@@ -3733,8 +3735,6 @@ absl::Status IrEmitterUnnested::EmitOp(
     if (ir_emitter_context_->emit_ir_from_hlo()) {
       const HloFusionInstruction* instr =
           Cast<HloFusionInstruction>(hlo_for_lmhlo.at(op));
-      TF_ASSIGN_OR_RETURN(auto backend_config,
-                          instr->backend_config<FusionBackendConfig>());
       const se::DeviceDescription& device_info =
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,
@@ -4036,8 +4036,6 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     }
     case HloOpcode::kFusion: {
       auto* fusion = Cast<HloFusionInstruction>(instr);
-      TF_ASSIGN_OR_RETURN(auto backend_config,
-                          instr->backend_config<FusionBackendConfig>());
       const se::DeviceDescription& device_info =
           ir_emitter_context_->gpu_device_info();
       TF_ASSIGN_OR_RETURN(auto fusion_analysis,

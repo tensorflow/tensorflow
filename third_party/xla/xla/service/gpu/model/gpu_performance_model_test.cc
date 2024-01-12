@@ -132,8 +132,9 @@ ENTRY e {
 
   GpuPerformanceModel::RecordEstimatedRunTime(
       root, &analysis_, GpuPerformanceModelOptions::Default());
-  double recorded_cycles = root->backend_config<FusionBackendConfig>()
-                               ->reification_cost()
+  double recorded_cycles = root->backend_config<GpuBackendConfig>()
+                               ->fusion_backend_config()
+                               .reification_cost()
                                .end_to_end_cycles();
   EXPECT_NEAR(recorded_cycles, 257.7, 0.1);
 }
@@ -165,8 +166,9 @@ ENTRY e {
 
   GpuPerformanceModel::RecordEstimatedRunTime(
       root, &analysis_, GpuPerformanceModelOptions::Default());
-  double recorded_cycles = root->backend_config<FusionBackendConfig>()
-                               ->reification_cost()
+  double recorded_cycles = root->backend_config<GpuBackendConfig>()
+                               ->fusion_backend_config()
+                               .reification_cost()
                                .end_to_end_cycles();
   EXPECT_NEAR(recorded_cycles, 220284, 100);
 }

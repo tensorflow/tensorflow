@@ -163,10 +163,12 @@ static absl::StatusOr<HloInstruction*> CreateFusionInstruction(
   module->SetAndUniquifyInstrName(fusion, match.config().name());
 
   // Set backends config to a matched custom fusion config.
-  FusionBackendConfig backend_config;
+  GpuBackendConfig gpu_config;
+  FusionBackendConfig& backend_config =
+      *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind("__custom_fusion");
   *backend_config.mutable_custom_fusion_config() = match.config();
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(backend_config)));
+  TF_RETURN_IF_ERROR(fusion->set_backend_config(std::move(gpu_config)));
 
   // If we don't have workspace we can return constructed fusion instruction.
   if (match.workspace_size_bytes() == 0) return fusion;

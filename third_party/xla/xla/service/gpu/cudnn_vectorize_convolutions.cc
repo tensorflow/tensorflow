@@ -291,10 +291,12 @@ absl::Status ReorderInt8NchwVect(HloCustomCallInstruction* conv,
   ConvolutionDimensionNumbers dnums = conv->convolution_dimension_numbers();
 
   // Update convolution backend config.
-  TF_ASSIGN_OR_RETURN(auto config,
-                      conv->backend_config<CudnnConvBackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      conv->backend_config<GpuBackendConfig>());
+  CudnnConvBackendConfig& config =
+      *gpu_config.mutable_cudnn_conv_backend_config();
   config.set_reordered_int8_nchw_vect(true);
-  TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+  TF_RETURN_IF_ERROR(conv->set_backend_config(gpu_config));
 
   // Reorder the filter.
   TF_ASSIGN_OR_RETURN(Shape filter_shape, builder->GetShape(operands[1]));

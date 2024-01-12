@@ -49,8 +49,9 @@ class GpuConvertAsyncCollectivesToSyncTest : public HloTestBase {
     if (inst == nullptr) {
       return false;
     }
-    auto backend_config =
-        inst->backend_config<CollectiveBackendConfig>().value();
+    auto backend_config = inst->backend_config<GpuBackendConfig>()
+                              .value()
+                              .collective_backend_config();
     return backend_config.is_sync();
   }
 

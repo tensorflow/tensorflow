@@ -519,8 +519,9 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                           MakeReshapeHlo(scale_bias_shape, scale));
       TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_bias,
                           MakeReshapeHlo(scale_bias_shape, bias));
-
-      CudnnNormBackendConfig backend_config;
+      GpuBackendConfig gpu_config;
+      CudnnNormBackendConfig& backend_config =
+          *gpu_config.mutable_cudnn_norm_backend_config();
       backend_config.set_epsilon(epsilon->literal().GetAsDouble({}).value());
       auto* algorithm = backend_config.mutable_algorithm();
       algorithm->set_algo_id(0);
@@ -544,7 +545,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           instr->AddInstruction(HloInstruction::CreateCustomCall(
               custom_call_shape, {reshape, reshaped_scale, reshaped_bias},
               kCudnnNormCallTarget));
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+      TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
 
       TF_ASSIGN_OR_RETURN(HloInstruction * gte,
                           MakeGetTupleElementHlo(custom_call, 0));
@@ -631,12 +632,13 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       TF_ASSIGN_OR_RETURN(const int64_t c_constant,
                           CConstant(cuda_compute_capability_));
       const int64_t workspace_size = (2 * c_constant * (4 + 256)) + 32;
-      TF_ASSIGN_OR_RETURN(
-          CudnnNormBackendConfig backend_config,
-          custom_call->backend_config<xla::gpu::CudnnNormBackendConfig>());
+      TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                          custom_call->backend_config<GpuBackendConfig>());
+      CudnnNormBackendConfig& backend_config =
+          *gpu_config.mutable_cudnn_norm_backend_config();
       backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
           workspace_size);
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+      TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
 
       auto replace_with_new_cc = [new_custom_call, this](
                                      HloInstruction* old_instr,

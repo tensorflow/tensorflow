@@ -159,8 +159,11 @@ llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
 
   // Decode the layout of the shape from the Protobufs attached to
   // backend_config_.
-  BitcastBackendConfig bitcast_config;
-  CHECK(bitcast_config.ParseFromString(hlo->raw_backend_config_string()));
+  auto gpu_config = hlo->backend_config<GpuBackendConfig>();
+  CHECK(gpu_config.ok());
+
+  const BitcastBackendConfig& bitcast_config =
+      gpu_config.value().bitcast_backend_config();
 
   // If there is no layout in the protobuf, do not override it.
   if (!bitcast_config.result_layout().minor_to_major().empty()) {

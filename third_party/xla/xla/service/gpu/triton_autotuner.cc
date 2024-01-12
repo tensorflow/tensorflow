@@ -115,8 +115,10 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       : config_(config) {}
 
   absl::Status HandleFusion(HloInstruction* hlo) override {
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        hlo->backend_config<FusionBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        hlo->backend_config<GpuBackendConfig>());
+    FusionBackendConfig& backend_config =
+        *gpu_config.mutable_fusion_backend_config();
     if (backend_config.kind() != kTritonGemmFusionKind) {
       return absl::OkStatus();
     }
@@ -139,7 +141,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
       if (autotune_result.has_triton()) {
         *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
-        TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
+        TF_RETURN_IF_ERROR(hlo->set_backend_config(gpu_config));
       } else {
         // Falling back to cuBLAS: Converting the fusion to a Call, so that it
         // can be inlined back again.
@@ -208,8 +210,11 @@ class GemmConfigSetCollector : public ConstDfsHloVisitorWithDefault {
   absl::Status HandleFusion(const HloInstruction* hlo) override {
     const HloFusionInstruction* fusion = Cast<HloFusionInstruction>(hlo);
 
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        hlo->backend_config<FusionBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        hlo->backend_config<GpuBackendConfig>());
+    const FusionBackendConfig& backend_config =
+        gpu_config.fusion_backend_config();
+
     if (backend_config.kind() != kTritonGemmFusionKind ||
         backend_config.has_triton_gemm_config()) {
       return absl::OkStatus();
@@ -457,10 +462,13 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
   HloComputation* entry_computation = new_module->entry_computation();
   HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();
 
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      cloned_dot_fusion->backend_config<FusionBackendConfig>());
+  TF_ASSIGN_OR_RETURN(auto gpu_config,
+                      cloned_dot_fusion->backend_config<GpuBackendConfig>());
+  FusionBackendConfig& backend_config =
+      *gpu_config.mutable_fusion_backend_config();
+
   *backend_config.mutable_triton_gemm_config() = config.ToProto();
-  TF_RETURN_IF_ERROR(cloned_dot_fusion->set_backend_config(backend_config));
+  TF_RETURN_IF_ERROR(cloned_dot_fusion->set_backend_config(gpu_config));
 
   if (config.split_k > 1) {
     TF_RETURN_IF_ERROR(MakeDotSplitKBatch(cloned_dot_fusion, config));

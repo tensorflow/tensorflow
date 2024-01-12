@@ -61,7 +61,7 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[125]{0} parameter(0)
   auxiliary_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=auxiliary_computation
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
   FusionMergerTriton fusion_merger;
@@ -100,7 +100,7 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
   param_1 = f32[125]{0} parameter(1)
-  triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
   ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_1, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -140,7 +140,7 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[125]{0} parameter(0)
   auxiliary_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=auxiliary_computation
-  triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
   ROOT broadcast = f32[10,125,127]{2,1,0} broadcast(triton_softmax), dimensions={1,2}
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -182,7 +182,7 @@ ENTRY main {
   param_0 = f32[125]{0} parameter(0)
   param_1 = f32[125,127]{1,0} parameter(1)
   auxiliary_fusion = f32[125,127]{1,0} fusion(param_0, param_1), kind=kLoop, calls=auxiliary_computation
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
   FusionMergerTriton fusion_merger;
@@ -223,7 +223,7 @@ ENTRY main {
   param_0 = f32[125]{0} parameter(0)
   param_1 = f32[127,125]{1,0} parameter(1)
   auxiliary_fusion = f32[125,127]{1,0} fusion(param_0, param_1), kind=kLoop, calls=auxiliary_computation
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
   FusionMergerTriton fusion_merger;
@@ -264,7 +264,7 @@ ENTRY main {
   param_0 = f32[125,63]{1,0} parameter(0)
   param_1 = f32[125,64]{1,0} parameter(1)
   auxiliary_fusion = f32[125,127]{1,0} fusion(param_0, param_1), kind=kLoop, calls=auxiliary_computation
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
   FusionMergerTriton fusion_merger;
@@ -303,7 +303,7 @@ ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
   param_1 = f32[125,127]{1,0} parameter(1)
   auxiliary_fusion = f32[125,127]{1,0} fusion(param_0, param_1), kind=kCustom, calls=auxiliary_fusion
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
 }
 
 )";
@@ -347,7 +347,7 @@ ENTRY main {
   param_0 = f32[10,125,127]{2,1,0} parameter(0)
   param_1 = f32[10]{0} parameter(1)
   auxiliary_fusion = f32[10,125,127]{2,1,0} fusion(param_0, param_1), kind=kCustom, calls=auxiliary_computation
-  ROOT triton_softmax = f32[10,125,127]{2,1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  ROOT triton_softmax = f32[10,125,127]{2,1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
 }
 )";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -391,7 +391,7 @@ ENTRY main {
   param_0 = f32[125]{0} parameter(0)
   param_1 = f32[125,127]{1,0} parameter(1)
   producer_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=producer_computation
-  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
   ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_1, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -440,7 +440,7 @@ ENTRY main {
   param_1 = f32[125,127]{1,0} parameter(1)
   param_2 = f32[125,127]{1,0} parameter(2)
   producer_fusion = f32[125,127]{1,0} fusion(param_0, param_1), kind=kLoop, calls=producer_computation
-  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
   ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_2, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -487,7 +487,7 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[125]{0} parameter(0)
   producer_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=producer_computation
-  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  triton_softmax = f32[125,127]{1,0} fusion(producer_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
   ROOT consumer_fusion = f32[125,127]{1,0} fusion(param_0, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
@@ -532,7 +532,7 @@ triton_softmax_computation {
 
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
-  triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
+  triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton_softmax"}}
   ROOT consumer_fusion = (f32[125,127]{1,0}, f32[125,127]{1,0}) fusion(param_0, triton_softmax), kind=kLoop, calls=consumer_computation
 })";
   auto module = ParseAndReturnVerifiedModule(kHloText).value();

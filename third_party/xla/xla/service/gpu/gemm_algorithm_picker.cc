@@ -223,8 +223,9 @@ absl::StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
   se::DeviceMemoryAllocator* allocator = autotune_config.GetAllocator();
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, autotune_config.GetStream());
-  GemmBackendConfig gemm_config =
-      gemm->backend_config<GemmBackendConfig>().value();
+  GpuBackendConfig gpu_config =
+      gemm->backend_config<GpuBackendConfig>().value();
+  const GemmBackendConfig& gemm_config = gpu_config.gemm_backend_config();
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
   const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
@@ -380,8 +381,10 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
                                       const AutotuneConfig& config) {
   VLOG(3) << "Loading the autotune result of GemmThunk " << gemm->ToString();
 
-  GemmBackendConfig gemm_config =
-      gemm->backend_config<GemmBackendConfig>().value();
+  GpuBackendConfig gpu_config =
+      gemm->backend_config<GpuBackendConfig>().value();
+  GemmBackendConfig gemm_config = gpu_config.gemm_backend_config();
+
   // Degenerate gemms replaced with memzero operation, no need to auto tune it.
   if (gemm_config.alpha_real() == 0.0 && gemm_config.alpha_imag() == 0.0 &&
       gemm_config.beta() == 0.0) {
@@ -418,7 +421,8 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
       updated_config.set_selected_algorithm(se::blas::kRuntimeAutotuning);
     }
   }
-  TF_RETURN_IF_ERROR(gemm->set_backend_config(updated_config));
+  *gpu_config.mutable_gemm_backend_config() = updated_config;
+  TF_RETURN_IF_ERROR(gemm->set_backend_config(gpu_config));
   return updated_config.SerializeAsString() != gemm_config.SerializeAsString();
 }
 

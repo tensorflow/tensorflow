@@ -47,8 +47,9 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
         (Match(instr, m::CustomCall(&existing_gemm, {kGemmCallTarget,
                                                      kCublasLtMatmulCallTarget})
                           .WithOperand(1, m::Broadcast(&bcast, m::Op()))))) {
-      TF_ASSIGN_OR_RETURN(auto config,
-                          existing_gemm->backend_config<GemmBackendConfig>());
+      TF_ASSIGN_OR_RETURN(auto gpu_config,
+                          existing_gemm->backend_config<GpuBackendConfig>());
+      GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
       DotDimensionNumbers *dim_nums = config.mutable_dot_dimension_numbers();
       int bcast_operand_index = instr->operand_index(bcast);
       int num_bcast_dims = (bcast->shape().dimensions_size() -
@@ -93,7 +94,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       }
       TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWithDifferentShape(
           bcast_operand_index, bcast->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
+      TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(gpu_config));
       MarkAsChanged();
     }
     return absl::OkStatus();

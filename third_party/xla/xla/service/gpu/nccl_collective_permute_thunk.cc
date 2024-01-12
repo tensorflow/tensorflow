@@ -51,9 +51,11 @@ using mlir::lmhlo_gpu::CollectivePermuteStartOp;
 namespace {
 
 bool IsSyncCollective(const HloInstruction* instr) {
-  auto backend_config =
-      instr->backend_config<xla::gpu::CollectiveBackendConfig>().value();
-  return backend_config.is_sync();
+  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return false;
+  }
+  return backend_config->collective_backend_config().is_sync();
 }
 
 }  // namespace

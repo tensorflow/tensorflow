@@ -236,9 +236,10 @@ absl::Status GpuHloCostAnalysis::HandleCustomCall(
     // The naming conventions and meanings of gemm parameters are documented
     // here:
     // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
-    TF_ASSIGN_OR_RETURN(auto gemm_config,
-                        custom_call->backend_config<gpu::GemmBackendConfig>());
-
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        custom_call->backend_config<gpu::GpuBackendConfig>());
+    const gpu::GemmBackendConfig& gemm_config =
+        gpu_config.gemm_backend_config();
     // Technically, in addition to the dot product (A * B), cuBLAS gemm also
     // performs additional scaling (by factor 'alpha') and addition with a
     // scaled third matrix (beta * C), which will introduce additional

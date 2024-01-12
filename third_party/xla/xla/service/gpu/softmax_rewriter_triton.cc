@@ -367,10 +367,12 @@ absl::Status FuseDiamondChainImpl(const DiamondChainDescriptor& diamond_chain) {
   softmax_fusion->GetModule()->SetAndUniquifyInstrName(softmax_fusion,
                                                        suggested_name);
 
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      softmax_fusion->backend_config<FusionBackendConfig>());
+  TF_ASSIGN_OR_RETURN(auto gpu_config,
+                      softmax_fusion->backend_config<GpuBackendConfig>());
+  FusionBackendConfig& backend_config =
+      *gpu_config.mutable_fusion_backend_config();
   backend_config.set_kind(std::string(kTritonSoftmaxFusionKind));
-  TF_RETURN_IF_ERROR(softmax_fusion->set_backend_config(backend_config));
+  TF_RETURN_IF_ERROR(softmax_fusion->set_backend_config(gpu_config));
 
   if (root->IsRoot()) {
     root->parent()->set_root_instruction(softmax_fusion);

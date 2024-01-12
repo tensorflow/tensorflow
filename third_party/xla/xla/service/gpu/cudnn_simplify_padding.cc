@@ -106,8 +106,9 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
   // If the filter is reordered for an int8x32 NCHW_VECT_C convolution, find the
   // original, un-reordered filter and check *it* for trailing zero output
   // features.
-  auto backend_config = conv->backend_config<CudnnConvBackendConfig>();
-  if (backend_config.ok() && backend_config->reordered_int8_nchw_vect()) {
+  auto backend_config = conv->backend_config<GpuBackendConfig>();
+  if (backend_config.ok() &&
+      backend_config->cudnn_conv_backend_config().reordered_int8_nchw_vect()) {
     VLOG(2) << "Matched int8x32 convolution with filter reordering";
 
     // Try to set weights to the original, un-reordered value.

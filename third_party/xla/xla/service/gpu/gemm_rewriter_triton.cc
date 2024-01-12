@@ -702,10 +702,12 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
             HloInstruction::FusionKind::kCustom, fusion_inputs, computation));
     dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion, fusion_name);
 
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        dot_fusion->backend_config<FusionBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        dot_fusion->backend_config<GpuBackendConfig>());
+    FusionBackendConfig& backend_config =
+        *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(std::string(kTritonGemmFusionKind));
-    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(backend_config));
+    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     if (fusion_output->IsRoot()) {
       fusion_output->parent()->set_root_instruction(dot_fusion);

@@ -34,7 +34,10 @@ absl::StatusOr<bool> GpuAsyncCollectiveAnnotator::Run(
       }
       CollectiveBackendConfig config;
       config.set_is_sync(!is_collective_async_(instruction));
-      TF_RETURN_IF_ERROR(instruction->set_backend_config(config));
+      TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                          instruction->backend_config<GpuBackendConfig>());
+      *gpu_config.mutable_collective_backend_config() = config;
+      TF_RETURN_IF_ERROR(instruction->set_backend_config(gpu_config));
       changed = true;
     }
   }

@@ -315,8 +315,11 @@ absl::StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(auto config,
-                        conv->backend_config<CudnnConvBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        conv->backend_config<GpuBackendConfig>());
+    CudnnConvBackendConfig& config =
+        *gpu_config.mutable_cudnn_conv_backend_config();
+
     if (config.conv_result_scale() != 1) {
       continue;
     }
@@ -332,8 +335,7 @@ absl::StatusOr<bool> FuseConvAlpha(HloComputation* comp) {
 
     TF_ASSIGN_OR_RETURN(Literal alpha_f64, alpha->literal().Convert(F64));
     config.set_conv_result_scale(alpha_f64.GetFirstElement<double>());
-
-    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(conv->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(conv->parent()->ReplaceInstruction(instr, gte));
 
     changed = true;
@@ -707,8 +709,11 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
               filter_scale_op
                   ? filter_scale_op->opcode() == HloOpcode::kMultiply
                   : false));
-      TF_ASSIGN_OR_RETURN(
-          auto config, convolution->backend_config<CudnnConvBackendConfig>());
+      TF_ASSIGN_OR_RETURN(auto gpu_config,
+                          convolution->backend_config<GpuBackendConfig>());
+      CudnnConvBackendConfig& config =
+          *gpu_config.mutable_cudnn_conv_backend_config();
+
       config.set_serialized_graph(graph_string.Graph());
       operands.insert(operands.begin(), input);
       operands.insert(operands.begin() + 1, filter);
@@ -728,7 +733,7 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
               ShapeUtil::MakeTupleShape(output_shapes), operands));
 
       new_convolution->set_custom_call_target(kCudnnConvForwardGraphCallTarget);
-      TF_RETURN_IF_ERROR(new_convolution->set_backend_config(config));
+      TF_RETURN_IF_ERROR(new_convolution->set_backend_config(gpu_config));
       TF_ASSIGN_OR_RETURN(HloInstruction * new_gte,
                           MakeGetTupleElementHlo(new_convolution, 0));
       TF_RETURN_IF_ERROR(comp->ReplaceInstruction(final_instr, new_gte));
@@ -777,8 +782,10 @@ absl::StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
     // Can't fuse bias or side-input if the conv already has a relu (or other
     // activation), because bias and side-input are added before the activation
     // is applied.
-    TF_ASSIGN_OR_RETURN(auto config,
-                        conv->backend_config<CudnnConvBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        conv->backend_config<GpuBackendConfig>());
+    CudnnConvBackendConfig& config =
+        *gpu_config.mutable_cudnn_conv_backend_config();
     if (config.activation_mode() != se::dnn::kNone) {
       continue;
     }
@@ -838,7 +845,7 @@ absl::StatusOr<bool> FuseBiasOrSideInput(HloComputation* comp) {
     HloInstruction* new_conv = comp->AddInstruction(
         conv->CloneWithNewOperands(conv->shape(), new_operands));
     comp->parent()->SetAndUniquifyInstrName(new_conv, conv->name());
-    TF_RETURN_IF_ERROR(new_conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(new_conv->set_backend_config(gpu_config));
     TF_ASSIGN_OR_RETURN(HloInstruction * new_instr,
                         MakeGetTupleElementHlo(new_conv, 0));
     TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, new_instr));
@@ -868,8 +875,10 @@ absl::StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
     if (!Match(instr, pattern)) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(auto config,
-                        conv->backend_config<CudnnConvBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        conv->backend_config<GpuBackendConfig>());
+    CudnnConvBackendConfig& config =
+        *gpu_config.mutable_cudnn_conv_backend_config();
     if (config.side_input_scale() != 1) {
       continue;
     }
@@ -954,7 +963,7 @@ absl::StatusOr<bool> FuseSideInputAlpha(HloComputation* comp) {
 
     TF_ASSIGN_OR_RETURN(Literal alpha_f64, alpha->literal().Convert(F64));
     config.set_side_input_scale(alpha_f64.GetFirstElement<double>());
-    TF_RETURN_IF_ERROR(new_conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(new_conv->set_backend_config(gpu_config));
 
     TF_RETURN_IF_ERROR(comp->ReplaceInstruction(conv, new_conv));
     changed = true;
@@ -1004,8 +1013,10 @@ absl::StatusOr<bool> FuseElu(HloComputation* comp,
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
-                        conv->backend_config<CudnnConvBackendConfig>());
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                        conv->backend_config<GpuBackendConfig>());
+    CudnnConvBackendConfig& config =
+        *gpu_config.mutable_cudnn_conv_backend_config();
     if (config.activation_mode() != se::dnn::kNone) {
       continue;
     }
@@ -1017,7 +1028,7 @@ absl::StatusOr<bool> FuseElu(HloComputation* comp,
     }
     TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
     config.set_activation_mode(se::dnn::kElu);
-    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(conv->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte1));
     changed = true;
   }
@@ -1039,8 +1050,10 @@ absl::StatusOr<bool> FuseRelu(HloComputation* comp) {
                        .WithOneUse()))) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
-                        conv->backend_config<CudnnConvBackendConfig>());
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                        conv->backend_config<GpuBackendConfig>());
+    CudnnConvBackendConfig& config =
+        *gpu_config.mutable_cudnn_conv_backend_config();
     if (config.activation_mode() != se::dnn::kNone) {
       continue;
     }
@@ -1052,7 +1065,7 @@ absl::StatusOr<bool> FuseRelu(HloComputation* comp) {
     }
     TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
     config.set_activation_mode(se::dnn::kRelu);
-    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(conv->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
     changed = true;
   }
@@ -1082,8 +1095,10 @@ absl::StatusOr<bool> FuseRelu6(HloComputation* comp,
                      m::Broadcast(m::ConstantEffectiveScalar(6))))) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
-                        conv->backend_config<CudnnConvBackendConfig>());
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                        conv->backend_config<GpuBackendConfig>());
+    CudnnConvBackendConfig& config =
+        *gpu_config.mutable_cudnn_conv_backend_config();
     if (config.activation_mode() != se::dnn::kNone) {
       continue;
     }
@@ -1099,7 +1114,7 @@ absl::StatusOr<bool> FuseRelu6(HloComputation* comp,
     }
     TF_ASSIGN_OR_RETURN(conv, EnsureIsConvBiasActivation(conv));
     config.set_activation_mode(se::dnn::kRelu6);
-    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(conv->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte));
     changed = true;
   }
@@ -1139,8 +1154,10 @@ absl::StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
-                        conv->backend_config<CudnnConvBackendConfig>());
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                        conv->backend_config<GpuBackendConfig>());
+    CudnnConvBackendConfig& config =
+        *gpu_config.mutable_cudnn_conv_backend_config();
     if (config.activation_mode() != se::dnn::kNone) {
       continue;
     }
@@ -1158,7 +1175,7 @@ absl::StatusOr<bool> FuseLeakyRelu(HloComputation* comp,
     config.set_activation_mode(se::dnn::kLeakyRelu);
     TF_ASSIGN_OR_RETURN(Literal alpha_f64, alpha->literal().Convert(F64));
     config.set_leakyrelu_alpha(alpha_f64.GetFirstElement<double>());
-    TF_RETURN_IF_ERROR(conv->set_backend_config(config));
+    TF_RETURN_IF_ERROR(conv->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(comp->ReplaceInstruction(instr, gte1));
     changed = true;
   }
@@ -1411,21 +1428,22 @@ void VlogStats(HloModule* module) {
         ++stats["22 convs with side-input"];
       }
 
-      auto config = instr->backend_config<CudnnConvBackendConfig>();
-      if (!config.ok()) {
+      auto gpu_config = instr->backend_config<GpuBackendConfig>();
+      if (!gpu_config.ok()) {
         LOG(ERROR) << "Couldn't parse backend config for " << instr->ToString();
         continue;
       }
-
-      if (config->conv_result_scale() != 1) {
+      const CudnnConvBackendConfig& config =
+          gpu_config->cudnn_conv_backend_config();
+      if (config.conv_result_scale() != 1) {
         ++stats["30 convs with result scale"];
       }
-      if (config->side_input_scale() != 0 && config->side_input_scale() != 1) {
+      if (config.side_input_scale() != 0 && config.side_input_scale() != 1) {
         ++stats["31 convs with side-input scale"];
       }
       ++stats[absl::StrCat(
           "32 convs with activation mode ",
-          se::dnn::ActivationMode_Name(config->activation_mode()))];
+          se::dnn::ActivationMode_Name(config.activation_mode()))];
     }
   }
 

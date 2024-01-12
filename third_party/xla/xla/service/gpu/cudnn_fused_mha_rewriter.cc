@@ -1254,7 +1254,10 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     v_transposed = true;
   }
 
-  CudnnfMHABackendConfig fmha_config;
+  GpuBackendConfig gpu_config;
+  CudnnfMHABackendConfig& fmha_config =
+      *gpu_config.mutable_cudnn_fmha_backend_config();
+  ;
   *fmha_config.mutable_bmm1_dot_dimension_numbers() =
       bmm_1->dot_dimension_numbers();
   *fmha_config.mutable_bmm2_dot_dimension_numbers() =
@@ -1370,7 +1373,7 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   HloInstruction* fmha_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, operands, absl::string_view(custom_call_name)));
-  TF_RETURN_IF_ERROR(fmha_call->set_backend_config(fmha_config));
+  TF_RETURN_IF_ERROR(fmha_call->set_backend_config(gpu_config));
   TF_RETURN_IF_ERROR(SetFMHAInstructionName(bmm_1->GetModule(), fmha_call));
 
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
@@ -1454,8 +1457,9 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
         HloInstruction::CreateConvert(bmm_2_grad_2->shape(), mask));
     operands.push_back(converted_mask);
   }
-  TF_ASSIGN_OR_RETURN(CudnnfMHABackendConfig fwd_config,
-                      fwd_fmha_call->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      fwd_fmha_call->backend_config<GpuBackendConfig>());
+  CudnnfMHABackendConfig fwd_config = gpu_config.cudnn_fmha_backend_config();
   CudnnfMHABackendConfig bwd_fmha_config;
 
   // If forward bmm_2 is canonicalized, the contracting dimension of lhs
@@ -1556,7 +1560,9 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   HloInstruction* fmha_bwd_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, operands, absl::string_view(bwd_custom_call_name)));
-  TF_RETURN_IF_ERROR(fmha_bwd_call->set_backend_config(bwd_fmha_config));
+  GpuBackendConfig bwd_gpu_config;
+  *bwd_gpu_config.mutable_cudnn_fmha_backend_config() = bwd_fmha_config;
+  TF_RETURN_IF_ERROR(fmha_bwd_call->set_backend_config(bwd_gpu_config));
   TF_RETURN_IF_ERROR(
       SetFMHAInstructionName(bmm_1_grad_1->GetModule(), fmha_bwd_call));
 

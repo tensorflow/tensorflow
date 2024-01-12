@@ -69,7 +69,9 @@ namespace gpu {
 namespace {
 
 bool IsSyncCollective(const HloInstruction& instr) {
-  auto backend_config = instr.backend_config<CollectiveBackendConfig>().value();
+  auto backend_config = instr.backend_config<GpuBackendConfig>()
+                            .value()
+                            .collective_backend_config();
   return backend_config.is_sync();
 }
 

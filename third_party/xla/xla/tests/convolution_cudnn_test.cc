@@ -98,9 +98,9 @@ ENTRY TestComputation {
   convert.1 = f32[64]{0} convert(bias)
   cudnn-conv-bias-activation.3 = (s8[4,48,48,64]{3,2,1,0}, u8[0]{0}) custom-call(input, filter, convert.1),
       window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward",
-      backend_config="{\"activation_mode\":\"2\",\"conv_result_scale\":1,\"side_input_scale\":0,\"algorithm\":{
+      backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"2\",\"conv_result_scale\":1,\"side_input_scale\":0,\"algorithm\":{
         \"algo_id\":\"38\",\"math_type\":\"DEFAULT_MATH\",\"tuning_knobs\":{\"14\":\"5\",\"13\":\"1\",\"23\":\"0\",\"2\":\"1\"},
-        \"is_cudnn_frontend\":true,\"workspace_size\":\"0\"}}"
+        \"is_cudnn_frontend\":true,\"workspace_size\":\"0\"}}}"
   ROOT get-tuple-element.1 = s8[4,48,48,64]{3,2,1,0} get-tuple-element(cudnn-conv-bias-activation.3), index=0
 })";
   constexpr char kHloVectorized[] = R"(
@@ -121,9 +121,9 @@ ENTRY TestComputation {
   bitcast.37 = f32[64]{0} bitcast(transpose.6)
   cudnn-conv-bias-activation.4 = (s8[4,2,48,48,32]{4,3,2,1,0}, u8[51328]{0}) custom-call(transpose, bitcast.28, bitcast.37),
       window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward",
-      backend_config="{\"activation_mode\":\"2\",\"conv_result_scale\":1,\"side_input_scale\":0,\"algorithm\":{
+      backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"2\",\"conv_result_scale\":1,\"side_input_scale\":0,\"algorithm\":{
         \"algo_id\":\"7\",\"math_type\":\"DEFAULT_MATH\",\"tuning_knobs\":{\"7\":\"3\",\"2\":\"0\",\"5\":\"4\",\"6\":\"4\",\"4\":\"2\",\"21\":\"0\"},
-        \"is_cudnn_frontend\":true,\"workspace_size\":\"51328\"},\"reordered_int8_nchw_vect\":true}"
+        \"is_cudnn_frontend\":true,\"workspace_size\":\"51328\"},\"reordered_int8_nchw_vect\":true}}"
   get-tuple-element.6 = s8[4,2,48,48,32]{4,3,2,1,0} get-tuple-element(cudnn-conv-bias-activation.4), index=0
   transpose.1 = s8[4,48,48,2,32]{4,3,2,1,0} transpose(get-tuple-element.6), dimensions={0,2,3,1,4}
   ROOT bitcast.1 = s8[4,48,48,64]{3,2,1,0} bitcast(transpose.1)
@@ -161,7 +161,7 @@ ENTRY TestComputation {
   %conv = (s8[4,48,48,64], u8[0]) custom-call(%input, %filter),
         window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f,
         custom_call_target="__cudnn$convForward",
-        backend_config="{\"activation_mode\":\"0\",\"conv_result_scale\":1,\"side_input_scale\":0}"
+        backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"0\",\"conv_result_scale\":1,\"side_input_scale\":0}}"
   ROOT %gte = s8[4,48,48,64] get-tuple-element(%conv), index=0
 })";
   constexpr char kHloVectorized[] = R"(
@@ -175,7 +175,7 @@ ENTRY TestComputation {
   %conv = (s8[4,48,48,16,4], u8[0]) custom-call(%input.1, %filter.1),
         window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f,
         custom_call_target="__cudnn$convForward",
-        backend_config="{\"activation_mode\":\"0\",\"conv_result_scale\":1,\"side_input_scale\":0}"
+        backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"0\",\"conv_result_scale\":1,\"side_input_scale\":0}}"
   %gte = s8[4,48,48,16,4] get-tuple-element(%conv), index=0
   ROOT reshape.3 = s8[4,48,48,64] reshape(%gte)
 })";

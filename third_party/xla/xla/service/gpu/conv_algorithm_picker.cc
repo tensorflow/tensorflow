@@ -1117,12 +1117,13 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
       ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()}));
   Shape new_call_shape = ShapeUtil::MakeTupleShape(new_call_element_shapes);
 
-  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
-                      instr->backend_config<CudnnConvBackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                      instr->backend_config<GpuBackendConfig>());
+  CudnnConvBackendConfig& backend_config =
+      *gpu_backend_config.mutable_cudnn_conv_backend_config();
   *backend_config.mutable_algorithm() = best_algo.algorithm();
   backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
       best_algo.scratch_bytes());
-
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 
@@ -1134,7 +1135,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   VLOG(3) << "Replacing convolution " << instr->ToString() << " with "
           << new_call->ToString();
 
-  TF_RETURN_IF_ERROR(new_call->set_backend_config(backend_config));
+  TF_RETURN_IF_ERROR(new_call->set_backend_config(gpu_backend_config));
 
   std::vector<HloInstruction*> new_tuple_elements;
   new_tuple_elements.reserve(new_call->shape().tuple_shapes_size() - 1);

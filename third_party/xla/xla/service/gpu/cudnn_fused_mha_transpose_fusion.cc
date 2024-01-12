@@ -60,9 +60,11 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
     bool should_contracting_be_fastest) {
   HloInstruction* transpose_arg = fmha->mutable_operand(operand_index);
   HloInstruction* transpose_arg_operand = transpose_arg->mutable_operand(0);
-  CudnnfMHABackendConfig config;
-  TF_ASSIGN_OR_RETURN(config, fmha->backend_config<CudnnfMHABackendConfig>());
-  CudnnfMHABackendConfig new_fmha_config = config;
+  GpuBackendConfig gpu_config;
+  TF_ASSIGN_OR_RETURN(gpu_config, fmha->backend_config<GpuBackendConfig>());
+  CudnnfMHABackendConfig config = gpu_config.cudnn_fmha_backend_config();
+  CudnnfMHABackendConfig& new_fmha_config =
+      *gpu_config.mutable_cudnn_fmha_backend_config();
 
   std::vector<int64_t> inverse_perm =
       InversePermutation(transpose_arg->dimensions());
@@ -271,8 +273,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
     }
   }
 
-  fmha->clear_backend_config();
-  TF_RETURN_IF_ERROR(fmha->set_backend_config(new_fmha_config));
+  TF_RETURN_IF_ERROR(fmha->set_backend_config(gpu_config));
 
   TF_RETURN_IF_ERROR(fmha->ReplaceOperandWithDifferentShape(
       operand_index, transpose_arg_operand));
@@ -538,8 +539,8 @@ absl::StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
               call_shape, fmha->operands(),
               absl::string_view(fmha->custom_call_target())));
 
-      TF_ASSIGN_OR_RETURN(CudnnfMHABackendConfig config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+      TF_ASSIGN_OR_RETURN(GpuBackendConfig config,
+                          fmha->backend_config<GpuBackendConfig>());
       TF_RETURN_IF_ERROR(new_fmha_custom_call->set_backend_config(config));
       TF_RETURN_IF_ERROR(
           SetFMHAInstructionName(fmha->GetModule(), new_fmha_custom_call));
@@ -587,8 +588,8 @@ absl::StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
               call_shape, fmha->operands(),
               absl::string_view(fmha->custom_call_target())));
 
-      TF_ASSIGN_OR_RETURN(CudnnfMHABackendConfig config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+      TF_ASSIGN_OR_RETURN(GpuBackendConfig config,
+                          fmha->backend_config<GpuBackendConfig>());
       TF_RETURN_IF_ERROR(new_fmha_custom_call->set_backend_config(config));
       TF_RETURN_IF_ERROR(
           SetFMHAInstructionName(fmha->GetModule(), new_fmha_custom_call));
