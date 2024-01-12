@@ -25,9 +25,14 @@ echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} 
 echo ""
 
 # First positional argument (if any) specifies the ROCM_INSTALL_DIR
-ROCM_INSTALL_DIR=/opt/rocm-6.0.0
 if [[ -n $1 ]]; then
     ROCM_INSTALL_DIR=$1
+else
+    if [[ -z "${ROCM_PATH}" ]]; then
+        ROCM_INSTALL_DIR=/opt/rocm-6.0.0
+    else
+        ROCM_INSTALL_DIR=$ROCM_PATH
+    fi
 fi
 
 # Run configure.
@@ -38,45 +43,58 @@ export TF_PYTHON_VERSION=$PYTHON_VERSION
 export TF_NEED_ROCM=1
 export ROCM_PATH=$ROCM_INSTALL_DIR
 
-yes "" | $PYTHON_BIN_PATH configure.py
+if [ -f /usertools/rocm.bazelrc ]; then
+	 # Use the bazelrc files in /usertools if available
+	bazel \
+           --bazelrc=/usertools/rocm.bazelrc \
+           test \
+           --local_test_jobs=${N_TEST_JOBS} \
+           --jobs=${N_BUILD_JOBS} \
+           --config=sigbuild_local_cache \
+           --config=rocm \
+           --config=nonpip_multi_gpu \
+           --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION
+else
+	# Legacy style: run configure then build
+        yes "" | $PYTHON_BIN_PATH configure.py
 
-# Run bazel test command. Double test timeouts to avoid flakes.
-bazel test \
-      --config=rocm \
-      -k \
-      --test_tag_filters=-no_gpu,-no_rocm \
-      --jobs=${N_BUILD_JOBS} \
-      --local_test_jobs=${N_TEST_JOBS} \
-      --test_timeout 920,2400,7200,9600 \
-      --build_tests_only \
-      --test_output=errors \
-      --test_sharding_strategy=disabled \
-      --test_size_filters=small,medium,large \
-      --cache_test_results=no \
-      --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048 \
-      --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
-      -- \
-//tensorflow/core/nccl:nccl_manager_test_2gpu \
-//tensorflow/python/distribute/integration_test:mwms_peer_failure_test_2gpu \
-//tensorflow/python/distribute:checkpoint_utils_test_2gpu \
-//tensorflow/python/distribute:checkpointing_test_2gpu \
-//tensorflow/python/distribute:collective_all_reduce_strategy_test_xla_2gpu \
-//tensorflow/python/distribute:custom_training_loop_gradient_test_2gpu \
-//tensorflow/python/distribute:custom_training_loop_input_test_2gpu \
-//tensorflow/python/distribute:distribute_utils_test_2gpu \
-//tensorflow/python/distribute:input_lib_test_2gpu \
-//tensorflow/python/distribute:input_lib_type_spec_test_2gpu \
-//tensorflow/python/distribute:metrics_v1_test_2gpu \
-//tensorflow/python/distribute:mirrored_variable_test_2gpu \
-//tensorflow/python/distribute:parameter_server_strategy_test_2gpu \
-//tensorflow/python/distribute:ps_values_test_2gpu \
-//tensorflow/python/distribute:random_generator_test_2gpu \
-//tensorflow/python/distribute:test_util_test_2gpu \
-//tensorflow/python/distribute:tf_function_test_2gpu \
-//tensorflow/python/distribute:vars_test_2gpu \
-//tensorflow/python/distribute:warm_starting_util_test_2gpu \
-//tensorflow/python/training:saver_test_2gpu \
-
+        # Run bazel test command. Double test timeouts to avoid flakes.
+        bazel test \
+              --config=rocm \
+              -k \
+              --test_tag_filters=-no_gpu,-no_rocm \
+              --jobs=${N_BUILD_JOBS} \
+              --local_test_jobs=${N_TEST_JOBS} \
+              --test_timeout 920,2400,7200,9600 \
+              --build_tests_only \
+              --test_output=errors \
+              --test_sharding_strategy=disabled \
+              --test_size_filters=small,medium,large \
+              --cache_test_results=no \
+              --test_env=TF_PER_DEVICE_MEMORY_LIMIT_MB=2048 \
+              --test_env=TF_PYTHON_VERSION=$PYTHON_VERSION \
+              -- \
+        //tensorflow/core/nccl:nccl_manager_test_2gpu \
+        //tensorflow/python/distribute/integration_test:mwms_peer_failure_test_2gpu \
+        //tensorflow/python/distribute:checkpoint_utils_test_2gpu \
+        //tensorflow/python/distribute:checkpointing_test_2gpu \
+        //tensorflow/python/distribute:collective_all_reduce_strategy_test_xla_2gpu \
+        //tensorflow/python/distribute:custom_training_loop_gradient_test_2gpu \
+        //tensorflow/python/distribute:custom_training_loop_input_test_2gpu \
+        //tensorflow/python/distribute:distribute_utils_test_2gpu \
+        //tensorflow/python/distribute:input_lib_test_2gpu \
+        //tensorflow/python/distribute:input_lib_type_spec_test_2gpu \
+        //tensorflow/python/distribute:metrics_v1_test_2gpu \
+        //tensorflow/python/distribute:mirrored_variable_test_2gpu \
+        //tensorflow/python/distribute:parameter_server_strategy_test_2gpu \
+        //tensorflow/python/distribute:ps_values_test_2gpu \
+        //tensorflow/python/distribute:random_generator_test_2gpu \
+        //tensorflow/python/distribute:test_util_test_2gpu \
+        //tensorflow/python/distribute:tf_function_test_2gpu \
+        //tensorflow/python/distribute:vars_test_2gpu \
+        //tensorflow/python/distribute:warm_starting_util_test_2gpu \
+        //tensorflow/python/training:saver_test_2gpu
+fi
 
 
 #  Started failing with 210906 sync
