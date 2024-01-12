@@ -4229,6 +4229,21 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
       int64_t latest_prefetch_time = use_time;
       std::optional<int64_t> earliest_prefetch_time = std::nullopt;
 
+      // Assign the required assignment offset as a preferred offset.
+      std::optional<RequiredMemoryAssignment> required_assignment =
+          AliasedRequiredAssignmentForUse(use);
+      if (required_assignment &&
+          required_assignment->memory_space == MemorySpace::kAlternate) {
+        if (preferred_offset) {
+          CHECK_EQ(preferred_offset, required_assignment->offset);
+        } else {
+          preferred_offset = required_assignment->offset;
+          VLOG(3)
+              << "Setting preferred offset due to required assignment for use: "
+              << preferred_offset->offset;
+        }
+      }
+
       // Control flow  calls include kWhile, kCall, and kConditional opcodes.
       bool is_sequential_call =
           (GetInstructionCallContext(hlo_use.instruction->opcode()) ==
@@ -6265,11 +6280,15 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   }
 
   if (request.preferred_offset) {
-    // Sanity check that if there is a preferred offset provided in the request,
-    // it matches with the previous allocation.
-    CHECK(!preferred_offset || request.preferred_offset == preferred_offset)
-        << "preferred_offset = " << preferred_offset->offset
-        << ", request.preferred_offset = " << request.preferred_offset->offset;
+    // If there is a preferred offset provided in the request and if it doesn't
+    // match the previous allocation, this request cannot be satisified.
+    if (preferred_offset && request.preferred_offset != preferred_offset) {
+      VLOG(3) << "Cannot perform no-copy allocation due to mismatch: "
+                 "preferred_offset = "
+              << preferred_offset->offset << ", request.preferred_offset = "
+              << request.preferred_offset->offset;
+      return Result::kFailConflictingPreferredOffsets;
+    }
     preferred_offset = request.preferred_offset;
   }
 

@@ -2297,7 +2297,9 @@ class AlternateMemoryBestFitHeap
     kFailRequiresUncommit = 64,
     // For prefetching, indicates that all slices have the same start time, in
     // which case, we fallback to an unsliced solution.
-    kAllSlicesHaveTheSameStartTime = 128
+    kAllSlicesHaveTheSameStartTime = 128,
+    // There were conflicting preferred offsets.
+    kFailConflictingPreferredOffsets = 256
   };
 
   // Return true if the result belongs to a failure.
