@@ -1066,7 +1066,21 @@ PjRtStreamExecutorClient::CreateErrorBuffer(Status error, const Shape& shape,
   auto definition_event =
       std::make_shared<BufferSequencingEvent>(this->thread_pool());
   definition_event->SetDefinedStatus(error);
-  return CreateUninitializedBuffer(shape, device, definition_event);
+
+  // Create an empty buffer.
+  auto* se_client = tensorflow::down_cast<PjRtStreamExecutorClient*>(this);
+  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                          ->GetLocalDeviceState());
+  absl::Span<se::DeviceMemoryBase> buffers;
+  auto dummy_device_buffer = std::make_shared<TrackedDeviceBuffer>(
+      se_client->allocator(), local_device->local_device_id().value(), buffers,
+      absl::MakeSpan(&definition_event, 1),
+      /*on_delete_callback=*/nullptr);
+
+  auto py_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
+      shape, std::move(dummy_device_buffer), this, device);
+  return py_buffer;
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>>
