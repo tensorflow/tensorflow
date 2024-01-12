@@ -729,6 +729,82 @@ TEST_F(CommandBufferSchedulingTest, While) {
       });
 }
 
+TEST_F(CommandBufferSchedulingTest, Conditional) {
+  const char* hlo = R"(
+    HloModule TestModule, is_scheduled=true
+
+    %fused_computation.1 (param_0.2: s32[5]) -> s32[5] {
+      %param_0.2 = s32[5]{0} parameter(0)
+      ROOT %negate.2 = s32[5]{0} negate(s32[5]{0} %param_0.2)
+    }
+
+    %region_0.7 (Arg_.8: s32[5]) -> (s32[5]) {
+      %Arg_.8 = s32[5]{0} parameter(0)
+      %wrapped_negate.1 = s32[5]{0} fusion(s32[5]{0} %Arg_.8), kind=kLoop, calls=%fused_computation.1
+      ROOT %tuple.3 = (s32[5]{0}) tuple(s32[5]{0} %wrapped_negate.1)
+    }
+
+    %fused_computation.2 (param_0.3: s32[5]) -> s32[5] {
+      %param_0.3 = s32[5]{0} parameter(0)
+      ROOT %not.2 = s32[5]{0} not(s32[5]{0} %param_0.3)
+    }
+
+    %region_1.10 (Arg_.11: s32[5]) -> (s32[5]) {
+      %Arg_.11 = s32[5]{0} parameter(0)
+      %wrapped_not.1 = s32[5]{0} fusion(s32[5]{0} %Arg_.11), kind=kLoop, calls=%fused_computation.2
+      ROOT %tuple.4 = (s32[5]{0}) tuple(s32[5]{0} %wrapped_not.1)
+    }
+
+    %fused_computation.3 (param_0.4: s32[5]) -> s32[5] {
+      %param_0.4 = s32[5]{0} parameter(0)
+      ROOT %multiply.2 = s32[5]{0} multiply(s32[5]{0} %param_0.4, s32[5]{0} %param_0.4)
+    }
+
+    %region_2.13 (Arg_.14: s32[5]) -> (s32[5]) {
+      %Arg_.14 = s32[5]{0} parameter(0)
+      %wrapped_multiply.1 = s32[5]{0} fusion(s32[5]{0} %Arg_.14), kind=kLoop, calls=%fused_computation.3
+      ROOT %tuple.5 = (s32[5]{0}) tuple(s32[5]{0} %wrapped_multiply.1)
+    }
+
+    %fused_computation (param_0.1: s64[]) -> s32[] {
+      %constant_1 = s32[] constant(0)
+      %param_0.1 = s64[] parameter(0)
+      %convert.2 = s32[] convert(s64[] %param_0.1)
+      %constant_0 = s32[] constant(2)
+      ROOT %clamp.2 = s32[] clamp(s32[] %constant_1, s32[] %convert.2, s32[] %constant_0)
+    }
+
+    ENTRY %main.17 (Arg_0.1: s64[], Arg_1.2: s32[5]) -> s32[5] {
+      %Arg_0.1 = s64[] parameter(0), sharding={replicated}
+      %fusion = s32[] fusion(s64[] %Arg_0.1), kind=kLoop, calls=%fused_computation
+      %Arg_1.2 = s32[5]{0} parameter(1), sharding={replicated}
+      %conditional.16.clone = (s32[5]{0}) conditional(s32[] %fusion, s32[5]{0} %Arg_1.2, s32[5]{0} %Arg_1.2, s32[5]{0} %Arg_1.2), branch_computations={%region_0.7, %region_1.10, %region_2.13}
+      ROOT %get-tuple-element = s32[5]{0} get-tuple-element((s32[5]{0}) %conditional.16.clone), index=0
+    })";
+
+  const char* expected = R"(
+    CHECK: %command_buffer ([[P0:.+]]: s64[], [[P1:.+]]: s32[5]) -> (s32[5]) {
+    CHECK:   %[[P0]] = s64[] parameter(0)
+    CHECK:   %[[P1]] = s32[5]{0} parameter(1)
+    CHECK:   %[[FUSION:.*]] = s32[] fusion(%[[P0]]), kind=kLoop
+    CHECK:   ROOT {{.*}} = (s32[5]{0}) conditional(%[[FUSION]], %[[P1]], %[[P1]], %[[P1]]), branch_computations={%[[B1:[a-z_0-9.]+]], %[[B2:[a-z_0-9.]+]], %[[B3:[a-z_0-9.]+]]}
+    CHECK: }
+
+    CHECK: ENTRY %[[MAIN:.+]] ([[ARG0:.+]]: s64[], [[ARG1:.+]]: s32[5]) -> s32[5] {
+    CHECK:   %[[ARG0]] = s64[] parameter(0)
+    CHECK:   %[[ARG1]] = s32[5]{0} parameter(1)
+    CHECK:   %call = (s32[5]{0}) call(%[[ARG0]], %[[ARG1]]), to_apply=%command_buffer
+    CHECK:   ROOT %[[GEP:.+]] = s32[5]{0} get-tuple-element(%call)
+    CHECK: })";
+
+  RunAndFilecheckHloRewrite(
+      hlo, CommandBufferScheduling(gpu_comp(), kCudaVersion, kCudaVersion),
+      expected, [](HloModule* module) {
+        EXPECT_TRUE(module->has_schedule());
+        TF_CHECK_OK(module->schedule().Verify());
+      });
+}
+
 }  // namespace
 
 }  // namespace xla::gpu
