@@ -1200,6 +1200,8 @@ bool ShapeInference::InferShapeForCaseRegion(CaseRegionOp op) {
 }
 
 bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
+  if (!llvm::any_of(op.getResultTypes(), CanBeRefined)) return false;
+
   tensorflow::XlaCallModuleLoader* loader;
   if (auto it = xla_call_module_loaders_.find(op);
       it != xla_call_module_loaders_.end()) {
