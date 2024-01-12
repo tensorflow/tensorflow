@@ -62,7 +62,7 @@ class AsyncCollectivesSupport {
   absl::StatusOr<se::Event> PopEvent(int32_t uid);
 
   se::Stream* async_comm_stream(AsyncStreamKind async_stream_kind) const {
-    return async_comm_streams_[async_stream_kind];
+    return async_comm_streams_[static_cast<int64_t>(async_stream_kind)];
   }
 
  private:

@@ -445,7 +445,7 @@ absl::Status GpuRuntimeExecutable::Execute(
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
-      async_collectives.async_comm_stream(kAsyncStreamCollective)
+      async_collectives.async_comm_stream(AsyncStreamKind::kCollective)
           ? &async_collectives
           : nullptr);
 

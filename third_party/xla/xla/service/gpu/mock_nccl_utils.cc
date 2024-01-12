@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/service/gpu/mock_nccl_topo_config.h"
 #include "xla/service/gpu/mock_nccl_xml.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/nccl_errors.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/nccl_utils.h"
 #include "xla/service/gpu/thunk.h"
@@ -688,10 +689,10 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
-  auto clique =
-      AcquireNcclClique(run_id, op_id, clique_key, unique_id_callback, 1,
-                        enable_clique_optimization ||
-                            stream_id == GetStreamId(true, kAsyncStreamP2P));
+  auto clique = AcquireNcclClique(
+      run_id, op_id, clique_key, unique_id_callback, 1,
+      enable_clique_optimization ||
+          stream_id == GetStreamId(true, AsyncStreamKind::kP2P));
 
   if (!clique->ok()) return clique->status();
 

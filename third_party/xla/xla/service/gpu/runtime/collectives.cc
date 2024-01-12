@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/service_executable_run_options.h"
+
 #if XLA_ENABLE_XCCL
 #include "xla/service/gpu/mock_nccl_utils.h"
 #endif  // XLA_ENABLE_XCCL
@@ -72,7 +73,7 @@ absl::Status RunSyncOrAsync(
     CollectivesSupport* collectives, AsyncCollectivesSupport* async_collectives,
     int32_t uid, bool is_async,
     absl::FunctionRef<absl::Status(se::Stream*)> to_run,
-    AsyncStreamKind stream_kind = kAsyncStreamCollective) {
+    AsyncStreamKind stream_kind = AsyncStreamKind::kCollective) {
   se::Stream* main_stream = run_options->stream();
   se::Stream* async_stream =
       is_async ? async_collectives->async_comm_stream(stream_kind) : nullptr;
@@ -349,12 +350,12 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
 
-  return RunRepeated(
-      debug_options->xla_gpu_collective_inflation_factor(),
-      [&]() -> absl::Status {
-        return runner(source_target, (*device_buffers)[0], *stream, **comm,
-                      device_string, current_id);
-      });
+  return RunRepeated(debug_options->xla_gpu_collective_inflation_factor(),
+                     [&]() -> absl::Status {
+                       return runner(source_target, (*device_buffers)[0],
+                                     *stream, **comm, device_string,
+                                     current_id);
+                     });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -440,9 +441,9 @@ static absl::Status P2PSendImpl(const ServiceExecutableRunOptions* run_options,
             /*no_parallel_custom_call=*/true, replica_group_offsets,
             replica_group_values, source_peers, target_peers, RunSend,
             GetSingleArgAsDeviceBufferPair,
-            GetStreamId(is_async, kAsyncStreamP2P));
+            GetStreamId(is_async, AsyncStreamKind::kP2P));
       },
-      kAsyncStreamP2P);
+      AsyncStreamKind::kP2P);
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
@@ -494,9 +495,9 @@ static absl::Status P2PRecvImpl(const ServiceExecutableRunOptions* run_options,
             /*no_parallel_custom_call=*/true, replica_group_offsets,
             replica_group_values, source_peers, target_peers, RunRecv,
             GetSingleArgAsDeviceBufferPair,
-            GetStreamId(is_async, kAsyncStreamP2P));
+            GetStreamId(is_async, AsyncStreamKind::kP2P));
       },
-      kAsyncStreamP2P);
+      AsyncStreamKind::kP2P);
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL

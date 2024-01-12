@@ -16,54 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
-#include <functional>
 #include <map>
 #include <optional>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
-
-// Key for naming up a particular NCCL clique.  This is just a set of unique
-// device IDs (i.e. GPU IDs) and a stream_id. The device IDs must be global
-// within a cluster. The stream_id is used to create different NCCL clique and
-// communicators for collectives executed on different streams within an
-// executable.
-class NcclCliqueKey {
- public:
-  explicit NcclCliqueKey(std::vector<GlobalDeviceId> devices,
-                         int64_t stream_id = 0)
-      : devices_(std::move(devices)), stream_id_(stream_id) {}
-
-  template <typename H>
-  friend H AbslHashValue(H h, const NcclCliqueKey& k) {
-    return H::combine(std::move(h), k.devices_, k.stream_id_);
-  }
-  friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {
-    return a.devices_ == b.devices_ && a.stream_id_ == b.stream_id_;
-  }
-
-  const std::vector<GlobalDeviceId>& devices() const { return devices_; }
-
-  std::string ToString() const {
-    return absl::StrCat("stream[", stream_id_, "]",
-                        GlobalDeviceIdsToString(devices_));
-  }
-
- private:
-  const std::vector<GlobalDeviceId> devices_;
-  const int64_t stream_id_;
-};
-
-using NcclUniqueIdCallback =
-    std::function<absl::StatusOr<std::string>(const NcclCliqueKey&)>;
 
 // GPU-specific executable options.
 // We keep these separate from ExecutableRunOptions to avoid adding
