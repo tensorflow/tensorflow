@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/ffi/api/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -378,15 +380,16 @@ TEST(PjrtCApiPlatformNameTest, UnavailablePlatformName) {
   api->PJRT_Error_Destroy(&error_destroy_args);
 }
 
-void TestCustomCall() {}
+void TestCustomCallV2() {}
 
-TEST(PjrtCApiGpuPrivTest, CustomCall) {
+TEST(PjrtCApiGpuPrivTest, CustomCallUntyped) {
   PJRT_Gpu_Register_Custom_Call_Args args;
   args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
-  std::string function_name = "function_name";
+  std::string function_name = "untyped_function_name";
   args.function_name = function_name.c_str();
   args.function_name_size = function_name.size();
-  args.custom_call_function = reinterpret_cast<void*>(&TestCustomCall);
+  args.api_version = 0;
+  args.custom_call_function = reinterpret_cast<void*>(&TestCustomCallV2);
   auto api = GetPjrtApi();
   const PJRT_Structure_Base* next =
       reinterpret_cast<const PJRT_Structure_Base*>(api->extension_start);
@@ -403,7 +406,37 @@ TEST(PjrtCApiGpuPrivTest, CustomCall) {
   CHECK_EQ(error, nullptr);
   void* custom_call =
       xla::CustomCallTargetRegistry::Global()->Lookup(function_name, "CUDA");
-  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCall));
+  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCallV2));
+}
+
+static void* kNoop = xla::ffi::Ffi::Bind()
+                         .To([]() { return xla::ffi::Error::Success(); })
+                         .release();
+
+TEST(PjrtCApiGpuPrivTest, CustomCallTyped) {
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "typed_function_name";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.custom_call_function = kNoop;
+  auto api = GetPjrtApi();
+  const PJRT_Structure_Base* next =
+      reinterpret_cast<const PJRT_Structure_Base*>(api->extension_start);
+  while (next != nullptr &&
+         next->type !=
+             PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call) {
+    next = next->next;
+  }
+  ASSERT_NE(next, nullptr);
+
+  PJRT_Error* error =
+      reinterpret_cast<const PJRT_Gpu_Custom_Call*>(next)->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  auto* custom_call = xla::ffi::FindHandler(function_name, "CUDA").value();
+  EXPECT_EQ(reinterpret_cast<void*>(custom_call), kNoop);
 }
 
 }  // namespace
