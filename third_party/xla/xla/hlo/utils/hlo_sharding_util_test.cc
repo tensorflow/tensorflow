@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
@@ -33,6 +34,76 @@ limitations under the License.
 namespace xla {
 namespace hlo_sharding_util {
 namespace {
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible1) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst, HloSharding::PartialTile(
+                     TileAssignment({4, 4, 2, 4}, {4, 4, 8}, {0, 2, 1})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible2) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 2, 4, 16}, {16, 8}, {1, 0}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst, HloSharding::PartialTile(
+                     TileAssignment({4, 2, 4, 4}, {4, 4, 8}, {0, 2, 1})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible3) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({4, 2, 1, 16}, {16, 8}, {1, 0}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({1, 1, 4, 32}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst, HloSharding::PartialTile(
+                     TileAssignment({4, 2, 4, 4}, {16, 8}, {1, 0})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible4) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
+  HloSharding dst =
+      HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}, {4, 32}, {1, 0}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst, HloSharding::PartialTile(
+                     TileAssignment({4, 4, 2, 4}, {4, 32}, {1, 0})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible5) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0}));
+  HloSharding dst =
+      HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}, {32, 4}, {1, 0}));
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible6) {
+  HloSharding to_merge =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2, 16}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({4, 1, 1, 32}));
+  EXPECT_FALSE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible7) {
+  HloSharding to_merge = HloSharding::PartialTile(
+      TileAssignment({2, 1, 2, 2}, {2, 2, 2}, {2, 1, 0}));
+  HloSharding dst = HloSharding::PartialTile(TileAssignment({1, 2, 1, 4}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst,
+            HloSharding::Tile(TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 0, 1})));
+}
+
+TEST(HloShardingUtilTest, MergeShardingIfCompatible8) {
+  HloSharding to_merge = HloSharding::PartialTile(TileAssignment({2, 1, 4}));
+  HloSharding dst =
+      HloSharding::PartialTile(TileAssignment({1, 4, 2}, {2, 2, 2}, {2, 1, 0}));
+  EXPECT_TRUE(MergeShardingIfCompatible(to_merge, dst.NumTiles() + 1, &dst));
+  EXPECT_EQ(dst,
+            HloSharding::Tile(TileAssignment({2, 4}, {2, 2, 2}, {0, 2, 1})));
+}
 
 TEST(HloShardingUtilTest, TransposeShardingReplicated) {
   EXPECT_EQ(TransposeSharding(HloSharding::Replicate(), {0, 1, 2}),
