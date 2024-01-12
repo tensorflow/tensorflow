@@ -51,13 +51,16 @@ BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
     absl::Span<const uint8_t> literal_bytes(
         static_cast<const uint8_t*>(literal.untyped_data()),
         literal.size_bytes());
+    int64_t num_bytes = literal_bytes.size();
 
     const Shape dest_shape = instr->shape();
 
-    int64_t num_bytes = literal_bytes.size();
+    Thunk::ThunkInfo thunk_info =
+        ir_emitter_context.emit_ir_from_hlo()
+            ? Thunk::ThunkInfo::WithProfileAnnotation(instr)
+            : Thunk::ThunkInfo::WithProfileAnnotation(op);
     if (absl::c_all_of(literal_bytes, [](uint8_t byte) { return byte == 0; })) {
-      return {{std::make_unique<MemzeroThunk>(Thunk::ThunkInfo(op), dest_slice,
-                                              dest)}};
+      return {{std::make_unique<MemzeroThunk>(thunk_info, dest_slice, dest)}};
     }
 
     // If the literal is 8 or 16 bits wide, we can emit a 32-bit memset by
@@ -73,8 +76,8 @@ BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
         memcpy(&pattern16, literal_bytes.data(), sizeof(pattern16));
       }
       uint32_t pattern32 = uint32_t{pattern16} | (uint32_t{pattern16} << 16);
-      return {{std::make_unique<Memset32BitValueThunk>(
-          Thunk::ThunkInfo(op), pattern32, dest_slice, dest)}};
+      return {{std::make_unique<Memset32BitValueThunk>(thunk_info, pattern32,
+                                                       dest_slice, dest)}};
     }
 
     // If the literal is an even multiple of 32 bits wide, we can emit a 32-bit
@@ -84,8 +87,8 @@ BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
                literal_bytes.size() - 4) == 0) {
       uint32_t word;
       memcpy(&word, literal_bytes.data(), sizeof(word));
-      return {{std::make_unique<Memset32BitValueThunk>(
-          Thunk::ThunkInfo(op), word, dest_slice, dest)}};
+      return {{std::make_unique<Memset32BitValueThunk>(thunk_info, word,
+                                                       dest_slice, dest)}};
     }
   }
   return std::nullopt;
