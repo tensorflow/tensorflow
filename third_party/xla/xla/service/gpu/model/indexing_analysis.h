@@ -26,13 +26,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/indexing_map_simplifier.h"
 
 namespace xla {
 namespace gpu {
@@ -165,6 +165,12 @@ std::string ToStringImpl(const T& value) {
   ss << value;
   return ss.str();
 }
+
+// Derives an indexing map simplifier for the parameter indexing map.
+// TODO(b/319805891): move once the IndexingMap struct is defined with the
+// simplifier.
+IndexingMapSimplifier SimplifierFromIndexingMap(
+    const IndexingMap& indexing_map);
 
 }  // namespace gpu
 }  // namespace xla
