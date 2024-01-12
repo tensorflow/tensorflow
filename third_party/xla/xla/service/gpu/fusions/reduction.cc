@@ -116,7 +116,7 @@ llvm::Type* GetIndexType(const HloFusionInstruction& fusion,
                          llvm::IRBuilder<>* builder) {
   return GetIndexTypeForKernel(&fusion,
                                tiling_scheme.GetNumThreadsPerBlockPhysical() *
-                                   tiling_scheme.GetNumberOfBlocksPhysical(),
+                                   tiling_scheme.GetNumBlocksPhysical(),
                                builder);
 }
 
@@ -463,7 +463,7 @@ class ReductionFusion::ReductionEmitter {
   void EmitSyncThreads();
 
   int ReducedDimensionSize() const {
-    return reduction_codegen_info_.GetTilingScheme().GetDimsInElems()[2];
+    return reduction_codegen_info_.GetTilingScheme().GetShape()[2];
   }
 
   llvm::IRBuilder<>* builder_;
@@ -638,8 +638,7 @@ ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
                                 {num_partial_results, num_warps},
                                 "shared_cache");
         } else {
-          int64_t num_threads_x =
-              tiling_scheme.GetNumThreadsFor(TilingScheme::DimX);
+          const auto& num_threads = tiling_scheme.GetThreadsPerBlock();
           // Allocate __shared__
           // cache[num_threads][num_threads + 1], where
           // num_threads == num_threads_x == num_threads_y.  The "+1" is used to
@@ -647,10 +646,11 @@ ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
           //
           // (Although each thread produces num_partial_results results, we
           // don't need that much cache: Only one result is live at a time.)
-          CHECK_EQ(num_threads_x,
-                   tiling_scheme.GetNumThreadsFor(TilingScheme::DimY));
+          CHECK_EQ(num_threads[TilingScheme::DimX],
+                   num_threads[TilingScheme::DimY]);
           return AllocateShared(builder, tiling_scheme, element_type,
-                                {num_threads_x, num_threads_x + 1},
+                                {num_threads[TilingScheme::DimX],
+                                 num_threads[TilingScheme::DimX] + 1},
                                 "shared_cache");
         }
       }();
@@ -859,7 +859,7 @@ static llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
   int64_t multiplier =
       tiling_scheme.GetIndexingOrder() == TilingScheme::StridedIndexingX
           ? tiling_scheme.GetVectorSize()
-          : tiling_scheme.GetTileSizeFor(TilingScheme::DimX);
+          : tiling_scheme.GetThreadTileSize()[TilingScheme::DimX];
   return b->CreateMul(thread_id_x,
                       llvm::ConstantInt::get(index_ty, multiplier));
 }
@@ -969,7 +969,7 @@ ReductionFusion::ReductionGroupEmitter::GetOutputIndexForReduction(
       return index[TilingScheme::DimY];
     }
     // For column reduction, we get the transposed address.
-    absl::Span<const int64_t> dims_in_elem = tiling_scheme.GetDimsInElems();
+    absl::Span<const int64_t> dims_in_elem = tiling_scheme.GetShape();
     llvm::Value* x_dim_size =
         index.GetConstantWithIndexType(dims_in_elem[TilingScheme::DimX]);
     llvm::Value* x_block_offset =
@@ -1136,7 +1136,7 @@ void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
 
       llvm::Value* warp_exists = builder->CreateICmpULT(
           thread_id_info.thread_id_x,
-          constant(tiling_scheme.GetNumThreadsFor(TilingScheme::DimX) /
+          constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX] /
                    WarpSize()));
 
       llvm::Value* selected_value = builder->CreateSelect(
@@ -1339,7 +1339,7 @@ absl::Status ReductionFusion::ReductionEmitter::EmitIRForReduction(
           llvm::Value* x_loc) {
         llvm_ir::IrArray::Index input_index = GetUnnormalizedIndex(
             index, input_shape, builder_,
-            reduction_codegen_info_.GetTilingScheme().GetDimsInElems());
+            reduction_codegen_info_.GetTilingScheme().GetShape());
         llvm::Value* partial_result_index =
             reduction_codegen_info_.IsRowReduction()
                 ? builder_->getInt32(0)
@@ -1548,7 +1548,7 @@ absl::Status ReductionFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 LaunchDimensions ReductionFusion::launch_dimensions() const {
   const TilingScheme& tiling_scheme = reduction_codegen_info_.GetTilingScheme();
   size_t blocks_y = reduction_codegen_info_.GetIndexGroups().size();
-  return {se::BlockDim(/*x=*/tiling_scheme.GetNumberOfBlocksPhysical(),
+  return {se::BlockDim(/*x=*/tiling_scheme.GetNumBlocksPhysical(),
                        /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
           se::ThreadDim(/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(),
                         /*y=*/1, /*z=*/1)};

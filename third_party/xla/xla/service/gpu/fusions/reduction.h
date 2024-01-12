@@ -146,7 +146,7 @@ class ReductionFusion : public KernelFusionEmitterBase {
           first_reduce_(first_reduce) {
       if (!is_row_reduction && num_partial_results > 1) {
         CHECK_EQ(num_partial_results,
-                 mapping_scheme.GetTileSizeFor(TilingScheme::DimX));
+                 mapping_scheme.GetThreadTileSize()[TilingScheme::DimX]);
       }
     }
 

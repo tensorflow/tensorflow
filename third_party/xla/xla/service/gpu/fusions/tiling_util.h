@@ -50,7 +50,10 @@ class TilingScheme {
                IndexingOrder indexing_order, int vector_size,
                int scaling_factor, Vector2 tiling_dimensions = Vector2{1, 2})
       : dims_in_elems_(dims_in_elems),
-        tile_sizes_(tile_sizes),
+        tile_sizes_per_thread_(tile_sizes),
+        tile_sizes_per_block_{num_threads[0] * tile_sizes[0],
+                              num_threads[1] * tile_sizes[1],
+                              num_threads[2] * tile_sizes[2]},
         tiling_dimensions_(tiling_dimensions),
         num_threads_(num_threads),
         indexing_order_(indexing_order),
@@ -74,7 +77,8 @@ class TilingScheme {
     return absl::StrJoin(
         {absl::StrFormat("dims_in_elems = {%s}",
                          absl::StrJoin(dims_in_elems_, ", ")),
-         absl::StrFormat("tile_sizes = {%s}", absl::StrJoin(tile_sizes_, ", ")),
+         absl::StrFormat("tile_sizes = {%s}",
+                         absl::StrJoin(tile_sizes_per_thread_, ", ")),
          absl::StrFormat("num_threads = {%s}",
                          absl::StrJoin(num_threads_, ", ")),
          absl::StrFormat("indexing_order = %s",
@@ -88,51 +92,44 @@ class TilingScheme {
   }
 
   // Number of elements in each dimension (Z/Y/X respectively).
-  absl::Span<const int64_t> GetDimsInElems() const { return dims_in_elems_; }
+  const Vector3& GetShape() const { return dims_in_elems_; }
 
-  Vector3 GetDimsInBlocks() const {
-    return {GetDimInBlock(0), GetDimInBlock(1), GetDimInBlock(2)};
+  Vector3 GetBlockCounts() const {
+    return {GetBlockCount(0), GetBlockCount(1), GetBlockCount(2)};
   }
 
-  // Number of blocks required to "cover" the given dimension.
-  int64_t GetDimInBlock(int d) const {
-    return CeilOfRatio(dims_in_elems_[d], GetBlockTileSizeFor(d));
-  }
-
-  // Tile size for a given dimensions per thread.
+  // Tile size for each thread.
   //
   // Equals to the number of iterations in the loop each tile will make.
-  int64_t GetTileSizeFor(int d) const { return tile_sizes_.at(d); }
+  const Vector3& GetThreadTileSize() const { return tile_sizes_per_thread_; }
+
+  // Tile size for an entire thread block.
+  const Vector3& GetBlockTileSize() const { return tile_sizes_per_block_; }
 
   // The tiling dimension for dimension 'd' of the shared memory tile.
   int64_t GetTilingDimension(int d) const { return tiling_dimensions_.at(d); }
 
-  // Tile size for a given dimension per entire thread block.
-  int64_t GetBlockTileSizeFor(int d) const {
-    return num_threads_.at(d) * tile_sizes_.at(d);
-  }
-
-  // Number of threads in given dimension.
-  int64_t GetNumThreadsFor(int d) const { return num_threads_.at(d); }
-
   // Number of logical threads per block.
+  const Vector3& GetThreadsPerBlock() const { return num_threads_; }
   int64_t GetNumThreadsPerBlock() const {
-    return GetNumThreadsFor(0) * GetNumThreadsFor(1) * GetNumThreadsFor(2);
+    return num_threads_[0] * num_threads_[1] * num_threads_[2];
   }
 
   // Number of logical blocks.
-  int64_t GetNumberOfBlocks() const {
-    return GetDimInBlock(0) * GetDimInBlock(1) * GetDimInBlock(2);
+  int64_t GetNumBlocks() const {
+    auto counts = GetBlockCounts();
+    return counts[0] * counts[1] * counts[2];
   }
 
   // Number of physical blocks launched (with scaling applied).
-  int64_t GetNumberOfBlocksPhysical() const {
-    return CeilOfRatio(GetNumberOfBlocks(), thread_id_virtual_scaling_);
+  int64_t GetNumBlocksPhysical() const {
+    return CeilOfRatio(GetNumBlocks(), thread_id_virtual_scaling_);
   }
 
   // Number of physical threads per block launched (with scaling applied).
   int64_t GetNumThreadsPerBlockPhysical() const {
-    return GetNumThreadsPerBlock() * thread_id_virtual_scaling_;
+    return num_threads_[0] * num_threads_[1] * num_threads_[2] *
+           thread_id_virtual_scaling_;
   }
 
   IndexingOrder GetIndexingOrder() const { return indexing_order_; }
@@ -142,11 +139,17 @@ class TilingScheme {
   int GetThreadIdScalingFactor() const { return thread_id_virtual_scaling_; }
 
  private:
+  // Number of blocks required to "cover" the given dimension.
+  int64_t GetBlockCount(int d) const {
+    return CeilOfRatio(dims_in_elems_[d], tile_sizes_per_block_[d]);
+  }
+
   // The number of elements in each dimension.
   Vector3 dims_in_elems_;
 
   // The number of elements for each dimension of a tile.
-  Vector3 tile_sizes_;
+  Vector3 tile_sizes_per_thread_;
+  Vector3 tile_sizes_per_block_;
 
   // The dimensions which are used for the shared memory tile.
   Vector2 tiling_dimensions_;
