@@ -56,6 +56,13 @@ std::shared_ptr<R> RendezvousSingle(
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
 
+// A rendezvous for a group of threads that do not have any computation to run
+// and simply acts as a barrier for a group of thread.
+template <typename K>
+void RendezvousSingle(const K& key, size_t num_threads,
+                      absl::Duration warn_stuck_timeout,
+                      absl::Duration terminate_timeout);
+
 //===----------------------------------------------------------------------===//
 // Internal implementation details.
 //===----------------------------------------------------------------------===//
@@ -191,6 +198,15 @@ std::shared_ptr<R> RendezvousSingle(const K& key, size_t num_threads,
                                     absl::Duration terminate_timeout) {
   return RendezvousSingle<R, K, std::nullopt_t>(
       key, std::nullopt, num_threads, [fn](auto) { return fn(); },
+      warn_stuck_timeout, terminate_timeout);
+}
+
+template <typename K>
+void RendezvousSingle(const K& key, size_t num_threads,
+                      absl::Duration warn_stuck_timeout,
+                      absl::Duration terminate_timeout) {
+  RendezvousSingle<std::nullopt_t, K, std::nullopt_t>(
+      key, std::nullopt, num_threads, [](auto) { return std::nullopt; },
       warn_stuck_timeout, terminate_timeout);
 }
 
