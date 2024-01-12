@@ -3452,7 +3452,6 @@ absl::Status IrEmitterUnnested::BuildInitializerThunk(
   auto& [inputs, outputs] = ir_arrays;
   auto init_array = inputs[0];
 
-  std::string name = GetIrNameFromLoc(op->getLoc());
   TF_RETURN_IF_ERROR(ParallelLoopEmitter(
                          [=](const llvm_ir::IrArray::Index& index) {
                            return init_array.EmitReadArrayElement(index, &b_);
