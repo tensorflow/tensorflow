@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime3/conditional_thunk.h"
 #include "xla/service/gpu/runtime3/copy_thunk.h"
 #include "xla/service/gpu/runtime3/custom_call_thunk.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
@@ -113,6 +114,20 @@ static absl::StatusOr<Command> Convert(const GemmThunk& thunk) {
       thunk.output_buffer(), thunk.workspace().value(), thunk.deterministic());
 }
 
+static absl::StatusOr<Command> Convert(const ConditionalThunk& thunk,
+                                       bool force_barriers) {
+  std::vector<CommandBufferCmdSequence> branch_cmds;
+  branch_cmds.reserve(thunk.branch_thunks().size());
+  for (auto& branch_thunk : thunk.branch_thunks()) {
+    TF_ASSIGN_OR_RETURN(
+        CommandBufferCmdSequence cmds,
+        ConvertToCommands(branch_thunk->thunks(), force_barriers));
+    branch_cmds.emplace_back(std::move(cmds));
+  }
+  return std::make_unique<CaseCmd>(thunk.branch_index_buffer(),
+                                   std::move(branch_cmds));
+}
+
 static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
   return std::make_unique<AllReduceCmd>(thunk.config(), thunk.reduction_kind(),
                                         thunk.buffers());
@@ -174,6 +189,8 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
   };
 
   switch (thunk.kind()) {
+    case Thunk::Kind::kConditional:
+      return append(Convert<ConditionalThunk>(thunk, force_barriers));
     case Thunk::Kind::kKernel:
       return append(Convert<KernelThunk>(thunk));
     case Thunk::Kind::kCustomKernel:
@@ -225,6 +242,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
   return absl::OkStatus();
 }
 
+// TODO(vuson): Add unit tests.
 absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
     const ThunkSequence& sequence, bool force_barriers) {
   CommandBufferCmdSequence cmd_sequence(force_barriers);

@@ -87,6 +87,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":command_buffer_cmd",
+        ":conditional_thunk",
         ":copy_thunk",
         ":custom_call_thunk",
         ":kernel_thunk",
