@@ -18,14 +18,14 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "llvm/IR/IRBuilder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace gpu {

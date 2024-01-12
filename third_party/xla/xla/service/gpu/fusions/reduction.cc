@@ -67,7 +67,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/gpu/kernel_arguments.h"
-#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
@@ -85,7 +84,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
@@ -408,107 +406,18 @@ bool CanVectorizeReduction(const HloFusionAnalysis& analysis,
   return false;
 }
 
-ReductionCodegenInfo ComputeReductionCodegenInfo(
-    const HloFusionAnalysis& analysis) {
-  auto* hero_reduction = analysis.FindHeroReduction();
-  CHECK_NE(hero_reduction, nullptr);
-  Shape input_shape = hero_reduction->operand(0)->shape();
-  ReductionDimensions reduction_dimensions =
-      GetReductionKindAndContiguousComponents(*hero_reduction);
-  VLOG(10) << "is_row_reduction " << reduction_dimensions.is_row_reduction
-           << " " << reduction_dimensions.dimensions[0] << " "
-           << reduction_dimensions.dimensions[1] << " "
-           << reduction_dimensions.dimensions[2];
-  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
-
-  int64_t fan_out = analysis.fusion_roots().size();
-  int64_t num_threads_y =
-      reduction_dimensions.is_row_reduction ? 1 : WarpSize();
-  int64_t num_threads_x = [&] {
-    if (reduction_dimensions.is_row_reduction) {
-      if (RowReductionGetRowsPerWarp(reduction_dimensions.dimensions[2]) > 1) {
-        return reduction_dimensions.dimensions[2];
-      }
-      // Use 512 as default block size (threads per block) for row reductions.
-      // For multi-output fusions, reduce the block size further to decrease
-      // register pressure when multiple outputs are computed by each thread.
-      int64_t max_block_size = std::max(
-          MinThreadsXRowReduction(hero_reduction->GetModule()->config()),
-          static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
-      return std::min(max_block_size,
-                      RoundUpTo(CeilOfRatio(reduction_dimensions.dimensions[2],
-                                            reduction_tiling[2]),
-                                WarpSize()));
-    }
-    return WarpSize();
-  }();
-
-  TilingScheme::IndexingOrder indexing_order =
-      reduction_dimensions.is_row_reduction ? TilingScheme::StridedIndexingX
-                                            : TilingScheme::LinearIndexingX;
-  auto instr_index_groups = GroupDisjointReductions(analysis);
-  int64_t shmem_usage = ReductionProjectedShmemUsageBytes(reduction_dimensions,
-                                                          instr_index_groups);
-  const int64_t shmem_budget = analysis.device_info().shared_memory_per_block();
-  bool reduction_is_race_free = ReductionIsRaceFree(
-      hero_reduction->GetModule()->config(), reduction_dimensions);
-  bool vectorize =
-      // Vectorization might cause us to run out of budget.
-      (shmem_usage * 2 <= shmem_budget) &&
-      CanVectorizeReduction(analysis, reduction_dimensions, num_threads_x,
-                            reduction_tiling, input_shape,
-                            reduction_is_race_free);
-  int vector_size = vectorize ? 2 : 1;
-
-  // TODO(b/283542954): Autotune num_partial_results?  This can make a big
-  // difference, e.g. by affecting register spilling.
-  int num_partial_results = 1;
-  if (!reduction_dimensions.is_row_reduction && vectorize) {
-    int smallest_input_dtype_bits =
-        analysis.input_output_info().smallest_input_dtype_bits;
-    if (smallest_input_dtype_bits <= 32) {
-      // Make sure to use all the data read at once.
-      // Instead of hardcoding the granularity, we can query the granularity we
-      // need like this:
-      //   size_t granularity = 0;
-      //   CUresult res = cuCtxGetLimit(&granularity,
-      //   CU_LIMIT_MAX_L2_FETCH_GRANULARITY); // 0x05
-      // But we need a context to be active. Which isn't the case here.
-      num_partial_results = std::min(64 / smallest_input_dtype_bits, 8);
-
-      // Limit register pressure for MOF, but still use a minimum of 2.
-      num_partial_results /= fan_out;
-      // We can't go below 2 for the unroll factor -- if we wanted to use 1 as
-      // the unroll factor, we should have set this reduction as unvectorized.
-      num_partial_results = std::max(num_partial_results, 2);
-    } else {
-      num_partial_results = 2;
-    }
-
-    while (num_partial_results != 1 &&
-           shmem_usage * num_partial_results > shmem_budget) {
-      num_partial_results /= 2;
-    }
-    reduction_tiling[TilingScheme::DimX] *= num_partial_results;
-  }
-
-  VLOG(3) << "Each thread will produce " << num_partial_results << " output(s)";
-
-  Vector3 num_threads = {1, num_threads_y, num_threads_x};
-  int virtual_thread_scaling_factor =
-      CalculateVirtualThreadScalingFactorForReduction(analysis,
-                                                      reduction_dimensions);
-  VLOG(2) << "Using virtual thread scaling: " << virtual_thread_scaling_factor;
-
-  TilingScheme tiling_scheme(reduction_dimensions.dimensions, reduction_tiling,
-                             num_threads, indexing_order, vector_size,
-                             virtual_thread_scaling_factor);
-  return ReductionCodegenInfo(
-      tiling_scheme, num_partial_results, reduction_dimensions.is_row_reduction,
-      reduction_is_race_free, std::move(instr_index_groups), hero_reduction);
+llvm::Value* CastSharedToGlobal(llvm::IRBuilder<>* builder, llvm::Value* input,
+                                llvm::Type* element_type, llvm::Twine name) {
+  return builder->CreateAddrSpaceCast(
+      input,
+      llvm::PointerType::get(element_type,
+                             /*AddressSpace=*/0),
+      name);
 }
 
-class ReductionEmitter {
+}  // namespace
+
+class ReductionFusion::ReductionEmitter {
  public:
   ReductionEmitter(const HloFusionAnalysis& analysis,
                    const ReductionCodegenInfo& reduction_codegen_info,
@@ -566,7 +475,7 @@ class ReductionEmitter {
   llvm::Type* index_ty_;
 };
 
-class ReductionGroupEmitter {
+class ReductionFusion::ReductionGroupEmitter {
  public:
   struct ReductionCalculationState {
     llvm::GlobalVariable* shared_cache;
@@ -637,7 +546,7 @@ class ReductionGroupEmitter {
       const ExtraOutputGensMap& extra_output_gens) const;
 
  private:
-  ReductionEmitter& reduction_emitter_;
+  ReductionFusion::ReductionEmitter& reduction_emitter_;
   const ReductionOutputMap& result_ir_arrays_;
 
   // One state per reduction operand.
@@ -666,7 +575,7 @@ llvm::GlobalVariable* AllocateShared(
 
 // Creates accumulator alloca's, populates them with initial values, generates
 // __shared__ caches and returns the populated object.
-ReductionGroupEmitter::ReductionGroupEmitter(
+ReductionFusion::ReductionGroupEmitter::ReductionGroupEmitter(
     ReductionEmitter& reduction_emitter,
     absl::Span<const HloReduceInstruction* const> reduce_instr_index_group,
     const ReductionOutputMap& result_ir_arrays, FusedIrEmitter& fused_emitter)
@@ -756,7 +665,7 @@ ReductionGroupEmitter::ReductionGroupEmitter(
   }
 }
 
-void ReductionEmitter::MaybeEmitFenceForAMDGPU() {
+void ReductionFusion::ReductionEmitter::MaybeEmitFenceForAMDGPU() {
   auto* module = builder_->GetInsertBlock()->getModule();
   if (IsAMDGPU(module) &&
       ir_emitter_context_.rocm_compute_capability().fence_before_barrier()) {
@@ -766,7 +675,7 @@ void ReductionEmitter::MaybeEmitFenceForAMDGPU() {
   }
 }
 
-void ReductionEmitter::EmitSyncThreads() {
+void ReductionFusion::ReductionEmitter::EmitSyncThreads() {
   MaybeEmitFenceForAMDGPU();
   EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, builder_);
 }
@@ -793,7 +702,7 @@ void ReductionEmitter::EmitSyncThreads() {
 // AddThunkToThunkSequence(std::move(thunk))
 // ```
 absl::StatusOr<std::unique_ptr<Thunk>>
-ReductionEmitter::BuildKernelThunkForFusion(
+ReductionFusion::ReductionEmitter::BuildKernelThunkForFusion(
     mlir::lmhlo::FusionOp fusion_op, const LaunchDimensions& launch_dimensions,
     absl::string_view discriminator,
     std::function<Status(std::vector<llvm_ir::IrArray>,
@@ -847,7 +756,7 @@ ReductionEmitter::BuildKernelThunkForFusion(
       /*shmem_bytes=*/0);
 }
 
-absl::Status ReductionGroupEmitter::EmitExtraOutputsForReduce(
+absl::Status ReductionFusion::ReductionGroupEmitter::EmitExtraOutputsForReduce(
     const Shape& reduction_operand_shape, const llvm_ir::IrArray::Index& index,
     const ExtraOutputGensMap& extra_output_gens) const {
   if (extra_output_gens.empty()) {
@@ -886,11 +795,9 @@ absl::Status ReductionGroupEmitter::EmitExtraOutputsForReduce(
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>>
-ReductionEmitter::BuildFusedInitializerThunk(mlir::lmhlo::FusionOp fusion_op,
-                                             const HloInstruction* fusion_root,
-                                             mlir::Value dest,
-                                             BufferAllocation::Slice dest_slice,
-                                             int output_index) {
+ReductionFusion::ReductionEmitter::BuildFusedInitializerThunk(
+    mlir::lmhlo::FusionOp fusion_op, const HloInstruction* fusion_root,
+    mlir::Value dest, BufferAllocation::Slice dest_slice, int output_index) {
   const HloReduceInstruction* reduce =
       DynCast<HloReduceInstruction>(fusion_root);
   TF_RET_CHECK(reduce);
@@ -963,10 +870,11 @@ static llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
 //
 // Multiple partial_result_address inputs happen when doing variadic
 // reduction: each one should get the output value.
-void ReductionGroupEmitter::EmitFullWarpShuffleDownLoopForReduce(
-    const HloComputation* reducer,
-    absl::Span<TypedPointer const> partial_result_addresses,
-    int threads_per_block, int num_results_per_warp) const {
+void ReductionFusion::ReductionGroupEmitter::
+    EmitFullWarpShuffleDownLoopForReduce(
+        const HloComputation* reducer,
+        absl::Span<TypedPointer const> partial_result_addresses,
+        int threads_per_block, int num_results_per_warp) const {
   // This only works when the block size is a multiple of 32 threads.
   // We check this here as a mistake in the number of threads per
   // block is very hard to detect.
@@ -1019,7 +927,8 @@ void ReductionGroupEmitter::EmitFullWarpShuffleDownLoopForReduce(
   }
 }
 
-llvm_ir::IrArray::Index ReductionGroupEmitter::GetOutputIndexForReduction(
+llvm_ir::IrArray::Index
+ReductionFusion::ReductionGroupEmitter::GetOutputIndexForReduction(
     int partial_result_idx, const TilingKernelInfo& tiling_kernel_info,
     const HloReduceInstruction* reduction, const HloInstruction* root,
     int output_idx) const {
@@ -1094,16 +1003,7 @@ llvm_ir::IrArray::Index ReductionGroupEmitter::GetOutputIndexForReduction(
                                                  builder);
 }
 
-llvm::Value* CastSharedToGlobal(llvm::IRBuilder<>* builder, llvm::Value* input,
-                                llvm::Type* element_type, llvm::Twine name) {
-  return builder->CreateAddrSpaceCast(
-      input,
-      llvm::PointerType::get(element_type,
-                             /*AddressSpace=*/0),
-      name);
-}
-
-void ReductionGroupEmitter::WriteReductionOutput(
+void ReductionFusion::ReductionGroupEmitter::WriteReductionOutput(
     const TilingKernelInfo& tiling_kernel_info,
     const HloReduceInstruction* reduction,
     const std::vector<const HloInstruction*>& roots, int partial_result_idx,
@@ -1144,7 +1044,7 @@ void ReductionGroupEmitter::WriteReductionOutput(
 
 // `current_output`: the value the tile has calculated.
 // `output_address`: address where the output value has to be written.
-void ReductionGroupEmitter::EmitReductionOutputForRowReduction(
+void ReductionFusion::ReductionGroupEmitter::EmitReductionOutputForRowReduction(
     const TilingKernelInfo& tiling_kernel_info,
     const HloReduceInstruction* reduction,
     const std::vector<const HloInstruction*>& roots,
@@ -1261,11 +1161,12 @@ void ReductionGroupEmitter::EmitReductionOutputForRowReduction(
 }
 
 // Same arguments as EmitReductionOutputForRowReduction.
-void ReductionGroupEmitter::EmitReductionOutputForColumnReduction(
-    const TilingKernelInfo& tiling_kernel_info,
-    const HloReduceInstruction* reduction,
-    const std::vector<const HloInstruction*>& roots,
-    int partial_result_idx) const {
+void ReductionFusion::ReductionGroupEmitter::
+    EmitReductionOutputForColumnReduction(
+        const TilingKernelInfo& tiling_kernel_info,
+        const HloReduceInstruction* reduction,
+        const std::vector<const HloInstruction*>& roots,
+        int partial_result_idx) const {
   auto* builder = reduction_emitter_.builder_;
   KernelSupportLibrary ksl(builder);
   const HloComputation* reducer = reduction->to_apply();
@@ -1348,7 +1249,7 @@ void ReductionGroupEmitter::EmitReductionOutputForColumnReduction(
 
 // Generate a single element of the tile (update the accumulator state) for a
 // given reducer of index `i`.
-void ReductionGroupEmitter::GenerateElementForReducer(
+void ReductionFusion::ReductionGroupEmitter::GenerateElementForReducer(
     const HloReduceInstruction* reduction, llvm::Value* partial_result_index,
     const llvm_ir::IrArray::Index& index_without_linear,
     const llvm_ir::IrArray::Index& input_index, int num_partial_results) const {
@@ -1401,7 +1302,7 @@ void ReductionGroupEmitter::GenerateElementForReducer(
 }
 
 // Emits code for reductions in the output_instructions.
-absl::Status ReductionEmitter::EmitIRForReduction(
+absl::Status ReductionFusion::ReductionEmitter::EmitIRForReduction(
     absl::Span<const HloInstruction* const> instr_index_group,
     FusedIrEmitter& fused_emitter, const ReductionOutputMap& result_ir_arrays,
     const Shape& input_shape) {
@@ -1501,7 +1402,8 @@ absl::Status ReductionEmitter::EmitIRForReduction(
   return absl::OkStatus();
 }
 
-absl::StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers(
+absl::StatusOr<FusionEmissionResult>
+ReductionFusion::ReductionEmitter::EmitInitializers(
     mlir::lmhlo::FusionOp fusion_op) {
   FusionEmissionResult result;
   if (reduction_codegen_info_.IsRaceFree()) {
@@ -1566,7 +1468,7 @@ absl::StatusOr<FusionEmissionResult> ReductionEmitter::EmitInitializers(
   return result;
 }
 
-absl::Status ReductionEmitter::EmitKernel(
+absl::Status ReductionFusion::ReductionEmitter::EmitKernel(
     const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
     std::vector<llvm_ir::IrArray> outputs) {
   const HloComputation* fused_computation =
@@ -1619,8 +1521,6 @@ absl::Status ReductionEmitter::EmitKernel(
   return absl::OkStatus();
 }
 
-}  // namespace
-
 ReductionFusion::ReductionFusion(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
       reduction_codegen_info_(ComputeReductionCodegenInfo(analysis)) {}
@@ -1652,6 +1552,107 @@ LaunchDimensions ReductionFusion::launch_dimensions() const {
                        /*y=*/static_cast<int64_t>(blocks_y), /*z=*/1),
           se::ThreadDim(/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(),
                         /*y=*/1, /*z=*/1)};
+}
+
+ReductionFusion::ReductionCodegenInfo
+ReductionFusion::ComputeReductionCodegenInfo(
+    const HloFusionAnalysis& analysis) {
+  auto* hero_reduction = analysis.FindHeroReduction();
+  CHECK_NE(hero_reduction, nullptr);
+  Shape input_shape = hero_reduction->operand(0)->shape();
+  ReductionDimensions reduction_dimensions =
+      GetReductionKindAndContiguousComponents(*hero_reduction);
+  VLOG(10) << "is_row_reduction " << reduction_dimensions.is_row_reduction
+           << " " << reduction_dimensions.dimensions[0] << " "
+           << reduction_dimensions.dimensions[1] << " "
+           << reduction_dimensions.dimensions[2];
+  Vector3 reduction_tiling = GetReductionTiling(reduction_dimensions);
+
+  int64_t fan_out = analysis.fusion_roots().size();
+  int64_t num_threads_y =
+      reduction_dimensions.is_row_reduction ? 1 : WarpSize();
+  int64_t num_threads_x = [&] {
+    if (reduction_dimensions.is_row_reduction) {
+      if (RowReductionGetRowsPerWarp(reduction_dimensions.dimensions[2]) > 1) {
+        return reduction_dimensions.dimensions[2];
+      }
+      // Use 512 as default block size (threads per block) for row reductions.
+      // For multi-output fusions, reduce the block size further to decrease
+      // register pressure when multiple outputs are computed by each thread.
+      int64_t max_block_size = std::max(
+          MinThreadsXRowReduction(hero_reduction->GetModule()->config()),
+          static_cast<int64_t>(512LL / NearestPowerOfTwo(fan_out)));
+      return std::min(max_block_size,
+                      RoundUpTo(CeilOfRatio(reduction_dimensions.dimensions[2],
+                                            reduction_tiling[2]),
+                                WarpSize()));
+    }
+    return WarpSize();
+  }();
+
+  TilingScheme::IndexingOrder indexing_order =
+      reduction_dimensions.is_row_reduction ? TilingScheme::StridedIndexingX
+                                            : TilingScheme::LinearIndexingX;
+  auto instr_index_groups = GroupDisjointReductions(analysis);
+  int64_t shmem_usage = ReductionProjectedShmemUsageBytes(reduction_dimensions,
+                                                          instr_index_groups);
+  const int64_t shmem_budget = analysis.device_info().shared_memory_per_block();
+  bool reduction_is_race_free = ReductionIsRaceFree(
+      hero_reduction->GetModule()->config(), reduction_dimensions);
+  bool vectorize =
+      // Vectorization might cause us to run out of budget.
+      (shmem_usage * 2 <= shmem_budget) &&
+      CanVectorizeReduction(analysis, reduction_dimensions, num_threads_x,
+                            reduction_tiling, input_shape,
+                            reduction_is_race_free);
+  int vector_size = vectorize ? 2 : 1;
+
+  // TODO(b/283542954): Autotune num_partial_results?  This can make a big
+  // difference, e.g. by affecting register spilling.
+  int num_partial_results = 1;
+  if (!reduction_dimensions.is_row_reduction && vectorize) {
+    int smallest_input_dtype_bits =
+        analysis.input_output_info().smallest_input_dtype_bits;
+    if (smallest_input_dtype_bits <= 32) {
+      // Make sure to use all the data read at once.
+      // Instead of hardcoding the granularity, we can query the granularity we
+      // need like this:
+      //   size_t granularity = 0;
+      //   CUresult res = cuCtxGetLimit(&granularity,
+      //   CU_LIMIT_MAX_L2_FETCH_GRANULARITY); // 0x05
+      // But we need a context to be active. Which isn't the case here.
+      num_partial_results = std::min(64 / smallest_input_dtype_bits, 8);
+
+      // Limit register pressure for MOF, but still use a minimum of 2.
+      num_partial_results /= fan_out;
+      // We can't go below 2 for the unroll factor -- if we wanted to use 1 as
+      // the unroll factor, we should have set this reduction as unvectorized.
+      num_partial_results = std::max(num_partial_results, 2);
+    } else {
+      num_partial_results = 2;
+    }
+
+    while (num_partial_results != 1 &&
+           shmem_usage * num_partial_results > shmem_budget) {
+      num_partial_results /= 2;
+    }
+    reduction_tiling[TilingScheme::DimX] *= num_partial_results;
+  }
+
+  VLOG(3) << "Each thread will produce " << num_partial_results << " output(s)";
+
+  Vector3 num_threads = {1, num_threads_y, num_threads_x};
+  int virtual_thread_scaling_factor =
+      CalculateVirtualThreadScalingFactorForReduction(analysis,
+                                                      reduction_dimensions);
+  VLOG(2) << "Using virtual thread scaling: " << virtual_thread_scaling_factor;
+
+  TilingScheme tiling_scheme(reduction_dimensions.dimensions, reduction_tiling,
+                             num_threads, indexing_order, vector_size,
+                             virtual_thread_scaling_factor);
+  return ReductionCodegenInfo(
+      tiling_scheme, num_partial_results, reduction_dimensions.is_row_reduction,
+      reduction_is_race_free, std::move(instr_index_groups), hero_reduction);
 }
 
 }  // namespace gpu

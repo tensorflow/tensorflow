@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
