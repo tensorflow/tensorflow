@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/gpu/nccl_errors.h"
 #include "xla/stream_executor/stream.h"
 
 #if XLA_ENABLE_XCCL

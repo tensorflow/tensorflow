@@ -48,7 +48,7 @@ class NcclRecvThunk : public NcclCollectiveThunk {
   absl::Status RunNcclCollective(const ExecuteParams& params,
                                  se::Stream& stream, ncclComm_t comm) override;
   AsyncStreamKind GetAsyncStreamKind() const override {
-    return AsyncStreamKind::kP2P;
+    return kAsyncStreamP2P;
   }
 
  private:

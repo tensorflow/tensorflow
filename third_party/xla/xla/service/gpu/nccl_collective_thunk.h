@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/nccl_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
@@ -37,6 +36,10 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
+
+#if XLA_ENABLE_XCCL
+#include "xla/service/gpu/nccl_utils.h"
+#endif  // XLA_ENABLE_XCCL
 
 struct ncclComm;
 using ncclComm_t = ncclComm*;
@@ -147,7 +150,7 @@ class NcclCollectiveThunk : public Thunk {
                                          ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
-    return AsyncStreamKind::kCollective;
+    return kAsyncStreamCollective;
   }
 
  private:

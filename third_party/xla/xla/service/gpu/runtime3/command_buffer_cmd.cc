@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/nccl_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -55,6 +54,10 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
+
+#if XLA_ENABLE_XCCL
+#include "xla/service/gpu/nccl_utils.h"
+#endif  // XLA_ENABLE_XCCL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/custom_call_status.h"

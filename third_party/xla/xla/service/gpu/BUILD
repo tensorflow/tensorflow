@@ -20,7 +20,7 @@ load(
     "if_rocm_is_configured",
     "rocm_copts",
 )
-load("@local_tsl//tsl:tsl.bzl", "if_google", "tsl_copts", "tsl_gpu_library")
+load("@local_tsl//tsl:tsl.bzl", "if_google", "if_nccl", "tsl_copts", "tsl_gpu_library")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
     "@local_tsl//tsl/platform:build_config.bzl",
@@ -94,8 +94,6 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        ":nccl_clique",
-        ":nccl_unique_id",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla/service:executable",
@@ -848,8 +846,6 @@ tsl_gpu_library(
         ":backend_configs_cc",
         ":buffer_allocations",
         ":ir_emission_utils",
-        ":nccl_clique",
-        ":nccl_errors",
         ":nccl_utils",
         ":thunk",
         "//xla:shape_util",
@@ -882,70 +878,44 @@ tsl_gpu_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
-    ]),
+    ],
 )
 
+# Empty library to implement nested dependency conditions.
+cc_library(
+    name = "empty",
+    visibility = ["//visibility:public"],
+)
+
+# If NCCL/RCCL is supported, this target '#defines XLA_ENABLE_XCCL' and
+# provides a header which #includes NCCL/RCCL.
+alias(
+    name = "nccl_utils",
+    actual = if_nccl(":_nccl_utils", ":empty"),
+    visibility = ["//visibility:public"],
+)
+
+# Do not depend on this target, but rather depend on :nccl_utils.
 tsl_gpu_library(
-    name = "nccl_types",
-    hdrs = ["nccl_types.h"],
+    name = "_nccl_utils",
+    srcs = if_gpu_is_configured(["nccl_utils.cc"]),
+    hdrs = if_gpu_is_configured(["nccl_utils.h"]),
+    # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:<something>"].
+    compatible_with = [],
     defines = if_gpu_is_configured(["XLA_ENABLE_XCCL"]),
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rccl",
-    ]),
-)
-
-tsl_gpu_library(
-    name = "nccl_errors",
-    srcs = ["nccl_errors.cc"],
-    hdrs = ["nccl_errors.h"],
+    tags = ["manual"],  # Only builds with if_nccl().
     visibility = ["//visibility:public"],
     deps = [
-        ":nccl_types",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
-    ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rccl",
-    ]),
-)
-
-tsl_gpu_library(
-    name = "nccl_unique_id",
-    srcs = ["nccl_unique_id.cc"],
-    hdrs = ["nccl_unique_id.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":nccl_errors",
-        ":nccl_types",
-        "//xla:status_macros",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rccl",
-    ]),
-)
-
-tsl_gpu_library(
-    name = "nccl_clique",
-    srcs = ["nccl_clique.cc"],
-    hdrs = ["nccl_clique.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":nccl_errors",
-        ":nccl_types",
-        ":nccl_unique_id",
+        ":gpu_executable_run_options",
+        ":thunk",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla:status",
         "//xla:status_macros",
+        "//xla:statusor",
+        "//xla:xla_data_proto_cc",
+        "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
         "//xla/service:lockable",
         "//xla/service:rendezvous",
@@ -955,45 +925,12 @@ tsl_gpu_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rccl",
-    ]),
-)
-
-tsl_gpu_library(
-    name = "nccl_utils",
-    srcs = ["nccl_utils.cc"],
-    hdrs = ["nccl_utils.h"],
-    compatible_with = [],  # Override tsl_gpu_library()'s internal default value
-    visibility = ["//visibility:public"],
-    deps = [
-        ":nccl_clique",
-        ":nccl_errors",
-        ":nccl_types",
-        ":thunk",
-        "//xla:shape_util",
-        "//xla:status",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:collective_ops_utils",
-        "//xla/service:global_device_id",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
@@ -1088,7 +1025,6 @@ cc_library(
         ":mock_nccl_sleep_kernel_cuda",
         ":mock_nccl_xml_google",
         ":nccl_collective_thunks",
-        ":nccl_errors",
         ":nccl_utils",
         ":thunk",
         "@com_google_absl//absl/algorithm:container",
@@ -1136,7 +1072,6 @@ cc_library(
     deps = if_gpu_is_configured([
         ":gpu_executable_run_options",
         ":nccl_collective_thunks",
-        ":nccl_errors",
         ":nccl_utils",
         ":thunk",
         "@com_google_absl//absl/status",
@@ -1148,8 +1083,6 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
         "//xla/stream_executor",
-    ]) + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
     ]),
 )
 

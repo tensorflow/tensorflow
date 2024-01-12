@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/nccl_errors.h"
 #include "xla/shape_util.h"
 
 #if XLA_ENABLE_XCCL
