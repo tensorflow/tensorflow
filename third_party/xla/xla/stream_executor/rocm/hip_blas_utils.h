@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 #if TF_HIPBLASLT
 
@@ -48,7 +48,7 @@ namespace rocm {
 #define SE_HIPBLAS_RETURN_IF_ERROR(expr) \
   TF_RETURN_IF_ERROR(::stream_executor::rocm::ToStatus(expr, #expr))
 
-tsl::Status ToStatus(hipblasStatus_t status, const char* prefix);
+absl::Status ToStatus(hipblasStatus_t status, const char* prefix);
 hipDataType AsHipblasDataType(blas::DataType type);
 hipblasComputeType_t AsHipblasComputeType(blas::ComputationType type);
 hipblasOperation_t AsHipblasOperation(blas::Transpose trans);

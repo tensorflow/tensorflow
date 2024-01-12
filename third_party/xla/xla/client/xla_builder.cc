@@ -160,20 +160,11 @@ std::pair<XlaOp, int64_t> XlaBuilderFriend::BuildAsyncStart(
     XlaBuilder* builder, absl::Span<const XlaOp> operands,
     std::string execution_thread, const XlaComputation& called_computation,
     const Shape& shape) {
-  return BuildAsyncStart(builder, operands, execution_thread, /*group_id=*/-1,
-                         called_computation, shape);
-}
-
-std::pair<XlaOp, int64_t> XlaBuilderFriend::BuildAsyncStart(
-    XlaBuilder* builder, absl::Span<const XlaOp> operands,
-    std::string execution_thread, int64_t group_id,
-    const XlaComputation& called_computation, const Shape& shape) {
   int64_t called_computation_id;
   auto start_op = builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     instr.set_async_execution_thread(execution_thread);
-    instr.set_async_group_id(group_id);
     builder->AddCalledComputation(called_computation, &instr);
     called_computation_id = instr.called_computation_ids()[0];
     return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncStart,
@@ -187,18 +178,10 @@ XlaOp XlaBuilderFriend::BuildAsyncUpdate(XlaBuilder* builder,
                                          std::string execution_thread,
                                          int64_t called_computation,
                                          const Shape& shape) {
-  return BuildAsyncUpdate(builder, operand, execution_thread, /*group_id=*/-1,
-                          called_computation, shape);
-}
-
-XlaOp XlaBuilderFriend::BuildAsyncUpdate(
-    XlaBuilder* builder, const XlaOp operand, std::string execution_thread,
-    int64_t group_id, int64_t called_computation, const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     instr.set_async_execution_thread(execution_thread);
-    instr.set_async_group_id(group_id);
     instr.add_called_computation_ids(called_computation);
     return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncUpdate,
                                    {operand});
@@ -209,20 +192,10 @@ XlaOp XlaBuilderFriend::BuildAsyncDone(XlaBuilder* builder, const XlaOp operand,
                                        std::string execution_thread,
                                        int64_t called_computation,
                                        const Shape& shape) {
-  return BuildAsyncDone(builder, operand, execution_thread, /*group_id=*/-1,
-                        called_computation, shape);
-}
-
-XlaOp XlaBuilderFriend::BuildAsyncDone(XlaBuilder* builder, const XlaOp operand,
-                                       std::string execution_thread,
-                                       int64_t group_id,
-                                       int64_t called_computation,
-                                       const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     instr.set_async_execution_thread(execution_thread);
-    instr.set_async_group_id(group_id);
     instr.add_called_computation_ids(called_computation);
     return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncDone,
                                    {operand});

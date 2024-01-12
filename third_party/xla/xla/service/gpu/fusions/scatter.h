@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -42,15 +41,22 @@ class ScatterFusion : public KernelFusionEmitterBase {
     CHECK_EQ(analysis.fusion_roots()[0]->opcode(), HloOpcode::kScatter);
   }
 
-  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
+  LaunchDimensions launch_dimensions() const override;
+
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t output_id, mlir::MLIRContext* ctx) const override {
+    // The kernel iterates over updates, whose correspondence to output
+    // elements cannot be computed statically.
+    return std::nullopt;
+  }
 
  protected:
-  Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    const HloFusionInstruction& fusion,
-                    const LaunchDimensions& launch_dims,
-                    std::vector<llvm_ir::IrArray> inputs,
-                    std::vector<llvm_ir::IrArray> outputs,
-                    llvm::IRBuilder<>* builder) const override;
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

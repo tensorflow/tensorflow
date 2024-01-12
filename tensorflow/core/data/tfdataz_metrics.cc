@@ -18,11 +18,13 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/time/time.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -92,7 +94,7 @@ absl::Duration ApproximateLatencyEstimator::GetAverageLatency(Duration duration)
 }
 
 TfDatazMetricsCollector::TfDatazMetricsCollector(const Env& env,
-                                                 IteratorBase* iterator)
+                                                 DatasetBaseIterator* iterator)
     : iterator_(iterator), latency_estimator_(env) {}
 
 void TfDatazMetricsCollector::RecordGetNextLatency(
@@ -115,6 +117,14 @@ absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastFiveMinutes() {
 absl::Duration TfDatazMetricsCollector::GetAverageLatencyForLastSixtyMinutes() {
   return latency_estimator_.GetAverageLatency(
       ApproximateLatencyEstimator::Duration::kSixtyMinutes);
+}
+
+std::optional<std::string> TfDatazMetricsCollector::DatasetName() {
+  auto options = iterator_->dataset()->options();
+  if (options.has_dataset_name()) {
+    return std::make_optional(options.dataset_name());
+  }
+  return std::nullopt;
 }
 
 int64_t TfDatazMetricsCollector::GetIteratorTotalMemoryUsage() {

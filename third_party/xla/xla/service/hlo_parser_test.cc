@@ -1333,21 +1333,8 @@ R"(HloModule AsyncOpsWithSyntaxSugar, entry_computation_layout={(f32[10]{0})->f3
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), custom_call_target="foo"
-}
-
-)"
-},
-{
-"AsyncOpsWithSyntaxSugarAndGroupId",
-R"(HloModule AsyncOpsWithSyntaxSugarAndGroupId, entry_computation_layout={(f32[10]{0})->f32[20]{0}}
-
-ENTRY %Entry (p0: f32[10]) -> f32[20] {
-  %p0 = f32[10]{0} parameter(0)
-  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_group_id=3, custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_group_id=3, custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_group_id=3, custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
 }
 
 )"
@@ -1360,8 +1347,8 @@ R"(HloModule AsyncOpsWithSyntaxSugarAndThreadName, entry_computation_layout={(f3
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
 }
 
 )"
@@ -1374,8 +1361,8 @@ R"(HloModule HloComputationWithParallelThreadName, entry_computation_layout={(f3
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
-  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
 }, execution_thread="main_thread"
 
 )"
@@ -4771,8 +4758,8 @@ ENTRY %main {
   %input.5 = s32[] parameter(1)
   %broadcast = s32[1024]{0} broadcast(s32[] %input.5), dimensions={}
   %input.0 = s32[256]{0} parameter(0)
-  %async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(%broadcast, %input.0, %input.5), async_group_id=0, calls=%async_wrapped
-  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) %async-start), async_group_id=0, calls=%async_wrapped
+  %async-start = ((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) async-start(%broadcast, %input.0, %input.5), calls=%async_wrapped
+  ROOT %async-done = s32[1024]{0} async-done(((s32[1024]{0}, s32[256]{0}, s32[]), s32[1024]{0}, u32[]) %async-start), calls=%async_wrapped
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -4875,6 +4862,199 @@ ENTRY AsyncStartAndAsyncDone {
           HasSubstr("AsyncStart and AsyncUpdate expect the op shape to be "
                     "in the form of "
                     "((async-operands), async-outputs, state).")));
+}
+
+TEST_F(HloParserTest, AsyncDoneNoAsyncStart) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY AsyncStartAndAsyncDone {
+  p0 = f32[2,3] parameter(0)
+  p1 = u32[] parameter(1)
+  tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
+  ROOT async-done = f32[2,3] custom-call-done(tuple)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncUpdate and AsyncDone expect their operand to be "
+                    "the previous async op.")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateAndAsyncDoneNoAsyncStart) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY AsyncStartAndAsyncDone {
+  p0 = f32[2,3] parameter(0)
+  p1 = u32[] parameter(1)
+  tuple = ((f32[2,3]), f32[2,3], u32[]) tuple(p0, p0, p1)
+  async-update = ((f32[2,3]), f32[2,3], u32[]) custom-call-update(tuple)
+  ROOT async-done = f32[2,3] custom-call-done(tuple)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("AsyncUpdate and AsyncDone expect their operand to be "
+                    "the previous async op.")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateWithSyntaxSugarWrongOp) {
+  const char* const hlo_string = R"(
+HloModule AsyncUpdateWithSyntaxSugarWrongOp
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) add-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Expect async wrapped opcode to be custom-call, "
+                            "but got add")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWithSyntaxSugarWrongOp) {
+  const char* const hlo_string = R"(
+HloModule AsyncUpdateWithSyntaxSugarWrongOp
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} add-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Expect async wrapped opcode to be custom-call, "
+                            "but got add")));
+}
+
+TEST_F(HloParserTest, AsyncOpSharedComputation) {
+  const char* const hlo_string = R"(
+HloModule AsyncOpSharedComputation
+
+%async_wrapped (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start.0 = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%async_wrapped
+  %async-done.0 = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-start.0)
+  %async-start.1 = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%async_wrapped
+  ROOT %async-done.1 = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-start.1)
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Computation async_wrapped is already referenced "
+                            "by another async op")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateWrongComputation) {
+  const char* const hlo_string = R"(
+HloModule AsyncUpdateWrongComputation
+
+%async_wrapped.0 (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+%async_wrapped.1 (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%async_wrapped.0
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), calls=%async_wrapped.1
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("Expect async_wrapped_computation to be async_wrapped.0, "
+                    "but got async_wrapped.1")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWrongComputation) {
+  const char* const hlo_string = R"(
+HloModule AsyncDoneWrongComputation
+
+%async_wrapped.0 (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+%async_wrapped.1 (async_param: f32[10]) -> f32[20] {
+  %async_param = f32[10]{0} parameter(0)
+  ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %async_param), custom_call_target="foo"
+}
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), calls=%async_wrapped.0
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), calls=%async_wrapped.1
+}
+  )";
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("Expect async_wrapped_computation to be async_wrapped.0, "
+                    "but got async_wrapped.1")));
+}
+
+TEST_F(HloParserTest, AsyncUpdateWrongDefaultThread) {
+  const char* const hlo_string = R"(
+HloModule AsyncUpdateWrongDefaultThread
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start), async_execution_thread="foo_thread"
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update)
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Expect async_execution_thread to be main, "
+                            "but got foo_thread")));
+}
+
+TEST_F(HloParserTest, AsyncDoneWrongDefaultThread) {
+  const char* const hlo_string = R"(
+HloModule AsyncDoneWrongDefaultThread
+
+ENTRY %Entry (p0: f32[10]) -> f32[20] {
+  %p0 = f32[10]{0} parameter(0)
+  %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), custom_call_target="foo"
+  %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %async-start)
+  ROOT %async-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-update), async_execution_thread="foo_thread"
+}
+  )";
+  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
+              tsl::testing::StatusIs(
+                  tsl::error::INVALID_ARGUMENT,
+                  HasSubstr("Expect async_execution_thread to be main, "
+                            "but got foo_thread")));
 }
 
 }  // namespace

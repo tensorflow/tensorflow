@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -671,7 +672,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
   xla::PjRtFuture<xla::Status>::Promise promise =
       xla::PjRtFuture<xla::Status>::CreatePromise();
 
-  std::function<void()> on_done_with_host_buffer = [promise]() mutable {
+  absl::AnyInvocable<void() &&> on_done_with_host_buffer = [promise]() mutable {
     promise.Set(xla::OkStatus());
   };
 
@@ -687,9 +688,18 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
                     dims, byte_strides,
                     ::pjrt::ConvertFromPjRtHostBufferSemantics(
                         args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->memory->memory_space,
-                    &layout.value()));
+                    std::move(on_done_with_host_buffer),
+                    args->memory->memory_space, &layout.value()));
   } else if (has_layout_and_no_memory) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    std::move(on_done_with_host_buffer), args->device->device,
+                    &layout.value()));
+  } else if (has_memory_and_no_layout) {
     PJRT_ASSIGN_OR_RETURN(
         buffer,
         args->client->client->BufferFromHostBuffer(
@@ -697,16 +707,8 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
             byte_strides,
             ::pjrt::ConvertFromPjRtHostBufferSemantics(
                 args->host_buffer_semantics),
-            on_done_with_host_buffer, args->device->device, &layout.value()));
-  } else if (has_memory_and_no_layout) {
-    PJRT_ASSIGN_OR_RETURN(
-        buffer, args->client->client->BufferFromHostBuffer(
-                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
-                    dims, byte_strides,
-                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
-                        args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->memory->memory_space,
-                    /*device_layout=*/nullptr));
+            std::move(on_done_with_host_buffer), args->memory->memory_space,
+            /*device_layout=*/nullptr));
   } else {
     PJRT_ASSIGN_OR_RETURN(
         buffer, args->client->client->BufferFromHostBuffer(
@@ -714,7 +716,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
                     dims, byte_strides,
                     ::pjrt::ConvertFromPjRtHostBufferSemantics(
                         args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->device->device));
+                    std::move(on_done_with_host_buffer), args->device->device));
   }
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};

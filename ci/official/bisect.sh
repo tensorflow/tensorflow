@@ -34,10 +34,7 @@
 #   export TF_ANY_MODE=test
 set -euxo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
-REQUESTED_TFCI="$TFCI"
-export TFCI=$(mktemp)
-echo >>$TFCI "source $REQUESTED_TFCI"
-echo >>$TFCI "source ci/official/envs/disable_all_uploads"
-echo >>$TFCI "source ci/official/envs/local_multicache"
+# TODO(angerson) Need to revisit this to double-check
+export TFCI="$(echo $TFCI | sed 's/,nightly//'),no_upload,multicache"
 git bisect start "$TF_BISECT_BAD" "$TF_BISECT_GOOD"
 git bisect run $TF_BISECT_SCRIPT

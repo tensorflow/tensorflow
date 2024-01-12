@@ -235,7 +235,7 @@ tf_proto_library(
 # cc_grpc_library(
 #     name = "master_service_cc_grpc_proto",
 #     srcs = [":master_service_proto"],
-#     compatible_with = ["//buildenv/target:gce"],
+#     compatible_with = ["//buildenv/target:non_prod"],
 #     generate_mocks = True,
 #     service_namespace = "grpc_gen",
 #     deps = [":master_service_proto_cc"],

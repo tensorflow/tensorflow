@@ -16,15 +16,19 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MOCK_NCCL_UTILS_H_
 #define XLA_SERVICE_GPU_MOCK_NCCL_UTILS_H_
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/executable_run_options.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/nccl_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -33,43 +37,36 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct MockNcclComm;
-
-using MockNcclComm_t = MockNcclComm*;
-
-struct DestroyMockNcclComm {
-  void operator()(MockNcclComm_t comm);
-};
-
-class MockNcclCommReference
-    : public std::unique_ptr<MockNcclComm, DestroyMockNcclComm> {
-  // Bring std::unique_ptr constructors in scope.
-  using std::unique_ptr<MockNcclComm, DestroyMockNcclComm>::unique_ptr;
-};
-
-// Initialize a MockNcclComm struct, which is similar to the ncclComm in the
-// NCCL library.
-StatusOr<MockNcclCommReference> InitializeMockNcclComm(
+// Create the mock nccl communicator assuming all hosts have the same hardwares.
+absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
-    bool enable_clique_optimization);
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model);
+
+absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
+    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
+    std::vector<GlobalDeviceId> local_devices, size_t num_local_participants,
+    const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model);
 
 // Mock a Nccl collective op including all-reduce, all-gather, and
 // reduce-scatter.
-Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, MockNcclComm_t comm,
-                              Thunk::Kind reduce_op);
+absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
+                                    se::Stream& stream, ncclComm_t comm,
+                                    Thunk::Kind reduce_op);
 
 // Mock a NCCL-based All-To-All op.
-Status RunMockNcclAllToAll(bool has_split_dimension,
-                           std::vector<DeviceBufferPair>& buffers,
-                           se::Stream& stream, MockNcclComm_t comm);
+absl::Status RunMockNcclAllToAll(bool has_split_dimension,
+                                 std::vector<DeviceBufferPair>& buffers,
+                                 se::Stream& stream, ncclComm_t comm);
 
 // Mock a collective permute op.
-Status RunMockCollectivePermute(
+absl::Status RunMockCollectivePermute(
     NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, MockNcclComm_t comm, absl::string_view device_string,
+    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
     int64_t current_id);
 
 }  // namespace gpu

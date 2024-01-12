@@ -245,6 +245,7 @@ cc_library(
         "//xla/runtime:constraints",
         "//xla/runtime:executable",
         "//xla/runtime:symbolic_shape",
+        "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Analysis",

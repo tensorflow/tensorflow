@@ -22,7 +22,9 @@ limitations under the License.
 #include <cstring>
 #include <string>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -30,6 +32,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -80,7 +84,7 @@ void GpuGraphSupport::DestroyGraphExec::operator()(GpuGraphExecHandle exec) {
   CHECK(st.ok()) << "Failed to destroy executable gpu graph: " << st.message();
 }
 
-tsl::StatusOr<std::string> GraphExecUpdateResultToString(
+absl::StatusOr<std::string> GraphExecUpdateResultToString(
     GpuDriver::GraphExecUpdateResult result) {
   switch (result) {
     case GpuDriver::GraphExecUpdateResult::kSuccess:
@@ -102,10 +106,10 @@ tsl::StatusOr<std::string> GraphExecUpdateResultToString(
     case GpuDriver::GraphExecUpdateResult::kNotSupported:
       return "kNotSupported";
   }
-  return tsl::errors::Internal("Unexpected value for GraphExecUpdateResult");
+  return absl::InternalError("Unexpected value for GraphExecUpdateResult");
 }
 
-tsl::StatusOr<std::string> GraphNodeTypeToString(
+absl::StatusOr<std::string> GraphNodeTypeToString(
     GpuDriver::GraphNodeType node_type) {
   switch (node_type) {
     case GpuDriver::GraphNodeType::kKernel:
@@ -135,10 +139,10 @@ tsl::StatusOr<std::string> GraphNodeTypeToString(
     case GpuDriver::GraphNodeType::kBatchMemOp:
       return "kBatchMemOp";
   }
-  return tsl::errors::Internal("Unexpected value for GraphNodeType");
+  return absl::InternalError("Unexpected value for GraphNodeType");
 }
 
-tsl::Status OwnedGpuGraphExec::Update(OwnedGpuGraph graph) {
+absl::Status OwnedGpuGraphExec::Update(OwnedGpuGraph graph) {
   VLOG(3) << "Update gpu graph exec with a new graph after " << num_launches_
           << " launches since last update"
           << " #" << num_updates_++;
@@ -174,16 +178,16 @@ tsl::Status OwnedGpuGraphExec::Update(OwnedGpuGraph graph) {
     }
 
     absl::StrAppend(&error_message, ": ", st.message());
-    return tsl::errors::Internal(error_message);
+    return absl::InternalError(error_message);
   }
 
   VLOG(5) << "Updated gpu graph exec #" << id_ << " (took "
           << (end_nanos - start_nanos) / 1000 << " us)";
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status OwnedGpuGraphExec::Launch(stream_executor::Stream* stream) {
+absl::Status OwnedGpuGraphExec::Launch(stream_executor::Stream* stream) {
   VLOG(3) << "Launch gpu graph " << get()
           << " on a stream: " << stream->DebugStreamPointers() << " #"
           << ++num_launches_;
@@ -202,13 +206,13 @@ OwnedGpuGraphExec::~OwnedGpuGraphExec() {
 // GPU Graph Helpers.
 //===----------------------------------------------------------------------===//
 
-tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph() {
+absl::StatusOr<OwnedGpuGraph> CreateGpuGraph() {
   GpuGraphHandle graph;
   TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
   return OwnedGpuGraph(graph);
 }
 
-tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
+absl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
     ThreadDim threads, BlockDim blocks, const Kernel& kernel,
     const KernelArgs& args) {
@@ -235,7 +239,7 @@ static GpuDevicePtr AsDevicePtr(const DeviceMemoryBase& mem) {
   return reinterpret_cast<GpuDevicePtr>(const_cast<void*>(mem.opaque()));
 }
 
-tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
+absl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
     GpuContext* context, GpuGraphHandle graph,
     absl::Span<GpuGraphNodeHandle> deps, const DeviceMemoryBase& dst,
     const DeviceMemoryBase& src) {
@@ -246,9 +250,9 @@ tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
   return node;
 }
 
-tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
+absl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
     stream_executor::Stream* stream,
-    absl::AnyInvocable<tsl::Status()> capture) {
+    absl::AnyInvocable<absl::Status()> capture) {
   VLOG(3) << "Capture gpu graph on a stream: " << stream->DebugStreamPointers();
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
@@ -268,8 +272,8 @@ tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
   TF_RETURN_IF_ERROR(GpuDriver::StreamEndCapture(gpu_stream, &graph));
 
   if (!captured.ok())
-    return tsl::errors::Internal("failed to capture gpu graph: ",
-                                 captured.message());
+    return absl::InternalError(
+        absl::StrCat("failed to capture gpu graph: ", captured.message()));
 
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
   VLOG(5) << "Captured XLA:GPU operations into the graph " << graph << " (took "
@@ -292,7 +296,7 @@ tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
   return OwnedGpuGraph(graph);
 }
 
-tsl::StatusOr<OwnedGpuGraphExec> InstantiateGpuGraph(OwnedGpuGraph graph) {
+absl::StatusOr<OwnedGpuGraphExec> InstantiateGpuGraph(OwnedGpuGraph graph) {
   GpuGraphExecHandle exec;
 
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
@@ -307,7 +311,7 @@ tsl::StatusOr<OwnedGpuGraphExec> InstantiateGpuGraph(OwnedGpuGraph graph) {
   return OwnedGpuGraphExec(id, exec);
 }
 
-tsl::StatusOr<bool> IsStreamCapturing(stream_executor::Stream* stream) {
+absl::StatusOr<bool> IsStreamCapturing(stream_executor::Stream* stream) {
   return GpuDriver::StreamIsCapturing(AsGpuStreamValue(stream));
 }
 

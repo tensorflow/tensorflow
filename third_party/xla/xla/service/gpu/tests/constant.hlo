@@ -9,8 +9,10 @@ fused_computation {
 }
 
 ENTRY main {
-// CHECK: %{{.*}} = getelementptr inbounds i8, ptr %arg0, i32 %{{.*}}
-// CHECK: %{{.*}} = getelementptr inbounds i8, ptr %arg1, i32 %{{.*}}
+// CHECK: %[[VAL_1:.*]] = getelementptr i8, ptr %arg0, i32 %{{.*}}
+// CHECK: %{{.*}} = getelementptr inbounds i8, ptr %[[VAL_1]], i32 0
+// CHECK: %[[VAL_2:.*]] = getelementptr i8, ptr %arg1, i32 %{{.*}}
+// CHECK: %{{.*}} = getelementptr inbounds i8, ptr %[[VAL_2]], i32 0
   a = pred[2, 2]{1,0} constant({{false, true}, {true, false}})
   b = pred[2, 2]{1,0} constant({{false, true}, {false, true}})
   ROOT wrapped_xor = pred[2,2]{1,0} fusion(pred[2,2]{1,0} a, pred[2,2]{1,0} b), kind=kLoop, calls=fused_computation

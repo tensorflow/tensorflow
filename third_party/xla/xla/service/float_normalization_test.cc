@@ -658,4 +658,37 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   EXPECT_EQ(crs->to_apply()->root_instruction()->opcode(), HloOpcode::kAdd);
 }
 
+TEST_F(FloatNormalizationTest, ConvertBeforeTuple) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, bf16_shape, "a"));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, bf16_shape, "b"));
+
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(bf16_shape, HloOpcode::kMultiply, a, b));
+
+  HloInstruction* convert =
+      builder.AddInstruction(HloInstruction::CreateConvert(f32_shape, add));
+
+  builder.AddInstruction(HloInstruction::CreateVariadic(
+      ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), HloOpcode::kTuple,
+      {convert, add}));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(Normalize(module.get(), BF16));
+
+  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(computation->root_instruction()->operand(0)->shape().element_type(),
+            F32);
+  EXPECT_EQ(
+      computation->root_instruction()->shape().tuple_shapes(0).element_type(),
+      F32);
+}
+
 }  // namespace xla

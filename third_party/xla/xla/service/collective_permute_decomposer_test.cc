@@ -40,7 +40,7 @@ TEST_F(CollectivePermuteDecomposerTest, SyncNotTransformed) {
         p = u32[] replica-id()
         start = (u32[], u32[]) collective-permute-start(p), channel_id=1,
           source_target_pairs={{0,1}, {1,2}},
-          backend_config="{\"is_sync\":true}"
+          backend_config="{ \"collective_backend_config\": {\"is_sync\":true}}"
         ROOT done = u32[] collective-permute-done(start)
       }
     )";

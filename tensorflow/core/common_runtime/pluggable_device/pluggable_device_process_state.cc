@@ -21,12 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_simple_allocator.h"
@@ -71,7 +71,7 @@ int PluggableDeviceProcessState::BusIdForPluggableDevice(
     TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the PluggableDevice's StreamExecutor.
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
-  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForTfDeviceId(
+  se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
                                DeviceType(device_type_), platform, tf_device_id)
                                .value();
   int numa_node = se->GetDeviceDescription().numa_node();
@@ -168,8 +168,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
   for (int i = 0; i < static_cast<int>(pluggable_device_allocators_.size());
        ++i) {
     if (pluggable_device_allocators_[i].allocator != nullptr) {
-      se = se::DeviceIdUtil::ExecutorForTfDeviceId(DeviceType(device_type_),
-                                                   platform, TfDeviceId(i))
+      se = DeviceIdUtil::ExecutorForTfDeviceId(DeviceType(device_type_),
+                                               platform, TfDeviceId(i))
                .value();
       break;
     }

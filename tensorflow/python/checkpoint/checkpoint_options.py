@@ -17,7 +17,6 @@
 import copy
 import inspect
 
-from tensorflow.python.checkpoint.sharding import sharding_util
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
@@ -46,7 +45,6 @@ class CheckpointOptions(object):
       "experimental_enable_async_checkpoint",
       "experimental_write_callbacks",
       "enable_async",
-      "experimental_sharding_callback",
       "experimental_skip_slot_variables",
   )
 
@@ -60,7 +58,6 @@ class CheckpointOptions(object):
       experimental_write_callbacks=None,
       enable_async=False,
       experimental_skip_slot_variables=False,
-      experimental_sharding_callback=None
   ):
     """Creates an object that stores options for a Checkpoint.
 
@@ -94,12 +91,6 @@ class CheckpointOptions(object):
         for Serving do not properly restore slot variables. This option is
         a way to omit restoring slot variables which are not required for
         Serving usecase anyways.(b/315912101)
-      experimental_sharding_callback: `tf.train.experimental.ShardingCallback`.
-        A pre-made or custom callback that determines how checkpoints are
-        sharded on disk. Pre-made callback options are
-        `tf.train.experimental.ShardByDevicePolicy` and
-        `tf.train.experimental.MaxShardSizePolicy`. You may also write a custom
-        callback, see `tf.train.experimental.ShardingCallback`.
     """
     self.experimental_io_device = experimental_io_device
     self.enable_async = experimental_enable_async_checkpoint or enable_async
@@ -109,13 +100,6 @@ class CheckpointOptions(object):
       for callback in experimental_write_callbacks:
         assert len(inspect.signature(callback).parameters) <= 1
     self.experimental_write_callbacks = experimental_write_callbacks
-    if experimental_sharding_callback is not None:
-      if not isinstance(
-          experimental_sharding_callback, sharding_util.ShardingCallback):
-        raise ValueError("The experimental_sharding_callback checkpoint option"
-                         "must be of type ShardingCallback. The option provided"
-                         f"was of type {type(experimental_sharding_callback)}.")
-    self.experimental_sharding_callback = experimental_sharding_callback
     self.experimental_skip_slot_variables = experimental_skip_slot_variables
 
   def __copy__(self):

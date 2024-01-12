@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -52,29 +53,29 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
   explicit TopkSplitterVisitor(size_t split_threshold)
       : split_threshold_(split_threshold) {}
 
-  Status HandleCustomCall(HloInstruction* inst) override {
+  absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "TopK") {
-      return OkStatus();
+      return absl::OkStatus();
     }
     HloComputation* comp = inst->parent();
     Shape data_shape = topk->operand(0)->shape();
     bool has_batch = data_shape.dimensions_size() == 2;
     // TODO(doak): Support multiple batches.
     if (has_batch && data_shape.dimensions(0) != 1) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     size_t n = data_shape.dimensions(has_batch ? 1 : 0);
     int64_t k = topk->shape().tuple_shapes(0).dimensions(has_batch ? 1 : 0);
     // If K approaches N, splitting the input will not be beneficial anymore.
     if (k > sqrt(n)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // TODO(doak): Relax this alignment requirement.
     if (n % kRequiredAlignment != 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
-    if (n < split_threshold_) return OkStatus();
+    if (n < split_threshold_) return absl::OkStatus();
     int new_batch =
         std::min(absl::bit_floor(n / split_threshold_), kMaximumBatchSize);
     int new_n = n / new_batch;
@@ -142,7 +143,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-StatusOr<bool> TopKSplitter::Run(
+absl::StatusOr<bool> TopKSplitter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return TopkSplitterVisitor(split_threshold_)

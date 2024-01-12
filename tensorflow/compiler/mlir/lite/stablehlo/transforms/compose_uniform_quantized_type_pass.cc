@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/uniform_quantized_types.h"
 
 #define DEBUG_TYPE "stablehlo-compose-uniform-quantized-type"
@@ -47,6 +48,7 @@ namespace {
 
 using ::mlir::quant::CreateI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::CreateI8F32UniformQuantizedType;
+using ::mlir::quant::TryCast;
 using ::mlir::quant::UniformQuantizedPerAxisType;
 using ::mlir::quant::UniformQuantizedType;
 
@@ -58,21 +60,6 @@ using ::mlir::quant::UniformQuantizedType;
 constexpr StringRef kUniformQuantizeFunctionNameSubstring = "uniform_quantize";
 constexpr StringRef kUniformDequantizeFunctionNameSubstring =
     "uniform_dequantize";
-
-// Tries casting `op` with a concrete op type `T`. If the cast fails or `op` is
-// a `nullptr`, returns `failure` and prints a debugging message identifying
-// the cast attempt as `name`.
-template <typename T>
-FailureOr<T> TryCast(Operation* op, const StringRef name) {
-  auto cast_op = dyn_cast_or_null<T>(op);
-  if (cast_op) {
-    return cast_op;
-  } else {
-    LLVM_DEBUG(llvm::dbgs() << "Failed to match " << name << " ("
-                            << T::getOperationName() << ").\n");
-    return failure();
-  }
-}
 
 class ComposeUniformQuantizedTypePass
     : public impl::ComposeUniformQuantizedTypePassBase<

@@ -59,6 +59,11 @@ namespace {
 
 using ::tensorflow::data::experimental::AutoShardDatasetOp;
 
+// Don't apply general grappler optimizations when performing these rewrites.
+// Sometimes there is a conflict among multiple applications of these general
+// optimizations to the same graph (see b/303524867).
+constexpr bool kApplyGeneralGrapplerOptimizations = false;
+
 // A dynamic port has form %port% or %port_foo% that is to be replaced with the
 // actual port.
 bool HasDynamicPort(absl::string_view address) {
@@ -95,18 +100,11 @@ RemoveCompressionMapRewriter::ApplyRemoveCompressionMapRewrite(
   tensorflow::RewriterConfig::CustomGraphOptimizer config = GetRewriteConfig();
   TF_RETURN_IF_ERROR(remove_compression_map.Init(&config));
 
-  // Don't apply general grappler optimizations. Sometimes there is a conflict
-  // between two applications of these optimizations to the same graph (see
-  // b/303524867). This conflict isn't worth resolving in the context of this
-  // rewrite: the point of this rewrite is to remove one node and change one
-  // reference to it, not to apply any general optimizations.
-  bool apply_general_grappler_optimizations = false;
-
   GraphDef input_graph = graph_def;
   TF_ASSIGN_OR_RETURN(std::string dataset_node, GetDatasetNode(input_graph));
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       GetGrapplerItem(&input_graph, &dataset_node, /*add_fake_sinks=*/false,
-                      apply_general_grappler_optimizations);
+                      kApplyGeneralGrapplerOptimizations);
 
   GraphDef rewritten_graph;
   std::unordered_map<std::string, tensorflow::DeviceProperties> device_map;
@@ -149,7 +147,8 @@ StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
   GraphDef input_graph = graph_def;
   TF_ASSIGN_OR_RETURN(std::string dataset_node, GetDatasetNode(input_graph));
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
-      GetGrapplerItem(&input_graph, &dataset_node, /*add_fake_sinks=*/false);
+      GetGrapplerItem(&input_graph, &dataset_node, /*add_fake_sinks=*/false,
+                      kApplyGeneralGrapplerOptimizations);
 
   GraphDef rewritten_graph;
   std::unordered_map<std::string, tensorflow::DeviceProperties> device_map;

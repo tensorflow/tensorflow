@@ -1359,18 +1359,20 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
   // !show_backend_config, but this is simpler, and it's not too noisy.)
   std::vector<std::pair<std::string, std::string>> props;
   if (gpu::IsCustomCallToDnnConvolution(*instr)) {
-    StatusOr<gpu::CudnnConvBackendConfig> config =
-        instr->backend_config<gpu::CudnnConvBackendConfig>();
+    StatusOr<gpu::GpuBackendConfig> config =
+        instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
-      props = ExtractCudnnConvBackendConfigProps(*config);
+      props = ExtractCudnnConvBackendConfigProps(
+          config->cudnn_conv_backend_config());
     }
   } else if (gpu::IsCublasGemm(*instr)) {
-    StatusOr<gpu::GemmBackendConfig> config =
-        instr->backend_config<gpu::GemmBackendConfig>();
+    StatusOr<gpu::GpuBackendConfig> config =
+        instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
       // gemm strides are generally uninteresting (derived from the instruction
       // shape), so we hide them by default.
-      props = ExtractGemmBackendConfigProps(*config, instr);
+      props =
+          ExtractGemmBackendConfigProps(config->gemm_backend_config(), instr);
     }
   }
 
@@ -1779,7 +1781,6 @@ static std::pair<int, int> FusionVisualizerStateKey(
   return std::make_pair(computation.parent()->unique_id(),
                         computation.unique_id());
 }
-
 
 }  // namespace
 

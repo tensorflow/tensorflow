@@ -1246,9 +1246,6 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
     `called_computation` is the function that will be run asynchronously
     `execution_thread` is the name of the thread in which it will be run. The main
       thread is called "main". All threads have names.
-    `group_id` labels a set of async-start, async-done, and zero or more
-      async-update ops corresponding to the same computation. We
-      represent a missing group_id with either an negative value or None.
 
     This returns all the state needed between async ops. After buffer
     assignment, the return values represents the space needed to hold the input,
@@ -1258,8 +1255,7 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
   let arguments = (ins
     Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
   );
 
   let results = (outs MHLO_AsyncBundle);
@@ -1282,8 +1278,7 @@ def MHLO_AsyncUpdateOp : MHLO_Op<"async_update", [DeclareOpInterfaceMethods<Infe
   let arguments = (ins
     MHLO_AsyncBundle:$bundle,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
     );
 
   let results = (outs MHLO_AsyncBundle);
@@ -1307,8 +1302,7 @@ def MHLO_AsyncDoneOp : MHLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTyp
   let arguments = (ins
     MHLO_AsyncBundle:$bundle,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
     );
 
   let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);

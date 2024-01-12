@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -288,10 +289,29 @@ Status InternalErrorStrCat(Args&&... concat) {
 }
 
 template <typename... Args>
-Status ResourceExhaustedStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::ResourceExhausted(std::forward<Args>(concat)...));
-}
+struct ResourceExhaustedStrCat {
+  Status status;
+#if defined(PLATFORM_GOOGLE)
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  ResourceExhaustedStrCat(Args&&... concat, absl::SourceLocation loc =
+                                                absl::SourceLocation::current())
+      : status(WithLogBacktrace(
+            tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)
+                .WithSourceLocation(loc))) {}
+#else
+  ResourceExhaustedStrCat(Args&&... concat)
+      : status(WithLogBacktrace(
+            tsl::errors::ResourceExhausted(std::forward<Args>(concat)...))) {}
+#endif
+
+  // NOLINTNEXTLINE(google-explicit-constructor)
+  operator Status() const { return status; }
+};
+
+// Deduction guide to make variadic arguments play nice with default
+// absl::SourceLocation argument.
+template <typename... Args>
+ResourceExhaustedStrCat(Args&&...) -> ResourceExhaustedStrCat<Args...>;
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
@@ -728,16 +748,6 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   container->erase(it);
   return OkStatus();
 }
-
-// Utility function which splits a double-precision float (F64) into a pair of
-// single-precision floating point numbers. The most significant 49 bits (out of
-// the total 53 available) in the mantissa of the F64 is represented as the
-// unevaluated sum of two non-overlapping single-precision F32s; the 'high' part
-// contains 24 bits in its mantissa, and the 'low' part contains 25 bits in its
-// sign bit and its mantissa.
-// Note: The resulting representation can still only represent 8-bit exponent
-// range that is available in F32s (out of a total of 11 exponent bits in F64s).
-std::pair<float, float> SplitF64ToF32(double x);
 
 // Takes a sequence of unpacked int4 values, such that every byte stores one
 // int4 value in the low-order four bits, and packs them so every byte stores

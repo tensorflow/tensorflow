@@ -348,6 +348,18 @@ inline PtrVec<T>::operator std::vector<T>() const {
   return std::vector<T>(begin(), end());
 }
 
+template <typename T>
+bool operator==(const PtrVec<T>& a, const PtrVec<T>& b) {
+  auto a_data = a.data();
+  auto b_data = b.data();
+  return std::equal(a_data, a_data + a.size(), b_data, b_data + b.size());
+}
+
+template <typename T>
+bool operator!=(const PtrVec<T>& a, const PtrVec<T>& b) {
+  return !(a == b);
+}
+
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_PTRVEC_H_

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/tools/hlo_extractor.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <cstdint>
 #include <deque>

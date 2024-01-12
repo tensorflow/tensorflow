@@ -29,9 +29,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/error_codes.pb.h"
@@ -66,7 +64,7 @@ TEST_P(AtomicallyWriteStringToFileTest, WriteString) {
 
   std::string data;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  TF_ASSERT_OK(ReadFileToString(tsl::Env::Default(), test_file, &data));
+  TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), test_file, &data));
   EXPECT_EQ(data, file_contents);
 }
 
@@ -81,7 +79,7 @@ TEST(FileUtilsTest, AtomicallyWriteBinaryProto) {
 
   DatasetDef in;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  TF_ASSERT_OK(ReadBinaryProto(tsl::Env::Default(), test_file, &in));
+  TF_ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), test_file, &in));
   EXPECT_THAT(in, testing::EqualsProto(out));
 }
 
@@ -93,7 +91,7 @@ TEST(FileUtilsTest, AtomicallyWriteTextProto) {
 
   DatasetDef in;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  TF_ASSERT_OK(ReadTextProto(tsl::Env::Default(), test_file, &in));
+  TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), test_file, &in));
   EXPECT_THAT(in, testing::EqualsProto(out));
 }
 
@@ -105,32 +103,6 @@ TEST(FileUtilsTest, AtomicallyWriteTFRecord) {
       test_file, {out}, tsl::io::compression::kSnappy, tsl::Env::Default()));
 
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  snapshot_util::TFRecordReaderImpl reader(test_file,
-                                           tsl::io::compression::kSnappy);
-  TF_ASSERT_OK(reader.Initialize(tsl::Env::Default()));
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> in, reader.GetTensors());
-  EXPECT_EQ(out.DebugString(), in.front().DebugString());
-}
-
-TEST(FileUtilsTest, AtomicallyWriteTFRecordUsesSpecifiedTempFile) {
-  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
-  std::string test_file = tsl::io::JoinPath(directory, "test_file");
-  std::string tmp_file = tsl::io::JoinPath(directory, "test_file.tmp");
-
-  // Writes a dummy temp file.
-  TF_ASSERT_OK(AtomicallyWriteStringToFile(tmp_file, "Dummy contents",
-                                           tsl::Env::Default()));
-
-  TF_EXPECT_OK(tsl::Env::Default()->FileExists(tmp_file));
-  Tensor out = CreateTensor<int64_t>(TensorShape({2}), {1, 2});
-  TF_ASSERT_OK(AtomicallyWriteTFRecords(test_file, {out},
-                                        tsl::io::compression::kSnappy, tmp_file,
-                                        tsl::Env::Default()));
-
-  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  // The temp file should be renamed.
-  EXPECT_THAT(tsl::Env::Default()->FileExists(tmp_file),
-              StatusIs(tsl::error::NOT_FOUND));
   snapshot_util::TFRecordReaderImpl reader(test_file,
                                            tsl::io::compression::kSnappy);
   TF_ASSERT_OK(reader.Initialize(tsl::Env::Default()));
@@ -163,17 +135,6 @@ TEST(FileUtilsTest, IsTemporaryFile) {
   EXPECT_TRUE(IsTemporaryFile("file.tmp"));
   EXPECT_FALSE(IsTemporaryFile("file"));
   EXPECT_FALSE(IsTemporaryFile(""));
-}
-
-TEST(FileUtilsTest, ParseTemporaryFile) {
-  EXPECT_THAT(ParseTemporaryFile("file____TMP_FILE__unique___string___.tmp"),
-              IsOkAndHolds("file__"));
-}
-
-TEST(FileUtilsTest, ParseTemporaryFileError) {
-  EXPECT_THAT(ParseTemporaryFile("file_invalid_filename.tmp"),
-              StatusIs(tsl::error::INTERNAL));
-  EXPECT_THAT(ParseTemporaryFile(""), StatusIs(tsl::error::INTERNAL));
 }
 
 }  // namespace

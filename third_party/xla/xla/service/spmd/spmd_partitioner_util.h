@@ -29,6 +29,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_replace.h"
 #include "absl/utility/utility.h"
@@ -867,15 +869,9 @@ StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
                       detail::FindSpmdPartitioningVisitor(
                           std::forward<Args>(partition_method_args)...));
   SpmdPartitioner* partitioner = visitor->partitioner();
-  // Use original model's original hlo and call-graph, since the partitioning
-  // methods will rely on this to make some heuristic-based decisions.
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  int64_t next_channel_id = hlo_query::NextChannelId(fake_module);
-  auto fake_visitor = partitioner->CreateVisitor(
-      temp_entry, visitor->num_partitions(), visitor->num_replicas(),
-      visitor->collective_ops_creator(), &next_channel_id, visitor->logger(),
-      visitor->options(), *call_graph);
-  auto fake_b = fake_visitor->builder();
+  std::unique_ptr<SpmdPartitioningVisitor> fake_visitor = visitor->Clone();
+  fake_visitor->set_module(&fake_module);
+  auto* fake_b = fake_visitor->builder();
   fake_b->set_visiting_hlo(temp_p);
   auto parameter_count = std::make_unique<int>(0);
   TF_ASSIGN_OR_RETURN(

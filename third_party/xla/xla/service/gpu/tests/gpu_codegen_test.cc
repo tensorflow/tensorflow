@@ -52,7 +52,7 @@ void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
   // executable, and hence the "ptx_str" will be empty. So disabling the
   // pattern check on the ROCm platform
   if (!is_built_with_rocm_) {
-    StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
+    absl::StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
     ASSERT_TRUE(filecheck_result.ok());
     EXPECT_TRUE(filecheck_result.value());
   }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/status/status.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -48,7 +49,7 @@ GenericConvRunner& ConvolutionThunk::GetOrCreateRunner(
   return *it->second;
 }
 
-Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
   std::vector<se::DeviceMemoryBase> operand_se_buffers, result_se_buffers;
@@ -77,7 +78,7 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ConvolutionReorderThunk::ConvolutionReorderThunk(
@@ -89,7 +90,8 @@ ConvolutionReorderThunk::ConvolutionReorderThunk(
       operand_buffers_(std::move(operand_slices)),
       result_buffers_(std::move(result_slices)) {}
 
-Status ConvolutionReorderThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status ConvolutionReorderThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
   bool has_bias = operand_buffers_.size() > 1;
   CHECK_EQ(operand_buffers_.size(), result_buffers_.size());
 
@@ -115,7 +117,7 @@ Status ConvolutionReorderThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("ConvolutionReorderThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 se::dnn::FilterDescriptor ConvolutionReorderThunk::CreateFilterDescriptor(

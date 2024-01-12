@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -45,6 +46,11 @@ bool IsCublasLtMatmul(const HloInstruction& hlo) {
 bool IsCublasLtMatmulF8(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kCublasLtMatmulF8CallTarget;
+}
+
+bool IsTriangularSolve(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kTriangularSolveCallTarget;
 }
 
 const absl::string_view kGemmCallTarget = "__cublas$gemm";
@@ -190,7 +196,7 @@ bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
          hlo.custom_call_target() == kCubDeviceRadixSortTarget;
 }
 
-StatusOr<CudnnConvKind> GetCudnnConvKind(
+absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();
   if (target == kCudnnConvForwardCallTarget) {
@@ -226,7 +232,7 @@ std::string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
+absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();
   if (target == kCudnnfMHABmmBmmCallTarget) return CudnnfMHAKind::kBmmBmm;
@@ -309,7 +315,7 @@ std::string CudnnfMHAKindToString(CudnnfMHAKind kind) {
   }
 }
 
-StatusOr<std::string> GetFMHAInstructionPrefix(
+absl::StatusOr<std::string> GetFMHAInstructionPrefix(
     const std::string& custom_call_target) {
   if (custom_call_target == kCudnnfMHABmmBmmCallTarget) {
     return "fmha-bmm-bmm";
@@ -374,11 +380,11 @@ StatusOr<std::string> GetFMHAInstructionPrefix(
 }
 
 // Give fmha instruction a more useful name than "custom-call.42".
-Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha) {
+absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha) {
   TF_ASSIGN_OR_RETURN(std::string fmha_prefix,
                       GetFMHAInstructionPrefix(fmha->custom_call_target()));
   module->SetAndUniquifyInstrName(fmha, fmha_prefix);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace gpu
 }  // namespace xla

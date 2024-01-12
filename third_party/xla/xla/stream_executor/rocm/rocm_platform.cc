@@ -72,7 +72,7 @@ int ROCmPlatform::DeviceToBus(int device_ordinal) {
   return exec->GetDeviceDescription().numa_node() - min_numa_node_;
 }
 
-tsl::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
+absl::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
     int bus_ordinal) {
   InspectNumaNodes();
   CHECK_LT(bus_ordinal, BusCount()) << "bus ordinal out of available range";
@@ -84,7 +84,7 @@ tsl::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
     }
   }
 
-  return tsl::Status{
+  return absl::Status{
       absl::StatusCode::kNotFound,
       absl::StrFormat("Executor for bus %d not found.", bus_ordinal)};
 }
@@ -104,19 +104,19 @@ int ROCmPlatform::VisibleDeviceCount() const {
 
 const string& ROCmPlatform::Name() const { return name_; }
 
-tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
   return GpuExecutor::CreateDeviceDescription(ordinal);
 }
 
-tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
+absl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.device_options = DeviceOptions::Default();
   return GetExecutor(config);
 }
 
-tsl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
+absl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   if (config.gpu_stream) {
     // If the GPU stream was provided, it's not possible to get-or-create a
@@ -128,13 +128,13 @@ tsl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-tsl::StatusOr<std::unique_ptr<StreamExecutor>>
+absl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<GpuExecutor>(), config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return tsl::Status{
+    return absl::Status{
         absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for ROCM device ordinal %d: %s",

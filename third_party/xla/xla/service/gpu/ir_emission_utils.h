@@ -72,12 +72,17 @@ inline constexpr absl::string_view kTritonSoftmaxFusionKind =
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
+inline constexpr absl::string_view kTopKCustomCallTarget = "__gpu$TopK";
+
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
 // This returns true if `hlo` is a CustomCall HLO with a call target equal to
 // one of the kCusolver... constants, but returns *false* for HLOs with
 // say, a kCholesky opcode.
 bool IsCustomCallToCusolver(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to a TopK routine.
+bool IsCustomCallToTopK(const HloInstruction& hlo);
 
 // Cholesky decomposition. Takes a (batched) matrix as input, and returns a
 // tuple of (result, workspace, info), where result is the result of the
@@ -124,7 +129,7 @@ std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
   return std::vector<T>(v.begin(), v.end());
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name = nullptr);
 
@@ -132,7 +137,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation* const> allocations);
 
-StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
     const std::vector<const HloInstruction*>& roots);
@@ -270,7 +275,8 @@ class DenseDataIntermediate {
   std::variant<std::vector<uint8_t>, absl::Span<const uint8_t>> data_;
 };
 
-StatusOr<DenseDataIntermediate> LiteralToXlaFormat(const Literal& literal);
+absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
+    const Literal& literal);
 
 }  // namespace gpu
 }  // namespace xla

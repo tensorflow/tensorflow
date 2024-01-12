@@ -368,8 +368,8 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_tmp_bf16_ops",
-    prefix = "mkl_tmp_bf16_ops",
+    name = "mkl_tmp_ops",
+    prefix = "mkl_tmp_ops",
     deps = MKL_DEPS,
 )
 

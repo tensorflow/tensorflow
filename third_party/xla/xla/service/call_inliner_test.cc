@@ -269,7 +269,7 @@ HloModule inline_specified_threads_only
 %main_inner () -> u32[] {
   %co.0 = u32[] constant(0)
   %async-start = ((), u32[], u32[]) call-start(), async_execution_thread="secondary_thread", to_apply=secondary_outer
-  %async-done = u32[] call-done(((), u32[], u32[]) %async-start), async_execution_thread="secondary_thread", to_apply=secondary_outer
+  %async-done = u32[] call-done(((), u32[], u32[]) %async-start)
   ROOT %add.2 = add(%co.0, %async-done)
 }
 

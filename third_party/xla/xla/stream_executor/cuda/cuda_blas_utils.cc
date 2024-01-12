@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -31,12 +32,11 @@ const char* ToString(cublasStatus_t status) {
 #endif  // CUDA_VERSION >= 11050
 }
 
-tsl::Status ToStatus(cublasStatus_t status, const char* prefix) {
+absl::Status ToStatus(cublasStatus_t status, const char* prefix) {
   if (status != CUBLAS_STATUS_SUCCESS) {
-    return tsl::Status(absl::StatusCode::kInternal,
-                       absl::StrCat(prefix, ": ", ToString(status)));
+    return absl::InternalError(absl::StrCat(prefix, ": ", ToString(status)));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 cudaDataType_t AsCudaDataType(blas::DataType type) {

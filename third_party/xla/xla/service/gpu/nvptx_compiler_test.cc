@@ -55,7 +55,8 @@ int64_t CountCopies(const HloModule& module) {
 
 class NVPTXCompilerTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(HloModule* module) {
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      HloModule* module) {
     Backend& test_backend = backend();
     NVPTXCompiler compiler;
     return compiler.AssignBuffers(module,

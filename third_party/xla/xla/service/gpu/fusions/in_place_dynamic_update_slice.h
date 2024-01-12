@@ -64,15 +64,22 @@ class InPlaceDynamicUpdateSliceEmitter : public KernelFusionEmitterBase {
       : analysis_(analysis),
         dus_ops_(
             GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())) {}
-  std::optional<StatusOr<LaunchDimensions>> launch_dimensions() const override;
+  LaunchDimensions launch_dimensions() const override;
+
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t output_id, mlir::MLIRContext* ctx) const override {
+    // The mapping cannot be statically computed in general, since the offsets
+    // are unknown.
+    return std::nullopt;
+  }
 
  protected:
-  Status EmitKernel(IrEmitterContext& ir_emitter_context,
-                    const HloFusionInstruction& fusion,
-                    const LaunchDimensions& launch_dims,
-                    std::vector<llvm_ir::IrArray> inputs,
-                    std::vector<llvm_ir::IrArray> outputs,
-                    llvm::IRBuilder<>* builder) const override;
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 
   const HloFusionAnalysis& analysis_;
   std::vector<const HloInstruction*> dus_ops_;

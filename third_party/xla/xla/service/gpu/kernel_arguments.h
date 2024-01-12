@@ -34,7 +34,7 @@ namespace gpu {
 // Thread-safe.
 class KernelArgument {
  public:
-  static StatusOr<KernelArgument> Create(
+  static absl::StatusOr<KernelArgument> Create(
       absl::Span<const BufferAllocation* const> allocations, mlir::Value value,
       bool is_written);
 
@@ -68,19 +68,19 @@ class KernelArgument {
 
 class KernelArguments {
  public:
-  static StatusOr<KernelArguments> Create(
+  static absl::StatusOr<KernelArguments> Create(
       absl::Span<const BufferAllocation* const> allocations,
       mlir::lmhlo::FusionOp fusion);
 
-  static StatusOr<KernelArguments> Create(
+  static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
       const HloFusionInstruction* fusion);
 
-  static StatusOr<KernelArguments> Create(
+  static absl::StatusOr<KernelArguments> Create(
       absl::Span<const BufferAllocation* const> allocations,
       mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands);
 
-  static StatusOr<KernelArguments> Create(
+  static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
       const HloInstruction* non_fusion_hlo,
       absl::Span<const HloInstruction* const> needed_operands);

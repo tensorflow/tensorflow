@@ -50,7 +50,7 @@ struct GpuNormDescriptor {
 
 // Structure to describe static properties of a fused norm op.
 struct GpuNormConfig {
-  static StatusOr<GpuNormConfig> For(const GpuNormDescriptor& desc) {
+  static absl::StatusOr<GpuNormConfig> For(const GpuNormDescriptor& desc) {
     std::vector<PrimitiveType> output_types;
 
     GpuNormConfig config;
@@ -58,7 +58,7 @@ struct GpuNormConfig {
     config.algorithm = se::dnn::AlgorithmDesc(desc.backend_config.algorithm());
 
     auto tensor_descriptor_from_shape =
-        [](Shape shape) -> StatusOr<se::dnn::TensorDescriptor> {
+        [](Shape shape) -> absl::StatusOr<se::dnn::TensorDescriptor> {
       TF_ASSIGN_OR_RETURN(
           se::dnn::DataType data_type,
           GetDNNDataTypeFromPrimitiveType(shape.element_type()));
@@ -127,15 +127,15 @@ struct RunNormOptions {
   NormRunner* norm_runner;
 };
 
-Status RunGpuNorm(const GpuNormConfig& conv_config,
-                  const se::DeviceMemoryBase& input_buffer,
-                  const se::DeviceMemoryBase& scale_buffer,
-                  const se::DeviceMemoryBase& bias_buffer,
-                  const se::DeviceMemoryBase& output_buffer,
-                  std::optional<se::DeviceMemoryBase> exepctation_buffer,
-                  std::optional<se::DeviceMemoryBase> norm_factor_buffer,
-                  const se::DeviceMemoryBase& scratch_memory,
-                  se::Stream* stream, RunNormOptions options = {});
+absl::Status RunGpuNorm(const gpu::GpuNormConfig& config,
+                        const se::DeviceMemoryBase& input_buffer,
+                        const se::DeviceMemoryBase& scale_buffer,
+                        const se::DeviceMemoryBase& bias_buffer,
+                        const se::DeviceMemoryBase& output_buffer,
+                        std::optional<se::DeviceMemoryBase> expectation_buffer,
+                        std::optional<se::DeviceMemoryBase> norm_factor_buffer,
+                        const se::DeviceMemoryBase& scratch_memory,
+                        se::Stream* stream, RunNormOptions options = {});
 
 }  // namespace gpu
 }  // namespace xla

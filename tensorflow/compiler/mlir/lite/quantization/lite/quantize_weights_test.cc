@@ -143,17 +143,19 @@ class QuantizeWeightsTest : public testing::Test {
   }
 };
 
+// Returns true if everything between the two graphs
+// are identical except for name field.
+// Used when comparing graphs after optimization passes,
+// as tensor names may have changed via MLIR constant folding process.
 bool ExpectEqualTensor(const Tensor* tensor, const Tensor* expected_tensor) {
-  // Everything should remain equal between the two graphs.
   return (tensor->is_variable() == expected_tensor->is_variable()) &&
          (GetAsVector(tensor->shape()) ==
-          GetAsVector(expected_tensor->shape())) &&
-         (tensor->name()->str() == expected_tensor->name()->str());
+          GetAsVector(expected_tensor->shape()));
 }
 
 // Finds the match of the quantized tensor from the possible tensors. Each
 // possible tensors can be used only once. It checks shape and name if the
-// tensor is quantized and also checks buffer conetens and tensor type if not
+// tensor is quantized and also checks buffer contents and tensor type if not
 // quantized. For the quantized case, tensor type and quantizaction params are
 // expected to be checked in the test body with the match.
 const Tensor* FindMatchingExpectedTensor(
@@ -253,7 +255,6 @@ TEST_F(QuantizeWeightsTest, WeightsMinNumElements) {
 }
 
 TEST_F(QuantizeWeightsTest, HybridConv) {
-  GTEST_SKIP() << "b/317497213";
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   auto status = QuantizeWeights(&builder, model_, 0);
@@ -289,7 +290,10 @@ TEST_F(QuantizeWeightsTest, HybridConv) {
       // If the tensor is a weight, it should have type INT8, otherwise it
       // should stay with type FLOAT32.
       // If the tensor is a bias, it should have type FLOAT32.
-      if (quant_tensor->name()->str() == "conv_bias") {
+      //
+      // Check with float_tensor name since quantized tensor
+      // may be renamed.
+      if (float_tensor->name()->str() == "conv_bias") {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
       } else if (IsModelInputOrOutput(output_model, i)) {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
@@ -311,7 +315,6 @@ TEST_F(QuantizeWeightsTest, HybridConv) {
 }
 
 TEST_F(QuantizeWeightsTest, DequantizeConv) {
-  GTEST_SKIP() << "b/317497213";
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   auto status = QuantizeWeights(&builder, model_, 0,
@@ -345,8 +348,14 @@ TEST_F(QuantizeWeightsTest, DequantizeConv) {
     }
     ASSERT_GT(dequant_input_idx, -1);
     ASSERT_GT(dequant_output_idx, -1);
+    std::vector<int> used_tensors;
     for (size_t i = 0; i < quantized_graph->tensors()->size(); ++i) {
       const auto quant_tensor = quantized_graph->tensors()->Get(i);
+      const auto float_tensor = FindMatchingExpectedTensor(
+          /*quantized_model=*/output_model, /*expected_model=*/model_,
+          /*quantized_tensor=*/quant_tensor,
+          /*possible_tensors=*/float_graph->tensors(),
+          /*used_tensors=*/used_tensors, /*quantized=*/true);
       // If the tensor is a weight, it should have type INT8.
       // If the tensor is a bias, it should have type FLOAT32.
       // If the tensor is an input or output it should have type FLOAT32.
@@ -358,7 +367,8 @@ TEST_F(QuantizeWeightsTest, DequantizeConv) {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
       } else if (IsModelInputOrOutput(output_model, i)) {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
-      } else if (quant_tensor->name()->str() == "conv_bias") {
+      } else if (float_tensor != nullptr &&
+                 float_tensor->name()->str() == "conv_bias") {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
       } else if (quant_tensor->buffer() != 0) {
         // If it's a non-bias constant tensor, it must be the weight.
@@ -624,7 +634,6 @@ TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationHybrid) {
 }
 
 TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
-  GTEST_SKIP() << "b/317497213";
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   const CustomOpMap custom_op_map;
@@ -661,7 +670,7 @@ TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
       // If the tensor is a weight, it should have type INT8, otherwise it
       // should stay with type FLOAT32.
       // If the tensor is a bias, it should have type FLOAT32.
-      if (quant_tensor->name()->str() == "conv_bias") {
+      if (float_tensor->name()->str() == "conv_bias") {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
       } else if (IsModelInputOrOutput(output_model, i)) {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
@@ -682,7 +691,6 @@ TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
 }
 
 TEST_F(QuantizeWeightsTest, DequantizeConvBlocklisted) {
-  GTEST_SKIP() << "b/317497213";
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   const CustomOpMap custom_op_map;
@@ -718,8 +726,14 @@ TEST_F(QuantizeWeightsTest, DequantizeConvBlocklisted) {
     }
     ASSERT_GT(dequant_input_idx, -1);
     ASSERT_GT(dequant_output_idx, -1);
+    std::vector<int> used_tensors;
     for (size_t i = 0; i < quantized_graph->tensors()->size(); ++i) {
       const auto quant_tensor = quantized_graph->tensors()->Get(i);
+      const auto float_tensor = FindMatchingExpectedTensor(
+          /*quantized_model=*/output_model, /*expected_model=*/model_,
+          /*quantized_tensor=*/quant_tensor,
+          /*possible_tensors=*/float_graph->tensors(),
+          /*used_tensors=*/used_tensors);
       // If the tensor is a weight, it should have type INT8.
       // If the tensor is a bias, it should have type FLOAT32.
       // If the tensor is an input or output it should have type FLOAT32.
@@ -734,7 +748,8 @@ TEST_F(QuantizeWeightsTest, DequantizeConvBlocklisted) {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
       } else if (IsModelInputOrOutput(output_model, i)) {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
-      } else if (quant_tensor->name()->str() == "conv_bias") {
+      } else if (float_tensor != nullptr &&
+                 float_tensor->name()->str() == "conv_bias") {
         EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
       } else if ((!CreateMutableModelFromFile(output_model)
                        ->buffers[quant_tensor->buffer()]

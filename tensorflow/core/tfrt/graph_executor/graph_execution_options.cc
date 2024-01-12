@@ -128,7 +128,7 @@ std::ostream& operator<<(std::ostream& os,
             << options.runtime
             // clang-tidy off
             << ", model_metadata = "
-            << absl::StrCat(options.model_metadata)
+            << options.model_metadata.DebugString()
             // clang-tidy on
             << ", compile_options = " << options.compile_options << "}";
 }

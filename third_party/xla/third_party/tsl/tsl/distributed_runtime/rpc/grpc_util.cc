@@ -19,19 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "grpcpp/impl/codegen/proto_utils.h"
-#include "absl/time/time.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/retrying_utils.h"
 
 namespace tsl {
-
-int64_t ComputeBackoffMicroseconds(int current_retry_attempt, int64_t min_delay,
-                                   int64_t max_delay) {
-  absl::Duration backoff =
-      ComputeRetryBackoff(current_retry_attempt, absl::Microseconds(min_delay),
-                          absl::Microseconds(max_delay));
-  return absl::ToInt64Microseconds(backoff);
-}
 
 ::grpc::Status GrpcMaybeUnparseProto(const protobuf::Message& src,
                                      grpc::ByteBuffer* dst) {

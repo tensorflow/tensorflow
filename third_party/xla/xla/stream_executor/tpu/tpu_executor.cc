@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/status.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -104,11 +105,11 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-Status TpuExecutor::AllocateEvent(Event* event) { return tsl::OkStatus(); }
+Status TpuExecutor::AllocateEvent(Event* event) { return absl::OkStatus(); }
 
 Status TpuExecutor::DeallocateEvent(Event* event) {
   tpu_platform().EraseEvent(event->implementation());
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 stream_executor::Event::Status TpuExecutor::PollForEventStatus(
@@ -275,7 +276,7 @@ Status TpuExecutor::SynchronousMemcpy(
 Status TpuExecutor::SynchronousMemcpyDeviceToDevice(
     ::stream_executor::DeviceMemoryBase* device_dst,
     const ::stream_executor::DeviceMemoryBase& device_src, uint64_t size) {
-  return tsl::errors::Unimplemented("This operation not supported on TPU");
+  return absl::UnimplementedError("This operation not supported on TPU");
 }
 
 bool TpuExecutor::MemcpyDeviceToDevice(

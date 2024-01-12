@@ -405,12 +405,12 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 // example, once it's fully supported.
 
 namespace impl {
-static Status AlwaysFail(ffi::Buffer arg, int32_t value) {
+static absl::Status AlwaysFail(ffi::Buffer arg, int32_t value) {
   return AlwaysFailImpl(arg, value);
 }
 
-static Status Memcpy(const ServiceExecutableRunOptions* run_options,
-                     ffi::Buffer src, ffi::Buffer dst) {
+static absl::Status Memcpy(const ServiceExecutableRunOptions* run_options,
+                           ffi::Buffer src, ffi::Buffer dst) {
   return MemcpyImpl(run_options, src, dst);
 }
 }  // namespace impl
@@ -474,7 +474,7 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
 // XLA:FFI handler with attached HloComputation
 //===----------------------------------------------------------------------===//
 
-static Status MemcpyWithCalledComputation(
+static absl::Status MemcpyWithCalledComputation(
     const ServiceExecutableRunOptions* run_options, ffi::Buffer src,
     ffi::Buffer dst, const HloComputation* called_computation) {
   if (called_computation == nullptr)

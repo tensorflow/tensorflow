@@ -33,7 +33,7 @@ We recommend using a suitable docker container to build/test XLA, such as
 [TensorFlow's docker container](https://www.tensorflow.org/install/docker):
 
 ```
-docker run --name xla -w /xla -it -d --rm -v $PWD:/xla tensorflow/tensorflow:latest-gpu bash
+docker run --name xla -w /xla -it -d --rm -v $PWD:/xla tensorflow/build:latest-python3.9 bash
 ```
 
 Using a docker container you can build XLA with CPU support using the following commands:
@@ -59,11 +59,11 @@ bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 
 ### GPU support
 
-We recommend using a GPU docker container to build XLA with GPU support, such
-as:
+We recommend using the same docker container as above to build XLA with GPU
+support:
 
 ```
-docker run --name xla_gpu -w /xla -it -d --rm -v $PWD:/xla tensorflow/tensorflow:devel-gpu bash
+docker run --name xla_gpu -w /xla -it -d --rm -v $PWD:/xla tensorflow/build:latest-python3.9 bash
 ```
 
 To build XLA with GPU support use the following command:
@@ -73,7 +73,10 @@ docker exec -e TF_NEED_CUDA=1 xla_gpu ./configure
 docker exec xla_gpu bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
-If you want to build XLA targets with GPU support without Docker you need to install the following dependencies additional to CPU dependencies: [`cuda-11.2`](https://developer.nvidia.com/cuda-11.2.2-download-archive), [`cuDNN-8.1`](https://developer.nvidia.com/cudnn).
+If you want to build XLA targets with GPU support without Docker you need to
+install the following additional dependencies:
+[`cuda-12.3`](https://developer.nvidia.com/cuda-downloads),
+[`cuDNN-8.9`](https://developer.nvidia.com/cudnn).
 
 Then configure and build targets using the following commands:
 

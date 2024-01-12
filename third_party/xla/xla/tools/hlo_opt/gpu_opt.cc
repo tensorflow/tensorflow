@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/platform_util.h"
 #include "xla/statusor.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
 #include "xla/types.h"

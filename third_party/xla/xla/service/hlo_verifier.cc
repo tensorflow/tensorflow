@@ -1502,15 +1502,6 @@ Status CheckAsyncOpOperand(const HloInstruction* async_op) {
         async_op->async_wrapped_computation()->execution_thread(),
         operand->async_wrapped_computation()->execution_thread());
   }
-  if (async_op->async_group_id() != operand->async_group_id()) {
-    return InternalError(
-        "%s expects its operand to have the same group id (%s vs %s).",
-        HloOpcodeString(async_op->opcode()),
-        async_op->async_group_id() ? absl::StrCat(*async_op->async_group_id())
-                                   : "none",
-        operand->async_group_id() ? absl::StrCat(*operand->async_group_id())
-                                  : "none");
-  }
   return OkStatus();
 }
 

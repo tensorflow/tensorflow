@@ -44,7 +44,7 @@ class ConvolutionThunk : public Thunk {
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   std::vector<BufferAllocation::Slice> operand_buffers_;
@@ -70,7 +70,7 @@ class ConvolutionReorderThunk : public Thunk {
   ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
   ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   static se::dnn::FilterDescriptor CreateFilterDescriptor(

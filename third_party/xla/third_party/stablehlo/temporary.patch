@@ -1,22 +1,3 @@
-diff --ruN a/stablehlo/.bazelversion b/stablehlo/.bazelversion
---- stablehlo/.bazelversion
-+++ stablehlo/.bazelversion
-@@ -1 +1,15 @@
-+# Copyright 2023 The StableHLO Authors. All Rights Reserved.
-+#
-+# Licensed under the Apache License, Version 2.0 (the "License");
-+# you may not use this file except in compliance with the License.
-+# You may obtain a copy of the License at
-+#
-+#      https://www.apache.org/licenses/LICENSE-2.0
-+#
-+# Unless required by applicable law or agreed to in writing, software
-+# distributed under the License is distributed on an "AS IS" BASIS,
-+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+# See the License for the specific language governing permissions and
-+# limitations under the License.
-+
- 6.1.0
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -175,18 +156,103 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/PortableApi.h
---- stablehlo/stablehlo/api/PortableApi.h
-+++ stablehlo/stablehlo/api/PortableApi.h
-@@ -27,7 +27,7 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel b/stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
+--- stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
++++ stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
+@@ -37,6 +37,7 @@
+ [
+     lit_test(
+         name = "%s.test" % src,
++        size = "small",
+         srcs = [src],
+         data = [
+             "lit.cfg.py",
+@@ -44,7 +45,6 @@
+             "//:stablehlo-opt",
+             "@llvm-project//llvm:FileCheck",
+         ],
+-        size = "small",
+         tags = ["stablehlo_linalg_tests"],
+     )
+     for src in glob(["**/*.mlir"])
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir b/stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/reduce.mlir
+@@ -29,7 +29,7 @@
+ // CHECK-PRIMITIVE-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
+ // CHECK-PRIMITIVE-DAG: %[[INIT_TENSOR:.*]] = tensor.empty()
+ // CHECK-PRIMITIVE-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
+-// CHECK-PRIMITIVE: linalg.reduce { arith.addi }
++// CHECK-PRIMITIVE: linalg.reduce { arith.addi {overflowFlags = #arith.overflow<none>} }
+ // CHECK-PRIMITIVE-SAME: ins(%{{.*}}tensor<5x4xi32>)
+ // CHECK-PRIMITIVE-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi32>)
+ // CHECK-PRIMITIVE-SAME: dimensions = [1]  {someattr}
+diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py b/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
+--- stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
++++ stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
+@@ -26,6 +26,10 @@
+ config.suffixes = ['.mlir']
+ config.test_source_root = os.path.dirname(__file__)
  
- /// Return the current version for portable API.
- /// Increments on all meaningful changes to this file.
--inline int64_t getApiVersion() { return 4; }
-+inline int64_t getApiVersion() { return 5; }
++# Disallow reusing variables across CHECK-LABEL matches.
++# A variable can eschew this (be made "global") by prefixing its name with $.
++config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
++
+ # Make LLVM and StableHLO tools available in RUN directives
+ tools = [
+   'stablehlo-opt',
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -238,7 +238,7 @@
  
- // Get the current StableHLO version.
- //
+ // TODO(#1578) migrate uses to DenseI64ArrayAttr and delete this attr
+ def I64DenseArrayOrElements1DAttr : Attr<Or<[DenseI64ArrayAttr.predicate, I64Elements1D]>, "either a DenseI64ArrayAttr or a 1-dimensional I64ElementsAttr."> {
+-  let storageType = "Attribute";
++  let storageType = "mlir::Attribute";
+   let returnType = "SmallVector<int64_t>";
+   let convertFromStorage = "hlo::getI64Array($_self)";
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
+--- stablehlo/stablehlo/dialect/StablehloAttrs.td
++++ stablehlo/stablehlo/dialect/StablehloAttrs.td
+@@ -191,7 +191,7 @@
+ }
+ 
+ def BoolDenseArrayOrElementsAttr : Attr<Or<[DenseBoolArrayAttr.predicate, StableHLO_BoolElementsAttr.predicate]>, "either a DenseBoolArrayAttr or a StableHLO_BoolElementsAttr"> {
+-  let storageType = "Attribute";
++  let storageType = "mlir::Attribute";
+   let returnType = "SmallVector<bool>";
+   let convertFromStorage = "hlo::getBoolArray($_self)";
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -4153,8 +4153,8 @@
+ //   P5. Check if the result type of window operation matches the source type.
+ LogicalResult verifySelectAndScatterOp(
+     std::optional<Location> location, Value operand, Value source,
+-    Value initValue, std::optional<SmallVector<int64_t>> windowDimensionsOpt,
+-    std::optional<SmallVector<int64_t>> windowStridesOpt,
++    Value initValue, std::optional<ArrayRef<int64_t>> windowDimensionsOpt,
++    std::optional<ArrayRef<int64_t>> windowStridesOpt,
+     std::optional<DenseIntElementsAttr> padding, Region& select,
+     Region& scatter) {
+   auto operandType = operand.getType().cast<ShapedType>();
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
+--- stablehlo/stablehlo/dialect/TypeInference.h
++++ stablehlo/stablehlo/dialect/TypeInference.h
+@@ -501,8 +501,8 @@
+ 
+ LogicalResult verifySelectAndScatterOp(
+     std::optional<Location> location, Value operand, Value source,
+-    Value initValue, std::optional<SmallVector<int64_t>> windowDimensions,
+-    std::optional<SmallVector<int64_t>> windowStrides,
++    Value initValue, std::optional<ArrayRef<int64_t>> windowDimensions,
++    std::optional<ArrayRef<int64_t>> windowStrides,
+     std::optional<DenseIntElementsAttr> padding, Region& select,
+     Region& scatter);
+ 
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -1550,7 +1616,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/CMakeLists.txt b/stablehlo/s
 diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stablehlo/experimental/tests/lit.cfg.py
 --- stablehlo/stablehlo/experimental/tests/lit.cfg.py
 +++ stablehlo/stablehlo/experimental/tests/lit.cfg.py
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,46 @@
 +"""Lit configuration to drive test in this repo."""
 +# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 +# Copyright 2023 The StableHLO Authors.
@@ -1580,6 +1646,10 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stabl
 +config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 +config.suffixes = ['.mlir']
 +config.test_source_root = os.path.dirname(__file__)
++
++# Disallow reusing variables across CHECK-LABEL matches.
++# A variable can eschew this (be made "global") by prefixing its name with $.
++config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
 +
 +# Make LLVM and StableHLO tools available in RUN directives
 +tools = [
@@ -2554,7 +2624,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
-@@ -0,0 +1,191 @@
+@@ -0,0 +1,196 @@
 +/* Copyright 2022 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -2627,11 +2697,16 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    SmallVector<ShapedTypeComponents> inferredReturnTypes;
 +    if (failed(hlo::inferReduceWindowOp(
 +            /*location=*/{}, op.getInputs(), op.getInitValues(),
-+            rewriter.getI64TensorAttr(windowDimensions),
-+            rewriter.getI64TensorAttr(windowStrides),
-+            rewriter.getI64TensorAttr(baseDilations),
-+            rewriter.getI64TensorAttr(windowDilations),
-+            hlo::getPaddingAttr(&rewriter, padding), inferredReturnTypes)))
++            llvm::to_vector(rewriter.getI64TensorAttr(windowDimensions)
++                                .getValues<int64_t>()),
++            llvm::to_vector(
++                rewriter.getI64TensorAttr(windowStrides).getValues<int64_t>()),
++            llvm::to_vector(
++                rewriter.getI64TensorAttr(baseDilations).getValues<int64_t>()),
++            llvm::to_vector(rewriter.getI64TensorAttr(windowDilations)
++                                .getValues<int64_t>()),
++            hlo::getPaddingAttr(&rewriter, padding), op.getBody(),
++            inferredReturnTypes)))
 +      return rewriter.notifyMatchFailure(op, "inferReduceWindowOp failed");
 +    return refineReturnTypes(rewriter, op, inferredReturnTypes);
 +  }
@@ -2746,4 +2821,58 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/testdata/lit.cfg.py b/stablehlo/stablehlo/testdata/lit.cfg.py
+--- stablehlo/stablehlo/testdata/lit.cfg.py
++++ stablehlo/stablehlo/testdata/lit.cfg.py
+@@ -28,6 +28,10 @@
+ config.suffixes = ['.mlir']
+ config.test_source_root = os.path.dirname(__file__)
+ 
++# Disallow reusing variables across CHECK-LABEL matches.
++# A variable can eschew this (be made "global") by prefixing its name with $.
++config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
++
+ # Make LLVM and StableHLO tools available in RUN directives
+ tools = [
+   'FileCheck',
+diff --ruN a/stablehlo/stablehlo/tests/lit.cfg.py b/stablehlo/stablehlo/tests/lit.cfg.py
+--- stablehlo/stablehlo/tests/lit.cfg.py
++++ stablehlo/stablehlo/tests/lit.cfg.py
+@@ -28,6 +28,10 @@
+ config.suffixes = ['.mlir']
+ config.test_source_root = os.path.dirname(__file__)
+ 
++# Disallow reusing variables across CHECK-LABEL matches.
++# A variable can eschew this (be made "global") by prefixing its name with $.
++config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
++
+ # Make LLVM and StableHLO tools available in RUN directives
+ tools = [
+   'FileCheck',
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir b/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
+--- stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
++++ stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
+@@ -1955,7 +1955,8 @@
+ func.func @op_select_and_scatter_with_promotable_types(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<12x13x13x66xf32>, %arg2: tensor<f32>) -> tensor<10x24x24x64xf64> {
+   // CHECK: "vhlo.select_and_scatter_v1"(%arg0, %arg1, %arg2)
+   // CHECK:   ^[[BB:bb.*]](%[[ARG1:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>, %[[ARG2:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>):
+-  // CHECK:     "vhlo.return_v1"(%[[VAL12]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
++  // CHECK:     %[[VAL:.*]] = "vhlo.add_v1"(%[[ARG1]], %[[ARG2]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>, !vhlo.tensor_v1<!vhlo.f64_v1>) -> !vhlo.tensor_v1<!vhlo.f64_v1>
++  // CHECK:     "vhlo.return_v1"(%[[VAL]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
+   // CHECK: }) : (!vhlo.tensor_v1<10x24x24x64x!vhlo.f32_v1>, !vhlo.tensor_v1<12x13x13x66x!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<10x24x24x64x!vhlo.f64_v1>
+   %0 = "stablehlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
+     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
+--- stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
++++ stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
+@@ -1960,7 +1960,8 @@
+ func.func @op_select_and_scatter_with_promotable_types(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<12x13x13x66xf32>, %arg2: tensor<f32>) -> tensor<10x24x24x64xf64> {
+   // CHECK: "vhlo.select_and_scatter_v1"(%arg0, %arg1, %arg2)
+   // CHECK:   ^[[BB:bb.*]](%[[ARG1:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>, %[[ARG2:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>):
+-  // CHECK:     "vhlo.return_v1"(%[[VAL12]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
++  // CHECK:     %[[VAL:.*]] = "vhlo.add_v1"(%[[ARG1]], %[[ARG2]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>, !vhlo.tensor_v1<!vhlo.f64_v1>) -> !vhlo.tensor_v1<!vhlo.f64_v1>
++  // CHECK:     "vhlo.return_v1"(%[[VAL]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
+   // CHECK: }) : (!vhlo.tensor_v1<10x24x24x64x!vhlo.f32_v1>, !vhlo.tensor_v1<12x13x13x66x!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<10x24x24x64x!vhlo.f64_v1>
+   %0 = "stablehlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
+     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
 

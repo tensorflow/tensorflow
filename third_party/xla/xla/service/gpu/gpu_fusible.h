@@ -207,10 +207,6 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 std::vector<const HloInstruction*> GetFusionRoots(
     const HloComputation& computation);
 
-// Whether the instruction is a reduction hero for the given root.
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero);
-
 // Whether the instruction is a Triton Softmax fusion.
 bool IsTritonSoftmaxFusion(const HloInstruction& instr);
 

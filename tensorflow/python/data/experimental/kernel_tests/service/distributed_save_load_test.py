@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for distributed save/load with the new load algorithm."""
 
+import multiprocessing
 import os
 import threading
 import time
@@ -32,6 +33,8 @@ from tensorflow.python.data.ops import load_op
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -116,7 +119,8 @@ class DistributedSaveLoadTest(
         num_workers=num_workers,
         snapshot_max_chunk_size_bytes=max_chunk_size_bytes)
     snapshot_dir = data_service_test_base.TempDir()
-    dataset = dataset_ops.Dataset.range(num_elements).shuffle(buffer_size=10)
+    dataset = dataset_ops.Dataset.range(num_elements).shuffle(
+        buffer_size=num_elements)
     self.evaluate(
         distributed_save_op.distributed_save(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
@@ -130,6 +134,49 @@ class DistributedSaveLoadTest(
     self.assertLen(output_per_repetition, num_repetitions)
     for i in range(2, num_repetitions):  # Starts from the second repetition.
       self.assertEqual(output_per_repetition[i], output_per_repetition[i - 1])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_elements=[20],
+              num_repetitions=[10])))
+  def test_shuffle_chunks(
+      self, num_elements: int, num_repetitions: int):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=5, snapshot_max_chunk_size_bytes=8)
+    snapshot_dir = data_service_test_base.TempDir()
+    dataset = dataset_ops.Dataset.range(num_elements)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+
+    def _interleave_shuffled_chunks(
+        datasets: dataset_ops.Dataset) -> dataset_ops.Dataset:
+      # Does not shuffle when the snapshot is being written (first repetition).
+      # Otherwise, loading will be blocked to fill the shuffle buffer, not to
+      # read the partial chunks.
+      datasets = cond.cond(
+          math_ops.greater(datasets.cardinality(), 0),
+          lambda: datasets.shuffle(buffer_size=datasets.cardinality()),
+          lambda: datasets)
+      return datasets.interleave(
+          lambda x: x,
+          cycle_length=multiprocessing.cpu_count(),
+          num_parallel_calls=dataset_ops.AUTOTUNE)
+
+    dataset = dataset_ops.Dataset.range(num_repetitions).flat_map(
+        lambda _: load_op._load_with_retry(
+            snapshot_dir.full_path, reader_func=_interleave_shuffled_chunks))
+
+    output = self.getDatasetOutput(dataset)
+    output_per_repetition = [
+        output[i : i + num_elements]
+        for i in range(0, len(output), num_elements)]
+    self.assertLen(output_per_repetition, num_repetitions)
+    for i in range(1, num_repetitions):
+      self.assertNotEqual(output_per_repetition[i],
+                          output_per_repetition[i - 1])
 
   @combinations.generate(
       combinations.times(
@@ -255,6 +302,28 @@ class DistributedSaveLoadTest(
     with self.assertRaises(errors.InvalidArgumentError):
       dataset = load_op._load_with_retry(snapshot_dir.full_path)
       self.getDatasetOutput(dataset)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_elements=[10])))
+  def test_dataset_spec_file_is_optional(self, num_elements: int):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    snapshot_dir = data_service_test_base.TempDir()
+    dataset = dataset_ops.Dataset.range(num_elements)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
+
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    self.assertDatasetProduces(dataset, list(range(num_elements)))
+
+    # After removing the dataset_spec file, the loaded dataset should produce
+    # the same output.
+    os.remove(os.path.join(
+        snapshot_dir.full_path, dataset_ops.DATASET_SPEC_FILENAME))
+    dataset = load_op._load_with_retry(snapshot_dir.full_path)
+    self.assertDatasetProduces(dataset, list(range(num_elements)))
 
   @combinations.generate(test_base.default_test_combinations())
   def test_snapshot_does_not_exist(self):

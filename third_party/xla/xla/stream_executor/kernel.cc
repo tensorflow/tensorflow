@@ -21,13 +21,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/demangle.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -80,7 +80,7 @@ KernelCacheConfig Kernel::GetPreferredCacheConfig() const {
   return implementation_->GetPreferredCacheConfig();
 }
 
-tsl::StatusOr<int32_t> Kernel::GetMaxOccupiedBlocksPerCore(
+absl::StatusOr<int32_t> Kernel::GetMaxOccupiedBlocksPerCore(
     ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
   return implementation_->GetMaxOccupiedBlocksPerCore(
       threads, dynamic_shared_memory_bytes);

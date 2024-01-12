@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -37,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
-#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/lib/io/compression.h"
@@ -47,6 +45,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/thread_annotations.h"
+#include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/error_codes.pb.h"
 #include "tsl/protobuf/status.pb.h"
 
@@ -54,7 +53,6 @@ namespace tensorflow {
 namespace data {
 
 const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
-const absl::string_view kSplitFileCompression = tsl::io::compression::kNone;
 
 absl::StatusOr<bool> SnapshotAssignmentManager::TryAddAssignment(
     absl::string_view snapshot_path, absl::string_view worker_address,
@@ -193,13 +191,12 @@ absl::Status SnapshotManager::Resume() TF_LOCKS_EXCLUDED(mu_) {
   tsl::mutex_lock l(mu_);
   if (!env_->FileExists(path_).ok()) {
     return absl::InternalError(
-        absl::StrCat("Failed to recover snapshot at ", path_,
-                     ": the snapshot path doesn't exist"));
+        absl::StrCat("Failed to recover tf.data snapshot at ", path_,
+                     ": the snapshot path doesn't exist."));
   }
   if (env_->FileExists(SnapshotDoneFilePath(path_)).ok()) {
     mode_ = Mode::kDone;
-    LOG(INFO) << "Attempted to recover snapshot at " << path_
-              << " but it's already done";
+    LOG(INFO) << "Recovered finished tf.data snapshot at " << path_;
     return absl::OkStatus();
   }
   if (env_->FileExists(SnapshotErrorFilePath(path_)).ok()) {
@@ -245,9 +242,17 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
   std::string streams_path = StreamsDirectory(path_);
   TF_ASSIGN_OR_RETURN(const std::vector<std::string> stream_directories,
                       GetChildren(streams_path, env_));
-  streams_.resize(stream_directories.size(), Stream(num_sources()));
+  if (stream_directories.empty()) {
+    return absl::OkStatus();
+  }
 
+  streams_.resize(stream_directories.size(), Stream(num_sources()));
+  tsl::mutex mu;  // Protects `resume_status` and `global_split_indices`.
+  absl::Status resume_status;
   absl::flat_hash_set<int64_t> global_split_indices;
+  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
+      env_, tsl::ThreadOptions{}, "restore_snapshot_stream_thread",
+      stream_directories.size());
   for (const auto& stream_directory : stream_directories) {
     std::string stream_path = tsl::io::JoinPath(streams_path, stream_directory);
 
@@ -257,29 +262,30 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &stream_index) ||
         stream_index < 0) {
       return absl::InternalError(absl::StrCat(
-          "Can't parse the name of ", stream_path,
+          "Can't parse tf.data snapshot stream directory ", stream_path,
           ": filename must have the format stream_<stream_index>."));
     }
 
-    absl::StatusOr<std::string> worker_address =
-        OwnerWorkerAddress(stream_path);
-    if (!worker_address.ok()) {
-      // The dispatcher may get preempted when it writes the owner_worker file.
-      // If that happens, we skip the last stream directory.
-      if (stream_index < stream_directories.size() - 1) {
-        return worker_address.status();
-      }
-      streams_.pop_back();
-      continue;
-    }
-    TF_RETURN_IF_ERROR(
-        ReadOnDiskStream(stream_index, *worker_address, global_split_indices));
+    thread_pool->Schedule([this, &stream_directories, stream_index, &mu,
+                           &global_split_indices,
+                           &resume_status]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      StreamRestorer stream_restorer(env_, path_, stream_index, sources_,
+                                     assignment_manager_);
+      absl::Status s = stream_restorer.ReadOnDiskStream();
+      tsl::mutex_lock l(mu);
+      resume_status.Update(s);
+      resume_status.Update(RestoreFrom(stream_restorer, stream_directories,
+                                       global_split_indices));
+    });
   }
+  thread_pool.reset();
+  TF_RETURN_IF_ERROR(resume_status);
 
   for (int64_t i = 0; i < global_split_indices.size(); ++i) {
     if (!global_split_indices.contains(i)) {
-      return absl::InternalError(absl::StrCat(
-          "Found missing global split index, ", i, ", in ", path_));
+      return absl::InternalError(
+          absl::StrCat("Failed to restore tf.data snapshot at ", path_,
+                       ": Found missing global split index ", i, "."));
     }
   }
   num_assigned_splits_ = global_split_indices.size();
@@ -290,191 +296,173 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
     mode_ = Mode::kDone;
     TF_RETURN_IF_ERROR(AtomicallyWriteStringToFile(SnapshotDoneFilePath(path_),
                                                    std::string(), env_));
+    LOG(INFO) << "Finished writing tf.data distributed snapshot at " << path_;
   }
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::string> SnapshotManager::OwnerWorkerAddress(
-    const std::string& stream_directory) const
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+absl::StatusOr<std::string>
+SnapshotManager::StreamRestorer::OwnerWorkerAddress() const {
   std::string worker_address;
-  TF_RETURN_IF_ERROR(env_->FileExists(StreamWorkerFilePath(stream_directory)));
-  TF_RETURN_IF_ERROR(ReadFileToString(
-      env_, StreamWorkerFilePath(stream_directory), &worker_address));
+  TF_RETURN_IF_ERROR(
+      env_->FileExists(StreamWorkerFilePath(path_, stream_index_)));
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+      env_, StreamWorkerFilePath(path_, stream_index_), &worker_address));
   return worker_address;
 }
 
-absl::Status SnapshotManager::ReadOnDiskStream(
-    int64_t stream_index, const std::string& worker_address,
-    absl::flat_hash_set<int64_t>& global_split_indices)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  auto [it, success] = assignments_.insert({worker_address, stream_index});
-  if (!success) {
-    return absl::InternalError(absl::StrCat(
-        "tf.data dispatcher failed to assign stream ", stream_index,
-        " to snapshot worker ", worker_address,
-        ": The  worker is already assigned stream ", it->second, "."));
+absl::Status SnapshotManager::StreamRestorer::ReadOnDiskStream() {
+  absl::StatusOr<std::string> worker_address = OwnerWorkerAddress();
+  if (!worker_address.ok()) {
+    // This could happen if the dispatcher fails after creating a stream
+    // directory before writing the owner file. The snapshot manager can check
+    // this case by testing if GetStream() returns a value.
+    return absl::OkStatus();
   }
 
-  std::string splits_path = SplitsDirectory(path_, stream_index);
+  worker_address_ = *worker_address;
+  restored_stream_.emplace(num_sources());
+  std::string splits_path = SplitsDirectory(path_, stream_index_);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> source_directories,
                       GetChildren(splits_path, env_));
 
   for (const auto& source_directory : source_directories) {
-    std::string source_path = io::JoinPath(splits_path, source_directory);
+    std::string source_path = tsl::io::JoinPath(splits_path, source_directory);
 
     // `source_directory` must have this format: "source_<source_index>".
     std::vector<std::string> tokens = absl::StrSplit(source_directory, '_');
-    int64_t source_index;
+    int64_t source_index = 0;
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &source_index) ||
         source_index < 0) {
       return absl::InternalError(absl::StrCat(
-          "Can't parse the name of ", source_path,
-          ": filename must have the format source_<source_index>"));
+          "Can't parse tf.data snapshot source directory ", source_path,
+          ": filename must have the format source_<source_index>."));
     }
     if (source_index >= num_sources()) {
       return absl::InternalError(
           absl::StrCat("Found conflict between the number of sources, ",
                        num_sources(), ", and the filename of ", source_path));
     }
-    TF_RETURN_IF_ERROR(
-        ReadOnDiskSource(stream_index, source_index, global_split_indices));
+    TF_RETURN_IF_ERROR(ReadOnDiskSource(source_index));
   }
 
-  if (env_->FileExists(StreamDoneFilePath(path_, stream_index)).ok()) {
-    streams_[stream_index].state = Stream::State::kDone;
+  if (env_->FileExists(StreamDoneFilePath(path_, stream_index_)).ok()) {
+    restored_stream_->state = Stream::State::kDone;
     return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(bool assignment_added,
                       assignment_manager_.TryAddAssignment(
-                          path_, worker_address, stream_index));
+                          path_, *worker_address, stream_index_));
   if (!assignment_added) {
-    return absl::InternalError(
-        absl::StrCat("Failed to recover tf.data snapshot dispatcher: Worker ",
-                     worker_address, " was assigned too many streams. At most ",
-                     assignment_manager_.worker_max_concurrent_snapshots(),
-                     " streams are allowed."));
+    return absl::InternalError(absl::StrCat(
+        "Failed to recover tf.data snapshot dispatcher: Worker ",
+        *worker_address, " was assigned too many streams. At most ",
+        assignment_manager_.worker_max_concurrent_snapshots(),
+        " streams are allowed."));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-namespace {
-
-// Used for sorting repetition directories, based on the repetition index.
-bool IsPriorRepetition(std::string repetition_dir1,
-                       std::string repetition_dir2) {
-  if (IsTemporaryFile(repetition_dir1)) {
-    repetition_dir1 = *ParseTemporaryFile(repetition_dir1);
-  }
-  if (IsTemporaryFile(repetition_dir2)) {
-    repetition_dir2 = *ParseTemporaryFile(repetition_dir2);
-  }
-  absl::StatusOr<int64_t> repetition_index1 =
-      ParseRepetitionDirectoryName(repetition_dir1);
-  absl::StatusOr<int64_t> repetition_index2 =
-      ParseRepetitionDirectoryName(repetition_dir2);
-  if (!repetition_index1.ok() || !repetition_index2.ok()) {
-    return false;
-  }
-  return *repetition_index1 < *repetition_index2;
-}
-
-// Used for sorting split files, based on the local split index.
-bool IsPriorSplit(std::string split1, std::string split2) {
-  if (IsTemporaryFile(split1)) {
-    split1 = *ParseTemporaryFile(split1);
-  }
-  if (IsTemporaryFile(split2)) {
-    split2 = *ParseTemporaryFile(split2);
-  }
-  auto split_index1 = ParseSplitFilename(split1);
-  auto split_index2 = ParseSplitFilename(split2);
-  if (!split_index1.ok() || !split_index2.ok()) {
-    return false;
-  }
-  return split_index1->first < split_index2->first;
-}
-
-}  // namespace
-
-absl::Status SnapshotManager::ReadOnDiskSource(
-    int64_t stream_index, int64_t source_index,
-    absl::flat_hash_set<int64_t>& global_split_indices)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+absl::Status SnapshotManager::StreamRestorer::ReadOnDiskSource(
+    int64_t source_index) {
   std::string source_directory =
-      SourceDirectory(path_, stream_index, source_index);
+      SourceDirectory(path_, stream_index_, source_index);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> repetition_directories,
                       GetChildren(source_directory, env_));
-  std::sort(repetition_directories.begin(), repetition_directories.end(),
-            IsPriorRepetition);
-  sources_[source_index].repetition_index =
+  repetition_indices_[source_index] =
       repetition_directories.empty() ? 0 : repetition_directories.size() - 1;
 
   for (const std::string& repetition : repetition_directories) {
     std::string repetition_dir =
         tsl::io::JoinPath(source_directory, repetition);
-    std::vector<std::string> split_files;
-    TF_RETURN_IF_ERROR(env_->GetChildren(repetition_dir, &split_files));
-    std::sort(split_files.begin(), split_files.end(), IsPriorSplit);
+    TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
+                        GetChildren(repetition_dir, env_));
     for (const std::string& split_file : split_files) {
-      std::string split_path = io::JoinPath(repetition_dir, split_file);
-      TF_RETURN_IF_ERROR(ReadOnDiskSplit(source_index, split_files, split_path,
-                                         global_split_indices));
+      std::string split_path = tsl::io::JoinPath(repetition_dir, split_file);
+      TF_RETURN_IF_ERROR(
+          ReadOnDiskSplit(source_index, split_files, split_path));
     }
-    streams_[stream_index].num_assigned_splits_per_source[source_index] +=
+    restored_stream_->num_assigned_splits_per_source[source_index] +=
         split_files.size();
   }
   return absl::OkStatus();
 }
 
-absl::Status SnapshotManager::ReadOnDiskSplit(
+absl::Status SnapshotManager::StreamRestorer::ReadOnDiskSplit(
     int64_t source_index, const std::vector<std::string>& split_files,
-    std::string split_file, absl::flat_hash_set<int64_t>& global_split_indices)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  if (IsTemporaryFile(split_file)) {
-    TF_RETURN_IF_ERROR(
-        RecoverSplit(split_file, *sources_[source_index].split_provider));
-    TF_ASSIGN_OR_RETURN(split_file, ParseTemporaryFile(split_file));
-  } else {
-    // To account for this split having been assigned, skip a split in the
-    // respective split provider.
-    TF_RETURN_IF_ERROR(
-        GetNextSplit(*sources_[source_index].split_provider).status());
-  }
-
+    const std::string& split_file) {
   // `split_file` must have this format:
   // "split_<local_split_index>_<global_split_index>".
   TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_file));
   auto [local_split_index, global_split_index] = split_indices;
-  if (global_split_indices.contains(global_split_index)) {
+  if (global_split_indices_.contains(global_split_index)) {
     return absl::InternalError(absl::StrCat(
-        "Found duplicate global split index in name of ", split_file));
+        "Failed to restore tf.data snapshot at ", path_,
+        ": Found duplicate global split index in split ", split_file, "."));
   }
-  global_split_indices.insert(global_split_index);
+  global_split_indices_.insert(global_split_index);
+
+  // To account for this split having been assigned, skip a split in the
+  // respective split provider.
+  return SkipSplit(*sources_[source_index].split_provider);
+}
+
+absl::Status SnapshotManager::StreamRestorer::SkipSplit(
+    SplitProvider& split_provider) {
+  Tensor tensor;
+  bool end_of_splits = false;
+  TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
+  while (end_of_splits) {
+    TF_RETURN_IF_ERROR(split_provider.Reset());
+    TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
+  }
   return absl::OkStatus();
 }
 
-absl::Status SnapshotManager::RecoverSplit(const std::string& temp_split_file,
-                                           SplitProvider& split_provider) {
-  TF_ASSIGN_OR_RETURN(std::string recovered_split_file,
-                      ParseTemporaryFile(temp_split_file));
-  TF_ASSIGN_OR_RETURN(Tensor split, GetNextSplit(split_provider));
-  // Uses the same temp file for split recovery. If the dispatcher fails during
-  // recovery, there will be at most one temporary files for the same split.
-  return AtomicallyWriteTFRecords(recovered_split_file, {split},
-                                  kSplitFileCompression, temp_split_file, env_);
-}
-
-absl::StatusOr<Tensor> SnapshotManager::GetNextSplit(
-    SplitProvider& split_provider) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  Tensor split;
-  bool end_of_splits = false;
-  TF_RETURN_IF_ERROR(split_provider.GetNext(&split, &end_of_splits));
-  while (end_of_splits) {
-    TF_RETURN_IF_ERROR(split_provider.Reset());
-    TF_RETURN_IF_ERROR(split_provider.GetNext(&split, &end_of_splits));
+absl::Status SnapshotManager::RestoreFrom(
+    const StreamRestorer& stream_restorer,
+    const std::vector<std::string>& stream_directories,
+    absl::flat_hash_set<int64_t>& global_split_indices)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (!stream_restorer.GetStream().has_value()) {
+    // The dispatcher may get preempted when it writes the owner_worker file.
+    // If that happens, we skip the last stream directory.
+    if (stream_restorer.StreamIndex() < stream_directories.size() - 1) {
+      return absl::InternalError(absl::StrCat(
+          "Failed to restore tf.data snapshot at ", path_,
+          ": Found orphaned stream ", stream_restorer.StreamIndex(), "."));
+    }
+    streams_.pop_back();
+    return absl::OkStatus();
   }
-  return split;
+
+  streams_[stream_restorer.StreamIndex()] = *stream_restorer.GetStream();
+  auto [it, success] = assignments_.insert(
+      {stream_restorer.WorkerAddress(), stream_restorer.StreamIndex()});
+  if (!success) {
+    return absl::InternalError(absl::StrCat(
+        "tf.data dispatcher failed to assign stream ",
+        stream_restorer.StreamIndex(), " to snapshot worker ",
+        stream_restorer.WorkerAddress(),
+        ": The worker is already assigned stream ", it->second, "."));
+  }
+  for (int64_t source_index = 0; source_index < num_sources(); ++source_index) {
+    if (stream_restorer.RepetitionIndices()[source_index] >
+        sources_[source_index].repetition_index) {
+      sources_[source_index].repetition_index =
+          stream_restorer.RepetitionIndices()[source_index];
+    }
+  }
+  for (int64_t global_split_index : stream_restorer.GlobalSplitIndices()) {
+    if (global_split_indices.contains(global_split_index)) {
+      return absl::InternalError(
+          absl::StrCat("Failed to restore tf.data snapshot at ", path_,
+                       ": Found ", "duplicate global split index in stream ",
+                       stream_restorer.StreamIndex(), "."));
+    }
+    global_split_indices.insert(global_split_index);
+  }
+  return absl::OkStatus();
 }
 
 absl::Status SnapshotManager::HandleStreamCompletion(
@@ -631,59 +619,56 @@ absl::Status SnapshotManager::WorkerHeartbeat(
 absl::Status SnapshotManager::GetSnapshotSplit(
     const GetSnapshotSplitRequest& request, GetSnapshotSplitResponse& response)
     TF_LOCKS_EXCLUDED(mu_) {
+  tsl::mutex_lock l(mu_);
+  if (auto it = assignments_.find(request.worker_address());
+      it == assignments_.end()) {
+    return absl::InternalError(
+        absl::StrCat("tf.data snapshot worker ", request.worker_address(),
+                     " was assigned stream ", request.stream_index(),
+                     ", but the assignment is no longer available."));
+  } else if (it->second != request.stream_index()) {
+    return absl::InternalError(
+        absl::StrCat("tf.data snapshot worker ", request.worker_address(),
+                     " was assigned stream ", request.stream_index(),
+                     " but is now assigned a different stream ", it->second));
+  }
+
+  Stream& stream = streams_[request.stream_index()];
+  int64_t local_split_index =
+      stream.num_assigned_splits_per_source[request.source_index()];
+  int64_t global_split_index = num_assigned_splits_;
+  response.set_local_split_index(local_split_index);
+
+  Source& source = sources_[request.source_index()];
+  if (request.repetition_index() < source.repetition_index) {
+    response.set_end_of_splits(true);
+    return absl::OkStatus();
+  }
+  while (request.repetition_index() > source.repetition_index) {
+    // This could happen if an iterator is repeated before reaching end of
+    // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
+    // the previous repetitions as completed and advance to the requested
+    // repetition.
+    TF_RETURN_IF_ERROR(ResetSource(source, request.source_index()));
+  }
+
   Tensor split;
   bool end_of_splits = false;
-  int64_t local_split_index = 0;
-  int64_t global_split_index = 0;
-  {
-    tsl::mutex_lock l(mu_);
-    if (auto it = assignments_.find(request.worker_address());
-        it == assignments_.end()) {
-      return absl::InternalError(
-          absl::StrCat("tf.data snapshot worker ", request.worker_address(),
-                       " was assigned stream ", request.stream_index(),
-                       ", but the assignment is no longer available."));
-    } else if (it->second != request.stream_index()) {
-      return absl::InternalError(
-          absl::StrCat("tf.data snapshot worker ", request.worker_address(),
-                       " was assigned stream ", request.stream_index(),
-                       " but is now assigned a different stream ", it->second));
-    }
-
-    Stream& stream = streams_[request.stream_index()];
-    local_split_index =
-        stream.num_assigned_splits_per_source[request.source_index()];
-    global_split_index = num_assigned_splits_;
-    response.set_local_split_index(local_split_index);
-
-    Source& source = sources_[request.source_index()];
-    if (request.repetition_index() < source.repetition_index) {
-      response.set_end_of_splits(true);
-      return absl::OkStatus();
-    }
-    while (request.repetition_index() > source.repetition_index) {
-      // This could happen if an iterator is repeated before reaching end of
-      // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
-      // the previous repetitions as completed and advance to the requested
-      // repetition.
-      TF_RETURN_IF_ERROR(ResetSource(source, request.source_index()));
-    }
-
-    TF_RETURN_IF_ERROR(source.split_provider->GetNext(&split, &end_of_splits));
-    if (end_of_splits) {
-      response.set_end_of_splits(true);
-      return absl::OkStatus();
-    }
-
-    ++stream.num_assigned_splits_per_source[request.source_index()];
-    ++num_assigned_splits_;
+  TF_RETURN_IF_ERROR(source.split_provider->GetNext(&split, &end_of_splits));
+  if (end_of_splits) {
+    response.set_end_of_splits(true);
+    return absl::OkStatus();
   }
+
   std::string split_path = SplitPath(
       path_, request.stream_index(), request.source_index(),
       request.repetition_index(), local_split_index, global_split_index);
-  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(split_path, {split},
-                                              kSplitFileCompression, env_));
+  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
+      split_path, {split}, tsl::io::compression::kNone, env_));
   split.AsProtoTensorContent(response.mutable_split());
+
+  ++stream.num_assigned_splits_per_source[request.source_index()];
+  ++num_assigned_splits_;
   return absl::OkStatus();
 }
 

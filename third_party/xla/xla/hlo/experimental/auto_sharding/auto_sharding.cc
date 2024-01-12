@@ -1652,6 +1652,7 @@ AutoShardingSolverResult CallSolver(
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
     const bool compute_iis, const int64_t solver_timeout_in_seconds,
     const AutoShardingOption& option, std::optional<double> max_cost,
+    absl::string_view request_name,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution,
     bool deterministic_mode) {
@@ -1673,6 +1674,7 @@ AutoShardingSolverResult CallSolver(
   request.set_compute_iis(compute_iis);
   request.set_saltiplier(kSaltiplier);
   request.set_deterministic_mode(deterministic_mode);
+  request.set_request_name(std::string(request_name));
   if (max_cost) {
     request.mutable_max_cost()->set_coeff(*max_cost);
   }
@@ -3575,10 +3577,11 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     std::vector<spmd::NodeStrategyIdx> s_val;
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
+    std::string request_name = absl::StrCat("mesh_idx_", mesh_idx);
     auto solver_result =
         Solve(*module, *hlo_live_range, liveness_node_set, liveness_edge_set,
               strategy_map, strategy_groups, cost_graph, alias_set, option_,
-              sharding_propagation_solution);
+              request_name, sharding_propagation_solution);
     if (solver_result.skip_auto_sharding) {
       return AutoShardingResult::kModuleUnchangedNoShardingPerformed;
     } else if (!solver_result.status.ok()) {
@@ -3832,11 +3835,19 @@ StatusOr<bool> AutoSharding::Run(
     }
     module_is_changed = false;
   } else {
+    std::string trying_to_find;
+    if (option_.try_multiple_mesh_shapes) {
+      trying_to_find = "a device mesh (and the corresponding shardings)";
+    } else {
+      trying_to_find = "shardings";
+    }
     CHECK_GE(min_mesh_shape_index, 0)
-        << "The auto-sharding pass could not find a device mesh that works for "
-           "this input. This could be the result of a low memory budget. If "
-           "you think you have set a reasonably large memory budget, please "
-           "report this as a bug.";
+        << "The auto-sharding pass could not find " << trying_to_find
+        << " that works for this input. This could be the result of a low "
+           "memory budget (please refer to the "
+           "`--xla_tpu_auto_spmd_partitioning_memory_budget_ratio` flag to set "
+           "a higher budget). If you think you have set a reasonably large "
+           "memory budget, please report this as a bug.";
 
     if (!changed[min_mesh_shape_index].ok()) {
       module_is_changed = changed[min_mesh_shape_index].status();

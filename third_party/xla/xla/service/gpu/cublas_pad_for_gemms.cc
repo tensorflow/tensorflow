@@ -37,8 +37,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-static StatusOr<bool> PadForGemm(HloDotInstruction* dot, PrimitiveType datatype,
-                                 int pad_to_multiple_of) {
+static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
+                                       PrimitiveType datatype,
+                                       int pad_to_multiple_of) {
   auto* lhs = dot->mutable_operand(0);
   auto* rhs = dot->mutable_operand(1);
 
@@ -187,7 +188,7 @@ static std::vector<HloDotInstruction*> GetRelevantDots(
   return gemms;
 }
 
-StatusOr<bool> CublasPadForGemms::Run(
+absl::StatusOr<bool> CublasPadForGemms::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

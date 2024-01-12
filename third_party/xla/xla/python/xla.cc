@@ -1080,9 +1080,12 @@ static void Init(py::module_& m) {
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))
       .def("compile_options",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompileOptions))
-      .def("serialize", [](const PjRtExecutable& exec) -> py::bytes {
-        return ValueOrThrow(exec.SerializeExecutable());
-      });
+      .def("serialize",
+           [](const PjRtExecutable& exec) -> py::bytes {
+             return ValueOrThrow(exec.SerializeExecutable());
+           })
+      .def("cost_analysis",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetCostAnalysis));
 
   m.def("is_asan", IsAsan);
   m.def("is_msan", IsMsan);

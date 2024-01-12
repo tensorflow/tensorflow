@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/layout_util.h"
@@ -38,15 +39,16 @@ using se::dnn::MatmulTensorDescriptor;
 using se::dnn::TensorDescriptor;
 
 template <typename ElementType, typename BiasType, typename OutputType>
-Status RunFusedMHA(GpufMHAParams params, se::Stream *stream,
-                   RunFusedMHAOptions options,
-                   DeviceMemory<ElementType> lhs_bmm1_buffer,
-                   DeviceMemory<ElementType> rhs_bmm1_buffer,
-                   DeviceMemory<ElementType> rhs_bmm2_buffer,
-                   DeviceMemory<OutputType> output_buffer,
-                   DeviceMemoryBase mask_buffer, DeviceMemoryBase bias_buffer,
-                   DeviceMemoryBase scratch_memory,
-                   DeviceMemoryBase activation_output) {
+absl::Status RunFusedMHA(GpufMHAParams params, se::Stream *stream,
+                         RunFusedMHAOptions options,
+                         DeviceMemory<ElementType> lhs_bmm1_buffer,
+                         DeviceMemory<ElementType> rhs_bmm1_buffer,
+                         DeviceMemory<ElementType> rhs_bmm2_buffer,
+                         DeviceMemory<OutputType> output_buffer,
+                         DeviceMemoryBase mask_buffer,
+                         DeviceMemoryBase bias_buffer,
+                         DeviceMemoryBase scratch_memory,
+                         DeviceMemoryBase activation_output) {
   se::dnn::LazyOpRunner<se::dnn::FusedMHAOp> *lazy_runner =
       options.runner_cache->AsFusedMHARunner();
   std::optional<se::dnn::LazyOpRunner<se::dnn::FusedMHAOp>> local_runner;
@@ -93,9 +95,9 @@ Status RunFusedMHA(GpufMHAParams params, se::Stream *stream,
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
-Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
-                      se::DeviceMemoryBase scratch_memory,
-                      RunFusedMHAOptions options) {
+absl::Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
+                            se::DeviceMemoryBase scratch_memory,
+                            RunFusedMHAOptions options) {
   auto lhs_bmm1_buffer = se::DeviceMemory<ElementType>(params.lhs_bmm1_buffer);
   auto rhs_bmm1_buffer = se::DeviceMemory<ElementType>(params.rhs_bmm1_buffer);
   auto rhs_bmm2_buffer = se::DeviceMemory<ElementType>(params.rhs_bmm2_buffer);
@@ -115,7 +117,7 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
     algorithm = options.runner_cache->ToAlgorithmDesc();
   }
 
-  Status run_status = OkStatus();
+  absl::Status run_status = absl::OkStatus();
   switch (params.config->kind) {
     case CudnnfMHAKind::kBmmBmm:
     case CudnnfMHAKind::kSoftmaxDropout:
@@ -135,7 +137,7 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
       return InternalError("Invalid cuDNN fMHA kind");
   }
 
-  if (run_status != OkStatus()) {
+  if (!run_status.ok()) {
     return run_status;
   }
 
@@ -145,7 +147,7 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
                          algorithm.ToString());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AssignScale(GpufMHAConfig &config,
@@ -201,7 +203,7 @@ void AssignSeed(GpufMHAConfig &config,
 }
 
 template <typename ElementType, typename OutputType>
-Status RunFusedMHABackward(
+absl::Status RunFusedMHABackward(
     GpufMHABackwardParams params, se::Stream *stream,
     RunFusedMHABackwardOptions options,
     DeviceMemory<ElementType> bmm1_grad_gemm1_rhs_buffer,
@@ -270,14 +272,14 @@ Status RunFusedMHABackward(
                    d_bmm2_rhs_buffer, d_s_buffer, softmax_buffer,
                    d_Q_accum_buffer, mask_buffer, d_bias_buffer,
                    fwd_output_buffer, bias_buffer);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ElementType, typename BiasType, typename OutputType>
-Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
-                              se::Stream *stream,
-                              se::DeviceMemoryBase scratch_memory,
-                              RunFusedMHABackwardOptions options) {
+absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
+                                    se::Stream *stream,
+                                    se::DeviceMemoryBase scratch_memory,
+                                    RunFusedMHABackwardOptions options) {
   auto bmm1_grad_gemm1_rhs_buffer =
       se::DeviceMemory<ElementType>(params.bmm1_grad_gemm1_rhs_buffer);
   auto bmm1_grad_gemm2_rhs_buffer =
@@ -330,7 +332,7 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
     algorithm = options.runner_cache->ToAlgorithmDesc();
   }
 
-  Status run_status = OkStatus();
+  absl::Status run_status = absl::OkStatus();
   switch (params.config->kind) {
     case CudnnfMHAKind::kBackwardBmmBmm:
     case CudnnfMHAKind::kBackwardSoftmaxDropout:
@@ -353,7 +355,7 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
       return InternalError("Invalid cuDNN fMHA kind");
   }
 
-  if (run_status != OkStatus()) {
+  if (!run_status.ok()) {
     return run_status;
   }
 
@@ -367,7 +369,7 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
 }
 }  // namespace
 
-/*static*/ StatusOr<GpufMHAConfig> GpufMHAConfig::For(
+/*static*/ absl::StatusOr<GpufMHAConfig> GpufMHAConfig::For(
     const GpufMHADescriptor &desc) {
   // Get shapes from desc.
   const Shape &lhs_bmm1_shape = desc.lhs_bmm1_shape;
@@ -463,7 +465,7 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   return config;
 }
 
-/*static*/ StatusOr<GpufMHABackwardConfig> GpufMHABackwardConfig::For(
+/*static*/ absl::StatusOr<GpufMHABackwardConfig> GpufMHABackwardConfig::For(
     const GpufMHABackwardDescriptor &desc) {
   // Get shapes from desc.
 
@@ -616,7 +618,7 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   return config;
 }
 
-/*static*/ StatusOr<GpufMHAParams> GpufMHAParams::For(
+/*static*/ absl::StatusOr<GpufMHAParams> GpufMHAParams::For(
     const GpufMHAConfig &config, se::DeviceMemoryBase lhs_bmm1_buffer,
     se::DeviceMemoryBase rhs_bmm1_buffer, se::DeviceMemoryBase rhs_bmm2_buffer,
     se::DeviceMemoryBase output_buffer,
@@ -636,7 +638,7 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   return params;
 }
 
-/*static*/ StatusOr<GpufMHABackwardParams> GpufMHABackwardParams::For(
+/*static*/ absl::StatusOr<GpufMHABackwardParams> GpufMHABackwardParams::For(
     const GpufMHABackwardConfig &config,
     se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer,
     se::DeviceMemoryBase bmm1_grad_gemm2_rhs_buffer,
@@ -673,16 +675,16 @@ Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   return params;
 }
 
-Status RunGpuFMHA(const GpufMHAConfig &fmha_config,
-                  se::DeviceMemoryBase lhs_bmm1_buffer,
-                  se::DeviceMemoryBase rhs_bmm1_buffer,
-                  se::DeviceMemoryBase rhs_bmm2_buffer,
-                  se::DeviceMemoryBase output_buffer,
-                  se::DeviceMemoryBase scratch_buffer,
-                  std::optional<se::DeviceMemoryBase> mask_buffer,
-                  std::optional<se::DeviceMemoryBase> bias_buffer,
-                  std::optional<se::DeviceMemoryBase> activation_buffer,
-                  se::Stream *stream, RunFusedMHAOptions options) {
+absl::Status RunGpuFMHA(const GpufMHAConfig &fmha_config,
+                        se::DeviceMemoryBase lhs_bmm1_buffer,
+                        se::DeviceMemoryBase rhs_bmm1_buffer,
+                        se::DeviceMemoryBase rhs_bmm2_buffer,
+                        se::DeviceMemoryBase output_buffer,
+                        se::DeviceMemoryBase scratch_buffer,
+                        std::optional<se::DeviceMemoryBase> mask_buffer,
+                        std::optional<se::DeviceMemoryBase> bias_buffer,
+                        std::optional<se::DeviceMemoryBase> activation_buffer,
+                        se::Stream *stream, RunFusedMHAOptions options) {
   TF_ASSIGN_OR_RETURN(
       GpufMHAParams params,
       GpufMHAParams::For(fmha_config, lhs_bmm1_buffer, rhs_bmm1_buffer,
@@ -700,10 +702,10 @@ Status RunGpuFMHA(const GpufMHAConfig &fmha_config,
       return absl::UnimplementedError(absl::StrFormat(
           "Unimplemented fused MHA with %s", ToString(fmha_config)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RunGpuFMHABackward(
+absl::Status RunGpuFMHABackward(
     const GpufMHABackwardConfig &fmha_config,
     se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer,
     se::DeviceMemoryBase bmm1_grad_gemm2_rhs_buffer,
@@ -741,7 +743,7 @@ Status RunGpuFMHABackward(
     default:
       return Unimplemented("Unimplemented fused MHA backward");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string ToString(const GpufMHAConfig &config) {

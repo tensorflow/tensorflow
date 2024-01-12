@@ -55,6 +55,8 @@ class XlaCallModuleLoader {
   // then set them as the types of the function parameters, and run StableHLO
   // shape refinement to specialize all dynamic shapes in the StableHLO program
   // to static shapes.
+  // Starting with version 9, the "main" function may accept token arguments.
+  // The input_shapes includes only the non-token arguments.
   //
   // This method accepts a list of `llvm::ArrayRef` instead of `mlir::Type`.
   // This is to prevent callers from accidentally passing `mlir::Type` owned by

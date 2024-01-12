@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringSet.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_libdevice_path.h"
@@ -138,7 +140,7 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
   llvm::initializeTransformUtils(*pass_registry);
   llvm::initializeInstCombine(*pass_registry);
   llvm::initializeTarget(*pass_registry);
-  llvm::initializeCodeGenPreparePass(*pass_registry);
+  llvm::initializeCodeGenPrepareLegacyPassPass(*pass_registry);
 }
 
 // Returns the TargetMachine, given a triple.
@@ -231,7 +233,7 @@ bool CouldNeedDeviceBitcode(const llvm::Module& module) {
 
 // Links the module with a vector of path to bitcode modules.
 // The caller must guarantee that the paths exist.
-Status LinkWithBitcodeVector(
+absl::Status LinkWithBitcodeVector(
     llvm::Module* module, const std::vector<std::string>& bitcode_path_vector) {
   llvm::Linker linker(*module);
 
@@ -259,13 +261,13 @@ Status LinkWithBitcodeVector(
                                 bitcode_path);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status NVPTXTargetModuleLinker(llvm::Module* module,
-                               se::GpuComputeCapability gpu_version,
-                               const DebugOptions& debug_options,
-                               const std::string& device_bitcode_path) {
+absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
+                                     se::GpuComputeCapability gpu_version,
+                                     const DebugOptions& debug_options,
+                                     const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
   TF_RETURN_IF_ERROR(
@@ -283,7 +285,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
@@ -352,7 +354,7 @@ auto DumpCallbackForModule(std::string module_identifier,
   };
 }
 
-Status LinkAndOptimizeModule(
+absl::Status LinkAndOptimizeModule(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& device_bitcode_path,
     TargetModuleLinker module_linker, llvm::Triple default_target_triple,
@@ -425,7 +427,7 @@ Status LinkAndOptimizeModule(
 
   mpm.run(*module, mam);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // One-time module initializer.
@@ -535,10 +537,10 @@ std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
 }
 
 // Links libdevice into the given module if the module needs libdevice.
-Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                const std::string& libdevice_path) {
+absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
+                                      const std::string& libdevice_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
@@ -552,7 +554,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   return LinkWithBitcodeVector(module, {libdevice_path});
 }
 
-StatusOr<std::string> CompileToPtx(
+absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target) {
@@ -705,7 +707,7 @@ void HsacoCache::Add(const std::string& ir, uint64_t hash,
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
+absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     llvm::Module* module, llvm::TargetMachine* target_machine) {
   auto* env = tsl::Env::Default();
   std::vector<std::string> tempdir_vector;
@@ -809,20 +811,21 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 }
 
 // Links ROCm-Device-Libs into the given module if the module needs it.
-Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
-                            const std::string& rocdl_dir_path) {
+absl::Status LinkROCDLIfNecessary(llvm::Module* module,
+                                  std::string gcn_arch_name,
+                                  const std::string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return LinkWithBitcodeVector(module,
                                GetROCDLPaths(gcn_arch_name, rocdl_dir_path));
 }
 
-Status AMDGPUTargetModuleLinker(llvm::Module* module,
-                                se::GpuComputeCapability gpu_version,
-                                const DebugOptions& debug_options,
-                                const std::string& device_bitcode_dir_path) {
+absl::Status AMDGPUTargetModuleLinker(
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options,
+    const std::string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
 
   auto compute_capability =
@@ -842,7 +845,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The following routine maps a feature token extracted from the
@@ -930,7 +933,7 @@ void AMDGPUBackendInit(const DebugOptions& debug_options) {
 }  // namespace
 
 namespace amdgpu {
-StatusOr<std::vector<uint8_t>> CompileToHsaco(
+absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& rocdl_dir_path,
     const std::string& module_config_cache_key) {

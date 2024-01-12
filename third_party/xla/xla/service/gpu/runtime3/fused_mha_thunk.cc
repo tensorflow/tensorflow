@@ -63,7 +63,7 @@ std::optional<se::DeviceMemoryBase> AssignBufferIfNotNull(
              : std::nullopt;
 }
 
-Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
   se::DeviceMemoryBase lhs_bmm1_buffer =
       buffer_allocations.GetDeviceAddress(lhs_bmm1_buffer_);
@@ -93,7 +93,7 @@ Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("FusedMHAThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 FusedMHABackwardThunk::FusedMHABackwardThunk(
     ThunkInfo thunk_info, GpufMHABackwardConfig config,
@@ -141,7 +141,8 @@ FusedMHABackwardThunk::GetOrCreateRunner(
   return *it->second;
 }
 
-Status FusedMHABackwardThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status FusedMHABackwardThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
   se::DeviceMemoryBase bmm1_grad_gemm1_rhs_buffer =
       buffer_allocations.GetDeviceAddress(bmm1_grad_gemm1_rhs_buffer_);
@@ -198,7 +199,7 @@ Status FusedMHABackwardThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!params.stream->ok()) {
     return InternalError("FusedMHABackwardThunk::ExecuteOnStream failed.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

@@ -27,12 +27,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -85,7 +85,7 @@ class GpuKernel : public internal::KernelInterface {
   // CUfunc_cache.
   GpuFuncCachePreference GetGpuCacheConfig() const;
 
-  tsl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
+  absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
 
  private:

@@ -795,7 +795,8 @@ class PjRtClient {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtDevice* device) = 0;
 
   // Variant of BufferFromHostBuffer that takes an optional device layout. It is
   // used when non-compact layout is preferred.
@@ -805,8 +806,8 @@ class PjRtClient {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
-      const Layout* device_layout) {
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtDevice* device, const Layout* device_layout) {
     return tsl::errors::Unimplemented(
         "BufferFromHostBuffer with an optional device layout is not "
         "implemented on platform: ",
@@ -819,7 +820,7 @@ class PjRtClient {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtMemorySpace* memory_space, const Layout* device_layout) {
     return tsl::errors::Unimplemented(
         "BufferFromHostBuffer with PjRtMemorySpace is not implemented on "

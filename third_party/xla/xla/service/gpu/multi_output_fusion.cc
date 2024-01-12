@@ -404,7 +404,7 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
   return changed;
 }
 
-StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
+absl::StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   bool changed = false;
   RecomputeReachability();
   GpuHloCostAnalysis cost_analysis({shape_size_function_,
@@ -505,7 +505,7 @@ void GpuMultiOutputFusion::DumpFusionState(const HloInstruction& consumer,
   }
 }
 
-StatusOr<bool> GpuMultiOutputFusion::Run(
+absl::StatusOr<bool> GpuMultiOutputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

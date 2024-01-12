@@ -1975,9 +1975,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     data_gen = self._create_data_generator(
         input_key='input_tensor',
-        shape=[6],
+        shape=[500],
         minval=0,
-        maxval=10,
+        maxval=64,
         dtype=input_type,
     )
 
@@ -2023,6 +2023,15 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
       else:
         self.assertTrue(self._contains_quantized_function_call(output_graphdef))
+
+    test_data = np.random.uniform(low=0, high=64, size=(32)).astype(
+        input_type.as_numpy_dtype
+    )
+    original_outputs = model.model(test_data)['output']
+    quantized_output = converted_model.signatures['serving_default'](
+        input_tensor=ops.convert_to_tensor(test_data)
+    )['output']
+    self.assertAllClose(original_outputs, quantized_output, atol=442.7)
 
   @test_util.run_v2_only
   def test_while_op_model(

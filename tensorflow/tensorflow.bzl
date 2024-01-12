@@ -3413,9 +3413,6 @@ def tf_monitoring_python_deps():
 def tf_selective_registration_deps():
     return []
 
-def tf_jit_compilation_passes_extra_deps():
-    return []
-
 def if_mlir(if_true, if_false = []):
     return select({
         str(Label("//tensorflow:with_mlir_support")): if_true,

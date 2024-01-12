@@ -23,6 +23,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
@@ -37,8 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -47,7 +47,7 @@ const ::stream_executor::Platform::Id TpuPlatform::kId = GetTpuPlatformId();
 TpuPlatform* tpu_registered_platform = nullptr;
 
 template <typename T>
-using StatusOr = ::tsl::StatusOr<T>;
+using StatusOr = ::absl::StatusOr<T>;
 
 TpuPlatform::TpuPlatform() : name_("TPU") {
   platform_ = stream_executor::tpu::ExecutorApiFn()->TpuPlatform_NewFn();
@@ -58,7 +58,7 @@ TpuPlatform* TpuPlatform::GetRegisteredPlatform() {
   return tpu_registered_platform;
 }
 
-tsl::Status TpuPlatform::Initialize(
+absl::Status TpuPlatform::Initialize(
     const std::map<std::string, std::string>& platform_options) {
   StatusHelper status;
 
@@ -172,11 +172,11 @@ void TpuPlatform::EraseEvent(stream_executor::internal::EventInterface* key) {
   event_map_.erase(key);
 }
 
-tsl::Status TpuPlatform::TpusPerHost(int* tpus) {
+absl::Status TpuPlatform::TpusPerHost(int* tpus) {
   if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpusPerHostFn ==
       nullptr) {
     *tpus = 0;
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   StatusHelper status;
@@ -185,11 +185,11 @@ tsl::Status TpuPlatform::TpusPerHost(int* tpus) {
   return status.status();
 }
 
-tsl::Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
+absl::Status TpuPlatform::TpuMemoryLimit(int64_t* memory_limit) {
   if (stream_executor::tpu::OpsApiFn()->TpuConfigurationApi_TpuMemoryLimitFn ==
       nullptr) {
     *memory_limit = 0;
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   StatusHelper status;

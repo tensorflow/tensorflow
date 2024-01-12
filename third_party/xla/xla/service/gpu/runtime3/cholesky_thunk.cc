@@ -35,8 +35,9 @@ namespace gpu {
 namespace {
 
 template <typename T>
-Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts, CholeskyParams* params,
-                      se::Stream* stream, GpuSolverContext& context) {
+absl::Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts,
+                            CholeskyParams* params, se::Stream* stream,
+                            GpuSolverContext& context) {
   T* a_base = static_cast<T*>(params->a_buffer.opaque());
   se::DeviceMemory<int> infos(params->info_buffer);
 #if TENSORFLOW_USE_ROCSOLVER
@@ -82,7 +83,7 @@ CholeskyThunk::CholeskyThunk(ThunkInfo thunk_info,
       batch_size_(batch_size),
       n_(n) {}
 
-Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "type=" << PrimitiveType_Name(type_)
           << " uplo=" << se::blas::UpperLowerString(uplo_)
           << " batch_size=" << batch_size_ << " n=" << n_
@@ -101,9 +102,10 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
   return RunCholesky(asm_opts_, type_, &cholesky_params, params.stream);
 }
 
-Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
-                   CholeskyParams* cholesky_params, se::Stream* stream) {
-  thread_local StatusOr<GpuSolverContext> context = GpuSolverContext::Create();
+absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
+                         CholeskyParams* cholesky_params, se::Stream* stream) {
+  thread_local absl::StatusOr<GpuSolverContext> context =
+      GpuSolverContext::Create();
   TF_RETURN_IF_ERROR(context.status());
   TF_RETURN_IF_ERROR(context->SetStream(stream));
 

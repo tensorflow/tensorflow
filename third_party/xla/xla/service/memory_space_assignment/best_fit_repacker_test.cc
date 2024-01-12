@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "tsl/platform/test.h"
 
@@ -27,12 +28,6 @@ namespace xla {
 
 class MemorySpaceAssignmentBestFitRepackerTest : public ::testing::Test {
  protected:
-  using AllocationBlock =
-      memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock;
-  using SlicedAllocationData = memory_space_assignment::
-      MemorySpaceAssignmentRepacker::SlicedAllocationData;
-  using Slice = memory_space_assignment::MemorySpaceAssignmentRepacker::Slice;
-
   MemorySpaceAssignmentBestFitRepackerTest() : repacker_(100, 1, options_) {}
 
   AllocationBlock* MakeAllocationBlock(int64_t start_time, int64_t end_time,
@@ -136,16 +131,16 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, RepackedSlicesFit) {
   allocation_blocks.push_back(MakeAllocationBlock(11, 21, 3));
   // Block C
   allocation_blocks.push_back(MakeAllocationBlock(16, 25, 4));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{2, -1, 16}, Slice{2, -1, 22}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{2, -1, 16}, AllocatedSlice{2, -1, 22}}});
   // Block D
   allocation_blocks.push_back(MakeAllocationBlock(26, 33, 4));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{2, -1, 26}, Slice{2, -1, 30}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{2, -1, 26}, AllocatedSlice{2, -1, 30}}});
   // Block E
   allocation_blocks.push_back(MakeAllocationBlock(19, 25, 2));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{1, -1, 19}, Slice{1, -1, 22}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{1, -1, 19}, AllocatedSlice{1, -1, 22}}});
   // Block F
   allocation_blocks.push_back(MakeAllocationBlock(26, 29, 2));
 
@@ -180,17 +175,20 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, RepackedSlicesFit) {
   EXPECT_EQ(allocation_blocks[2]->offset, 0);
   ASSERT_TRUE(allocation_blocks[2]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[2]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{2, 0, 16}, Slice{2, 2, 22}}})));
+            (SlicedAllocationData(
+                {{AllocatedSlice{2, 0, 16}, AllocatedSlice{2, 2, 22}}})));
   // Block D
   EXPECT_EQ(allocation_blocks[3]->offset, 0);
   ASSERT_TRUE(allocation_blocks[3]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[3]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{2, 0, 26}, Slice{2, 2, 30}}})));
+            (SlicedAllocationData(
+                {{AllocatedSlice{2, 0, 26}, AllocatedSlice{2, 2, 30}}})));
   // Block E
   EXPECT_EQ(allocation_blocks[4]->offset, 4);
   ASSERT_TRUE(allocation_blocks[4]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[4]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{1, 4, 22}, Slice{1, 5, 19}}})));
+            (SlicedAllocationData(
+                {{AllocatedSlice{1, 4, 22}, AllocatedSlice{1, 5, 19}}})));
   // Block F
   EXPECT_EQ(allocation_blocks[5]->offset, 2);
   EXPECT_FALSE(allocation_blocks[5]->repacked_slice_data.has_value());
@@ -221,8 +219,8 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
   allocation_blocks.push_back(MakeAllocationBlock(0, 10, 2, 0));
   // Block B
   allocation_blocks.push_back(MakeAllocationBlock(5, 15, 3, 2));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{2, 2, 5}, Slice{1, 4, 11}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{2, 2, 5}, AllocatedSlice{1, 4, 11}}});
   // Block C
   allocation_blocks.push_back(MakeAllocationBlock(5, 15, 2, 6));
 
@@ -255,14 +253,14 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
   ASSERT_EQ(
       allocation_blocks[1]->repacked_slice_data->slices_sorted_by_offset.size(),
       2);
-  const Slice& slice_with_smaller_offset =
+  const AllocatedSlice& slice_with_smaller_offset =
       allocation_blocks[1]->repacked_slice_data->slices_sorted_by_offset[0];
-  const Slice& slice_with_larger_offset =
+  const AllocatedSlice& slice_with_larger_offset =
       allocation_blocks[1]->repacked_slice_data->slices_sorted_by_offset[1];
   // The larger slice is assigned to the smaller offset.
   ASSERT_GT(slice_with_smaller_offset.size, slice_with_larger_offset.size);
-  const Slice& larger_slice = slice_with_smaller_offset;
-  const Slice& smaller_slice = slice_with_larger_offset;
+  const AllocatedSlice& larger_slice = slice_with_smaller_offset;
+  const AllocatedSlice& smaller_slice = slice_with_larger_offset;
   // The larger slice is assigned to the earlier start time.
   ASSERT_LT(larger_slice.inclusive_start_time,
             smaller_slice.inclusive_start_time);
@@ -295,8 +293,8 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
   allocation_blocks.push_back(MakeAllocationBlock(11, 20, 2, 4));
   // Block C
   allocation_blocks.push_back(MakeAllocationBlock(5, 15, 3, 1));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{1, 1, 5}, Slice{2, 2, 11}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{1, 1, 5}, AllocatedSlice{2, 2, 11}}});
 
   // Specify the repacking sort order as the order in which blocks were added to
   // allocation_blocks. We need to do this so that B is placed before C.
@@ -332,7 +330,8 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
   EXPECT_EQ(allocation_blocks[2]->offset, 2);
   ASSERT_TRUE(allocation_blocks[2]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[2]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{1, 2, 5}, Slice{2, 3, 11}}})));
+            (SlicedAllocationData(
+                {{AllocatedSlice{1, 2, 5}, AllocatedSlice{2, 3, 11}}})));
 }
 
 TEST_F(MemorySpaceAssignmentBestFitRepackerTest, SlicedColocationsFit) {
@@ -363,12 +362,12 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, SlicedColocationsFit) {
   allocation_blocks.push_back(MakeAllocationBlock(5, 11, 2));
   // Block D
   allocation_blocks.push_back(MakeAllocationBlock(15, 20, 5));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{2, -1, 15}, Slice{3, -1, 18}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{2, -1, 15}, AllocatedSlice{3, -1, 18}}});
   // Block E
   allocation_blocks.push_back(MakeAllocationBlock(9, 14, 4));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{2, -1, 9}, Slice{2, -1, 12}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{2, -1, 9}, AllocatedSlice{2, -1, 12}}});
   // Colocate E with D.
   allocation_blocks.back()->next_colocated = allocation_blocks[3];
   allocation_blocks[3]->next_colocated = allocation_blocks.back();
@@ -409,12 +408,14 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, SlicedColocationsFit) {
   EXPECT_EQ(allocation_blocks[3]->offset, 2);
   ASSERT_TRUE(allocation_blocks[3]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[3]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{2, 2, 15}, Slice{3, 4, 18}}})));
+            (SlicedAllocationData(
+                {{AllocatedSlice{2, 2, 15}, AllocatedSlice{3, 4, 18}}})));
   // Block E
   EXPECT_EQ(allocation_blocks[4]->offset, 2);
   ASSERT_TRUE(allocation_blocks[4]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[4]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{2, 2, 9}, Slice{2, 4, 12}}})));
+            (SlicedAllocationData(
+                {{AllocatedSlice{2, 2, 9}, AllocatedSlice{2, 4, 12}}})));
   // Block F
   EXPECT_EQ(allocation_blocks[5]->offset, 4);
   EXPECT_FALSE(allocation_blocks[5]->repacked_slice_data.has_value());
@@ -448,12 +449,12 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
   allocation_blocks.push_back(MakeAllocationBlock(11, 15, 2));
   // Block C
   allocation_blocks.push_back(MakeAllocationBlock(1, 10, 5));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{2, 2, 6}, Slice{3, 4, 1}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{2, 2, 6}, AllocatedSlice{3, 4, 1}}});
   // Block D
   allocation_blocks.push_back(MakeAllocationBlock(15, 20, 5));
-  allocation_blocks.back()->original_slice_data =
-      SlicedAllocationData({{Slice{2, 2, 11}, Slice{3, 4, 16}}});
+  allocation_blocks.back()->original_slice_data = SlicedAllocationData(
+      {{AllocatedSlice{2, 2, 11}, AllocatedSlice{3, 4, 16}}});
   // Colocate D with C.
   allocation_blocks.back()->next_colocated = allocation_blocks[2];
   allocation_blocks[2]->next_colocated = allocation_blocks.back();
@@ -492,12 +493,14 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
   EXPECT_EQ(allocation_blocks[2]->offset, 2);
   ASSERT_TRUE(allocation_blocks[2]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[3]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{2, 2, 11}, Slice{3, 4, 16}}})));
+            (SlicedAllocationData(
+                {{AllocatedSlice{2, 2, 11}, AllocatedSlice{3, 4, 16}}})));
   // Block D
   EXPECT_EQ(allocation_blocks[3]->offset, 2);
   ASSERT_TRUE(allocation_blocks[3]->repacked_slice_data.has_value());
   EXPECT_EQ(*allocation_blocks[3]->repacked_slice_data,
-            (SlicedAllocationData({{Slice{2, 2, 11}, Slice{3, 4, 16}}})));
+            (SlicedAllocationData(
+                {{AllocatedSlice{2, 2, 11}, AllocatedSlice{3, 4, 16}}})));
 }
 
 }  // namespace xla

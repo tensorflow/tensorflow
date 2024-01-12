@@ -30,19 +30,21 @@ limitations under the License.
 #include <unistd.h>
 #endif
 #include <sys/stat.h>
+
 #include <algorithm>
 #include <memory>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
+#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace cuda {
@@ -52,7 +54,7 @@ std::string DriverVersionToString(DriverVersion version) {
                          std::get<2>(version));
 }
 
-std::string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version) {
+std::string DriverVersionStatusToString(absl::StatusOr<DriverVersion> version) {
   if (!version.ok()) {
     return version.status().ToString();
   }
@@ -60,37 +62,32 @@ std::string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version) {
   return DriverVersionToString(version.value());
 }
 
-tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
+absl::StatusOr<DriverVersion> StringToDriverVersion(const std::string &value) {
   std::vector<std::string> pieces = absl::StrSplit(value, '.');
   if (pieces.size() < 2 || pieces.size() > 4) {
-    return tsl::Status(
-        absl::StatusCode::kInvalidArgument,
-        absl::StrFormat(
-            "expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form "
-            "for driver version; got \"%s\"",
-            value.c_str()));
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "expected %%d.%%d, %%d.%%d.%%d, or %%d.%%d.%%d.%%d form "
+        "for driver version; got \"%s\"",
+        value.c_str()));
   }
 
   int major;
   int minor;
   int patch = 0;
   if (!absl::SimpleAtoi(pieces[0], &major)) {
-    return tsl::Status(
-        absl::StatusCode::kInvalidArgument,
+    return absl::InvalidArgumentError(
         absl::StrFormat("could not parse major version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[0], value));
   }
   if (!absl::SimpleAtoi(pieces[1], &minor)) {
-    return tsl::Status(
-        absl::StatusCode::kInvalidArgument,
+    return absl::InvalidArgumentError(
         absl::StrFormat("could not parse minor version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[1].c_str(), value.c_str()));
   }
   if (pieces.size() == 3 && !absl::SimpleAtoi(pieces[2], &patch)) {
-    return tsl::Status(
-        absl::StatusCode::kInvalidArgument,
+    return absl::InvalidArgumentError(
         absl::StrFormat("could not parse patch version number \"%s\" as an "
                         "integer from string \"%s\"",
                         pieces[2], value));
@@ -164,11 +161,11 @@ void Diagnostician::LogDiagnosticInformation() {
       closedir(dir);
     }
   }
-  tsl::StatusOr<DriverVersion> dso_version = FindDsoVersion();
+  absl::StatusOr<DriverVersion> dso_version = FindDsoVersion();
   LOG(INFO) << "libcuda reported version is: "
             << cuda::DriverVersionStatusToString(dso_version);
 
-  tsl::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
+  absl::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
   LOG(INFO) << "kernel reported version is: "
             << cuda::DriverVersionStatusToString(kernel_version);
 #endif
@@ -182,9 +179,8 @@ void Diagnostician::LogDiagnosticInformation() {
 
 // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
 // driver-interfacing DSO version number. Returns it as a string.
-tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
-  tsl::StatusOr<DriverVersion> result(tsl::Status(
-      absl::StatusCode::kNotFound,
+absl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
+  absl::StatusOr<DriverVersion> result(absl::NotFoundError(
       "was unable to find libcuda.so DSO loaded into this program"));
 
 #if !defined(PLATFORM_WINDOWS) && !defined(ANDROID_TEGRA)
@@ -211,7 +207,7 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       std::string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
       auto stripped_dso_version = absl::StripSuffix(dso_version, ".ld64");
-      auto result = static_cast<tsl::StatusOr<DriverVersion> *>(data);
+      auto result = static_cast<absl::StatusOr<DriverVersion> *>(data);
       *result = cuda::StringToDriverVersion(std::string(stripped_dso_version));
       return 1;
     }
@@ -224,13 +220,12 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
   return result;
 }
 
-tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
+absl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
     const std::string &driver_version_file_contents) {
   static const char *kDriverFilePrelude = "Kernel Module  ";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == std::string::npos) {
-    return tsl::Status(
-        absl::StatusCode::kNotFound,
+    return absl::NotFoundError(
         absl::StrCat("could not find kernel module information in "
                      "driver version file contents: \"",
                      driver_version_file_contents, "\""));
@@ -246,8 +241,8 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
 }
 
 void Diagnostician::WarnOnDsoKernelMismatch(
-    tsl::StatusOr<DriverVersion> dso_version,
-    tsl::StatusOr<DriverVersion> kernel_version) {
+    absl::StatusOr<DriverVersion> dso_version,
+    absl::StatusOr<DriverVersion> kernel_version) {
   if (kernel_version.ok() && dso_version.ok() &&
       dso_version.value() == kernel_version.value()) {
     LOG(INFO) << "kernel version seems to match DSO: "
@@ -261,11 +256,10 @@ void Diagnostician::WarnOnDsoKernelMismatch(
   }
 }
 
-tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
+absl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   FILE *driver_version_file = fopen(kDriverVersionPath, "r");
   if (driver_version_file == nullptr) {
-    return tsl::Status(
-        absl::StatusCode::kPermissionDenied,
+    return absl::PermissionDeniedError(
         absl::StrCat("could not open driver version path for reading: ",
                      kDriverVersionPath));
   }
@@ -286,11 +280,9 @@ tsl::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
     return FindKernelModuleVersion(contents.begin());
   }
 
-  auto status = tsl::Status(
-      absl::StatusCode::kInternal,
-      absl::StrCat(
-          "failed to read driver version file contents: ", kDriverVersionPath,
-          "; ferror: ", ferror(driver_version_file)));
+  auto status = absl::InternalError(absl::StrCat(
+      "failed to read driver version file contents: ", kDriverVersionPath,
+      "; ferror: ", ferror(driver_version_file)));
   fclose(driver_version_file);
   return status;
 }

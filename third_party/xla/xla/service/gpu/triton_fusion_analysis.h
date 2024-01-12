@@ -33,14 +33,14 @@ namespace gpu {
 
 // Analysis of tensor iteration orders within tiled fusions.
 class TritonFusionAnalysis {
-  Status ExecuteForDotFusion(const HloInstruction& dot, int split_k);
-  Status ExecuteForSoftmaxFusion(const HloInstruction& root);
+  absl::Status ExecuteForDotFusion(const HloInstruction& dot, int split_k);
+  absl::Status ExecuteForSoftmaxFusion(const HloInstruction& root);
 
  public:
   // Execute the analysis of a fusion computation.
   // `split_k` indicates whether this operation was converted to the split-K
   // form and tells the analysis how to interpret the batch dimensions.
-  static StatusOr<TritonFusionAnalysis> Execute(
+  static absl::StatusOr<TritonFusionAnalysis> Execute(
       const HloComputation& computation, int split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
@@ -105,7 +105,7 @@ class FusionContext {
   // Propagate dimension orders in consumer->producer direction starting at
   // `origin` with output `origin_dim_order` till parameters of the
   // computation. Store the found parameters and their iteration specs.
-  Status PropagateDimensionOrdersToParameters(
+  absl::Status PropagateDimensionOrdersToParameters(
       const HloInstruction& origin, ConstHloInstructionSet& parameters,
       ConstHloInstructionMap<TensorIterationSpec>& iter_specs);
 

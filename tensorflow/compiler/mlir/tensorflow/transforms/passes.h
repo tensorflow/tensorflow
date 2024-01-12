@@ -547,12 +547,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUParallelExecuteSinkResourceWritePass();
 
-// Creates a pass that merges device variable reads/updates into the surrounded
-// TPUExecute node. This allows the execute node to perform in-place variable
-// updates.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUMergeVariablesWithExecutePass();
-
 // Create a pass that extract TPUCopyWithDynamicShapeOp from the host launch op
 // and wrap them in device launch op. This allows this op executed on TPU while
 // still compiled on host.
@@ -563,11 +557,6 @@ CreateExtractTPUCopyWithDynamicShapeOpPass();
 // packed tensor to have same device placement as underlying TPU device.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUColocateCompositeResourceOps();
-
-// Creates a pass that adds ops which perform formatting on variables at
-// run-time according to compilation result.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateTPUVariableRuntimeReformattingPass();
 
 // Creates a pass that expands outside compilation cluster at the head/tail of
 // TPU computation by adding outside compilation attribute to identity/cast ops
@@ -680,7 +669,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUDYNAMICLAYOUTPASS
 #define GEN_PASS_DECL_TPUHOSTCOMPUTATIONEXPANSIONPASS
 #define GEN_PASS_DECL_TPUIDENTITYPRUNINGPASS
-#define GEN_PASS_DECL_TPUMERGEVARIABLESWITHEXECUTEPASS
 #define GEN_PASS_DECL_EXTRACTTPUCOPYWITHDYNAMICSHAPEOPPASS
 #define GEN_PASS_DECL_TPUPARALLELEXECUTESINKRESOURCEWRITEPASS
 #define GEN_PASS_DECL_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
@@ -690,7 +678,6 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_TPUSPACETODEPTHPASS
 #define GEN_PASS_DECL_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
 #define GEN_PASS_DECL_TPUVALIDATEINPUTSPASS
-#define GEN_PASS_DECL_TPUVARIABLERUNTIMEREFORMATTINGPASS
 #define GEN_PASS_DECL_TENSORARRAYOPSDECOMPOSITIONPASS
 #define GEN_PASS_DECL_TENSORDEVICECOPYCONVERSIONPASS
 #define GEN_PASS_DECL_TENSORFLOWOPTIMIZEPASS

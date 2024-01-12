@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
 #define XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
 
-#include <vector>
-
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -44,8 +42,8 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
 //
 // Returns error when `hlo_sharding` cannot be converted to sharding param.
 StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        const Shape& shape,
-                                        const std::vector<int>& axis_sizes);
+                                        absl::Span<const int64_t> shape,
+                                        absl::Span<const int> axis_sizes);
 
 }  // namespace support
 }  // namespace ifrt

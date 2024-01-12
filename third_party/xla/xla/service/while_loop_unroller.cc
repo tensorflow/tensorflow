@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/overflow_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/async_op_canonicalizer.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_cse.h"
@@ -346,9 +345,6 @@ StatusOr<bool> WhileLoopUnroller::Run(
     // Need to perform following passes only if the current while loop has been
     // unrolled.
     if (unrolled_current_loop) {
-      // Since Flattening call graph relies on AsyncOpCanonicalizer
-      TF_RETURN_IF_ERROR(
-          AsyncOpCanonicalizer().Run(module, execution_threads).status());
       // Needed for the nested while loops in which the outer loop has been
       // unrolled which leaves the call graph non-flat.
       TF_RETURN_IF_ERROR(

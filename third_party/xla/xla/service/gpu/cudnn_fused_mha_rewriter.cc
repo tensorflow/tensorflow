@@ -285,7 +285,7 @@ bool IsComputeCapabilityAndCudnnSupported(
   se::dnn::VersionInfo real_cudnn_version;
   if (stream_exec) {
     stream_executor::dnn::DnnSupport* dnn = stream_exec->AsDnn();
-    StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
+    absl::StatusOr<se::dnn::VersionInfo> se_cudnn_version = dnn->GetVersion();
     if (se_cudnn_version.ok()) {
       real_cudnn_version = (*se_cudnn_version);
     }
@@ -332,7 +332,8 @@ std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
   return vec;
 }
 
-StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1, bool is_training) {
+absl::StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1,
+                                     bool is_training) {
   const DotDimensionNumbers& dot_dims_bmm1 = bmm_1->dot_dimension_numbers();
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_non_contracting_dim_nums_bmm1,
@@ -389,8 +390,8 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1, bool is_training) {
   return true;
 }
 
-StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
-                               bool need_canonicalization) {
+absl::StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
+                                     bool need_canonicalization) {
   const DotDimensionNumbers& dot_dims_bmm2 = bmm_2->dot_dimension_numbers();
   // need swap lhs and rhs for bmm2 if canonicalization is needed
   int operand_index = need_canonicalization ? 0 : 1;
@@ -1077,10 +1078,12 @@ MatchBwdResult MatchBwdMHAPatternsForCanonicalization(
   return match_result;
 }
 
-StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1, HloInstruction* bmm_2,
-                                   bool need_canonicalization, bool is_training,
-                                   std::string& custom_call_name,
-                                   const DebugOptions& debug_options) {
+absl::StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1,
+                                         HloInstruction* bmm_2,
+                                         bool need_canonicalization,
+                                         bool is_training,
+                                         std::string& custom_call_name,
+                                         const DebugOptions& debug_options) {
   if (MHACallHasDropout(custom_call_name) &&
       !debug_options.xla_gpu_fused_attention_use_cudnn_rng()) {
     VLOG(3) << "Using CUDNN RNG for fused attention dropout is not enabled.\n";
@@ -1126,7 +1129,7 @@ StatusOr<bool> IsMHABlockSupported(HloInstruction* bmm_1, HloInstruction* bmm_2,
   return true;
 }
 
-StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
+absl::StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
     HloInstruction* bmm, HloComputation* comp) {
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Before FMHA Dot Cannonicalization: \n"
@@ -1164,7 +1167,7 @@ StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
   return new_dot;
 }
 
-StatusOr<HloInstruction*> ChangeCheckedDimToFastest(
+absl::StatusOr<HloInstruction*> ChangeCheckedDimToFastest(
     HloComputation* comp, HloInstruction* bmm, bool is_lhs,
     bool should_contracting_be_fastest) {
   const DotDimensionNumbers& dot_dims_bmm = bmm->dot_dimension_numbers();
@@ -1223,7 +1226,7 @@ StatusOr<HloInstruction*> ChangeCheckedDimToFastest(
   return operand_bmm;
 }
 
-StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
+absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     HloComputation* comp, HloInstruction* bmm_1, HloInstruction* bmm_2,
     HloInstruction* bias, HloInstruction* mask, HloInstruction* scale,
     double dropout_rate, std::string& custom_call_name,
@@ -1251,7 +1254,10 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
     v_transposed = true;
   }
 
-  CudnnfMHABackendConfig fmha_config;
+  GpuBackendConfig gpu_config;
+  CudnnfMHABackendConfig& fmha_config =
+      *gpu_config.mutable_cudnn_fmha_backend_config();
+  ;
   *fmha_config.mutable_bmm1_dot_dimension_numbers() =
       bmm_1->dot_dimension_numbers();
   *fmha_config.mutable_bmm2_dot_dimension_numbers() =
@@ -1367,7 +1373,7 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   HloInstruction* fmha_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, operands, absl::string_view(custom_call_name)));
-  TF_RETURN_IF_ERROR(fmha_call->set_backend_config(fmha_config));
+  TF_RETURN_IF_ERROR(fmha_call->set_backend_config(gpu_config));
   TF_RETURN_IF_ERROR(SetFMHAInstructionName(bmm_1->GetModule(), fmha_call));
 
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
@@ -1393,7 +1399,7 @@ StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   return fmha_call;
 }
 
-StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
+absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
     HloComputation* comp, HloInstruction* bmm_1_grad_1,
     HloInstruction* bmm_1_grad_2, HloInstruction* bmm_2_grad_1,
     HloInstruction* bmm_2_grad_2, HloInstruction* fwd_fmha_call,
@@ -1451,8 +1457,9 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
         HloInstruction::CreateConvert(bmm_2_grad_2->shape(), mask));
     operands.push_back(converted_mask);
   }
-  TF_ASSIGN_OR_RETURN(CudnnfMHABackendConfig fwd_config,
-                      fwd_fmha_call->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      fwd_fmha_call->backend_config<GpuBackendConfig>());
+  CudnnfMHABackendConfig fwd_config = gpu_config.cudnn_fmha_backend_config();
   CudnnfMHABackendConfig bwd_fmha_config;
 
   // If forward bmm_2 is canonicalized, the contracting dimension of lhs
@@ -1553,7 +1560,9 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   HloInstruction* fmha_bwd_call =
       comp->AddInstruction(HloInstruction::CreateCustomCall(
           call_shape, operands, absl::string_view(bwd_custom_call_name)));
-  TF_RETURN_IF_ERROR(fmha_bwd_call->set_backend_config(bwd_fmha_config));
+  GpuBackendConfig bwd_gpu_config;
+  *bwd_gpu_config.mutable_cudnn_fmha_backend_config() = bwd_fmha_config;
+  TF_RETURN_IF_ERROR(fmha_bwd_call->set_backend_config(bwd_gpu_config));
   TF_RETURN_IF_ERROR(
       SetFMHAInstructionName(bmm_1_grad_1->GetModule(), fmha_bwd_call));
 
@@ -1591,7 +1600,7 @@ StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
 }
 }  // namespace
 
-StatusOr<bool> CudnnFusedMHARewriter::Run(
+absl::StatusOr<bool> CudnnFusedMHARewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool any_changed = false;

@@ -84,11 +84,6 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
   MOCK_METHOD(StatusOr<std::string>, GetKeyValue, (std::string_view key),
               (override));
   MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
-              (const char* key, int64_t key_size), (override));
-  MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
-              (const char* key, int64_t key_size, int64_t timeout_seconds),
-              (override));
-  MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
               (std::string_view key, absl::Duration timeout), (override));
   MOCK_METHOD(std::shared_ptr<CallOptions>, GetKeyValueAsync,
               (std::string_view key, StatusOrValueCallback done), (override));
@@ -101,13 +96,7 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
               (override));
   MOCK_METHOD(Status, InsertKeyValue,
               (std::string_view key, std::string_view value), (override));
-  MOCK_METHOD(Status, InsertKeyValue,
-              (const char* key, int64_t key_size, const char* value,
-               int64_t value_size),
-              (override));
   MOCK_METHOD(Status, DeleteKeyValue, (std::string_view key), (override));
-  MOCK_METHOD(Status, DeleteKeyValue, (const char* key, int64_t key_size),
-              (override));
   MOCK_METHOD(Status, UpdateKeyValue,
               (std::string_view key, std::string_view value), (override));
   MOCK_METHOD(Status, StartWatchKey,

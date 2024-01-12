@@ -394,7 +394,7 @@ static absl::Status FusedAttentionForwardImpl(
             bmm1_dot_dimension_numbers, bmm2_dot_dimension_numbers,
             is_flash_attention, is_causal_mask, dropout_attrs);
 
-        StatusOr<GpufMHAConfig> config = GpufMHAConfig::For(descriptor);
+        absl::StatusOr<GpufMHAConfig> config = GpufMHAConfig::For(descriptor);
         if (!config.ok()) return tsl::ToAbslStatus(config.status());
 
         return FusedAttentionRunner(*std::move(config));
@@ -478,7 +478,7 @@ static absl::Status FusedAttentionBackwardImpl(
             bmm2_grad_gemm2_dot_dimension_numbers,
             intermediate_tensor_dimensions, intermediate_tensor_layout,
             is_flash_attention, is_causal_mask, dropout_attrs);
-        StatusOr<GpufMHABackwardConfig> config =
+        absl::StatusOr<GpufMHABackwardConfig> config =
             GpufMHABackwardConfig::For(descriptor);
         if (!config.ok()) return tsl::ToAbslStatus(config.status());
 

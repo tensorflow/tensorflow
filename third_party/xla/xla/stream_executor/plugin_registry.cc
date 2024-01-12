@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 
 #include "absl/base/const_init.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 
@@ -54,21 +56,20 @@ PluginRegistry::PluginRegistry() {}
 }
 
 template <typename FACTORY_TYPE>
-tsl::Status PluginRegistry::RegisterFactoryInternal(
+absl::Status PluginRegistry::RegisterFactoryInternal(
     const std::string& plugin_name, FACTORY_TYPE factory,
     std::optional<FACTORY_TYPE>* factories) {
   absl::MutexLock lock{&GetPluginRegistryMutex()};
 
   if (factories->has_value()) {
-    return tsl::Status(
-        absl::StatusCode::kAlreadyExists,
+    return absl::AlreadyExistsError(
         absl::StrFormat("Attempting to register factory for plugin %s when "
                         "one has already been registered",
                         plugin_name));
   }
 
   (*factories) = factory;
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 bool PluginRegistry::HasFactory(Platform::Id platform_id,
@@ -95,13 +96,13 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
 // Explicit instantiations to support types exposed in user/public API.
 #define EMIT_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE, FACTORY_VAR, PLUGIN_STRING) \
                                                                               \
-  template tsl::Status                                                        \
+  template absl::Status                                                       \
   PluginRegistry::RegisterFactoryInternal<PluginRegistry::FACTORY_TYPE>(      \
       const std::string& plugin_name, PluginRegistry::FACTORY_TYPE factory,   \
       std::optional<PluginRegistry::FACTORY_TYPE>* factories);                \
                                                                               \
   template <>                                                                 \
-  tsl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>(  \
+  absl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
       Platform::Id platform_id, const std::string& name,                      \
       PluginRegistry::FACTORY_TYPE factory) {                                 \
     return RegisterFactoryInternal(name, factory,                             \
@@ -109,13 +110,12 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
   }                                                                           \
                                                                               \
   template <>                                                                 \
-  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(     \
+  absl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
       Platform::Id platform_id) {                                             \
     auto plugin_id = factories_[platform_id].FACTORY_VAR;                     \
                                                                               \
     if (!plugin_id.has_value()) {                                             \
-      return tsl::Status(                                                     \
-          absl::StatusCode::kFailedPrecondition,                              \
+      return absl::FailedPreconditionError(                                   \
           "No suitable " PLUGIN_STRING                                        \
           " plugin registered. Have you linked in a " PLUGIN_STRING           \
           "-providing plugin?");                                              \

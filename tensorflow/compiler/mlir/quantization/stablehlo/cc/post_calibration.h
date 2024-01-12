@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -34,6 +35,10 @@ namespace mlir::quant::stablehlo {
 // in the input module op.
 class PostCalibrationComponent : public Component {
  public:
+  // Name of the post-training quantization post-calibration step. Used for
+  // debugging purposes.
+  static constexpr absl::string_view kName = "quant_ptq_post_calibration";
+
   explicit PostCalibrationComponent(MLIRContext* ctx)
       : ctx_(*ABSL_DIE_IF_NULL(ctx)) {}  // Crash OK
 
@@ -43,7 +48,7 @@ class PostCalibrationComponent : public Component {
 
   // Adds MLIR passes to the pass manager. `Run` will essentially run these
   // passes on the module op.
-  void AddPasses(OpPassManager& pm);
+  void AddPasses(OpPassManager& pm) const;
 
  private:
   MLIRContext& ctx_;

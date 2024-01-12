@@ -122,10 +122,11 @@ TryMergeFusionConsumerIntoTritonSoftmaxProducer(
   CHECK_EQ(original_softmax_instr->user_count(), 1);
   CHECK_EQ(original_softmax_instr->users().front(), consumer);
   CHECK(consumer->shape().IsArray());
-  CHECK_OK(original_softmax_instr->backend_config<FusionBackendConfig>());
-  CHECK_EQ(
-      original_softmax_instr->backend_config<FusionBackendConfig>()->kind(),
-      kTritonSoftmaxFusionKind);
+  CHECK_OK(original_softmax_instr->backend_config<GpuBackendConfig>());
+  CHECK_EQ(original_softmax_instr->backend_config<GpuBackendConfig>()
+               ->fusion_backend_config()
+               .kind(),
+           kTritonSoftmaxFusionKind);
   HloComputation* parent_computation = consumer->parent();
   HloModule* parent_module = parent_computation->parent();
 
@@ -248,7 +249,7 @@ bool TryMergeProducerAndConsumerFusionsIntoTritonSoftmax(
 
 }  // anonymous namespace
 
-StatusOr<bool> FusionMergerTriton::Run(
+absl::StatusOr<bool> FusionMergerTriton::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   int fused_comps = 0;

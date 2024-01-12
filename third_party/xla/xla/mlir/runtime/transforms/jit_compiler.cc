@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/mlir/runtime/ir/rt_ops.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/passes.h"
+#include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 namespace runtime {
@@ -422,6 +423,11 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
   if (!llvm_module)
     return compiler->Error("failed to translate module to LLVM IR");
 
+  std::string llvm_module_string;
+  if (compiler->options().embed_ir_in_executable) {
+    llvm_module_string = llvm_ir::DumpToString(llvm_module.get());
+  }
+
   // Compile input module to the native function.
   auto engine = ExecutionEngine::CreateFromModule(
       std::move(llvm_ctx), std::move(llvm_module), engine_options, exported);
@@ -441,7 +447,7 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
 
   return Executable(compiler->name(), std::move(memory_mapper),
                     std::move(*engine), std::move(functions), specialization,
-                    time_to_compile);
+                    time_to_compile, std::move(llvm_module_string));
 }
 
 // TODO(ezhulenev): Currently it's possible to specialize only one function. It

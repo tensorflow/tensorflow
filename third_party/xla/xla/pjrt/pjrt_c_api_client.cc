@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -456,7 +457,7 @@ PjRtCApiClient::BufferFromHostBufferInternalImpl(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
     std::variant<PjRtDevice*, PjRtMemorySpace*> device_or_memory,
     const Layout* device_layout) {
   if (host_buffer_semantics != HostBufferSemantics::kImmutableOnlyDuringCall &&
@@ -524,17 +525,17 @@ PjRtCApiClient::BufferFromHostBufferInternalImpl(
     event_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
     event_args.priv = nullptr;
     event_args.event = event.get();
-    event_args.user_arg = new std::function<void(PJRT_Error*)>(
+    event_args.user_arg = new absl::AnyInvocable<void(PJRT_Error*)>(
         [on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-         c_api = c_api_](PJRT_Error* error) {
+         c_api = c_api_](PJRT_Error* error) mutable {
           if (error) {
             ::pjrt::MakeErrorDeleter(c_api)(error);
           }
-          on_done_with_host_buffer();
+          std::move(on_done_with_host_buffer)();
         });
     event_args.callback = [](PJRT_Error* error, void* args) {
-      std::function<void(PJRT_Error*)>* on_done_with_host_buffer =
-          reinterpret_cast<std::function<void(PJRT_Error*)>*>(args);
+      auto* on_done_with_host_buffer =
+          reinterpret_cast<absl::AnyInvocable<void(PJRT_Error*)>*>(args);
       (*on_done_with_host_buffer)(error);
       delete on_done_with_host_buffer;
     };
@@ -550,32 +551,33 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
     PjRtMemorySpace* memory_space, const Layout* device_layout) {
   return BufferFromHostBufferInternalImpl(
       data, type, dims, byte_strides, host_buffer_semantics,
-      on_done_with_host_buffer, memory_space, device_layout);
+      std::move(on_done_with_host_buffer), memory_space, device_layout);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer, PjRtDevice* device,
     const Layout* device_layout) {
   return BufferFromHostBufferInternalImpl(
       data, type, dims, byte_strides, host_buffer_semantics,
-      on_done_with_host_buffer, device, device_layout);
+      std::move(on_done_with_host_buffer), device, device_layout);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+    PjRtDevice* device) {
   return BufferFromHostBufferInternalImpl(
       data, type, dims, byte_strides, host_buffer_semantics,
-      on_done_with_host_buffer, device, /*device_layout=*/nullptr);
+      std::move(on_done_with_host_buffer), device, /*device_layout=*/nullptr);
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateViewOfDeviceBuffer(
@@ -617,11 +619,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateViewOfDeviceBuffer(
     args.stream = reinterpret_cast<intptr_t>(nullptr);
   }
   const PJRT_Api* c_api = pjrt_c_api();
-  // TODO(jieying): To be removed after 12/29/2023.
-  if (c_api->pjrt_api_version.minor_version < 33) {
-    return Unimplemented(
-        "The plugin does not support CreateViewOfDeviceBuffer");
-  }
+
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api->PJRT_Client_CreateViewOfDeviceBuffer(&args), c_api);
 
@@ -975,11 +973,6 @@ PjRtCApiExecutable::GetOutputElementTypes() const {
 
   const PJRT_Api* c_api = pjrt_c_api();
 
-  // TODO(yueshengys): To be removed after 11/29/2023.
-  if (c_api->PJRT_Executable_OutputElementTypes == nullptr) {
-    return Unimplemented("PJRT C API does not support GetOutputElementTypes");
-  }
-
   RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_OutputElementTypes(&args),
                               c_api);
 
@@ -999,11 +992,6 @@ PjRtCApiExecutable::GetOutputDimensions() const {
   args.executable = c_executable();
 
   const PJRT_Api* c_api = pjrt_c_api();
-
-  // TODO(yueshengys): To be removed after 11/29/2023.
-  if (c_api->PJRT_Executable_OutputDimensions == nullptr) {
-    return Unimplemented("PJRT C API does not support GetOutputDimensions");
-  }
 
   RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Executable_OutputDimensions(&args),
                               c_api);
@@ -1933,12 +1921,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToDevice(
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory) {
   const PJRT_Api* api = pjrt_c_api();
-  // TODO(yueshengys): Remove this after 12/20/2023.
-  if (api->pjrt_api_version.minor_version < 32) {
-    return Unimplemented(
-        "The plugin has PJRT API version 0.32 which does not support "
-        "CopyToMemorySpace");
-  }
+
   if (dst_memory->client() == client_) {
     PJRT_Buffer_CopyToMemory_Args args;
     args.struct_size = PJRT_Buffer_CopyToMemory_Args_STRUCT_SIZE;

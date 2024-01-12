@@ -14009,6 +14009,46 @@ ENTRY %extracted_computation (param: f32[13,128,312,16,312]) -> f32[13,39936,499
   EXPECT_NE(all_to_all, nullptr);
 }
 
+TEST_P(SpmdPartitioningTest, SortAllGatherNonMovableDimension) {
+  const char* const hlo_string = R"(
+HloModule module
+
+top_k_gt_f32_comparator_64.35303 {
+  Arg_2.35306 = s32[] parameter(2)
+  Arg_3.35307 = s32[] parameter(3)
+  Arg_0.35304 = f32[] parameter(0)
+  Arg_1.35305 = f32[] parameter(1)
+  ROOT compare.35308 = pred[] compare(Arg_0.35304, Arg_1.35305), direction=GT
+}
+
+ENTRY entry {
+  param.0 = f32[4,16384,4096]{2,1,0} parameter(0), sharding={devices=[4,4,4]<=[64]}
+  param.1 = s32[4,16384,4096]{2,1,0} parameter(1), sharding={devices=[4,4,4]<=[64]}
+  ROOT sort.209 = (f32[4,16384,4096]{2,1,0}, s32[4,16384,4096]{2,1,0}) sort(param.0, param.1), dimensions={2}, to_apply=top_k_gt_f32_comparator_64.35303, sharding={{devices=[4,4,4]<=[64]}, {devices=[4,4,4]<=[64]}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      PartitionComputation(
+          hlo_string, /*num_devices=*/64,
+          /*conv_halo_exchange_always_on_lhs=*/true,
+          /*xla_tpu_enable_log_recorder_partitioned_logging=*/true));
+  XLA_VLOG_LINES(1, module->ToString());
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto* sort = FindInstruction(module.get(), HloOpcode::kSort);
+  EXPECT_THAT(
+      root,
+      AllOf(op::Tuple(),
+            op::Shape("(f32[1,4096,1024]{2,1,0}, s32[1,4096,1024]{2,1,0})")));
+  EXPECT_THAT(
+      sort,
+      AllOf(op::Sort(
+                AllOf(op::AllReduce(), op::Shape("f32[1,4096,4096]{2,1,0}")),
+                AllOf(op::AllReduce(), op::Shape("s32[1,4096,4096]{2,1,0}"))),
+            op::Shape("(f32[1,4096,4096]{2,1,0}, s32[1,4096,4096]{2,1,0})")));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

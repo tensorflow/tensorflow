@@ -164,6 +164,38 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "compiler_macros",
+    hdrs = ["compiler_macros.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "ef57",
+    srcs = ["ef57.cc"],
+    hdrs = ["ef57.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":compiler_macros",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "ef57_test",
+    srcs = ["ef57_test.cc"],
+    deps = [
+        ":ef57",
+        ":test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log:log_streamer",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "execution_options_util",
     srcs = [
         "execution_options_util.cc",
@@ -1215,7 +1247,7 @@ filegroup(
 #     name = "xla_py_pb2",
 #     testonly = 0,
 #     api_version = 2,
-#     compatible_with = ["//buildenv/target:gce"],
+#     compatible_with = ["//buildenv/target:non_prod"],
 #     visibility = [":friends"],
 #     deps = [":xla_proto"],
 # )

@@ -45,8 +45,8 @@ class WhileThunk : public Thunk {
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
 
-  Status Initialize(const InitializeParams& params) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   SequentialThunk* condition_thunk_sequence() const {
     return condition_thunk_sequence_.get();

@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -429,6 +430,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
       };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());
+  opts.compiler.embed_ir_in_executable =
+      module.config().debug_options().xla_embed_ir_in_executable();
   return opts;
 }
 
@@ -1121,35 +1124,19 @@ namespace {
 // Post-compilation callback functor for use by SimpleOrcJIT.
 //
 // Dumps machine code if dumping is enabled for the module.
-struct OrcJITPostCompilationHook {
-  // Gets an std::function that implements this hook.
-  static std::function<void(const llvm::object::ObjectFile& obj_file)> Create(
-      const HloModule* module) {
-    // This struct is not copyable, but std::functions must be.  So to create an
-    // std::function out of this struct, we have to wrap it in a shared_ptr.
-    auto wrapped = std::make_shared<OrcJITPostCompilationHook>(module);
-    return [wrapped](const llvm::object::ObjectFile& obj_file) {
-      (*wrapped)(obj_file);
-    };
-  }
+static absl::AnyInvocable<void(const llvm::object::ObjectFile& obj_file)>
+CreateOrcJITPostCompilationHook(const HloModule* module,
+                                std::vector<std::string>* obj_files) {
+  return [=](const llvm::object::ObjectFile& obj_file) {
+    if (obj_files) obj_files->push_back(obj_file.getData().str());
 
-  // Constructor can't be private because we want to call it from
-  // std::make_shared, but users should call Create() instead.
-  explicit OrcJITPostCompilationHook(const HloModule* module)
-      : module(module) {}
-
- private:
-  void operator()(const llvm::object::ObjectFile& obj_file) {
-    if (!DumpingEnabledForHloModule(*module)) {
-      return;
+    if (DumpingEnabledForHloModule(*module)) {
+      DumpToFileInDir(*module, /*file_prefix=*/"", /*file_suffix=*/"o",
+                      absl::string_view(obj_file.getData().data(),
+                                        obj_file.getData().size()));
     }
-    DumpToFileInDir(*module, /*file_prefix=*/"", /*file_suffix=*/"o",
-                    absl::string_view(obj_file.getData().data(),
-                                      obj_file.getData().size()));
-  }
-
-  const HloModule* module;
-};
+  };
+}
 
 void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
   llvm_ir::InitializeLLVMCommandLineOptions(
@@ -1358,6 +1345,10 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
   auto llvm_module =
       std::make_unique<llvm::Module>("__compute_module", *llvm_context);
 
+  // We collect compiled object files (machine code) so we can export
+  // CpuExecutable to an AOT compilation result.
+  std::vector<std::string> obj_files;
+
   auto jit = SimpleOrcJIT::Create(
       CompilerTargetOptions(module->config()),
       CodeGenOptLevel(module->config()),
@@ -1366,7 +1357,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       options::SlpVectorizerDisabled(module->config()),
       llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
       post_optimization_ir_hook,
-      OrcJITPostCompilationHook::Create(module.get()));
+      CreateOrcJITPostCompilationHook(module.get(), &obj_files));
   if (!jit) {
     return InternalError("Creating JIT failed: %s",
                          llvm::toString(jit.takeError()));
@@ -1481,6 +1472,8 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
                             std::move(module), function_name,
                             std::move(hlo_profile_printer_data),
                             std::move(hlo_profile_index_map)));
+
+  cpu_executable->set_obj_files(std::move(obj_files));
 
   if (embed_ir_in_executable) {
     cpu_executable->set_ir_module_string(ir_module_string);
@@ -1900,22 +1893,127 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
                               : CpuExecutable::ShapeSizeBytes;
 }
 
+namespace {
+
+// This is a result of exporting JIT compiled CpuExecutable to AOT compilation
+// result that can be saved on disk and shipped over the wire.
+class CpuExecutableAotCompilationResult : public AotCompilationResult {
+ public:
+  CpuExecutableAotCompilationResult(const HloModule* hlo_module,
+                                    const BufferAssignment* buffer_assignment,
+                                    std::string_view function_name,
+                                    std::string_view obj_file) {
+    *proto_.mutable_hlo_module() = hlo_module->ToProto();
+    *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
+    proto_.set_entry_function_name(std::string(function_name));
+    proto_.set_obj_file(std::string(obj_file));
+  }
+
+  StatusOr<std::string> SerializeAsString() const override {
+    return proto_.SerializeAsString();
+  }
+
+  static StatusOr<std::unique_ptr<CpuExecutableAotCompilationResult>>
+  FromString(const std::string& serialized) {
+    CompilationResultProto proto;
+    if (!proto.ParseFromString(serialized)) {
+      return InternalError(
+          "Failed to parse serialized CpuExecutableAotCompilationResult.");
+    }
+    return std::unique_ptr<CpuExecutableAotCompilationResult>(
+        new CpuExecutableAotCompilationResult(proto));
+  }
+
+  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, const se::StreamExecutor* stream_exec) const override;
+
+ private:
+  explicit CpuExecutableAotCompilationResult(CompilationResultProto proto)
+      : proto_(std::move(proto)) {}
+
+  CompilationResultProto proto_;
+};
+
+}  // namespace
+
+StatusOr<std::unique_ptr<Executable>>
+CpuExecutableAotCompilationResult::LoadExecutable(
+    Compiler* compiler, const se::StreamExecutor* stream_exec) const {
+  // Recreate HloModule from proto.
+  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          proto_.hlo_module(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      HloModule::CreateFromProto(proto_.hlo_module(), hlo_module_config));
+
+  // Recreate BufferAssignment from proto.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      BufferAssignment::FromProto(proto_.buffer_assignment(), module.get(),
+                                  compiler->BufferSizeBytesFunction(),
+                                  /*can_share_buffer=*/nullptr));
+
+  auto jit = SimpleOrcJIT::Create(
+      CompilerTargetOptions(module->config()),
+      CodeGenOptLevel(module->config()),
+      options::OptimizeForSizeRequested(module->config()),
+      module->config().debug_options().xla_llvm_disable_expensive_passes(),
+      options::SlpVectorizerDisabled(module->config()),
+      llvm_ir::GetCpuFastMathFlags(module->config()),
+      /*pre_optimization_hook=*/nullptr, /*post_optimization_hook=*/nullptr,
+      /*post_codegen_hook=*/nullptr);
+  if (!jit) {
+    return InternalError("Creating JIT failed: %s",
+                         llvm::toString(jit.takeError()));
+  }
+
+  // Create a named buffer from compiled object file.
+  llvm::StringRef data(proto_.obj_file().data(), proto_.obj_file().size());
+  auto obj_file =
+      llvm::MemoryBuffer::getMemBuffer(data, proto_.entry_function_name());
+
+  cantFail((*jit)->AddObjFile(std::move(obj_file)));
+
+  TF_ASSIGN_OR_RETURN(
+      auto cpu_executable,
+      CpuExecutable::Create(std::move(*jit), std::move(buffer_assignment),
+                            std::move(module), proto_.entry_function_name(),
+                            nullptr, nullptr));
+
+  // Dump computation proto state and buffer assignment for
+  // GetCompiledMemoryStats results.
+  auto hlo_proto = std::make_unique<HloProto>();
+  *hlo_proto->mutable_hlo_module() = cpu_executable->module().ToProto();
+  *hlo_proto->mutable_buffer_assignment() =
+      cpu_executable->buffer_assignment().ToProto();
+  cpu_executable->set_hlo_proto(std::move(hlo_proto));
+
+  return cpu_executable;
+}
+
 StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
     Executable* executable) const {
   auto* cpu_executable = tensorflow::down_cast<CpuExecutable*>(executable);
   if (!cpu_executable)
     return Internal("Could not downcast Executable to CpuExecutable");
 
-  HloModuleProto module_proto = cpu_executable->module().ToProto();
-  TF_ASSIGN_OR_RETURN(auto obj_file, cpu_executable->GetObjFile());
-  TF_ASSIGN_OR_RETURN(auto mlir_module, cpu_executable->GetMlirModule());
-  TF_ASSIGN_OR_RETURN(XlaFrameworkMapping xla_framework_mapping,
-                      cpu_executable->GetXlaFrameworkMapping());
+  if (cpu_executable->obj_files().size() != 1) {
+    return absl::InternalError(
+        absl::StrCat("Can't export CPU execuable, expected exactly one object "
+                     "file but got: ",
+                     cpu_executable->obj_files().size()));
+  }
 
-  std::unique_ptr<AotCompilationResult> result =
-      std::make_unique<CpuXlaRuntimeAotCompilationResult>(
-          module_proto, obj_file, mlir_module, xla_framework_mapping);
-  return result;
+  return {std::make_unique<CpuExecutableAotCompilationResult>(
+      &cpu_executable->module(), &cpu_executable->buffer_assignment(),
+      cpu_executable->module_name(), cpu_executable->obj_files()[0])};
+}
+
+StatusOr<std::unique_ptr<AotCompilationResult>>
+CpuCompiler::LoadAotCompilationResult(
+    const std::string& serialized_aot_result) {
+  return CpuExecutableAotCompilationResult::FromString(serialized_aot_result);
 }
 
 }  // namespace cpu

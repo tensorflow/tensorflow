@@ -135,8 +135,9 @@ ENTRY main {
                 GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
-                          dot->backend_config<GemmBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          dot->backend_config<GpuBackendConfig>());
+  const GemmBackendConfig& config = gpu_config.gemm_backend_config();
   EXPECT_EQ(config.selected_algorithm(), new_algo_id);
 }
 
@@ -223,8 +224,10 @@ ENTRY main {
                 GmockMatch(m::GetTupleElement(m::CustomCall(&dot), 0)));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(GemmBackendConfig config,
-                          dot->backend_config<GemmBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          dot->backend_config<GpuBackendConfig>());
+  const GemmBackendConfig& config = gpu_config.gemm_backend_config();
+
   EXPECT_EQ(config.selected_algorithm(), new_algo_id);
 }
 

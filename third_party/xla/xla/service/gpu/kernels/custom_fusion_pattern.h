@@ -58,14 +58,14 @@ class CustomFusionPattern {
     // derived from the fusion instruction result, or from other instructions in
     // the parent computation.
     using Replacement =
-        std::function<StatusOr<HloInstruction *>(HloFusionInstruction *)>;
+        std::function<absl::StatusOr<HloInstruction *>(HloFusionInstruction *)>;
 
     void AddReplacement(HloInstruction *instr, Replacement replacement);
     bool HasReplacement(HloInstruction *instr) const;
 
     // Builds a replacement for `instr` using a `fusion` instruction constructed
     // for a pattern match.
-    StatusOr<HloInstruction *> BuildReplacement(
+    absl::StatusOr<HloInstruction *> BuildReplacement(
         HloInstruction *instr, HloFusionInstruction *fusion) const;
 
     const CustomFusionConfig &config() const { return config_; }

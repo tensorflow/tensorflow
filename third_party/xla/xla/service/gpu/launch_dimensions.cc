@@ -174,7 +174,7 @@ BlockSizes GetBlockSizes(LaunchDimensionsConfig dim_config,
 
 }  // namespace
 
-StatusOr<LaunchDimensions> CalculateLaunchDimensions(
+LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,
     LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
@@ -184,13 +184,6 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   num_elements = CeilOfRatio(num_elements, int64_t{dim_config.unroll_factor});
   BlockSizes sizes =
       GetBlockSizes(dim_config, gpu_device_info, shape, num_elements);
-  if (gpu_device_info.block_dim_limit().x > 0 &&
-      sizes.block_count >= gpu_device_info.block_dim_limit().x) {
-    return absl::UnimplementedError(
-        absl::StrCat("Kernel launch needs more blocks (", sizes.block_count,
-                     ") than allowed by hardware (",
-                     gpu_device_info.block_dim_limit().x, ")."));
-  }
 
   return LaunchDimensions(
       se::BlockDim(sizes.block_count, 1, 1),

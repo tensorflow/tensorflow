@@ -272,81 +272,81 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
 
 HloAsyncInstruction::HloAsyncInstruction(
     HloOpcode opcode, const Shape& shape,
-    absl::Span<HloInstruction* const> operands,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id,
-    absl::string_view async_execution_thread)
-    : HloInstruction(opcode, shape),
-      async_group_id_(async_group_id),
-      async_execution_thread_(async_execution_thread) {
+    absl::Span<HloInstruction* const> operands, HloOpcode async_wrapped_opcode)
+    : HloInstruction(opcode, shape) {
   CHECK(opcode == HloOpcode::kAsyncStart || operands.size() == 1);
   for (auto operand : operands) {
     AppendOperand(operand);
   }
-  AppendComputation(async_computation);
-  CHECK(!async_computation->IsCustomCallComputation());
-  CHECK(!async_computation->IsFusionComputation());
-  async_computation->AddAsyncInstruction(*this);
-  set_async_execution_thread(async_execution_thread);
 
   // Drop 'async' from async-{start/update/done} to get the suffix.
   absl::string_view suffix = HloOpcodeString(opcode).substr(5);
-  absl::string_view wrapped_name = HloOpcodeString(async_wrapped_opcode());
+  absl::string_view wrapped_name = HloOpcodeString(async_wrapped_opcode);
   SetAndSanitizeName(absl::StrCat(wrapped_name, suffix));
 }
 
-HloAsyncInstruction::HloAsyncInstruction(
-    HloOpcode opcode, const Shape& shape, HloInstruction* operand,
-    HloComputation* async_computation, std::optional<int64_t> async_group_id,
-    absl::string_view async_execution_thread)
+HloAsyncInstruction::HloAsyncInstruction(HloOpcode opcode, const Shape& shape,
+                                         HloInstruction* operand)
     : HloAsyncInstruction(opcode, shape, absl::MakeConstSpan(&operand, 1),
-                          async_computation, async_group_id,
-                          async_execution_thread) {}
-
-HloAsyncInstruction::~HloAsyncInstruction() {
-  ClearAsyncComputationInstruction();
-  ClearCalledComputations();
+                          operand->async_wrapped_opcode()) {
+  CHECK(operand->opcode() == HloOpcode::kAsyncStart ||
+        operand->opcode() == HloOpcode::kAsyncUpdate);
+  HloAsyncInstruction* prev = Cast<HloAsyncInstruction>(operand);
+  prev->async_chain_next_ = this;
 }
 
-void HloAsyncInstruction::ClearAsyncComputationInstruction() {
-  // Each async instruction calls a single computation, but we use
-  // called_computations() instead of async_wrapped_instruction(), because the
-  // order in which things get destructed can vary; the async computation's
-  // back-pointer may already be null, which violates a check in
-  // async_wrapped_instruction.
-  for (HloComputation* computation : called_computations()) {
-    CHECK(computation != nullptr);
-    if (computation->IsAsyncComputation()) {
-      computation->RemoveAsyncInstruction(this);
-    }
-  }
+HloComputation* HloAsyncInstruction::async_wrapped_computation() const {
+  return async_chain_start()->called_computations().front();
 }
 
 HloInstruction* HloAsyncInstruction::async_wrapped_instruction() const {
-  CHECK(!called_computations().empty());
-  return called_computations()[0]->root_instruction();
+  return async_chain_start()->async_wrapped_computation()->root_instruction();
 }
 
 HloOpcode HloAsyncInstruction::async_wrapped_opcode() const {
-  return async_wrapped_instruction()->opcode();
+  return async_chain_start()->async_wrapped_instruction()->opcode();
 }
 
-void HloAsyncInstruction::PrintExtraAttributesImpl(
-    AttributePrinter& printer, const HloPrintOptions& options) const {
-  if (async_group_id_.has_value()) {
-    printer.Next([this](Printer* printer) {
-      AppendCat(printer, "async_group_id=", *async_group_id_);
-    });
+absl::string_view HloAsyncInstruction::async_execution_thread() const {
+  return async_chain_start()->async_execution_thread();
+}
+
+HloAsyncInstruction* HloAsyncInstruction::async_chain_start() const {
+  if (opcode() == HloOpcode::kAsyncStart) {
+    return const_cast<HloAsyncInstruction*>(this);
   }
-  if (async_execution_thread_ != kMainExecutionThread) {
-    printer.Next([this](Printer* printer) {
-      AppendCat(printer, "async_execution_thread=\"", async_execution_thread_,
-                "\"");
-    });
+
+  HloInstruction* prev = operands()[0];
+  while (prev->opcode() != HloOpcode::kAsyncStart) {
+    // If the prev op in the chain isn't async-start, it must be async-update.
+    CHECK(prev->opcode() == HloOpcode::kAsyncUpdate);
+    prev = prev->operands()[0];
   }
-  if (options.syntax_sugar_async_ops() &&
-      async_wrapped_computation()->CanExpandIntoSingleInstruction()) {
-    async_wrapped_instruction()->PrintExtraAttributes(printer, options);
+  return Cast<HloAsyncInstruction>(prev);
+}
+
+HloAsyncInstruction* HloAsyncInstruction::async_chain_done() const {
+  if (opcode() == HloOpcode::kAsyncDone) {
+    return const_cast<HloAsyncInstruction*>(this);
   }
+
+  HloAsyncInstruction* next = async_chain_next_;
+  while (next->opcode() != HloOpcode::kAsyncDone) {
+    // If the next op in the chain isn't async-done, it must be async-update.
+    CHECK(next->opcode() == HloOpcode::kAsyncUpdate);
+    next = next->async_chain_next_;
+  }
+  return next;
+}
+
+std::vector<HloAsyncInstruction*> HloAsyncInstruction::GetAsyncChain() const {
+  std::vector<HloAsyncInstruction*> chain;
+  HloAsyncInstruction* current = async_chain_start();
+  do {
+    chain.push_back(current);
+    current = current->async_chain_next_;
+  } while (current != nullptr);
+  return chain;
 }
 
 bool HloAsyncInstruction::IdenticalSlowPath(
@@ -361,6 +361,75 @@ bool HloAsyncInstruction::IdenticalSlowPath(
 std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
+  return std::make_unique<HloAsyncInstruction>(opcode(), shape,
+                                               new_operands[0]);
+}
+
+HloAsyncStartInstruction::HloAsyncStartInstruction(
+    HloOpcode opcode, const Shape& shape,
+    absl::Span<HloInstruction* const> operands,
+    HloComputation* async_computation, absl::string_view async_execution_thread)
+    : HloAsyncInstruction(opcode, shape, operands,
+                          async_computation->root_instruction()->opcode()) {
+  CHECK(!async_computation->IsCustomCallComputation());
+  CHECK(!async_computation->IsFusionComputation());
+  CHECK(!async_computation->IsAsyncComputation());
+  AppendComputation(async_computation);
+  async_computation->AddAsyncStart(this);
+  HloAsyncStartInstruction::set_async_execution_thread(async_execution_thread);
+}
+
+HloAsyncStartInstruction::~HloAsyncStartInstruction() {
+  ClearAsyncComputationInstruction();
+  ClearCalledComputations();
+}
+
+void HloAsyncStartInstruction::ClearAsyncComputationInstruction() {
+  // Each async instruction calls a single computation, but we use
+  // called_computations() instead of async_wrapped_instruction(), because the
+  // order in which things get destructed can vary; the async computation's
+  // back-pointer may already be null, which violates a check in
+  // async_wrapped_instruction.
+  if (!called_computations().empty() &&
+      async_wrapped_computation()->AsyncStart() == this) {
+    async_wrapped_computation()->RemoveAsyncStart();
+  }
+}
+
+void HloAsyncStartInstruction::set_async_execution_thread(
+    absl::string_view async_execution_thread) {
+  async_execution_thread_ = std::string(async_execution_thread);
+  SetThreadName(async_wrapped_computation(), async_execution_thread,
+                /*skip_async_execution_thread_overwrite=*/false);
+}
+
+HloInstructionProto HloAsyncStartInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_async_execution_thread(async_execution_thread_ ==
+                                           HloInstruction::kMainExecutionThread
+                                       ? ""
+                                       : async_execution_thread_);
+  return proto;
+}
+
+void HloAsyncStartInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  if (async_execution_thread_ != kMainExecutionThread) {
+    printer.Next([this](Printer* printer) {
+      AppendCat(printer, "async_execution_thread=\"", async_execution_thread_,
+                "\"");
+    });
+  }
+  if (options.syntax_sugar_async_ops() &&
+      async_wrapped_computation()->CanExpandIntoSingleInstruction()) {
+    async_wrapped_instruction()->PrintExtraAttributes(printer, options);
+  }
+}
+
+std::unique_ptr<HloInstruction>
+HloAsyncStartInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
   HloModule* module = context != nullptr ? context->module() : GetModule();
   HloComputation* new_wrapped_computation = nullptr;
   if (context != nullptr) {
@@ -368,44 +437,13 @@ std::unique_ptr<HloInstruction> HloAsyncInstruction::CloneWithNewOperandsImpl(
         context->FindComputation(async_wrapped_computation());
   }
   if (new_wrapped_computation == nullptr) {
-    // kAsyncDone and kAsyncUpdate uses the sync wrapped computation of its
-    // corresponding kAsyncUpdate or kAsyncDone, avoid cloning the computation
-    // again.
-    if ((opcode() == HloOpcode::kAsyncDone ||
-         opcode() == HloOpcode::kAsyncUpdate) &&
-        operand(0)->async_wrapped_computation() ==
-            async_wrapped_computation()) {
-      new_wrapped_computation = new_operands[0]->async_wrapped_computation();
-    } else {
-      new_wrapped_computation = module->AddEmbeddedComputation(
-          async_wrapped_computation()->Clone("clone", context));
-    }
+    new_wrapped_computation = module->AddEmbeddedComputation(
+        async_wrapped_computation()->Clone("clone", context));
   }
-  return std::make_unique<HloAsyncInstruction>(
-      opcode(), shape, new_operands, new_wrapped_computation, async_group_id_,
+
+  return std::make_unique<HloAsyncStartInstruction>(
+      opcode(), shape, new_operands, new_wrapped_computation,
       async_execution_thread_);
-}
-
-void HloAsyncInstruction::set_async_group_id(
-    std::optional<int64_t> async_group_id) {
-  async_group_id_ = async_group_id;
-}
-
-void HloAsyncInstruction::set_async_execution_thread(
-    absl::string_view async_execution_thread) {
-  async_execution_thread_ = std::string(async_execution_thread);
-  SetThreadName(async_wrapped_computation(), async_execution_thread,
-                /*skip_async_execution_thread_overwrite=*/false);
-}
-
-HloInstructionProto HloAsyncInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_async_group_id(async_group_id_.has_value() ? *async_group_id_ : -1);
-  proto.set_async_execution_thread(async_execution_thread_ ==
-                                           HloInstruction::kMainExecutionThread
-                                       ? ""
-                                       : async_execution_thread_);
-  return proto;
 }
 
 HloCopyStartInstruction::HloCopyStartInstruction(
@@ -1737,8 +1775,6 @@ HloInstruction* HloCallableInstruction::AppendInstructionIntoCalledComputation(
 HloInstruction*
 HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     HloInstruction* instruction_to_append, bool add_output) {
-  CHECK(instruction_to_append->IsFusible())
-      << instruction_to_append->ToString();
   VLOG(3) << "CloneAndAppendInstructionIntoCalledComputation:\n"
           << instruction_to_append->ToString();
   HloInstruction* clone = nullptr;
@@ -1751,12 +1787,15 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   if (called_computations().empty()) {
     // New fusion instruction. It should not be a multioutput instruction.
     CHECK(!add_output);
-    auto builder = HloComputation::Builder(
-        default_called_computation_name(),
-        opcode() == HloOpcode::kFusion ? this : nullptr);
+    auto builder = HloComputation::Builder(default_called_computation_name());
     builder.AddInstruction(instruction_to_append->Clone(/*suffix=*/""));
-    AppendComputation(
-        CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build()));
+    auto* new_computation =
+        CHECK_NOTNULL(GetModule())->AddEmbeddedComputation(builder.Build());
+    AppendComputation(new_computation);
+    if (opcode() == HloOpcode::kFusion) {
+      new_computation->SetFusionInstruction(this);
+    }
+
     clone = called_computation_root();
   } else {
     // When add_output is false, instruction_to_append is necessarily an
@@ -1984,6 +2023,15 @@ void HloFusionInstruction::ClearFusionComputationInstruction() {
 void HloFusionInstruction::ClearCalledComputations() {
   ClearFusionComputationInstruction();
   HloInstruction::ClearCalledComputations();
+}
+
+HloInstruction*
+HloFusionInstruction::CloneAndAppendInstructionIntoCalledComputation(
+    HloInstruction* instruction_to_append, bool add_output) {
+  CHECK(instruction_to_append->IsFusible())
+      << instruction_to_append->ToString();
+  return HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
+      instruction_to_append, add_output);
 }
 
 std::string HloFusionInstruction::ToCategory() const {

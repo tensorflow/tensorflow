@@ -65,7 +65,7 @@ static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new AutotuneCacheMap();
 
-/*static*/ Status AutotunerUtil::SerializeAutotuneResults(
+/*static*/ absl::Status AutotunerUtil::SerializeAutotuneResults(
     AutotuneResults* results) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const auto& [k, result] : autotune_cache) {
@@ -85,17 +85,17 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
                                     absl::string_view(b->hlo()));
             });
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-/*static*/ Status AutotunerUtil::LoadAutotuneResults(
+/*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
     const AutotuneResults& results) {
   absl::MutexLock lock(&autotune_cache_mu);
   for (const auto& result : results.results()) {
     autotune_cache[AutotuneCacheKey(result.device(), result.hlo())] =
         result.result();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ void AutotunerUtil::ClearAutotuneResults() {
@@ -103,7 +103,7 @@ static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
   autotune_cache.clear();
 }
 
-/* static*/ StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
+/* static*/ absl::StatusOr<se::DeviceMemoryBase> AutotunerUtil::CreateBuffer(
     se::RedzoneAllocator& allocator, const Shape& shape,
     const AutotuneConfig& config, int64_t& rng_state) {
   TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase buffer,
@@ -164,7 +164,7 @@ static AutotuneResult* TryFindInCache(const AutotuneCacheKey& key) {
   return inserted;
 }
 
-/*static*/ StatusOr<AutotuneResult> AutotunerUtil::Autotune(
+/*static*/ absl::StatusOr<AutotuneResult> AutotunerUtil::Autotune(
     const HloInstruction* instr, const AutotuneConfig& config,
     const AutotuneNoCacheFn& autotune_fn) {
   AutotuneCacheKey key = GetKey(instr, config);
@@ -194,8 +194,8 @@ bool IsTextProtoPath(absl::string_view file_path) {
 
 }  // anonymous namespace
 
-/*static*/ Status AutotunerUtil::LoadAutotuneResults(absl::string_view data,
-                                                     bool as_textproto) {
+/*static*/ absl::Status AutotunerUtil::LoadAutotuneResults(
+    absl::string_view data, bool as_textproto) {
   AutotuneResults results;
   // The cast here is necessary for MacOS builds.
   bool parse_success =
@@ -213,10 +213,10 @@ bool IsTextProtoPath(absl::string_view file_path) {
   }
 
   TF_RETURN_IF_ERROR(LoadAutotuneResults(results));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-/*static*/ StatusOr<std::string> AutotunerUtil::SerializeAutotuneResults(
+/*static*/ absl::StatusOr<std::string> AutotunerUtil::SerializeAutotuneResults(
     bool as_textproto) {
   AutotuneResults results;
   results.set_version(kVersion);
@@ -226,14 +226,13 @@ bool IsTextProtoPath(absl::string_view file_path) {
     if (tsl::protobuf::TextFormat::PrintToString(results, &textproto)) {
       return textproto;
     } else {
-      return Status(absl::StatusCode::kInternal,
-                    "Failed to serialize autotune results.");
+      return InternalError("Failed to serialize autotune results.");
     }
   }
   return results.SerializeAsString();
 }
 
-/*static*/ Status AutotunerUtil::SerializeAutotuneResultsToFile(
+/*static*/ absl::Status AutotunerUtil::SerializeAutotuneResultsToFile(
     absl::string_view file_path) {
   TF_RET_CHECK(!file_path.empty());
 
@@ -248,10 +247,10 @@ bool IsTextProtoPath(absl::string_view file_path) {
                                             autotune_results_str));
   LOG(INFO) << "Autotune results serialized to file: " << resolved_path;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-/*static*/ Status AutotunerUtil::LoadAutotuneResultsFromFile(
+/*static*/ absl::Status AutotunerUtil::LoadAutotuneResultsFromFile(
     absl::string_view file_path) {
   TF_RET_CHECK(!file_path.empty());
 
@@ -273,7 +272,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
 
   LOG(INFO) << "Autotune results loaded from file: " << resolved_path;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /*static*/ std::unique_ptr<HloModule>
@@ -312,9 +311,10 @@ AutotunerUtil::ExtractComputationIntoNewModule(
   return new_hlo_module;
 }
 
-/*static*/ StatusOr<se::RedzoneAllocator> AutotunerUtil::CreateRedzoneAllocator(
-    const AutotuneConfig& config, const DebugOptions& opts,
-    se::Stream* force_stream) {
+/*static*/ absl::StatusOr<se::RedzoneAllocator>
+AutotunerUtil::CreateRedzoneAllocator(const AutotuneConfig& config,
+                                      const DebugOptions& opts,
+                                      se::Stream* force_stream) {
   se::Stream* stream = force_stream;
   if (stream == nullptr) {
     TF_ASSIGN_OR_RETURN(stream, config.GetStream());

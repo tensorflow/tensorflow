@@ -16,6 +16,8 @@ limitations under the License.
 #include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -36,7 +38,7 @@ namespace m = match;
 
 class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleCustomCall(HloInstruction *instr) override {
+  absl::Status HandleCustomCall(HloInstruction *instr) override {
     HloInstruction *existing_gemm;
     HloInstruction *bcast;
     if (Match(instr, m::CustomCall(&existing_gemm,
@@ -45,8 +47,9 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
         (Match(instr, m::CustomCall(&existing_gemm, {kGemmCallTarget,
                                                      kCublasLtMatmulCallTarget})
                           .WithOperand(1, m::Broadcast(&bcast, m::Op()))))) {
-      TF_ASSIGN_OR_RETURN(auto config,
-                          existing_gemm->backend_config<GemmBackendConfig>());
+      TF_ASSIGN_OR_RETURN(auto gpu_config,
+                          existing_gemm->backend_config<GpuBackendConfig>());
+      GemmBackendConfig &config = *gpu_config.mutable_gemm_backend_config();
       DotDimensionNumbers *dim_nums = config.mutable_dot_dimension_numbers();
       int bcast_operand_index = instr->operand_index(bcast);
       int num_bcast_dims = (bcast->shape().dimensions_size() -
@@ -63,11 +66,11 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       // dimensions are >= num_bcast_dims.
       for (int64_t bcast_dim : bcast->dimensions()) {
         if (bcast_dim < num_bcast_dims) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         // bcast_dim should not be in batch_dimensions.
         if (absl::c_linear_search(batch_dimensions, bcast_dim)) {
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
 
@@ -75,7 +78,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       // there is at least one batch dimension.
       CHECK_GT(num_bcast_dims, 0);
       if (num_bcast_dims != num_batch_dims) {
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       if (bcast_operand_index == 1) {
@@ -91,20 +94,20 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
       }
       TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWithDifferentShape(
           bcast_operand_index, bcast->mutable_operand(0)));
-      TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(config));
+      TF_RETURN_IF_ERROR(existing_gemm->set_backend_config(gpu_config));
       MarkAsChanged();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
-static StatusOr<bool> RunOnComputation(HloComputation *computation) {
+static absl::StatusOr<bool> RunOnComputation(HloComputation *computation) {
   GemmBroadcastFoldingVisitor visitor;
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
 
-StatusOr<bool> GemmBroadcastFoldingRewriter::Run(
+absl::StatusOr<bool> GemmBroadcastFoldingRewriter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;

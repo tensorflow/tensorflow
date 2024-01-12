@@ -29,6 +29,9 @@ namespace {
 class TooManyBlocksTest : public GpuCodegenTest {};
 
 TEST_F(TooManyBlocksTest, FailsWithInvalidStatus) {
+  // This test ensures that invalid inputs due to too large launch grids are
+  // caught somewhere in the pipeline. The practical relevance is low, since
+  // as of 2024, the inputs are way too large to fit on any GPU anyway.
   const char* hlo_text = R"(
 HloModule primitive_computation_mul.8
 
@@ -45,14 +48,14 @@ ENTRY primitive_computation_mul.8 {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo_text));
 
-  StatusOr<std::unique_ptr<Executable>> failed_executable =
+  absl::StatusOr<std::unique_ptr<Executable>> failed_executable =
       backend().compiler()->RunBackend(
           std::move(optimized_module), backend().default_stream_executor(),
           backend().default_stream_executor()->GetAllocator());
 
   EXPECT_FALSE(failed_executable.ok());
   EXPECT_THAT(failed_executable.status().ToString(),
-              ::testing::HasSubstr("Kernel launch needs more blocks"));
+              ::testing::HasSubstr("Kernel 'fusion' launch needs more blocks"));
 }
 
 }  // namespace

@@ -43,8 +43,8 @@ namespace m = ::xla::match;
 class CudnnVectorizeConvolutionsTest : public HloTestBase {
  protected:
   // Runs this pass and some cleanup to make pattern-matching easier.
-  StatusOr<bool> Run(std::pair<int, int> compute_capability,
-                     HloModule* module) {
+  absl::StatusOr<bool> Run(std::pair<int, int> compute_capability,
+                           HloModule* module) {
     CudnnVectorizeConvolutions pass(
         se::CudaComputeCapability{compute_capability.first,
                                   compute_capability.second},
@@ -315,8 +315,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo32) {
                   .WithShape(S8, {10, 20, 30, 4, 32})),
           m::Op())));
 
-  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
-                  ->reordered_int8_nchw_vect());
+  EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                  ->cudnn_conv_backend_config()
+                  .reordered_int8_nchw_vect());
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, BiasAndSideInput) {
@@ -367,8 +368,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, BiasAndSideInput) {
                   .WithShape(S8, {10, 20, 30, 4, 32})),
           m::Op())));
 
-  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
-                  ->reordered_int8_nchw_vect());
+  EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                  ->cudnn_conv_backend_config()
+                  .reordered_int8_nchw_vect());
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, InputNHWC_OutputNCHW) {
@@ -419,8 +421,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, InputNHWC_OutputNCHW) {
                   .WithShape(S8, {10, 4, 32, 20, 30})),
           m::Op())));
 
-  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
-                  ->reordered_int8_nchw_vect());
+  EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                  ->cudnn_conv_backend_config()
+                  .reordered_int8_nchw_vect());
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo32) {
@@ -454,8 +457,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo32) {
                          .WithShape(S8, {10, 20, 30, 32, 4})),
           m::Op())));
 
-  EXPECT_FALSE(conv->backend_config<CudnnConvBackendConfig>()
-                   ->reordered_int8_nchw_vect());
+  EXPECT_FALSE(conv->backend_config<GpuBackendConfig>()
+                   ->cudnn_conv_backend_config()
+                   .reordered_int8_nchw_vect());
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32) {
@@ -511,8 +515,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32) {
                             .WithShape(S8, {10, 20, 30, 48, 4}),
                         m::Op())));
 
-  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
-                  ->reordered_int8_nchw_vect());
+  EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                  ->cudnn_conv_backend_config()
+                  .reordered_int8_nchw_vect());
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32NCHW) {
@@ -568,8 +573,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32NCHW) {
                             .WithShape(S8, {10, 32, 20, 30, 4}),
                         m::Op())));
 
-  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
-                  ->reordered_int8_nchw_vect());
+  EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                  ->cudnn_conv_backend_config()
+                  .reordered_int8_nchw_vect());
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32VectorDimFirst) {
@@ -625,8 +631,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32VectorDimFirst) {
                             .WithShape(S8, {4, 10, 20, 30, 48}),
                         m::Op())));
 
-  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
-                  ->reordered_int8_nchw_vect());
+  EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                  ->cudnn_conv_backend_config()
+                  .reordered_int8_nchw_vect());
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorize4To32) {
@@ -694,8 +701,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize16To32) {
                                        .WithShape(S8, {10, 20, 30, 6, 2, 16}))
                             .WithShape(S8, {10, 20, 30, 12, 16}),
                         m::Op())));
-  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
-                  ->reordered_int8_nchw_vect());
+  EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                  ->cudnn_conv_backend_config()
+                  .reordered_int8_nchw_vect());
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, VectorizeMixedTo32) {
@@ -738,8 +746,9 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeMixedTo32) {
                                        .WithShape(S8, {10, 20, 30, 6, 16, 2}))
                             .WithShape(S8, {10, 20, 30, 96, 2}),
                         m::Op())));
-  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
-                  ->reordered_int8_nchw_vect());
+  EXPECT_TRUE(conv->backend_config<GpuBackendConfig>()
+                  ->cudnn_conv_backend_config()
+                  .reordered_int8_nchw_vect());
 }
 
 }  // namespace

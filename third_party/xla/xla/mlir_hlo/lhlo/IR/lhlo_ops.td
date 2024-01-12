@@ -380,7 +380,7 @@ class LHLO_BinaryElementwiseOp<string mnemonic, Type BufferType = LHLO_Buffer,
       Arg<BufferType, "", [MemRead]>:$lhs,
       Arg<BufferType, "", [MemRead]>:$rhs,
       Arg<BufferType, "", [MemWrite]>:$out,
-      OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+      OptionalAttr<I64ElementsAttr>:$broadcast_dimensions
   );
 }
 
@@ -421,7 +421,7 @@ def LHLO_ComplexOp: LHLO_Op<"complex", [SameOperandsShape]> {
       Arg<LHLO_FpBuffer, "", [MemRead]>:$lhs,
       Arg<LHLO_FpBuffer, "", [MemRead]>:$rhs,
       Arg<LHLO_ComplexBuffer, "", [MemWrite]>:$output,
-      OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+      OptionalAttr<I64ElementsAttr>:$broadcast_dimensions
   );
 }
 
@@ -681,7 +681,7 @@ def LHLO_CompareOp: LHLO_Op<"compare", []> {
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
     Arg<LHLO_PredBuffer, "", [MemWrite]>:$out,
-    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
+    OptionalAttr<I64ElementsAttr>:$broadcast_dimensions,
     MHLO_ComparisonDirectionAttr:$comparison_direction,
     OptionalAttr<MHLO_ComparisonTypeAttr>:$compare_type
   );
@@ -845,7 +845,7 @@ def LHLO_BroadcastInDimOp : LHLO_Op<"broadcast_in_dim",
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    BroadcastDimAttr:$broadcast_dimensions
+    I64ElementsAttr:$broadcast_dimensions
   );
 }
 
@@ -1485,7 +1485,7 @@ def LHLO_DynamicBroadcastInDimOp : LHLO_Op<"dynamic_broadcast_in_dim",
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     Arg<LHLO_DimensionBuffer, "", [MemRead]>:$output_dimensions,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    BroadcastDimAttr:$broadcast_dimensions
+    I64ElementsAttr:$broadcast_dimensions
   );
 }
 

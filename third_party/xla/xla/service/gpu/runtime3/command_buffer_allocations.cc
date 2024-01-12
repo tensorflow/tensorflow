@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-StatusOr<se::DeviceMemoryBase> CommandBufferAllocations::GetDeviceAddress(
+absl::StatusOr<se::DeviceMemoryBase> CommandBufferAllocations::GetDeviceAddress(
     BufferAllocation::Index index) const {
   auto base = allocs_.find(index);
   if (base == allocs_.end()) {
@@ -37,8 +37,8 @@ StatusOr<se::DeviceMemoryBase> CommandBufferAllocations::GetDeviceAddress(
   return allocs_.at(index);
 }
 
-Status CommandBufferAllocations::AddAllocation(BufferAllocation::Index index,
-                                               se::DeviceMemoryBase memory) {
+absl::Status CommandBufferAllocations::AddAllocation(
+    BufferAllocation::Index index, se::DeviceMemoryBase memory) {
   VLOG(2) << "Add comand buffer allocation: index=" << index
           << "; ptr=" << memory.opaque();
 
@@ -47,10 +47,10 @@ Status CommandBufferAllocations::AddAllocation(BufferAllocation::Index index,
     return absl::InternalError(absl::StrCat("Command buffer allocation #",
                                             index, " was already allocated"));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CommandBufferAllocations::EraseAllocation(
+absl::Status CommandBufferAllocations::EraseAllocation(
     BufferAllocation::Index index) {
   VLOG(2) << "Erase comand buffer allocation: index=" << index;
 
@@ -58,7 +58,7 @@ Status CommandBufferAllocations::EraseAllocation(
     return absl::InternalError(absl::StrCat("Command buffer allocation #",
                                             index, " was not allocated"));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

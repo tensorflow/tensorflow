@@ -133,8 +133,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8800
@@ -149,8 +150,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
 #endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
@@ -183,8 +185,9 @@ ENTRY main.6 {
                   m::GetTupleElement(
                       m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                       .WithShape(BF16, {16, 16, 256, 64}))));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8800
@@ -200,8 +203,9 @@ ENTRY main.6 {
                   m::GetTupleElement(
                       m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                       .WithShape(BF16, {16, 16, 256, 64}))));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
 #endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
@@ -234,8 +238,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
             2);
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8800
@@ -251,8 +256,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
             2);
 #endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
@@ -285,8 +291,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().lhs_contracting_dimensions()[0],
             2);
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
@@ -304,8 +311,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().lhs_contracting_dimensions()[0],
             2);
   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
@@ -340,8 +348,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.bmm2_dot_dimension_numbers().lhs_contracting_dimensions()[0],
             3);
   EXPECT_EQ(config.bmm2_dot_dimension_numbers().rhs_contracting_dimensions()[0],
@@ -359,8 +368,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.bmm2_dot_dimension_numbers().lhs_contracting_dimensions()[0],
             3);
   EXPECT_EQ(config.bmm2_dot_dimension_numbers().rhs_contracting_dimensions()[0],
@@ -395,8 +405,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(F16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(config.fmha_scale(), 1.0);
   EXPECT_EQ(config.dropout_rate(), 0.0);
 #if GOOGLE_CUDA && CUDNN_VERSION >= 8800
@@ -412,8 +423,9 @@ ENTRY main.6 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
                      .WithShape(F16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 1.0);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
 #endif  // GOOGLE_CUDA && CUDNN_VERSION >= 8800
@@ -478,8 +490,9 @@ ENTRY main.38 {
           m::GetTupleElement(
               m::CustomCall(&fmha, {kCudnnfMHAScaleMaskSoftmaxCallTarget}), 0)
               .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 2.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 4);
@@ -498,8 +511,9 @@ ENTRY main.38 {
           m::GetTupleElement(
               m::CustomCall(&fmha, {kCudnnfMHAScaleMaskSoftmaxCallTarget}), 0)
               .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 2.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 4);
@@ -570,8 +584,9 @@ ENTRY main.41 {
               m::CustomCall(&fmha, {kCudnnfMHAScaleBiasMaskSoftmaxCallTarget}),
               0)
               .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
@@ -591,8 +606,9 @@ ENTRY main.41 {
               m::CustomCall(&fmha, {kCudnnfMHAScaleBiasMaskSoftmaxCallTarget}),
               0)
               .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
@@ -666,8 +682,9 @@ ENTRY main.41 {
               m::CustomCall(&fmha, {kCudnnfMHAScaleBiasMaskSoftmaxCallTarget}),
               0)
               .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
@@ -687,8 +704,9 @@ ENTRY main.41 {
               m::CustomCall(&fmha, {kCudnnfMHAScaleBiasMaskSoftmaxCallTarget}),
               0)
               .WithShape(BF16, {16, 16, 256, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
@@ -770,8 +788,8 @@ ENTRY main.61 {
                   m::CustomCall(&fmha, {kCudnnfMHAScaleBiasSoftmaxCallTarget}),
                   0)))
               .WithShape(BF16, {16, 256, 16, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
   EXPECT_EQ(fmha->operands().size(), 4);
 }
 
@@ -876,8 +894,9 @@ ENTRY main.83 {
                             {kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget}),
               0)
               .WithShape(F16, {2, 6, 40, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 2);
   EXPECT_NEAR(config.dropout_rate(), 0.2, 1e-2);
   EXPECT_EQ(fmha->operands().size(), 5);
@@ -930,8 +949,9 @@ ENTRY main.31 {
       GmockMatch(m::GetTupleElement(
                      m::CustomCall(&fmha, {kCudnnfMHASoftmaxCallTarget}), 0)
                      .WithShape(F16, {2, 6, 40, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 1.0);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 3);
@@ -998,8 +1018,9 @@ ENTRY main.41 {
               m::CustomCall(&fmha, {kCudnnfMHAScaleBiasMaskSoftmaxCallTarget}),
               0)
               .WithShape(F16, {128, 6, 400, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_FLOAT_EQ(config.fmha_scale(), 2.0);
   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
   EXPECT_EQ(fmha->operands().size(), 5);
@@ -1083,8 +1104,9 @@ ENTRY main.61 {
                   m::CustomCall(&fmha, {kCudnnfMHAScaleBiasSoftmaxCallTarget}),
                   0)))
               .WithShape(BF16, {16, 256, 16, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 4);
   EXPECT_FLOAT_EQ(config.fmha_scale(), 2.0);
 }
@@ -1159,8 +1181,8 @@ ENTRY main.56 {
                   m::CustomCall(&fmha, {kCudnnfMHAScaleBiasSoftmaxCallTarget}),
                   0)))
               .WithShape(BF16, {16, 256, 16, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
   EXPECT_EQ(fmha->operands().size(), 4);
 }
 
@@ -1377,8 +1399,9 @@ ENTRY main.82 {
                           &fmha, {kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget}),
                       0))))
               .WithShape(BF16, {16, 256, 16, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 4);
   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
 }
@@ -1486,8 +1509,9 @@ ENTRY main.79 {
                           &fmha, {kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget}),
                       0))))
               .WithShape(BF16, {32, 40, 60, 64})));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
   EXPECT_EQ(fmha->operands().size(), 4);
 }
@@ -1730,8 +1754,9 @@ ENTRY main.146 {
                       .WithShape(BF16, {1, 16, 256, 256})),
               0)),
           m::Op(), m::Op(), m::Op(), m::Op())));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 5);
   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
 }
@@ -1920,8 +1945,9 @@ ENTRY main.146 {
                       .WithShape(F16, {1, 16, 256, 256})),
               0)),
           m::Op(), m::Op(), m::Op(), m::Op())));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 5);
   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
 }
@@ -2132,8 +2158,9 @@ ENTRY main.146 {
               m::CustomCall(
                   {kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget}),
               dbias_index))));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 5);
   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
 }
@@ -2430,8 +2457,9 @@ ENTRY main.126 {
               .WithShape(BF16, {2, 6, 64, 128}),
           m::GetTupleElement(m::CustomCall({backward_target}), 2)
               .WithShape(BF16, {2, 6, 128, 64}))));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 6);
   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
 }
@@ -2581,8 +2609,9 @@ ENTRY main.126 {
               .WithShape(F16, {2, 6, 64, 128}),
           m::GetTupleElement(m::CustomCall({backward_target}), 2)
               .WithShape(F16, {2, 6, 128, 64}))));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 6);
   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
 }
@@ -2696,8 +2725,9 @@ ENTRY main.82 {
               m::CustomCall({kCudnnfMHAScaleBiasMaskSoftmaxBackwardCallTarget}),
               2)
               .WithShape(F16, {2, 6, 128, 64}))));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 6);
   EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
 }
@@ -2890,8 +2920,9 @@ ENTRY main.146 {
                           .WithShape(BF16, {16, 256, 256})))),
               0)),
           m::Op(), m::Op(), m::Op(), m::Op())));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 5);
   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
 }
@@ -3285,8 +3316,9 @@ ENTRY main.82 {
           m::GetTupleElement(
               m::CustomCall({kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget}), 2)
               .WithShape(F16, {2, 6, 128, 64}))));
-  TF_ASSERT_OK_AND_ASSIGN(auto config,
-                          fmha->backend_config<CudnnfMHABackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+  const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
   EXPECT_EQ(fmha->operands().size(), 5);
   EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
 }

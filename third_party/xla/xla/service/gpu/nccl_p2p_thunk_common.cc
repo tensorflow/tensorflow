@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 
+#include <cstdint>
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "xla/service/hlo_parser.h"
 #include "xla/xla_data.pb.h"
@@ -25,7 +27,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
+absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
     mlir::DictionaryAttr frontend_attributes) {
   mlir::StringAttr src_dst_string = frontend_attributes.getAs<mlir::StringAttr>(
       kSendRecvSourceTargetPairsAttr);

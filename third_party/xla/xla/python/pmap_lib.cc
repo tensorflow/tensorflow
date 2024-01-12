@@ -224,8 +224,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
     return result;
   }
   tsl::profiler::TraceMe traceme("pmap_lib_shard_arg_python_fallback");
-  auto py_array_or_bufs = python_fallback(arg, py_devices, input_spec.indices,
-                                          input_spec.array_sharding);
+  auto py_array_or_bufs = python_fallback(arg, input_spec.array_sharding);
 
   auto py_array = py::cast<xla::PyArray>(py_array_or_bufs);
   ShardArgResult result;

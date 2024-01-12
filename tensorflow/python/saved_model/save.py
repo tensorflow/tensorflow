@@ -1377,8 +1377,7 @@ def save_and_return_nodes(
   if not experimental_skip_checkpoint:
     path_helpers.get_or_create_variables_dir(export_dir)
     ckpt_options = checkpoint_options.CheckpointOptions(
-        experimental_io_device=options.experimental_io_device,
-        experimental_sharding_callback=options.experimental_sharding_callback)
+        experimental_io_device=options.experimental_io_device)
     object_saver.save(
         path_helpers.get_variables_path(export_dir), options=ckpt_options)
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,

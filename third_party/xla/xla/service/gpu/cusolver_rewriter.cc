@@ -53,10 +53,10 @@ void SetFortranLayout(Shape* shape) {
             shape->mutable_layout()->mutable_minor_to_major()->at(1));
 }
 
-StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
-                                         HloInstruction* operand,
-                                         const CholeskyOptions& options,
-                                         const OpMetadata& metadata) {
+absl::StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
+                                               HloInstruction* operand,
+                                               const CholeskyOptions& options,
+                                               const OpMetadata& metadata) {
   HloComputation* computation = operand->parent();
 
   Shape a_shape = operand->shape();
@@ -136,8 +136,8 @@ StatusOr<HloInstruction*> CreateCholesky(GpuSolverContext* context,
 }
 
 // Tries to rewrite a single convolution into a call to cudnn.
-StatusOr<bool> RunOnInstruction(GpuSolverContext* context,
-                                HloInstruction* instruction) {
+absl::StatusOr<bool> RunOnInstruction(GpuSolverContext* context,
+                                      HloInstruction* instruction) {
   if (instruction->opcode() != HloOpcode::kCholesky) {
     return false;
   }
@@ -159,7 +159,7 @@ StatusOr<bool> RunOnInstruction(GpuSolverContext* context,
 
 // Rewrites the convolutions in the given computation into calls to cudnn.
 // Returns true if it made any changes.
-StatusOr<bool> GpusolverRewriter::RunOnComputation(
+absl::StatusOr<bool> GpusolverRewriter::RunOnComputation(
     HloComputation* computation) {
   std::vector<HloInstruction*> cusolver_calls;
   for (auto* hlo : computation->instructions()) {
@@ -184,7 +184,7 @@ StatusOr<bool> GpusolverRewriter::RunOnComputation(
 
 GpusolverRewriter::GpusolverRewriter() = default;
 
-StatusOr<bool> GpusolverRewriter::Run(
+absl::StatusOr<bool> GpusolverRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

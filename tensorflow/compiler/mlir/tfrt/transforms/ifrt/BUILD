@@ -1,3 +1,4 @@
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 
 package(
@@ -19,6 +20,33 @@ package_group(
     ]),
 )
 
+gentbl_cc_library(
+    name = "pass_inc_gen",
+    tbl_outs = [
+        (
+            [
+                "-gen-pass-decls",
+                "-name=TfrtIfrtServing",
+            ],
+            "passes.h.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "passes.td",
+    deps = [
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "ifrt_constants",
+    srcs = [],
+    hdrs = ["ifrt_constants.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "tf_ifrt_passes",
     srcs = [
@@ -26,10 +54,12 @@ cc_library(
         "tf_ifrt_passes.cc",
     ],
     hdrs = [
-        "rewrite_cluster_to_ifrt_call.h",
         "tf_ifrt_passes.h",
     ],
+    textual_hdrs = ["passes.h.inc"],
     deps = [
+        ":ifrt_constants",
+        ":pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
@@ -60,6 +90,7 @@ cc_library(
     srcs = ["tf2hlo.cc"],
     hdrs = ["tf2hlo.h"],
     deps = [
+        ":ifrt_constants",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:serialize_mlir_module_utils",

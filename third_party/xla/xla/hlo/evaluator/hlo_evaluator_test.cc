@@ -4843,6 +4843,23 @@ TEST_F(HloEvaluatorTest, SortC64) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  ENTRY main {
+    c = c128[3] constant({(2, 0), (4, 0), (6, 0)})
+    ROOT sort = c64[3]{0} convert(c)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected =
+      LiteralUtil::CreateR1<std::complex<float>>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 // Tests that HloEvaluator can evaluate an instruction even when its operands
 // are not constant.
 TEST_F(HloEvaluatorTest, RecursivelyEvaluateNonConstantOperands) {

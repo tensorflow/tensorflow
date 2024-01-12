@@ -189,7 +189,6 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
-        "zen_util.h",
         "@local_tsl//tsl/util:framework_internal_private_hdrs",
     ],
 )

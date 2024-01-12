@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/tile_analysis.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 
 namespace xla {
 namespace gpu {

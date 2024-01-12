@@ -54,11 +54,13 @@ limitations under the License.
 #include "tsl/c/tsl_status_internal.h"  // IWYU pragma: keep
 
 // Required for IS_MOBILE_PLATFORM definition
-#include "tensorflow/core/platform/platform.h"  // IWYU pragma: keep
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
 
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/stream.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
 #include "tensorflow/core/framework/device.h"
 #include "tsl/framework/device_id_utils.h"
 #include "tsl/platform/statusor.h"
@@ -798,6 +800,26 @@ int TF_GetDeviceId(TF_OpKernelContext* ctx) {
   return *id;
 #endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
+
+TF_StringView TF_GetDeviceName(TF_OpKernelContext* ctx) {
+  const auto& device_name =
+      reinterpret_cast<tensorflow::OpKernelContext*>(ctx)->device()->name();
+  TF_StringView device_name_sv;
+  device_name_sv.data = device_name.data();
+  device_name_sv.len = device_name.length();
+  return device_name_sv;
+}
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+TF_RendezvousThunk TF_GetRendezvous(TF_OpKernelContext* ctx) {
+  TF_RendezvousThunk* thunk =
+      ToC(reinterpret_cast<tensorflow::OpKernelContext*>(ctx)->rendezvous());
+  // Makes a copy of the thunk to simplify lifetime management.
+  TF_RendezvousThunk res = *thunk;
+  delete thunk;
+  return res;
+}
+#endif
 
 TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {
   auto cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);

@@ -788,11 +788,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "execution_thread", builder_->getStringAttr(execution_thread)));
       function->setAttr("execution_thread",
                         builder_->getStringAttr(execution_thread));
-      auto group_id = async_op->async_group_id();
-      if (group_id) {
-        attributes.push_back(builder_->getNamedAttr(
-            "group_id", builder_->getI64IntegerAttr(*group_id)));
-      }
 
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
         auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(

@@ -23,14 +23,14 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -92,10 +92,10 @@ class OwnedGpuGraphExec
 
   // Updates executable graph instance with a newly captured graph. Returns an
   // error if the new graph is not compatible (see `cudaGraphExecUpdate`).
-  tsl::Status Update(OwnedGpuGraph graph);
+  absl::Status Update(OwnedGpuGraph graph);
 
   // Launches captured graph on a given stream.
-  tsl::Status Launch(stream_executor::Stream* stream);
+  absl::Status Launch(stream_executor::Stream* stream);
 
   uint64_t id() const { return id_; }
 
@@ -110,30 +110,31 @@ class OwnedGpuGraphExec
 //===----------------------------------------------------------------------===//
 
 // Creates new empty Gpu graph.
-tsl::StatusOr<OwnedGpuGraph> CreateGpuGraph();
+absl::StatusOr<OwnedGpuGraph> CreateGpuGraph();
 
 // Adds a kernel node to the graph.
-tsl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
+absl::StatusOr<GpuGraphNodeHandle> AddKernelNode(
     GpuGraphHandle graph, absl::Span<GpuGraphNodeHandle> deps,
     ThreadDim threads, BlockDim blocks, const Kernel& kernel,
     const KernelArgs& args);
 
 // Adds a memory copy node to the graph.
-tsl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
+absl::StatusOr<GpuGraphNodeHandle> AddMemcpyD2DNode(
     GpuContext* context, GpuGraphHandle graph,
     absl::Span<GpuGraphNodeHandle> deps, const DeviceMemoryBase& dst,
     const DeviceMemoryBase& src);
 
 // Captures all operations added to a `stream` by the `capture` function into
 // the gpu graph instance.
-tsl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
-    stream_executor::Stream* stream, absl::AnyInvocable<tsl::Status()> capture);
+absl::StatusOr<OwnedGpuGraph> CaptureGpuGraph(
+    stream_executor::Stream* stream,
+    absl::AnyInvocable<absl::Status()> capture);
 
 // Instantiates a captured gpu graph instance into a gpu graph executable.
-tsl::StatusOr<OwnedGpuGraphExec> InstantiateGpuGraph(OwnedGpuGraph graph);
+absl::StatusOr<OwnedGpuGraphExec> InstantiateGpuGraph(OwnedGpuGraph graph);
 
 // Returns true if the stream is in graph capture mode
-tsl::StatusOr<bool> IsStreamCapturing(stream_executor ::Stream* stream);
+absl::StatusOr<bool> IsStreamCapturing(stream_executor ::Stream* stream);
 
 }  // namespace gpu
 }  // namespace stream_executor

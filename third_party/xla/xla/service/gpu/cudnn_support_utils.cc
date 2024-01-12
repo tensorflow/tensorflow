@@ -32,7 +32,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
+absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
     const se::CudaComputeCapability& compute_capability,
     HloCustomCallInstruction& conv, int vector_size) {
   TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(&conv));
@@ -124,7 +124,8 @@ StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
   return true;
 }
 
-StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForFilterReordering(
+absl::StatusOr<CudnnReorderTransposeConfig>
+CudnnInferTransposeForFilterReordering(
     const Shape& shape, const ConvolutionDimensionNumbers& dimension_numbers) {
   // A normal filter should have four dimensions: [O, I, H, W]
   // An already vectorized filter will have five: [O, I/k, H, W, k]; k=4|32
@@ -192,8 +193,8 @@ StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForFilterReordering(
   return CudnnReorderTransposeConfig{split_shape, output_shape, permutation};
 }
 
-StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForBiasReordering(
-    const Shape& shape) {
+absl::StatusOr<CudnnReorderTransposeConfig>
+CudnnInferTransposeForBiasReordering(const Shape& shape) {
   // Expected bias has one dimension: [O]
   if (shape.rank() != 1) {
     return InternalError("Bias shape has unexpected rank.");

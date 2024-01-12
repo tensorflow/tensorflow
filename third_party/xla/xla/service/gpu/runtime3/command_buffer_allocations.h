@@ -30,17 +30,17 @@ namespace xla::gpu {
 // buffers and memory allocation Gpu graph nodes).
 class CommandBufferAllocations : public BufferAllocations::ExternalAllocations {
  public:
-  StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
+  absl::StatusOr<se::DeviceMemoryBase> GetDeviceAddress(
       BufferAllocation::Index index) const override;
 
   // Adds an external allocation for a given buffer index. Returns error if
   // allocation already exists.
-  Status AddAllocation(BufferAllocation::Index index,
-                       se::DeviceMemoryBase memory) override;
+  absl::Status AddAllocation(BufferAllocation::Index index,
+                             se::DeviceMemoryBase memory) override;
 
   // Erases an external allocation for a given buffer index. Returns error if
   // allocation does not exists.
-  Status EraseAllocation(BufferAllocation::Index index) override;
+  absl::Status EraseAllocation(BufferAllocation::Index index) override;
 
  private:
   absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase> allocs_;

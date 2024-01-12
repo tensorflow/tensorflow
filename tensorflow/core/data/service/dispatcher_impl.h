@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/auto_scaler.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -307,6 +308,8 @@ class DataServiceDispatcherImpl {
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Checks that the dispatcher has started, returning UNAVAILABLE if it hasn't.
   Status CheckStarted() TF_LOCKS_EXCLUDED(mu_);
+  // Restores ongoing tf.data snapshots.
+  absl::Status RestoreSnapshots();
   // Records that a split was produced by a call to `GetSplit`.
   Status RecordSplitProduced(int64_t iteration_id, int64_t repetition,
                              int64_t split_provider_index, bool finished)

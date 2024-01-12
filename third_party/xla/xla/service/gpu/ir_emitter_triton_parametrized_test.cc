@@ -191,10 +191,10 @@ ENTRY e {
   p0 = f32[15,33]{1,0} parameter(0)
   ROOT triton_gemm__ = f32[15,68]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
                     "triton_gemm_config":{"block_m":"32","block_n":"32",
                                           "block_k":"32","split_k":"1",
-                                          "num_stages":"1","num_warps":"4"}}
+                                          "num_stages":"1","num_warps":"4"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -213,11 +213,11 @@ ENTRY e {
   fusion = f32[33,68]{1,0} fusion(p1), kind=kLoop, calls=fused_computation
   gemm = (f32[15,68]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
    ROOT get-tuple-element = f32[15,68]{1,0} get-tuple-element((f32[15,68]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -302,10 +302,10 @@ ENTRY e {
   p2 = $0[11,63]{1,0} parameter(2)
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1, p2), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
                     "triton_gemm_config":{"block_m":"64","block_n":"32",
                                           "block_k":"64","split_k":"1",
-                                          "num_stages":"2","num_warps":"2"}}
+                                          "num_stages":"2","num_warps":"2"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -326,11 +326,11 @@ ENTRY e {
   fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
   gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -339,7 +339,7 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompareTwoModules(
       hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
-      /*run_hlo_passes=*/false));
+      /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/6));
 }
 
 std::vector<HloOpcode> TestedBinaryElementwise(PrimitiveType element_type) {
@@ -354,28 +354,28 @@ INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuitePRED, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(PRED),
                        ::testing::ValuesIn(TestedBinaryElementwise(PRED)),
-                       ::testing::Values(3e-2)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS8, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S8),
                        ::testing::ValuesIn(TestedBinaryElementwise(S8)),
-                       ::testing::Values(3e-2)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS16, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S16),
                        ::testing::ValuesIn(TestedBinaryElementwise(S16)),
-                       ::testing::Values(1e-3)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
     ElementwiseTestSuiteS32, BinaryElementwiseTest,
     ::testing::Combine(::testing::Values(S32),
                        ::testing::ValuesIn(TestedBinaryElementwise(S32)),
-                       ::testing::Values(1e-5)),
+                       ::testing::Values(0)),
     ElementwiseTestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(
@@ -429,10 +429,10 @@ ENTRY e {
   p2 = $0[11,63]{1,0} parameter(2)
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1, p2), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
                     "triton_gemm_config":{"block_m":"16","block_n":"64",
                                           "block_k":"16","split_k":"1",
-                                          "num_stages":"3","num_warps":"2"}}
+                                          "num_stages":"3","num_warps":"2"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -453,11 +453,11 @@ ENTRY e {
   fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
   gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1,0} get-tuple-element((f32[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -534,10 +534,10 @@ ENTRY e {
   p3 = pred[13,63]{1,0} parameter(3)
   ROOT triton_gemm__ = $1[92,63]{1,0} fusion(p0, p1, p2, p3), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
                     "triton_gemm_config":{"block_m":"16","block_n":"64",
                                           "block_k":"16","split_k":"1",
-                                          "num_stages":"3","num_warps":"2"}}
+                                          "num_stages":"3","num_warps":"2"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
@@ -561,44 +561,20 @@ ENTRY e {
     calls=fused_computation
   gemm = ($1[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = $1[92,63]{1,0} get-tuple-element(($1[92,63]{1,0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
       kHloRefTemplate, primitive_util::LowercasePrimitiveTypeName(data_type1),
       primitive_util::LowercasePrimitiveTypeName(data_type2));
 
-  float tolerance;
-  switch (data_type1) {
-    case F32:
-      tolerance = 1e-6;
-      break;
-    case BF16:
-      tolerance = 1e-6;
-      break;
-    case F16:
-      tolerance = 2e-4;
-      break;
-    case PRED:
-    case S8:
-      tolerance = 3e-2;
-      break;
-    case S16:
-      tolerance = 1e-3;
-      break;
-    case S32:
-      tolerance = 1e-5;
-      break;
-    default:
-      ABSL_UNREACHABLE();
-  }
   EXPECT_TRUE(RunAndCompareTwoModules(
-      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance},
-      /*run_hlo_passes=*/false));
+      hlo_ref, hlo_test, ErrorSpec{/*aabs=*/0, /*arel=*/0},
+      /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/9));
 }
 
 std::string TwoPrimitiveTypesToString(
@@ -651,10 +627,10 @@ ENTRY e {
   p1 = f32[11,63]{1,0} parameter(1)
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"kind":"__triton_gemm",
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
                     "triton_gemm_config":{"block_m":"16","block_n":"64",
                                           "block_k":"16","split_k":"1",
-                                          "num_stages":"3","num_warps":"2"}}
+                                          "num_stages":"3","num_warps":"2"}}}
 })";
   const std::string hlo_test = absl::Substitute(
       kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
@@ -675,11 +651,11 @@ ENTRY e {
     calls=fused_computation
   gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
     custom_call_target="__cublas$$gemm",
-    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":
+    backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
       "alpha_imag":0,"precision_config":
-      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}
+      {"operand_precision":["HIGHEST","HIGHEST"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[92,63]{1, 0} get-tuple-element((f32[92,63]{1, 0}, s8[0]{0}) gemm), index=0
 })";
   const std::string hlo_ref = absl::Substitute(
@@ -749,7 +725,7 @@ ENTRY e {
   p0 = $0[2,2] parameter(0)
   p1 = f32[2,2] parameter(1)
   ROOT r = f32[2,2] fusion(p0, p1), kind=kCustom, calls=t,
-    backend_config={"kind":"__triton_gemm"}
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
 })",
       primitive_util::LowercasePrimitiveTypeName(data_type1),
       primitive_util::LowercasePrimitiveTypeName(data_type2));

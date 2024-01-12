@@ -65,7 +65,7 @@ enum class TargetDeviceFunctionID {
 };
 
 // HLO opcode -> TargetDeviceFunctionID mapping.
-StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode);
+absl::StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode);
 
 // Emits IR to call a device function named "callee_name" on the given
 // operand. Returns the IR value that represents the return value.

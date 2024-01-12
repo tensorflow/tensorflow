@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,10 +29,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -39,11 +43,16 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/shape.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/gpu/gpu_types.h"
+#endif
 
 namespace xla::gpu {
 
@@ -96,6 +105,7 @@ class CommandBufferCmd {
   // the target address as se::DeviceMemoryBase{nullptr, size}.
   struct RecordParams {
     se::StreamExecutor* executor = nullptr;
+    se::Stream* stream = nullptr;
     se::Stream* trace_stream = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
     const NcclExecuteParams* nccl_params = nullptr;
@@ -104,14 +114,14 @@ class CommandBufferCmd {
   // Prepares a command for recording on a given executor. We split it into a
   // separate function to allow expensive initialization (e.g. device kernel
   // loading) to happen before a command buffer thunk execution.
-  virtual Status Initialize(se::StreamExecutor* executor,
-                            ExecutableSource source) {
-    return OkStatus();
+  virtual absl::Status Initialize(se::StreamExecutor* executor,
+                                  ExecutableSource source) {
+    return absl::OkStatus();
   }
 
   // Records command into the command buffer.
-  virtual Status Record(const RecordParams& params,
-                        se::CommandBuffer* command_buffer) = 0;
+  virtual absl::Status Record(const RecordParams& params,
+                              se::CommandBuffer* command_buffer) = 0;
 
   // Returns all buffers used by the cmd. These will be used to track cmd
   // updates, thus they need to be consistent across calls to the function.
@@ -157,13 +167,13 @@ class CommandBufferCmdSequence {
   }
 
   // Initialized all commands added to a sequence.
-  Status Initialize(se::StreamExecutor* executor,
-                    CommandBufferCmd::ExecutableSource source);
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          CommandBufferCmd::ExecutableSource source);
 
   // Records all commands added to a sequence into the given command buffer.
-  Status Record(const CommandBufferCmd::RecordParams& params,
-                se::CommandBuffer* command_buffer,
-                RecordMode mode = RecordMode::kExclusive);
+  absl::Status Record(const CommandBufferCmd::RecordParams& params,
+                      se::CommandBuffer* command_buffer,
+                      RecordMode mode = RecordMode::kExclusive);
 
   // Returns buffers referenced by commands in this sequence.
   const absl::flat_hash_set<CommandBufferCmd::BufferUsage>& buffers() const;
@@ -220,11 +230,11 @@ class LaunchCmd : public CommandBufferCmd {
             absl::Span<const MemoryAccess> args_access, LaunchDimensions dims,
             int64_t shmem_bytes);
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource source) override;
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) override;
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -252,11 +262,11 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
                         absl::Span<const MemoryAccess> args_access,
                         CustomKernel custom_kernel);
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource source) override;
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) override;
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -281,8 +291,8 @@ class MemcpyDeviceToDeviceCmd : public CommandBufferCmd {
   MemcpyDeviceToDeviceCmd(BufferAllocation::Slice dst,
                           BufferAllocation::Slice src, int64_t num_bytes);
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -300,8 +310,8 @@ class MemzeroCmd : public CommandBufferCmd {
  public:
   explicit MemzeroCmd(BufferAllocation::Slice dst);
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -317,8 +327,8 @@ class Memset32Cmd : public CommandBufferCmd {
  public:
   explicit Memset32Cmd(BufferAllocation::Slice dst, uint32_t bit_pattern);
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -335,11 +345,11 @@ class IfCmd : public CommandBufferCmd {
  public:
   IfCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence then_commands);
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource source) override;
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) override;
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -358,11 +368,11 @@ class IfElseCmd : public CommandBufferCmd {
             CommandBufferCmdSequence then_commands,
             CommandBufferCmdSequence else_commands);
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource source) override;
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) override;
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -381,11 +391,11 @@ class CaseCmd : public CommandBufferCmd {
   CaseCmd(BufferAllocation::Slice index,
           std::vector<CommandBufferCmdSequence> branches_commands);
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource source) override;
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) override;
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -403,11 +413,11 @@ class ForCmd : public CommandBufferCmd {
   ForCmd(int32_t num_iterations, BufferAllocation::Slice loop_counter,
          CommandBufferCmdSequence body_commands);
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource source) override;
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) override;
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -426,11 +436,11 @@ class WhileCmd : public CommandBufferCmd {
   WhileCmd(BufferAllocation::Slice pred, CommandBufferCmdSequence cond_commands,
            CommandBufferCmdSequence body_commands);
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource source) override;
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) override;
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -450,8 +460,8 @@ class AllocateCmd : public CommandBufferCmd {
 
   // After calling this function, the allocated memory is tracked in
   // CommandBuffer object.
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -469,8 +479,8 @@ class FreeCmd : public CommandBufferCmd {
 
   // After calling this function, the allocated memory address for dst
   // BufferAllocation is freed, no update is required.
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -489,11 +499,11 @@ class GemmCmd : public CommandBufferCmd {
           const BufferAllocation::Slice& output_buffer,
           const BufferAllocation::Slice& workspace, bool deterministic);
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource source) override;
+  absl::Status Initialize(se::StreamExecutor* executor,
+                          ExecutableSource source) override;
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -510,6 +520,49 @@ class GemmCmd : public CommandBufferCmd {
 };
 
 //===----------------------------------------------------------------------===//
+// CustomCallCmd
+//===----------------------------------------------------------------------===//
+
+class CustomCallCmd : public CommandBufferCmd {
+ public:
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  using Stream = stream_executor::gpu::GpuStreamHandle;
+#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  using Stream = void*;
+#endif  //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  using CustomCallTarget = std::function<void(Stream, void**, const char*,
+                                              size_t, XlaCustomCallStatus*)>;
+  struct Slice {
+    BufferAllocation::Slice slice;
+    Shape shape;
+  };
+
+  // This is a legacy custom call API that is discouraged, and will be
+  // deprecated once XLA:FFI mechanism is ready.
+  // TODO(anlunx): Support XLA:FFI calls as commands.
+  CustomCallCmd(CustomCallTarget call_target,
+                std::vector<std::optional<Slice>> operands,
+                std::vector<std::optional<Slice>> results,
+                absl::string_view opaque)
+      : call_target_(std::move(call_target)),
+        operands_(std::move(operands)),
+        results_(std::move(results)),
+        opaque_(opaque){};
+
+  Status Record(const RecordParams& params,
+                se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  CustomCallTarget call_target_;
+  std::vector<std::optional<Slice>> operands_;
+  std::vector<std::optional<Slice>> results_;
+  std::string opaque_;
+};
+
+//===----------------------------------------------------------------------===//
 // AllReduceCmd
 //===----------------------------------------------------------------------===//
 
@@ -518,8 +571,8 @@ class AllReduceCmd : public CommandBufferCmd {
   AllReduceCmd(NcclCollectiveConfig config, ReductionKind reduction_kind,
                absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
-  Status Record(const RecordParams& params,
-                se::CommandBuffer* command_buffer) override;
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
 
   BufferUsageVector buffers() override;
 
@@ -528,6 +581,49 @@ class AllReduceCmd : public CommandBufferCmd {
  private:
   NcclCollectiveConfig config_;
   ReductionKind reduction_kind_;
+  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+};
+
+//===----------------------------------------------------------------------===//
+// ReduceScatterCmd
+//===----------------------------------------------------------------------===//
+
+class ReduceScatterCmd : public CommandBufferCmd {
+ public:
+  ReduceScatterCmd(NcclCollectiveConfig config, ReductionKind reduction_kind,
+                   absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  NcclCollectiveConfig config_;
+  ReductionKind reduction_kind_;
+  std::vector<NcclCollectiveThunk::Buffer> buffers_;
+};
+
+//===----------------------------------------------------------------------===//
+// AllGatherCmd
+//===----------------------------------------------------------------------===//
+
+class AllGatherCmd : public CommandBufferCmd {
+ public:
+  AllGatherCmd(NcclCollectiveConfig config,
+               absl::Span<const NcclCollectiveThunk::Buffer> buffers);
+
+  absl::Status Record(const RecordParams& params,
+                      se::CommandBuffer* command_buffer) override;
+
+  BufferUsageVector buffers() override;
+
+  bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  NcclCollectiveConfig config_;
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
 };
 

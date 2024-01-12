@@ -627,11 +627,11 @@ def initialize_rbe_configs():
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.16": "docker://gcr.io/tensorflow-sigs/build@sha256:c13559bbf5df818bb586ad0880b29c409398b56fd8cc122ab0b31dc2b2416505",
-            "sigbuild-r2.16-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:c13559bbf5df818bb586ad0880b29c409398b56fd8cc122ab0b31dc2b2416505",
-            "sigbuild-r2.16-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:93c234df4c781af6974d86e9d1dd2e19ce0845b1b662c38e9a30d1de64eab3b0",
-            "sigbuild-r2.16-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:d0a91705406aad65a79011683b8f7d4b8131625ea26a6d08aa7c6eb6955873a2",
-            "sigbuild-r2.16-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:ed7313f95bce391cbf3b498ff6c534d163cc2bb91ca1d6ef6363bde4fd9e0cfc",
+            "sigbuild-r2.16": "docker://gcr.io/tensorflow-sigs/build@sha256:22d863e6fe3f98946015b9e1264b2eeb8e56e504535a6c1d5e564cae65ae5d37",
+            "sigbuild-r2.16-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:22d863e6fe3f98946015b9e1264b2eeb8e56e504535a6c1d5e564cae65ae5d37",
+            "sigbuild-r2.16-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:da15288c8464153eadd35da720540a544b76aa9d78cceb42a6821b2f3e70a0fa",
+            "sigbuild-r2.16-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:842a5ba84d3658c5bf1f8a31e16284f7becc35409da0dfd71816afa3cd28d728",
+            "sigbuild-r2.16-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:40fcd1d05c672672b599d9cb3784dcf379d6aa876f043b46c6ab18237d5d4e10",
         },
         # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
         # and manylinux2014 is 2.17.
@@ -655,7 +655,7 @@ def initialize_rbe_configs():
             "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "TF_CUDA_CLANG": "0",
             "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
-            "TF_CUDA_VERSION": "12.2",
+            "TF_CUDA_VERSION": "12.3",
             "TF_CUDNN_VERSION": "8.9",
             "TF_ENABLE_XLA": "1",
             "TF_NEED_CUDA": "1",
@@ -667,11 +667,11 @@ def initialize_rbe_configs():
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.16-clang": "docker://gcr.io/tensorflow-sigs/build@sha256:c13559bbf5df818bb586ad0880b29c409398b56fd8cc122ab0b31dc2b2416505",
-            "sigbuild-r2.16-clang-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:c13559bbf5df818bb586ad0880b29c409398b56fd8cc122ab0b31dc2b2416505",
-            "sigbuild-r2.16-clang-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:93c234df4c781af6974d86e9d1dd2e19ce0845b1b662c38e9a30d1de64eab3b0",
-            "sigbuild-r2.16-clang-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:d0a91705406aad65a79011683b8f7d4b8131625ea26a6d08aa7c6eb6955873a2",
-            "sigbuild-r2.16-clang-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:ed7313f95bce391cbf3b498ff6c534d163cc2bb91ca1d6ef6363bde4fd9e0cfc",
+            "sigbuild-r2.16-clang": "docker://gcr.io/tensorflow-sigs/build@sha256:22d863e6fe3f98946015b9e1264b2eeb8e56e504535a6c1d5e564cae65ae5d37",
+            "sigbuild-r2.16-clang-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:22d863e6fe3f98946015b9e1264b2eeb8e56e504535a6c1d5e564cae65ae5d37",
+            "sigbuild-r2.16-clang-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:da15288c8464153eadd35da720540a544b76aa9d78cceb42a6821b2f3e70a0fa",
+            "sigbuild-r2.16-clang-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:842a5ba84d3658c5bf1f8a31e16284f7becc35409da0dfd71816afa3cd28d728",
+            "sigbuild-r2.16-clang-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:40fcd1d05c672672b599d9cb3784dcf379d6aa876f043b46c6ab18237d5d4e10",
         },
         # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
         # and manylinux2014 is 2.17.
@@ -694,7 +694,7 @@ def initialize_rbe_configs():
             "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "TF_CUDA_CLANG": "1",
             "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
-            "TF_CUDA_VERSION": "12.2",
+            "TF_CUDA_VERSION": "12.3",
             "TF_CUDNN_VERSION": "8.9",
             "TF_ENABLE_XLA": "1",
             "TF_NEED_CUDA": "1",

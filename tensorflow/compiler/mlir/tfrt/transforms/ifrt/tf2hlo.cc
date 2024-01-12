@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -71,10 +72,6 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
     const xla::ifrt::Client& ifrt_client) {
   tensorflow::tpu::TPUCompileMetadataProto metadata;
 
-  static constexpr absl::string_view kMetadataAttrName = "tpu_compile_metadata";
-  // This is not backward compatible and only used for debug.
-  static constexpr absl::string_view kMetadataTextAttrName =
-      "__tpu_compile_metadata_text";
   auto metadata_attr = op->getAttrOfType<mlir::StringAttr>(kMetadataAttrName);
   auto metadata_text_attr =
       op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);

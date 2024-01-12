@@ -126,9 +126,9 @@ int main(int argc, char** argv) {
   // 1. Load HloModule from stdin or file.
   absl::StatusOr<std::unique_ptr<xla::HloModule>> status_or_module;
   if (hlo_filename == "-") {
-    std::string stdin;
-    std::getline(std::cin, stdin, static_cast<char>(EOF));
-    status_or_module = xla::LoadModuleFromData(stdin, config.input_format);
+    std::string input;
+    std::getline(std::cin, input, static_cast<char>(EOF));
+    status_or_module = xla::LoadModuleFromData(input, config.input_format);
   } else {
     status_or_module = xla::LoadModuleFromFile(
         hlo_filename, xla::hlo_module_loader_details::Config(),

@@ -65,7 +65,7 @@ void RemoveUnusedAndUninitializedGlobals(
     llvm::Module* llvm_module,
     const std::vector<GpuExecutable::ConstantInfo>& constants);
 
-StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
+absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,

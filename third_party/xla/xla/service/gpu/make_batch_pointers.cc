@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
@@ -43,9 +44,10 @@ namespace make_batch_pointers {
 void* kernel();  // returns a pointer to a CUDA C++ device function
 }  // namespace make_batch_pointers
 
-Status MakeBatchPointers(se::Stream* stream, se::DeviceMemoryBase base_ptr,
-                         size_t stride_bytes, size_t n,
-                         se::DeviceMemoryBase ptrs_out) {
+absl::Status MakeBatchPointers(se::Stream* stream,
+                               se::DeviceMemoryBase base_ptr,
+                               size_t stride_bytes, size_t n,
+                               se::DeviceMemoryBase ptrs_out) {
   static constexpr size_t kThreads = 128;
 
   se::StreamExecutor* executor = stream->parent();
@@ -67,7 +69,7 @@ Status MakeBatchPointers(se::Stream* stream, se::DeviceMemoryBase base_ptr,
                          se::BlockDim(CeilOfRatio(n, kThreads), 1, 1), *kernel,
                          base_ptr, stride_bytes, n, ptrs_out));
 #endif
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla::gpu

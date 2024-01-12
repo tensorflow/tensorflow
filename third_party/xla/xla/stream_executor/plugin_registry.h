@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/platform.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -65,17 +65,17 @@ class PluginRegistry {
   // Returns a non-successful status if the factory has already been registered
   // with that platform (but execution should be otherwise unaffected).
   template <typename FactoryT>
-  tsl::Status RegisterFactory(Platform::Id platform_id, const std::string& name,
-                              FactoryT factory);
+  absl::Status RegisterFactory(Platform::Id platform_id,
+                               const std::string& name, FactoryT factory);
 
   // Return true if the factory/kind has been registered for the
   // specified platform and plugin kind and false otherwise.
   bool HasFactory(Platform::Id platform_id, PluginKind plugin_kind) const;
 
   // Retrieves the factory registered for the specified kind,
-  // or a tsl::Status on error.
+  // or a absl::Status on error.
   template <typename FactoryT>
-  tsl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id);
+  absl::StatusOr<FactoryT> GetFactory(Platform::Id platform_id);
 
  private:
   // Containers for the sets of registered factories, by plugin kind.
@@ -89,9 +89,9 @@ class PluginRegistry {
 
   // Actually performs the work of registration.
   template <typename FactoryT>
-  tsl::Status RegisterFactoryInternal(const std::string& plugin_name,
-                                      FactoryT factory,
-                                      std::optional<FactoryT>* factories);
+  absl::Status RegisterFactoryInternal(const std::string& plugin_name,
+                                       FactoryT factory,
+                                       std::optional<FactoryT>* factories);
 
   // Returns true if the specified plugin has been registered with the specified
   // platform factories. Unlike the other overload of this method, this does
@@ -109,13 +109,13 @@ class PluginRegistry {
 };
 
 // Explicit specializations are defined in plugin_registry.cc.
-#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                         \
-  template <>                                                                \
-  tsl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
-      Platform::Id platform_id, const std::string& name,                     \
-      PluginRegistry::FACTORY_TYPE factory);                                 \
-  template <>                                                                \
-  tsl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                          \
+  template <>                                                                 \
+  absl::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
+      Platform::Id platform_id, const std::string& name,                      \
+      PluginRegistry::FACTORY_TYPE factory);                                  \
+  template <>                                                                 \
+  absl::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
       Platform::Id platform_id)
 
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);

@@ -71,12 +71,12 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
 }
 
 StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        const Shape& shape,
-                                        const std::vector<int>& axis_sizes) {
+                                        absl::Span<const int64_t> shape,
+                                        absl::Span<const int> axis_sizes) {
   // Dim shards matches the rank of the tensor, with each entry representing
   // the number of shards for the corresponding dimension.
   llvm::SmallVector<int64_t> dim_shards;
-  dim_shards.reserve(shape.rank());
+  dim_shards.reserve(shape.size());
   // `axis_sizes` with the sizes of the mesh dimensions
   // `permutation` of the same length as `axis_sizes` telling how the shards
   // are mapped over the axis in `minor_to_major` order.
@@ -87,7 +87,7 @@ StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
     minor_to_major.axis_sizes.push_back(axis_size);
   }
   if (hlo_sharding.IsReplicated()) {
-    for (int i = 0; i < shape.rank(); ++i) {
+    for (int i = 0; i < shape.size(); ++i) {
       dim_shards.push_back(1);
     }
     for (int axis_idx = 0; axis_idx < axis_sizes.size(); ++axis_idx) {

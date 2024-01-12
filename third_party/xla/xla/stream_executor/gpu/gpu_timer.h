@@ -19,6 +19,8 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "absl/time/time.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
@@ -38,12 +40,12 @@ class GpuStream;
 // Timer is started once it's created, and is stopped once read.
 class GpuTimer {
  public:
-  static tsl::StatusOr<GpuTimer> Create(GpuStream* stream);
+  static absl::StatusOr<GpuTimer> Create(GpuStream* stream);
 
   // An ugly but a very convenient helper: creates a timer only when we need
   // one, but always returns an object. If `is_needed` is false, returns an
   // empty optional, acts like `Create` otherwise.
-  static tsl::StatusOr<std::optional<GpuTimer>> CreateIfNeeded(
+  static absl::StatusOr<std::optional<GpuTimer>> CreateIfNeeded(
       GpuStream* stream, bool is_needed);
 
   explicit GpuTimer(GpuExecutor* parent, GpuEventHandle start_event,
@@ -63,7 +65,7 @@ class GpuTimer {
 
   // Stops the timer on the first call and returns the elapsed duration.
   // Subsequent calls error out.
-  tsl::StatusOr<absl::Duration> GetElapsedDuration();
+  absl::StatusOr<absl::Duration> GetElapsedDuration();
 
  private:
   GpuExecutor* parent_;

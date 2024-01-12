@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
@@ -52,8 +53,8 @@ will be emitted and printed instead of the non-optimized LLVM.
 By default SM 70 is targeted. But this can be changed with `--sm=SM`.)";
 
 namespace {
-xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
-                                  bool generate_ptx, int sm) {
+absl::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
+                                   bool generate_ptx, int sm) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::HloModule> hlo_module,
       xla::LoadModuleFromData(/*data=*/hlo_text, /*format=*/"hlo"));
@@ -109,16 +110,16 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                                       hlo_module->config().debug_options()));
     std::cout << ptx << std::endl;
 #elif TENSORFLOW_USE_ROCM
-    return {absl::StatusCode::kUnimplemented,
-            "Feature not yet implemented in ROCm"};
+    return absl::kUnimplementedError("Feature not yet implemented in ROCm"
+  };
 #endif
   }
 #endif
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
-xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
-                                          bool ptx, int sm) {
+absl::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
+                                           bool ptx, int sm) {
   std::string full_text;
   TF_RETURN_IF_ERROR(
       tsl::ReadFileToString(tsl::Env::Default(), file_name, &full_text));
@@ -129,7 +130,7 @@ xla::Status CompileAndPrintLlvmIrFromFile(const std::string& file_name,
     TF_RETURN_IF_ERROR(CompileAndPrintLlvmIr(hlo_module_text, ptx, sm));
   }
 
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

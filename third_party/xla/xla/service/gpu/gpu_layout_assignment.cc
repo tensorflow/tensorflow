@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -164,7 +165,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 // constraints are represented in terms of minor_to_major fields of both
 // operands and the output shape. Depending on the underlying algorithm, one of
 // { NCHW, NHWC } ^ 3 = 8 different layout combinations may be chosen.
-Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
+absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
     HloCustomCallInstruction* instr, LayoutConstraints* constraints) {
   Shape lhs_shape = instr->operand(0)->shape();
   Shape rhs_shape = instr->operand(1)->shape();
@@ -248,7 +249,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
         instr->ToString());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -281,7 +282,7 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
 
 }  // namespace
 
-Status GpuLayoutAssignment::AddBackendConstraints(
+absl::Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   // Add convolution constraints in reverse postorder that the earliest
   // convolution layout propagates first. This reduces the likelihood of fusion
@@ -460,10 +461,10 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           all_to_all));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GpuLayoutAssignment::SetDotOperandLayout(
+absl::Status GpuLayoutAssignment::SetDotOperandLayout(
     const HloInstruction* instruction, int64_t operand,
     absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
     absl::Span<const int64_t> col_dims) {
@@ -486,7 +487,7 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
       /*dim_groups=*/{batch_dims, row_dims, col_dims});
 }
 
-Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
+absl::Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
     const HloInstruction* instruction, int64_t operand,
     std::initializer_list<absl::Span<const int64_t>> dim_groups) {
   size_t size = 0;
@@ -503,8 +504,8 @@ Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
   return SetOperandLayout(shape, instruction, operand);
 }
 
-Status GpuLayoutAssignment::SetDotLayout(const HloInstruction* instruction,
-                                         LayoutConstraints* constraints) {
+absl::Status GpuLayoutAssignment::SetDotLayout(
+    const HloInstruction* instruction, LayoutConstraints* constraints) {
   // If a user has requested a layout that we can support, use that.
   for (const HloInstruction* user : instruction->users()) {
     for (int64_t i = 0; i < user->operand_count(); ++i) {

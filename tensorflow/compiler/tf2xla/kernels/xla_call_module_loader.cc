@@ -186,17 +186,30 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
       return tsl::OkStatus();
     }
   }
+  // Add the tokens to the input_shapes. Starting with version 9, the main
+  // function may take token arguments that do not correspond with op inputs.
+  int nr_inputs = NrInputs();
+  int nr_expected_tokens = llvm::count_if(InputTypes(), IsTokenType);
+  if (input_shapes.size() != NrInputs() - nr_expected_tokens) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XlaCallModule RefineDynamicShapes called with ", input_shapes.size(),
+        "input shapes, but the main function takes ",
+        NrInputs() - nr_expected_tokens, " non-token arguments"));
+  }
 
   mlir::Block &main_body = main_.front();
-  int non_dimension_arguments = input_shapes.size();
-
   mlir::Builder builder(module_->getContext());
-  std::vector<mlir::Type> static_array_input_types(non_dimension_arguments);
-  for (int i = 0, end = non_dimension_arguments; i < end; ++i) {
-    const xla::Shape &xla_shape = input_shapes[i];
-    if (xla_shape.IsToken()) {
+  std::vector<mlir::Type> static_array_input_types(nr_inputs);
+  int next_actual_input = 0;
+  for (int i = 0, end = nr_inputs; i < end; ++i) {
+    mlir::Type arg_type = main_body.getArgument(i).getType();
+    if (IsTokenType(arg_type)) {
       static_array_input_types[i] = mlir::stablehlo::TokenType::get(context_);
+      VLOG(3) << "XlaCallModule static array input type #" << i << ": "
+              << mlir::debugString(static_array_input_types[i])
+              << " for argument type " << mlir::debugString(arg_type);
     } else {
+      const xla::Shape &xla_shape = input_shapes[next_actual_input++];
       std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
                                           xla_shape.dimensions().end());
       TF_ASSIGN_OR_RETURN(
@@ -209,12 +222,15 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
       //     mlir::Type type,
       //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
       VLOG(3) << "XlaCallModule static array input type #" << i << ": "
-              << mlir::debugString(type);
+              << mlir::debugString(type) << " for argument type "
+              << mlir::debugString(arg_type);
       mlir::TensorType arg_type =
           main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
       if (arg_type == nullptr) {
         return absl::InvalidArgumentError(absl::StrCat(
-            "Argument ", i, " passed to XlaCallModule is not a tensor"));
+            "Argument ", i, " passed to XlaCallModule is not a tensor, ",
+            "has type ",
+            mlir::debugString(main_body.getArgument(i).getType())));
       }
 
       if (arg_type.getElementType() != type.getElementType()) {

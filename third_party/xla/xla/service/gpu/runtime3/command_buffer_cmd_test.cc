@@ -53,8 +53,8 @@ struct TestOnlyCommandBufferCmd : public CommandBufferCmd {
   explicit TestOnlyCommandBufferCmd(BufferUsageVector buffer_usage)
       : buffer_usage(buffer_usage) {}
 
-  Status Record(const RecordParams&, se::CommandBuffer*) override {
-    return OkStatus();
+  absl::Status Record(const RecordParams&, se::CommandBuffer*) override {
+    return absl::OkStatus();
   }
 
   BufferUsageVector buffers() override { return buffer_usage; }
@@ -173,8 +173,8 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
   auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(
-      commands.Record({executor, &stream, &allocations}, &command_buffer));
+  TF_ASSERT_OK(commands.Record({executor, &stream, &stream, &allocations},
+                               &command_buffer));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(executor->Submit(&stream, command_buffer));
@@ -234,8 +234,8 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
   auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(
-      commands.Record({executor, &stream, &allocations}, &command_buffer));
+  TF_ASSERT_OK(commands.Record({executor, &stream, &stream, &allocations},
+                               &command_buffer));
 
   // Execute command buffer and verify that it copied the memory.
   TF_ASSERT_OK(executor->Submit(&stream, command_buffer));

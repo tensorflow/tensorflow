@@ -224,8 +224,9 @@ ENTRY AddDotsFunc {
           *get_module(), backend().default_stream_executor(),
           backend().default_stream_executor()->GetAllocator()));
 
-  StatusOr<bool> filecheck_result = RunFileCheck(optimized_module->ToString(),
-                                                 R"(
+  absl::StatusOr<bool> filecheck_result =
+      RunFileCheck(optimized_module->ToString(),
+                   R"(
 ; CHECK:    custom_call_target="__cublas${{(lt\$matmul|gemm)}}"
     )");
   TF_ASSERT_OK(filecheck_result.status());
@@ -4947,6 +4948,30 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreAda) {
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %PreAdaTest ({{.*}}: f8e4m3fn[16,32], {{.*}}: f8e4m3fn[32,16]) -> f8e4m3fn[16,16] {
+; CHECK:    {{.*}} = {{.*}} custom-call({{.*}}, {{.*}})
+; CHECK-DAG:  custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
+          )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteOnPreAdaWithF32Output) {
+  if (CudaOrRocmCheck(8, 9, Switch::False)) {
+    GTEST_SKIP() << "Test requires a pre-Ada GPU.";
+  }
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY PreAdaTest {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      ROOT out = f32[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+          }
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %PreAdaTest (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16]) -> f32[16,16] {
 ; CHECK:    {{.*}} = {{.*}} custom-call({{.*}}, {{.*}})
 ; CHECK-DAG:  custom_call_target="<<CUBLAS_CUSTOM_CALL_TARGET_PLACEHOLDER>>"
           )");

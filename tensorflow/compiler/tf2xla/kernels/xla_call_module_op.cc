@@ -234,15 +234,10 @@ class XlaCallModuleOp : public XlaOpKernel {
     xla::XlaBuilder *const b = ctx->builder();
 
     std::vector<xla::Shape> input_shapes;
-    int next_actual_input = 0;
-    for (mlir::Type inputType : loader_->InputTypes()) {
-      if (IsTokenType(inputType)) {
-        input_shapes.push_back(xla::ShapeUtil::MakeTokenShape());
-      } else {
-        auto shape = ctx->InputXlaShape(next_actual_input++);
-        OP_REQUIRES_OK(ctx, shape.status());
-        input_shapes.push_back(*std::move(shape));
-      }
+    for (int i = 0; i < ctx->num_inputs(); ++i) {
+      auto shape = ctx->InputXlaShape(i);
+      OP_REQUIRES_OK(ctx, shape.status());
+      input_shapes.push_back(*std::move(shape));
     }
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
@@ -263,7 +258,7 @@ class XlaCallModuleOp : public XlaOpKernel {
     }
 
     std::vector<xla::XlaOp> inputs;
-    next_actual_input = 0;
+    int next_actual_input = 0;
     for (mlir::Type inputType : loader_->InputTypes()) {
       if (IsTokenType(inputType)) {
         if (token_input.IsUninitialized()) {

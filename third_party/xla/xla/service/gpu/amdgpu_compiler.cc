@@ -18,6 +18,9 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "llvm/IR/Module.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/dot_dimension_merger.h"
@@ -81,7 +84,7 @@ std::string GetROCDLDir(const HloModuleConfig& config) {
 
 }  // namespace
 
-Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
+absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -112,10 +115,10 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
+absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
@@ -146,7 +149,7 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Linearize collective schedule under if online autotuning of convolutions is
@@ -167,24 +170,27 @@ bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
   return false;
 }
 
-Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
+absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
-StatusOr<GpuCompiler::BackendCompileResult> AMDGPUCompiler::CompileTargetBinary(
-    const HloModuleConfig& module_config, llvm::Module* llvm_module,
-    se::GpuComputeCapability gpu_version, bool relocatable,
-    const HloModule* debug_module, const CompileOptions& options) {
+absl::StatusOr<GpuCompiler::BackendCompileResult>
+AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
+                                    llvm::Module* llvm_module,
+                                    se::GpuComputeCapability gpu_version,
+                                    bool relocatable,
+                                    const HloModule* debug_module,
+                                    const CompileOptions& options) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module_config);

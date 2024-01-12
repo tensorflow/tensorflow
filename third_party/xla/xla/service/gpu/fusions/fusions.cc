@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -74,7 +73,7 @@ bool IsDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis) {
 
 }  // namespace
 
-std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
+std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
 LmhloFusionInfo::GetCopyFusion() const {
   auto params = GetHloOperands(fusion_op_);
   auto outputs = GetHloOutputs(fusion_op_);
@@ -113,7 +112,7 @@ LmhloFusionInfo::GetCopyFusion() const {
                                         std::move(dsts));
 }
 
-std::optional<StatusOr<std::unique_ptr<FusionInterface>>>
+std::optional<absl::StatusOr<std::unique_ptr<FusionInterface>>>
 HloFusionInfo::GetCopyFusion() const {
   std::vector<BufferAllocation::Slice> src_buffers;
   for (auto* root : analysis().fusion_roots()) {
@@ -135,12 +134,12 @@ HloFusionInfo::GetCopyFusion() const {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       instr_->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                             buffer_assignment_->GetUniqueSlice(instr_, index));
         dst_buffers.push_back(slice);
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   DCHECK(src_buffers.size() == dst_buffers.size());
@@ -162,7 +161,7 @@ bool HloFusionInfo::CanEmitDynamicUpdateSliceInPlace() const {
   return ret.ok() && *ret;
 }
 
-StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
+absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
     const FusionInfo& fusion_info) {
   const auto& analysis = fusion_info.analysis();
   switch (analysis.GetEmitterFusionKind()) {

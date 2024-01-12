@@ -106,7 +106,7 @@ class GraphInstances {
   //
   // If timeout is not nullopt it will evict all previously instantiated graphs
   // that were used more than `eviction_timeout_seconds` seconds ago.
-  Status InstantiateAllGraphs(
+  absl::Status InstantiateAllGraphs(
       const ServiceExecutableRunOptions* run_options,
       const runtime::Executable& executable,
       const runtime::CustomCall::UserData& user_data,

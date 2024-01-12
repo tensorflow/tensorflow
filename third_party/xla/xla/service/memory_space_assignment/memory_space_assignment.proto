@@ -63,3 +63,54 @@ message MemoryBoundLoopOptimizerOptions {
   // memory-bound loop optimizer to kick in.
   optional float min_num_iterations = 4;
 }
+
+message TupleShapeIndex {
+  repeated int64 index = 1;
+}
+
+// A message to filter operands in an HLO schedule, that can be used to override
+// compiler behaviour like altering schedule etc.
+message HloOperandFilter {
+  // Regex to match instruction name.
+  optional string instruction_name_regex = 1;
+  // Set if filtering operands of an instruction.
+  optional int64 operand_number = 2;
+  // If filtering operands based on size in bytes.
+  optional int64 size_gte = 3;
+  // If filtering operands based on size in bytes.
+  optional int64 size_lte = 4;
+  // If operand of an instruction is a tuple and indexing into the tuple is
+  // required.
+  optional TupleShapeIndex tuple_index = 5;
+}
+
+// Options to override preferred prefetch time for an operand.
+message PreferredPrefetchOverrideOptions {
+  oneof options {
+    // A value X in [0, 1] that tells us the preferred prefetch time is the
+    // fraction X through the live range. For example, .5 will set the
+    // preferred prefetch time to the middle of live range.
+    float prefetch_eagerness = 1;
+    // Preferred prefetch time is set to after the instruction with instruction
+    // name.
+    string after_instruction_name = 2;
+    // Preferred prefetch time is set to before the instruction with instruction
+    // name.
+    string before_instruction_name = 3;
+  }
+}
+
+// Filters operands in an HLO schedule and overrides preferred prefetch times
+// for those operands according to an override strategy specified in
+// override_options.
+message PreferredPrefetchOverride {
+  optional HloOperandFilter hlo_operand_filter = 1;
+  optional xla.memory_space_assignment.PreferredPrefetchOverrideOptions
+      override_options = 2;
+}
+
+// Encloses chained override configs. The first config has highest precedence
+// and so on.
+message PreferredPrefetchOverrides {
+  repeated PreferredPrefetchOverride overrides = 1;
+}

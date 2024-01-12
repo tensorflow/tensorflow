@@ -345,6 +345,20 @@ class DistributedSaveTest(
         "SNAPPY."):
       _ = dataset_ops.Dataset.load(snapshot_dir.full_path, compression="ZLIB")
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testRequiresFaultTolerantMode(self):
+    cluster = data_service_test_base.TestCluster(
+        num_workers=1, fault_tolerant_mode=False)
+    snapshot_dir = data_service_test_base.TempDir()
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "tf.data distributed snapshot requires running tf.data service in the "
+        "fault tolerant mode."):
+      self.evaluate(distributed_save_op.distributed_save(
+          dataset_ops.Dataset.range(10), snapshot_dir.full_path,
+          cluster.dispatcher_address(),
+          compression="AUTO"))
+
 
 class LoadCheckpointTest(
     data_service_test_base.TestBase,

@@ -26,8 +26,6 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:string_ops",
         "//tensorflow/python/ops:variables",
-        "//tensorflow/python/trackable:base",
-        "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
 )
@@ -40,7 +38,6 @@ tf_py_strict_test(
         ":sharding_policies",
         ":sharding_util",
         "//tensorflow/python/checkpoint",
-        "//tensorflow/python/checkpoint:checkpoint_options",
         "//tensorflow/python/checkpoint:graph_view",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
@@ -51,11 +48,9 @@ tf_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:variables",
-        "//tensorflow/python/platform:gfile",
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -72,8 +67,6 @@ py_strict_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
-        "//tensorflow/python/util:tf_export",
-        "@absl_py//absl/logging",
     ],
 )
 

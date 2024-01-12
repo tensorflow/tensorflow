@@ -41,17 +41,11 @@ the repository, and create a pull request.
 2.  Create and run a
     [TensorFlow Docker container](https://www.tensorflow.org/install/docker).
 
-    To get the TensorFlow Docker image for CPU, run the following command:
+    To get the TensorFlow Docker image for both CPU and GPU building, run the
+    following command:
 
     ```sh
     docker run --name xla -w /xla -it -d --rm -v $PWD:/xla tensorflow/build:latest-python3.9 bash
-    ```
-
-    Alternatively, to get the TensorFlow Docker image for GPU, run the following
-    command:
-
-    ```sh
-    docker run --name xla_gpu -w /xla -it -d --rm -v $PWD:/xla tensorflow/tensorflow:devel-gpu bash
     ```
 
 ## Build
@@ -66,8 +60,8 @@ docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/.
 Build for GPU:
 
 ```sh
-docker exec -e TF_NEED_CUDA=1 xla_gpu ./configure
-docker exec xla_gpu bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
+docker exec -e TF_NEED_CUDA=1 xla ./configure
+docker exec xla bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 ```
 
 Your first build will take quite a while because it has to build the entire

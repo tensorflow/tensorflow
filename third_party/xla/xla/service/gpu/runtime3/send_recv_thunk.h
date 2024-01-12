@@ -63,12 +63,12 @@ namespace xla::gpu {
 class SendRecvAsyncEvents {
  public:
   // Emplace a new send/recv completion event.
-  Status Emplace(se::StreamExecutor* executor, int32_t channel_id,
-                 tsl::AsyncValueRef<se::Event> event);
+  absl::Status Emplace(se::StreamExecutor* executor, int32_t channel_id,
+                       tsl::AsyncValueRef<se::Event> event);
 
   // Extract a send/recv completion event.
-  StatusOr<tsl::AsyncValueRef<se::Event>> Extract(se::StreamExecutor* executor,
-                                                  int32_t channel_id);
+  absl::StatusOr<tsl::AsyncValueRef<se::Event>> Extract(
+      se::StreamExecutor* executor, int32_t channel_id);
 
  private:
   using Key = std::pair<se::StreamExecutor*, /*channel_id=*/int64_t>;
@@ -89,7 +89,7 @@ class SendThunk : public Thunk {
             absl::flat_hash_map<std::string, std::string> frontend_attrs,
             std::optional<GlobalDeviceId> device_constraint);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   Shape shape_;
@@ -112,7 +112,7 @@ class SendDoneThunk : public Thunk {
                 std::shared_ptr<SendRecvAsyncEvents> events,
                 std::optional<GlobalDeviceId> device_constraint);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   int64_t channel_id_;
@@ -132,7 +132,7 @@ class RecvThunk : public Thunk {
             absl::flat_hash_map<std::string, std::string> frontend_attrs,
             std::optional<GlobalDeviceId> device_constraint);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   Shape shape_;
@@ -155,7 +155,7 @@ class RecvDoneThunk : public Thunk {
                 std::shared_ptr<SendRecvAsyncEvents> events,
                 std::optional<GlobalDeviceId> device_constraint);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   int64_t channel_id_;

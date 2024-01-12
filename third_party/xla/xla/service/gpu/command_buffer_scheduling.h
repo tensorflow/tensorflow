@@ -84,7 +84,7 @@ class CommandBufferScheduling : public HloModulePass {
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -96,7 +96,8 @@ class CommandBufferScheduling : public HloModulePass {
   // the beginning of the computation. This simplifies the construction of
   // command buffer computations because we don't need to deal with parameters
   // and constants that have users outside of a command buffer.
-  static Status MoveParametersAndConstantsToFront(HloComputation* computation);
+  static absl::Status MoveParametersAndConstantsToFront(
+      HloComputation* computation);
 
   struct CommandBuffer {
     // Command buffer arguments (call instruction arguments).
@@ -116,12 +117,12 @@ class CommandBufferScheduling : public HloModulePass {
   // constructed by instructions outside of the sequence are passed in as
   // parameters. Results of instructions in the sequence are returned in a tuple
   // (if command buffer has a single result we don't wrap it into tuple).
-  static StatusOr<CommandBuffer> PrepareCommandBuffer(
+  static absl::StatusOr<CommandBuffer> PrepareCommandBuffer(
       const HloInstructionSequence& seq);
 
   // Rewrites prepared command buffer computation into Hlo operations in the
   // parent computation (calls command buffer and replaced all users).
-  static StatusOr<HloComputation*> RewriteCommandBuffer(
+  static absl::StatusOr<HloComputation*> RewriteCommandBuffer(
       HloComputation* parent, const HloInstructionSequence& seq,
       CommandBuffer command_buffer);
 

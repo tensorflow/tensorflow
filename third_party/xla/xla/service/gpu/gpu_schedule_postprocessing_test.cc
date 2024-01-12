@@ -41,7 +41,7 @@ TEST_F(GpuSchedulePostprocessingTest, SynchronousOpsNotChanged) {
   ENTRY entry {
     pf32 = f32[1] parameter(0)
 
-    all-gather-start = (f32[1], f32[2]) all-gather-start(pf32), dimensions={0}, backend_config="{\"is_sync\":true}"
+    all-gather-start = (f32[1], f32[2]) all-gather-start(pf32), dimensions={0}, backend_config={"collective_backend_config":{"is_sync":true,"no_parallel_custom_call":false}}
     ROOT all-gather-done = f32[2] all-gather-done(all-gather-start)
   }
 )";
@@ -83,7 +83,7 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsChanged) {
   ENTRY entry {
     pf32 = f32[1] parameter(0)
     pf32.2 = f32[1] custom-call(pf32), custom_call_target="my_custom_call"
-    all-gather-start = (f32[1], f32[2]) all-gather-start(pf32.2), dimensions={0}, backend_config="{\"is_sync\":false}"
+    all-gather-start = (f32[1], f32[2]) all-gather-start(pf32.2), dimensions={0}, backend_config={"collective_backend_config":{"is_sync":false}}
     ROOT all-gather-done = f32[2] all-gather-done(all-gather-start)
   }
 )";
@@ -94,8 +94,10 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsChanged) {
   EXPECT_TRUE(changed);
 
   HloInstruction* start = FindInstruction(module.get(), "all-gather-start");
-  TF_ASSERT_OK_AND_ASSIGN(CollectiveBackendConfig collective_backend_config,
-                          start->backend_config<CollectiveBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          start->backend_config<GpuBackendConfig>());
+  const CollectiveBackendConfig& collective_backend_config =
+      gpu_config.collective_backend_config();
   EXPECT_TRUE(collective_backend_config.no_parallel_custom_call());
 }
 
@@ -105,7 +107,7 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsWithParallelCustomcall) {
 
   ENTRY entry {
     pf32 = f32[1] parameter(0)
-    all-gather-start = (f32[1], f32[2]) all-gather-start(pf32), dimensions={0}, backend_config="{\"is_sync\":false}"
+    all-gather-start = (f32[1], f32[2]) all-gather-start(pf32), dimensions={0}, backend_config={"collective_backend_config":{"is_sync":false}}
     pf32.2 = f32[1] custom-call(pf32), custom_call_target="my_custom_call"
     all-gather-done = f32[2] all-gather-done(all-gather-start)
     ROOT out = (f32[1], f32[2]) tuple(f32[1] pf32.2, f32[2] all-gather-done)
@@ -118,8 +120,10 @@ TEST_F(GpuSchedulePostprocessingTest, AsynchronousOpsWithParallelCustomcall) {
   EXPECT_FALSE(changed);
 
   HloInstruction* start = FindInstruction(module.get(), "all-gather-start");
-  TF_ASSERT_OK_AND_ASSIGN(CollectiveBackendConfig collective_backend_config,
-                          start->backend_config<CollectiveBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          start->backend_config<GpuBackendConfig>());
+  const CollectiveBackendConfig& collective_backend_config =
+      gpu_config.collective_backend_config();
   EXPECT_FALSE(collective_backend_config.no_parallel_custom_call());
 }
 
@@ -134,7 +138,7 @@ TEST_F(GpuSchedulePostprocessingTest,
 
   ENTRY entry {
     pf32 = f32[1] parameter(0)
-    all-gather-start = (f32[1], f32[2]) all-gather-start(pf32), dimensions={0}, backend_config="{\"is_sync\":false}"
+    all-gather-start = (f32[1], f32[2]) all-gather-start(pf32), dimensions={0}, backend_config={"collective_backend_config":{"is_sync":false}}
     pf32.2 = f32[1] call(f32[1] pf32), to_apply=foo
     all-gather-done = f32[2] all-gather-done(all-gather-start)
     ROOT out = (f32[1], f32[2]) tuple(f32[1] pf32.2, f32[2] all-gather-done)
@@ -147,8 +151,10 @@ TEST_F(GpuSchedulePostprocessingTest,
   EXPECT_FALSE(changed);
 
   HloInstruction* start = FindInstruction(module.get(), "all-gather-start");
-  TF_ASSERT_OK_AND_ASSIGN(CollectiveBackendConfig collective_backend_config,
-                          start->backend_config<CollectiveBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          start->backend_config<GpuBackendConfig>());
+  const CollectiveBackendConfig& collective_backend_config =
+      gpu_config.collective_backend_config();
   EXPECT_FALSE(collective_backend_config.no_parallel_custom_call());
 }
 

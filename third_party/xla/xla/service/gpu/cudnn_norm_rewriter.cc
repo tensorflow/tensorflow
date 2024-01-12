@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "google/protobuf/wrappers.pb.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -58,7 +59,8 @@ namespace m = match;
 
 // Returns an architecture-specific constant for the calculation of an upper
 // bound for the size of the scratch space for layer norm kernels.
-StatusOr<int64_t> CConstant(se::CudaComputeCapability cuda_compute_capability) {
+absl::StatusOr<int64_t> CConstant(
+    se::CudaComputeCapability cuda_compute_capability) {
   if (cuda_compute_capability.major == se::CudaComputeCapability::AMPERE) {
     return 32 * 128;
   } else if (cuda_compute_capability.major ==
@@ -345,18 +347,18 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       const se::CudaComputeCapability cuda_compute_capability)
       : cuda_compute_capability_(cuda_compute_capability) {}
 
-  Status HandleAdd(HloInstruction* instr) override {
+  absl::Status HandleAdd(HloInstruction* instr) override {
     return MatchLayerNorm(instr);
   }
 
-  Status HandleSubtract(HloInstruction* instr) override {
+  absl::Status HandleSubtract(HloInstruction* instr) override {
     return MatchLayerNorm(instr);
   }
 
   // Matches and rewrites layer norm patterns,
   // (X - expectation(X))/(variance(X) + epsilon)^1/2 * scale + bias,
   // into Custom Calls to cuDNN.
-  Status MatchLayerNorm(HloInstruction* instr) {
+  absl::Status MatchLayerNorm(HloInstruction* instr) {
     HloInstruction *input, *input0, *input1, *input2, *scale, *bias, *epsilon,
         *expectation, *expectation0, *reduce, *norm_factor, *variance,
         *broadcast_scale, *broadcast_bias;
@@ -370,7 +372,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 #if CUDNN_VERSION < 8905
       // Layer norm kernels are available with cuDNN 8.9.5 and above.
       VLOG(1) << "Layer norm Custom Calls require cuDNN 8.9.5.";
-      return OkStatus();
+      return absl::OkStatus();
 #endif  // CUDNN_VERSION < 8905
 
       if (!instr->GetModule()
@@ -378,7 +380,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                .debug_options()
                .xla_gpu_enable_cudnn_layer_norm()) {
         VLOG(1) << "Layer norm Custom Calls disabled.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Layer norm kernels require Ampere or Hopper architectures.
@@ -386,7 +388,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           cuda_compute_capability_.major != se::CudaComputeCapability::HOPPER) {
         VLOG(1) << "Layer norm Custom Calls require Ampere or Hopper "
                    "architectures.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Verify the uniqueness of the inputs.
@@ -398,7 +400,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       if (!is_input(input0) || !is_input(input1) || !is_input(input2) ||
           expectation->unique_id() != expectation0->unique_id()) {
         VLOG(1) << "Layer norm operands not unique.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Skip initial convert, if present.
@@ -413,7 +415,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           !LayoutUtil::IsMonotonicWithDim0Major(bias->shape().layout()) ||
           !LayoutUtil::IsMonotonicWithDim0Major(instr->shape().layout())) {
         VLOG(1) << "Layer norm input and/or output layouts nor supported.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Verify the element types. The types and shapes of the scale and bias
@@ -422,7 +424,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           !CompatibleElementType(scale) || !CompatibleElementType(bias) ||
           !ShapeUtil::Equal(scale->shape(), bias->shape())) {
         VLOG(1) << "Layer norm input types or shapes not supported.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Verify that the shapes of scale and bias are compatible with the
@@ -431,13 +433,13 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                                      reduce->dimensions().end());
       if (norm_dims.size() != scale->shape().dimensions_size()) {
         VLOG(1) << "Layer norm input dimensions not supported.";
-        return OkStatus();
+        return absl::OkStatus();
       }
       for (int i = 0; i < norm_dims.size(); ++i) {
         if (input->shape().dimensions(norm_dims[i]) !=
             scale->shape().dimensions(i)) {
           VLOG(1) << "Layer norm input dimensions not supported.";
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
 
@@ -449,7 +451,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           reduce->dimensions() != broadcast_scale->dimensions() ||
           reduce->dimensions() != broadcast_bias->dimensions()) {
         VLOG(1) << "Layer norm operand broadcast not supported.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // If necessary, transpose the input so that the dimensions not being
@@ -517,8 +519,9 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
                           MakeReshapeHlo(scale_bias_shape, scale));
       TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_bias,
                           MakeReshapeHlo(scale_bias_shape, bias));
-
-      CudnnNormBackendConfig backend_config;
+      GpuBackendConfig gpu_config;
+      CudnnNormBackendConfig& backend_config =
+          *gpu_config.mutable_cudnn_norm_backend_config();
       backend_config.set_epsilon(epsilon->literal().GetAsDouble({}).value());
       auto* algorithm = backend_config.mutable_algorithm();
       algorithm->set_algo_id(0);
@@ -542,7 +545,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
           instr->AddInstruction(HloInstruction::CreateCustomCall(
               custom_call_shape, {reshape, reshaped_scale, reshaped_bias},
               kCudnnNormCallTarget));
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+      TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
 
       TF_ASSIGN_OR_RETURN(HloInstruction * gte,
                           MakeGetTupleElementHlo(custom_call, 0));
@@ -572,16 +575,18 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // The layer norm training graph separately contains the expectation as well
   // as the norm factor and its cube, (variance + epsilon)^-1/2 and (variance +
   // epsilon)^-3/2. When identified in the graph, these quantities are fused
   // into the layer norm Custom Call.
-  Status MatchNormFactor(HloInstruction* instr, HloInstruction* custom_call,
-                         HloInstruction* variance, HloInstruction* expectation,
-                         HloInstruction* epsilon) {
+  absl::Status MatchNormFactor(HloInstruction* instr,
+                               HloInstruction* custom_call,
+                               HloInstruction* variance,
+                               HloInstruction* expectation,
+                               HloInstruction* epsilon) {
     HloInstruction *variance0, *epsilon0, *gte = custom_call->users()[0];
     if (Match(instr,
               m::Divide(m::Op(), AddAnyOrder(m::Op(&variance0),
@@ -591,14 +596,14 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       if (variance->unique_id() != variance0->unique_id() ||
           epsilon->unique_id() != epsilon0->unique_id()) {
         VLOG(1) << "Layer norm operands not unique.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // Verify the element types.
       if (!CompatibleElementType(instr) ||
           !CompatibleElementType(expectation)) {
         VLOG(1) << "Layer norm input types not compatible.";
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       // The shape of the expectation and norm factor return values of the
@@ -627,16 +632,17 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       TF_ASSIGN_OR_RETURN(const int64_t c_constant,
                           CConstant(cuda_compute_capability_));
       const int64_t workspace_size = (2 * c_constant * (4 + 256)) + 32;
-      TF_ASSIGN_OR_RETURN(
-          CudnnNormBackendConfig backend_config,
-          custom_call->backend_config<xla::gpu::CudnnNormBackendConfig>());
+      TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                          custom_call->backend_config<GpuBackendConfig>());
+      CudnnNormBackendConfig& backend_config =
+          *gpu_config.mutable_cudnn_norm_backend_config();
       backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
           workspace_size);
-      TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+      TF_RETURN_IF_ERROR(custom_call->set_backend_config(gpu_config));
 
       auto replace_with_new_cc = [new_custom_call, this](
                                      HloInstruction* old_instr,
-                                     int tuple_index) -> Status {
+                                     int tuple_index) -> absl::Status {
         TF_ASSIGN_OR_RETURN(
             HloInstruction * new_gte,
             MakeGetTupleElementHlo(new_custom_call, tuple_index));
@@ -663,7 +669,7 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
               MakeBinaryHlo(HloOpcode::kMultiply, new_multiply0, new_instr));
           TF_RETURN_IF_ERROR(ReplaceInstruction(old_instr, new_multiply1));
         }
-        return OkStatus();
+        return absl::OkStatus();
       };
 
       // Replace the result of the original Custom Call as well as the
@@ -675,14 +681,14 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       VLOG(1)
           << "Expectation and norm factor fused into layer norm Custom Call.";
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
   se::CudaComputeCapability cuda_compute_capability_;
 };
 
-StatusOr<bool> RunOnComputation(
+absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation,
     se::CudaComputeCapability cuda_compute_capability) {
   CudnnNormRewriterVisitor visitor(cuda_compute_capability);
@@ -696,7 +702,7 @@ CudnnNormRewriter::CudnnNormRewriter(
     se::CudaComputeCapability cuda_compute_capability)
     : cuda_compute_capability_(cuda_compute_capability) {}
 
-StatusOr<bool> CudnnNormRewriter::Run(
+absl::StatusOr<bool> CudnnNormRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

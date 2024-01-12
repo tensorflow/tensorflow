@@ -37,7 +37,7 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ClearCompileTimeInfo() override {
     Thunk::ClearCompileTimeInfo();

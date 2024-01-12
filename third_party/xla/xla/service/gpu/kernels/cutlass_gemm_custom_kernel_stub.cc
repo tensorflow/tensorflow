@@ -24,14 +24,14 @@ limitations under the License.
 
 namespace xla::gpu::kernel::gemm_universal {
 
-StatusOr<CustomKernel> GetCutlassGemmKernel(
+absl::StatusOr<CustomKernel> GetCutlassGemmKernel(
     std::string name, PrimitiveType dtype, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device) {
   return absl::InternalError("XLA compiled without CUDA support");
 }
 
-StatusOr<CustomKernel> LoadCutlassGemmKernel(
+absl::StatusOr<CustomKernel> LoadCutlassGemmKernel(
     std::string name, const std::string& library_path, PrimitiveType dtype,
     int32_t m, int32_t n, int32_t k, const ArgsIndices& indices,
     const DynamicSliceIndices& slices, const se::DeviceDescription& device) {

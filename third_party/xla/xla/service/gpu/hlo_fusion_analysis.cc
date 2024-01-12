@@ -32,11 +32,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/reduction_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
@@ -138,7 +137,7 @@ HloFusionAnalysis::HloFusionAnalysis(
       input_output_info_(std::move(input_output_info)) {}
 
 // static
-StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
+absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
     FusionBackendConfig backend_config,
     std::unique_ptr<HloFusionAdaptor> fusion,
     const se::DeviceDescription* device_info) {
@@ -173,12 +172,13 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
 }
 
 // static
-StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
+absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
     const HloFusionInstruction* fusion,
     const se::DeviceDescription* device_info) {
   CHECK(device_info != nullptr);
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      fusion->backend_config<FusionBackendConfig>());
+  TF_ASSIGN_OR_RETURN(auto gpu_config,
+                      fusion->backend_config<GpuBackendConfig>());
+  FusionBackendConfig backend_config = gpu_config.fusion_backend_config();
   return Create(std::move(backend_config),
                 HloFusionAdaptor::ForInstruction(fusion), device_info);
 }
@@ -258,8 +258,9 @@ std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
     const se::DeviceDescription& device_info) {
   auto ret = HloFusionAnalysis::Create(
       consumer.has_backend_config()
-          ? *consumer.backend_config<FusionBackendConfig>()
-          : *producer.backend_config<FusionBackendConfig>(),
+          ? consumer.backend_config<GpuBackendConfig>()->fusion_backend_config()
+          : producer.backend_config<GpuBackendConfig>()
+                ->fusion_backend_config(),
       std::make_unique<ProducerConsumerFusion>(
           HloFusionAdaptor::ForInstruction(&producer),
           HloFusionAdaptor::ForInstruction(&consumer)),
@@ -271,7 +272,7 @@ std::optional<HloFusionAnalysis> AnalyzeProducerConsumerFusion(
 std::optional<HloFusionAnalysis> AnalyzeFusion(
     const HloInstruction& consumer, const se::DeviceDescription& device_info) {
   auto ret = HloFusionAnalysis::Create(
-      *consumer.backend_config<FusionBackendConfig>(),
+      consumer.backend_config<GpuBackendConfig>()->fusion_backend_config(),
       HloFusionAdaptor::ForInstruction(&consumer), &device_info);
   if (!ret.ok()) return std::nullopt;
   return {std::move(*ret)};

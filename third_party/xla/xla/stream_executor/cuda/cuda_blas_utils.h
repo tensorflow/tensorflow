@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/stream_executor/blas.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 
 #define SE_CUBLAS_RETURN_IF_ERROR(expr) \
   TF_RETURN_IF_ERROR(::stream_executor::cuda::ToStatus(expr, #expr))
@@ -30,7 +30,7 @@ namespace stream_executor {
 namespace cuda {
 
 const char* ToString(cublasStatus_t status);
-tsl::Status ToStatus(cublasStatus_t status, const char* prefix = "cublasLt");
+absl::Status ToStatus(cublasStatus_t status, const char* prefix = "cublasLt");
 cudaDataType_t AsCudaDataType(blas::DataType type);
 cublasComputeType_t AsCublasComputeType(blas::ComputationType type);
 cublasOperation_t AsCublasOperation(blas::Transpose trans);

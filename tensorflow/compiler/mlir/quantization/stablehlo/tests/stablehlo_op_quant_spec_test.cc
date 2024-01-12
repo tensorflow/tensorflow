@@ -35,7 +35,7 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-using ::mlir::quant::common::QuantizationTestBase;
+using ::mlir::quant::QuantizationTestBase;
 
 class IsOpQuantizableStableHloTest : public QuantizationTestBase {};
 

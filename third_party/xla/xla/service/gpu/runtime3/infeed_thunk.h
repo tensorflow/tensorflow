@@ -33,7 +33,7 @@ class InfeedThunk : public Thunk {
   InfeedThunk(const InfeedThunk&) = delete;
   InfeedThunk& operator=(const InfeedThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const std::vector<ShapedSlice> dest_slices_;

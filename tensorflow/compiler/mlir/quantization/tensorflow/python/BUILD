@@ -12,6 +12,7 @@ package(
         "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist_package",
         "//tensorflow/python:__subpackages__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -38,7 +39,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pass_pipeline",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:post_calibration",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:precalibration",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pre_calibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -150,9 +151,12 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:protobuf",
         "@pybind11",
@@ -202,7 +206,10 @@ tf_python_pybind_extension(
     name = "pywrap_function_lib",
     srcs = ["pywrap_function_lib.cc"],
     pytype_srcs = ["pywrap_function_lib.pyi"],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "__subpackages__",
+        "//tensorflow/tools/pip_package/v2:__subpackages__",
+    ],
     deps = [
         ":py_function_lib",
         ":type_casters",

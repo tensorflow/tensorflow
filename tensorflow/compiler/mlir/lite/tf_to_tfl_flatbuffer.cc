@@ -414,15 +414,15 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     return statusHandler.ConsumeStatus();
   }
 
-  pass_manager.clear();
-  // Print out a detailed report of ops that are not converted to TFL ops.
-  pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
-      mlir::odml::GetAcceptedTFLiteDialects()));
-  if (failed(pass_manager.run(module))) {
-    return statusHandler.ConsumeStatus();
-  }
-
   if (export_to_mlir) {
+    pass_manager.clear();
+    // Print out a detailed report of ops that are not converted to TFL ops.
+    pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
+        mlir::odml::GetAcceptedTFLiteDialects()));
+    if (failed(pass_manager.run(module))) {
+      return statusHandler.ConsumeStatus();
+    }
+
     llvm::raw_string_ostream os(*result);
     module.print(os);
     return statusHandler.ConsumeStatus();

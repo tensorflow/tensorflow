@@ -61,8 +61,8 @@ class OutfeedBuffer {
 class OutfeedManager
     : public XfeedQueue<ShapeTree<std::unique_ptr<OutfeedBuffer>>*> {
  public:
-  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
-                                    MutableBorrowingLiteral literal);
+  absl::Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                          MutableBorrowingLiteral literal);
 };
 
 // Returns the GPU outfeed manager for the given stream executor.

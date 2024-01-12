@@ -16,10 +16,12 @@ limitations under the License.
 #include "xla/service/gpu/gemm_rewriter_triton.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -31,7 +33,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -74,68 +75,71 @@ using triton_fusion::Requirements;
 using triton_fusion::RequirementsOrError;
 using triton_fusion::TransformDirection;
 
-// This represents a path in a graph which helps in separating different uses of
-// HLOs in fusions.
-//
-// For example let's say that we can reach an HLO in 2 ways:
-// 1. dot->operand(0)->operand(1)->operand(2);
-// 2. dot->operand(0)->operand(2)->operand(0);
-// Then the corresponding paths will be:
-// 1. "0,1,2"
-// 2. "0,2,0"
-// dot->users()[0]->users()[0]->operand(1) would be represented like this:
-// "-1,-1,1"
-class GraphPath final {
+// This represents a directed graph.
+class AdjacencyList {
  public:
-  static inline constexpr int64_t kUserIndex = -1;
-  GraphPath() = default;
-  GraphPath GetPathOfOperand(int64_t operand_index) const {
-    CHECK_GE(operand_index, 0);
-    GraphPath path = *this;
-    path.path_.push_back(operand_index);
-    return path;
+  using NodeId = int64_t;
+
+  NodeId AddNode() {
+    adj_.emplace_back();
+    return adj_.size() - 1;
   }
 
-  GraphPath GetPathOfUser() const {
-    GraphPath path = *this;
-    path.path_.push_back(kUserIndex);
-    return path;
+  const std::vector<NodeId>& GetOutNeighbors(NodeId node_id) const {
+    return adj_.at(node_id);
   }
-  std::string ToString() const { return absl::StrJoin(path_, ","); }
 
-  bool operator==(const GraphPath& other) const { return path_ == other.path_; }
+  void ReserveSpaceForOutNeighbors(NodeId node_id, size_t count) {
+    adj_.at(node_id).reserve(count);
+  }
 
-  template <typename H>
-  friend H AbslHashValue(H h, const GraphPath& path) {
-    return H::combine(std::move(h), path.path_);
+  void AddArc(NodeId from, NodeId to) { adj_.at(from).push_back(to); }
+
+  // Currently the Root node is the node which was added first.
+  NodeId GetRoot() const {
+    CHECK(!adj_.empty());
+    return 0;
   }
 
  private:
-  std::vector<int64_t> path_;
+  // Adjacency list: A vector of out-neighbors for each node.
+  std::vector<std::vector<NodeId>> adj_;
 };
 
-struct FusionQueueItem {
-  FusionQueueItem(GraphPath path, const HloInstruction& hlo,
-                  DimensionOrder dim_order)
-      : path(path), hlo(hlo), dim_order(dim_order) {}
+struct HloAndDimOrder {
+  const HloInstruction* original_hlo = nullptr;
+  DimensionOrder dim_order;
+};
 
-  std::string ToString() const {
-    return absl::StrCat(path.ToString(), ":", hlo.ToString(), ":",
-                        dim_order.ToString());
+struct HloAndIterSpec {
+  const HloInstruction* original_hlo;
+  TensorIterationSpec iter_spec;
+
+  auto ToTuple() const { return std::make_tuple(original_hlo, iter_spec); }
+  bool operator==(const HloAndIterSpec& other) const {
+    return ToTuple() == other.ToTuple();
   }
-
-  const GraphPath path;
-  const HloInstruction& hlo;
-  const DimensionOrder dim_order;
+  template <typename H>
+  friend H AbslHashValue(H h, const HloAndIterSpec& key) {
+    return H::combine(std::move(h), key.ToTuple());
+  }
 };
 
-struct FusionDecisionAndIterspec {
-  bool fuse = false;
-  TensorIterationSpec iterspec;
+struct NodeFusionPlan {
+  const HloInstruction* original_hlo = nullptr;
+  bool should_fuse = false;
 };
-using FusionMap = absl::flat_hash_map<GraphPath, FusionDecisionAndIterspec>;
-struct FusionMapAndRequirements {
-  FusionMap fusion_map;
+
+struct FusionPlan {
+  // The graph describing the structure of the fusion that we build - nodes
+  // corresponding to the instructions and arcs pointing from users to operands.
+  AdjacencyList graph;
+  // The fusion plan for each node.
+  absl::flat_hash_map<AdjacencyList::NodeId, NodeFusionPlan> map;
+};
+
+struct FusionPlanAndRequirements {
+  FusionPlan fusion_plan;
   Requirements requirements;
 };
 
@@ -257,106 +261,178 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
 
 // Builds the fusion map and the requirements which can later be used to
 // actually fuse that subgraph.
-FusionMapAndRequirements BuildFusionMapAndRequirementsTowardOperands(
-    const GraphPath& root_path, const HloInstruction& root_hlo,
-    const DimensionOrder& root_dim_order, const std::optional<int>& max_params,
+FusionPlanAndRequirements BuildFusionPlanTowardOperands(
+    const HloInstruction& root_hlo, const DimensionOrder& root_dim_order,
+    const std::optional<int>& max_params,
     const se::GpuComputeCapability& gpu_version,
     const HeroProperties& properties, const Requirements& requirements_so_far) {
   CHECK(!max_params.has_value() || max_params.value() >= 1);
-  FusionMap fusion_map;
-  Requirements combined_requirements = requirements_so_far;
-  auto add_to_fusion_map = [&](const FusionQueueItem& item, bool fuse) {
-    CHECK(
-        fusion_map
-            .insert({item.path, {fuse, item.dim_order.ToTensorIterationSpec()}})
-            .second);
-  };
 
-  // GraphPaths at the fusion edge that can either get fused too or
-  // become parameters of the fusion. Used to track the number of parameters.
-  absl::flat_hash_set<GraphPath> inputs({root_path});
-  std::queue<FusionQueueItem> fusion_queue(
-      {FusionQueueItem(root_path, root_hlo, root_dim_order)});
+  // The graph describing the structure of the fusion that we build - nodes
+  // corresponding to the instructions and arcs pointing from users to operands.
+  // We can build and modify this graph easily without the need to create
+  // HloInstructions at this point.
+  AdjacencyList graph;
+  // Stores the original HLO and the dimension order for each node. This is a
+  // temporary map which is used when processing the nodes in this function.
+  absl::flat_hash_map<AdjacencyList::NodeId, HloAndDimOrder>
+      hlo_and_dim_order_map;
+  // Stores the information needed to build the fused HLO for each node (what
+  // was the original HLO and whether we should fuse it or create a parameter).
+  // This is one of the outputs of this function.
+  absl::flat_hash_map<AdjacencyList::NodeId, NodeFusionPlan> fusion_plan_map;
+  // Allows reusing nodes when multiple instructions iterate over the same HLO
+  // using the same iteration spec. In that case we don't duplicate the
+  // instruction in the fusion.
+  absl::flat_hash_map<HloAndIterSpec, AdjacencyList::NodeId> node_reuse_map;
+  // The requirements imposed by the fusion choices made in this function,
+  // combined with the existing requirements. This is one of the outputs of this
+  // function.
+  Requirements combined_reqs = requirements_so_far;
+
+  auto get_or_create_fusion_node =
+      [&](const HloInstruction& hlo, const DimensionOrder& dim_order,
+          bool* is_new_node = nullptr) -> AdjacencyList::NodeId {
+    HloAndIterSpec reuse_key = {&hlo, dim_order.ToTensorIterationSpec()};
+    if (auto it = node_reuse_map.find(reuse_key); it != node_reuse_map.end()) {
+      if (is_new_node != nullptr) {
+        *is_new_node = false;
+      }
+      return it->second;
+    }
+    AdjacencyList::NodeId node_id = graph.AddNode();
+    CHECK(hlo_and_dim_order_map.insert({node_id, {&hlo, dim_order}}).second);
+    CHECK(node_reuse_map.insert({reuse_key, node_id}).second);
+    if (is_new_node != nullptr) {
+      *is_new_node = true;
+    }
+    return node_id;
+  };
+  AdjacencyList::NodeId root =
+      get_or_create_fusion_node(root_hlo, root_dim_order);
+
+  // Nodes at the fusion edge that can either get fused too or become parameters
+  // of the fusion. Used to track the number of parameters.
+  absl::flat_hash_set<AdjacencyList::NodeId> inputs({root});
+  std::queue<AdjacencyList::NodeId> queue({root});
   int64_t num_requeued = 0;
   // BFS
-  while (fusion_queue.size() > num_requeued) {
-    FusionQueueItem item = fusion_queue.front();
-    fusion_queue.pop();
+  while (queue.size() > num_requeued) {
+    AdjacencyList::NodeId node_id = queue.front();
+    queue.pop();
+    const HloAndDimOrder& hlo_and_dim_order = hlo_and_dim_order_map.at(node_id);
+    const HloInstruction& original_hlo = *hlo_and_dim_order.original_hlo;
+    const DimensionOrder& dim_order = hlo_and_dim_order.dim_order;
 
     // Watch the total number of fusion parameters.
     if (max_params.has_value() &&
-        inputs.size() + NumAddedParameters(item.hlo) > max_params.value()) {
+        inputs.size() + NumAddedParameters(original_hlo) > max_params.value()) {
       // Re-queue: the number of parameters may go down when other instructions
       // are processed.
-      fusion_queue.push(item);
+      queue.push(node_id);
       // Prevent infinite loops.
       ++num_requeued;
       continue;
     }
     num_requeued = 0;
-    if (item.hlo.opcode() == HloOpcode::kParameter) {
-      add_to_fusion_map(item, /*fuse=*/false);
+    if (original_hlo.opcode() == HloOpcode::kParameter) {
+      CHECK(fusion_plan_map
+                .insert({node_id, {&original_hlo, /*should_fuse=*/false}})
+                .second);
       continue;
     }
     auto opt_result = GetOperandDimOrdersAndCombinedReqsIfProfitable(
-        item.hlo, item.dim_order, properties, gpu_version,
-        combined_requirements);
+        original_hlo, dim_order, properties, gpu_version, combined_reqs);
     if (!opt_result.has_value()) {
-      add_to_fusion_map(item, /*fuse=*/false);
+      CHECK(fusion_plan_map
+                .insert({node_id, {&original_hlo, /*should_fuse=*/false}})
+                .second);
       continue;
     }
     const DimOrderMap operand_dim_orders = std::move(opt_result->dim_orders);
-    combined_requirements = std::move(opt_result->requirements);
-    inputs.erase(item.path);
-    for (int64_t i = 0; i < item.hlo.operand_count(); ++i) {
-      GraphPath operand_path = item.path.GetPathOfOperand(i);
-      const HloInstruction& operand = *item.hlo.operand(i);
+    combined_reqs = std::move(opt_result->requirements);
+    inputs.erase(node_id);
+    graph.ReserveSpaceForOutNeighbors(node_id, original_hlo.operand_count());
+    for (int64_t i = 0; i < original_hlo.operand_count(); ++i) {
+      const HloInstruction& operand = *original_hlo.operand(i);
       const DimensionOrder& operand_dim_order = operand_dim_orders.at(&operand);
-
-      FusionQueueItem new_item(operand_path, operand, operand_dim_order);
-      VLOG(6) << "Enqueueing " << new_item.ToString();
-      inputs.insert(new_item.path);
-      fusion_queue.push(new_item);
+      bool is_new_node = false;
+      AdjacencyList::NodeId operand_node_id =
+          get_or_create_fusion_node(operand, operand_dim_order, &is_new_node);
+      graph.AddArc(node_id, operand_node_id);
+      if (is_new_node) {
+        VLOG(6) << "Enqueueing " << operand.ToString() << ":"
+                << operand_dim_order.ToString();
+        inputs.insert(operand_node_id);
+        queue.push(operand_node_id);
+      }
     }
-    add_to_fusion_map(item, /*fuse=*/true);
+    CHECK(
+        fusion_plan_map.insert({node_id, {&original_hlo, /*should_fuse=*/true}})
+            .second);
   }
   // Handle the remaining requeued items.
-  while (!fusion_queue.empty()) {
-    add_to_fusion_map(fusion_queue.front(), /*fuse=*/false);
-    fusion_queue.pop();
+  while (!queue.empty()) {
+    AdjacencyList::NodeId node_id = queue.front();
+    queue.pop();
+
+    const HloAndDimOrder& hlo_and_dim_order = hlo_and_dim_order_map.at(node_id);
+    CHECK(fusion_plan_map
+              .insert({node_id,
+                       {hlo_and_dim_order.original_hlo, /*should_fuse=*/false}})
+              .second);
   }
-  return {fusion_map, combined_requirements};
+  return {{std::move(graph), std::move(fusion_plan_map)},
+          std::move(combined_reqs)};
 }
 
-// Builds the nodes for the fusion represented by the fusion map.
-HloInstruction& BuildFusionTowardOperands(
-    const FusionMap& fusion_map, const GraphPath& path,
-    const HloInstruction& hlo,
+// Builds the HLO instructions for the fusion represented by `fusion_plan`,
+// starting from `node_id`.
+HloInstruction& BuildFusionTowardOperandsImpl(
+    AdjacencyList::NodeId node_id, const FusionPlan& fusion_plan,
+    absl::flat_hash_map<AdjacencyList::NodeId, HloInstruction*>&
+        fused_hlo_map,                           // read/append
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
-  auto fusion_map_it = fusion_map.find(path);
-  CHECK(fusion_map_it != fusion_map.end());
-  FusionDecisionAndIterspec decision_and_iterspec = fusion_map_it->second;
+  if (auto it = fused_hlo_map.find(node_id); it != fused_hlo_map.end()) {
+    return *it->second;
+  }
 
-  HloInstruction* new_hlo = nullptr;
-  if (decision_and_iterspec.fuse) {
+  const NodeFusionPlan& node_fusion_plan = fusion_plan.map.at(node_id);
+  const bool should_fuse = node_fusion_plan.should_fuse;
+  const HloInstruction& original_hlo = *node_fusion_plan.original_hlo;
+
+  HloInstruction* fused_hlo = nullptr;
+  if (should_fuse) {
     HloInstruction::InstructionVector new_operands;
-    for (int i = 0; i < hlo.operand_count(); ++i) {
-      const HloInstruction* operand = hlo.operand(i);
-      new_operands.push_back(
-          &BuildFusionTowardOperands(fusion_map, path.GetPathOfOperand(i),
-                                     *operand, builder, fusion_params));
+    for (AdjacencyList::NodeId operand_id :
+         fusion_plan.graph.GetOutNeighbors(node_id)) {
+      new_operands.push_back(&BuildFusionTowardOperandsImpl(
+          operand_id, fusion_plan, fused_hlo_map, builder, fusion_params));
     }
-    new_hlo = builder.AddInstruction(
-        hlo.CloneWithNewOperands(hlo.shape(), new_operands));
+    fused_hlo = builder.AddInstruction(
+        original_hlo.CloneWithNewOperands(original_hlo.shape(), new_operands));
   } else {
-    fusion_params.push_back(const_cast<HloInstruction*>(&hlo));
-    new_hlo = builder.AddInstruction(HloInstruction::CreateParameter(
-        fusion_params.size() - 1, hlo.shape(),
+    fusion_params.push_back(const_cast<HloInstruction*>(&original_hlo));
+    fused_hlo = builder.AddInstruction(HloInstruction::CreateParameter(
+        fusion_params.size() - 1, original_hlo.shape(),
         absl::StrCat("parameter_", fusion_params.size() - 1)));
   }
-  return *new_hlo;
+
+  CHECK(fused_hlo_map.insert({node_id, fused_hlo}).second);
+  return *fused_hlo;
+}
+
+// Builds the HLO instructions for the fusion represented by `fusion_plan`.
+HloInstruction& BuildFusionTowardOperands(
+    const FusionPlan& fusion_plan,
+    HloComputation::Builder& builder,            // append
+    std::vector<HloInstruction*>& fusion_params  // append
+) {
+  absl::flat_hash_map<AdjacencyList::NodeId, HloInstruction*> fused_hlo_map;
+  return BuildFusionTowardOperandsImpl(fusion_plan.graph.GetRoot(), fusion_plan,
+                                       fused_hlo_map, builder, fusion_params);
 }
 
 // Grows the fusion toward the operands.
@@ -372,22 +448,21 @@ HloInstruction& BuildFusionTowardOperands(
 // The return value contains the HLOs corresponding to `root_hlo` and the
 // requirements corresponding to the whole fusion so far.
 HlosAndRequirements FuseTowardOperands(
-    const GraphPath& root_path, const HloInstruction& root_hlo,
-    const DimensionOrder& root_dim_order, const std::optional<int>& max_params,
+    const HloInstruction& root_hlo, const DimensionOrder& root_dim_order,
+    const std::optional<int>& max_params,
     const se::GpuComputeCapability& gpu_version,
     const HeroProperties& properties, const Requirements& requirements_so_far,
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
-  FusionMapAndRequirements fusion_map_and_reqs =
-      BuildFusionMapAndRequirementsTowardOperands(
-          root_path, root_hlo, root_dim_order, max_params, gpu_version,
-          properties, requirements_so_far);
-  HloInstruction& fused_hlo_or_param =
-      BuildFusionTowardOperands(fusion_map_and_reqs.fusion_map, root_path,
-                                root_hlo, builder, fusion_params);
+  FusionPlanAndRequirements fusion_plan_and_reqs =
+      BuildFusionPlanTowardOperands(root_hlo, root_dim_order, max_params,
+                                    gpu_version, properties,
+                                    requirements_so_far);
+  HloInstruction& fused_hlo_or_param = BuildFusionTowardOperands(
+      fusion_plan_and_reqs.fusion_plan, builder, fusion_params);
   return HlosAndRequirements{&root_hlo, &fused_hlo_or_param,
-                             fusion_map_and_reqs.requirements};
+                             fusion_plan_and_reqs.requirements};
 }
 
 // Grows the fusion toward the given dot operand.
@@ -412,8 +487,7 @@ HlosAndRequirements FuseDotOperand(
   const FusionContext context =
       FusionContext::FromDotOperand(dot, operand_index);
   const HloInstruction& operand = *dot.operand(operand_index);
-  return FuseTowardOperands(GraphPath().GetPathOfOperand(operand_index),
-                            operand, context.dim_orders().at(&operand),
+  return FuseTowardOperands(operand, context.dim_orders().at(&operand),
                             TritonFusionAnalysis::kMaxParameterPerDotOperand,
                             gpu_version, context.hero_properties(),
                             context.requirements(), builder, fusion_params);
@@ -433,8 +507,8 @@ HlosAndRequirements FuseDotOperand(
 // but currently only in special cases, such as binary elementwise operation
 // with broadcast of scalar constant.
 HlosAndRequirements FuseTowardUsers(
-    const GraphPath& hlo_path, const HloInstruction& hlo,
-    const HloInstruction& fused_hlo, const DimensionOrder& hlo_dim_order,
+    const HloInstruction& hlo, const HloInstruction& fused_hlo,
+    const DimensionOrder& hlo_dim_order,
     const se::GpuComputeCapability& gpu_version,
     const HeroProperties& properties, const Requirements& requirements,
     HloComputation::Builder& builder,            // append
@@ -457,7 +531,6 @@ HlosAndRequirements FuseTowardUsers(
     return existing_hlos_and_requirements;
   }
   DimensionOrder user_dim_order = opt_user_result->dim_orders.at(&user);
-  GraphPath user_path = hlo_path.GetPathOfUser();
   Requirements combined_requirements = opt_user_result->requirements;
 
   HloInstruction::InstructionVector new_operands;
@@ -486,8 +559,7 @@ HlosAndRequirements FuseTowardUsers(
         new_operands.push_back(const_cast<HloInstruction*>(&fused_hlo));
       } else {
         HlosAndRequirements hlos_and_requirements = FuseTowardOperands(
-            user_path.GetPathOfOperand(i), operand,
-            operand_dim_orders.at(&operand),
+            operand, operand_dim_orders.at(&operand),
             /*max_params=*/std::nullopt, gpu_version, properties,
             combined_requirements, builder, fusion_params);
         new_operands.push_back(
@@ -499,9 +571,9 @@ HlosAndRequirements FuseTowardUsers(
 
   const HloInstruction& fused_user = *builder.AddInstruction(
       user.CloneWithNewOperands(user.shape(), new_operands));
-  return FuseTowardUsers(user_path, user, fused_user, user_dim_order,
-                         gpu_version, properties, combined_requirements,
-                         builder, fusion_params);
+  return FuseTowardUsers(user, fused_user, user_dim_order, gpu_version,
+                         properties, combined_requirements, builder,
+                         fusion_params);
 }
 
 // Grows the fusion toward the users of the dot.
@@ -526,10 +598,9 @@ HlosAndRequirements FuseDotOutput(
 ) {
   const auto context =
       FusionContext::FromDotOutput(dot, /*split_k=*/1, requirements);
-  return FuseTowardUsers(GraphPath(), dot, fused_dot,
-                         context.dim_orders().at(&dot), gpu_version,
-                         context.hero_properties(), context.requirements(),
-                         builder, fusion_params);
+  return FuseTowardUsers(dot, fused_dot, context.dim_orders().at(&dot),
+                         gpu_version, context.hero_properties(),
+                         context.requirements(), builder, fusion_params);
 }
 
 // Fuses dot and the compatible and profitable to fuse operations around it
@@ -537,7 +608,7 @@ HlosAndRequirements FuseDotOutput(
 // get populated with the non-fused instructions that become operands of the
 // call to this fusion. fusion_output_ptr (if not nullptr) gets assigned the
 // original instruction that has to be replaced by the call to the fusion.
-StatusOr<FusionDecision> CreateDotFusion(
+absl::StatusOr<FusionDecision> CreateDotFusion(
     const HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
     HloComputation::Builder& builder,
     std::vector<HloInstruction*>& fusion_inputs,
@@ -581,7 +652,7 @@ StatusOr<FusionDecision> CreateDotFusion(
       // Stop iterating.
       return absl::CancelledError();
     }
-    return OkStatus();
+    return absl::OkStatus();
   });
   if (!is_pure_matmul) {
     return FusionDecision{};
@@ -600,7 +671,7 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
   // and replaces the original dot() with a call to the computation.
-  Status HandleDot(HloInstruction* dot) override {
+  absl::Status HandleDot(HloInstruction* dot) override {
     CHECK_EQ(dot->opcode(), HloOpcode::kDot);
 
     std::string fusion_name = absl::StrCat("triton_gemm_", dot->name());
@@ -612,14 +683,14 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_, builder,
                         fusion_inputs, &fusion_output));
     if (builder.last_added_instruction() == nullptr) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     // If a GEMM requiring padding for cuBLAS is encountered here this
     // happened because earlier ShouldTritonHandleGEMM() accepted it and padding
     // was skipped. Accept it ignoring profitability checks.
     if (!CublasRequiresPadding(*Cast<HloDotInstruction>(dot), gpu_version_) &&
         !should_fuse) {
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloComputation* computation =
@@ -631,10 +702,12 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
             HloInstruction::FusionKind::kCustom, fusion_inputs, computation));
     dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion, fusion_name);
 
-    TF_ASSIGN_OR_RETURN(auto backend_config,
-                        dot_fusion->backend_config<FusionBackendConfig>());
+    TF_ASSIGN_OR_RETURN(auto gpu_config,
+                        dot_fusion->backend_config<GpuBackendConfig>());
+    FusionBackendConfig& backend_config =
+        *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(std::string(kTritonGemmFusionKind));
-    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(backend_config));
+    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
 
     if (fusion_output->IsRoot()) {
       fusion_output->parent()->set_root_instruction(dot_fusion);
@@ -646,15 +719,15 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(ReplaceInstruction(fusion_output, dot_fusion));
     }
     XLA_VLOG_LINES(5, computation->ToString(HloPrintOptions::ShortParsable()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
   se::GpuComputeCapability gpu_version_;
 };
 
-StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                const se::GpuComputeCapability& gpu_version) {
+absl::StatusOr<bool> RunOnComputation(
+    HloComputation* computation, const se::GpuComputeCapability& gpu_version) {
   GemmRewriterTritonVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -742,7 +815,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
       ->CanFuse();
 }
 
-StatusOr<bool> GemmRewriterTriton::Run(
+absl::StatusOr<bool> GemmRewriterTriton::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

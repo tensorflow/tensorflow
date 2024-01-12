@@ -5,9 +5,9 @@ container_digests = {
     # TF now uses only this container
     "cuda11.2-cudnn8.1-ubuntu20.04-manylinux2014-multipython": "sha256:48612bd85709cd014711d0b0f87e0806f3567d06d2e81c6e860516b87498b821",
     # JAX manylinux2014 configs.
-    "cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython": "sha256:b112c0c77d4172fc025420938f13ea83f3ad480c01778e743a201e5e3f4710e1",
+    "cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython": "sha256:45619e91f14faabddd79fe0cb1526df4c4ad92fc2e6ebdc725ea4419225429c3",
     "cuda12.2-cudnn8.9-ubuntu20.04-manylinux2014-multipython": "sha256:9fefda035b4a12b24cd5bae56c7dbb9527a5fd06a41ced0a22ac86fe5ed26428",
-    "cuda12.3-cudnn8.9-ubuntu20.04-manylinux2014-multipython": "sha256:228920bed69a31f4f5947f0ad7950439092a31395a45c687564b368452e5888f",
+    "cuda12.3-cudnn8.9-ubuntu20.04-manylinux2014-multipython": "sha256:578e8ec3d03451867a8cee100fa92f1686dd83443f8938df8e91b5f9a157f89e",
     # ROCM, probably not all of them still in use
     "rocm-ubuntu18.04-manylinux2010-multipython": "sha256:6e953a09b145df338bcb03e9e36f99b291140c29b72d0a048fb6c5905ccad5eb",
     "rocm-ubuntu20.04-manylinux2014-multipython": "sha256:906faec7765fe5dd067f2b092b5d5f220c1fedde725fb42c83d031b4d6f32204",

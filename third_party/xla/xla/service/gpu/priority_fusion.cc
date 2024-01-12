@@ -374,11 +374,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
     }
 
     GpuPerformanceModel::RunTimes run_times =
-        GpuPerformanceModel::EstimateRunTimes(
+        GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
             producer, &cost_analysis_,
             GpuPerformanceModelOptions::PriorityFusion(
                 &fusion_analysis_cache_, &gpu_performance_model_cache_),
             producer->users());
+
     if (fusion_process_dump_) {
       absl::MutexLock lock(&fusion_process_dump_mutex_);
       auto* step =
@@ -622,7 +623,7 @@ bool IsSmallConstant(const HloInstruction* instr) {
          ShapeUtil::ElementsIn(instr->shape()) <= 1;
 }
 
-StatusOr<bool> GpuPriorityFusion::Run(
+absl::StatusOr<bool> GpuPriorityFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool dump_enabled = DumpingEnabledForHloModule(*module);

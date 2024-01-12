@@ -279,6 +279,7 @@ cc_library(
     copts = ["-Ithird_party"],
     deps = [
         ":passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/stablehlo:uniform_quantized_types",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:Support",
@@ -464,6 +465,7 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:base",
         "@stablehlo//:stablehlo_ops",
     ],
     alwayslink = 1,
@@ -556,6 +558,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions:util",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow/transforms:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_device_pass_inc_gen",
         "//tensorflow/core:framework",

@@ -1,8 +1,0 @@
-TFCI_UPLOAD_LIB_ENABLE=1
-TFCI_UPLOAD_LIB_GCS_URI="gs://libtensorflow-nightly/$(date +%Y-%m-%d)"
-TFCI_UPLOAD_LIB_LATEST_ENABLE=1
-TFCI_UPLOAD_LIB_LATEST_GCS_URI="gs://libtensorflow-nightly/latest"
-TFCI_UPLOAD_WHL_GCS_ENABLE=0
-TFCI_UPLOAD_WHL_GCS_URI=
-TFCI_UPLOAD_WHL_PYPI_ARGS="--config-file=$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token --repository pypi-warehouse"
-TFCI_UPLOAD_WHL_PYPI_ENABLE=1

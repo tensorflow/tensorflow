@@ -61,7 +61,9 @@ namespace tensorflow {
 #define APPEND_DEPTHWISE(wei_dt, bias_dt, dst_dt, kernel, stride, padding, \
                          scales_mask, scales)                              \
   append_dw(wei_dt, bias_dt, dst_dt, kernel, stride, padding)
-#define APPEND_ELTWISE(scale, alg, alpha, beta) append_eltwise(alg, alpha, beta)
+#define APPEND_ELTWISE(scale, alg, alpha, beta) \
+  append_eltwise(alg, alpha, beta);             \
+  (void)scale
 #define GET_DATA_TYPE get_data_type()
 #define SET_FUSE_ACTIVATION_FOR_RELU6 \
   set_fuse_activation(true, dnnl::algorithm::eltwise_clip, 0.0, 6.0)
@@ -2178,8 +2180,10 @@ class MklQuantizedConvOp
           std::is_same<Toutput, quint8>::value ? 255.0f : 127.0f;
       float float_output_range =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
+#ifndef ENABLE_ONEDNN_V3
       const float int_const_scale_limit =
           (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
+#endif  // !ENABLE_ONEDNN_V3
       for (size_t i = 0; i < depth; ++i) {
         // For simplicity and symmetry, we set filter range to be outer
         // bounds of min_filter and max_filter.
@@ -2300,19 +2304,23 @@ class MklQuantizedConvOp
             absl::InvalidArgumentError(absl::StrCat(
                 "`max_freezed_summand` must be rank 0 but is rank ",
                 max_freezed_summand_tensor.dims())));
+
+#ifndef ENABLE_ONEDNN_V3
         const float min_freezed_output =
             min_freezed_output_tensor.template scalar<float>()();
         const float max_freezed_output =
             max_freezed_output_tensor.template scalar<float>()();
+        float output_range = std::max(std::abs(min_freezed_output),
+                                      std::abs(max_freezed_output));
+#endif  // ENABLE_ONEDNN_V3
+
         const float min_freezed_summand =
             min_freezed_summand_tensor.template scalar<float>()();
         const float max_freezed_summand =
             max_freezed_summand_tensor.template scalar<float>()();
-
-        float output_range = std::max(std::abs(min_freezed_output),
-                                      std::abs(max_freezed_output));
         float summand_range = std::max(std::abs(min_freezed_summand),
                                        std::abs(max_freezed_summand));
+
         // If summand_dt is also DT_QUINT8 as the output_range, the scaling
         // factor of 255.0f cancels each other and thus is avoided. If it is
         // not then it is DT_INT8 and is scaled appropriately.
@@ -3069,6 +3077,7 @@ REGISTER_MKL_KERNEL_ALL_INPUT_AND_BIAS_TYPES("_FusedQuantizedDepthwiseConv2D",
 
 TF_CALL_float(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
 TF_CALL_bfloat16(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
+TF_CALL_half(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
 
 // Register 2D operations
 #define REGISTER_MKL_CPU_2D(T)                                                 \
@@ -3140,6 +3149,7 @@ TF_CALL_bfloat16(REGISTER_NO_OP_CPU_2D_DEPTHWISE);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D);
+TF_CALL_half(REGISTER_MKL_CPU_2D);
 
 #define REGISTER_MKL_CPU_2D_DEPTHWISE(T)                                      \
   REGISTER_KERNEL_BUILDER(                                                    \
@@ -3171,6 +3181,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
+TF_CALL_half(REGISTER_MKL_CPU_2D_DEPTHWISE);
 
 // Note we are registering _MklFusedConv2D.
 // We check the fused_ops attributes to decide if bias is enabled or not.
@@ -3225,6 +3236,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_DEPTHWISE);
 
 TF_CALL_float(REGISTER_MKL_CPU_2D_FUSED);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_FUSED);
+TF_CALL_half(REGISTER_MKL_CPU_2D_FUSED);
 
 // Register 3D operations
 #define REGISTER_MKL_CPU_3D(T)                                                 \
@@ -3248,12 +3260,7 @@ TF_CALL_bfloat16(REGISTER_MKL_CPU_2D_FUSED);
       MklFusedConv3DOp<CPUDevice, T, T, T, T, T, int32, false, true>);
 TF_CALL_float(REGISTER_MKL_CPU_3D);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_3D);
-
-REGISTER_KERNEL_BUILDER(
-    Name("_FusedConv3D").Device(DEVICE_CPU).TypeConstraint<float>("T"), NoOp);
-REGISTER_KERNEL_BUILDER(
-    Name("_FusedConv3D").Device(DEVICE_CPU).TypeConstraint<bfloat16>("T"),
-    NoOp);
+TF_CALL_half(REGISTER_MKL_CPU_3D);
 
 #undef APPEND_DEPTHWISE
 #undef APPEND_ELTWISE

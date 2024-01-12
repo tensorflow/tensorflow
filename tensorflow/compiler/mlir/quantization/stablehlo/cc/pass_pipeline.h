@@ -22,6 +22,20 @@ namespace mlir::quant::stablehlo {
 // Deserializes StableHLO functions serialized and embedded in XlaCallModuleOps.
 void AddXlaCallModuleOpDeserializationPasses(OpPassManager& pm);
 
+// Legalizes shape/tensor/arith dialect ops to StableHLO for handling dynamic
+// shapes, by going through a round-trip to MHLO.
+void AddShapeLegalizationPasses(OpPassManager& pm);
+
+// Serializes the StableHLO module into a tf.XlaCallModuleOp for compatibility
+// with passes that expect TF format. This also allows the StableHLO ops to be
+// exported as a TF SavedModel.
+void AddCallModuleSerializationPasses(OpPassManager& pm);
+
+// Passes for unpacking quantized ops to int valued StableHLO ops. This is
+// useful when uniform quantized types are suboptimal for the hardware. It goes
+// through a StableHLO <-> MHLO roundtrip to utilize the MHLOQuantToInt pass.
+void AddStablehloQuantToIntPasses(OpPassManager& pm);
+
 }  // namespace mlir::quant::stablehlo
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_PASS_PIPELINE_H_

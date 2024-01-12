@@ -290,6 +290,7 @@ cc_library(
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
@@ -384,10 +385,7 @@ rocm_library(
 
 xla_cc_test(
     name = "topk_kernel_test",
-    srcs = ["topk_kernel_test.cc"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
+    srcs = if_gpu_is_configured(["topk_kernel_test.cc"]),
     tags = tf_gpu_tests_tags(),
     deps = [
         ":gpu_kernel_helper",
@@ -395,6 +393,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",  # build_cleaner: keep
         "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer_header",
         "//xla/stream_executor/gpu:gpu_types_header",

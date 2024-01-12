@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
@@ -45,6 +46,7 @@ AutoShardingSolverResult CallSolver(
     const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
     bool compute_iis, int64_t solver_timeout_in_seconds,
     const AutoShardingOption& option, std::optional<double> max_cost,
+    absl::string_view request_name,
     const absl::flat_hash_map<std::string, const HloInstruction*>&
         sharding_propagation_solution = {},
     bool deterministic_mode = false);

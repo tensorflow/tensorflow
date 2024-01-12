@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -104,7 +106,20 @@ bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
 
 static bool IsCommand(const HloCustomCallInstruction* hlo,
                       const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo);
+  if (config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo)) {
+    return true;
+  }
+
+  if (hlo->custom_call_target() == "cu_threefry2x32") {
+    if (hlo->operand_count() == 4) {
+      return true;
+    }
+    // This version of cu_threefy2x32 requires synchronization, which is not
+    // supported by command buffers.
+    DCHECK_EQ(hlo->operand_count(), 5);
+  }
+
+  return false;
 }
 
 static bool IsCommand(const HloInstruction* hlo,
@@ -137,8 +152,15 @@ static bool IsCommand(const HloInstruction* hlo,
 
 static bool IsAsyncStartCommand(const HloInstruction* hlo,
                                 const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceStart) {
+  if (hlo->opcode() == HloOpcode::kAllReduceStart ||
+      hlo->opcode() == HloOpcode::kAllGatherStart) {
     return config.contains(DebugOptions::NCCL);
+  }
+
+  if (hlo->opcode() == HloOpcode::kAsyncStart) {
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+      return config.contains(DebugOptions::NCCL);
+    }
   }
 
   return false;
@@ -146,9 +168,12 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
 
 // Finds an async-done HLO operation corresponding on an async-start one.
 static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
-  if (start->opcode() == HloOpcode::kAllReduceStart) {
+  if (start->opcode() == HloOpcode::kAllReduceStart ||
+      start->opcode() == HloOpcode::kAllGatherStart) {
     CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
     return start->users().front();
+  } else if (start->opcode() == HloOpcode::kAsyncStart) {
+    return start->async_chain_done();
   }
 
   return nullptr;
@@ -255,7 +280,7 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 // the beginning of the computation. This simplifies the construction of command
 // buffer computations because we don't need to deal with parameters and
 // constants that have users outside of a command buffer.
-Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
+absl::Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
     HloComputation* computation) {
   HloInstructionSequence new_sequence;
   HloSchedule& schedule = computation->parent()->schedule();
@@ -285,14 +310,14 @@ Status CommandBufferScheduling::MoveParametersAndConstantsToFront(
   }
 
   schedule.set_sequence(computation, new_sequence);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
 // Prepares command buffer from sequence of instructions
 //===----------------------------------------------------------------------===//
 
-StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
+absl::StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
     const HloInstructionSequence& seq) {
   auto builder = HloComputation::Builder("command_buffer");
 
@@ -349,6 +374,12 @@ StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
     // Cloned instructions should call the same computations as original
     // instructions will be dead code eliminated.
     for (HloComputation* called_computation : inst->called_computations()) {
+      // Async computations can only be referenced by a single async chain at
+      // a time. Detach the current chain to let its copy bind to the
+      // computation.
+      if (called_computation->IsAsyncComputation()) {
+        called_computation->RemoveAsyncStart();
+      }
       ctx.MapComputation(called_computation, called_computation);
     }
 
@@ -393,7 +424,7 @@ StatusOr<CommandBuffer> CommandBufferScheduling::PrepareCommandBuffer(
 // Rewrites original computation into command buffer call
 //===----------------------------------------------------------------------===//
 
-StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
+absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     HloComputation* parent, const HloInstructionSequence& seq,
     CommandBuffer command_buffer) {
   if (command_buffer.results.empty())
@@ -512,7 +543,7 @@ CommandBufferScheduling::CommandBufferScheduling(
       gpu_toolkit_version_(gpu_toolkit_version),
       gpu_driver_version_(gpu_driver_version) {}
 
-StatusOr<bool> CommandBufferScheduling::Run(
+absl::StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We run command buffer scheduling after a regular scheduling to guarantee
@@ -537,35 +568,32 @@ StatusOr<bool> CommandBufferScheduling::Run(
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {
       if (config.erase(cmd)) {
-        LOG_FIRST_N(WARNING, 10)
-            << "Removed command buffer support for "
-            << DebugOptions::CommandBufferCmdType_Name(cmd)
-            << " as it's not supported with gpu toolkit version "
-            << gpu_toolkit_version_ << " and driver version "
-            << gpu_driver_version_
-            << ". This might negatively impact peformance. To enable "
-            << DebugOptions::CommandBufferCmdType_Name(cmd)
-            << " support in command buffers use cuda-compat package: "
+        VLOG(1) << "Removed command buffer support for "
+                << DebugOptions::CommandBufferCmdType_Name(cmd)
+                << " as it's not supported with gpu toolkit version "
+                << gpu_toolkit_version_ << " and driver version "
+                << gpu_driver_version_
+                << ". This might negatively impact peformance. To enable "
+                << DebugOptions::CommandBufferCmdType_Name(cmd)
+                << " support in command buffers use cuda-compat package: "
 #if defined(PLATFORM_GOOGLE)
-            << "set CUDA_COMPAT_LOAD=1 env variable.";
+                << "set CUDA_COMPAT_LOAD=1 env variable.";
 #else
-            << "https://docs.nvidia.com/deploy/cuda-compatibility/.";
+                << "https://docs.nvidia.com/deploy/cuda-compatibility/.";
 #endif
       }
     }
   };
 
-  bool do_erase = std::visit(
-      VariantVisitor{[this](const se::CudaComputeCapability&) {
-                       return std::min(gpu_toolkit_version_,
-                                       gpu_driver_version_) < 12030;
-                     },
-                     [](const se::RocmComputeCapability&) {  // TODO: check for
-                                                             // ROCM support
-                       return true;
-                     }},
-      gpu_compute_comp_);
-  if (do_erase) {
+  // Check if CUDA/ROCM driver supports required features.
+  auto check_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
+    return std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030;
+  };
+  auto check_rocm = [&](const se::RocmComputeCapability& rocm_comp) {
+    return true;  // check for ROCM support
+  };
+
+  if (std::visit(VariantVisitor{check_cuda, check_rocm}, gpu_compute_comp_)) {
     erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
     erase(kRequireConditionals);  // on-device control flow
   }
@@ -575,8 +603,13 @@ StatusOr<bool> CommandBufferScheduling::Run(
   absl::flat_hash_set<HloComputation*> processed_command_buffers;
 
   for (HloComputation* comp : order) {
-    if (comp->IsFusionComputation() || processed_command_buffers.contains(comp))
+    // Skip special computations that do not have lowering to thunks.
+    if (comp->IsFusionComputation() || comp->IsAsyncComputation() ||
+        comp->IsCustomCallComputation())
       continue;
+
+    // Skip computations that already part of command buffers.
+    if (processed_command_buffers.contains(comp)) continue;
 
     TF_RETURN_IF_ERROR(MoveParametersAndConstantsToFront(comp));
 

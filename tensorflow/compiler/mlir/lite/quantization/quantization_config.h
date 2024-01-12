@@ -211,6 +211,8 @@ struct QuantizationSpecs {
   CustomOpMap custom_map;
 };
 
+enum class QDQConversionMode { kQDQNone, kQDQStatic, kQDQDynamic };
+
 // Parses the command line flag strings to the CustomOpMap specification.
 void ParseCustomOpSpecs(absl::string_view node_names,
                         const CustomOpUpdateOptions& update_option,
@@ -234,6 +236,8 @@ bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
                             tensorflow::DataType inference_type,
                             QuantizationSpecs* quant_specs);
 
+// Return a human-readable string of the QDQQuantMode enum class
+std::string GetQDQQuantModeString(QDQConversionMode mode);
 }  // namespace quant
 }  // namespace mlir
 

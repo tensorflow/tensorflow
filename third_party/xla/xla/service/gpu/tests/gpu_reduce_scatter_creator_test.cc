@@ -35,10 +35,9 @@ namespace m = ::xla::match;
 
 class GpuReduceScatterCreatorTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module,
-                                               int64_t num_replicas,
-                                               int64_t num_partitions,
-                                               bool expect_change) {
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
+      absl::string_view hlo_module, int64_t num_replicas,
+      int64_t num_partitions, bool expect_change) {
     HloModuleConfig config = GetModuleConfigForTest(
         /*replica_count=*/num_replicas,
         /*num_partitions=*/num_partitions);
@@ -50,7 +49,7 @@ class GpuReduceScatterCreatorTest : public HloTestBase {
       return changed.status();
     }
     EXPECT_EQ(changed.value(), expect_change);
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   size_t AllReduceCount(std::unique_ptr<HloModule> &module) {

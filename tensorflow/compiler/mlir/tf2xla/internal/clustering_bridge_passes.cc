@@ -34,12 +34,12 @@ namespace internal {
 using mlir::OpPassManager;
 using mlir::func::FuncOp;
 
-// LINT.IfChange(tpu_bridge_passes)
+// LINT.IfChange(replicated_bridge_passes)
 
-// Adds Bridge clustering pipeline passes to the given pass_manager. Does not
-// run them.
-void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
-                                       llvm::StringRef module_name) {
+// Adds replicated Bridge clustering pipeline passes to the given pass_manager.
+// Does not run them.
+void AddReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm,
+                                                 llvm::StringRef module_name) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this but this is
   // currently not the case (see b/177478741).
@@ -158,21 +158,21 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
-// LINT.ThenChange(:non_tpu_bridge_passes)
+// LINT.ThenChange(:non_replicated_bridge_passes)
 
 void NoCanonicalization(OpPassManager& pm) {}
 
-// LINT.IfChange(non_tpu_bridge_passes)
-void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
+// LINT.IfChange(non_replicated_bridge_passes)
+
+// Same as above but for non-replicated Bridge.
+void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
   VLOG(2) << "Create TF XLA Bridge pipeline";
   pm.addPass(mlir::TFDevice::CreateXlaValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  const llvm::SmallVector<std::string, 4> ops_to_preserve = {
-      "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
-      "tf.TPUReplicatedOutput"};
+  const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<FuncOp>(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
@@ -184,14 +184,6 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  // The following passe are addded to match TPU pipeline and expected to be
-  // no-op.
-  pm.addNestedPass<FuncOp>(mlir::TFTPU::CreateTPUPartitionedOpConversionPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::TFTPU::CreateTPUReorderReplicateAndPartitionedInputsPass());
-  pm.addNestedPass<FuncOp>(mlir::TF::CreateDecomposeReduceDatasetPass());
-  pm.addPass(mlir::TFDevice::CreateEmbeddingPipeliningPass());
-  pm.addPass(mlir::TFDevice::CreateEmbeddingSequencingPass());
   pm.addPass(
       tensorflow::tf2xla::internal::CreateXlaOutlineEntryFunctionsPass());
   // Encapsulate PartitionedCall ops within a cluster so that the composite
@@ -240,7 +232,7 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
-// LINT.ThenChange(:tpu_bridge_passes)
+// LINT.ThenChange(:replicated_bridge_passes)
 
 };  // namespace internal
 };  // namespace tf2xla

@@ -39,21 +39,21 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
       const se::DeviceDescription* device_info = nullptr)
       : HloCostAnalysis(options), device_info_(device_info) {}
 
-  Status Preprocess(const HloInstruction* hlo) override;
+  absl::Status Preprocess(const HloInstruction* hlo) override;
 
   float ScalingRatio(const HloInstruction& hlo) const;
   int64_t NumOfDevices(const HloInstruction& hlo) const;
 
-  Status HandleCustomCall(const HloInstruction* call) override;
+  absl::Status HandleCustomCall(const HloInstruction* call) override;
 
   int64_t GetConvolutionFlops(const HloInstruction* convolution) override;
 
-  Status HandleElementwiseOp(const HloInstruction* hlo);
-  Status HandleElementwiseUnary(const HloInstruction* hlo) override;
-  Status HandleElementwiseBinary(const HloInstruction* hlo) override;
+  absl::Status HandleElementwiseOp(const HloInstruction* hlo);
+  absl::Status HandleElementwiseUnary(const HloInstruction* hlo) override;
+  absl::Status HandleElementwiseBinary(const HloInstruction* hlo) override;
 
-  Status HandleConcatenate(const HloInstruction* hlo) override;
-  Status HandleAllReduce(const HloInstruction* allreduce) override;
+  absl::Status HandleConcatenate(const HloInstruction* hlo) override;
+  absl::Status HandleAllReduce(const HloInstruction* allreduce) override;
 
   // Estimate the total size of IR accounting for both duplication
   // of producer code by consumer and the total number of basic blocks.
@@ -78,7 +78,8 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
  protected:
   std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis() override;
   int64_t FusionParameterReadBytes(const HloInstruction* hlo) const override;
-  Status FusionCalculateUtilizations(const HloInstruction* fusion) override;
+  absl::Status FusionCalculateUtilizations(
+      const HloInstruction* fusion) override;
 
   size_t immediate_constant_max_elements() const override { return 8; }
 

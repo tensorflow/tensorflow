@@ -20,7 +20,6 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tsl/platform/status.h"
 
 class StatusHelper {
  public:
@@ -31,12 +30,12 @@ class StatusHelper {
     stream_executor::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
   }
 
-  static tsl::Status FromC(  // TENSORFLOW_STATUS_OK
+  static absl::Status FromC(  // TENSORFLOW_STATUS_OK
       TF_Status* const c_status) {
     if (stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
-      return ::tsl::OkStatus();
+      return absl::OkStatus();
     } else {
-      return tsl::Status(  // TENSORFLOW_STATUS_OK
+      return absl::Status(  // TENSORFLOW_STATUS_OK
           absl::StatusCode(
               stream_executor::tpu::ExecutorApiFn()->TpuStatus_CodeFn(
                   c_status)),
@@ -48,7 +47,7 @@ class StatusHelper {
     return stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status);
   }
 
-  tsl::Status status() const {  // TENSORFLOW_STATUS_OK
+  absl::Status status() const {  // TENSORFLOW_STATUS_OK
     return FromC(c_status);
   }
 

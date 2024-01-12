@@ -52,11 +52,11 @@ limitations under the License.
 #include <string>
 #include <tuple>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -206,7 +206,7 @@ class MultiKernelLoaderSpec {
   // registering custom CUDA C++ kernels with non-trivial C++ API with a
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
-      std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
+      std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
           const Kernel &kernel, const KernelArgs &args)>;
 
   explicit MultiKernelLoaderSpec(

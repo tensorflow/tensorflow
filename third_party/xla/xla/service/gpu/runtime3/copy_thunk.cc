@@ -37,13 +37,14 @@ DeviceToDeviceCopyThunk::DeviceToDeviceCopyThunk(
       source_value_(source_value),
       destination_value_(destination_value) {}
 
-Status DeviceToDeviceCopyThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
   se::DeviceMemoryBase destination_data =
       params.buffer_allocations->GetDeviceAddress(destination_buffer_);
   se::DeviceMemoryBase source_data =
       params.buffer_allocations->GetDeviceAddress(source_buffer_);
   params.stream->ThenMemcpy(&destination_data, source_data, mem_size_);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace gpu
 }  // namespace xla

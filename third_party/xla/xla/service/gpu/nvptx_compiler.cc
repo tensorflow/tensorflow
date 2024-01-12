@@ -143,7 +143,7 @@ class ConvBfloat16Support : public FloatSupport {
 
 }  // namespace
 
-Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
+absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
     se::DeviceMemoryAllocator* device_allocator) {
@@ -213,10 +213,10 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
+absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config,
     tsl::thread::ThreadPool* thread_pool) {
@@ -296,7 +296,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Linearize collective schedule under if online autotuning of convolutions is
@@ -317,29 +317,29 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
   return false;
 }
 
-Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
+absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status NVPTXCompiler::AddTritonGemmAutotuningPasses(
+absl::Status NVPTXCompiler::AddTritonGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   pipeline->AddPass<TritonAutotuner>(autotune_config, thread_pool);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status NVPTXCompiler::AddCustomKernelReplacementPasses(
+absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
     HloPassPipeline* pipeline, const DebugOptions& debug_options) {
   if (debug_options.xla_gpu_enable_cub_radix_sort()) {
     pipeline->AddPass<GpuSortRewriter>();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 namespace {
 // Try to load ptx from files defined in the FLAGS. If successful, return true.
@@ -470,10 +470,13 @@ HloDataflowAnalysis::CanShareBuffer NVPTXCompiler::GetCanShareBuffer() const {
   return &CanShareBufferHint;
 }
 
-StatusOr<GpuCompiler::BackendCompileResult> NVPTXCompiler::CompileTargetBinary(
-    const HloModuleConfig& module_config, llvm::Module* llvm_module,
-    se::GpuComputeCapability gpu_version, bool relocatable,
-    const HloModule* debug_module, const CompileOptions& options) {
+absl::StatusOr<GpuCompiler::BackendCompileResult>
+NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
+                                   llvm::Module* llvm_module,
+                                   se::GpuComputeCapability gpu_version,
+                                   bool relocatable,
+                                   const HloModule* debug_module,
+                                   const CompileOptions& options) {
   std::unique_ptr<llvm::Module> loaded_module =
       MaybeLoadLLVMFromFile(debug_module, llvm_module);
   llvm::Module* selected_module = nullptr;
@@ -504,10 +507,11 @@ StatusOr<GpuCompiler::BackendCompileResult> NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
   }
 
-  StatusOr<std::vector<uint8_t>> maybe_cubin = CompileGpuAsmOrGetCachedResult(
-      ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
-      (debug_module != nullptr ? debug_module->name() : "(unknown)"),
-      relocatable, options);
+  absl::StatusOr<std::vector<uint8_t>> maybe_cubin =
+      CompileGpuAsmOrGetCachedResult(
+          ptx, std::get<se::CudaComputeCapability>(gpu_version), module_config,
+          (debug_module != nullptr ? debug_module->name() : "(unknown)"),
+          relocatable, options);
 
   if (maybe_cubin.status().code() == absl::StatusCode::kCancelled ||
       maybe_cubin.status().code() == absl::StatusCode::kResourceExhausted) {
@@ -516,7 +520,8 @@ StatusOr<GpuCompiler::BackendCompileResult> NVPTXCompiler::CompileTargetBinary(
   return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
 }
 
-StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
+absl::StatusOr<std::vector<uint8_t>>
+NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     const std::string& ptx, se::CudaComputeCapability cc,
     const HloModuleConfig& hlo_module_config, absl::string_view module_name,
     bool relocatable, const CompileOptions& options) {
@@ -564,7 +569,7 @@ StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
             hlo_module_config.debug_options()
                 .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
             options.is_autotuning_compilation;
-        StatusOr<std::vector<uint8_t>> maybe_cubin =
+        absl::StatusOr<std::vector<uint8_t>> maybe_cubin =
             se::CompileGpuAsm(cc.major, cc.minor, cache_ptx->c_str(),
                               ptxas_config, cancel_if_reg_spill);
 
@@ -676,7 +681,7 @@ static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(
   return *version;
 }
 
-StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
+absl::StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
     const std::string& preferred_cuda_dir) {
   {
     absl::MutexLock lock(&mutex_);
@@ -694,8 +699,7 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
   // since we are fetching the ptxas version anyway. Catching the error
   // elsewhere might introduce unnecessary overhead.
   if (ptxas_version_tuple < std::array<int64_t, 3>{11, 8, 0}) {
-    return Status(absl::StatusCode::kInternal,
-                  "XLA requires ptxas version 11.8 or higher");
+    return absl::InternalError("XLA requires ptxas version 11.8 or higher");
   }
 
   static const std::optional<std::array<int64_t, 3>> nvlink_version =
@@ -732,7 +736,7 @@ StatusOr<NVPTXCompiler::LinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
   return linking_method;
 }
 
-StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
+absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config) {
   // TODO(phawkins): rather than comparing version numbers, it might be more
   // robust if we simply tried to link something the first time we compile.
@@ -743,7 +747,7 @@ StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
   return linking_method != LinkingMethod::kNone;
 }
 
-StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
+absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     se::StreamExecutor* stream_exec, std::vector<std::vector<uint8_t>> modules,
     const DebugOptions& debug_options) {
   auto ptxas_config = PtxOptsFromDebugOptions(debug_options);

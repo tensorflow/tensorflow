@@ -36,7 +36,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
@@ -54,9 +58,42 @@ auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
     "/tensorflow/config/experimental/enable_mlir_bridge_gauge_v2",
     "Tracks usage of the MLIR-based TF2XLA bridge among TF2 models");
 
+auto* replicated_graphs_without_device_type_counter =
+    tensorflow::monitoring::Counter<1>::New(
+        /* metric name */
+        "/tensorflow/core/tf2xla/replicated_graphs_without_device_type_count",
+        /* metric description */
+        "Tracks if any replicated graphs are without device type",
+        /* metric field */ "version");
+
 namespace {
 
 using ::mlir::ModuleOp;
+
+bool HasTPUDevice(const DeviceSet& device_set) {
+  for (const Device* device : device_set.devices()) {
+    if (!device) continue;
+    const DeviceNameUtils::ParsedName& name = device->parsed_name();
+    if (name.has_type && name.type == "TPU") return true;
+  }
+  return false;
+}
+
+// Check that graph has tf.StatefulPartitionedCall op with _XlaMustCompile.
+bool RunNonReplicatedBridge(const Graph& graph) {
+  const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
+  const std::string kXlaMustCompile = "_XlaMustCompile";
+  for (const Node* node : graph.nodes()) {
+    auto node_op = node->type_string();
+    if (node_op == kStatefulPartitionedCallOp) {
+      auto attr = node->attrs().FindByString(kXlaMustCompile);
+      if (attr != nullptr && attr->b() == true) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 bool HasTPUDevice(mlir::ModuleOp module) {
   mlir::TF::RuntimeDevices devices;
@@ -68,20 +105,8 @@ bool HasTPUDevice(mlir::ModuleOp module) {
       });
 }
 
-bool HasTPUOp(mlir::ModuleOp module) {
+bool IsReplicatedGraph(mlir::ModuleOp module) {
   auto walk_result = module.walk([&](mlir::Operation* op) {
-    // Check for ops with compile device type "TPU". This allows us to support
-    // TPU compilation without replication. Note that currently the compile
-    // device type is not set by default before bridge, only if eager context
-    // attribute `jit_compile_rewrite` is true.
-    // TODO(b/229028654): Remove string conversion once we have C++17.
-    const llvm::StringRef compile_device_type_attr_name(
-        kCompileDeviceTypeAttr.data(), kCompileDeviceTypeAttr.size());
-    auto compilation_attr =
-        op->getAttrOfType<mlir::StringAttr>(compile_device_type_attr_name);
-    if (compilation_attr && compilation_attr.getValue().str() == kTpuDevice) {
-      return mlir::WalkResult::interrupt();
-    }
     // TODO(b/223677572): Once the scope for new compilation and replication
     // markers is expanded beyond bridge we can remove this check for
     // `kTPUReplicateAttr`, we will then always have a `kCompileDeviceTypeAttr`
@@ -97,35 +122,33 @@ bool HasTPUOp(mlir::ModuleOp module) {
   return walk_result.wasInterrupted();
 }
 
-// Checks that the module has both TPU devices in its device list and contains
-// TPU ops.
-bool HasTPUDevicesAndOps(mlir::ModuleOp module) {
-  return HasTPUDevice(module) && HasTPUOp(module);
+bool IsReplicatedGraphWithoutDeviceType(mlir::ModuleOp module) {
+  return !HasTPUDevice(module) && IsReplicatedGraph(module);
 }
 
-bool HasTPUDevice(const DeviceSet& device_set) {
-  for (const Device* device : device_set.devices()) {
-    if (!device) continue;
-    const DeviceNameUtils::ParsedName& name = device->parsed_name();
-    if (name.has_type && name.type == "TPU") return true;
-  }
-  return false;
-}
-
-// Check that graph has tf.StatefulPartitionedCall op with _XlaMustCompile.
-bool HasQualifiedNonTPUOp(const Graph& graph) {
-  const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
-  const std::string kXlaMustCompile = "_XlaMustCompile";
-  for (const Node* node : graph.nodes()) {
-    auto node_op = node->type_string();
-    if (node_op == kStatefulPartitionedCallOp) {
-      auto attr = node->attrs().FindByString(kXlaMustCompile);
-      if (attr != nullptr && attr->b() == true) {
-        return true;
-      }
+bool IsSingleCoreTPUGraph(mlir::ModuleOp module) {
+  if (!HasTPUDevice(module)) return false;
+  auto walk_result = module.walk([&](mlir::Operation* op) {
+    // Check for ops with compile device type "TPU". This allows us to support
+    // TPU compilation without replication. Note that currently the compile
+    // device type is not set by default before bridge, only if eager context
+    // attribute `jit_compile_rewrite` is true.
+    // TODO(b/229028654): Remove string conversion once we have C++17.
+    const llvm::StringRef compile_device_type_attr_name(
+        kCompileDeviceTypeAttr.data(), kCompileDeviceTypeAttr.size());
+    auto compilation_attr =
+        op->getAttrOfType<mlir::StringAttr>(compile_device_type_attr_name);
+    if (compilation_attr && compilation_attr.getValue().str() == kTpuDevice) {
+      return mlir::WalkResult::interrupt();
     }
-  }
-  return false;
+    return mlir::WalkResult::advance();
+  });
+  return walk_result.wasInterrupted();
+}
+
+bool RunReplicatedBridge(mlir::ModuleOp module) {
+  if (!HasTPUDevice(module)) return false;
+  return IsReplicatedGraph(module) || IsSingleCoreTPUGraph(module);
 }
 
 bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
@@ -179,13 +202,11 @@ absl::Status RunLowerToRuntimeOpsOnSubmodule(ModuleOp parent_module,
 // The config_proto param is a required input for all TF1 graphs but it is
 // redundant for TF2 graphs.
 MlirOptimizationPassState GetPassStateImpl(
-    bool run_tpu_bridge, const ConfigProto& config_proto, const Graph& graph,
-    const FunctionLibraryDefinition& function_library) {
-  // Skip MLIR TF/XLA Bridge if no TPU devices and no qualified CPU/GPU
-  // graphs are found.
-  if (!run_tpu_bridge && !HasQualifiedNonTPUOp(graph)) {
-    VLOG(3) << "Skipping MLIR CPU/GPU Bridge, "
-               "graph is not qualified to run the bridge";
+    bool run_replicated_bridge, const ConfigProto& config_proto,
+    const Graph& graph, const FunctionLibraryDefinition& function_library) {
+  // Skip MLIR TF/XLA Bridge if no XLA-compilable ops are found.
+  if (!run_replicated_bridge && !RunNonReplicatedBridge(graph)) {
+    VLOG(3) << "Skipping MLIR Bridge, graph is not qualified to run the bridge";
     return MlirOptimizationPassState::Disabled;
   }
 
@@ -194,14 +215,15 @@ MlirOptimizationPassState GetPassStateImpl(
   // GetMlirBridgeRolloutPolicy will analyze a TPU graph if users have not
   // explicltly requested a policy.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
-      graph, &function_library, config_proto, /*run_tpu_bridge*/ run_tpu_bridge,
+      graph, &function_library, config_proto,
+      /*run_replicated_bridge*/ run_replicated_bridge,
       /*uses_uninitialized_resource_args=*/false,
       /*is_v1_compat=*/false, /*record_stats=*/false);
   // GetPassState is called once before MlirBridgePass starts, and the pass
   // gets skipped if it is disabled. Log such cases in this function. The cases
   // where the pass is enabled will only be logged during their execution to
   // prevent them from being counted twice.
-  if (run_tpu_bridge) {
+  if (run_replicated_bridge) {
     switch (policy) {
       case MlirBridgeRolloutPolicy::kEnabledByUser:
         return MlirOptimizationPassState::Enabled;
@@ -259,7 +281,7 @@ MlirOptimizationPassState MlirBridgePass::GetPassState(
     return MlirOptimizationPassState::Disabled;
   }
 
-  return GetPassStateImpl(/*run_tpu_bridge*/ HasTPUDevice(*device_set),
+  return GetPassStateImpl(/*run_replicated_bridge*/ HasTPUDevice(*device_set),
                           config_proto, graph, function_library);
 }
 
@@ -276,13 +298,16 @@ Status MlirBridgePass::Run(const std::string& function_name,
   static absl::once_flag flag;
   absl::call_once(flag, UpdateLogVerbosityIfDefined, "TF_DEBUG_LOG_VERBOSITY");
 
-  // Check if there are TPU devices or TPU ops. If not, then check if the
-  // non TPU graph is qualified to run TF2XLA Bridge.
+  // Check if it's possible for a replicated graph to not have a device type.
+  if (IsReplicatedGraphWithoutDeviceType(module)) {
+    replicated_graphs_without_device_type_counter->GetCell("v2")->IncrementBy(
+        1);
+  }
+  // Check if the graph has any XLA-compilable ops.
   // This check needs to precede GetPassState for instrumentation purposes.
-  bool run_tpu_bridge = HasTPUDevicesAndOps(module);
-  if (!run_tpu_bridge && !HasQualifiedNonTPUOp(graph)) {
-    VLOG(1)
-        << "Skipping MLIR TF2XLA Bridge, no qualified devices or ops found.";
+  bool run_replicated_bridge = RunReplicatedBridge(module);
+  if (!run_replicated_bridge && !RunNonReplicatedBridge(graph)) {
+    VLOG(1) << "Skipping MLIR TF2XLA Bridge, no XLA-compilable ops found.";
     return OkStatus();
   }
 
@@ -295,8 +320,8 @@ Status MlirBridgePass::Run(const std::string& function_name,
 
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
   // related to graph analysis from here.
-  auto pass_state =
-      GetPassStateImpl(run_tpu_bridge, config_proto, graph, function_library);
+  auto pass_state = GetPassStateImpl(run_replicated_bridge, config_proto, graph,
+                                     function_library);
 
   if (pass_state == MlirOptimizationPassState::Disabled) {
     // GetPassState is called before run() and run() will only be called if the
@@ -308,7 +333,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
   }
 
   bool fallback_enabled = false;
-  if (run_tpu_bridge) {
+  if (run_replicated_bridge) {
     if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       // We set `uses_uninitialized_resource_args` to false here because the
       // first phase of the bridge is not affected by uninitialized resource
@@ -358,7 +383,7 @@ MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(
   // phase of the bridge is not affected by uninitialized resource args.
   MlirBridgeRolloutPolicy policy = GetMlirBridgeRolloutPolicy(
       graph, /*function_library=*/&function_library, config_proto,
-      /*run_tpu_bridge*/ true,
+      /*run_replicated_bridge*/ true,
       /*uses_uninitialized_resource_args=*/false, /*is_v1_compat=*/true,
       /*record_stats=*/false);
   switch (policy) {
@@ -398,8 +423,14 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
   // Skip function graphs as MlirBridgePass will be used instead.
   if (options.is_function_graph) return OkStatus();
 
+  // Check if it's possible for a replicated graph to not have a device type.
+  if (IsReplicatedGraphWithoutDeviceType(module)) {
+    replicated_graphs_without_device_type_counter->GetCell("v1")->IncrementBy(
+        1);
+  }
+
   // Skip MLIR TPU Bridge if no TPU devices or TPU ops found.
-  if (!HasTPUDevicesAndOps(module)) {
+  if (!RunReplicatedBridge(module)) {
     VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
                "found";
     return OkStatus();

@@ -31,7 +31,7 @@ namespace gpu {
 //
 // This function does not guarantee that a convolution will be padded and/or
 // vectorized. It only checks that it is a valid candiate for such optimization.
-StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
+absl::StatusOr<bool> CudnnSupportsOptimizedIntegerConvolution(
     const se::CudaComputeCapability& compute_capability,
     HloCustomCallInstruction& conv, int vector_size);
 
@@ -59,14 +59,15 @@ struct CudnnReorderTransposeConfig {
 // Create a transposition for an int8x32 convolution filter that effectively
 // does the same thing as cudnnReorderFilterAndBias, but could also be constant
 // folded or fused.
-StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForFilterReordering(
+absl::StatusOr<CudnnReorderTransposeConfig>
+CudnnInferTransposeForFilterReordering(
     const Shape& shape, const ConvolutionDimensionNumbers& dimension_numbers);
 
 // Create a transposition for an int8x32 convolution bias that effectively
 // does the same thing as cudnnReorderFilterAndBias, but could also be constant
 // folded or fused.
-StatusOr<CudnnReorderTransposeConfig> CudnnInferTransposeForBiasReordering(
-    const Shape& shape);
+absl::StatusOr<CudnnReorderTransposeConfig>
+CudnnInferTransposeForBiasReordering(const Shape& shape);
 
 }  // namespace gpu
 }  // namespace xla

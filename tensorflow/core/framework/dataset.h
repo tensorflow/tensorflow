@@ -379,7 +379,8 @@ class Runner {
 // A class which provides a sequence of splits. Splits represent subdivisions of
 // a dataset, e.g. filenames or ranges within files. We use splitting to
 // partition input data into smaller pieces for distributed processing (see
-// go/tf-data-splitting-design).
+// go/tf-data-splitting-design). The SplitProvider subclasses are expected to be
+// thread-safe.
 //
 // Datasets provide a `MakeSplitProvider` method to expose a listing of their
 // splits.

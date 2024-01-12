@@ -82,6 +82,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -137,30 +138,24 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":bridge_passes",
         ":uniform_quantized_types",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -484,7 +479,7 @@ cc_library(
         ":stablehlo_test_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:post_calibration",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:precalibration",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pre_calibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
@@ -613,10 +608,15 @@ tf_cc_test(
     ],
 )
 
+# OSS only: This target is header-only. Link `quantization_options_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link
+# `quantization_options_proto_cc_impl` directly unless the target does not link
+# `libtensorflow_framework.so`.
 tf_proto_library(
     name = "quantization_options_proto",
     srcs = ["quantization_options.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 

@@ -41,7 +41,7 @@ namespace tensorflow {
 namespace data {
 
 // A helper shared among `SnapshotManager`s to limit workers' stream assignments
-// across ongoing snapshots.
+// across ongoing snapshots. This class is thread-safe.
 class SnapshotAssignmentManager {
  public:
   explicit SnapshotAssignmentManager(int64_t worker_max_concurrent_snapshots)
@@ -168,21 +168,6 @@ class SnapshotManager {
   absl::Status Resume();
   absl::Status ReadOnDiskMetadata();
   absl::Status ReadOnDiskStreams();
-  absl::StatusOr<std::string> OwnerWorkerAddress(
-      const std::string& stream_directory) const;
-  absl::Status ReadOnDiskStream(
-      int64_t stream_index, const std::string& worker_address,
-      absl::flat_hash_set<int64_t>& global_split_indices);
-  absl::Status ReadOnDiskSource(
-      int64_t stream_index, int64_t source_index,
-      absl::flat_hash_set<int64_t>& global_split_indices);
-  absl::Status ReadOnDiskSplit(
-      int64_t source_index, const std::vector<std::string>& split_files,
-      std::string split_file,
-      absl::flat_hash_set<int64_t>& global_split_indices);
-  absl::Status RecoverSplit(const std::string& temp_split_file,
-                            SplitProvider& split_provider);
-  absl::StatusOr<Tensor> GetNextSplit(SplitProvider& split_provider);
 
   // Helpers for `WorkerHeartbeat` above. These may update the in-memory and
   // on-disk states.
@@ -242,6 +227,63 @@ class SnapshotManager {
     // The number of times the split provider has repeated.
     int64_t repetition_index = 0;
   };
+
+  // Helper class to restore a stream. Multiple stream restorers are safe to run
+  // in parallel. After it reads the on-disk stream, the client is responsible
+  // to apply the data to actually restore its internal states.
+  class StreamRestorer {
+   public:
+    explicit StreamRestorer(tsl::Env* env, absl::string_view path,
+                            int64_t stream_index, std::vector<Source>& sources,
+                            SnapshotAssignmentManager& assignment_manager)
+        : env_(env),
+          path_(path),
+          stream_index_(stream_index),
+          sources_(sources),
+          assignment_manager_(assignment_manager),
+          repetition_indices_(sources_.size()) {}
+
+    // Reads snapshot stream from the files and collects data for restoration.
+    absl::Status ReadOnDiskStream();
+
+    // Accessors for collected data. Should be called *after* `ReadOnDiskStream`
+    // is called.
+    const std::optional<Stream>& GetStream() const { return restored_stream_; }
+    int64_t StreamIndex() const { return stream_index_; }
+    const std::string& WorkerAddress() const { return worker_address_; }
+    const std::vector<int64_t>& RepetitionIndices() const {
+      return repetition_indices_;
+    }
+    const absl::flat_hash_set<int64_t>& GlobalSplitIndices() const {
+      return global_split_indices_;
+    }
+
+   private:
+    int64_t num_sources() const { return sources_.size(); }
+    absl::StatusOr<std::string> OwnerWorkerAddress() const;
+    absl::Status ReadOnDiskSource(int64_t source_index);
+    absl::Status ReadOnDiskSplit(int64_t source_index,
+                                 const std::vector<std::string>& split_files,
+                                 const std::string& split_file);
+    absl::Status SkipSplit(SplitProvider& split_provider);
+
+    tsl::Env* const env_;
+    const std::string path_;
+    const int64_t stream_index_;
+    std::vector<Source>& sources_;
+    SnapshotAssignmentManager& assignment_manager_;
+
+    std::string worker_address_;
+    std::optional<Stream> restored_stream_;
+    std::vector<int64_t> repetition_indices_;
+    absl::flat_hash_set<int64_t> global_split_indices_;
+  };
+
+  // Applies the data collected by `stream_restorer` to actually restore the
+  // snapshot manager.
+  absl::Status RestoreFrom(const StreamRestorer& stream_restorer,
+                           const std::vector<std::string>& stream_directories,
+                           absl::flat_hash_set<int64_t>& global_split_indices);
 
   std::vector<Source> sources_ TF_GUARDED_BY(mu_);
   // Creates sources for the specified dataset.

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/status.h"
 #include "xla/util.h"
@@ -32,7 +33,7 @@ ConditionalThunk::ConditionalThunk(
       config_(std::move(config)),
       branch_index_buffer_index_(branch_index_buffer_index) {}
 
-Status ConditionalThunk::Initialize(const InitializeParams& params) {
+absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   if (config_.branch_index_is_bool) {
     TF_RET_CHECK(config_.branch_thunks.size() == 2);
   } else {
@@ -41,10 +42,10 @@ Status ConditionalThunk::Initialize(const InitializeParams& params) {
   for (auto& branch_thunk : config_.branch_thunks) {
     TF_RETURN_IF_ERROR(branch_thunk->Initialize(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
   // Copy the predicate value from device.
@@ -58,7 +59,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
     stream.ThenMemcpy(&branch_index, branch_index_address, sizeof(int32_t));
   }
 
-  Status block_status = stream.BlockHostUntilDone();
+  absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError(
         "Failed to retrieve branch_index value on stream %p: %s.", &stream,
@@ -77,7 +78,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_RETURN_IF_ERROR(
       config_.branch_thunks[branch_index]->ExecuteOnStream(params));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

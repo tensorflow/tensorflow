@@ -259,6 +259,11 @@ TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantizationParams(
 TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
     TfLiteOpaqueTensorBuilder* builder, TfLiteQuantization quantization);
 
+/// Sets the allocation type of the provided 'tensor' to 'kTfLiteDynamic'.
+/// This function has no effect if the 'tensor's allocation type is already
+/// 'kTfLiteDynamic'.  The provided 'tensor' must not be null.
+void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor);
+
 // --------------------------------------------------------------------------
 // Accessors for TfLiteOpaqueNode.
 

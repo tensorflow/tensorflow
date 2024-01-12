@@ -348,7 +348,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
 
     # We now have the compiler installation prefix, e.g. /symlink/gcc
     # And the resolved installation prefix, e.g. /opt/gcc
-    cc_topdir_resolved = str(cc_topdir.realpath).strip()
+    cc_topdir_resolved = str(realpath(repository_ctx, cc_topdir)).strip()
     cc_topdir = str(cc_topdir).strip()
 
     # If there is (any!) symlink involved we add paths where the unresolved installation prefix is kept.

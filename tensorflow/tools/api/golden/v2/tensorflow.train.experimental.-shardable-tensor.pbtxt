@@ -1,9 +1,0 @@
-path: "tensorflow.train.experimental.ShardableTensor"
-tf_class {
-  is_instance: "<class \'tensorflow.python.checkpoint.sharding.sharding_util.ShardableTensor\'>"
-  is_instance: "<type \'object\'>"
-  member_method {
-    name: "__init__"
-    argspec: "args=[\'self\', \'_tensor_save_spec\', \'tensor\', \'dtype\', \'device\', \'name\', \'shape\', \'slice_spec\', \'checkpoint_key\', \'trackable\'], varargs=None, keywords=None, defaults=None"
-  }
-}

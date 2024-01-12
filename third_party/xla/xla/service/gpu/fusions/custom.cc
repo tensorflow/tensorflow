@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusion_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
@@ -42,7 +41,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
+absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     mlir::lmhlo::FusionOp fusion_op, CustomKernel custom_kernel) {
   TF_ASSIGN_OR_RETURN(auto kernel_arguments,
@@ -65,11 +64,13 @@ StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
 
 }  // namespace
 
-StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
+absl::StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
-    const HloFusionInstruction& fusion, KernelReuseCache&) const {
-  TF_ASSIGN_OR_RETURN(auto backend_config,
-                      fusion.backend_config<FusionBackendConfig>());
+    const HloFusionInstruction& fusion) const {
+  TF_ASSIGN_OR_RETURN(auto gpu_config,
+                      fusion.backend_config<GpuBackendConfig>());
+  const FusionBackendConfig& backend_config =
+      gpu_config.fusion_backend_config();
   const auto& config = backend_config.custom_fusion_config();
 
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();

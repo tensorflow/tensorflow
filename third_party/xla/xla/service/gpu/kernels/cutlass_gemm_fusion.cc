@@ -90,7 +90,7 @@ struct GemmWithDynamicSlice {
 }  // namespace
 
 // Returns OK if dot instruction is a simple 2D row-major gemm.
-static Status MatchRowMajorGemm(HloDotInstruction* dot) {
+static absl::Status MatchRowMajorGemm(HloDotInstruction* dot) {
   if (dot->operand(0)->shape().dimensions_size() != 2 ||
       dot->operand(1)->shape().dimensions_size() != 2) {
     return absl::InternalError("operands must have rank 2");
@@ -108,20 +108,20 @@ static Status MatchRowMajorGemm(HloDotInstruction* dot) {
     return absl::InternalError("rhs contracting dimensions must be 0");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Return OK if dot instruction is a simple gemm with all operands and result
 // having the same data type.
-static Status MatchSimpleGemm(HloDotInstruction* dot,
-                              absl::Span<const PrimitiveType> support_dtypes) {
+static absl::Status MatchSimpleGemm(
+    HloDotInstruction* dot, absl::Span<const PrimitiveType> support_dtypes) {
   TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
   for (PrimitiveType dtype : support_dtypes) {
     if (dot->operand(0)->shape().element_type() == dtype &&
         dot->operand(1)->shape().element_type() == dtype &&
         dot->shape().element_type() == dtype) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -130,7 +130,8 @@ static Status MatchSimpleGemm(HloDotInstruction* dot,
 
 // Returns matched GEMM with one of the operands upcasted to the accumulator
 // data type with an HLO convert instruction.
-static StatusOr<GemmWithUpcast> MatchGemmWithUpcast(HloDotInstruction* dot) {
+static absl::StatusOr<GemmWithUpcast> MatchGemmWithUpcast(
+    HloDotInstruction* dot) {
   TF_RETURN_IF_ERROR(MatchRowMajorGemm(dot));
 
   GemmWithUpcast match(dot);
@@ -151,7 +152,7 @@ static StatusOr<GemmWithUpcast> MatchGemmWithUpcast(HloDotInstruction* dot) {
 }
 
 // Returns matched GEMM with result used to update a slice.
-static StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
+static absl::StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
     HloDynamicUpdateSliceInstruction* update_slice) {
   GemmWithDynamicSlice match(update_slice);
 
@@ -237,7 +238,7 @@ CutlassGemmWithUpcastPattern::TryMatch(const se::DeviceDescription& device,
 
 class CutlassGemmFusion : public CustomFusion {
  public:
-  StatusOr<std::vector<CustomKernel>> LoadKernels(
+  absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto* dot = DynCast<HloDotInstruction>(computation->root_instruction());
@@ -275,7 +276,7 @@ class CutlassGemmFusion : public CustomFusion {
 
 class CutlassGemmWithUpcastFusion : public CustomFusion {
  public:
-  StatusOr<std::vector<CustomKernel>> LoadKernels(
+  absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto* dot = DynCast<HloDotInstruction>(computation->root_instruction());
@@ -303,7 +304,7 @@ class CutlassGemmWithUpcastFusion : public CustomFusion {
 
 class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
  public:
-  StatusOr<std::vector<CustomKernel>> LoadKernels(
+  absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
       const HloComputation* computation) const final {
     auto [root, workspace] =

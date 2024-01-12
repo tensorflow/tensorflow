@@ -33,19 +33,19 @@ std::string SequentialThunk::ToStringExtra(int indent) const {
   return result;
 }
 
-Status SequentialThunk::Initialize(const InitializeParams& params) {
+absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
   for (auto& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->Initialize(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   for (const auto& thunk : thunks_) {
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

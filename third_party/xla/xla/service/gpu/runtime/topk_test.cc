@@ -68,8 +68,9 @@ class TopkTest : public HloTestBase, public ParameterizedInterface {
                     *PlatformUtil::GetPlatform("gpu"), true, true, {}) {}
 
  protected:
-  StatusOr<std::unique_ptr<HloModule>> TopkHlo(int n, int k, int batch_size,
-                                               std::string_view dtype) {
+  absl::StatusOr<std::unique_ptr<HloModule>> TopkHlo(int n, int k,
+                                                     int batch_size,
+                                                     std::string_view dtype) {
     return ParseAndReturnVerifiedModule(absl::Substitute(
         R"(
       %compare {
@@ -94,10 +95,10 @@ class TopkTest : public HloTestBase, public ParameterizedInterface {
 
 class GeneralizeTopkVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleCustomCall(HloInstruction* inst) override {
+  absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "__gpu$TopK") {
-      return OkStatus();
+      return absl::OkStatus();
     }
     HloComputation* comp = topk->parent();
     auto original_shape = ShapeUtil::SliceTuple(topk->shape(), 0, 2);
@@ -122,9 +123,9 @@ class GeneralizeTopk : public HloModulePass {
   absl::string_view name() const override { return "generalized-topk"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     return GeneralizeTopkVisitor().RunOnModule(module, execution_threads);
   }
 };

@@ -22,20 +22,9 @@ limitations under the License.
 #include <cstring>
 #include <utility>
 
-#if (defined(__GNUC__) || defined(__clang__)) && defined(__SSE2__)
-#define XLA_HAS_SSE2
-#elif defined(_MSC_VER) && !defined(_M_ARM64EC) && defined(_M_X64)
-#define XLA_HAS_SSE2
-#elif defined(_MSC_VER) && !defined(_M_ARM64EC) && \
-    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-#define XLA_HAS_SSE2
-#elif defined(__AVX__)
-#define XLA_HAS_SSE2
-#endif
+#include "xla/compiler_macros.h"
 
-#if defined(__ARM_NEON) && !defined(__ARM_BIG_ENDIAN)
-#define XLA_HAS_ARM_NEON
-#endif
+namespace xla {
 
 #ifdef XLA_HAS_SSE2
 #include <immintrin.h>  // IWYU pragma: keep
@@ -43,31 +32,11 @@ limitations under the License.
 
 #ifdef XLA_HAS_ARM_NEON
 #include <arm_neon.h>
-#endif
+#endif  // XLA_HAS_ARM_NEON
 
 #if defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
 #define XLA_HAS_VEC128
-#endif
-
-namespace xla {
-
-#pragma push_macro("XLA_UNROLL")
-#if defined(__clang__)
-#define XLA_UNROLL _Pragma("unroll")
-#elif defined(__GNUC__)
-#define XLA_UNROLL _Pragma("GCC unroll 128")
-#else
-#define XLA_UNROLL
-#endif
-
-#pragma push_macro("XLA_FLATTEN")
-#if defined(__GNUC__) || defined(__clang__)
-#define XLA_FLATTEN __attribute__((flatten))
-#elif defined(_MSC_VER)
-#define XLA_FLATTEN [[msvc::flatten]]
-#else
-#define XLA_FLATTEN
-#endif
+#endif  // defined(XLA_HAS_SSE2) || defined(XLA_HAS_ARM_NEON)
 
 // The transpose microkernels use a general approach of zipping elements from
 // different rows together. We start zipping together elements of size 1, size 2
@@ -721,9 +690,6 @@ struct TransposeMicroKernel {
     }
   }
 };
-
-#pragma pop_macro("XLA_FLATTEN")
-#pragma pop_macro("XLA_UNROLL")
 
 }  // namespace xla
 

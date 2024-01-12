@@ -84,9 +84,9 @@ StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
                                      char** argv) {
   std::string hlo_path = GetHloPath(opts, argc, argv);
   if (hlo_path == "-") {
-    std::string stdin;
-    std::getline(std::cin, stdin, static_cast<char>(EOF));
-    return stdin;
+    std::string input;
+    std::getline(std::cin, input, static_cast<char>(EOF));
+    return input;
   }
 
   std::string data;

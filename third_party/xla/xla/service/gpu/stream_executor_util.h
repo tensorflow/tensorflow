@@ -38,14 +38,14 @@ namespace gpu {
 
 // Returns (input, filter, output) XLA Layout protos given the StreamExecutor
 // layouts.
-StatusOr<std::tuple<Layout, Layout, Layout>>
+absl::StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       se::dnn::DataLayout input,
                                       se::dnn::FilterLayout filter,
                                       se::dnn::DataLayout output);
 
 // Returns (input, filter, output) StreamExecutor layouts given the XLA layouts.
-StatusOr<
+absl::StatusOr<
     std::tuple<se::dnn::DataLayout, se::dnn::FilterLayout, se::dnn::DataLayout>>
 XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
                                      const Shape& input, const Shape& filter,
@@ -80,15 +80,16 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 //
 // The canonical storage for both ptx and cubin_data should outlive
 // the lifetime of the kernel.
-StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
+absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
-Status ExecuteKernelOnStream(const se::Kernel& kernel,
-                             absl::Span<const se::DeviceMemoryBase> args,
-                             const LaunchDimensions& dims, se::Stream* stream);
+absl::Status ExecuteKernelOnStream(const se::Kernel& kernel,
+                                   absl::Span<const se::DeviceMemoryBase> args,
+                                   const LaunchDimensions& dims,
+                                   se::Stream* stream);
 
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.
@@ -99,17 +100,18 @@ Status ExecuteKernelOnStream(const se::Kernel& kernel,
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64_t* rng_state, se::DeviceMemoryBase buffer);
 
-StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
+absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     CudnnConvKind kind);
 
-StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
+absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     CudnnfMHAKind kind);
 
-StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(PrimitiveType type);
+absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
+    PrimitiveType type);
 
 // Returns result with the smallest time which has not failed.
 // If deterministic output is requested, returns first (not failing) result.
-StatusOr<AutotuneResult> PickBestResult(
+absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
     std::optional<std::string_view> instr_str,
     HloModuleConfig hlo_module_config);

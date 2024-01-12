@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/primitive_util.h"
@@ -46,7 +47,7 @@ limitations under the License.
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
 
 #define GET_ATTR(getter, handle, attr, ValueT)                            \
-  [&]() -> tsl::StatusOr<ValueT> {                                        \
+  [&]() -> absl::StatusOr<ValueT> {                                       \
     ValueT value;                                                         \
     TF_RETURN_IF_ERROR(ToStatus(                                          \
         getter(handle, attr, &value, sizeof(ValueT), nullptr), #getter)); \
@@ -62,32 +63,32 @@ using ::xla::complex64;
 namespace {
 
 template <typename T>
-tsl::Status SetAttr(cublasLtMatrixLayout_t handle,
-                    cublasLtMatrixLayoutAttribute_t attr, T value) {
+absl::Status SetAttr(cublasLtMatrixLayout_t handle,
+                     cublasLtMatrixLayoutAttribute_t attr, T value) {
   return SET_ATTR(cublasLtMatrixLayoutSetAttribute, handle, attr, value);
 }
 
 template <typename T>
-tsl::StatusOr<T> GetAttr(cublasLtMatrixLayout_t handle,
-                         cublasLtMatrixLayoutAttribute_t attr) {
+absl::StatusOr<T> GetAttr(cublasLtMatrixLayout_t handle,
+                          cublasLtMatrixLayoutAttribute_t attr) {
   return GET_ATTR(cublasLtMatrixLayoutGetAttribute, handle, attr, T);
 }
 
 template <typename T>
-tsl::Status SetAttr(cublasLtMatmulDesc_t handle,
-                    cublasLtMatmulDescAttributes_t attr, T value) {
+absl::Status SetAttr(cublasLtMatmulDesc_t handle,
+                     cublasLtMatmulDescAttributes_t attr, T value) {
   return SET_ATTR(cublasLtMatmulDescSetAttribute, handle, attr, value);
 }
 
 template <typename T>
-tsl::StatusOr<T> GetAttr(cublasLtMatmulDesc_t handle,
-                         cublasLtMatmulDescAttributes_t attr) {
+absl::StatusOr<T> GetAttr(cublasLtMatmulDesc_t handle,
+                          cublasLtMatmulDescAttributes_t attr) {
   return GET_ATTR(cublasLtMatmulDescGetAttribute, handle, attr, T);
 }
 
 template <typename T>
-tsl::Status SetAttr(cublasLtMatmulPreference_t handle,
-                    cublasLtMatmulPreferenceAttributes_t attr, T value) {
+absl::Status SetAttr(cublasLtMatmulPreference_t handle,
+                     cublasLtMatmulPreferenceAttributes_t attr, T value) {
   return SET_ATTR(cublasLtMatmulPreferenceSetAttribute, handle, attr, value);
 }
 
@@ -101,7 +102,7 @@ cublasLtPointerMode_t AsCublasLtPointerMode(
   }
 }
 
-tsl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
+absl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
     gpu::BlasLt::Epilogue epilogue) {
   switch (epilogue) {
     case gpu::BlasLt::Epilogue::kDefault:
@@ -126,36 +127,29 @@ tsl::StatusOr<cublasLtEpilogue_t> AsCublasLtEpilogue(
     case gpu::BlasLt::Epilogue::kGELUWithAux:
     case gpu::BlasLt::Epilogue::kBiasThenGELU:
     case gpu::BlasLt::Epilogue::kBiasThenGELUWithAux:
-      return tsl::errors::Internal("GELU epilogues require cublasLt >= 11.4");
+      return absl::InternalError("GELU epilogues require cublasLt >= 11.4");
 #endif
   }
 }
 
 }  // namespace
 
-tsl::Status BlasLt::Init() {
+absl::Status BlasLt::Init() {
   cublasLtHandle_t blas_lt;
   SE_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&blas_lt));
   absl::MutexLock lock(&mu_);
   blas_lt_.reset(blas_lt);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-/*static*/ tsl::StatusOr<BlasLt::MatrixLayout> BlasLt::MatrixLayout::Create(
+/*static*/ absl::StatusOr<BlasLt::MatrixLayout> BlasLt::MatrixLayout::Create(
     const gpu::MatrixLayout& m) {
   TF_ASSIGN_OR_RETURN(auto type, gpu::AsBlasDataType(m.dtype));
-
-  auto leading_dim_stride = m.leading_dim_stride;
-  if (!leading_dim_stride) {
-    leading_dim_stride = (m.order == gpu::MatrixLayout::Order::kRowMajor)
-                             ? m.num_cols
-                             : m.num_rows;
-  }
 
   cublasLtMatrixLayout_t cu_layout;
   SE_CUBLAS_RETURN_IF_ERROR(
       cublasLtMatrixLayoutCreate(&cu_layout, AsCudaDataType(type), m.num_rows,
-                                 m.num_cols, *leading_dim_stride));
+                                 m.num_cols, m.leading_dim_stride));
   // Wrap cublas handle immediately, so it is cleaned up if an error occurs.
   BlasLt::MatrixLayout layout(cu_layout);
   TF_RETURN_IF_ERROR(
@@ -166,20 +160,15 @@ tsl::Status BlasLt::Init() {
   TF_RETURN_IF_ERROR(SetAttr(cu_layout, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
                              static_cast<int32_t>(m.batch_size)));
 
-  auto batch_stride = m.batch_stride;
-  if (!batch_stride) {
-    batch_stride = (m.batch_size > 1) ? m.num_rows * m.num_cols : 0;
-  }
-
   VLOG(2) << "MatrixLayout::Create: num_rows: " << m.num_rows
           << " num_cols:" << (int)m.num_cols << ", order: " << (int)m.order
           << ","
           << " batchsz " << m.batch_size
-          << " leaddimstride: " << *leading_dim_stride
-          << " batch_stride: " << *batch_stride;
+          << " leaddimstride: " << m.leading_dim_stride
+          << " batch_stride: " << m.batch_stride;
 
   TF_RETURN_IF_ERROR(SetAttr(
-      cu_layout, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, *batch_stride));
+      cu_layout, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, m.batch_stride));
   return std::move(layout);
 }
 
@@ -188,7 +177,7 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
       GetAttr<uint32_t>(handle_.get(), CUBLASLT_MATRIX_LAYOUT_TYPE).value());
 }
 
-/*static*/ tsl::StatusOr<BlasLt::MatmulDesc> BlasLt::MatmulDesc::Create(
+/*static*/ absl::StatusOr<BlasLt::MatmulDesc> BlasLt::MatmulDesc::Create(
     blas::ComputationType compute_type, blas::DataType scale_type,
     blas::Transpose trans_a, blas::Transpose trans_b,
     gpu::BlasLt::Epilogue epilogue, bool enable_fast_accum,
@@ -238,7 +227,7 @@ cublasLtPointerMode_t BlasLt::MatmulDesc::pointer_mode() const {
 
 auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
                                        size_t max_workspace_size) const
-    -> tsl::StatusOr<std::vector<MatmulAlgorithm>> {
+    -> absl::StatusOr<std::vector<MatmulAlgorithm>> {
   max_algorithm_count = std::min(max_algorithm_count, size_t{INT_MAX});
   std::vector<cublasLtMatmulHeuristicResult_t> results(max_algorithm_count);
   {
@@ -278,7 +267,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
 
 auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
                            gpu::BlasLt::Epilogue epilogue) const
-    -> tsl::StatusOr<MatmulPlanPtr> {
+    -> absl::StatusOr<MatmulPlanPtr> {
   auto lhs_layout = cfg.lhs_layout, rhs_layout = cfg.rhs_layout,
        output_layout = cfg.output_layout, c_layout = cfg.c_layout;
   // cublasLt matmul requires batch sizes to be equal. If only one operand has a
@@ -297,10 +286,7 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
   // *not* be transposed, and if B is row-major, B must be transposed. We never
   // transpose A or B, and expect the caller to ensure A is row-major and B is
   // column when A and B are FP8.
-  auto trans_a = lhs_layout.transpose ? *lhs_layout.transpose
-                                      : blas::Transpose::kNoTranspose;
-  auto trans_b = rhs_layout.transpose ? *rhs_layout.transpose
-                                      : blas::Transpose::kNoTranspose;
+  auto trans_a = lhs_layout.transpose, trans_b = rhs_layout.transpose;
 
   if (xla::primitive_util::IsF8Type(lhs_layout.dtype) &&
       lhs_layout.order == gpu::MatrixLayout::Order::kColumnMajor) {
@@ -344,45 +330,45 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
                                       cfg.alpha, cfg.beta, must_swap_operands);
 }
 
-tsl::Status BlasLt::MatmulPlan::ValidateInputs(
+absl::Status BlasLt::MatmulPlan::ValidateInputs(
     blas::DataType scale_type, bool alpha_on_device, bool beta_on_device,
     blas::DataType A_type, blas::DataType B_type, blas::DataType C_type,
     blas::DataType D_type) const {
   if (AsCudaDataType(scale_type) != op_desc_.scale_type()) {
-    return tsl::errors::InvalidArgument("mismatched scale types");
+    return absl::InvalidArgumentError("mismatched scale types");
   }
 
   bool expect_scale_factor_on_device =
       (op_desc_.pointer_mode() == CUBLASLT_POINTER_MODE_DEVICE);
 
   if (alpha_on_device != expect_scale_factor_on_device) {
-    return tsl::errors::InvalidArgument("wrong location for alpha");
+    return absl::InvalidArgumentError("wrong location for alpha");
   }
 
   if (beta_on_device != expect_scale_factor_on_device) {
-    return tsl::errors::InvalidArgument("wrong location for beta");
+    return absl::InvalidArgumentError("wrong location for beta");
   }
 
   if (AsCudaDataType(A_type) != a_desc_.type()) {
-    return tsl::errors::InvalidArgument("mismatched A matrix types");
+    return absl::InvalidArgumentError("mismatched A matrix types");
   }
 
   if (AsCudaDataType(B_type) != b_desc_.type()) {
-    return tsl::errors::InvalidArgument("mismatched B matrix types");
+    return absl::InvalidArgumentError("mismatched B matrix types");
   }
 
   if (AsCudaDataType(C_type) != c_desc_.type()) {
-    return tsl::errors::InvalidArgument("mismatched C matrix types");
+    return absl::InvalidArgumentError("mismatched C matrix types");
   }
 
   if (AsCudaDataType(D_type) != d_desc_.type()) {
-    return tsl::errors::InvalidArgument("mismatched D matrix types");
+    return absl::InvalidArgumentError("mismatched D matrix types");
   }
 
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status BlasLt::MatmulPlan::DoMatmul(
+absl::Status BlasLt::MatmulPlan::DoMatmul(
     Stream* stream, const void* alpha, DeviceMemoryBase a, DeviceMemoryBase b,
     const void* beta, DeviceMemoryBase c, DeviceMemoryBase d,
     const MatmulAlgorithm& algorithm, ScratchAllocator& scratch_allocator,
@@ -441,7 +427,7 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
 #else
     if (a_scale != nullptr || b_scale != nullptr || c_scale != nullptr ||
         d_scale != nullptr || d_amax != nullptr) {
-      return tsl::errors::Internal(
+      return absl::InternalError(
           "A/B/C/D scales and amax require cublasLt >= 11.8");
     }
 #endif
@@ -471,7 +457,7 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
                                  CUBLASLT_MATMUL_DESC_EPILOGUE_AUX_BATCH_STRIDE,
                                  output_batch_stride));
 #else
-      return tsl::errors::Internal(
+      return absl::InternalError(
           "Auxiliary inputs / outputs require cublasLt >= 11.4");
 #endif
     }
@@ -485,7 +471,7 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
           c_desc_.get(), d.opaque(), d_desc_.get(), palgo, workspace,
           algorithm.workspace_size, gpu::AsGpuStreamValue(stream)));
     } else {
-      return tsl::errors::Internal("cublaslt: Invalid algorithm type");
+      return absl::InternalError("cublaslt: Invalid algorithm type");
     }
   }
 
@@ -496,7 +482,7 @@ tsl::Status BlasLt::MatmulPlan::DoMatmul(
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -542,7 +528,7 @@ struct CudaToNativeT<CUDA_C_64F> {
 
 }  // namespace
 
-tsl::Status BlasLt::MatmulPlan::ExecuteOnStream(
+absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
     Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b, DeviceMemoryBase c,
     DeviceMemoryBase d, DeviceMemoryBase bias, DeviceMemoryBase aux,
     DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,

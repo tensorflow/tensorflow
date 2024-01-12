@@ -10,5 +10,5 @@ TFCI_WHL_SIZE_LIMIT=255M
 TFCI_MACOS_INSTALL_BAZELISK_ENABLE=1
 TFCI_MACOS_INSTALL_BAZELISK_URL="https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-darwin-amd64"
 TFCI_MACOS_BAZEL_TEST_DIR_ENABLE=1
-TFCI_MACOS_BAZEL_TEST_DIR_PATH="/Volumes/BuildData/bazel_output"
+TFCI_MACOS_BAZEL_TEST_DIR_PATH="/System/Volumes/Data/bazel_output"
 TFCI_MACOS_TWINE_INSTALL_ENABLE=1

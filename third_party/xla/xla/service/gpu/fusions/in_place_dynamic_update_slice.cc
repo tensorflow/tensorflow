@@ -34,13 +34,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::optional<StatusOr<LaunchDimensions>>
-InPlaceDynamicUpdateSliceEmitter::launch_dimensions() const {
+LaunchDimensions InPlaceDynamicUpdateSliceEmitter::launch_dimensions() const {
   const auto& update_shape = dus_ops_.front()->operand(1)->shape();
   return CalculateLaunchDimensions(update_shape, analysis_.device_info());
 }
 
-Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
+absl::Status InPlaceDynamicUpdateSliceEmitter::EmitKernel(
     IrEmitterContext& ir_emitter_context, const HloFusionInstruction& fusion,
     const LaunchDimensions& launch_dims, std::vector<llvm_ir::IrArray> inputs,
     std::vector<llvm_ir::IrArray> outputs, llvm::IRBuilder<>* builder) const {

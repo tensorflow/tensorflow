@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -47,7 +48,7 @@ namespace gpu {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
 
-StatusOr<HloInstruction*> SmallBufferOptimization(
+absl::StatusOr<HloInstruction*> SmallBufferOptimization(
     HloCustomCallInstruction* topk) {
   Shape data_shape = topk->operand(0)->shape();
   auto supported_dtypes = {F32, BF16};
@@ -85,10 +86,10 @@ StatusOr<HloInstruction*> SmallBufferOptimization(
 
 class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleCustomCall(HloInstruction* inst) override {
+  absl::Status HandleCustomCall(HloInstruction* inst) override {
     HloCustomCallInstruction* topk = DynCast<HloCustomCallInstruction>(inst);
     if (topk == nullptr || topk->custom_call_target() != "TopK") {
-      return OkStatus();
+      return absl::OkStatus();
     }
     TF_RET_CHECK(topk->operand_count() == 1);
 
@@ -99,13 +100,13 @@ class SpecializeTopkVisitor : public DfsHloRewriteVisitor {
               << small_topk.status();
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
 }  // namespace
 
-StatusOr<bool> TopkSpecializer::Run(
+absl::StatusOr<bool> TopkSpecializer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return SpecializeTopkVisitor().RunOnModule(module, execution_threads);
@@ -113,7 +114,7 @@ StatusOr<bool> TopkSpecializer::Run(
 
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-StatusOr<bool> TopkSpecializer::Run(
+absl::StatusOr<bool> TopkSpecializer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return false;

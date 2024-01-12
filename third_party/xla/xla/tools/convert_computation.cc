@@ -16,9 +16,10 @@ limitations under the License.
 // Usage: convert_computation <txt2bin|bin2txt> serialized_computation_proto
 //
 // bin2txt spits out the result to stdout. txt2bin modifies the file in place.
-
-#include <stdio.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+#include <stdio.h>
 
 #include <string>
 

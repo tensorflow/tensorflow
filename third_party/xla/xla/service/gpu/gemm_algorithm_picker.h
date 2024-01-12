@@ -40,7 +40,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<AutotuneResult> GetBestBlasAlgorithm(
+absl::StatusOr<AutotuneResult> GetBestBlasAlgorithm(
     se::Stream* stream, se::RedzoneAllocator& allocator,
     std::optional<std::string_view> gemm_str,
     const AutotuneConfig& autotune_config, se::DeviceMemoryBase lhs_buffer,
@@ -48,7 +48,7 @@ StatusOr<AutotuneResult> GetBestBlasAlgorithm(
     absl::Span<const se::blas::AlgorithmType> algorithms,
     const Shape& output_shape, const HloModuleConfig& hlo_module_config,
     double beta,
-    const std::function<StatusOr<se::blas::ProfileResult>(
+    const std::function<absl::StatusOr<se::blas::ProfileResult>(
         const se::blas::AlgorithmType&)>& run_benchmark);
 
 // GemmAlgorithmPicker supports two modes: device and deviceless.
@@ -63,7 +63,7 @@ class GemmAlgorithmPicker : public HloModulePass {
   absl::string_view name() const override { return "gemm-algorithm-picker"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

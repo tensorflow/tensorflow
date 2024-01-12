@@ -15,20 +15,17 @@ from the `envs` directory that is filled with configuration options:
 
 -   Nightly jobs (Run nightly on the `nightly` branch)
     -   Uses `wheel.sh`, `libtensorflow.sh`, `code_check_full.sh`
-    -   Uses `envs/nightly_...`
 -   Continuous jobs (Run on every GitHub commit)
     -   Uses `pycpp.sh`
-    -   Uses `envs/continuous_...`
 -   Presubmit jobs (Run on every GitHub PR)
     -   Uses `pycpp.sh`, `code_check_changed_files.sh`
-    -   Also uses `envs/continuous_...`
 
 These "env" files match up with an environment matrix that roughly covers:
 
+-   Different Python versions
 -   Linux, MacOS, and Windows machines (these pool definitions are internal)
 -   x86 and arm64
 -   CPU-only, or with NVIDIA CUDA support (Linux only), or with TPUs
--   Different Python versions
 
 ## How to Test Your Changes to TensorFlow
 
@@ -43,18 +40,47 @@ against a pending change. Search for "MLCI" internally to find it.
 You may invoke a CI script of your choice by following these instructions:
 
 ```bash
-# Required: create a file to hold your settings
 cd tensorflow-git-dir
-export TFCI=$(mktemp)
 
-# Required: choose an environment (env) to copy.
+# Here is a single-line example of running a script on Linux to build the
+# GPU version of TensorFlow for Python 3.12, using the public TF bazel cache and
+# a local build cache:
+TFCI=py312,linux_x86_cuda,multicache ci/official/wheel.sh
+
+# First, set your TFCI variable to choose the environment settings.
+#   TFCI is a comma-separated list of filenames from the envs directory, which
+#   are all settings for the scripts. TF's CI jobs are all made of a combination
+#   of these env files.
+#
 #   If you've clicked on a test result from our CI (via a dashboard or GitHub link),
 #   click to "Invocation Details" and find BUILD_CONFIG, which will contain a TFCI
 #   value in the "env_vars" list that you can choose to copy that environment.
-echo >>$TFCI source ci/official/envs/nightly_linux_x86_cpu_py311
-
-# Required: Reset settings for local execution
-echo >>$TFCI source ci/official/envs/local_default
+#      Ex. 1: TFCI=py311,linux_x86_cuda,nightly_upload  (nightly job)
+#      Ex. 2: TFCI=py39,linux_x86,rbe                   (continuous job)
+#   Non-Googlers should replace "nightly_upload" or "rbe" with "multicache".
+#   Googlers should replace "nightly_upload" with "multicache" or "rbe", if
+#     you have set up your system to use RBE (see further below).
+#
+# Here is how to choose your TFCI value:
+# 1. A Python version must come first, because other scripts reference it.
+#      Ex. py39  -- Python 3.9
+#      Ex. py310 -- Python 3.10
+#      Ex. py311 -- Python 3.11
+#      Ex. py312 -- Python 3.12
+# 2. Choose the platform, which corresponds to the version of TensorFlow to
+#    build. This should also match the system you're using--you cannot build
+#    the TF MacOS package from Linux.
+#      Ex. linux_x86        -- x86_64 Linux platform
+#      Ex. linux_x86_cuda   -- x86_64 Linux platform, with Nvidia CUDA support
+#      Ex. macos_arm64      -- arm64 MacOS platform
+# 3. Add modifiers. Some modifiers for local execution are:
+#      Ex. multicache -- Use a local cache combined with TF's public cache
+#      Ex. rbe        -- Use RBE for faster builds (Googlers only; see below)
+#      Ex. no_docker  -- Disable docker on enabled platforms
+#    See full examples below for more details on these. Some other modifiers are:
+#      Ex. release_upload -- for TF official release builds
+#      Ex. nightly_upload -- for TF nightly official builds; changes version numbers
+#      Ex. no_upload      -- Disable all uploads, usually for temporary CI issues
 
 # Recommended: use a local+remote cache.
 #
@@ -68,19 +94,7 @@ echo >>$TFCI source ci/official/envs/local_default
 #      or tests passing incorrectly.
 #    - Automatic LLVM updates are known to extend build time even with
 #      the cache; this is unavoidable.
-echo >>$TFCI source ci/official/envs/local_multicache
-
-# Advanced: Use Remote Build Execution (RBE) (internal developers only)
-#
-#   RBE dramatically speeds up builds and testing. It also gives you a
-#   public URL to share your build results with collaborators. However,
-#   it is only available to a limited set of internal TensorFlow developers.
-#
-#   RBE is incompatible with local caching, so you must remove
-#   ci/official/envs/local_multicache from your $TFCI file.
-#
-# To use RBE, you must first run `gcloud auth application-default login`, then:
-# echo >>$TFCI source ci/official/envs/local_rbe
+export TFCI=py311,linux_x86,multicache
 
 # Recommended: Configure Docker. (Linux only)
 #
@@ -104,7 +118,19 @@ echo >>$TFCI source ci/official/envs/local_multicache
 #   to transfer ownership to your user.
 #
 # Docker is enabled by default on Linux. You may disable it if you prefer:
-# echo >>$TFCI source ci/official/envs/local_nodocker
+# export TFCI=py311,linux_x86,no_docker
+
+# Advanced: Use Remote Build Execution (RBE) (internal developers only)
+#
+#   RBE dramatically speeds up builds and testing. It also gives you a
+#   public URL to share your build results with collaborators. However,
+#   it is only available to a limited set of internal TensorFlow developers.
+#
+#   RBE is incompatible with local caching, so you must remove
+#   ci/official/envs/local_multicache from your $TFCI file.
+#
+# To use RBE, you must first run `gcloud auth application-default login`, then:
+export TFCI=py311,linux_x86,rbe
 
 # Finally: Run your script of choice.
 #   If you've clicked on a test result from our CI (via a dashboard or GitHub link),
@@ -133,9 +159,9 @@ The top-level scripts and utility scripts should be fairly well-documented. Here
 is a brief explanation of how they tie together:
 
 1.  `envs/*` are lists of variables made with bash syntax. A user must set a
-    `TFCI` env param pointing to one of the `env` files.
+    `TFCI` env param pointing to a list of `env` files.
 2.  `utilities/setup.sh`, initialized by all top-level scripts, reads and sets
-    values from that `TFCI` path.
+    values from those `TFCI` paths.
     -   `set -a` / `set -o allexport` exports the variables from `env` files so
         all scripts can use them.
     -   `utilities/setup_docker.sh` creates a container called `tf` with all

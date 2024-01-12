@@ -15,25 +15,26 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_norm_runner.h"
 
+#include <optional>
 #include <vector>
 
-#include "xla/layout_util.h"
+#include "absl/status/status.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
 
-Status RunGpuNorm(const gpu::GpuNormConfig& config,
-                  const se::DeviceMemoryBase& input_buffer,
-                  const se::DeviceMemoryBase& scale_buffer,
-                  const se::DeviceMemoryBase& bias_buffer,
-                  const se::DeviceMemoryBase& output_buffer,
-                  std::optional<se::DeviceMemoryBase> expectation_buffer,
-                  std::optional<se::DeviceMemoryBase> norm_factor_buffer,
-                  const se::DeviceMemoryBase& scratch_memory,
-                  se::Stream* stream, RunNormOptions options) {
+absl::Status RunGpuNorm(const gpu::GpuNormConfig& config,
+                        const se::DeviceMemoryBase& input_buffer,
+                        const se::DeviceMemoryBase& scale_buffer,
+                        const se::DeviceMemoryBase& bias_buffer,
+                        const se::DeviceMemoryBase& output_buffer,
+                        std::optional<se::DeviceMemoryBase> expectation_buffer,
+                        std::optional<se::DeviceMemoryBase> norm_factor_buffer,
+                        const se::DeviceMemoryBase& scratch_memory,
+                        se::Stream* stream, RunNormOptions options) {
   se::dnn::LazyOpRunner<se::dnn::NormOp>* lazy_runner =
       options.norm_runner->AsNormRunner();
   std::optional<se::dnn::LazyOpRunner<se::dnn::NormOp>> local_runner;

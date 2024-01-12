@@ -21,13 +21,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -46,11 +46,11 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
 
   ~TfAllocatorAdapter() override;
 
-  tsl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                             bool retry_on_failure,
-                                             int64_t memory_space) override;
+  absl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
+                                              bool retry_on_failure,
+                                              int64_t memory_space) override;
 
-  tsl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
+  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main
@@ -61,9 +61,9 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
-  tsl::StatusOr<Stream *> GetStream(int device_ordinal) override;
+  absl::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
-  tsl::StatusOr<tsl::Allocator *> GetAllocator(int device_ordinal);
+  absl::StatusOr<tsl::Allocator *> GetAllocator(int device_ordinal);
 
  private:
   tsl::Allocator *wrapped_;
@@ -113,15 +113,15 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
     }
   }
 
-  tsl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                             bool retry_on_failure,
-                                             int64_t memory_space) override {
+  absl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
+                                              bool retry_on_failure,
+                                              int64_t memory_space) override {
     CHECK_LT(device_ordinal, per_device_allocators_.size());
     return per_device_allocators_[device_ordinal]->Allocate(
         device_ordinal, size, retry_on_failure, memory_space);
   }
 
-  tsl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
+  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override {
     CHECK_LT(device_ordinal, per_device_allocators_.size());
     return per_device_allocators_[device_ordinal]->Deallocate(device_ordinal,
                                                               mem);
@@ -136,11 +136,11 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
-  tsl::StatusOr<Stream *> GetStream(int device_ordinal) override {
+  absl::StatusOr<Stream *> GetStream(int device_ordinal) override {
     return per_device_allocators_[device_ordinal]->GetStream(device_ordinal);
   }
 
-  tsl::StatusOr<tsl::Allocator *> GetAllocator(int device_ordinal) {
+  absl::StatusOr<tsl::Allocator *> GetAllocator(int device_ordinal) {
     return per_device_allocators_[device_ordinal]->GetAllocator(device_ordinal);
   }
 

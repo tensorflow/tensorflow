@@ -59,7 +59,7 @@ bool OnlyElementwiseOpsReachableFromParams(HloComputation* fused_computation) {
   return true;
 }
 
-StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
+absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
   bool changed = false;
   std::vector<HloInstruction*> defs_before_uses =
       computation->MakeInstructionPostOrder();
@@ -180,7 +180,7 @@ StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
   return changed;
 }
 
-StatusOr<bool> CopyFusion::Run(
+absl::StatusOr<bool> CopyFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Only for the entry computation we can be sure that the copies do not share

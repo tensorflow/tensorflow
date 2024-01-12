@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
+absl::StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
     HloCustomCallInstruction*);
 
 }  // end namespace gpu

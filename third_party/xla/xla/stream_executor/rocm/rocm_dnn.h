@@ -74,10 +74,10 @@ class MIOpenSupport : public dnn::DnnSupport {
  public:
   explicit MIOpenSupport(GpuExecutor* parent);
 
-  tsl::Status Init() override;
-  tsl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
+  absl::Status Init() override;
+  absl::StatusOr<stream_executor::dnn::VersionInfo> GetVersion() override;
 
-  tsl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+  absl::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
       int num_layers, int hidden_size, int input_size, int cell_size,
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
@@ -85,12 +85,12 @@ class MIOpenSupport : public dnn::DnnSupport {
       const NumericOptions& numeric_options, float dropout, uint64_t seed,
       ScratchAllocator* state_allocator, bool use_padded_io) override;
 
-  tsl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  absl::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
                                     int data_size,
                                     dnn::DataType data_type) override;
 
-  tsl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  absl::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
   createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
                                  dnn::DataType data_type) override;
 
@@ -229,7 +229,7 @@ class MIOpenSupport : public dnn::DnnSupport {
                      ScratchAllocator* workspace_allocator,
                      dnn::ProfileResult* output_profile_result) override;
 
-  tsl::Status GetConvolveRunners(
+  absl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -243,7 +243,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners)
       override;
 
-  tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
+  absl::StatusOr<std::unique_ptr<const dnn::ConvRunner>> ConvolveRunnerFromDesc(
       Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
       dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
@@ -351,7 +351,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<uint8_t>* reserve_space_data,
       ScratchAllocator* workspace_allocator) override;
 
-  tsl::Status DoConvolve(
+  absl::Status DoConvolve(
       dnn::ConvolutionKind kind, dnn::DataType element_type,
       dnn::DataType output_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
@@ -363,7 +363,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8> scratch_memory,
       dnn::ProfileResult* output_profile_result) override;
 
-  tsl::Status DoFusedConvolve(
+  absl::Status DoFusedConvolve(
       Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
       dnn::DataType bias_type, dnn::DataType output_type,
       const dnn::BatchDescriptor& conv_input_descriptor,
@@ -379,7 +379,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result) override;
 
-  tsl::Status GetFusedMatmulRunners(
+  absl::Status GetFusedMatmulRunners(
       bool use_cudnn_frontend, dnn::DataType input_type,
       dnn::DataType bias_type, dnn::DataType output_type, Stream* stream,
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
@@ -389,23 +389,23 @@ class MIOpenSupport : public dnn::DnnSupport {
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans) override;
 
-  tsl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
-                            const dnn::PoolingDescriptor& pooling_dimensions,
-                            const dnn::BatchDescriptor& input_dimensions,
-                            DeviceMemoryBase input_data,
-                            const dnn::BatchDescriptor& output_dimensions,
-                            DeviceMemoryBase output_data,
-                            ScratchAllocator* workspace_allocator) override;
-
-  tsl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
+  absl::Status DoPoolForward(dnn::DataType element_type, Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
                              DeviceMemoryBase input_data,
                              const dnn::BatchDescriptor& output_dimensions,
                              DeviceMemoryBase output_data,
-                             DeviceMemoryBase input_diff_data,
-                             DeviceMemoryBase output_diff_data,
                              ScratchAllocator* workspace_allocator) override;
+
+  absl::Status DoPoolBackward(dnn::DataType element_type, Stream* stream,
+                              const dnn::PoolingDescriptor& pooling_dimensions,
+                              const dnn::BatchDescriptor& input_dimensions,
+                              DeviceMemoryBase input_data,
+                              const dnn::BatchDescriptor& output_dimensions,
+                              DeviceMemoryBase output_data,
+                              DeviceMemoryBase input_diff_data,
+                              DeviceMemoryBase output_diff_data,
+                              ScratchAllocator* workspace_allocator) override;
 
   bool DoNormalizeWithDimensions(
       Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
@@ -444,17 +444,17 @@ class MIOpenSupport : public dnn::DnnSupport {
 
   GpuExecutor* GetParentExecutor() { return parent_; }
 
-  tsl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
-                        const dnn::RnnStateTensorDescriptor& probs_desc,
-                        const DeviceMemoryBase probs_data,
-                        absl::Span<const int> labels_data,
-                        absl::Span<const int> labels_lengths_data,
-                        absl::Span<const int> input_lengths_data,
-                        DeviceMemoryBase costs_data,
-                        const dnn::RnnStateTensorDescriptor& grads_desc,
-                        DeviceMemoryBase grads_data,
-                        DeviceMemory<uint8> scratch_memory,
-                        int ctc_loss_algo_id) override;
+  absl::Status DoCtcLoss(Stream* stream, dnn::DataType element_type,
+                         const dnn::RnnStateTensorDescriptor& probs_desc,
+                         const DeviceMemoryBase probs_data,
+                         absl::Span<const int> labels_data,
+                         absl::Span<const int> labels_lengths_data,
+                         absl::Span<const int> input_lengths_data,
+                         DeviceMemoryBase costs_data,
+                         const dnn::RnnStateTensorDescriptor& grads_desc,
+                         DeviceMemoryBase grads_data,
+                         DeviceMemory<uint8> scratch_memory,
+                         int ctc_loss_algo_id) override;
 
  private:
   GpuExecutor* parent_;  // Parent executor object. Not owned.
@@ -499,7 +499,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<U>* offset_backprop);
 
   template <class T>
-  tsl::Status DoRnnForwardImpl(
+  absl::Status DoRnnForwardImpl(
       Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
       const MIOpenRnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<T>& input_data,
@@ -517,7 +517,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result);
   template <class T>
-  tsl::Status DoRnnBackwardImpl(
+  absl::Status DoRnnBackwardImpl(
       Stream* stream, const MIOpenRnnDescriptor& rnn_desc,
       const MIOpenRnnSequenceTensorDescriptor& input_desc,
       const DeviceMemory<T>& input_data,
@@ -542,7 +542,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* workspace_allocator,
       dnn::ProfileResult* output_profile_result);
 
-  tsl::Status DoPrepareForConvolution(
+  absl::Status DoPrepareForConvolution(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
       const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
       const dnn::FilterDescriptor& filter_descriptor,
@@ -554,7 +554,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8>* scratch_memory) override;
 
-  tsl::Status DoCtcLossImpl(
+  absl::Status DoCtcLossImpl(
       Stream* stream, const MIOpenRnnStateTensorDescriptor& probs_desc,
       const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
@@ -563,7 +563,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
       DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
 
-  tsl::Status DoPrepareForCtcLoss(
+  absl::Status DoPrepareForCtcLoss(
       Stream* stream, dnn::DataType element_type,
       const dnn::RnnStateTensorDescriptor& probs_desc,
       const dnn::RnnStateTensorDescriptor& grads_desc,

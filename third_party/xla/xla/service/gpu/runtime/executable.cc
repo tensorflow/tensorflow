@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/runtime/executable.h"
 #include "xla/runtime/jit_executable.h"
@@ -186,7 +187,7 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 // Compile Xla program lowered to runtime dialects to Gpu runtime executable.
 //===----------------------------------------------------------------------===//
 
-/*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
+/*static*/ absl::StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(std::string module_name,
                              std::unique_ptr<GpuRuntimeProgram> program) {
   // Options for the default XLA Runtime compilation pipeline.
@@ -248,7 +249,7 @@ GpuRuntimeExecutable::Create(std::string module_name,
 // Constructs Gpu runtime executable from AOT compiled runtime artifact.
 //===----------------------------------------------------------------------===//
 
-/*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
+/*static*/ absl::StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(
     std::string module_name, std::vector<int64_t> buffer_sizes,
     std::vector<std::vector<int64_t>> allocation_indices, Executable executable,
@@ -312,7 +313,7 @@ static void InitializeCallFrame(runtime::Executable::CallFrame& call_frame,
   }
 }
 
-Status GpuRuntimeExecutable::Execute(
+absl::Status GpuRuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
@@ -364,8 +365,9 @@ Status GpuRuntimeExecutable::Execute(
   // b/293945751.
   absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comm_streams(
       kAsyncStreamTotal, nullptr);
-  StatusOr<std::vector<StreamPool::Ptr>> streams = run_options->BorrowStreams(
-      executor->device_ordinal(), kAsyncStreamTotal, stream_priority);
+  absl::StatusOr<std::vector<StreamPool::Ptr>> streams =
+      run_options->BorrowStreams(executor->device_ordinal(), kAsyncStreamTotal,
+                                 stream_priority);
   if (streams.ok()) {
     for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
       async_comm_streams[i] = streams->at(i).get();
@@ -443,7 +445,7 @@ Status GpuRuntimeExecutable::Execute(
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
-      async_collectives.async_comm_stream(kAsyncStreamCollective)
+      async_collectives.async_comm_stream(AsyncStreamKind::kCollective)
           ? &async_collectives
           : nullptr);
 
@@ -489,7 +491,7 @@ Status GpuRuntimeExecutable::Execute(
                          diagnostic);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -501,14 +503,14 @@ const Executable& GpuRuntimeExecutable::executable() const {
   return *std::get<std::unique_ptr<Executable>>(executable_);
 }
 
-StatusOr<std::string_view> GpuRuntimeExecutable::GetObjFile() const {
+absl::StatusOr<std::string_view> GpuRuntimeExecutable::GetObjFile() const {
   if (auto obj_file = executable().obj_file())
     return std::string_view(obj_file->getBuffer());
 
   return InternalError("gpu runtime executable didn't save the obj file");
 }
 
-StatusOr<std::string_view> GpuRuntimeExecutable::GetMlirModule() const {
+absl::StatusOr<std::string_view> GpuRuntimeExecutable::GetMlirModule() const {
   const auto* jit = std::get_if<std::unique_ptr<JitExecutable>>(&executable_);
   if (!jit) return InternalError("MLIR module is not available");
 

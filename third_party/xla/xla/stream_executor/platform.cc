@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/stream_executor/device_options.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -45,13 +44,13 @@ Platform::~Platform() {}
 
 bool Platform::Initialized() const { return true; }
 
-tsl::Status Platform::Initialize(
+absl::Status Platform::Initialize(
     const std::map<std::string, std::string> &platform_options) {
   if (!platform_options.empty()) {
     return absl::UnimplementedError(
         "this platform does not support custom initialization");
   }
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace stream_executor

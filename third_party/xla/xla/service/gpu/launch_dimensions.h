@@ -121,7 +121,7 @@ int64_t ThreadsPerBlockRowVectorized(
     LaunchDimensionsConfig dim_config);
 
 // Calculates the launch dimensions used to invoke `hlo`.
-StatusOr<LaunchDimensions> CalculateLaunchDimensions(
+LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,
     LaunchDimensionsConfig dim_config = {});
 

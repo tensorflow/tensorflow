@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -55,11 +54,11 @@ class HloFusionAnalysis {
     int smallest_input_dtype_bits;
   };
 
-  static StatusOr<HloFusionAnalysis> Create(
+  static absl::StatusOr<HloFusionAnalysis> Create(
       FusionBackendConfig backend_config,
       std::unique_ptr<HloFusionAdaptor> fusion,
       const se::DeviceDescription* device_info);
-  static StatusOr<HloFusionAnalysis> Create(
+  static absl::StatusOr<HloFusionAnalysis> Create(
       const HloFusionInstruction* fusion,
       const se::DeviceDescription* device_info);
 

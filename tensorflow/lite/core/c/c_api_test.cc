@@ -1676,6 +1676,14 @@ TEST(CApiSimple, OpaqueApiAccessors) {
             EXPECT_EQ(
                 new_quantization_params.zero_point,
                 TfLiteOpaqueTensorGetQuantizationParams(new_tensor).zero_point);
+            EXPECT_EQ(kTfLiteArenaRw,
+                      TfLiteOpaqueTensorGetAllocationType(new_tensor));
+
+            // Now switch the tensor's allocation type to dynamic after it has
+            // been created.
+            TfLiteOpaqueTensorSetAllocationTypeToDynamic(new_tensor);
+            EXPECT_EQ(kTfLiteDynamic,
+                      TfLiteOpaqueTensorGetAllocationType(new_tensor));
           }
           //
           // Create and configure a 'kTfLiteVariantObject' tensor, which will

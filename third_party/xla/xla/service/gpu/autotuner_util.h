@@ -128,7 +128,7 @@ class AutotuneConfig {
     return cf.allocator ? cf.allocator : GetExecutor()->GetAllocator();
   }
 
-  StatusOr<se::Stream*> GetStream() const {
+  absl::StatusOr<se::Stream*> GetStream() const {
     CHECK(std::holds_alternative<DeviceConfig>(config_));
     return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
   }
@@ -153,16 +153,16 @@ class AutotuneConfig {
   bool exhaustive_tiling_search_;
 };
 
-using AutotuneNoCacheFn = std::function<StatusOr<AutotuneResult>()>;
+using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
 
 struct AutotunerUtil {
   // Create a buffer for a given operation using redzone checker, initialize
   // based on a given rng state.
-  static StatusOr<se::DeviceMemoryBase> CreateBuffer(
+  static absl::StatusOr<se::DeviceMemoryBase> CreateBuffer(
       se::RedzoneAllocator& allocator, const Shape& shape,
       const AutotuneConfig& config, int64_t& rng_state);
 
-  static StatusOr<AutotuneResult> Autotune(
+  static absl::StatusOr<AutotuneResult> Autotune(
       const HloInstruction* instr, const AutotuneConfig& config,
       const AutotuneNoCacheFn& autotune_fn);
 
@@ -186,7 +186,7 @@ struct AutotunerUtil {
 
   // Creates a RedzoneAllocator from a given config. If `force_stream` is
   // provided, than it is used for checking redzones.
-  static StatusOr<se::RedzoneAllocator> CreateRedzoneAllocator(
+  static absl::StatusOr<se::RedzoneAllocator> CreateRedzoneAllocator(
       const AutotuneConfig& config, const DebugOptions& opts,
       se::Stream* force_stream = nullptr);
 
@@ -229,27 +229,28 @@ struct AutotunerUtil {
   // dots/convs it wants to run can also change.  For example, XLA might change
   // the conv padding heuristics it uses, and we don't want that to mean that
   // all users of ahead-of-time autotuning are broken.
-  static StatusOr<std::string> SerializeAutotuneResults(
+  static absl::StatusOr<std::string> SerializeAutotuneResults(
       bool as_textproto = false);
 
-  static Status SerializeAutotuneResults(AutotuneResults* results);
-  static Status LoadAutotuneResults(absl::string_view data,
-                                    bool as_textproto = false);
+  static absl::Status SerializeAutotuneResults(AutotuneResults* results);
+  static absl::Status LoadAutotuneResults(absl::string_view data,
+                                          bool as_textproto = false);
 
-  static Status LoadAutotuneResults(const AutotuneResults& results);
+  static absl::Status LoadAutotuneResults(const AutotuneResults& results);
 
   // Serializes autotune results into a file.
   //
   // If `file_path` ends with ".txt" or ".textproto", then the textproto format
   // is used, otherwise the binary protobuf format.
-  static Status SerializeAutotuneResultsToFile(absl::string_view file_path);
+  static absl::Status SerializeAutotuneResultsToFile(
+      absl::string_view file_path);
 
   // Loads autotune results from a file.
   //
   // If `file_path` ends with ".txt" or ".textproto", then the file is
   // considered to be in the textproto format, otherwise the binary protobuf
   // format.
-  static Status LoadAutotuneResultsFromFile(absl::string_view file_path);
+  static absl::Status LoadAutotuneResultsFromFile(absl::string_view file_path);
 
   static void ClearAutotuneResults();
 

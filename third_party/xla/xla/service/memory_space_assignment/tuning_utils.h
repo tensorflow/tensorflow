@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_TUNING_UTILS_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 
 namespace xla {
 

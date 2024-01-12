@@ -69,9 +69,7 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(absl::string_view name,
-                     HloInstruction* fusion_instruction = nullptr)
-        : name_(name), fusion_instruction_(fusion_instruction) {}
+    explicit Builder(absl::string_view name) : name_(name) {}
     Builder(Builder&& b) = default;
     virtual ~Builder() = default;
 
@@ -122,7 +120,6 @@ class HloComputation {
 
    private:
     const std::string name_;
-    HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
     absl::flat_hash_set<int> parameter_numbers_;
 
@@ -689,7 +686,8 @@ class HloComputation {
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
     CHECK(!IsCustomCallComputation() && !IsAsyncComputation() &&
-          !IsCollectiveCalledComputation() && !IsWhileBodyComputation());
+          !IsCollectiveCalledComputation() && !IsWhileBodyComputation() &&
+          !IsConditionalBranchComputation());
     fusion_instruction_ = fusion_instruction;
     is_fusion_computation_ |= (fusion_instruction != nullptr);
   }
@@ -704,7 +702,8 @@ class HloComputation {
   }
   void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
     CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCollectiveCalledComputation() && !IsWhileBodyComputation());
+          !IsCollectiveCalledComputation() && !IsWhileBodyComputation() &&
+          !IsConditionalBranchComputation());
     custom_call_instruction_ = custom_call_instruction;
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
   }
@@ -723,7 +722,8 @@ class HloComputation {
   void SetCollectiveCallInstruction(
       HloInstruction* collective_call_instruction) {
     CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCustomCallComputation() && !IsWhileBodyComputation());
+          !IsCustomCallComputation() && !IsWhileBodyComputation() &&
+          !IsConditionalBranchComputation());
     collective_call_instruction_ = collective_call_instruction;
     is_collective_called_computation_ |=
         (collective_call_instruction != nullptr);
@@ -742,43 +742,50 @@ class HloComputation {
 
   void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
     CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCustomCallComputation() && !IsCollectiveCalledComputation());
+          !IsCustomCallComputation() && !IsCollectiveCalledComputation() &&
+          !IsConditionalBranchComputation());
     CHECK(while_call_instruction != nullptr);
     CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
     while_call_instruction_ = while_call_instruction;
-    is_while_call_body_computation_ |= (while_call_instruction != nullptr);
+    is_while_call_body_computation_ = true;
+  }
+
+  // Returns if this computation is a branch computation of a conditional.
+  bool IsConditionalBranchComputation() const {
+    return is_conditional_branch_computation_;
+  }
+
+  // Returns the owning conditional call instruction, or nullptr if this is not
+  // a conditional branch computation.
+  HloInstruction* ConditionalCallInstruction() const {
+    return conditional_call_instruction_;
+  }
+
+  void SetConditionalCallInstruction(
+      HloInstruction* conditional_call_instruction) {
+    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
+          !IsCustomCallComputation() && !IsCollectiveCalledComputation() &&
+          !IsWhileBodyComputation());
+    CHECK(conditional_call_instruction != nullptr);
+    CHECK(conditional_call_instruction->opcode() == HloOpcode::kConditional);
+    conditional_call_instruction_ = conditional_call_instruction;
+    is_conditional_branch_computation_ = true;
   }
 
   // Returns if this computation is an async computation.
-  bool IsAsyncComputation() const { return !async_instructions_.empty(); }
+  bool IsAsyncComputation() const { return async_start_ != nullptr; }
 
-  // Returns the owning async instruction. It's empty if this is not an async
+  // Returns the owning async instruction. It's nullptr if this is not an async
   // computation.
-  const std::vector<HloInstruction*>& AsyncInstructions() const {
-    return async_instructions_;
+  HloInstruction* AsyncStart() const { return async_start_; }
+
+  void AddAsyncStart(HloInstruction* async_instruction) {
+    CHECK(!IsCalledComputation());
+    CHECK(async_instruction->opcode() == HloOpcode::kAsyncStart);
+    async_start_ = async_instruction;
   }
 
-  std::vector<HloInstruction*>& AsyncInstructions() {
-    return async_instructions_;
-  }
-
-  void AddAsyncInstruction(HloInstruction& async_instruction) {
-    CHECK(!IsFusionComputation() && !IsCustomCallComputation());
-    CHECK(async_instruction.opcode() == HloOpcode::kAsyncStart ||
-          async_instruction.opcode() == HloOpcode::kAsyncUpdate ||
-          async_instruction.opcode() == HloOpcode::kAsyncDone);
-    async_instructions_.push_back(&async_instruction);
-  }
-
-  void RemoveAsyncInstruction(HloInstruction* async_instruction) {
-    if (async_instruction == nullptr) {
-      return;
-    }
-    async_instructions_.erase(
-        std::remove(async_instructions_.begin(), async_instructions_.end(),
-                    async_instruction),
-        async_instructions_.end());
-  }
+  void RemoveAsyncStart() { async_start_ = nullptr; }
 
   // Returns if this computation is invoked by an Hlo instruction.
   bool IsCalledComputation() const {
@@ -828,7 +835,7 @@ class HloComputation {
   explicit HloComputation(
       const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, HloInstruction* fusion_instruction);
+      HloInstruction* root_instruction);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -913,10 +920,18 @@ class HloComputation {
   // Determines whether this computation is a while body computation.
   bool is_while_call_body_computation_;
 
+  // If this computation is a conditional branch computation, this field points
+  // to the corresponding conditional instruction. Otherwise, this is null.
+  HloInstruction* conditional_call_instruction_;
+
+  // Determines whether this computation is a conditional branch computation.
+  bool is_conditional_branch_computation_;
+
   // If this computation is an async computation, this field points to the
-  // corresponding async instructions (if live) that call this computation.
+  // first async instruction (async-start) in the asynchronous op chain that
+  // calls this computation.
   // Otherwise, this is empty.
-  std::vector<HloInstruction*> async_instructions_;
+  HloInstruction* async_start_ = nullptr;
 
   // Execution thread of this computation. By default, it's main thread.
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;

@@ -1338,7 +1338,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       enable_mlir_quantizer=False,
       representative_dataset=True,
   ):
-    k_conv_name = 'Conv2D'
+    k_conv_name = 'tfl.pseudo_qconst' if enable_mlir_quantizer else 'Conv2D'
     # Dynamic range quant requires total num elements of filters > 1024.
     k_num_filters = 38
     root, func, calib_gen = self._getIntegerQuantizeModel(k_num_filters)
@@ -2754,7 +2754,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
     save(model, saved_model_dir)
-    k_conv_name = 'sequential/conv2d/Conv2D'
+    k_conv_name = ('tfl.pseudo_qconst' if enable_mlir_quantizer
+                   else 'sequential/conv2d/Conv2D')
     quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir
     )
@@ -2815,7 +2816,8 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     ])
     saved_model_dir = os.path.join(self.get_temp_dir(), 'dense_saved_model')
     save(model, saved_model_dir)
-    k_dense_bias_name = 'sequential/dense/BiasAdd/ReadVariableOp'
+    k_dense_bias_name = ('sequential/dense/BiasAdd/ReadVariableOp'
+                         if is_int16_quantize else 'tfl.pseudo_qconst')
     quantized_converter = tf.lite.TFLiteConverter.from_saved_model(
         saved_model_dir
     )
@@ -2938,6 +2940,33 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
       )
     else:
       self.assertEqual(np.int8, quantized_weight['dtype'])
+
+  @parameterized.named_parameters(
+      ('_NONE', 'NONE'),
+      ('_STATIC', 'STATIC'),
+      ('_DYNAMIC', 'DYNAMIC'),
+      ('_UNKNOWN', 'UNKNOWN'),
+  )
+  def testQDQConversionMode(self, mode):
+    num_filters = 1024
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
+    )
+    model.build(input_shape=(1, 32, 32, 3))
+    saved_model_dir = self.create_tempdir()
+    save(model, saved_model_dir.full_path)
+    converter = tf.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir.full_path
+    )
+    converter._experimental_qdq_conversion_mode = mode
+
+    if mode == 'UNKNOWN':
+      with self.assertRaises(convert.ConverterError) as error:
+        converter.convert()
+      self.assertIn('Unknown QDQ conversion mode:', str(error.exception))
+    else:
+      model = converter.convert()
+      self.assertIsNotNone(model)
 
   # pylint: disable=pointless-string-statement
   """disable test for now """

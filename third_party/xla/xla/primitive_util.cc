@@ -19,6 +19,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
@@ -31,12 +32,9 @@ namespace xla {
 namespace primitive_util {
 
 int SignificandWidth(PrimitiveType type) {
-  return PrimitiveTypeSwitch<int>(
+  return FloatingPointTypeSwitch<int>(
       [&](auto constant_type) -> int {
-        if constexpr (IsFloatingPointType(constant_type)) {
-          return std::numeric_limits<NativeTypeOf<constant_type>>::digits;
-        }
-        LOG(FATAL) << "Not a floating data type " << type;
+        return std::numeric_limits<NativeTypeOf<constant_type>>::digits;
       },
       type);
 }
@@ -60,12 +58,9 @@ int UnderflowExponent(PrimitiveType type) {
   // normalized floating-point number." as such it does not actually yield the
   // minimum exponent but one above the minimum exponent that a normalized
   // number can have.
-  return PrimitiveTypeSwitch<int>(
+  return FloatingPointTypeSwitch<int>(
       [&](auto constant_type) -> int {
-        if constexpr (IsFloatingPointType(constant_type)) {
-          return std::numeric_limits<NativeTypeOf<constant_type>>::min_exponent;
-        }
-        LOG(FATAL) << "Not a floating data type " << type;
+        return std::numeric_limits<NativeTypeOf<constant_type>>::min_exponent;
       },
       type);
 }
@@ -76,12 +71,9 @@ int OverflowExponent(PrimitiveType type) {
   // representable finite floating-point number." as such it does not actually
   // yield the maximum exponent but the exponent of the first integer which
   // overflows.
-  return PrimitiveTypeSwitch<int>(
+  return FloatingPointTypeSwitch<int>(
       [&](auto constant_type) -> int {
-        if constexpr (IsFloatingPointType(constant_type)) {
-          return std::numeric_limits<NativeTypeOf<constant_type>>::max_exponent;
-        }
-        LOG(FATAL) << "Not a floating data type " << type;
+        return std::numeric_limits<NativeTypeOf<constant_type>>::max_exponent;
       },
       type);
 }
@@ -91,14 +83,14 @@ int ExponentBias(PrimitiveType type) {
 }
 
 bool HasInfinity(PrimitiveType type) {
-  return PrimitiveTypeSwitch<bool>(
-      [&](auto constant_type) -> bool {
-        if constexpr (IsFloatingPointType(constant_type)) {
+  if (ABSL_PREDICT_TRUE(IsFloatingPointType(type))) {
+    return FloatingPointTypeSwitch<bool>(
+        [&](auto constant_type) -> bool {
           return std::numeric_limits<NativeTypeOf<constant_type>>::has_infinity;
-        }
-        return false;
-      },
-      type);
+        },
+        type);
+  }
+  return false;
 }
 
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {

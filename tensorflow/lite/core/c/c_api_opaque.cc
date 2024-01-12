@@ -280,6 +280,10 @@ TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
   return builder;
 }
 
+void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor) {
+  tflite::SetTensorToDynamic(Convert(tensor));
+}
+
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
     const TfLiteOpaqueContext* opaque_context,
     const TfLiteOpaqueNode* opaque_node, int index) {

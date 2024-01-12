@@ -16,22 +16,16 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_BLAS_LT_H_
 
-#include <algorithm>
 #include <memory>
-#include <optional>
-#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cublasLt.h"
 #include "third_party/gpus/cuda/include/cublas_v2.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/types.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -52,7 +46,7 @@ class BlasLt : public gpu::BlasLt {
     //  - `num_rows` if `order == kColumnMajor`.
     // If `batch_stride` is not specified, it defaults to `num_rows * num_cols`
     // if `batch_size > 1`, otherwise `0`.
-    static tsl::StatusOr<MatrixLayout> Create(const gpu::MatrixLayout& m);
+    static absl::StatusOr<MatrixLayout> Create(const gpu::MatrixLayout& m);
 
     cudaDataType_t type() const;
     cublasLtMatrixLayout_t get() const { return handle_.get(); }
@@ -66,7 +60,7 @@ class BlasLt : public gpu::BlasLt {
 
   class MatmulDesc {
    public:
-    static tsl::StatusOr<MatmulDesc> Create(
+    static absl::StatusOr<MatmulDesc> Create(
         blas::ComputationType compute_type, blas::DataType scale_type,
         blas::Transpose trans_a = blas::Transpose::kNoTranspose,
         blas::Transpose trans_b = blas::Transpose::kNoTranspose,
@@ -103,7 +97,7 @@ class BlasLt : public gpu::BlasLt {
 
     ~MatmulPlan() override = default;
 
-    tsl::Status ExecuteOnStream(
+    absl::Status ExecuteOnStream(
         Stream* stream, DeviceMemoryBase a_buffer, DeviceMemoryBase b_buffer,
         DeviceMemoryBase c_buffer, DeviceMemoryBase d_buffer,
         DeviceMemoryBase bias_buffer,  // may be null
@@ -114,25 +108,25 @@ class BlasLt : public gpu::BlasLt {
         ScratchAllocator& scratch_allocator,
         blas::ProfileResult* profile_result = nullptr) const override;
 
-    tsl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
+    absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         size_t max_algorithm_count, size_t max_workspace_size) const override;
 
    protected:
-    tsl::Status ValidateInputs(blas::DataType scale_type, bool alpha_on_device,
-                               bool beta_on_device, blas::DataType A_type,
-                               blas::DataType B_type, blas::DataType C_type,
-                               blas::DataType D_type) const override;
+    absl::Status ValidateInputs(blas::DataType scale_type, bool alpha_on_device,
+                                bool beta_on_device, blas::DataType A_type,
+                                blas::DataType B_type, blas::DataType C_type,
+                                blas::DataType D_type) const override;
 
-    tsl::Status DoMatmul(Stream* stream, const void* alpha, DeviceMemoryBase a,
-                         DeviceMemoryBase b, const void* beta,
-                         DeviceMemoryBase c, DeviceMemoryBase d,
-                         const MatmulAlgorithm& algorithm,
-                         ScratchAllocator& scratch_allocator,
-                         DeviceMemoryBase bias, DeviceMemoryBase aux,
-                         DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
-                         DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
-                         DeviceMemoryBase d_amax,
-                         blas::ProfileResult* profile_result) const override;
+    absl::Status DoMatmul(Stream* stream, const void* alpha, DeviceMemoryBase a,
+                          DeviceMemoryBase b, const void* beta,
+                          DeviceMemoryBase c, DeviceMemoryBase d,
+                          const MatmulAlgorithm& algorithm,
+                          ScratchAllocator& scratch_allocator,
+                          DeviceMemoryBase bias, DeviceMemoryBase aux,
+                          DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+                          DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+                          DeviceMemoryBase d_amax,
+                          blas::ProfileResult* profile_result) const override;
 
    private:
     const BlasLt& blas_lt_ref_;
@@ -150,10 +144,10 @@ class BlasLt : public gpu::BlasLt {
   explicit BlasLt(gpu::GpuExecutor* parent)
       : parent_(parent), blas_lt_(nullptr, cublasLtDestroy) {}
 
-  tsl::Status Init() override;
+  absl::Status Init() override;
 
-  tsl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const gpu::GemmConfig& cfg,
-                                             Epilogue epilogue) const override;
+  absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const gpu::GemmConfig& cfg,
+                                              Epilogue epilogue) const override;
 
   ~BlasLt() override = default;
 

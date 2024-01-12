@@ -3078,7 +3078,7 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 // CHECK-PRIMITIVE-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
 // CHECK-PRIMITIVE-DAG: %[[INIT_TENSOR:.*]] = tensor.empty()
 // CHECK-PRIMITIVE-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK-PRIMITIVE: linalg.reduce { arith.addi }
+// CHECK-PRIMITIVE: linalg.reduce { arith.addi {overflowFlags = #arith.overflow<none>} }
 // CHECK-PRIMITIVE-SAME: ins(%{{.*}}tensor<5x4xi32>)
 // CHECK-PRIMITIVE-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi32>)
 // CHECK-PRIMITIVE-SAME: dimensions = [1]  {someattr}

@@ -593,7 +593,7 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
     branch1 {
       fparam = f32[4] parameter(0)
       %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
-      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start)
     }
 
     branch2 {

@@ -26,7 +26,7 @@ namespace xla::gpu {
 // is true we automatically insert barriers between all commands in a sequence.
 // Otherwise we use buffer usage aliasing to allow commands to run concurrently
 // and insert barriers only when needed for correctness.
-StatusOr<CommandBufferCmdSequence> ConvertToCommands(
+absl::StatusOr<CommandBufferCmdSequence> ConvertToCommands(
     const ThunkSequence& sequence, bool force_barriers);
 
 }  // namespace xla::gpu

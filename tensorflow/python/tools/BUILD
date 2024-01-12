@@ -15,13 +15,6 @@ package(
 py_strict_library(
     name = "tools_pip",
     data = [
-        ":freeze_graph",
-        ":import_pb_to_tensorboard",
-        ":inspect_checkpoint",
-        ":optimize_for_inference",
-        ":print_selective_registration_header",
-        ":saved_model_cli",
-        ":strip_unused",
         # Include the TF upgrade script to users can run it directly after install TF
         "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
@@ -36,6 +29,13 @@ py_strict_library(
         ":optimize_for_inference_lib",
         ":selective_registration_header_lib",
         ":strip_unused_lib",
+        ":freeze_graph",
+        ":import_pb_to_tensorboard",
+        ":inspect_checkpoint",
+        ":optimize_for_inference",
+        ":print_selective_registration_header",
+        ":saved_model_cli",
+        ":strip_unused",
     ],
 )
 
@@ -386,6 +386,7 @@ py_strict_library(
         "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:load_options",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
@@ -445,6 +446,7 @@ py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl/testing:parameterized",

@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Casting.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernel_mapping_scheme.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
@@ -38,7 +37,6 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -54,7 +52,7 @@ llvm::Value* GetStartOffsetX(const TilingScheme& tiling_scheme,
   int64_t multiplier =
       tiling_scheme.GetIndexingOrder() == TilingScheme::StridedIndexingX
           ? tiling_scheme.GetVectorSize()
-          : tiling_scheme.GetTileSizeFor(TilingScheme::DimX);
+          : tiling_scheme.GetThreadTileSize()[TilingScheme::DimX];
   return b->CreateMul(thread_id_x,
                       llvm::ConstantInt::get(index_ty, multiplier));
 }
@@ -90,13 +88,14 @@ void EmitXTileLoop(const TilingThreadIdInfo& thread_id_info,
   int64_t stride_x =
       tiling_scheme.GetIndexingOrder() == TilingScheme::LinearIndexingX
           ? 1
-          : tiling_scheme.GetNumThreadsFor(TilingScheme::DimX);
+          : tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX];
   KernelSupportLibrary unrolled_ksl(b, llvm_ir::UnrollMode::kFullyUnroll);
   unrolled_ksl.For(
       "tile_loop",
       /*start=*/constant(0),
       /*end=*/
-      constant(tiling_scheme.GetTileSizeFor(TilingScheme::DimX) / vector_size),
+      constant(tiling_scheme.GetThreadTileSize()[TilingScheme::DimX] /
+               vector_size),
       /*step=*/1, [&](llvm::Value* x) {
         for (int64_t i = 0; i < vector_size; i++) {
           llvm::Value* x_offset = b->CreateAdd(
@@ -133,7 +132,7 @@ void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
     return llvm::ConstantInt::get(index_ty, val);
   };
   llvm::Value* num_threads_y = constant(
-      tiling_scheme.GetNumThreadsFor(tiling_scheme.GetTilingDimension(0)));
+      tiling_scheme.GetThreadsPerBlock()[tiling_scheme.GetTilingDimension(0)]);
 
   KernelSupportLibrary ksl(builder, llvm_ir::UnrollMode::kDefaultUnroll);
 
@@ -157,9 +156,10 @@ void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
             TilingScheme::StridedIndexingX) {
           ksl.If(
               "is_full_tile",
-              builder->CreateICmpEQ(constant(tiling_scheme.GetBlockTileSizeFor(
-                                        TilingScheme::DimX)),
-                                    tile_dimensions[1]),
+              builder->CreateICmpEQ(
+                  constant(
+                      tiling_scheme.GetBlockTileSize()[TilingScheme::DimX]),
+                  tile_dimensions[1]),
               [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/false); },
               [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/true); });
         } else {
@@ -205,15 +205,15 @@ llvm::Value* EmitThreadId(llvm::IRBuilder<>* builder, int64_t threads_per_block,
 // In the presence of thread scaling in tiling scheme may return early if the
 // combination of thread_id/block_id does not correspond to a real block.
 // Assumes the current function returns void.
-StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(llvm::IRBuilder<>* builder,
-                                              const TilingScheme& tiling_scheme,
-                                              llvm::Type* index_ty) {
+absl::StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(
+    llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
+    llvm::Type* index_ty) {
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
   llvm::Value* thread_id_physical = EmitThreadId(
       builder, tiling_scheme.GetNumThreadsPerBlockPhysical(), index_ty);
-  int64_t num_blocks = tiling_scheme.GetNumberOfBlocksPhysical();
+  int64_t num_blocks = tiling_scheme.GetNumBlocksPhysical();
   if (num_blocks > (int64_t)std::numeric_limits<uint32_t>::max()) {
     return FailedPrecondition(
         "Number of physical blocks (%d) does not fit in an i32 in tiling "
@@ -233,10 +233,10 @@ StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(llvm::IRBuilder<>* builder,
       scaling);
 
   llvm::Value* num_threads_x_v =
-      constant(tiling_scheme.GetNumThreadsFor(TilingScheme::DimX));
+      constant(tiling_scheme.GetThreadsPerBlock()[TilingScheme::DimX]);
 
   llvm::Value* block_exists = builder->CreateICmpULT(
-      block_id_logical, constant(tiling_scheme.GetNumberOfBlocks()));
+      block_id_logical, constant(tiling_scheme.GetNumBlocks()));
   llvm_ir::EmitEarlyReturn(block_exists, builder);
   return {
       {thread_id_logical,
@@ -252,11 +252,11 @@ StatusOr<TilingThreadIdInfo> EmitThreadIdInfo(llvm::IRBuilder<>* builder,
 
 }  // namespace
 
-StatusOr<TilingKernelInfo> EmitTilingKernel(
+absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
     llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
     llvm::Type* index_ty, const TileElementGenerator& tile_element_generator) {
-  absl::Span<const int64_t> dims_in_elems = tiling_scheme.GetDimsInElems();
-  Vector3 dims_in_blocks = tiling_scheme.GetDimsInBlocks();
+  absl::Span<const int64_t> dims_in_elems = tiling_scheme.GetShape();
+  Vector3 dims_in_blocks = tiling_scheme.GetBlockCounts();
   auto constant = [&](uint64_t c) -> llvm::Constant* {
     return llvm::ConstantInt::get(index_ty, c);
   };
@@ -284,18 +284,18 @@ StatusOr<TilingKernelInfo> EmitTilingKernel(
   std::array<int64_t, 2> tiling_coords{1 - non_tiling_dimension,
                                        TilingScheme::DimX};
   for (int i = 0; i < 2; ++i) {
-    int64_t tile_size_for_dim =
-        tiling_scheme.GetBlockTileSizeFor(tiling_coords[i]);
+    int64_t block_tile_size =
+        tiling_scheme.GetBlockTileSize()[tiling_coords[i]];
     // Only last row or column may not have full size.
     llvm::Value* is_last =
         builder->CreateICmpEQ(block_coords[tiling_coords[i]],
                               constant(dims_in_blocks[tiling_coords[i]] - 1));
     int64_t partial_row =
         dims_in_elems[tiling_coords[i]] -
-        (dims_in_blocks[tiling_coords[i]] - 1) * tile_size_for_dim;
+        (dims_in_blocks[tiling_coords[i]] - 1) * block_tile_size;
     tile_dimensions[i] =
         builder->CreateSelect(is_last, constant(partial_row),
-                              constant(tile_size_for_dim), "tile_bound");
+                              constant(block_tile_size), "tile_bound");
   }
 
   llvm_ir::IrArray::Index tile_origin = [&] {
@@ -304,25 +304,24 @@ StatusOr<TilingKernelInfo> EmitTilingKernel(
     for (int i = 0; i < TilingScheme::DimTot; ++i) {
       elem_multi_index[i] = builder->CreateMul(
           block_coords[i],
-          llvm::ConstantInt::get(index_ty,
-                                 tiling_scheme.GetBlockTileSizeFor(i)),
+          llvm::ConstantInt::get(index_ty, tiling_scheme.GetBlockTileSize()[i]),
           "tile_origin." + std::to_string(i));
     }
-    return llvm_ir::IrArray::Index(elem_multi_index,
-                                   tiling_scheme.GetDimsInElems(), index_ty);
+    return llvm_ir::IrArray::Index(elem_multi_index, tiling_scheme.GetShape(),
+                                   index_ty);
   }();
 
   auto emit_tile = [&](const llvm_ir::IrArray::Index& tile) {
     tile_element_generator(thread_id_info, tile, tile_dimensions);
   };
 
-  if (tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension) == 1) {
+  if (tiling_scheme.GetBlockTileSize()[non_tiling_dimension] == 1) {
     emit_tile(tile_origin);
   } else {
     llvm::Value* starting_tile_index_for_dim =
         tile_origin[non_tiling_dimension];
     llvm::Value* block_size_for_dim =
-        constant(tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension));
+        constant(tiling_scheme.GetBlockTileSize()[non_tiling_dimension]);
     llvm::Value* block_id_for_dim =
         builder->CreateUDiv(starting_tile_index_for_dim, block_size_for_dim);
     llvm::Value* last_block_for_dim =
@@ -330,7 +329,7 @@ StatusOr<TilingKernelInfo> EmitTilingKernel(
     llvm::Value* last_block_size_for_dim =
         constant(dims_in_elems[non_tiling_dimension] -
                  (dims_in_blocks[non_tiling_dimension] - 1) *
-                     tiling_scheme.GetBlockTileSizeFor(non_tiling_dimension));
+                     tiling_scheme.GetBlockTileSize()[non_tiling_dimension]);
 
     llvm::Value* num_tiles_in_block = builder->CreateSelect(
         builder->CreateICmpEQ(last_block_for_dim, block_id_for_dim),

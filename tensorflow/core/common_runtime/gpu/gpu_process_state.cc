@@ -28,12 +28,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
+#include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
@@ -98,8 +98,8 @@ GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
 int GPUProcessState::BusIdForGPU(tsl::TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
   se::StreamExecutor* se =
-      se::DeviceIdUtil::ExecutorForTfDeviceId(
-          DEVICE_GPU, se::GPUMachineManager(), tf_device_id)
+      DeviceIdUtil::ExecutorForTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
+                                          tf_device_id)
           .value();
   int numa_node = se->GetDeviceDescription().numa_node();
   // bus_id must be non-negative.  If the numa_node is not known,
@@ -362,7 +362,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
 #else
     if (gpu_allocators_[i].allocator != nullptr) {
 #endif  // TF_GPU_USE_PJRT
-      se = se::DeviceIdUtil::ExecutorForTfDeviceId(
+      se = DeviceIdUtil::ExecutorForTfDeviceId(
                DEVICE_GPU, se::GPUMachineManager(), tsl::TfDeviceId(i))
                .value();
       break;

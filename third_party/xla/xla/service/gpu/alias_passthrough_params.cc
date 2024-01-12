@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> AliasPassthroughParams::Run(
+absl::StatusOr<bool> AliasPassthroughParams::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   const HloInstruction* root = module->entry_computation()->root_instruction();

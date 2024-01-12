@@ -22,6 +22,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
@@ -31,8 +34,6 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -49,7 +50,7 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   static const ::stream_executor::Platform::Id kId;
 
   template <typename T>
-  using StatusOr = ::tsl::StatusOr<T>;
+  using StatusOr = ::absl::StatusOr<T>;
 
   TpuPlatform();
 
@@ -74,10 +75,10 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
 
   bool Initialized() const override;
 
-  tsl::Status Initialize(
+  absl::Status Initialize(
       const std::map<std::string, std::string>& platform_options) override;
 
-  tsl::Status Reset(bool only_tear_down, absl::string_view reason) override {
+  absl::Status Reset(bool only_tear_down, absl::string_view reason) override {
     LOG(FATAL) << "Not yet implemented";
   }
 
@@ -116,10 +117,10 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   SE_Platform* se_platform() const { return platform_; }
 
   // Returns the number of TPUs per host.
-  static tsl::Status TpusPerHost(int* tpus);
+  static absl::Status TpusPerHost(int* tpus);
 
   // Returns the memory capacity of the TPUs on this host.
-  static tsl::Status TpuMemoryLimit(int64_t* memory_limit);
+  static absl::Status TpuMemoryLimit(int64_t* memory_limit);
 
   absl::Mutex& mutex() { return event_map_mu_; }
 

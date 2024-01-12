@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -89,25 +90,27 @@ std::unique_ptr<HloComputation> HloComputation::Builder::Build(
   HloInstruction* root =
       root_instruction ? root_instruction : last_added_instruction();
   CHECK_NE(nullptr, root);
-  return absl::WrapUnique(new HloComputation(
-      name_, parameter_count, &instructions_, root, fusion_instruction_));
+  return absl::WrapUnique(
+      new HloComputation(name_, parameter_count, &instructions_, root));
 }
 
 HloComputation::HloComputation(
     const std::string& name, int parameter_count,
     std::vector<std::unique_ptr<HloInstruction>>* instructions,
-    HloInstruction* root_instruction, HloInstruction* fusion_instruction)
+    HloInstruction* root_instruction)
     : name_(NameUniquer::GetSanitizedName(name)),
       unique_id_(-1),
       root_instruction_(root_instruction),
-      fusion_instruction_(fusion_instruction),
-      is_fusion_computation_(fusion_instruction != nullptr),
+      fusion_instruction_(nullptr),
+      is_fusion_computation_(false),
       custom_call_instruction_(nullptr),
       is_custom_call_computation_(false),
       collective_call_instruction_(nullptr),
       is_collective_called_computation_(false),
       while_call_instruction_(nullptr),
-      is_while_call_body_computation_(false) {
+      is_while_call_body_computation_(false),
+      conditional_call_instruction_(nullptr),
+      is_conditional_branch_computation_(false) {
   param_instructions_.resize(parameter_count, nullptr);
   bool root_found = false;
   for (auto& instruction : *instructions) {
@@ -135,11 +138,8 @@ HloComputation::~HloComputation() {
     fusion_instruction_ = nullptr;
   }
   if (IsAsyncComputation()) {
-    for (auto* async_instr : async_instructions_) {
-      CHECK(async_instr->async_wrapped_computation() == this);
-      async_instr->ClearCalledComputations();
-    }
-    async_instructions_.clear();
+    CHECK(async_start_->async_wrapped_computation() == this);
+    async_start_->ClearCalledComputations();
   }
 }
 
@@ -878,8 +878,7 @@ HloComputation::CreateFromProto(
   }());
 
   auto computation = absl::WrapUnique(
-      new HloComputation(proto.name(), parameter_count, &instructions, root,
-                         /*fusion_instruction=*/nullptr));
+      new HloComputation(proto.name(), parameter_count, &instructions, root));
   computation->unique_id_ = proto.id();
   computation->is_fusion_computation_ = proto.is_fusion_computation();
   if (!proto.execution_thread().empty()) {
@@ -956,11 +955,9 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   }
   HloInstruction* async_start = AddInstruction(HloInstruction::CreateAsyncStart(
       ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
-      async_computation, /*async_group_id=*/std::nullopt,
-      async_execution_thread));
-  HloInstruction* async_done = AddInstruction(HloInstruction::CreateAsyncDone(
-      root->shape(), async_start, async_computation,
-      /*async_group_id=*/std::nullopt, async_execution_thread));
+      async_computation, async_execution_thread));
+  HloInstruction* async_done = AddInstruction(
+      HloInstruction::CreateAsyncDone(root->shape(), async_start));
   if (override_names) {
     async_start->SetAndSanitizeName(absl::StrCat(root->name(), ".call-start"));
     async_done->SetAndSanitizeName(absl::StrCat(root->name(), ".call-done"));

@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -35,7 +36,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<KernelArgument> KernelArgument::Create(
+absl::StatusOr<KernelArgument> KernelArgument::Create(
     absl::Span<const BufferAllocation* const> allocations, mlir::Value value,
     bool is_written) {
   TF_ASSIGN_OR_RETURN(
@@ -43,7 +44,7 @@ StatusOr<KernelArgument> KernelArgument::Create(
   return KernelArgument(value, GetShape(value), slice, is_written);
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> KernelArguments::Create(
     absl::Span<const BufferAllocation* const> allocations,
     mlir::lmhlo::FusionOp fusion) {
   auto operands = GetHloOperands(fusion);
@@ -65,7 +66,7 @@ StatusOr<KernelArguments> KernelArguments::Create(
   return KernelArguments{std::move(kernel_arguments)};
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const HloFusionInstruction* fusion) {
   std::vector<KernelArgument> kernel_arguments;
@@ -79,13 +80,13 @@ StatusOr<KernelArguments> KernelArguments::Create(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       fusion->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
         if (!subshape.IsArray()) {
-          return OkStatus();
+          return absl::OkStatus();
         }
         TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                             buffer_assignment.GetUniqueSlice(fusion, index));
         kernel_arguments.emplace_back(KernelArgument(
             /*value=*/nullptr, subshape, slice, /*written=*/true));
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   return KernelArguments{std::move(kernel_arguments)};
@@ -150,7 +151,7 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
   return kernel_arguments;
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> KernelArguments::Create(
     absl::Span<const BufferAllocation* const> allocations,
     mlir::Operation* non_fusion_op, mlir::ValueRange needed_operands) {
   std::vector<KernelArgument> kernel_arguments;
@@ -164,7 +165,7 @@ StatusOr<KernelArguments> KernelArguments::Create(
   return KernelArguments{std::move(kernel_arguments)};
 }
 
-StatusOr<KernelArguments> KernelArguments::Create(
+absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
     const HloInstruction* non_fusion_hlo,
     absl::Span<const HloInstruction* const> needed_operands) {
@@ -179,7 +180,7 @@ StatusOr<KernelArguments> KernelArguments::Create(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       non_fusion_hlo->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) return OkStatus();
+        if (!subshape.IsArray()) return absl::OkStatus();
 
         TF_ASSIGN_OR_RETURN(
             BufferAllocation::Slice slice,
@@ -187,7 +188,7 @@ StatusOr<KernelArguments> KernelArguments::Create(
 
         kernel_arguments.emplace_back(KernelArgument(
             /*value=*/nullptr, subshape, slice, /*written=*/true));
-        return OkStatus();
+        return absl::OkStatus();
       }));
 
   return KernelArguments{std::move(kernel_arguments)};

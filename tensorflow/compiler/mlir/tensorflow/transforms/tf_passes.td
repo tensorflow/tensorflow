@@ -191,69 +191,7 @@ def StackOpsDecompositionPass : Pass<"tf-stack-ops-decomposition", "ModuleOp"> {
   }];
 }
 
-def TPUVariableRuntimeReformattingPass : Pass<"tf-tpu-variable-runtime-reformatting", "ModuleOp"> {
-  let summary = "Adds device variable formatting op to allow compilation-guided "
-           "variable formatting.";
-  let constructor = "TFTPU::CreateTPUVariableRuntimeReformattingPass()";
-  let description = [{
-    A pass that takes advantage of a loop to add ops that allow the execution to
-    avoid repeatedly formatting variables back and forth. The desired formatting
-    is determined by TPU program compilation, so this pass does not include how
-    to reformat the variables, but only inserts general TPUReshardVariablesOps in
-    proper places, and TPUReshardVariablesOps interpret the compilation.
 
-    The core idea of this optimization is to keep track of the formatting state
-    of variables, and when the next desired state does not change, it can avoid
-    reformatting. We associate a set of variables on a device with a formatting
-    state, and TPUReshardVariablesOps compares the current state with a desired
-    state (which can be the compilation result). If they mismatch,
-    TPUReshardVariablesOp reformats the variables to the desired state; if they
-    match, TPUReshardVariablesOp is a no-op.
-
-    A major use of this pass is weight-update sharding in data parallelism, so we
-    require there is a tf_device.replicate in the loop.
-
-    For example, suppose we have a training loop (for simplicity we write the
-    loop body inine):
-
-    ```mlir
-      %var0 = ...
-      %var1 = ...
-      tf.while (..., %var0, %var1) {
-        tf_device.replicate ([%var0, %var1] as %rvar) {
-          %compile:2 = "tf._TPUCompileMlir"()
-          tf.TPUExecuteAndUpdateVariablesOp(%rvar, compile#1)
-        }
-      }
-    ```
-
-    This pass will transform it into
-
-    ```mlir
-      %var0 = ...
-      %var1 = ...
-      %state_var0 = ...
-      %state_var1 = ...
-      tf.while (..., %var0, %var1, %state_var0, %state_var1) {
-        tf_device.replicate ([%var0, %var1] as %rvar,
-                             [%state_var0, %state_var1] as %rstate) {
-          %compile:2 = "tf._TPUCompileMlir"()
-          tf.TPUReshardVariablesOp(%rvar, %compile#1, %rstate)
-          tf.TPUExecuteAndUpdateVariablesOp(%rvar, compile#1)
-        }
-      }
-      %default_format = tf.constant()
-      tf_device.replicate ([%var0, %var1] as %rvar,
-                           [%state_var0, %state_var1] as %rstate) {
-        tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
-      }
-    ```
-  }];
-  let dependentDialects = [
-    "mhlo::MhloDialect",
-    "tf_device::TensorFlowDeviceDialect"
-  ];
-}
 
 def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
   let summary = "Identifies and handles inputs/outputs of TPU computation that is "
@@ -1512,45 +1450,6 @@ def PromoteVarHandlesToArgsPass : Pass<"tf-promote-var-handles-to-args", "Module
   let description = [{See joint description in promote resources to args.}];
 
   let constructor = "TF::CreatePromoteVarHandlesToArgsPass()";
-}
-
-def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute", "ModuleOp"> {
-  let summary = "Merges device variable reads and updates into TPU execute ops";
-
-  let description = [{
-    This pass finds on-device resource variable reads and updates surrounding a
-    `tf.TPUExecute` op and merges them into a `tf.TPUExecuteAndUpdateVariables`
-    op. This allows the TPU execution to perform more efficient in-place
-    variable updates.
-
-    For example,
-
-    ```mlir
-      %0 = "tf.ReadVariableOp"(%arg0)
-      %1 = "tf.ReadVariableOp"(%arg1)
-      %2 = "tf.TPUExecute"(%0, %1, %compile)
-      %3 = "tf.AssignVariableOp"(%arg0, %2)
-    ```
-
-    will be transformed into
-
-    ```mlir
-      %2 = "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1, %compile)
-        { device_var_reads_indices = [0, 1],
-          device_var_updates_indices = [0, -1] }
-    ````
-
-    The transformation happens only for on-device variables. The above
-    transformation requires `%arg0`, `%arg1` to have the same device assignment
-    as the `TPUExecute` op.
-  }];
-
-  let dependentDialects = [
-    "mhlo::MhloDialect",
-    "tf_device::TensorFlowDeviceDialect"
-  ];
-
-  let constructor = "TFTPU::CreateTPUMergeVariablesWithExecutePass()";
 }
 
 def ExtractTPUCopyWithDynamicShapeOpPass : Pass<"tf-extract-tpu-copy-with-dynamic-shape-op", "mlir::func::FuncOp"> {

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <optional>
 
@@ -139,7 +140,7 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
       rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
       rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
       rewriter.getDenseI32ArrayAttr({scale_multiplier}),
-      rewriter.getDenseI32ArrayAttr({scale_shit}),
+      rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(scale_shit)}),
       rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
       rewriter.getBoolAttr(false));
 
@@ -249,8 +250,9 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getDenseI32ArrayAttr({multiplier}),
-        rewriter.getDenseI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
+        rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(shift)}),
+        rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
+        rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
 
@@ -259,7 +261,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                      weight_type.getElementType())) {
     // Per-channel quantization
     SmallVector<int32_t> multiplier_arr;
-    SmallVector<int32_t> shift_arr;
+    SmallVector<int8_t> shift_arr;
 
     SmallVector<double> weight_scale_arr(
         weight_per_channel_qtype.getScales().begin(),
@@ -278,14 +280,14 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                                 scale_width);
 
       multiplier_arr.push_back(multiplier);
-      shift_arr.push_back(shift);
+      shift_arr.push_back(static_cast<int8_t>(shift));
     }
 
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getDenseI32ArrayAttr(multiplier_arr),
-        rewriter.getDenseI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
+        rewriter.getDenseI8ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();

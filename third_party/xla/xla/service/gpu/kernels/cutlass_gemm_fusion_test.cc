@@ -240,7 +240,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmKernel) {
     arg1 = f32[784,10]{1,0} parameter(1)
     gemm = (f32[100,10]{1,0}, s8[0]{0}) custom-call(arg0, arg1),
       custom_call_target="__cublas$gemm",
-      backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+      backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
     ROOT get-tuple-element = f32[100,10]{1,0} get-tuple-element((f32[100,10]{1,0}, s8[0]{0}) gemm), index=0
   })";
 
@@ -258,7 +258,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmKernel) {
     arg0 = f32[100,784]{1,0} parameter(0)
     arg1 = f32[784,10]{1,0} parameter(1)
     ROOT _ = f32[100,10]{1,0} fusion(arg0, arg1), kind=kCustom, calls=cutlass_gemm,
-      backend_config={kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm"}}
+      backend_config={"fusion_backend_config":{kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm"}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
@@ -279,7 +279,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
     c1 = bf16[32,8]{1,0} convert(p1)
     gemm = (bf16[16,8]{1,0}, s8[0]{0}) custom-call(p0, c1),
       custom_call_target="__cublas$gemm",
-      backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+      backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
     ROOT get-tuple-element = bf16[16,8]{1,0} get-tuple-element(gemm), index=0
   })";
 
@@ -298,7 +298,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastKernel) {
     p0 = bf16[16,32]{1,0} parameter(0)
     p1 = s8[32,8]{1,0} parameter(1)
     ROOT _ = bf16[16,8]{1,0} fusion(p0, p1), kind=kCustom, calls=cutlass_gemm_with_upcast,
-      backend_config={kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm_with_upcast"}}
+      backend_config={"fusion_backend_config":{kind: "__custom_fusion", custom_fusion_config: {"name":"cutlass_gemm_with_upcast"}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
@@ -319,7 +319,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
 
     gemm.tuple = (bf16[8,8]{1,0}, s8[0]{0}) custom-call(p1, p1),
       custom_call_target="__cublas$gemm",
-      backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+      backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
     gemm = bf16[8,8]{1,0} get-tuple-element(gemm.tuple), index=0
     cast = bf16[1,8,8]{2,1,0} bitcast(gemm)
 
@@ -350,7 +350,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceKernel) {
     p3 = s32[] parameter(3)
     r.0 = (bf16[2,8,8]{2,1,0}, u8[1024]{0}) fusion(p1, p0, p2, p3), kind=kCustom,
       calls=%cutlass_gemm,
-      backend_config={"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm_with_dynamic_update_slice"}}
+      backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"cutlass_gemm_with_dynamic_update_slice"}}}
     ROOT %get-tuple-element = bf16[2,8,8]{2,1,0} get-tuple-element(r.0), index=0
   })";
 

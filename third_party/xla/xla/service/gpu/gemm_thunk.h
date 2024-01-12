@@ -42,8 +42,8 @@ class GemmThunk : public Thunk {
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
-  Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
 
   GemmConfig config() const { return config_; }
   BufferAllocation::Slice lhs_buffer() const { return lhs_buffer_; }

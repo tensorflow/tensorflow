@@ -40,6 +40,30 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "cpu_aot_export_test",
+    srcs = ["cpu_aot_export_test.cc"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_module_group",
+        "//xla/service:compiler",
+        "//xla/service:cpu_plugin",
+        "//xla/service:executable",
+        "//xla/service:platform_util",
+        "//xla/service/cpu:cpu_compiler",
+        "//xla/stream_executor",
+        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor:platform",
+        "//xla/tests:hlo_test_base",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
     name = "cpu_dyn_shape_test",
     srcs = ["cpu_dyn_shape_test.cc"],
     deps = [

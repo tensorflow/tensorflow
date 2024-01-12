@@ -38,8 +38,8 @@ class SequentialThunk : public Thunk {
   const ThunkSequence& thunks() const { return thunks_; }
   std::string ToStringExtra(int indent) const override;
 
-  Status Initialize(const InitializeParams& params) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   // The list of sub-thunks.

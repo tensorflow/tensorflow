@@ -21,8 +21,8 @@ limitations under the License.
       reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName)); \
   if (!(Struct->FnName##Fn)) {                                             \
     LOG(FATAL) << #FnName " not available in this library.";               \
-    return tsl::errors::Unimplemented(#FnName                              \
-                                      " not available in this library.");  \
+    return absl::UnimplementedError(#FnName                                \
+                                    " not available in this library.");    \
   }
 
 #endif  // XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_

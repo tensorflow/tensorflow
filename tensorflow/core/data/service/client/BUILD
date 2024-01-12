@@ -45,7 +45,6 @@ cc_library(
         "//tensorflow/core/data/service:grpc_util",
         "//tensorflow/core/data/service:worker_client",
         "//tensorflow/core/data/service:worker_impl",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
@@ -59,6 +58,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:retrying_utils",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

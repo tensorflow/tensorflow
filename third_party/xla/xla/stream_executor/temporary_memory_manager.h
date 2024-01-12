@@ -26,11 +26,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/temporary_device_memory.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace internal {
@@ -60,7 +60,7 @@ class TemporaryMemoryManager {
 
   // Allocates a temporary array that is then managed by this object.
   template <typename T>
-  tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>> AllocateArray(
+  absl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>> AllocateArray(
       uint64_t element_count);
 
   // Forces deallocation of all managed temporary memory regions.
@@ -105,7 +105,7 @@ class TemporaryMemoryManager {
   // implementation can live in the source file. Without this base allocation
   // method, we incur a circular dependency between the StreamExecutor
   // definition and this class' definition.
-  tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> AllocateArrayBase(
+  absl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> AllocateArrayBase(
       uint64_t element_count, uint64 element_size);
 
   // Mutex to guard temporary record state.
@@ -135,9 +135,9 @@ class TemporaryMemoryManager {
 // Inlines
 
 template <typename T>
-tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
+absl::StatusOr<std::unique_ptr<TemporaryDeviceMemory<T>>>
 TemporaryMemoryManager::AllocateArray(uint64_t element_count) {
-  tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> temporary_memory =
+  absl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>> temporary_memory =
       AllocateArrayBase(element_count, sizeof(T));
   if (!temporary_memory.ok()) {
     return temporary_memory.status();

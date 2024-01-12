@@ -39,7 +39,7 @@ limitations under the License.
 namespace stablehlo::quantization {
 namespace {
 
-using ::mlir::quant::common::QuantizationTestBase;
+using ::mlir::quant::QuantizationTestBase;
 using ::tensorflow::AssetFileDef;
 using ::tensorflow::GraphDef;
 using ::tensorflow::NodeDef;

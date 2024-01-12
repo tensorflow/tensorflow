@@ -1559,7 +1559,9 @@ Status GetOrCreateKernelAndDevice(
       // TODO(intel-tf): Implement an eviction policy to prevent potential
       // memory growth (https://github.com/tensorflow/tensorflow/issues/58676)
       VLOG(2) << "Caching op " << op->Name();
-      ctx.AddKernelToCache(cache_key, kernel.get());
+      // If the kernel is already in the cache, this discards the passed-in
+      // kernel and returns the cached kernel.
+      kernel = ctx.AddKernelToCache(cache_key, std::move(kernel));
     }
   }
 

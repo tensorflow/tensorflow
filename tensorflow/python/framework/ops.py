@@ -378,7 +378,7 @@ class _EagerTensorBase(
     view of the contents without doing a copy:
 
     >>> t = tf.constant([42])
-    >>> np.array(memoryview(t))
+    >>> np.asarray(memoryview(t))
     array([42], dtype=int32)
 
     Note that `memoryview` is only zero-copy for Tensors on CPU. If a Tensor

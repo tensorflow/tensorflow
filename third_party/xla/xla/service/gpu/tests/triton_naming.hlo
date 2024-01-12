@@ -14,5 +14,5 @@ HloModule t, is_scheduled=true, entry_computation_layout={(f16[15,19]{1,0},s8[19
 ENTRY %e (p0: f16[15,19], p1: s8[19,17]) -> f16[15,17] {
   %p1 = s8[19,17]{1,0} parameter(1)
   %p0 = f16[15,19]{1,0} parameter(0)
-  ROOT %triton_gemm_r = f16[15,17]{1,0} fusion(%p1, %p0), kind=kCustom, calls=%triton_gemm_r, backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"8\"}}"
+  ROOT %triton_gemm_r = f16[15,17]{1,0} fusion(%p1, %p0), kind=kCustom, calls=%triton_gemm_r, backend_config="{ \"fusion_backend_config\": {kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"8\"}}}"
 }

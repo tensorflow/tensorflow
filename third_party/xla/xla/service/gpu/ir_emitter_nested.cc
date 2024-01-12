@@ -17,6 +17,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
@@ -52,7 +54,7 @@ class IrEmitterNested : public IrEmitter {
 
   // Overrides the default empty implementation. Binds the given instruction
   // "parameter" with the parameter of the IR function.
-  Status HandleParameter(HloInstruction* parameter) override;
+  absl::Status HandleParameter(HloInstruction* parameter) override;
 
   // Generate the code for the computation passed in the constructor, if it
   // wasn't already generated previously.
@@ -65,17 +67,17 @@ class IrEmitterNested : public IrEmitter {
   //
   // The allocation index for these constants will always be -1 (i.e. doesn't
   // correspond to any allocation)
-  StatusOr<llvm::Function*> CodegenNestedComputation();
+  absl::StatusOr<llvm::Function*> CodegenNestedComputation();
 
  protected:
-  Status EmitTargetElementLoop(
+  absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& element_generator) override;
 
  private:
   // Emits constants to generated LLVM IR, and also populates related
   // information to 'ir_emitter_context_' for large-constant initializations.
-  Status EmitConstants(const HloComputation& computation);
+  absl::Status EmitConstants(const HloComputation& computation);
 
   const HloComputation& nested_computation_;
 };
@@ -88,7 +90,7 @@ IrEmitterNested::IrEmitterNested(const HloComputation& nested_computation,
 
 // Nested function serves the same purpose on GPU as a thread-local function on
 // a CPU.
-StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
+absl::StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   // Include a fingerprint of the HLO in the function name. Currently, codegen
   // is invoked on temporary HLO objects, which means the address of the
   // computation is not necessarily unique.
@@ -209,11 +211,11 @@ StatusOr<llvm::Function*> IrEmitterNested::CodegenNestedComputation() {
   return function;
 }
 
-Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
-  return OkStatus();
+absl::Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
+  return absl::OkStatus();
 }
 
-Status IrEmitterNested::EmitTargetElementLoop(
+absl::Status IrEmitterNested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
   // For MOF we give the loop emitter an array for every output it should
@@ -224,13 +226,13 @@ Status IrEmitterNested::EmitTargetElementLoop(
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
-    return OkStatus();
+    return absl::OkStatus();
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
 }
 
-Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
+absl::Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->opcode() != HloOpcode::kConstant) {
       continue;
@@ -258,7 +260,7 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
             absl::MakeSpan(base, base + literal.size_bytes())),
         &b_);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Casts the provided llvm::Value* to the default address space. This is useful
@@ -538,12 +540,12 @@ bool MaybeEmitDirectAtomicOperation(llvm::IRBuilder<>* builder,
 //       *cas_new_output_address);
 //   } while (!success);
 //
-Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
-                                   IrEmitterContext& ir_emitter_context,
-                                   const HloComputation& computation,
-                                   llvm::Value* output_address,
-                                   llvm::Value* source_address,
-                                   llvm::Type* element_type) {
+absl::Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
+                                         IrEmitterContext& ir_emitter_context,
+                                         const HloComputation& computation,
+                                         llvm::Value* output_address,
+                                         llvm::Value* source_address,
+                                         llvm::Type* element_type) {
   llvm::PointerType* output_address_type =
       llvm::dyn_cast<llvm::PointerType>(output_address->getType());
   CHECK_NE(output_address_type, nullptr);
@@ -662,16 +664,16 @@ Status EmitAtomicOperationUsingCAS(llvm::IRBuilder<>* builder,
   // Set the insertion point to the exit basic block so that the caller of
   // this method can continue emitting code to the right place.
   llvm_ir::SetToFirstInsertPoint(loop_exit_bb, builder);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status CallNestedComputation(llvm::IRBuilder<>* builder,
-                             IrEmitterContext& ir_emitter_context,
-                             const HloComputation& computation,
-                             absl::Span<llvm::Value* const> operands,
-                             llvm::Value* output) {
+absl::Status CallNestedComputation(llvm::IRBuilder<>* builder,
+                                   IrEmitterContext& ir_emitter_context,
+                                   const HloComputation& computation,
+                                   absl::Span<llvm::Value* const> operands,
+                                   llvm::Value* output) {
   TF_RET_CHECK(computation.num_parameters() > 0);
 
   TF_ASSIGN_OR_RETURN(llvm::Function * emitted_function,
@@ -691,10 +693,10 @@ Status CallNestedComputation(llvm::IRBuilder<>* builder,
 
   builder->CreateCall(emitted_function, arguments);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
+absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements) {
@@ -709,7 +711,7 @@ StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
                                               computation, parameter_buffers);
 }
 
-StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
+absl::StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
     absl::Span<llvm::Value* const> parameter_elements_addrs) {
@@ -745,7 +747,7 @@ StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(
   return returned_scalars;
 }
 
-Status EmitAtomicOperationForNestedComputation(
+absl::Status EmitAtomicOperationForNestedComputation(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation, llvm::Value* output_address,
     llvm::Value* source_address, llvm::Type* element_type) {
@@ -759,7 +761,7 @@ Status EmitAtomicOperationForNestedComputation(
 
   if (MaybeEmitDirectAtomicOperation(builder, ir_emitter_context, computation,
                                      output_address, source_address)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return EmitAtomicOperationUsingCAS(builder, ir_emitter_context, computation,

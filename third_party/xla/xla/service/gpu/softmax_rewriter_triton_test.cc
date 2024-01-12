@@ -41,7 +41,7 @@ namespace m = ::xla::match;
 // Wrapper around SoftmaxRewriterTriton(gpu_version).Run(module) that finds
 // and fuses as many diamond chains as possible without invoking any kind of
 // cost analysis.
-StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
+absl::StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
     se::GpuComputeCapability gpu_version, HloModule* module) {
   CHECK_NE(module, nullptr);
   SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version);
