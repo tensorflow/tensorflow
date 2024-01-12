@@ -34,7 +34,6 @@
 #   export TF_ANY_MODE=test
 set -euxo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
-# TODO(angerson) Need to revisit this to double-check
-export TFCI="$(echo $TFCI | sed 's/,nightly//'),no_upload,multicache"
+export TFCI="$(echo $TFCI | sed 's/,nightly_upload/,multicache/')"
 git bisect start "$TF_BISECT_BAD" "$TF_BISECT_GOOD"
 git bisect run $TF_BISECT_SCRIPT
