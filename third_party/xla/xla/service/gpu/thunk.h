@@ -43,20 +43,6 @@ namespace gpu {
 
 class GpuExecutable;
 
-enum AsyncStreamKind {
-  kAsyncStreamCollective = 0,  // Stream for asynchronous collective ops.
-  kAsyncStreamP2P = 1,         // Stream for P2P Send and Recv ops.
-};
-
-constexpr static int64_t kAsyncStreamTotal = kAsyncStreamP2P + 1;
-
-// Assigns a unique ID to a stream for asynchronous or synchronous execution.
-// These IDs can be used, for example, to look up the NCCL communicator.
-inline uint64_t GetStreamId(
-    bool is_async, AsyncStreamKind stream_kind = kAsyncStreamCollective) {
-  return is_async ? stream_kind + 1 : 0;
-}
-
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
 //
@@ -179,7 +165,7 @@ class Thunk {
     se::Stream* command_buffer_trace_stream;
 
     // Streams for asynchronous collective communications.
-    absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comms_streams;
+    absl::InlinedVector<se::Stream*, 4> async_comms_streams;
 
     NcclExecuteParams nccl_params;
 

@@ -16,95 +16,29 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_UTILS_H_
 #define XLA_SERVICE_GPU_NCCL_UTILS_H_
 
-#if TENSORFLOW_USE_ROCM
-#define __HIP_DISABLE_CPP_FUNCTIONS__
-#endif
-
 #include <cstddef>
-#include <cstdint>
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "xla/executable_run_options.h"
+#include "absl/status/statusor.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_clique.h"
+#include "xla/service/gpu/nccl_types.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/service/lockable.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/int_type.h"
-
-// Common place for all collective thunks to include nccl/rccl headers.
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif
-#else
-#include "third_party/nccl/nccl.h"
-#endif
 
 namespace xla {
 namespace gpu {
 
-ncclRedOp_t ToNcclReduction(ReductionKind kind);
+absl::StatusOr<NcclRedOp> ToNcclReduction(ReductionKind kind);
 
-absl::StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
+absl::StatusOr<std::pair<NcclDataType, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op);
-
-bool IsGlobalNcclConfig();
-
-absl::Status ToStatus(ncclResult_t s, const char* file, int64_t line,
-                      const char* expr);
 
 size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
-
-absl::StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
-    const NcclUniqueIdCallback* unique_id_callback,  // may be null
-    bool is_local);
-
-TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
-
-struct NcclComm : public Lockable<ncclComm_t> {
-  explicit NcclComm(ncclComm_t comm) : Lockable(comm) {}
-};
-
-absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
-    RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
-    size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int32_t rank,
-    int64_t stream_id, bool enable_clique_optimization);
-
-//==-----------------------------------------------------------------------===//
-// Macros to return or warn on NCCL errors.
-//==-----------------------------------------------------------------------===//
-
-// It's tempting to say these macros belong in an XLA header somewhere, but in
-// practice we don't do much direct-to-CUDA-API stuff outside of this file.
-#define XLA_NCCL_STATUS(expr) \
-  xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
-
-#define XLA_NCCL_RETURN_IF_ERROR(expr)      \
-  do {                                      \
-    absl::Status s = XLA_NCCL_STATUS(expr); \
-    if (!s.ok()) {                          \
-      return s;                             \
-    }                                       \
-  } while (0)
-
-#define XLA_NCCL_WARN_IF_ERROR(expr)        \
-  do {                                      \
-    absl::Status s = XLA_NCCL_STATUS(expr); \
-    if (!s.ok()) {                          \
-      LOG(ERROR) << s.ToString();           \
-    }                                       \
-  } while (0)
 
 }  // namespace gpu
 }  // namespace xla

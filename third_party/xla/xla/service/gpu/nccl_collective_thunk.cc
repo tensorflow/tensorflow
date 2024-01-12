@@ -305,7 +305,8 @@ absl::Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   // deadlock in the CUDA driver (b/215649390).
   if (first_call_to_execute_) {
     se::Stream* stream = IsAsync()
-                             ? params.async_comms_streams[GetAsyncStreamKind()]
+                             ? params.async_comms_streams[static_cast<int64_t>(
+                                   GetAsyncStreamKind())]
                              : params.stream;
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
@@ -332,7 +333,8 @@ std::string NcclCollectiveThunk::GetDeviceString(
 absl::Status NcclCollectiveThunk::AsyncExecutor::Execute(
     absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)> fn,
     const ExecuteParams& params, ncclComm_t comm, AsyncStreamKind stream_kind) {
-  se::Stream& async_comms_stream = *params.async_comms_streams[stream_kind];
+  se::Stream& async_comms_stream =
+      *params.async_comms_streams[static_cast<int64_t>(stream_kind)];
   // Wait until compute inputs are ready.
   async_comms_stream.ThenWaitFor(params.stream);
 

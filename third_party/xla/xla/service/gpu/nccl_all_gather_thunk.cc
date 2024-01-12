@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/nccl_errors.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 #if XLA_ENABLE_XCCL
+#include "third_party/nccl/nccl.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
