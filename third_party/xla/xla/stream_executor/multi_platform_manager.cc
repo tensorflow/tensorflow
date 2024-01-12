@@ -290,15 +290,3 @@ REGISTER_MODULE_INITIALIZER(
         // purposes from Platform subclasses that register
         // themselves with the MultiPlatformManager.
     });
-
-REGISTER_MODULE_INITIALIZER(
-    multi_platform_manager_listener,
-    {
-        // Nothing -- this is just a module initializer definition to reference
-        // for sequencing registration of listeners with the
-        // MultiPlatformManager.
-    });
-
-// Listener registration should happen before platform registration.
-REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
-                                     multi_platform_manager);

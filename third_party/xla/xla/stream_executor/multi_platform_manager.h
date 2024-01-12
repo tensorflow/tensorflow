@@ -143,13 +143,7 @@ class MultiPlatformManager {
 //
 // Registering a platform:
 // REGISTER_MODULE_INITIALIZER_SEQUENCE(my_platform, multi_platform_manager);
-// REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
-// my_platform);
 //
-// Registering a listener:
-// REGISTER_MODULE_INITIALIZER_SEQUENCE(my_listener,
-// multi_platform_manager_listener);
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
-DECLARE_MODULE_INITIALIZER(multi_platform_manager_listener);
 
 #endif  // XLA_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_
