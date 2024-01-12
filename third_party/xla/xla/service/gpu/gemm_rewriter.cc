@@ -519,7 +519,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // commutative with dequantization. The second element of the pair gives the
     // index of the operand identifying the next op in the sequence.
     std::vector<std::pair<HloInstruction *, int>> a_ops, b_ops;
-    bool a_mult_scale, b_mult_scale;
+    bool a_mult_scale{}, b_mult_scale{};
     if (supported_by_cublaslt &&
         Match(instr,
               m::Dot(m::Op().WithPredicate([&](const HloInstruction *instr) {
