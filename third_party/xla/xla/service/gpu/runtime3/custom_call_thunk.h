@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -85,6 +86,13 @@ class CustomCallThunk : public Thunk {
                   const HloComputation* called_computation);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  const CustomCallTarget& call_target() const { return call_target_; }
+  const std::vector<std::optional<Slice>>& operands() const {
+    return operands_;
+  }
+  const std::vector<std::optional<Slice>>& results() const { return results_; }
+  absl::string_view opaque() const { return opaque_; }
 
  private:
   absl::Status ExecuteCustomCall(const ExecuteParams& params);

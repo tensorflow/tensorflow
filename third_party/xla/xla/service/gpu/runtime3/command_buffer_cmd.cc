@@ -744,15 +744,6 @@ CommandBufferCmd::BufferUsageVector GemmCmd::buffers() {
 // CustomCallCmd
 //===----------------------------------------------------------------------===//
 
-CustomCallCmd::CustomCallCmd(CustomCallTarget call_target,
-                             std::vector<std::optional<Slice>> operands,
-                             std::vector<std::optional<Slice>> results,
-                             const std::string& opaque)
-    : call_target_(std::move(call_target)),
-      operands_(std::move(operands)),
-      results_(std::move(results)),
-      opaque_(opaque){};
-
 Status CustomCallCmd::Record(const RecordParams& params,
                              se::CommandBuffer* command_buffer) {
   std::vector<void*> buffers;

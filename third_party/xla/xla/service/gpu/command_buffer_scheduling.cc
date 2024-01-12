@@ -106,7 +106,20 @@ bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
 
 static bool IsCommand(const HloCustomCallInstruction* hlo,
                       const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo);
+  if (config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo)) {
+    return true;
+  }
+
+  if (hlo->custom_call_target() == "cu_threefry2x32") {
+    if (hlo->operand_count() == 4) {
+      return true;
+    }
+    // This version of cu_threefy2x32 requires synchronization, which is not
+    // supported by command buffers.
+    DCHECK_EQ(hlo->operand_count(), 5);
+  }
+
+  return false;
 }
 
 static bool IsCommand(const HloInstruction* hlo,
