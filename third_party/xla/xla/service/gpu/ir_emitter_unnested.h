@@ -177,6 +177,8 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
+  absl::Status EmitSelectAndScatter(
+      const HloSelectAndScatterInstruction* instr);
   absl::Status EmitWhile(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
