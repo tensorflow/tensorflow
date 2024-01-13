@@ -1254,13 +1254,14 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
   if (!status.ok()) {
     llvm::errs() << "Failed during XlaCallModule shape refinement: "
                  << status.ToString();
+    // Do not return false here.
+    //
     // RefineDynamicShapes returns ok only when it produces full static shapes.
     // It may partially succeed by producing RankedTensor shapes with dynamic
     // dimensions. Such info is still useful for the downstream. We don't need
     // to abort here.
     // TODO(b/316639984): improve RefineDynamicShapes return values to include
     // these info.
-    return false;
   }
   mlir::ResultRange op_results = op.getResults();
   // The main_outputs may include tokens that are not among the op_results;
