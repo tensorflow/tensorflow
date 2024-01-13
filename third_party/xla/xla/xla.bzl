@@ -34,11 +34,10 @@ def xla_py_test_deps():
 # `framework_shared_object` in the bazelrc all of this should be able to go
 # away. The problem is making sure that all these impl deps are `if_static`'d
 # appropriately throughout XLA.
-_XLA_SHARED_OBJECT_SENSITIVE_DEPS = [
+_XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_oss([
+    "@com_google_protobuf//:protobuf",
     "@local_tsl//tsl/framework:allocator",
     "@local_tsl//tsl/util:determinism",
-] + if_oss([
-    "@com_google_protobuf//:protobuf",
 ]) + if_static(extra_deps = [], otherwise = [
     Label("//xla:autotune_results_proto_cc_impl"),
     Label("//xla:autotuning_proto_cc_impl"),
