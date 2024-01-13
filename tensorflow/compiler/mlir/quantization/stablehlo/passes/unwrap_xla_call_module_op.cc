@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::quant::stablehlo {
 
@@ -76,8 +77,17 @@ void UnwrapXlaCallModuleOp(TF::XlaCallModuleOp call_op,
   builder.setInsertionPointAfter(call_op);
 
   IRMapping arg_mapper;
-  for (auto [func_arg, operand] :
-       llvm::zip_equal(func_op.getArguments(), call_op.getOperands())) {
+  bool call_op_has_platform_index_arg = call_op.getPlatforms().size() > 1;
+  // Add an argument for platform_index. This allows for multiple platforms.
+  // TODO: b/310291615 - find a better way for multi-platform support.
+  if (call_op_has_platform_index_arg) {
+    arg_mapper.map(func_op.getArgument(0),
+                   builder.create<mhlo::ConstantOp>(
+                       func_op.getLoc(), builder.getI16IntegerAttr(0)));
+  }
+  for (auto [func_arg, operand] : llvm::zip_equal(
+           func_op.getArguments().take_back(call_op.getNumOperands()),
+           call_op.getOperands())) {
     arg_mapper.map(func_arg, operand);
   }
 

@@ -1218,11 +1218,6 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
       platforms.push_back(attr.getValue().str());
     }
-    // Always use the first platform. The assumption is that shape inference
-    // results should be the same regardless of which platform is chosen.
-    // Very old versions of the op have an empty platforms attribute.
-    std::string loading_platform =
-        (platforms.empty() ? "CPU" : platforms.front());
 
     // It is a terrible idea to have local MLIR contexts so we need to
     // register extensions here, again.
@@ -1234,7 +1229,6 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     auto l = tensorflow::XlaCallModuleLoader::Create(
         &xla_call_module_context_, op.getVersion(), op.getModule().str(),
         std::move(disabled_checks), std::move(platforms),
-        std::move(loading_platform),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());
     if (!l.ok()) {

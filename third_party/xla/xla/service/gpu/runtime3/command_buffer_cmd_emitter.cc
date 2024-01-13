@@ -191,28 +191,28 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
   switch (thunk.kind()) {
     case Thunk::Kind::kConditional:
       return append(Convert<ConditionalThunk>(thunk, force_barriers));
-    case Thunk::Kind::kKernel:
-      return append(Convert<KernelThunk>(thunk));
-    case Thunk::Kind::kCustomKernel:
-      return append(Convert<CustomKernelThunk>(thunk));
     case Thunk::Kind::kCopy:
       return append(Convert<DeviceToDeviceCopyThunk>(thunk));
-    case Thunk::Kind::kMemzero:
-      return append(Convert<MemzeroThunk>(thunk));
-    case Thunk::Kind::kMemset32BitValue:
-      return append(Convert<Memset32BitValueThunk>(thunk));
-    case Thunk::Kind::kWhile:
-      return append(Convert<WhileThunk>(thunk, force_barriers));
+    case Thunk::Kind::kCustomCall:
+      return append(Convert<CustomCallThunk>(thunk));
+    case Thunk::Kind::kCustomKernel:
+      return append(Convert<CustomKernelThunk>(thunk));
+    case Thunk::Kind::kKernel:
+      return append(Convert<KernelThunk>(thunk));
     case Thunk::Kind::kGemm:
       return append(Convert<GemmThunk>(thunk));
+    case Thunk::Kind::kMemset32BitValue:
+      return append(Convert<Memset32BitValueThunk>(thunk));
+    case Thunk::Kind::kMemzero:
+      return append(Convert<MemzeroThunk>(thunk));
+    case Thunk::Kind::kNcclAllGatherStart:
+      return append(Convert<NcclAllGatherStartThunk>(thunk));
     case Thunk::Kind::kNcclAllReduceStart:
       return append(Convert<NcclAllReduceStartThunk>(thunk));
     case Thunk::Kind::kNcclReduceScatterStart:
       return append(Convert<NcclReduceScatterStartThunk>(thunk));
-    case Thunk::Kind::kNcclAllGatherStart:
-      return append(Convert<NcclAllGatherStartThunk>(thunk));
-    case Thunk::Kind::kCustomCall:
-      return append(Convert<CustomCallThunk>(thunk));
+    case Thunk::Kind::kWhile:
+      return append(Convert<WhileThunk>(thunk, force_barriers));
 
     // Sequential thunk does not have any special semantics and we simply inline
     // all nested thunks into command buffer.
@@ -223,10 +223,10 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
 
     // Currently all collective operations recorded on the tracing stream and do
     // not need to have a separate done command.
+    case Thunk::Kind::kNcclAllGatherDone:
     case Thunk::Kind::kNcclAllReduceDone:
     case Thunk::Kind::kNcclReduceScatterDone:
-    case Thunk::Kind::kNcclAllGatherDone:
-      return absl::OkStatus();
+      return OkStatus();
 
     default:
       return InternalError("Unsupported thunk kind: %s",
