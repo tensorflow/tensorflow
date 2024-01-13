@@ -212,64 +212,35 @@ void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
 Status AddStatus(Status prior, absl::string_view context);
 Status AppendStatus(Status prior, absl::string_view context);
 
-// Status error shorthands -- StrFormat's the arguments to be used as an error
-// message and returns a status in the canonical error space.
-template <typename... Args>
-Status InvalidArgument(const absl::FormatSpec<Args...>& format,
-                       const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::InvalidArgument(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unimplemented(const absl::FormatSpec<Args...>& format,
-                     const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unimplemented(absl::StrFormat(format, args...)));
-}
 template <typename... Args>
 Status InternalError(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
       tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
-template <typename... Args>
-Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
-                          const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::FailedPrecondition(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Cancelled(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
-                         const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::NotFound(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unavailable(const absl::FormatSpec<Args...>& format,
-                   const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unavailable(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unknown(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Internal(absl::StrFormat(format, args...)));
-}
+
+// This macro defines the arguments to be used as an error
+// message to be passed to absl::StrFormat, and returns a status in the
+// canonical error space.
+#define DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(error_type)  \
+  template <typename... Args>                                       \
+  Status error_type(const absl::FormatSpec<Args...>& format,        \
+                    const Args&... args) {                          \
+    return WithLogBacktrace(                                        \
+        tsl::errors::error_type(absl::StrFormat(format, args...))); \
+  }
+
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(InvalidArgument);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unimplemented);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Internal);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(FailedPrecondition);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Cancelled);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(ResourceExhausted);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(NotFound);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unavailable);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unknown);
+
+#undef DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE
 
 template <typename... Args>
 Status InvalidArgumentStrCat(Args&&... concat) {
