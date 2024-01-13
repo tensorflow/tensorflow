@@ -1930,7 +1930,7 @@ StatusOr<std::string> WrapFusionExplorer(
       var area = document.getElementById('rendered');
       area.innerHTML = `${svg}<style>${css_data}</style>`;
       var panzoom = svgPanZoom(area.children[0], {
-          zoomEnabled: true, controlIconsEnabled: true, });
+          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
       var to_highlight = frame[2].length ?
         document.querySelector(`${frame[2]}`) : null;
       if (to_highlight) {
