@@ -1215,6 +1215,12 @@ struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
 };
 
 // Fuse Mul with proceeding FullyConnected.
+// Replace ..
+// Mul(FC(input, filter, bias), rhs)
+// .. with ..
+// FC(lhs, Mul(filter, rhs), bias)
+// .. if rhs, filter, and bias are all constants.
+// The generated Mul will be constant folded to a single matrix using TF::Mul.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
   using OpRewritePattern<TFL::MulOp>::OpRewritePattern;
@@ -1268,6 +1274,14 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
     // TF::MulOp is used to fold the constant.
     // TODO(b/139192933): switch to the TFL constant folding
+    auto filter_type = filter.getType().cast<ShapedType>();
+    if (filter_type.hasStaticShape()) {
+      auto size =
+          filter_type.getNumElements() * filter_type.getElementTypeBitWidth();
+      // Don't constant fold if the filter is too large for TF to fold.
+      // tensorflow/compiler/mlir/tensorflow/transforms/constant_fold.cc
+      if (size > (1 << 30)) return failure();
+    }
     auto new_filter =
         rewriter.create<TF::MulOp>(mul_op.getLoc(), filter, new_const_val)
             .getZ();

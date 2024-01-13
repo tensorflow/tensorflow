@@ -361,6 +361,21 @@ func.func @fuseMulIntoFullyConnected(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> 
 // CHECK:  return %[[RES]] : tensor<4x2xf32>
 }
 
+// CHECK-LABEL: @DontFuseMulIntoFullyConnectedForLargeFilter
+func.func @DontFuseMulIntoFullyConnectedForLargeFilter(%arg0: tensor<128x256000xf32>) -> tensor<128x1024xf32> {
+  %cst0 = arith.constant dense<2.0> : tensor<1024x256000xf32>
+  %cst1 = arith.constant dense<2.0> : tensor<1024xf32>
+  %cst2 = arith.constant dense<2.0> : tensor<1024xf32>
+
+  %0 = "tfl.fully_connected"(%arg0, %cst0, %cst1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<128x256000xf32>, tensor<1024x256000xf32>, tensor<1024xf32>) -> tensor<128x1024xf32>
+  %1 = "tfl.mul"(%0, %cst2) {fused_activation_function = "RELU6"} : (tensor<128x1024xf32>, tensor<1024xf32>) -> tensor<128x1024xf32>
+
+  func.return %1 : tensor<128x1024xf32>
+
+// CHECK:  %[[a:.*]] = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}
+// CHECK:  %[[b:.*]] = tfl.mul(%[[a]], %cst) {fused_activation_function = "RELU6"}
+}
+
 
 // CHECK-LABEL: @fuseAddIntoFollowingFullyConnectedWithQDQs
 func.func @fuseAddIntoFollowingFullyConnectedWithQDQs(%arg0: tensor<4x2xf32>) -> tensor<4x2xf32> {
