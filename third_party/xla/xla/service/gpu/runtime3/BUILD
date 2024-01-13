@@ -89,7 +89,6 @@ cc_library(
         ":command_buffer_cmd",
         ":conditional_thunk",
         ":copy_thunk",
-        ":custom_call_thunk",
         ":kernel_thunk",
         ":memset_thunk",
         ":sequential_thunk",
@@ -97,7 +96,9 @@ cc_library(
         "//xla:status",
         "//xla:statusor",
         "//xla:util",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu:gemm_thunk",
+        "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:thunk",
         "@com_google_absl//absl/container:inlined_vector",
@@ -299,7 +300,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

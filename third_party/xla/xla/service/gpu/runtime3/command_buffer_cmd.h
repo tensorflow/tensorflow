@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
@@ -543,11 +542,7 @@ class CustomCallCmd : public CommandBufferCmd {
   CustomCallCmd(CustomCallTarget call_target,
                 std::vector<std::optional<Slice>> operands,
                 std::vector<std::optional<Slice>> results,
-                absl::string_view opaque)
-      : call_target_(std::move(call_target)),
-        operands_(std::move(operands)),
-        results_(std::move(results)),
-        opaque_(opaque){};
+                const std::string& opaque);
 
   Status Record(const RecordParams& params,
                 se::CommandBuffer* command_buffer) override;
