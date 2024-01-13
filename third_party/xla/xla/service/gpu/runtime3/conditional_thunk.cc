@@ -61,7 +61,7 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
-    return InternalError(
+    return Internal(
         "Failed to retrieve branch_index value on stream %p: %s.", &stream,
         block_status.message());
   }

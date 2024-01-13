@@ -61,7 +61,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     VLOG(3) << "condition_result = " << condition_result;
     absl::Status block_status = stream.BlockHostUntilDone();
     if (!block_status.ok()) {
-      return InternalError(
+      return Internal(
           "Failed to complete all kernels launched on stream %p: %s", &stream,
           block_status.message());
     }

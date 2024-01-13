@@ -215,7 +215,7 @@ absl::Status RunTriangularSolve(
   }
 
   if (!launch_ok) {
-    return InternalError("Unable to launch triangular solve");
+    return Internal("Unable to launch triangular solve");
   }
   return absl::OkStatus();
 }

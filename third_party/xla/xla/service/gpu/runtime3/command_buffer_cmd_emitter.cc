@@ -204,7 +204,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
       return OkStatus();
 
     default:
-      return InternalError("Unsupported thunk kind: %s",
+      return Internal("Unsupported thunk kind: %s",
                            Thunk::KindToString(thunk.kind()));
   }
 }

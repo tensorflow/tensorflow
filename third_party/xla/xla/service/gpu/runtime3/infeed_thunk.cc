@@ -61,7 +61,7 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
-    return InternalError("Failed to complete data transfer on stream %p: %s",
+    return Internal("Failed to complete data transfer on stream %p: %s",
                          &stream, block_status.message());
   }
 

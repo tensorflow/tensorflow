@@ -89,7 +89,7 @@ absl::Status NormThunk::ExecuteOnStream(const ExecuteParams& params) {
                                 scratch, params.stream, opts));
 
   if (!params.stream->ok()) {
-    return InternalError("NormThunk::ExecuteOnStream failed.");
+    return Internal("NormThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }

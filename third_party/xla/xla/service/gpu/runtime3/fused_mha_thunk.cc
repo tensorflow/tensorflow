@@ -91,7 +91,7 @@ absl::Status FusedMHAThunk::ExecuteOnStream(const ExecuteParams& params) {
                                 params.stream, opts));
 
   if (!params.stream->ok()) {
-    return InternalError("FusedMHAThunk::ExecuteOnStream failed.");
+    return Internal("FusedMHAThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }
@@ -197,7 +197,7 @@ absl::Status FusedMHABackwardThunk::ExecuteOnStream(
       d_s_buffer, softmax_sum_buffer, d_Q_accum_buffer, mask_buffer,
       d_bias_buffer, fwd_output_buffer, bias_buffer, params.stream, opts));
   if (!params.stream->ok()) {
-    return InternalError("FusedMHABackwardThunk::ExecuteOnStream failed.");
+    return Internal("FusedMHABackwardThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }

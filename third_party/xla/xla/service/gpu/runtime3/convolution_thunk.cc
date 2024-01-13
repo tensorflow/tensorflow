@@ -76,7 +76,7 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Note: Convolution has a tuple buffer as an output, but we don't need to
   // populate it as no one should be reading from the tuple directly.
   if (!params.stream->ok()) {
-    return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
+    return Internal("ConvolutionThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }
@@ -115,7 +115,7 @@ absl::Status ConvolutionReorderThunk::ExecuteOnStream(
       std::move(bias_output)));
 
   if (!params.stream->ok()) {
-    return InternalError("ConvolutionReorderThunk::ExecuteOnStream failed.");
+    return Internal("ConvolutionReorderThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }
