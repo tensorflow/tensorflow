@@ -19,7 +19,7 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 // CHECK: %[[XLA_CALL_MODULE_0:.+]] = "tf.XlaCallModule"(%[[ARG_0]]) <{Sout = [#tf_type.shape<1x3>], {{.*}}, module = "", platforms = ["CPU", "TPU"], version = 9 : i64}> {_entry_function = @main_0, {{.*}}} : (tensor<1x1024xf32>) -> tensor<1x3xf32>
 // CHECK-NEXT: return %[[XLA_CALL_MODULE_0]] : tensor<1x3xf32>
 
-// CHECK: func.func private @main_0(%[[ARG_1:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
+// CHECK: func.func private @main_0(%arg0: tensor<i32>, %[[ARG_1:.+]]: tensor<1x1024xf32>) -> tensor<1x3xf32>
 // CHECK-SAME: attributes {_from_xla_call_module}
 
 // Tests that the dot_general accepts i8 tensors and outputs an i32 tensor.
@@ -49,7 +49,7 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 // CHECK: %[[XLA_CALL_MODULE_1:.+]] = "tf.XlaCallModule"(%[[ARG_0]], %[[XLA_CALL_MODULE_0]]) <{Sout = [#tf_type.shape<1x3>], {{.*}}, module = "", platforms = [], version = 5 : i64}> {_entry_function = @main_1, _original_entry_function = "composite_dot_general_fn_1", _stablehlo_module_attrs = {}, _tfl_quant_trait = "fully_quantizable", device = ""} : (tensor<1x1024xf32>, tensor<1024x3xf32>) -> tensor<1x3xf32>
 // CHECK: return %[[XLA_CALL_MODULE_1]] : tensor<1x3xf32>
 
-// CHECK: func.func private @main_0() -> tensor<1024x3xf32>
+// CHECK: func.func private @main_0(%arg0: tensor<i32>) -> tensor<1024x3xf32>
 // CHECK-SAME: attributes {_from_xla_call_module}
 // CHECK: %[[CONST_0:.+]] = stablehlo.constant dense<{{.*}}> : tensor<1024x3xf32>
 // CHECK: return %[[CONST_0]] : tensor<1024x3xf32>
