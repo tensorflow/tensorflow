@@ -1177,8 +1177,10 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   // ShapeInference method. Check the output shape explicitly.
   const Shape& operand_shape = broadcast->operand(0)->shape();
   // Check for mixed precision.
-  TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape));
-  TF_RET_CHECK(operand_shape.rank() == broadcast->dimensions().size());
+  TF_RET_CHECK(SameElementType(broadcast->shape(), operand_shape))
+      << broadcast->ToString();
+  TF_RET_CHECK(operand_shape.rank() == broadcast->dimensions().size())
+      << broadcast->ToString();
   for (int64_t operand_dimension = 0; operand_dimension < operand_shape.rank();
        ++operand_dimension) {
     int64_t output_dimension = broadcast->dimensions()[operand_dimension];
