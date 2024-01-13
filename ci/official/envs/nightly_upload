@@ -15,10 +15,11 @@
 # 1. Upload nightlies
 TFCI_ARTIFACT_FINAL_GCS_ENABLE=1
 TFCI_ARTIFACT_FINAL_PYPI_ENABLE=1
+# Note: trailing slash is required, as it tells gcloud to pretend the path is a directory.
 # TODO(angerson) Change final URI to gs://tensorflow/ci once fully tested.
-TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_nightly"
-TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_nightly_latest"
-TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-artifact-staging/nightly/$(git rev-parse HEAD)"
+TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_nightly/"
+TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_nightly_latest/"
+TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-artifact-staging/nightly/$(git rev-parse HEAD)/"
 TFCI_ARTIFACT_STAGING_GCS_ENABLE=1
 # TODO(angerson) Disable these manual uploads once the artifact staging method is finalized
 TFCI_UPLOAD_LIB_ENABLE=1

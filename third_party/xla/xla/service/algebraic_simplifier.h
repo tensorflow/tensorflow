@@ -333,6 +333,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   Status HandleComplex(HloInstruction* complex) override;
 
+  Status HandleCustomCall(HloInstruction* custom_call) override;
+
   Status HandleReal(HloInstruction* real) override;
 
   Status HandleImag(HloInstruction* imag) override;

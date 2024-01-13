@@ -25,13 +25,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace hlo_sharding_util {
@@ -358,9 +362,9 @@ absl::InlinedVector<int64_t, 1> IndexAlignedOperandParallelDims(
 // represents the in-group sharding.
 struct GroupedSharding {
   GroupedSharding(std::vector<std::vector<int64_t>> device_groups,
-                  std::vector<int64_t> group_dims,
-                  std::vector<int64_t> group_dim_sizes, int64_t data_rank,
-                  HloSharding grouped_sharding, bool subgroup_manual = false)
+                  DimensionVector group_dims, DimensionVector group_dim_sizes,
+                  int64_t data_rank, HloSharding grouped_sharding,
+                  bool subgroup_manual = false)
       : device_groups(std::move(device_groups)),
         group_dims(std::move(group_dims)),
         group_dim_sizes(std::move(group_dim_sizes)),
@@ -369,8 +373,8 @@ struct GroupedSharding {
         subgroup_manual(subgroup_manual) {}
   std::string ToString() const;
   std::vector<std::vector<int64_t>> device_groups;
-  std::vector<int64_t> group_dims;
-  std::vector<int64_t> group_dim_sizes;
+  DimensionVector group_dims;
+  DimensionVector group_dim_sizes;
   int64_t data_rank;
   HloSharding sharding;
   bool subgroup_manual;

@@ -38,7 +38,9 @@
 #       ...
 set -euxo pipefail
 cd "$(dirname "$0")/../../"  # tensorflow/
-export TFCI="$TFCI,no_upload"
+# Any request that includes "nightly_upload" should just use the
+# local multi-cache instead.
+export TFCI="$(echo $TFCI | sed 's/,nightly_upload/,multicache/')"
 if [[ -n "${TF_ANY_EXTRA_ENV:-}" ]]; then
   export TFCI="$TFCI,$TF_ANY_EXTRA_ENV"
 fi
