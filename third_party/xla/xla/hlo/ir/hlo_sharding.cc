@@ -24,6 +24,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -847,12 +848,13 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
   auto product_no_overflow =
       [](absl::Span<const int64_t> dims) -> StatusOr<int64_t> {
     int64_t product_of_dimensions = 1;
+    bool any_overflow = false;
     for (auto dimension : dims) {
-      TF_RET_CHECK(dimension > 0);
-      product_of_dimensions =
-          MultiplyWithoutOverflow(product_of_dimensions, dimension);
-      TF_RET_CHECK(product_of_dimensions > 0);
+      bool overflow = false;
+      std::tie(product_of_dimensions, overflow) =
+          OverflowSafeMultiply(product_of_dimensions, dimension);
     }
+    TF_RET_CHECK(!any_overflow);
     return product_of_dimensions;
   };
 

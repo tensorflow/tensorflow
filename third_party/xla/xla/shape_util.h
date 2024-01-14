@@ -27,6 +27,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/overflow_util.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -107,18 +109,44 @@ class ShapeUtil {
     Shape shape;
   };
 
+  // Returns the product of the statically bound dimensions.
+  template <bool kBoundedDynamicOk>
+  static inline std::pair<int64_t, bool> ExtentProduct(const Shape& shape) {
+    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
+    DCHECK_EQ(shape.dimensions_size(), shape.rank());
+    int64_t product = 1;
+    bool any_overflows = false;
+    for (int dim = 0; dim < shape.dimensions_size(); ++dim) {
+      if constexpr (kBoundedDynamicOk) {
+        if (shape.is_unbounded_dynamic_dimension(dim)) {
+          continue;
+        }
+      } else {
+        DCHECK(!shape.is_unbounded_dynamic_dimension(dim));
+      }
+      bool overflow;
+      std::tie(product, overflow) =
+          OverflowSafeMultiply(product, shape.dimensions(dim));
+      any_overflows |= overflow;
+    }
+    return {product, any_overflows};
+  }
+
+  // Returns the product of the statically bound dimensions.
+  static inline int64_t StaticExtentProduct(const Shape& shape) {
+    auto [product, overflow] = ExtentProduct</*kBoundedDynamicOk=*/true>(shape);
+    DCHECK(!overflow);
+    return product;
+  }
+
   // Returns the number of elements are contained within the provided shape;
   // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
   static inline int64_t ElementsIn(const Shape& shape) {
-    DCHECK(shape.IsArray()) << ShapeUtil::HumanString(shape);
-    DCHECK_EQ(shape.dimensions_size(), shape.rank());
-    if (shape.dimensions().empty()) {
-      return 1LL;
-    }
-    auto begin = shape.dimensions().begin();
-    return std::accumulate(std::next(begin), shape.dimensions().end(), *begin,
-                           std::multiplies<int64_t>());
+    auto [product, overflow] =
+        ExtentProduct</*kBoundedDynamicOk=*/false>(shape);
+    DCHECK(!overflow);
+    return product;
   }
 
   // As ElementsIn(), but recurses through tuples.

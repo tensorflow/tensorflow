@@ -26,6 +26,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -235,10 +236,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
                                           Shape* shape) {
   int64_t dense_shape_size = primitive_util::IsArrayType(element_type)
                                  ? primitive_util::ByteWidth(element_type)
-                                 : 0;
-  if (dense_shape_size <= 0) {
-    return false;
-  }
+                                 : -1;
 
   // Verify that array-based lookup is consistent with public API.
   DCHECK_EQ(dense_shape_size, ByteSizeOfPrimitiveType(element_type))
@@ -248,22 +246,22 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   const int ndims = dimensions.size();
   auto layout = shape->mutable_layout();
   auto* minor_to_major = layout->mutable_minor_to_major();
-  auto is_unbounded_dynamic = absl::c_any_of(
-      dimensions, [](int64_t dim) { return dim == Shape::kUnboundedSize; });
+  int64_t static_extent_product = dense_shape_size;
+  bool any_overflows = false;
   for (int i = 0; i < ndims; i++) {
     const int64_t d = dimensions[i];
-    if (d < 0 && d != Shape::kUnboundedSize) {
-      return false;
-    }
-    if (!is_unbounded_dynamic) {
-      dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, d);
-      if (dense_shape_size < 0) {
-        return false;
-      }
+    if (d != Shape::kUnboundedSize) {
+      bool overflow;
+      std::tie(static_extent_product, overflow) =
+          OverflowSafeMultiply(static_extent_product, d);
+      any_overflows |= overflow;
     }
 
     shape->add_dimensions(d);
     minor_to_major->push_back(ndims - 1 - i);
+  }
+  if (any_overflows) {
+    return false;
   }
   return true;
 }
@@ -930,7 +928,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     return InvalidArgument("non-tuple shape has tuple_shapes field");
   }
 
-  // Tokens and opaques can should not have layout or dimensions.
+  // Tokens and opaques should not have layout or dimensions.
   if (shape.element_type() == TOKEN || shape.element_type() == OPAQUE_TYPE) {
     if (shape.dimensions_size() != 0) {
       return InvalidArgument(
@@ -947,13 +945,24 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     return OkStatus();
   }
 
+  bool any_overflows = false;
+  int64_t product = 1;
   for (int64_t i = 0; i < shape.rank(); ++i) {
     int64_t dimension = shape.dimensions(i);
-    if (dimension < 0 && dimension != Shape::kUnboundedSize) {
+    if (dimension == Shape::kUnboundedSize) {
+      continue;
+    }
+    if (dimension < 0) {
       return InvalidArgument(
           "shape's dimensions must not be < 0; dimension at index %d was %d", i,
           dimension);
     }
+    bool overflow;
+    std::tie(product, overflow) = OverflowSafeMultiply(product, dimension);
+  }
+  if (any_overflows) {
+    return InvalidArgument("shape's dimensions overflow: %s",
+                           shape.ShortDebugString());
   }
 
   TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
@@ -967,34 +976,17 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     return OkStatus();
   }
 
-  if (shape.is_unbounded_dynamic()) {
-    return OkStatus();
-  }
+  auto [extent_product, extent_overflow] =
+      ExtentProduct</*kBoundedDynamicOk=*/true>(shape);
+  auto [dense_shape_size, byte_width_overflow] = OverflowSafeMultiply(
+      extent_product, ByteSizeOfPrimitiveType(shape.element_type()));
 
-  int64_t shape_size = [&]() {
-    int64_t dense_shape_size = 1;
-    if (shape.dimensions().empty()) {
-      return dense_shape_size;
-    }
-
-    absl::Span<const int64_t> shape_max_dimensions = shape.dimensions();
-    for (int64_t dim : shape_max_dimensions) {
-      dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
-      if (dense_shape_size < 0) {
-        return dense_shape_size;
-      }
-    }
-    dense_shape_size = MultiplyWithoutOverflow(
-        dense_shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
-    return dense_shape_size;
-  }();
-
-  if (shape_size < 0) {
+  if (extent_overflow || byte_width_overflow) {
     return InvalidArgument("Shape %s size may overflow int64_t.",
                            ShapeUtil::HumanString(shape));
   }
 
-  VLOG(3) << "Shape size is valid: " << shape_size;
+  VLOG(3) << "Shape size is valid: " << dense_shape_size;
   return OkStatus();
 }
 
