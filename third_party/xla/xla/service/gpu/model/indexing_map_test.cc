@@ -27,9 +27,7 @@ namespace gpu {
 namespace {
 
 using ::mlir::AffineExpr;
-using ::mlir::AffineExprKind;
 using ::mlir::AffineMap;
-using ::mlir::getAffineBinaryOpExpr;
 using ::mlir::getAffineConstantExpr;
 using ::mlir::getAffineDimExpr;
 using ::testing::HasSubstr;
@@ -50,16 +48,13 @@ TEST_F(IndexingMapSimplifierTest, SimplifyConstantDims) {
 }
 
 TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsIfSmallerThanDivisor) {
-  AffineExpr d0 = getAffineDimExpr(0, &mlir_context_);
-  AffineExpr d1 = getAffineDimExpr(1, &mlir_context_);
+  AffineExpr d0, d1;
+  bindDims(&mlir_context_, d0, d1);
   AffineExpr c16 = getAffineConstantExpr(16, &mlir_context_);
 
   // (d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16).
-  AffineExpr result0 = getAffineBinaryOpExpr(
-      AffineExprKind::Add, d0,
-      getAffineBinaryOpExpr(AffineExprKind::FloorDiv, d1, c16));
-  AffineExpr result1 = getAffineBinaryOpExpr(AffineExprKind::Mod, d1, c16);
-  auto map = AffineMap::get(2, 0, {result0, result1}, &mlir_context_);
+  auto map =
+      AffineMap::get(2, 0, {d0 + d1.floorDiv(c16), d1 % c16}, &mlir_context_);
 
   // d0 in [0, 8) and d1 in [0, 16).
   IndexingMapSimplifier simplifier(&mlir_context_);
@@ -71,30 +66,19 @@ TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsIfSmallerThanDivisor) {
 }
 
 TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithMultipliers) {
-  AffineExpr d0 = getAffineDimExpr(0, &mlir_context_);
-  AffineExpr d1 = getAffineDimExpr(1, &mlir_context_);
-  AffineExpr d2 = getAffineDimExpr(2, &mlir_context_);
+  AffineExpr d0, d1, d2;
+  bindDims(&mlir_context_, d0, d1, d2);
   AffineExpr c10 = getAffineConstantExpr(10, &mlir_context_);
   AffineExpr c100 = getAffineConstantExpr(100, &mlir_context_);
 
   //  (d0, d1, d2) -> ((d0 * 100 + d1 * 10 + d2) floordiv 100,
   //                  "((d0 * 100 + d1 * 10 + d2) mod 100) floordiv 10,
   //                    d2 mod 10)"
-  AffineExpr weighted_sum =
-      getAffineBinaryOpExpr(AffineExprKind::Mul, d0, c100);
-  weighted_sum = getAffineBinaryOpExpr(
-      AffineExprKind::Add, weighted_sum,
-      getAffineBinaryOpExpr(AffineExprKind::Mul, d1, c10));
-  weighted_sum = getAffineBinaryOpExpr(AffineExprKind::Add, weighted_sum, d2);
-
-  AffineExpr result0 =
-      getAffineBinaryOpExpr(AffineExprKind::FloorDiv, weighted_sum, c100);
-  AffineExpr result1 = getAffineBinaryOpExpr(
-      AffineExprKind::FloorDiv,
-      getAffineBinaryOpExpr(AffineExprKind::Mod, weighted_sum, c100), c10);
-  AffineExpr result2 = getAffineBinaryOpExpr(AffineExprKind::Mod, d2, c10);
-
-  auto map = AffineMap::get(3, 0, {result0, result1, result2}, &mlir_context_);
+  AffineExpr weighted_sum = d0 * c100 + d1 * c10 + d2;
+  auto map = AffineMap::get(3, 0,
+                            {weighted_sum.floorDiv(c100),
+                             (weighted_sum % c100).floorDiv(c10), d2 % c10},
+                            &mlir_context_);
 
   // d_i in [0, 10).
   IndexingMapSimplifier simplifier(&mlir_context_);
@@ -107,27 +91,17 @@ TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithMultipliers) {
 }
 
 TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithDivisibleMultipliers) {
-  AffineExpr d0 = getAffineDimExpr(0, &mlir_context_);
-  AffineExpr d1 = getAffineDimExpr(1, &mlir_context_);
-  AffineExpr d2 = getAffineDimExpr(2, &mlir_context_);
+  AffineExpr d0, d1, d2;
+  bindDims(&mlir_context_, d0, d1, d2);
   AffineExpr c4 = getAffineConstantExpr(4, &mlir_context_);
   AffineExpr c8 = getAffineConstantExpr(8, &mlir_context_);
   AffineExpr c16 = getAffineConstantExpr(16, &mlir_context_);
 
   // (d0, d1, d2) -> ((d0 * 16 + d1 * 4 + d2) floordiv 8, "
   //                  (d0 * 16 + d1 * 4 + d2) mod 8)
-  AffineExpr weighted_sum = getAffineBinaryOpExpr(AffineExprKind::Mul, d0, c16);
-  weighted_sum =
-      getAffineBinaryOpExpr(AffineExprKind::Add, weighted_sum,
-                            getAffineBinaryOpExpr(AffineExprKind::Mul, d1, c4));
-  weighted_sum = getAffineBinaryOpExpr(AffineExprKind::Add, weighted_sum, d2);
-
-  AffineExpr result0 =
-      getAffineBinaryOpExpr(AffineExprKind::FloorDiv, weighted_sum, c8);
-  AffineExpr result1 =
-      getAffineBinaryOpExpr(AffineExprKind::Mod, weighted_sum, c8);
-
-  auto map = AffineMap::get(3, 0, {result0, result1}, &mlir_context_);
+  AffineExpr weighted_sum = d0 * c16 + d1 * c4 + d2;
+  auto map = AffineMap::get(
+      3, 0, {weighted_sum.floorDiv(c8), weighted_sum % c8}, &mlir_context_);
 
   // d_0 in [0, 10).
   IndexingMapSimplifier simplifier(&mlir_context_);
@@ -141,8 +115,8 @@ TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithDivisibleMultipliers) {
 }
 
 TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithReverse) {
-  AffineExpr d0 = getAffineDimExpr(0, &mlir_context_);
-  AffineExpr d1 = getAffineDimExpr(1, &mlir_context_);
+  AffineExpr d0, d1;
+  bindDims(&mlir_context_, d0, d1);
   AffineExpr mc1 = getAffineConstantExpr(-1, &mlir_context_);
   AffineExpr c9 = getAffineConstantExpr(9, &mlir_context_);
   AffineExpr c11 = getAffineConstantExpr(11, &mlir_context_);
@@ -152,28 +126,11 @@ TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithReverse) {
 
   // (d0, d1) -> (-((d0 * -11 - d1 + 109) floordiv 11) + 9,
   //              d0 * 11 + d1 + ((d0 * -11 - d1 + 109) floordiv 11) * 11 - 99).
-  AffineExpr weighted_sum =
-      getAffineBinaryOpExpr(AffineExprKind::Mul, d0, mc11);
-  weighted_sum = getAffineBinaryOpExpr(
-      AffineExprKind::Add, weighted_sum,
-      getAffineBinaryOpExpr(AffineExprKind::Mul, d1, mc1));
-  weighted_sum = getAffineBinaryOpExpr(AffineExprKind::Add, weighted_sum, c109);
-  weighted_sum =
-      getAffineBinaryOpExpr(AffineExprKind::FloorDiv, weighted_sum, c11);
-
-  AffineExpr result0 = getAffineBinaryOpExpr(
-      AffineExprKind::Add, c9,
-      getAffineBinaryOpExpr(AffineExprKind::Mul, mc1, weighted_sum));
-  AffineExpr result1 = getAffineBinaryOpExpr(
-      AffineExprKind::Add,
-      getAffineBinaryOpExpr(AffineExprKind::Add,
-                            getAffineBinaryOpExpr(AffineExprKind::Mul, c11, d0),
-                            d1),
-      getAffineBinaryOpExpr(
-          AffineExprKind::Add,
-          getAffineBinaryOpExpr(AffineExprKind::Mul, c11, weighted_sum), mc99));
-
-  auto map = AffineMap::get(2, 0, {result0, result1}, &mlir_context_);
+  AffineExpr weighted_sum = (d0 * mc11 + d1 * mc1 + c109).floorDiv(c11);
+  auto map = AffineMap::get(
+      2, 0,
+      {c9 + mc1 * weighted_sum, c11 * d0 + d1 + weighted_sum * c11 + mc99},
+      &mlir_context_);
 
   // d0 in [0, 10) and d1 in [0, 11).
   IndexingMapSimplifier simplifier(&mlir_context_);
