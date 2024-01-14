@@ -44,7 +44,7 @@ Before sending your pull requests, make sure you do the following:
 -   If a change is needed, the contributor is requested to make the suggested
     change.
 -   You make the change and submit it for the review again.
--   This cycle repeats itself untill the PR gets approved.
+-   This cycle repeats itself until the PR gets approved.
 -   Note: As a friendly reminder, we may reach out to you if the PR is awaiting
     your response for more than 2 weeks.
 
