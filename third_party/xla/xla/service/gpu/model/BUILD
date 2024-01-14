@@ -242,13 +242,14 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "indexing_map_simplifier",
-    srcs = ["indexing_map_simplifier.cc"],
-    hdrs = ["indexing_map_simplifier.h"],
+    name = "indexing_map",
+    srcs = ["indexing_map.cc"],
+    hdrs = ["indexing_map.h"],
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -256,10 +257,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "indexing_map_simplifier_test",
-    srcs = ["indexing_map_simplifier_test.cc"],
+    name = "indexing_map_test",
+    srcs = ["indexing_map_test.cc"],
     deps = [
-        ":indexing_map_simplifier",
+        ":indexing_map",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
@@ -274,7 +275,7 @@ cc_library(
     hdrs = ["indexing_analysis.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":indexing_map_simplifier",
+        ":indexing_map",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
@@ -317,7 +318,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":indexing_analysis",
-        ":indexing_map_simplifier",
+        ":indexing_map",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",

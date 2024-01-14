@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "xla/service/gpu/model/indexing_map_simplifier.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {

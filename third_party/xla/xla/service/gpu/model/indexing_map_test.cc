@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/indexing_map_simplifier.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 #include <gmock/gmock.h>
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project

@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/indexing_map_simplifier.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -729,15 +729,6 @@ std::optional<HloInstructionIndexing> ComputeInputToOutputBitcastOpIndexing(
 
 }  // namespace
 
-bool IndexingMap::Simplify() {
-  AffineMap simplified_affine_map =
-      SimplifierFromIndexingMap(*this).Simplify(affine_map);
-  if (simplified_affine_map == affine_map) {
-    return false;
-  }
-  affine_map = simplified_affine_map;
-  return true;
-}
 
 bool HloInstructionIndexing::Simplify() {
   bool any_simplified = false;
@@ -971,24 +962,6 @@ std::optional<HloInstructionIndexing> ComputeInputToOutputIndexing(
     return ComputeInputToOutputTransposeOpIndexing(transpose, ctx);
   }
   return std::nullopt;
-}
-
-IndexingMapSimplifier SimplifierFromIndexingMap(
-    const IndexingMap& indexing_map) {
-  MLIRContext* mlir_context = indexing_map.affine_map.getContext();
-  IndexingMapSimplifier simplifier(mlir_context);
-
-  const Domain& domain = indexing_map.domain;
-  for (const auto& [index, range] : llvm::enumerate(domain.dimension_ranges)) {
-    simplifier.SetInclusiveBounds(getAffineDimExpr(index, mlir_context),
-                                  range.lower_bound, range.upper_bound - 1);
-  }
-  for (const auto& [index, range] : llvm::enumerate(domain.symbol_ranges)) {
-    simplifier.SetInclusiveBounds(getAffineSymbolExpr(index, mlir_context),
-                                  range.lower_bound, range.upper_bound - 1);
-  }
-
-  return simplifier;
 }
 
 }  // namespace gpu

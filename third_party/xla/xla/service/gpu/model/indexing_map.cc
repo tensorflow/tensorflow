@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/model/indexing_map_simplifier.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -47,6 +48,33 @@ int64_t FloorDiv(int64_t dividend, int64_t divisor) {
 }
 
 }  // namespace
+
+bool IndexingMap::Simplify() {
+  AffineMap simplified_affine_map =
+      IndexingMapSimplifier::FromIndexingMap(*this).Simplify(affine_map);
+  if (simplified_affine_map == affine_map) {
+    return false;
+  }
+  affine_map = simplified_affine_map;
+  return true;
+}
+
+IndexingMapSimplifier IndexingMapSimplifier::FromIndexingMap(
+    const IndexingMap& indexing_map) {
+  mlir::MLIRContext* mlir_context = indexing_map.affine_map.getContext();
+  IndexingMapSimplifier simplifier(mlir_context);
+
+  const Domain& domain = indexing_map.domain;
+  for (const auto& [index, range] : llvm::enumerate(domain.dimension_ranges)) {
+    simplifier.SetInclusiveBounds(getAffineDimExpr(index, mlir_context),
+                                  range.lower_bound, range.upper_bound - 1);
+  }
+  for (const auto& [index, range] : llvm::enumerate(domain.symbol_ranges)) {
+    simplifier.SetInclusiveBounds(getAffineSymbolExpr(index, mlir_context),
+                                  range.lower_bound, range.upper_bound - 1);
+  }
+  return simplifier;
+}
 
 void IndexingMapSimplifier::SetInclusiveBounds(AffineExpr expr, int64_t lower,
                                                int64_t upper) {
