@@ -20,13 +20,9 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <vector>
 
-#include "absl/log/check.h"
-#include "absl/types/span.h"
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
 namespace gpu {
@@ -39,64 +35,37 @@ namespace gpu {
 // range function.
 //
 // A N-dimensional symbolic tile is a function from offsets, strides, and sizes
-// to a N-dimensional tile. It is encoded as an affine map
-//     (stride0, offset0, ..., stride{M-1}, offset{M-1})[size0, ... size{P-1}]
-//  -> (expr0, ..., expr{N-1})
-// where expr0, ..., expr{N-1} are strided expressions as described above.
+// to a N-dimensional tile. It can be represented as three affine maps with
+// domain
+//     ()[offset0, size0, stride0, ... offset{M-1}, size{P-1}, stride{M-1}]
+// and respective co-domains
+//     (offset0', ..., offset'{N-1})     (offset_map())
+//     (size0', ..., size'{N-1})         (size_map())
+//     (stride0', ..., stride'{N-1})     (stride_map())
+// where maps respectively encode the offset, size, and stride component of
+// each strided expression in the tile.
 //
-// Symbolic tiles also store, for each one of their parameters, what its
-// upper bound is (accessible through `max_sizes()` for size parameters and
-// `max_strides_and_offsets()` for offset and stride parameters). Size
-// parameters may also be assigned a specific value (accessible through
-// `sizes()`).
-//
-// Symbolic tiles are constructed from the shape of the N-dimensional array we
-// want to tile, or by propagating (composing) an existing tile with an
-// `IndexingMap`. Tile propagation may fail if the results of the produced
-// affine map are not all strided expressions.
+// A symbolic tile with 3*M symbols and N results is constructed using an
+// `IndexingMap` with M input dimensions and N results. The construction of the
+// symbolic tile may fail if any one of the resulting expressions is not a
+// strided expression as described above.
 class SymbolicTile {
  public:
-  SymbolicTile(absl::Span<int64_t const> target_shape,
-               mlir::MLIRContext* mlir_context);
+  static std::optional<SymbolicTile> FromIndexingMap(
+      const IndexingMap& indexing_map);
 
-  // Applies the input indexing map to this tile. Returns a symbolic tile if the
-  // composition of 'indexing_map.affine_map' with 'this->affine_map' describes
-  // one. Both size and max size are set for each symbol introduced by
-  // 'indexing_map.affine_map'.
-  // Symbols from 'indexing_map.affine_map' precede symbols from
-  // 'this->affine_map' in the resulting tile's affine map.
-  std::optional<SymbolicTile> TryPropagateTileThroughIndexingMap(
-      const IndexingMap& indexing_map) const;
-
-  // The affine map underlying the symbolic tile.
-  const mlir::AffineMap& affine_map() const { return affine_map_; }
-
-  // The (optional) size for each symbol in the tile's underlying affine map.
-  absl::Span<std::optional<int64_t> const> sizes() const { return sizes_; }
-
-  // The maximum size for each symbol in the tile's underlying affine map.
-  absl::Span<int64_t const> max_sizes() const { return max_sizes_; }
-
-  // The upper bound for each dimension in the tile's underlying affine map.
-  absl::Span<int64_t const> max_strides_and_offsets() const {
-    return max_strides_and_offsets_;
-  }
+  mlir::AffineMap offset_map() const { return offset_map_; }
+  mlir::AffineMap size_map() const { return size_map_; }
+  mlir::AffineMap stride_map() const { return stride_map_; }
 
  private:
-  mlir::AffineMap affine_map_;
-  std::vector<std::optional<int64_t>> sizes_;
-  std::vector<int64_t> max_sizes_;
-  std::vector<int64_t> max_strides_and_offsets_;
+  mlir::AffineMap offset_map_;
+  mlir::AffineMap size_map_;
+  mlir::AffineMap stride_map_;
 
-  SymbolicTile(mlir::AffineMap affine_map,
-               absl::Span<std::optional<int64_t> const> sizes,
-               absl::Span<int64_t const> max_sizes,
-               absl::Span<int64_t const> max_strides_and_offsets)
-      : affine_map_(affine_map),
-        sizes_(sizes.begin(), sizes.end()),
-        max_sizes_(max_sizes.begin(), max_sizes.end()),
-        max_strides_and_offsets_(max_strides_and_offsets.begin(),
-                                 max_strides_and_offsets.end()) {}
+  SymbolicTile(mlir::AffineMap offset_map, mlir::AffineMap size_map,
+               mlir::AffineMap stride_map, int64_t num_tiled_dims)
+      : offset_map_(offset_map), size_map_(size_map), stride_map_(stride_map) {}
 };
 
 std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile);

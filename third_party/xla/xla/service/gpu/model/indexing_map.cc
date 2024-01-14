@@ -76,6 +76,14 @@ IndexingMapSimplifier IndexingMapSimplifier::FromIndexingMap(
   return simplifier;
 }
 
+bool IndexingMapSimplifier::IsAlwaysPositiveOrZero(mlir::AffineExpr expr) {
+  return GetInclusiveBounds(expr).lower >= 0;
+}
+
+bool IndexingMapSimplifier::IsAlwaysNegativeOrZero(mlir::AffineExpr expr) {
+  return GetInclusiveBounds(expr).upper <= 0;
+}
+
 void IndexingMapSimplifier::SetInclusiveBounds(AffineExpr expr, int64_t lower,
                                                int64_t upper) {
   bounds_[expr] = {lower, upper};

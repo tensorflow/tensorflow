@@ -135,6 +135,12 @@ class IndexingMapSimplifier {
   // Simplifies the expression as much as possible.
   mlir::AffineExpr Simplify(mlir::AffineExpr expr);
 
+  // Checks whether an `AffineExpr` always describes a non-negative value.
+  bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
+
+  // Checks whether an `AffineExpr` always describes a non-positive value.
+  bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr);
+
  private:
   struct Bounds {
     int64_t lower;
