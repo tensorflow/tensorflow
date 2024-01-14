@@ -34,10 +34,12 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/service/compiler.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
@@ -188,9 +190,29 @@ xla::StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
   return {{gpu_ids}};
 }
 
+xla::StatusOr<DeviceType> GetCompilationDeviceType(
+    const DeviceType& platform_device_type) {
+  DeviceType compilation_device_type = platform_device_type;
+  const XlaOpRegistry::DeviceRegistration* registration = nullptr;
+  if (!XlaOpRegistry::GetCompilationDevice(platform_device_type.type(),
+                                           &registration)) {
+    return errors::InvalidArgument("No JIT device registered for ",
+                                   platform_device_type.type());
+  }
+  compilation_device_type = DeviceType(registration->compilation_device_name);
+  return compilation_device_type;
+}
+
 Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
                               const XlaPlatformInfo& platform_info,
+                              DeviceType compilation_device_type,
                               XlaDeviceCompiler** xla_device_compiler) {
+  if (platform_info.platform_id() == nullptr &&
+      platform_info.device_type() == DEVICE_GPU) {
+    // We do not need to build a device compiler for GPU if the platform ID is
+    // null. This is for supporting cross platform lowering.
+    return OkStatus();
+  }
   std::string persistent_cache_directory =
       GetPersistentCacheDirectory(platform_info.device_type());
 
@@ -219,6 +241,9 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     return OkStatus();
   }
 
+  if (platform_info.platform_id() == nullptr) {
+    return errors::InvalidArgument("platform_id is null.");
+  }
   auto platform =
       se::MultiPlatformManager::PlatformWithId(platform_info.platform_id());
   if (!platform.ok()) {
@@ -233,11 +258,11 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     // (which would normally force the cluster to be compiled using XLA:GPU)
     // into an XLA cluster with no GPU operations (i.e. containing only CPU
     // operations).  Such a cluster can fail compilation (in way that
-    // MarkForCompilation could not have detected) if the CPU JIT is not linked
-    // in.
+    // MarkForCompilation could not have detected) if the CPU JIT is not
+    // linked in.
     //
-    // So bail out of _XlaCompile in this case, and let the executor handle the
-    // situation for us.
+    // So bail out of _XlaCompile in this case, and let the executor handle
+    // the situation for us.
     const Status& status = compiler_for_platform.status();
     if (status.code() == error::NOT_FOUND) {
       return errors::Unimplemented("Could not find compiler for platform ",
@@ -258,20 +283,11 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
     client_options.set_allowed_devices(allowed_gpus);
   }
 
-  auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
-  if (!client.ok()) {
-    return client.status();
-  }
-  const XlaOpRegistry::DeviceRegistration* registration;
-  if (!XlaOpRegistry::GetCompilationDevice(platform_info.device_type().type(),
-                                           &registration)) {
-    return errors::InvalidArgument("No JIT device registered for ",
-                                   platform_info.device_type().type());
-  }
+  TF_ASSIGN_OR_RETURN(
+      auto client, xla::ClientLibrary::GetOrCreateLocalClient(client_options));
 
   *xla_device_compiler = CreateXlaDeviceCompiler(
-      persistor_config, DeviceType(registration->compilation_device_name),
-      client.value());
+      persistor_config, compilation_device_type, client);
   return OkStatus();
 }
 

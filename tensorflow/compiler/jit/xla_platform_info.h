@@ -106,13 +106,19 @@ class XlaPlatformInfo {
 StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list);
 
+// Returns the device type for building a DeviceCompiler from the given platform
+// type.
+StatusOr<DeviceType> GetCompilationDeviceType(
+    const DeviceType& platform_device_type);
+
 // Builds a DeviceCompiler that uses xla::LocalClient using `platform_info` and
-// sets *xla_device_compiler to point to it. Uses flags from
-// `MarkForCompilationPassFlags` for configuring the persistor used in the
-// DeviceCompiler.
+// `compilation_device_type` (in non-TPU case) and sets *xla_device_compiler to
+// point to it. Uses flags from `MarkForCompilationPassFlags` for configuring
+// the persistor used in the DeviceCompiler. The platform ID from
+// `platform_info` must not be null in CPU case.
 Status BuildXlaDeviceCompiler(
     DeviceBase* dev, FunctionLibraryRuntime* flr,
-    const XlaPlatformInfo& platform_info,
+    const XlaPlatformInfo& platform_info, DeviceType compilation_device_type,
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
         xla_device_compiler);
 

@@ -356,12 +356,18 @@ StatusOr<std::string> GetCompilerIr(
                              compiler_arg_source));
 
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(dev);
+  auto compilation_device_type = platform_info.device_type();
+  if (platform_info.device_type() != DEVICE_TPU) {
+    TF_ASSIGN_OR_RETURN(compilation_device_type,
+                        GetCompilationDeviceType(platform_info.device_type()));
+  }
 
   XlaDeviceCompiler* xla_device_compiler;
   TF_RETURN_IF_ERROR(dev->resource_manager()->LookupOrCreate<XlaDeviceCompiler>(
       dev->resource_manager()->default_container(), "xla_device_compiler",
       &xla_device_compiler, [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(dev, flr, platform_info,
+                                      compilation_device_type,
                                       xla_device_compiler);
       }));
   core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
@@ -419,17 +425,21 @@ StatusOr<std::string> GetCompilerIr(
                                 /*xla_device_metadata=*/nullptr,
                                 /*pjrt_device_metadata=*/nullptr,
                                 /*device_allocator=*/nullptr);
-  XlaDeviceCompiler* xla_device_compiler;
+  DeviceType compilation_device_type = platform_info.device_type();
+  if (platform_info.device_type() != DEVICE_TPU) {
+    TF_ASSIGN_OR_RETURN(compilation_device_type,
+                        GetCompilationDeviceType(platform_info.device_type()));
+  }
+  XlaDeviceCompiler* xla_device_compiler = nullptr;
   // TODO(b/306753579): Cache the compiler.
   TF_RETURN_IF_ERROR(BuildXlaDeviceCompiler(
-      /*dev=*/nullptr, flr, platform_info, &xla_device_compiler));
-  xla::LocalClient* local_client = xla_device_compiler->client();
+      /*dev=*/nullptr, flr, platform_info, compilation_device_type,
+      &xla_device_compiler));
   XlaCompiler::Options options;
   if (platform_info.device_type() == DEVICE_TPU) {
     options = GenerateCompilerOptionsForTfrtTpu(*xla_device_compiler, *flr);
   } else {
-    options.client = local_client;
-    options.device_type = xla_device_compiler->device_type();
+    options.device_type = compilation_device_type;
     options.flib_def = flr->GetFunctionLibraryDefinition();
     options.graph_def_version = flr->graph_def_version();
     options.allow_cpu_custom_calls =
@@ -437,7 +447,7 @@ StatusOr<std::string> GetCompilerIr(
     options.alias_passthrough_params = !platform_info.is_on_xla_device();
   }
 
-  return CompileAndBuildHLOString(stage, options, xla_device_compiler->client(),
+  return CompileAndBuildHLOString(stage, options, /*local_client=*/nullptr,
                                   function, args);
 }
 

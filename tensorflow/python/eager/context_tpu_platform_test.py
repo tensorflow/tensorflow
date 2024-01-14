@@ -22,7 +22,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class ContextPlatformTest(test.TestCase, parameterized.TestCase):
+class ContextTpuPlatformTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       [(f'_{stage}', stage) for stage in ['hlo', 'hlo_serialized']]

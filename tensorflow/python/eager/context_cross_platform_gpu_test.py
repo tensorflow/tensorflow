@@ -21,7 +21,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ContextCrossPlatformTest(test.TestCase, parameterized.TestCase):
+class ContextCrossPlatformGpuTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       [(f'_{stage}', stage) for stage in ['hlo', 'hlo_serialized']]
