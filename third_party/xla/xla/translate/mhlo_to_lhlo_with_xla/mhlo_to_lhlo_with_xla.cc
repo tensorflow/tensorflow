@@ -1158,7 +1158,8 @@ LhloDialectEmitter::EmitDnnConvolutionReorderVectorized(
     // Output shape defines the filter, it must have NCHW_VECT_C layout.
     Shape shape = custom_call->shape();
     if (shape.IsTuple()) {
-      shape = shape.tuple_shapes(0);
+      // We explicitly create a copy here to avoid self-assignment issues
+      shape = Shape{shape.tuple_shapes(0)};
     }
 
     CHECK_EQ(shape.rank(), 5);
