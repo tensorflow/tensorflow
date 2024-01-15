@@ -529,7 +529,7 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
   auto opts = options;
 
   if (!all_loaded_host_callbacks_->empty() && !returned_future_supported) {
-    return InternalError(
+    return Internal(
         "Host callback not supported without returned future support in "
         "runtime: %s",
         client_->runtime_type());
