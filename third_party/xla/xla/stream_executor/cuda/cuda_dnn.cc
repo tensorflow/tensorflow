@@ -6684,12 +6684,13 @@ GetCudnnFlashAttentionOperationGraph(
 
   // Create dropout tensor
   // dropout is always virtual in inference or training for flash attention
-  TF_ASSIGN_OR_RETURN(auto dropout_out,
-                      CreateCudnnFlashAttentionDropoutFwdTensor(
-                          intermediate_ops, intermediate_bmm2_lhs_dims,
-                          intermediate_bmm2_lhs_strides,
-                          intermediate_bmm2_lhs_descriptor.type(),
-                          /*input_tensor*/ softmax_fwd_out, *dropout_rate));
+  TF_ASSIGN_OR_RETURN(
+      auto dropout_out,
+      CreateCudnnFlashAttentionDropoutFwdTensor(
+          intermediate_ops, intermediate_bmm2_lhs_dims,
+          intermediate_bmm2_lhs_strides,
+          intermediate_bmm2_lhs_descriptor.type(),
+          /*input_tensor*/ softmax_fwd_out, use_dropout ? *dropout_rate : 0));
   bmm2_input_tensor = std::move(dropout_out);
 
   std::vector<int64_t> bmm2_rhs_dims =
@@ -7144,9 +7145,21 @@ GetCudnnFlashAttentionBackwardOperationGraph(
       CreateCudnnTensor(p_dims, p_strides, CudnnfMHAUid::VIRTUAL_ID + 104,
                         dnn::DataType::kFloat, 1, -1,
                         /*is_virtual*/ true));
+
+  std::vector<int64_t> p_reduction_dims(p_dims.begin(), p_dims.end() - 1);
+  p_reduction_dims.push_back(1);
+
+  // Divide every stride by the last dim value.
+  std::vector<int64_t> p_reduction_strides;
+  p_reduction_strides.reserve(p_strides.size());
+  int64_t p_reduced_dim_len = p_dims.back();
+  for (auto stride : p_strides) {
+    p_reduction_strides.push_back(stride / p_reduced_dim_len);
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto tensor_softmax_stats,
-      CreateCudnnTensor(do_reduction_dims, do_reduction_strides,
+      CreateCudnnTensor(p_reduction_dims, p_reduction_strides,
                         CudnnfMHAUid::P_ID, dnn::DataType::kFloat, 1, -1));
 
   TF_ASSIGN_OR_RETURN(auto sub_desc,
@@ -7182,7 +7195,7 @@ GetCudnnFlashAttentionBackwardOperationGraph(
       auto tensor_p_after_scale_dropout,
       CreateCudnnFlashAttentionDropoutBwdTensor(
           intermediate_ops, p_dims, p_strides, dtype, tensor_p_after_softmax,
-          tensor_dropout_mask, *dropout_rate));
+          tensor_dropout_mask, use_dropout ? *dropout_rate : 0));
 
   // after_scale_dropout -> s_transpose
   auto p_transpose_dims = p_dims;
@@ -9305,7 +9318,7 @@ CudnnSupport::FusedMHARunnerFromDesc(
     scalar_input_values.push_back(dropout_scale);
     dropout_rng_offset = GetDropoutRngOffset(intermediate_shape);
 
-    if (bias_descriptor == std::nullopt) {
+    if (is_causal_mask) {
       // push negative infinity here
       scalar_input_uids.push_back(CudnnfMHAUid::NEG_INFINITY_ID);
       double negative_infinity_value = -std::numeric_limits<float>::infinity();
@@ -9415,7 +9428,7 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
         use_dropout ? (1.0f / (1.0f - *dropout_rate)) : 1.0f;
     ScalingParam dropout_scale(dropout_scale_value, dnn::DataType::kFloat);
     // scale prob
-    double scale_prob_value = 1.0 - *dropout_rate;
+    double scale_prob_value = use_dropout ? 1.0 - *dropout_rate : 1.0f;
     ScalingParam scale_prob(scale_prob_value, dnn::DataType::kFloat);
     scalar_values = {alpha_scale, dropout_scale, scale_prob};
     // push dropout seed and offset here
@@ -9427,7 +9440,8 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
         CudnnfMHAUid::d_Q_accum_ID, CudnnfMHAUid::O_ID};
     if (bias_descriptor != std::nullopt) {
       uids.push_back(CudnnfMHAUid::BIAS_ID);
-    } else {
+    }
+    if (is_causal_mask) {
       // is causal mask
       // negative infinity
       double negative_infinity_value = -std::numeric_limits<float>::infinity();
