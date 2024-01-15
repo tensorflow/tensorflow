@@ -158,10 +158,12 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
 /*static*/ absl::Status NcclCollectivePermuteStartThunk::CheckImplementable(
     CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+  auto status = [&]() -> absl::Status {
+    TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+    return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
+  };
   return AddOpDescription<NcclCollectivePermuteStartThunk>(
-      IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute), op,
-      replica_count, partition_count);
+      status(), op, replica_count, partition_count);
 }
 
 /*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(
