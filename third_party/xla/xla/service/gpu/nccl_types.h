@@ -17,7 +17,17 @@ limitations under the License.
 #define XLA_SERVICE_GPU_NCCL_TYPES_H_
 
 #if XLA_ENABLE_XCCL
+// Common place for all collective thunks to include nccl/rccl headers.
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#if (TF_ROCM_VERSION >= 50200)
+#include "rocm/include/rccl/rccl.h"  // IWYU pragma: export
+#else
+#include "rocm/include/rccl.h"  // IWYU pragma: export
+#endif
+#else
 #include "third_party/nccl/nccl.h"
+#endif
 #endif  // XLA_ENABLE_XCCL
 
 namespace xla::gpu {

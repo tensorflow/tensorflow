@@ -218,7 +218,7 @@ class Exhaustive32BitOrLessUnaryTest
   // the same bit as the type being tested, if needed, and then bitcasted to the
   // type being tested.
   void FillInput(std::array<Literal, 1>* input_literal) override {
-    int64 begin, end;
+    int64_t begin, end;
     if (special_input_bounder_) {
       begin = input_lower_bounder_;
       end = input_upper_bounder_;
@@ -228,8 +228,8 @@ class Exhaustive32BitOrLessUnaryTest
       FillNormalInput(input_literal, begin, end);
     }
   }
-  void FillNormalInput(std::array<Literal, 1>* input_literal, const int64 begin,
-                       const int64 end) {
+  void FillNormalInput(std::array<Literal, 1>* input_literal,
+                       const int64_t begin, const int64_t end) {
     using IntegralT =
         typename ExhaustiveOpTestBase<T, 1>::ComponentIntegralNativeT;
     int64_t input_size = (*input_literal)[0].element_count();
@@ -244,8 +244,8 @@ class Exhaustive32BitOrLessUnaryTest
     }
   }
 
-  void FillRandomInput(std::array<Literal, 1>* input_literal, const int64 begin,
-                       const int64 end) {
+  void FillRandomInput(std::array<Literal, 1>* input_literal,
+                       const int64_t begin, const int64_t end) {
     absl::Span<NativeT> input_arr = (*input_literal)[0].data<NativeT>();
 
     uint32_t size = kRandomInputSize;

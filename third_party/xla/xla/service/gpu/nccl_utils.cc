@@ -35,10 +35,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
-#if XLA_ENABLE_XCCL
-#include "third_party/nccl/nccl.h"
-#endif  // XLA_ENABLE_XCCL
-
 namespace xla::gpu {
 
 absl::StatusOr<NcclRedOp> ToNcclReduction(ReductionKind kind) {

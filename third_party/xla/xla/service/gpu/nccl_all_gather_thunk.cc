@@ -35,7 +35,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 
 #if XLA_ENABLE_XCCL
-#include "third_party/nccl/nccl.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #endif
 

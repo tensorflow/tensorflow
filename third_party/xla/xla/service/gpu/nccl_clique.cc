@@ -49,10 +49,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
-#ifdef XLA_ENABLE_XCCL
-#include "third_party/nccl/nccl.h"
-#endif  // XLA_ENABLE_XCCL
-
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//

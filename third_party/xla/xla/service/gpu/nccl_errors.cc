@@ -21,10 +21,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/service/gpu/nccl_types.h"
 
-#ifdef XLA_ENABLE_XCCL
-#include "third_party/nccl/nccl.h"
-#endif  // XLA_ENABLE_XCCL
-
 namespace xla::gpu {
 
 absl::Status ToStatus(NcclStatus s, const char* file, int64_t line,
