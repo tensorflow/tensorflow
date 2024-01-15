@@ -47,18 +47,6 @@ namespace gpu {
 
 using mlir::lmhlo_gpu::CollectivePermuteStartOp;
 
-namespace {
-
-bool IsSyncCollective(const HloInstruction* instr) {
-  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return false;
-  }
-  return backend_config->collective_backend_config().is_sync();
-}
-
-}  // namespace
-
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     ThunkInfo thunk_info, CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count, const Buffer& buffer)

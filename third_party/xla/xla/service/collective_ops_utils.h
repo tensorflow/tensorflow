@@ -170,6 +170,9 @@ inline constexpr absl::string_view kNopReturnTokenCustomCallTarget =
 // Returns true if instruction is a collective op or a collective fusion.
 bool IsCollective(const HloInstruction* instruction);
 
+// Returns true if instruction is a synchronous collective op.
+bool IsSyncCollective(const HloInstruction* instr);
+
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
 // The rules are as follows.

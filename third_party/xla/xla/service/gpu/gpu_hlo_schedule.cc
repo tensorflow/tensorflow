@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_schedule_postprocessing.h"
@@ -68,13 +69,6 @@ namespace gpu {
 
 namespace {
 
-bool IsSyncCollective(const HloInstruction& instr) {
-  auto backend_config = instr.backend_config<GpuBackendConfig>()
-                            .value()
-                            .collective_backend_config();
-  return backend_config.is_sync();
-}
-
 bool IsNopInstruction(const HloInstruction& hlo) {
   HloOpcode op = hlo.opcode();
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
@@ -86,7 +80,7 @@ bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
-      return !IsSyncCollective(instr);
+      return !IsSyncCollective(&instr);
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() ==
@@ -211,7 +205,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   auto is_synchronous_op = [](const HloInstruction* instr) {
     return hlo_query::IsAsyncCollectiveStartOp(instr->opcode(),
                                                /*include_send_recv=*/true) &&
-           IsSyncCollective(*instr);
+           IsSyncCollective(instr);
   };
   for (HloInstruction* instr : input.instructions()) {
     if (is_synchronous_op(instr)) {
@@ -296,14 +290,14 @@ class GpuAsyncTrackerBase : public AsyncTracker {
   bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
     return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode(),
                                               /*include_send_recv=*/true) &&
-           !IsSyncCollective(*hlo.operand(0));
+           !IsSyncCollective(hlo.operand(0));
   }
 
   // Returns if this is an Async op start that the scheduler supports.
   bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
     return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode(),
                                                /*include_send_recv=*/true) &&
-           !IsSyncCollective(hlo);
+           !IsSyncCollective(&hlo);
   }
 };
 

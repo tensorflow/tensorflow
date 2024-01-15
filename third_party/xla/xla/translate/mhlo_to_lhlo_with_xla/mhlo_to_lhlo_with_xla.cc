@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -111,13 +112,6 @@ tsl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
                       HloModule::CreateModuleConfigFromProto(
                           module_proto, xla::GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
-}
-
-bool IsSyncCollective(const HloInstruction* instr) {
-  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>()
-                            .value()
-                            .collective_backend_config();
-  return backend_config.is_sync();
 }
 
 bool NoParallelCustomCallCollective(const HloInstruction* instr) {

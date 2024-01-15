@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -583,6 +584,14 @@ bool IsCollective(const HloInstruction* instruction) {
     default:
       return false;
   }
+}
+
+bool IsSyncCollective(const HloInstruction* instr) {
+  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return false;
+  }
+  return backend_config->collective_backend_config().is_sync();
 }
 
 }  // end namespace xla

@@ -4092,6 +4092,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:buffer_value",
+        "//xla/service:collective_ops_utils",
         "//xla/service:hlo_memory_scheduler",
         "//xla/service:hlo_pass_pipeline",
         "//xla/service:latency_hiding_scheduler",
