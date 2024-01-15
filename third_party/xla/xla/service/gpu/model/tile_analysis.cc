@@ -19,6 +19,7 @@ limitations under the License.
 #include <iterator>
 #include <optional>
 #include <ostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -351,18 +353,29 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
                       maybe_raw_symbolic_tile->stride_map, num_input_dims);
 }
 
-// TODO(b/319840243): improve pretty printing to indicate which symbols
-// represent offsets, sizes, and strides.
-std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile) {
-  out << "Symbolic tile with \n";
-  out << "\toffset_map: " << ToString(symbolic_tile.offset_map()) << "\n";
-  out << "\tsize_map: " << ToString(symbolic_tile.size_map()) << "\n";
-  out << "\tstride_map: " << ToString(symbolic_tile.stride_map()) << "\n";
-  return out;
+std::string SymbolicTile::ToString(const AffineMapPrinter& printer) const {
+  std::string s;
+  std::stringstream ss(s);
+  Print(ss, printer);
+  return ss.str();
 }
 
-std::string ToString(const SymbolicTile& symbolic_tile) {
-  return ToStringImpl(symbolic_tile);
+void SymbolicTile::Print(std::ostream& out,
+                         const AffineMapPrinter& printer) const {
+  out << "Symbolic tile with \n";
+  out << "\toffset_map: ";
+  printer.Print(out, offset_map_);
+  out << "\n\tsize_map: ";
+  printer.Print(out, size_map_);
+  out << "\n\tstride_map: ";
+  printer.Print(out, stride_map_);
+  out << "\n";
+}
+
+std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile) {
+  AffineMapPrinter printer;
+  symbolic_tile.Print(out, printer);
+  return out;
 }
 
 }  // namespace gpu

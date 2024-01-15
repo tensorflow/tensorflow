@@ -178,6 +178,7 @@ xla_cc_test(
         "//xla:statusor",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/model:affine_map_printer",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",

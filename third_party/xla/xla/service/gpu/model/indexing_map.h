@@ -20,7 +20,6 @@ limitations under the License.
 #include <functional>
 #include <optional>
 #include <ostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -28,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "xla/service/gpu/model/affine_map_printer.h"
 
 namespace xla {
 namespace gpu {
@@ -35,6 +35,9 @@ namespace gpu {
 // Range represents a semi-closed interval [lower_bound, upper_bound).
 struct Range {
   std::string ToString() const;
+  void Print(std::ostream& out) const;
+
+  bool operator==(const Range&) const = default;
 
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
@@ -48,11 +51,16 @@ H AbslHashValue(H h, const Range& range) {
 
 // Domain contains ranges for symbols and dimensions of an affine map.
 struct Domain {
-  std::string ToString() const;
+  std::string ToString(
+      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+
+  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
 
   static Domain FromUpperBounds(
       absl::Span<const int64_t> dimension_upper_bounds,
       absl::Span<const int64_t> symbol_upper_bounds);
+
+  bool operator==(const Domain&) const = default;
 
   std::vector<Range> dimension_ranges;
   std::vector<Range> symbol_ranges;
@@ -91,30 +99,26 @@ H AbslHashValue(H h, const Domain& domain) {
 // can be written as `(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)` with
 // d0 in [0, 1), d1 in [0, 17), d2 in [0, 9) and d3 in [0, 9).
 struct IndexingMap {
-  std::string ToString() const;
+  std::string ToString(
+      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+
+  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
 
   // Returns true if the map was simplified.
   bool Simplify();
+
+  bool operator==(const IndexingMap&) const = default;
 
   mlir::AffineMap affine_map;
   Domain domain;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
-bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
   llvm::hash_code affine_map_hash = llvm::hash_combine(indexing_map.affine_map);
   return H::combine(std::move(h), static_cast<size_t>(affine_map_hash),
                     indexing_map.domain);
-}
-
-template <typename T>
-std::string ToStringImpl(const T& value) {
-  std::string s;
-  std::stringstream ss(s);
-  ss << value;
-  return ss.str();
 }
 
 class IndexingMapSimplifier {
@@ -171,7 +175,6 @@ class IndexingMapSimplifier {
   llvm::DenseMap<mlir::AffineExpr, Bounds> bounds_{};
 };
 
-std::string ToString(const mlir::AffineMap& affine_map);
 
 }  // namespace gpu
 }  // namespace xla

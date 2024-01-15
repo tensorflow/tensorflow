@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -54,6 +55,11 @@ class SymbolicTile {
   static std::optional<SymbolicTile> FromIndexingMap(
       const IndexingMap& indexing_map);
 
+  std::string ToString(
+      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+
+  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
+
   mlir::AffineMap offset_map() const { return offset_map_; }
   mlir::AffineMap size_map() const { return size_map_; }
   mlir::AffineMap stride_map() const { return stride_map_; }
@@ -69,7 +75,6 @@ class SymbolicTile {
 };
 
 std::ostream& operator<<(std::ostream& out, const SymbolicTile& symbolic_tile);
-std::string ToString(const SymbolicTile& symbolic_tile);
 
 }  // namespace gpu
 }  // namespace xla

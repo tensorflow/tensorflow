@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -28,57 +29,57 @@ namespace {
 
 using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
-using ::mlir::getAffineConstantExpr;
+using ::mlir::bindDims;
+using ::mlir::bindSymbols;
 using ::mlir::getAffineDimExpr;
 using ::testing::HasSubstr;
 
-class IndexingMapSimplifierTest : public HloTestBase {
+class IndexingMapTest : public HloTestBase {
  public:
   mlir::MLIRContext mlir_context_;
+  AffineMapPrinter printer_;
 };
 
-TEST_F(IndexingMapSimplifierTest, SimplifyConstantDims) {
+TEST_F(IndexingMapTest, SimplifyConstantDims) {
   AffineExpr d0 = getAffineDimExpr(0, &mlir_context_);
 
   auto map = AffineMap::get(1, 0, d0, &mlir_context_);
   IndexingMapSimplifier simplifier(&mlir_context_);
   simplifier.SetInclusiveBounds(d0, 5, 5);
 
-  EXPECT_THAT(ToString(simplifier.Simplify(map)), HasSubstr("(d0) -> (5)"));
+  EXPECT_THAT(printer_.ToString(simplifier.Simplify(map)),
+              HasSubstr("(d0) -> (5)"));
 }
 
-TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsIfSmallerThanDivisor) {
+TEST_F(IndexingMapTest, SimplifyDivsAndModsIfSmallerThanDivisor) {
   AffineExpr d0, d1;
   bindDims(&mlir_context_, d0, d1);
-  AffineExpr c16 = getAffineConstantExpr(16, &mlir_context_);
 
   // (d0, d1) -> (d0 + d1 floordiv 16, d1 mod 16).
   auto map =
-      AffineMap::get(2, 0, {d0 + d1.floorDiv(c16), d1 % c16}, &mlir_context_);
+      AffineMap::get(2, 0, {d0 + d1.floorDiv(16), d1 % 16}, &mlir_context_);
 
   // d0 in [0, 8) and d1 in [0, 16).
   IndexingMapSimplifier simplifier(&mlir_context_);
   simplifier.SetInclusiveBounds(d0, 0, 7);
   simplifier.SetInclusiveBounds(d1, 0, 15);
 
-  EXPECT_THAT(ToString(simplifier.Simplify(map)),
+  EXPECT_THAT(printer_.ToString(simplifier.Simplify(map)),
               HasSubstr("(d0, d1) -> (d0, d1)"));
 }
 
-TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithMultipliers) {
+TEST_F(IndexingMapTest, SimplifyDivsAndModsWithMultipliers) {
   AffineExpr d0, d1, d2;
   bindDims(&mlir_context_, d0, d1, d2);
-  AffineExpr c10 = getAffineConstantExpr(10, &mlir_context_);
-  AffineExpr c100 = getAffineConstantExpr(100, &mlir_context_);
 
   //  (d0, d1, d2) -> ((d0 * 100 + d1 * 10 + d2) floordiv 100,
   //                  "((d0 * 100 + d1 * 10 + d2) mod 100) floordiv 10,
   //                    d2 mod 10)"
-  AffineExpr weighted_sum = d0 * c100 + d1 * c10 + d2;
-  auto map = AffineMap::get(3, 0,
-                            {weighted_sum.floorDiv(c100),
-                             (weighted_sum % c100).floorDiv(c10), d2 % c10},
-                            &mlir_context_);
+  AffineExpr weighted_sum = d0 * 100 + d1 * 10 + d2;
+  auto map = AffineMap::get(
+      3, 0,
+      {weighted_sum.floorDiv(100), (weighted_sum % 100).floorDiv(10), d2 % 10},
+      &mlir_context_);
 
   // d_i in [0, 10).
   IndexingMapSimplifier simplifier(&mlir_context_);
@@ -86,22 +87,19 @@ TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithMultipliers) {
   simplifier.SetInclusiveBounds(d1, 0, 9);
   simplifier.SetInclusiveBounds(d2, 0, 9);
 
-  EXPECT_THAT(ToString(simplifier.Simplify(map)),
+  EXPECT_THAT(printer_.ToString(simplifier.Simplify(map)),
               HasSubstr("(d0, d1, d2) -> (d0, d1, d2)"));
 }
 
-TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithDivisibleMultipliers) {
+TEST_F(IndexingMapTest, SimplifyDivsAndModsWithDivisibleMultipliers) {
   AffineExpr d0, d1, d2;
   bindDims(&mlir_context_, d0, d1, d2);
-  AffineExpr c4 = getAffineConstantExpr(4, &mlir_context_);
-  AffineExpr c8 = getAffineConstantExpr(8, &mlir_context_);
-  AffineExpr c16 = getAffineConstantExpr(16, &mlir_context_);
 
   // (d0, d1, d2) -> ((d0 * 16 + d1 * 4 + d2) floordiv 8, "
   //                  (d0 * 16 + d1 * 4 + d2) mod 8)
-  AffineExpr weighted_sum = d0 * c16 + d1 * c4 + d2;
-  auto map = AffineMap::get(
-      3, 0, {weighted_sum.floorDiv(c8), weighted_sum % c8}, &mlir_context_);
+  AffineExpr weighted_sum = d0 * 16 + d1 * 4 + d2;
+  auto map = AffineMap::get(3, 0, {weighted_sum.floorDiv(8), weighted_sum % 8},
+                            &mlir_context_);
 
   // d_0 in [0, 10).
   IndexingMapSimplifier simplifier(&mlir_context_);
@@ -109,27 +107,20 @@ TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithDivisibleMultipliers) {
   simplifier.SetInclusiveBounds(d1, 0, 3);
   simplifier.SetInclusiveBounds(d2, 0, 3);
 
-  EXPECT_THAT(ToString(simplifier.Simplify(map)),
+  EXPECT_THAT(printer_.ToString(simplifier.Simplify(map)),
               HasSubstr("(d0, d1, d2) -> (d0 * 2 + (d1 * 4 + d2) floordiv 8, "
                         "(d1 * 4 + d2) mod 8)"));
 }
 
-TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithReverse) {
+TEST_F(IndexingMapTest, SimplifyDivsAndModsWithReverse) {
   AffineExpr d0, d1;
   bindDims(&mlir_context_, d0, d1);
-  AffineExpr mc1 = getAffineConstantExpr(-1, &mlir_context_);
-  AffineExpr c9 = getAffineConstantExpr(9, &mlir_context_);
-  AffineExpr c11 = getAffineConstantExpr(11, &mlir_context_);
-  AffineExpr mc11 = getAffineConstantExpr(-11, &mlir_context_);
-  AffineExpr mc99 = getAffineConstantExpr(-99, &mlir_context_);
-  AffineExpr c109 = getAffineConstantExpr(109, &mlir_context_);
 
   // (d0, d1) -> (-((d0 * -11 - d1 + 109) floordiv 11) + 9,
   //              d0 * 11 + d1 + ((d0 * -11 - d1 + 109) floordiv 11) * 11 - 99).
-  AffineExpr weighted_sum = (d0 * mc11 + d1 * mc1 + c109).floorDiv(c11);
+  AffineExpr weighted_sum = (-11 * d0 - d1 + 109).floorDiv(11);
   auto map = AffineMap::get(
-      2, 0,
-      {c9 + mc1 * weighted_sum, c11 * d0 + d1 + weighted_sum * c11 + mc99},
+      2, 0, {9 - weighted_sum, 11 * d0 + d1 + weighted_sum * 11 - 99},
       &mlir_context_);
 
   // d0 in [0, 10) and d1 in [0, 11).
@@ -137,7 +128,7 @@ TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithReverse) {
   simplifier.SetInclusiveBounds(d0, 0, 9);
   simplifier.SetInclusiveBounds(d1, 0, 10);
 
-  EXPECT_THAT(ToString(simplifier.Simplify(map)),
+  EXPECT_THAT(printer_.ToString(simplifier.Simplify(map)),
               HasSubstr("(d0, d1) -> (d0, d1)"));
 }
 
@@ -147,6 +138,22 @@ TEST_F(IndexingMapSimplifierTest, SimplifyDivsAndModsWithReverse) {
 
 // TODO(b/313840171): Simplify `((d0 * 8 + d1) mod 16) floordiv 4` to
 // `((d0 * 8 + d1) floordiv 4) mod 4` to `(d0 * 2 + d1 floordiv 4) mod 4`.
+
+TEST_F(IndexingMapTest, AffineMapPrinterTest) {
+  AffineExpr d0, d1, s0, s1;
+  bindDims(&mlir_context_, d0, d1);
+  bindSymbols(&mlir_context_, s0, s1);
+
+  // (d0, d1)[s0, s1] -> (d0 + d1 floordiv 8, s0 + s1 mod 16).
+  auto map =
+      AffineMap::get(2, 2, {d0 + d1.floorDiv(8), s0 + s1 % 16}, &mlir_context_);
+
+  printer_.SetDimensionName(0, "offset");
+  printer_.SetSymbolName(1, "linear_index");
+  EXPECT_THAT(printer_.ToString(map),
+              HasSubstr("(offset, d1)[s0, linear_index] -> "
+                        "(offset + d1 floordiv 8, s0 + linear_index mod 16)"));
+}
 
 }  // namespace
 }  // namespace gpu

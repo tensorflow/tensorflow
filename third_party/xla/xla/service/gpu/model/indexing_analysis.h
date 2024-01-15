@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
 namespace xla {
@@ -40,7 +41,9 @@ namespace gpu {
 // Contains indexing maps for all N-dimensional tensor input operands that
 // correspond to a particular output.
 struct HloInstructionIndexing {
-  std::string ToString() const;
+  std::string ToString(
+      const AffineMapPrinter& printer = AffineMapPrinter()) const;
+  void Print(std::ostream& out, const AffineMapPrinter& printer) const;
 
   // Returns true if the indexing was simplified.
   bool Simplify();

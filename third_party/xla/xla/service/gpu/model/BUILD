@@ -242,11 +242,38 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "affine_map_printer",
+    srcs = ["affine_map_printer.cc"],
+    hdrs = ["affine_map_printer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "affine_map_printer_test",
+    srcs = ["affine_map_printer_test.cc"],
+    deps = [
+        ":affine_map_printer",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "indexing_map",
     srcs = ["indexing_map.cc"],
     hdrs = ["indexing_map.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":affine_map_printer",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
@@ -260,6 +287,7 @@ xla_cc_test(
     name = "indexing_map_test",
     srcs = ["indexing_map_test.cc"],
     deps = [
+        ":affine_map_printer",
         ":indexing_map",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -275,6 +303,7 @@ cc_library(
     hdrs = ["indexing_analysis.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":affine_map_printer",
         ":indexing_map",
         "//xla:permutation_util",
         "//xla:shape_util",
@@ -317,14 +346,10 @@ cc_library(
     hdrs = ["tile_analysis.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":indexing_analysis",
+        ":affine_map_printer",
         ":indexing_map",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

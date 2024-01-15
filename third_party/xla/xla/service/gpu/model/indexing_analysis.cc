@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <optional>
 #include <ostream>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <variant>
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -755,74 +757,6 @@ bool HloInstructionIndexing::Simplify() {
   return any_simplified;
 }
 
-bool operator==(const Range& lhs, const Range& rhs) {
-  return lhs.lower_bound == rhs.lower_bound &&
-         lhs.upper_bound == rhs.upper_bound;
-}
-
-bool operator==(const Domain& lhs, const Domain& rhs) {
-  return lhs.dimension_ranges == rhs.dimension_ranges &&
-         lhs.symbol_ranges == rhs.symbol_ranges;
-}
-
-bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
-  return lhs.affine_map == rhs.affine_map && lhs.domain == rhs.domain;
-}
-
-std::ostream& operator<<(std::ostream& out, const Range& range) {
-  out << '[' << range.lower_bound << ", " << range.upper_bound << ")";
-  return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const Domain& domain) {
-  for (const auto& [index, range] : llvm::enumerate(domain.dimension_ranges)) {
-    out << 'd' << index << " in " << range << '\n';
-  }
-  for (const auto& [index, range] : llvm::enumerate(domain.symbol_ranges)) {
-    out << 's' << index << " in " << range << '\n';
-  }
-  return out;
-}
-
-std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
-  out << ToString(indexing_map.affine_map) << " with domain\n"
-      << indexing_map.domain << "\n";
-  return out;
-}
-
-std::ostream& operator<<(std::ostream& out,
-                         const HloInstructionIndexing& instr_indexing) {
-  for (const auto& [operand_id, indexing_maps] : instr_indexing.indexing_maps) {
-    out << "operand id = " << operand_id << ' ';
-    for (const auto& indexing_map : indexing_maps) {
-      out << indexing_map;
-    }
-  }
-  return out;
-}
-
-std::string Range::ToString() const { return ToStringImpl(*this); }
-
-std::string Domain::ToString() const { return ToStringImpl(*this); }
-
-Domain Domain::FromUpperBounds(absl::Span<const int64_t> dimension_upper_bounds,
-                               absl::Span<const int64_t> symbol_upper_bounds) {
-  Domain domain;
-  domain.dimension_ranges.reserve(dimension_upper_bounds.size());
-  for (const int64_t ub : dimension_upper_bounds) {
-    CHECK_GT(ub, 0);
-    domain.dimension_ranges.push_back({.lower_bound = 0, .upper_bound = ub});
-  }
-  domain.symbol_ranges.reserve(symbol_upper_bounds.size());
-  for (const int64_t ub : symbol_upper_bounds) {
-    CHECK_GT(ub, 0);
-    domain.symbol_ranges.push_back({.lower_bound = 0, .upper_bound = ub});
-  }
-  return domain;
-}
-
-std::string IndexingMap::ToString() const { return ToStringImpl(*this); }
-
 HloInstructionIndexing HloInstructionIndexing::FromIndexingMaps(
     absl::Span<const IndexingMap> indexing_maps) {
   HloInstructionIndexing instr_indexing;
@@ -833,8 +767,29 @@ HloInstructionIndexing HloInstructionIndexing::FromIndexingMaps(
   return instr_indexing;
 }
 
-std::string HloInstructionIndexing::ToString() const {
-  return ToStringImpl(*this);
+std::string HloInstructionIndexing::ToString(
+    const AffineMapPrinter& printer) const {
+  std::string s;
+  std::stringstream ss(s);
+  Print(ss, printer);
+  return ss.str();
+}
+
+void HloInstructionIndexing::Print(std::ostream& out,
+                                   const AffineMapPrinter& printer) const {
+  for (const auto& [operand_id, indexing_maps] : indexing_maps) {
+    out << "operand id = " << operand_id << ' ';
+    for (const auto& indexing_map : indexing_maps) {
+      indexing_map.Print(out, printer);
+    }
+  }
+}
+
+std::ostream& operator<<(std::ostream& out,
+                         const HloInstructionIndexing& instr_indexing) {
+  AffineMapPrinter printer;
+  instr_indexing.Print(out, printer);
+  return out;
 }
 
 absl::flat_hash_map<const HloInstruction*, absl::flat_hash_set<IndexingMap>>

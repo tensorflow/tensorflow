@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -36,9 +37,22 @@ namespace {
 using ::testing::HasSubstr;
 
 class LoopTest : public HloTestBase {
+ public:
+  void SetUp() override {
+    HloTestBase::SetUp();
+    printer_.SetDimensionName(0, "th_x");
+    printer_.SetDimensionName(1, "th_y");
+    printer_.SetDimensionName(2, "th_z");
+    printer_.SetDimensionName(3, "bl_x");
+    printer_.SetDimensionName(4, "bl_y");
+    printer_.SetDimensionName(5, "bl_z");
+  }
+
  protected:
   stream_executor::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  AffineMapPrinter printer_;
+  mlir::MLIRContext mlir_context_;
 };
 
 absl::StatusOr<std::unique_ptr<LoopFusion>> GetLoopFusion(
@@ -73,13 +87,12 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   auto analysis = AnalyzeFusion(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
-  mlir::MLIRContext mlir_context;
-  EXPECT_THAT(loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)
-                  ->ToString(),
-              HasSubstr("(d0, d1, d2, d3, d4, d5)[s0] -> ("
-                        "(d0 * 4 + d3 * 512 + s0) floordiv 60000, "
-                        "((d0 * 4 + d3 * 512 + s0) floordiv 300) mod 200, "
-                        "(d0 * 4 + d3 * 512 + s0) mod 300)"));
+  EXPECT_THAT(loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_)
+                  ->ToString(printer_),
+              HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0] -> ("
+                        "(th_x * 4 + bl_x * 512 + s0) floordiv 60000, "
+                        "((th_x * 4 + bl_x * 512 + s0) floordiv 300) mod 200, "
+                        "(th_x * 4 + bl_x * 512 + s0) mod 300)"));
 }
 
 TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
@@ -101,10 +114,9 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto analysis = AnalyzeFusion(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
-  mlir::MLIRContext mlir_context;
-  EXPECT_THAT(loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)
-                  ->ToString(),
-              HasSubstr("(d0, d1, d2, d3, d4, d5) -> (d0)"));
+  EXPECT_THAT(loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_)
+                  ->ToString(printer_),
+              HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (th_x)"));
 }
 
 }  // namespace
