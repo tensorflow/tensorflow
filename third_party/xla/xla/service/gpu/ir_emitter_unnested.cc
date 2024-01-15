@@ -4220,6 +4220,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       switch (wrapped->opcode()) {
         case HloOpcode::kReduceScatter:
           return EmitNcclAsyncDone(Thunk::kNcclReduceScatterDone, instr);
+        case HloOpcode::kAllToAll:
+          return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
         default:
           return InternalError("Unsupported async done wrapped instruction: %s",
                                HloOpcodeString(wrapped->opcode()));
