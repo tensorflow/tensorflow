@@ -19,7 +19,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <initializer_list>
+#include <utility>
 #include <vector>
 
 #define EIGEN_USE_THREADS
@@ -100,6 +102,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   auto rhs_mem = memory(rhs_md, cpu_engine, rhs_minfo.Data());
   auto bias_mem = memory(nullptr);
   auto result_mem = memory(result_md, cpu_engine, result_minfo.Data());
+  std::vector<std::pair<int, dnnl::memory>> postop_args;
 
   // Currently, GELU/ReLU only fusion is supported.
   dnnl::post_ops post_ops;
@@ -131,6 +134,15 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
         }
         bias_mem = memory(bias_md, cpu_engine, bias_minfo.Data());
       } break;
+      case OneDnnMatMulConfig::BINARY_ADD: {
+        MemrefInfo binary_minfo(args[arg_indx++]);
+        auto binary_md = binary_minfo.GetOneDnnMemDesc();
+        auto arg_idx =
+            DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_ops.len()) | DNNL_ARG_SRC_1;
+        post_ops.append_binary(dnnl::algorithm::binary_add, binary_md);
+        postop_args.emplace_back(
+            arg_idx, dnnl::memory(binary_md, cpu_engine, binary_minfo.Data()));
+      } break;
       default:
         LOG(FATAL) << __FILE__ << ":" << __LINE__
                    << " Attempt to call OneDNN MatMul runtime library with "
@@ -149,12 +161,18 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   auto matmul_pd = matmul::primitive_desc(cpu_engine, lhs_md, rhs_md, bias_md,
                                           result_md, attrs);
 
+  if (std::strstr(matmul_pd.impl_info_str(), "ref") != nullptr) {
+    LOG(WARNING) << "[Perf]: MatMul reference implementation being executed";
+  }
+
   auto matmul_prim = matmul(matmul_pd);
 
   std::unordered_map<int, memory> matmul_args{{DNNL_ARG_SRC, lhs_mem},
                                               {DNNL_ARG_WEIGHTS, rhs_mem},
                                               {DNNL_ARG_BIAS, bias_mem},
                                               {DNNL_ARG_DST, result_mem}};
+
+  matmul_args.insert(postop_args.begin(), postop_args.end());
 
   matmul_prim.execute(onednn_stream, matmul_args);
 }

@@ -418,12 +418,15 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
         return OkStatus();
       }
 
+      bool nd_bias = absl::c_count_if(new_operands.back()->shape().dimensions(),
+                                      [](int64_t dim) { return dim > 1; }) > 1;
+
       auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
           dot->CloneWithNewOperands(dot->shape(), new_operands)));
 
       auto backend_config = matmul_call->backend_config<BackendConfig>();
       backend_config->mutable_onednn_matmul_config()->add_fused_ops(
-          OneDnnMatMulConfig::BIAS);
+          nd_bias ? OneDnnMatMulConfig::BINARY_ADD : OneDnnMatMulConfig::BIAS);
       backend_config->mutable_onednn_matmul_config()->set_bias_broadcast(
           bias_bcast);
 

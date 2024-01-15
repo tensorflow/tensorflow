@@ -39,6 +39,15 @@ class MatmulTest : public HloTestBase {
     ; CHECK-DAG:   }
     ; CHECK:     }
     )";
+  const char* fused_matmul_binary_add_ = R"(
+    ; CHECK:     custom_call_target="__onednn$matmul",
+    ; CHECK:       backend_config={
+    ; CHECK-DAG:     "outer_dimension_partitions":[],
+    ; CHECK-DAG:     "onednn_matmul_config":{
+    ; CHECK-DAG:       "fused_ops":["BINARY_ADD"]
+    ; CHECK-DAG:   }
+    ; CHECK:     }
+    )";
 };
 
 TEST_F(MatmulTest, SimpleTestF32) {
@@ -118,7 +127,7 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion1) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion2) {
@@ -141,7 +150,7 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAddFusion2) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter1) {
@@ -160,7 +169,7 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter1) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
 }
 
 TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter2) {
@@ -197,6 +206,26 @@ TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter2D) {
     reshape.11 = f32[2,2,400,400]{3,2,1,0} reshape(add.10)
     tuple.12 = (f32[2,2,400,400]{3,2,1,0}) tuple(reshape.11)
     ROOT get-tuple-element.13 = f32[2,2,400,400]{3,2,1,0} get-tuple-element(tuple.12), index=0
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
+}
+
+TEST_F(MatmulTest, SimpleTestF32WithBiasAsParameter2D1B) {
+  const char* matmul_module_str = R"(
+  HloModule matmul.biasadd.test.f32, entry_computation_layout={(f32[1,2,400,30]{3,2,1,0}, f32[1,2,30,400]{3,2,1,0}, f32[1,400]{1,0})->f32[1,2,400,400]{3,2,1,0}}
+  
+  ENTRY matmul.biasadd.test.f32 {
+    arg0.1 = f32[1,2,400,30]{3,2,1,0} parameter(0), parameter_replication={false}
+    arg0.2 = f32[1,2,30,400]{3,2,1,0} parameter(1), parameter_replication={false}
+    arg0.3 = f32[1,400]{1,0} parameter(2), parameter_replication={false}
+    dot.7 = f32[1,2,400,400]{3,2,1,0} dot(arg0.1, arg0.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+    broad.1 = f32[1,2,400,400]{3,2,1,0} broadcast(arg0.3), dimensions={0,3}
+    add.10 = f32[1,2,400,400]{3,2,1,0} add(dot.7, broad.1)
+    reshape.11 = f32[1,2,400,400]{3,2,1,0} reshape(add.10)
+    tuple.12 = (f32[1,2,400,400]{3,2,1,0}) tuple(reshape.11)
+    ROOT get-tuple-element.13 = f32[1,2,400,400]{3,2,1,0} get-tuple-element(tuple.12), index=0
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
@@ -241,7 +270,7 @@ TEST_F(MatmulTest, SimpleTestF32TransposeBWithBiasAddFusion) {
   })";
 
   EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-4, 1e-4}));
-  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_binary_add_);
 }
 
 TEST_F(MatmulTest, ApproxGELUTestF32) {
