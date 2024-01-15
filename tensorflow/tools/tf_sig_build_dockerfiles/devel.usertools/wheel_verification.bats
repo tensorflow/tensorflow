@@ -61,7 +61,7 @@ teardown_file() {
     source /tf/venv/bin/activate
     python3 -m pip install "$TF_WHEEL" -f https://storage.googleapis.com/libtpu-releases/index.html
     # needed to avoid a dependency conflcit with `requests`
-    python3 -m pip install "urllib3<2"
+    python3 -m pip install "urllib3<2" requests
 }
 
 @test "TensorFlow is importable" {
