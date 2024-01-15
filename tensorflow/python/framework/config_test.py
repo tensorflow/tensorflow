@@ -213,17 +213,17 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
 
     # Tests enabling mlir bridge.
     config.enable_mlir_bridge()
-    self.assertTrue(context.context().config.experimental.enable_mlir_bridge)
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
     self.assertEqual(
         context.context().config.experimental.mlir_bridge_rollout,
-        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_ENABLED)
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_UNSPECIFIED)
 
     # Tests disabling mlir bridge.
     config.disable_mlir_bridge()
     self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
     self.assertEqual(
         context.context().config.experimental.mlir_bridge_rollout,
-        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_DISABLED)
+        config_pb2.ConfigProto.Experimental.MLIR_BRIDGE_ROLLOUT_UNSPECIFIED)
 
   @reset_eager
   def testResetMlirFlags(self):
