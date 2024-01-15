@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/mock_nccl_utils.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/nccl_utils.h"
@@ -39,7 +40,7 @@ namespace gpu {
 absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     std::vector<GlobalDeviceId> local_devices, size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
+    const NcclCliqueIdCallback& clique_id_callback, int rank, int64_t stream_id,
     bool enable_clique_optimization,
     GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
   return Unimplemented("AcquireMockNcclComm is not implemented.");

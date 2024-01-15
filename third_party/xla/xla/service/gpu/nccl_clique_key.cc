@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_clique_key.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/service/global_device_id.h"
@@ -45,6 +49,33 @@ std::string NcclCliqueKey::ToString() const {
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {
   return a.devices_ == b.devices_ && a.stream_id_ == b.stream_id_;
+}
+
+//===----------------------------------------------------------------------===//
+// NcclCliqueId
+//===----------------------------------------------------------------------===//
+
+NcclCliqueId::NcclCliqueId() { std::fill(data_.begin(), data_.end(), 0); }
+
+NcclCliqueId::NcclCliqueId(char bytes[kSize]) {
+  std::copy(bytes, bytes + kSize, data_.data());
+}
+
+absl::StatusOr<NcclCliqueId> NcclCliqueId::FromString(std::string_view str) {
+  if (str.size() != kSize) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Invalid NCCL clique id size: ", str.size(), ", expected ",
+                     kSize, " bytes"));
+  }
+  char bytes[kSize];
+  std::copy(str.data(), str.data() + kSize, bytes);
+  return NcclCliqueId(bytes);
+}
+
+absl::Span<const char> NcclCliqueId::data() const { return data_; }
+
+std::string NcclCliqueId::ToString() const {
+  return std::string(data_.data(), data_.size());
 }
 
 }  // namespace xla::gpu

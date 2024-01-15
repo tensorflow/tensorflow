@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_PJRT_GPU_NCCL_ID_STORE_H_
 
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
@@ -25,15 +24,14 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/statusor.h"
 
 namespace xla {
 
-// A table mapping NcclCliqueKeys to ncclUniqueId values encoded as strings.
-// In a distributed setup the table of NCCL IDs is kept on the master node
-// (node 0). The node of the first participating device will create the unique
-// id.
+// A table mapping NcclCliqueKeys to NcclCliqueIds. In a distributed setup the
+// table of NCCL IDs is kept on the master node (node 0). The node of the first
+// participating device will create the unique id.
 class NcclIdStore {
  public:
   NcclIdStore(int node_id,
@@ -43,7 +41,7 @@ class NcclIdStore {
         device_to_node_(std::move(device_to_node)),
         kv_store_(std::move(kv_store)) {}
 
-  StatusOr<std::string> GetNcclUniqueId(const gpu::NcclCliqueKey& key);
+  StatusOr<gpu::NcclCliqueId> GetNcclUniqueId(const gpu::NcclCliqueKey& key);
 
  private:
   const int node_id_;
@@ -51,7 +49,7 @@ class NcclIdStore {
   const std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   absl::Mutex mu_;
-  absl::flat_hash_map<gpu::NcclCliqueKey, std::string> cache_
+  absl::flat_hash_map<gpu::NcclCliqueKey, gpu::NcclCliqueId> cache_
       ABSL_GUARDED_BY(mu_);
 };
 

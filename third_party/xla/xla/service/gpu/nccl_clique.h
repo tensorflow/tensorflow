@@ -55,10 +55,10 @@ namespace xla::gpu {
 // Returns true if the NCCL config is global (NCCL_COMM_ID env variable is set).
 bool IsGlobalNcclConfig();
 
-// Returns a unique id callback passed as an argument if it's not null or a
-// default callback to get NCCL id if we are running in local mode.
-absl::StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
-    const NcclUniqueIdCallback* unique_id_callback,  // may be null
+// Returns a clique id callback passed as an argument if it's not null or a
+// default callback to get create a clique id if we are running in local mode.
+absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
+    const NcclCliqueIdCallback* clique_id_callback,  // may be null
     bool is_local);
 
 //===----------------------------------------------------------------------===//
@@ -75,7 +75,7 @@ struct NcclComm : public Lockable<NcclCommHandle> {
 absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int32_t rank,
+    const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     int64_t stream_id, bool enable_clique_optimization);
 
 }  // namespace xla::gpu

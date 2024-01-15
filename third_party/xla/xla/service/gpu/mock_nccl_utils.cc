@@ -61,6 +61,8 @@ limitations under the License.
 #include "xla/service/gpu/mock_nccl_sleep_kernel.h"
 #include "xla/service/gpu/mock_nccl_topo_config.h"
 #include "xla/service/gpu/mock_nccl_xml.h"
+#include "xla/service/gpu/nccl_clique.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_errors.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
@@ -68,9 +70,7 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -235,8 +235,8 @@ absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
     local_devices = participants;
   }
   TF_ASSIGN_OR_RETURN(
-      const NcclUniqueIdCallback* unique_id_callback,
-      GetNcclUniqueIdCallback(params.nccl_unique_id_callback, true));
+      const NcclCliqueIdCallback* clique_id_callback,
+      GetNcclCliqueIdCallback(params.nccl_clique_id_callback, true));
 
   size_t num_local_participants = GetNumLocalParticipants(
       participants, params.gpu_global_device_ids ? &local_devices : nullptr);
@@ -251,7 +251,7 @@ absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
 
   return AcquireMockNcclComm(params.run_id, OpId(op_id),
                              std::move(participants), std::move(local_devices),
-                             num_local_participants, *unique_id_callback,
+                             num_local_participants, *clique_id_callback,
                              global_rank, stream_id, false, topo_model);
 }
 
@@ -552,7 +552,7 @@ absl::StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
 
 std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
-    const NcclUniqueIdCallback& unique_id_callback,
+    const NcclCliqueIdCallback& clique_id_callback,
     size_t num_local_participants, bool may_skip_rendezvous) {
   static auto& cliques = *new NcclCliques;
 
@@ -674,7 +674,7 @@ absl::Status InitializeMockNcclCostModel(
 absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     std::vector<GlobalDeviceId> local_devices, size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank, int64_t stream_id,
+    const NcclCliqueIdCallback& clique_id_callback, int rank, int64_t stream_id,
     bool enable_clique_optimization,
     GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
   int nRanks = participants.size();
@@ -690,7 +690,7 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
   // prevent threads from different groups locking communicators in the clique.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
   auto clique = AcquireNcclClique(
-      run_id, op_id, clique_key, unique_id_callback, 1,
+      run_id, op_id, clique_key, clique_id_callback, 1,
       enable_clique_optimization ||
           stream_id == GetStreamId(true, AsyncStreamKind::kP2P));
 

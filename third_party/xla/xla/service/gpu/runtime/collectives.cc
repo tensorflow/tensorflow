@@ -98,10 +98,10 @@ bool ShouldEnableCliqueOptimization(const NcclExecuteParams& params,
                                     const DebugOptions* debug_options,
                                     bool no_parallel_custom_call) {
   // Enable clique optimization for single-host application, which is indicated
-  // by the absence of nccl_unique_id_callback. For multiple-host, only enable
+  // by the absence of nccl_clique_id_callback. For multiple-host, only enable
   // when a debug flag is set for now, due to some divergent compilation issues.
   return no_parallel_custom_call &&
-         (!params.nccl_unique_id_callback ||
+         (!params.nccl_clique_id_callback ||
           debug_options->xla_gpu_enable_nccl_clique_optimization());
 }
 

@@ -61,24 +61,26 @@ bool IsGlobalNcclConfig() {
 }
 
 // Creates a new NCCL unique id for local communication.
-static absl::StatusOr<std::string> LocalNcclUniqueId(const NcclCliqueKey&) {
+static absl::StatusOr<NcclCliqueId> LocalNcclUniqueId(const NcclCliqueKey&) {
 #ifdef XLA_ENABLE_XCCL
   NcclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
-  return std::string(id.internal, NCCL_UNIQUE_ID_BYTES);
+  static_assert(sizeof(NcclUniqueId) == sizeof(NcclCliqueId),
+                "size of nccl unique id must match the clique id");
+  return NcclCliqueId(id.internal);
 #endif
   return absl::InternalError("XLA compiled without NCCL support.");
 }
 
-absl::StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
-    const NcclUniqueIdCallback* unique_id_callback, bool is_local) {
-  if (unique_id_callback != nullptr) return unique_id_callback;
+absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
+    const NcclCliqueIdCallback* clique_id_callback, bool is_local) {
+  if (clique_id_callback != nullptr) return clique_id_callback;
 
   TF_RET_CHECK(is_local || IsGlobalNcclConfig())
       << "If non-local devices are taking part of a collective API on "
-         "GPU, the nccl_unique_id_callback must be provided by the client.";
+         "GPU, the nccl_clique_id_callback must be provided by the client.";
 
-  static auto* local_callback = new NcclUniqueIdCallback(LocalNcclUniqueId);
+  static auto* local_callback = new NcclCliqueIdCallback(LocalNcclUniqueId);
   return local_callback;
 }
 
@@ -113,14 +115,12 @@ struct NcclCliques {
   absl::node_hash_map<NcclCliqueKey, NcclClique> cliques ABSL_GUARDED_BY(mu);
 };
 
-absl::StatusOr<NcclUniqueId> ToNcclUniqueId(const std::string& id) {
+absl::StatusOr<NcclUniqueId> ToNcclUniqueId(const NcclCliqueId& id) {
 #ifdef XLA_ENABLE_XCCL
-  static_assert(sizeof(NcclUniqueId) == NCCL_UNIQUE_ID_BYTES,
-                "NCCL_UNIQUE_ID_BYTES");
-
-  TF_RET_CHECK(id.size() == NCCL_UNIQUE_ID_BYTES);
+  static_assert(sizeof(NcclUniqueId) == sizeof(NcclCliqueId),
+                "size of nccl unique id must match the clique id");
   NcclUniqueId nccl_id;
-  absl::c_copy(id, nccl_id.internal);
+  absl::c_copy(id.data(), nccl_id.internal);
   return nccl_id;
 #endif
   return absl::InternalError("XLA compiled without NCCL support.");
@@ -128,7 +128,7 @@ absl::StatusOr<NcclUniqueId> ToNcclUniqueId(const std::string& id) {
 
 std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
-    const NcclUniqueIdCallback& unique_id_callback,
+    const NcclCliqueIdCallback& clique_id_callback,
     size_t num_local_participants, bool may_skip_rendezvous) {
   static auto& cliques = *new NcclCliques;
 
@@ -161,7 +161,7 @@ std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
         const NcclCliqueKey& clique_key = std::get<2>(rendezvous_key);
         NcclClique::Lock clique = cliques[clique_key].Acquire();
         if (clique->run_id < 0) {
-          TF_ASSIGN_OR_RETURN(std::string id, unique_id_callback(clique_key));
+          TF_ASSIGN_OR_RETURN(NcclCliqueId id, clique_id_callback(clique_key));
           TF_ASSIGN_OR_RETURN(clique->unique_id, ToNcclUniqueId(id));
         }
         // If multiple executable are running simultaneously while using
@@ -241,7 +241,7 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
 absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int32_t rank,
+    const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     int64_t stream_id, bool enable_clique_optimization) {
 #ifdef XLA_ENABLE_XCCL
   // Ensure that this group of threads have exclusive access to the clique to
@@ -254,7 +254,7 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
   NcclCliqueKey clique_key(std::move(participants), stream_id);
 
   std::shared_ptr<absl::StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
-      run_id, op_id, clique_key, unique_id_callback, num_local_participants,
+      run_id, op_id, clique_key, clique_id_callback, num_local_participants,
       enable_clique_optimization ||
           stream_id !=
               GetStreamId(/*is_async=*/true, AsyncStreamKind::kCollective));

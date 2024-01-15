@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
@@ -47,6 +48,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #endif  // GOOGLE_CUDA
+
+#if XLA_ENABLE_XCCL
+#include "xla/service/gpu/nccl_clique.h"
+#endif  // XLA_ENABLE_XCCL
 
 namespace xla {
 namespace gpu {
@@ -244,13 +249,13 @@ absl::StatusOr<NcclComm::Lock> LockNcclComm(
 
   bool is_local = participants.size() == num_local_participants;
   TF_ASSIGN_OR_RETURN(
-      const NcclUniqueIdCallback* unique_id_callback,
-      GetNcclUniqueIdCallback(params.nccl_unique_id_callback, is_local));
+      const NcclCliqueIdCallback* clique_id_callback,
+      GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
 
   se::gpu::ScopedActivateExecutorContext scoped_context(params.stream_executor);
 
   return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
-                         num_local_participants, *unique_id_callback, rank,
+                         num_local_participants, *clique_id_callback, rank,
                          stream_id, enable_clique_optimization);
 }
 #endif  // XLA_ENABLE_XCCL

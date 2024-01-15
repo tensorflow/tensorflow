@@ -43,9 +43,9 @@ class GpuExecutableRunOptions {
 
   // Callback that returns a ncclUniqueId encoded as a string for a group of
   // communicating GPU devices. Used only on NVidia GPUs.
-  GpuExecutableRunOptions& set_nccl_unique_id_callback(
-      NcclUniqueIdCallback nccl_unique_id_callback);
-  const NcclUniqueIdCallback& nccl_unique_id_callback() const;
+  GpuExecutableRunOptions& set_nccl_clique_id_callback(
+      NcclCliqueIdCallback nccl_clique_id_callback);
+  const NcclCliqueIdCallback& nccl_clique_id_callback() const;
 
   // Whether the run requires an exclusive lock on the GPU.
   bool requires_exclusive_lock_on_gpu() const {
@@ -84,7 +84,7 @@ class GpuExecutableRunOptions {
   bool enable_mock_nccl_collectives_ = false;
   MockNcclTopoModel mock_nccl_topo_model_ = MockNcclTopoModel::kGCPA3;
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
-  NcclUniqueIdCallback nccl_unique_id_callback_;
+  NcclCliqueIdCallback nccl_clique_id_callback_;
 };
 
 // NCCL-related execution parameters.
@@ -96,7 +96,7 @@ struct NcclExecuteParams {
   RunId run_id;
   const DeviceAssignment* device_assn;                         // never null
   const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null
-  const NcclUniqueIdCallback* nccl_unique_id_callback;         // may be null
+  const NcclCliqueIdCallback* nccl_clique_id_callback;         // may be null
 
   absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
 };

@@ -849,7 +849,7 @@ Status BuildDistributedDevices(
   if (num_nodes > 1) {
     auto nccl_id_store = std::make_shared<NcclIdStore>(node_id, device_to_node,
                                                        std::move(kv_store));
-    gpu_executable_run_options->set_nccl_unique_id_callback(
+    gpu_executable_run_options->set_nccl_clique_id_callback(
         [nccl_id_store](const gpu::NcclCliqueKey& key) {
           return nccl_id_store->GetNcclUniqueId(key);
         });
