@@ -518,17 +518,25 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sinh, {
   Run(Sinh, host_sinh);
 })
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTest, {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestUpperBound, {
   SetBounder(8, 9);
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA") {
-    error_spec_gen = +[](NativeT x) {
-      return x <= static_cast<NativeT>(-20.0) || x >= static_cast<NativeT>(20.0)
-                 ? ErrorSpec{0, 0}
-                 : GetDefaultSpecGenerator()(x);
-    };
+  if (platform_ == "CUDA" || platform_ == "CPU") {
+    error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0}; };
   }
-  Run(Tanh, std::tanh, error_spec_gen,
+  Run(
+      Tanh, +[](float) { return 1.0f; }, error_spec_gen,
+      [](NativeT actual) { return actual >= -1 && actual <= 1; });
+})
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestLowerBound, {
+  SetBounder(-9, -8);
+  ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
+  if (platform_ == "CUDA" || platform_ == "CPU") {
+    error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0}; };
+  }
+  Run(
+      Tanh, +[](float) { return -1.0f; }, error_spec_gen,
       [](NativeT actual) { return actual >= -1 && actual <= 1; });
 })
 
