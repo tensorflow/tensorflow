@@ -1348,15 +1348,19 @@ typedef struct TfLiteDelegate {
 TfLiteDelegate TfLiteDelegateCreate(void);
 
 /// `TfLiteOpaqueDelegateBuilder` is used for constructing
-/// `TfLiteOpaqueDelegate`, see `TfLiteOpaqueDelegateCreate` below.  Note:
-/// This struct is not ABI stable.
+/// `TfLiteOpaqueDelegate`, see `TfLiteOpaqueDelegateCreate` in c_api_opaque.h.
+/// NOTE: This struct is not ABI stable.
 ///
 /// For forward source compatibility `TfLiteOpaqueDelegateBuilder` objects
 /// should be brace-initialized, so that all fields (including any that might be
 /// added in the future) get zero-initialized.  The purpose of each field is
 /// exactly the same as with `TfLiteDelegate`.
 ///
-/// WARNING: This is an experimental interface that is subject to change.
+/// NOTE: This type is part of the TensorFlow Lite Extension APIs.
+/// We reserve the right to make changes to this API in future releases,
+/// potentially including non-backwards-compatible changes, on a different
+/// schedule than for the other TensorFlow Lite APIs. See
+/// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
 typedef struct TfLiteOpaqueDelegateBuilder {
   /// Data that delegate needs to identify itself. This data is owned by the
   /// delegate. The delegate is owned in the user code, so the delegate is
@@ -1393,41 +1397,23 @@ typedef struct TfLiteOpaqueDelegateBuilder {
   int64_t flags;
 } TfLiteOpaqueDelegateBuilder;
 
-// LINT.IfChange
 #ifndef TF_LITE_STATIC_MEMORY
-/// Creates an opaque delegate and returns its address.  The opaque delegate
-/// will behave according to the provided `opaque_delegate_builder`.  The
-/// lifetime of the objects pointed to by any of the fields within the
-/// `opaque_delegate_builder` must outlive the returned
-/// `TfLiteOpaqueDelegate` and any `TfLiteInterpreter`,
-/// `TfLiteInterpreterOptions`, `tflite::Interpreter`, or
-/// `tflite::InterpreterBuilder` that the delegate is added to.  The returned
-/// address should be passed to `TfLiteOpaqueDelegateDelete` for deletion.  If
-/// `opaque_delegate_builder` is a null pointer, then a null pointer will be
-/// returned.
+// See c_api_opaque.h.
+// This declaration in common.h is only for backwards compatibility.
+// NOTE: This function is part of the TensorFlow Lite Extension APIs, see above.
 TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder);
 
-/// Deletes the provided opaque `delegate`.  This function has no effect if the
-/// `delegate` is a null pointer.
+// See c_api_opaque.h.
+// This declaration in common.h is only for backwards compatibility.
+// NOTE: This function is part of the TensorFlow Lite Extension APIs, see above.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
 #endif  // TF_LITE_STATIC_MEMORY
 
-/// Returns a pointer to the data associated with the provided opaque
-/// `delegate`.
-///
-/// A null pointer will be returned when:
-/// - The `delegate` is null.
-/// - The `data` field of the `TfLiteOpaqueDelegateBuilder` used to construct
-///   the `delegate` was null.
-/// - Or in case of any other error.
-/// - The `delegate` has been constructed via a `TfLiteOpaqueDelegateBuilder`,
-///   but the `data` field of the `TfLiteOpaqueDelegateBuilder` is null.
-///
-///  The data_ field of `delegate` will be returned if the
-///  `opaque_delegate_builder` field is null.
+// See c_api_opaque.h.
+// This declaration in common.h is only for backwards compatibility.
+// NOTE: This function is part of the TensorFlow Lite Extension APIs, see above.
 void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
-// LINT.ThenChange(Google-internal path)
 
 /// Returns a tensor data allocation strategy.
 TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(

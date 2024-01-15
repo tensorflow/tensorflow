@@ -384,44 +384,6 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
-// LINT.IfChange
-#ifndef TF_LITE_STATIC_MEMORY
-TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
-    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
-  if (!opaque_delegate_builder) return nullptr;
-
-  TfLiteDelegate* result = new TfLiteDelegate{};
-  result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
-  *(result->opaque_delegate_builder) = *opaque_delegate_builder;
-
-  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
-}
-
-void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
-  if (!opaque_delegate) return;
-
-  const TfLiteDelegate* tflite_delegate =
-      reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
-  delete tflite_delegate->opaque_delegate_builder;
-  delete tflite_delegate;
-}
-#endif  // TF_LITE_STATIC_MEMORY
-
-void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
-  if (!delegate) return nullptr;
-
-  // The following cast is safe only because this code is part of the
-  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
-  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
-  const auto* tflite_delegate =
-      reinterpret_cast<const TfLiteDelegate*>(delegate);
-
-  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
-
-  return tflite_delegate->opaque_delegate_builder->data;
-}
-// LINT.ThenChange(Google-internal path)
-
 // Returns a tensor data allocation strategy.
 TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(
     const TfLiteTensor* const t) {
