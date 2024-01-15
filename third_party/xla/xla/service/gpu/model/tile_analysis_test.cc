@@ -53,9 +53,8 @@ MATCHER_P3(MatchSymbolicTile, offset_map_string, size_map_string,
 
 class SymbolicTileTest : public HloTestBase {
  public:
-  std::optional<HloInstructionIndexing>
-  GetOutputToInputIndexingForEntryComputation(absl::string_view hlo_string,
-                                              int output_id = 0) {
+  HloInstructionIndexing GetOutputToInputIndexingForEntryComputation(
+      absl::string_view hlo_string, int output_id = 0) {
     auto module = ParseAndReturnVerifiedModule(hlo_string);
     EXPECT_TRUE(module.ok());
 
@@ -66,7 +65,7 @@ class SymbolicTileTest : public HloTestBase {
     for (auto* operand : root->operands()) {
       if (operand->opcode() != HloOpcode::kParameter &&
           operand->opcode() != HloOpcode::kConstant) {
-        return std::nullopt;
+        return {};
       }
     }
     return ComputeOutputToInputIndexing(root, output_id, &mlir_context_);
@@ -89,14 +88,14 @@ TEST_F(SymbolicTileTest,
   )");
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile(
           "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, s3, 0)",
           "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, s4, 19)",
           "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s2, s5, 1)")));
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[1].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[1].begin()),
       Optional(MatchSymbolicTile(
           "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s0, 0, s6)",
           "()[s0, s1, s2, s3, s4, s5, s6, s7, s8] -> (s1, 19, s7)",
@@ -113,7 +112,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
   )");
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile(
           "()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11] "
           "-> (s3, s6, s9)",
@@ -134,7 +133,7 @@ TEST_F(SymbolicTileTest,
   )");
 
   EXPECT_EQ(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       std::nullopt);
 }
 
@@ -150,7 +149,7 @@ TEST_F(SymbolicTileTest,
   )");
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile("()[s0, s1, s2] -> (s0)",
                                  "()[s0, s1, s2] -> (s1)",
                                  "()[s0, s1, s2] -> (s2)")));
@@ -167,7 +166,7 @@ TEST_F(SymbolicTileTest,
   )");
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile("()[s0, s1, s2, s3, s4, s5] -> (s3)",
                                  "()[s0, s1, s2, s3, s4, s5] -> (s4)",
                                  "()[s0, s1, s2, s3, s4, s5] -> (s5)")));
@@ -191,7 +190,7 @@ TEST_F(SymbolicTileTest,
   )");
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile("()[s0, s1, s2] -> (0, s0)",
                                  "()[s0, s1, s2] -> (125, s1)",
                                  "()[s0, s1, s2] -> (1, s2)")));
@@ -208,7 +207,7 @@ TEST_F(SymbolicTileTest,
   )");
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile("()[s0, s1, s2] -> (-s0 - s2 * s1 + 178)",
                                  "()[s0, s1, s2] -> (s1)",
                                  "()[s0, s1, s2] -> (s2)")));
@@ -225,7 +224,7 @@ TEST_F(SymbolicTileTest,
   )");
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile(
           "()[s0, s1, s2, s3, s4, s5] -> (s0 * 2 + 40, s3 * 4 + 20)",
           "()[s0, s1, s2, s3, s4, s5] -> (s1, s4)",
@@ -243,7 +242,7 @@ TEST_F(SymbolicTileTest,
   )");
 
   EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing->indexing_maps[0].begin()),
+      SymbolicTile::FromIndexingMap(**input_indexing.indexing_maps[0].begin()),
       Optional(MatchSymbolicTile("()[s0, s1, s2, s3, s4, s5] -> (s3, s0)",
                                  "()[s0, s1, s2, s3, s4, s5] -> (s4, s1)",
                                  "()[s0, s1, s2, s3, s4, s5] -> (s5, s2)")));
