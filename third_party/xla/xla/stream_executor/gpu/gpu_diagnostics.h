@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <tuple>
 
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -34,10 +34,10 @@ using DriverVersion = std::tuple<int, int, int>;
 // string DriverVersionToString(DriverVersion version);
 //
 //// Converts a parsed driver version or status value to natural string form.
-// string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version);
+// string DriverVersionStatusToString(absl::StatusOr<DriverVersion> version);
 //
 //// Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-// tsl::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
+// absl::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
 
 class Diagnostician {
  public:
@@ -58,15 +58,15 @@ class Diagnostician {
   //
   // This is solely used for more informative log messages when the user is
   // running on a machine that happens to have a libcuda/kernel driver mismatch.
-  static tsl::StatusOr<DriverVersion> FindKernelModuleVersion(
+  static absl::StatusOr<DriverVersion> FindKernelModuleVersion(
       const std::string& driver_version_file_contents);
 
   // Extracts the kernel driver version from the current host.
-  static tsl::StatusOr<DriverVersion> FindKernelDriverVersion();
+  static absl::StatusOr<DriverVersion> FindKernelDriverVersion();
 
   // Iterates through loaded DSOs with DlIteratePhdrCallback to find the
   // driver-interfacing DSO version number. Returns it as a string.
-  static tsl::StatusOr<DriverVersion> FindDsoVersion();
+  static absl::StatusOr<DriverVersion> FindDsoVersion();
 
   // Logs information about the kernel driver version and userspace driver
   // library version.
@@ -80,12 +80,8 @@ class Diagnostician {
   // This is solely used for more informative log messages when the user is
   // running on a machine that happens to have a libcuda/kernel driver mismatch.
   static void WarnOnDsoKernelMismatch(
-      tsl::StatusOr<DriverVersion> dso_version,
-      tsl::StatusOr<DriverVersion> kernel_version);
-
-  // Logs information about the dev nodes present on this machine: their
-  // existence, permissions, accessibility from this uid/gid.
-  static void LogDevNodeDiagnosticInformation();
+      absl::StatusOr<DriverVersion> dso_version,
+      absl::StatusOr<DriverVersion> kernel_version);
 
   static std::string GetDevNodePath(int dev_node_ordinal);
 

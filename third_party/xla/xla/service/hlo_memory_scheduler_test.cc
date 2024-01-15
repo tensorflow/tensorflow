@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_ordering.h"
 #include "xla/shape_util.h"

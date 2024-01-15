@@ -64,6 +64,13 @@ bool IsP2PDoneOp(const HloInstruction* op) {
 // operations, regardless whether they are on hosts or on devices.
 bool IsCollectiveOp(const HloInstruction* op) {
   HloOpcode opcode = op->opcode();
+  // TODO(b/309639264): We temporarily make this pass to also order custom-calls
+  // with respect to P2P chains, to workaround an NVIDIA bug. Remove the code
+  // for custom-calls once the bug has been fixed.
+  if (opcode == HloOpcode::kCustomCall) {
+    return true;
+  }
+
   return hlo_query::IsAsyncCollectiveDoneOp(opcode,
                                             /*include_send_recv=*/true) ||
          (hlo_query::IsCollectiveCommunicationOp(opcode) &&
@@ -510,11 +517,12 @@ Status ChainCollectivesWithUnpipelinedP2P(
       continue;
     }
 
+    HloOpcode opcode = hlo->opcode();
     // Handle a P2P chain when we see its Send-Done.
-    if (hlo->opcode() == HloOpcode::kRecvDone) {
+    if (opcode == HloOpcode::kRecvDone) {
       continue;
     }
-    if (hlo->opcode() == HloOpcode::kSendDone) {
+    if (opcode == HloOpcode::kSendDone) {
       auto group_it = p2p_group_map.find(hlo->channel_id().value());
       if (group_it == p2p_group_map.end()) {
         LOG(INFO) << "Warn unhandled P2P " << hlo->ToString();
@@ -546,8 +554,10 @@ Status ChainCollectivesWithUnpipelinedP2P(
     if (reachability->IsReachable(hlo, send_done)) {
       TF_RETURN_IF_ERROR(OrderBefore(reachability, hlo, recv));
     } else {
-      TF_RETURN_IF_ERROR(
-          OrderBefore(reachability, send_done, GetStartOpForDoneOp(hlo)));
+      // TODO(b/309639264): Remove kCustomCall when the NVIDIA bug is fixed.
+      TF_RETURN_IF_ERROR(OrderBefore(
+          reachability, send_done,
+          opcode == HloOpcode::kCustomCall ? hlo : GetStartOpForDoneOp(hlo)));
     }
   }
 
@@ -586,11 +596,12 @@ Status ChainCollectivesWithPipelinedP2PParent(
       continue;
     }
 
+    HloOpcode opcode = hlo->opcode();
     // Handle a P2P chain when we see its Send-done.
-    if (hlo->opcode() == HloOpcode::kRecvDone) {
+    if (opcode == HloOpcode::kRecvDone) {
       continue;
     }
-    if (hlo->opcode() == HloOpcode::kSendDone) {
+    if (opcode == HloOpcode::kSendDone) {
       auto group_it = p2p_group_map.find(hlo->channel_id().value());
       if (group_it == p2p_group_map.end()) {
         LOG(INFO) << "Warn unhandled P2P " << hlo->ToString();
@@ -622,8 +633,10 @@ Status ChainCollectivesWithPipelinedP2PParent(
     if (reachability->IsReachable(hlo, send_done)) {
       TF_RETURN_IF_ERROR(OrderBefore(reachability, hlo, recv));
     } else {
-      TF_RETURN_IF_ERROR(
-          OrderBefore(reachability, send_done, GetStartOpForDoneOp(hlo)));
+      // TODO(b/309639264): Remove kCustomCall when the NVIDIA bug is fixed.
+      TF_RETURN_IF_ERROR(OrderBefore(
+          reachability, send_done,
+          opcode == HloOpcode::kCustomCall ? hlo : GetStartOpForDoneOp(hlo)));
     }
   }
 
@@ -666,11 +679,12 @@ Status ChainCollectivesWithPipelinedP2PChild(
       return InternalError("Detect deadlock in input HLO");
     }
 
+    HloOpcode opcode = hlo->opcode();
     // Handle a P2P chain when we see its Send-done.
-    if (hlo->opcode() == HloOpcode::kRecvDone) {
+    if (opcode == HloOpcode::kRecvDone) {
       continue;
     }
-    if (hlo->opcode() == HloOpcode::kSendDone) {
+    if (opcode == HloOpcode::kSendDone) {
       auto group_it = p2p_group_map.find(hlo->channel_id().value());
       if (group_it == p2p_group_map.end()) {
         continue;
@@ -697,8 +711,10 @@ Status ChainCollectivesWithPipelinedP2PChild(
     }
 
     // The hlo is not a Send/Recv instruction.
-    TF_RETURN_IF_ERROR(
-        OrderBefore(reachability, send_done, GetStartOpForDoneOp(hlo)));
+    // TODO(b/309639264): Remove kCustomCall when the NVIDIA bug is fixed.
+    TF_RETURN_IF_ERROR(OrderBefore(
+        reachability, send_done,
+        opcode == HloOpcode::kCustomCall ? hlo : GetStartOpForDoneOp(hlo)));
     TF_RETURN_IF_ERROR(OrderBefore(reachability, hlo, recv));
   }
 

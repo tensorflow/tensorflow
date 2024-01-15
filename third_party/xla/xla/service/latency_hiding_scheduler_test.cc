@@ -996,9 +996,9 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
     ENTRY after_optimizations_test {
     %parameter.1 = bf16[8]{0} parameter(0)
     %collective-permute.2 = bf16[8]{0} collective-permute(bf16[8]{0} parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}
-    %constant.3 = bf16[] constant(1)
-    %broadcast.4 = bf16[8]{0} broadcast(bf16[] %constant.3), dimensions={}
-    %add.5 = bf16[8]{0} add(%collective-permute.2, %broadcast.4)
+    %add.3 = bf16[8]{0} add(%parameter.1, %parameter.1)
+    %add.4 = bf16[8]{0} add(%add.3, parameter.1)
+    %add.5 = bf16[8]{0} add(%collective-permute.2, %add.4)
     %collective-permute.6 = bf16[8]{0} collective-permute(bf16[8]{0} add.5), source_target_pairs={{1,0},{0,3},{3,2}}
   }
 )";
@@ -1035,7 +1035,7 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
                              original_instruction_sequence[3]),
             PositionInVector(new_instruction_sequence,
                              original_instruction_sequence[4]));
-  EXPECT_EQ(original_instruction_sequence[0]->user_count(), 1);
+  EXPECT_EQ(original_instruction_sequence[0]->user_count(), 3);
   EXPECT_EQ(original_instruction_sequence[0]->users()[0]->opcode(),
             HloOpcode::kCollectivePermuteStart);
   HloInstruction* collective_permute_start_1 =
@@ -2915,5 +2915,63 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
       FindInstruction(hlo_module.get(), "collective-permute-start");
   EXPECT_LT(PositionInVector(new_instruction_sequence, s),
             PositionInVector(new_instruction_sequence, cps));
+}
+
+TEST_F(LatencyHidingSchedulerTest, MultipleAsyncDoneOperationsDoNotCreateLoop) {
+  absl::string_view hlo_string = R"(
+HloModule multiple_async_done_scheduler_test, is_scheduled=true
+
+called_computation {
+  ROOT %param = s32[<=4096]{0:T(8)M(1024)} parameter(0)
+}
+
+ENTRY main {
+  %while_body_forward_pass_input_tuple = (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}) parameter(0), backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_SCALAR"}
+
+  %get-tuple-element.0 = s32[<=4096]{0:T(8)M(1024)} get-tuple-element(
+      (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}) %while_body_forward_pass_input_tuple),
+      index=0, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_SCALAR"}
+
+  %get-tuple-element.1 = s32[<=4096]{0:T(8)M(1024)} get-tuple-element(
+      (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)}) %while_body_forward_pass_input_tuple),
+      index=1, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_SCALAR"}
+
+  %call-start.1 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
+    call-start(s32[<=4096]{0:T(8)M(1024)} %get-tuple-element.1),
+      async_execution_thread="sparsecore", to_apply=%called_computation
+
+  %call-done.1 = s32[<=4096]{0:T(8)M(1024)}
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.1)
+
+  %call-start.2 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
+    call-start(s32[<=4096]{0:T(8)M(1024)} %call-done.1),
+      async_execution_thread="sparsecore", to_apply=%called_computation
+
+  %call-done.2 = s32[<=4096]{0:T(8)M(1024)}
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.2)
+
+  %call-start.3 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
+    call-start(s32[<=4096]{0:T(8)M(1024)} %get-tuple-element.0),
+      async_execution_thread="sparsecore", to_apply=%called_computation
+
+  %call-done.3 = s32[<=4096]{0:T(8)M(1024)}
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.3)
+
+  ROOT %tuple.6 = (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)})
+    tuple(s32[<=4096]{0:T(8)M(1024)} %call-done.2, s32[<=4096]{0:T(8)M(1024)} %call-done.3),
+      backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_SCALAR"}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  // The double indirection of the buffer aliasing in the module above should
+  // not create a failure of scheduling by the async done checks.
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
 }
 }  // namespace xla

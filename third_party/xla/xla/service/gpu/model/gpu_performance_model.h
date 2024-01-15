@@ -19,9 +19,12 @@ limitations under the License.
 #include <array>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -54,6 +57,77 @@ struct EstimateRunTimeData {
   absl::Duration exec_time;
 };
 
+class GpuPerformanceModelCache {
+ public:
+  // Returns cached runtime data for the instruction or producer-consumer pair.
+  // Returns nullopt if there is no data in cache.
+  std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction);
+  std::optional<absl::Duration> Get(const HloInstruction& producer,
+                                    const HloInstruction& consumer);
+
+  // Sets cache value for the instruction or producer-consumer pair.
+  void Set(const HloInstruction& instruction,
+           const EstimateRunTimeData& runtime_data);
+  void Set(const HloInstruction& producer, const HloInstruction& consumer,
+           absl::Duration runtime);
+
+  // Removes all cache entries for this instruction. The cache contains entries
+  // for individual instructions in instruction_runtime_data_ and for
+  // producer-consumer pairs in fusion_runtime_data_.
+  void Invalidate(const HloInstruction& instruction);
+
+ private:
+  absl::Mutex mutex_;
+
+  // Stores unfused runtime data for individual instructions.
+  absl::flat_hash_map<HloInstructionAdaptor, EstimateRunTimeData>
+      instruction_runtime_data_;
+
+  // Stores fused runtime data for producer-consumer pairs.
+  absl::flat_hash_map<
+      HloInstructionAdaptor,
+      absl::flat_hash_map<HloInstructionAdaptor, absl::Duration>>
+      fusion_runtime_data_;
+};
+
+struct GpuPerformanceModelOptions {
+  // Factor for how much parallelism between compute and memory accesses should
+  // be assumed. If 1.0, assume perfect parallelism (the run time is the maximum
+  // of both times). If 0.0, assume no parallelism (the run time is the sum of
+  // both times).
+  double memory_compute_parallelism = 1.0;
+
+  // If present, use this to retrieve fusion analyses.
+  HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
+
+  GpuPerformanceModelCache* gpu_performance_model_cache = nullptr;
+
+  static GpuPerformanceModelOptions Default() {
+    return GpuPerformanceModelOptions();
+  }
+
+  static GpuPerformanceModelOptions PriorityFusion(
+      HloFusionAnalysisCache* fusion_analysis_cache = nullptr,
+      GpuPerformanceModelCache* gpu_performance_model_cache = nullptr) {
+    GpuPerformanceModelOptions config;
+    config.fusion_analysis_cache = fusion_analysis_cache;
+    config.gpu_performance_model_cache = gpu_performance_model_cache;
+    // This constant was chosen empirically in early 2024, based on runtime
+    // performance on a set of benchmarks internal to Google. Intuitively, we
+    // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
+    // or memory accesses will be stalled waiting for the other, but usually
+    // they won't).
+    config.memory_compute_parallelism = 0.95;
+    return config;
+  }
+
+  static GpuPerformanceModelOptions ForModule(const HloModule* module) {
+    return module->config().debug_options().xla_gpu_enable_priority_fusion()
+               ? PriorityFusion()  // Only cache within priority fusion.
+               : Default();
+  }
+};
+
 class GpuPerformanceModel {
  public:
   struct RunTimes {
@@ -62,16 +136,58 @@ class GpuPerformanceModel {
   };
 
   static EstimateRunTimeData EstimateRunTimeForInstruction(
-      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis);
+      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config);
+
+  static EstimateRunTimeData EstimateRunTimeForInstructionCached(
+      const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config);
+
+  // TODO(shyshkov): Unify interface with EstimateRunTimeForInstruction.
+  static absl::Duration EstimateRunTimeForFusion(
+      const HloInstruction* producer, const HloInstruction* consumer,
+      const EstimateRunTimeData& producer_runtime,
+      const EstimateRunTimeData& consumer_runtime,
+      const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config);
+
+  static absl::Duration EstimateRunTimeForFusionCached(
+      const HloInstruction* producer, const HloInstruction* consumer,
+      const EstimateRunTimeData& producer_runtime,
+      const EstimateRunTimeData& consumer_runtime,
+      const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config);
+
+  static absl::Duration EstimateUnfusedExecTime(
+      const HloInstruction* producer,
+      const EstimateRunTimeData& producer_runtime,
+      const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config,
+      const std::vector<HloInstruction*>& fused_consumers);
+
+  static absl::Duration EstimateFusedExecTime(
+      const HloInstruction* producer,
+      const EstimateRunTimeData& producer_runtime,
+      const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config,
+      const std::vector<HloInstruction*>& fused_consumers, bool multi_output);
 
   static RunTimes EstimateRunTimes(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config,
+      std::vector<HloInstruction*> fused_consumers = {},
+      bool multi_output = false);
+
+  static RunTimes EstimateRunTimesForPriorityFusion(
+      const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config,
       std::vector<HloInstruction*> fused_consumers = {},
       bool multi_output = false);
 
   // Writes estimated execution time to FusionBackendConfig.reification_cost.
   static void RecordEstimatedRunTime(HloInstruction* instruction,
-                                     const GpuHloCostAnalysis* cost_analysis);
+                                     const GpuHloCostAnalysis* cost_analysis,
+                                     const GpuPerformanceModelOptions& config);
   static absl::Duration ComputeTime(
       const se::DeviceDescription& gpu_device_info, int64_t flops,
       int64_t num_threads);
@@ -80,7 +196,8 @@ class GpuPerformanceModel {
       const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       const HloInstruction* producer,
-      std::optional<HloFusionAnalysis>& fusion_analysis,
+      const std::optional<HloFusionAnalysis>& fusion_analysis,
+      const GpuPerformanceModelOptions& config,
       const HloInstruction* fused_consumer = nullptr);
 };
 

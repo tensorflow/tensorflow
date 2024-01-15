@@ -26,6 +26,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -145,7 +146,7 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
       index_primitive_type, pointer_primitive_type, element_size_in_bits,
       memory_space, std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return shape;
+  return std::move(shape);
 }
 
 template <typename T>
@@ -235,10 +236,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
                                           Shape* shape) {
   int64_t dense_shape_size = primitive_util::IsArrayType(element_type)
                                  ? primitive_util::ByteWidth(element_type)
-                                 : 0;
-  if (dense_shape_size <= 0) {
-    return false;
-  }
+                                 : -1;
 
   // Verify that array-based lookup is consistent with public API.
   DCHECK_EQ(dense_shape_size, ByteSizeOfPrimitiveType(element_type))
@@ -248,18 +246,22 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   const int ndims = dimensions.size();
   auto layout = shape->mutable_layout();
   auto* minor_to_major = layout->mutable_minor_to_major();
+  int64_t static_extent_product = dense_shape_size;
+  bool any_overflows = false;
   for (int i = 0; i < ndims; i++) {
     const int64_t d = dimensions[i];
-    if (d < 0) {
-      return false;
-    }
-    dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, d);
-    if (dense_shape_size < 0) {
-      return false;
+    if (d != Shape::kUnboundedSize) {
+      bool overflow;
+      std::tie(static_extent_product, overflow) =
+          OverflowSafeMultiply(static_extent_product, d);
+      any_overflows |= overflow;
     }
 
     shape->add_dimensions(d);
     minor_to_major->push_back(ndims - 1 - i);
+  }
+  if (any_overflows) {
+    return false;
   }
   return true;
 }
@@ -307,7 +309,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
                            static_cast<int>(element_type),
                            absl::StrJoin(dimensions, ","));
   }
-  return shape;
+  return std::move(shape);
 }
 
 /* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
@@ -327,8 +329,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   }
   for (int i = 0, n = dimensions.size(); i < n; i++) {
     shape.set_dynamic_dimension(i, dynamic_dimensions[i]);
+    if (shape.dimensions(i) == Shape::kUnboundedSize &&
+        !dynamic_dimensions[i]) {
+      return InvalidArgument(
+          "Cannot mark a dynamic dimension at dim=%d as static", i);
+    }
   }
-  return shape;
+  return std::move(shape);
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
@@ -698,9 +705,14 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   printer->Append("[");
   auto print_one = [&](int i) {
     if (shape.is_dynamic_dimension(i)) {
-      printer->Append("<=");
+      if (shape.dimensions(i) != Shape::kUnboundedSize) {
+        printer->Append(StrCat("<=", shape.dimensions(i)));
+      } else {
+        printer->Append("?");
+      }
+    } else {
+      printer->Append(shape.dimensions(i));
     }
-    printer->Append(shape.dimensions(i));
   };
   print_one(0);
   for (int i = 1, n = shape.dimensions_size(); i < n; ++i) {
@@ -776,7 +788,16 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
                                             const Shape& rhs) {
   CHECK(lhs.IsArray());
   CHECK(rhs.IsArray());
-  return absl::c_equal(lhs.dimensions(), rhs.dimensions());
+  if (!SameRank(lhs, rhs)) return false;
+  for (int i = 0; i < lhs.rank(); ++i) {
+    if (!lhs.is_unbounded_dynamic_dimension(i) &&
+        !rhs.is_unbounded_dynamic_dimension(i) &&
+        lhs.dimensions(i) != rhs.dimensions(i)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /* static */ bool ShapeUtil::SameRank(const Shape& lhs, const Shape& rhs) {
@@ -907,7 +928,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     return InvalidArgument("non-tuple shape has tuple_shapes field");
   }
 
-  // Tokens and opaques can should not have layout or dimensions.
+  // Tokens and opaques should not have layout or dimensions.
   if (shape.element_type() == TOKEN || shape.element_type() == OPAQUE_TYPE) {
     if (shape.dimensions_size() != 0) {
       return InvalidArgument(
@@ -924,13 +945,24 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     return OkStatus();
   }
 
+  bool any_overflows = false;
+  int64_t product = 1;
   for (int64_t i = 0; i < shape.rank(); ++i) {
     int64_t dimension = shape.dimensions(i);
+    if (dimension == Shape::kUnboundedSize) {
+      continue;
+    }
     if (dimension < 0) {
       return InvalidArgument(
           "shape's dimensions must not be < 0; dimension at index %d was %d", i,
           dimension);
     }
+    bool overflow;
+    std::tie(product, overflow) = OverflowSafeMultiply(product, dimension);
+  }
+  if (any_overflows) {
+    return InvalidArgument("shape's dimensions overflow: %s",
+                           shape.ShortDebugString());
   }
 
   TF_RETURN_IF_ERROR(ValidateShapeSize(shape));
@@ -944,30 +976,17 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     return OkStatus();
   }
 
-  int64_t shape_size = [&]() {
-    int64_t dense_shape_size = 1;
-    if (shape.dimensions().empty()) {
-      return dense_shape_size;
-    }
+  auto [extent_product, extent_overflow] =
+      ExtentProduct</*kBoundedDynamicOk=*/true>(shape);
+  auto [dense_shape_size, byte_width_overflow] = OverflowSafeMultiply(
+      extent_product, ByteSizeOfPrimitiveType(shape.element_type()));
 
-    absl::Span<const int64_t> shape_max_dimensions = shape.dimensions();
-    for (int64_t dim : shape_max_dimensions) {
-      dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
-      if (dense_shape_size < 0) {
-        return dense_shape_size;
-      }
-    }
-    dense_shape_size = MultiplyWithoutOverflow(
-        dense_shape_size, ByteSizeOfPrimitiveType(shape.element_type()));
-    return dense_shape_size;
-  }();
-
-  if (shape_size < 0) {
+  if (extent_overflow || byte_width_overflow) {
     return InvalidArgument("Shape %s size may overflow int64_t.",
                            ShapeUtil::HumanString(shape));
   }
 
-  VLOG(3) << "Shape size is valid: " << shape_size;
+  VLOG(3) << "Shape size is valid: " << dense_shape_size;
   return OkStatus();
 }
 
@@ -1452,9 +1471,8 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
           IndexUtil::MultidimensionalIndexToLinearIndex(input_shape_dim0_major,
                                                         input_unit_index);
       // output_index has the same logical linear index as input_unit_index.
-      std::vector<int64_t> output_index =
-          IndexUtil::LinearIndexToMultidimensionalIndex(output_shape_dim0_major,
-                                                        logical_linear_index);
+      auto output_index = IndexUtil::LinearIndexToMultidimensionalIndex(
+          output_shape_dim0_major, logical_linear_index);
       // Check input_unit_index and output_index have the same physical linear
       // index.
       if (IndexUtil::MultidimensionalIndexToLinearIndex(input_shape,

@@ -112,6 +112,13 @@ Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding) {
 }
 
 int64_t ShapeSizeInBytes(const Shape& shape) {
+  if (shape.IsTuple()) {
+    int64_t total_size = 0;
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      total_size += ShapeSizeInBytes(ShapeUtil::GetTupleElementShape(shape, i));
+    }
+    return total_size;
+  }
   return ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()) *
          ShapeUtil::ElementsIn(shape);
 }

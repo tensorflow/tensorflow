@@ -841,7 +841,6 @@ class SymbolicShapeRefiner {
       }
 
       int output_port_num = input_tensor.index();
-      AttrValue attr_output_shape;
       TensorShapeProto proto;
       const auto handle = input_ic->output(output_port_num);
       input_ic->ShapeHandleToProto(handle, &proto);

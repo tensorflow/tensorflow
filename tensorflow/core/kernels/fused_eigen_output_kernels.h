@@ -245,7 +245,8 @@ struct BiasAddOutputKernel {
         const auto expr = output + bias;
         output = Activation::template apply<decltype(expr)>(expr);
       } else {
-        const auto expr = output + bias.template cast<Scalar>();
+        const auto bias_expr = bias.template cast<Scalar>();
+        const auto expr = output + bias_expr;
         output = Activation::template apply<decltype(expr)>(expr);
       }
     }
@@ -278,7 +279,8 @@ struct BiasAddOutputKernel<T, LeakyRelu> {
         output =
             LeakyRelu::template apply<decltype(expr)>(expr, leakyrelu_alpha);
       } else {
-        const auto expr = output + bias.template cast<Scalar>();
+        const auto bias_expr = bias.template cast<Scalar>();
+        const auto expr = output + bias_expr;
         output =
             LeakyRelu::template apply<decltype(expr)>(expr, leakyrelu_alpha);
       }

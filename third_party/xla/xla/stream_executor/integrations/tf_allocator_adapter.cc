@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/errors.h"
@@ -34,7 +36,7 @@ TfAllocatorAdapter::TfAllocatorAdapter(tsl::Allocator *wrapped,
 
 TfAllocatorAdapter::~TfAllocatorAdapter() {}
 
-tsl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
+absl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
@@ -45,25 +47,25 @@ tsl::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     data =
         wrapped_->AllocateRaw(tsl::Allocator::kAllocatorAlignment, size, attrs);
     if (data == nullptr) {
-      return tsl::errors::ResourceExhausted(
-          "Out of memory while trying to allocate ", size, " bytes.");
+      return absl::ResourceExhaustedError(absl::StrCat(
+          "Out of memory while trying to allocate ", size, " bytes."));
     }
   }
   return OwningDeviceMemory(DeviceMemoryBase(data, size), device_ordinal, this);
 }
 
-tsl::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
-                                           DeviceMemoryBase mem) {
+absl::Status TfAllocatorAdapter::Deallocate(int device_ordinal,
+                                            DeviceMemoryBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
-  return ::tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
+absl::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
   CHECK_EQ(stream_->parent()->device_ordinal(), device_ordinal);
   return stream_;
 }
 
-tsl::StatusOr<tsl::Allocator *> TfAllocatorAdapter::GetAllocator(
+absl::StatusOr<tsl::Allocator *> TfAllocatorAdapter::GetAllocator(
     int device_ordinal) {
   if (stream_ == nullptr) {
     return absl::UnavailableError("stream_ is null for TfAllocatorAdapter.");

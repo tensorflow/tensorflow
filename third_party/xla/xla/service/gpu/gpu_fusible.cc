@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
@@ -106,6 +107,28 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
                                          instr.shape(), instr.dimensions()));
 }
 
+bool TransposesMinorDimension(const HloInstruction* instr) {
+  switch (instr->opcode()) {
+    case HloOpcode::kFusion:
+      return absl::c_any_of(instr->fused_instructions(),
+                            TransposesMinorDimension);
+    case HloOpcode::kCopy:
+      return instr->shape().layout().minor_to_major(0) !=
+             instr->operand(0)->shape().layout().minor_to_major(0);
+    case HloOpcode::kTranspose: {
+      // We have an input ([a,b,c]{x,y,z}) that's being transposed. We need to
+      // check if the minor-most dimension (x) is still the minor-most dimension
+      // after the transpose.
+      int64_t minor_input =
+          instr->operand(0)->shape().layout().minor_to_major(0);
+      int64_t minor_output = instr->shape().layout().minor_to_major(0);
+      return minor_input != instr->dimensions().at(minor_output);
+    }
+    default:
+      return false;
+  }
+}
+
 bool IsReduceInputFusion(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kFusion &&
          absl::c_any_of(GetFusionRoots(*instr.called_computations()[0]),
@@ -130,15 +153,14 @@ bool IsNestableVariadicReduction(const HloInstruction& instr) {
 }
 
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kBitcast) {
+  if (instr.opcode() == HloOpcode::kBitcast || instr.IsCustomFusion()) {
     return false;
   }
-  auto& hero = FindNonTrivialHero(instr);
-  if (GetDescriptionForTiledTransposeEmitter(instr, hero).has_value()) {
-    return true;
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return HasAnyTiledTransposeRoot(*instr.fused_instructions_computation());
   }
-  return !instr.IsCustomFusion() && instr.opcode() == HloOpcode::kFusion &&
-         HasAnyTiledTransposeRoot(*instr.called_computations()[0]);
+  auto& hero = FindNonTrivialHero(instr);
+  return GetDescriptionForTiledTransposeEmitter(instr, hero).has_value();
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -445,6 +467,17 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
              .debug_options()
              .xla_gpu_enable_reduction_epilogue_fusion()) {
       return "Reduction epilogue fusion is not enabled.";
+    }
+    // TODO(akuegel): Remove workaround when producer_hero is computed
+    // correctly.
+    const HloInstruction& reduce_hero =
+        producer_hero.opcode() == HloOpcode::kFusion
+            ? FindNonTrivialHero(*producer_hero.fused_expression_root())
+            : producer_hero;
+    if (!ReductionIsRaceFree(
+            reduce_hero.GetModule()->config(),
+            GetReductionKindAndContiguousComponents(reduce_hero))) {
+      return "Reduction output fusion only works for race free reductions";
     }
     if (!AllSatisfy(consumer, [](const HloInstruction* hlo) {
           return IsIntermediate(hlo, /*allowed_operand_count=*/1);
@@ -834,8 +867,7 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
           instr.IsElementwise());
 }
 
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& /*producer*/,
-                                            const HloInstruction& consumer) {
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer) {
   return IsInputFusible(consumer) ? HloInstruction::FusionKind::kInput
                                   : HloInstruction::FusionKind::kLoop;
 }
@@ -907,14 +939,39 @@ std::vector<const HloInstruction*> GetFusionRoots(
   return out;
 }
 
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero) {
-  if (!IsReductionFromOrToContiguousDimensions(hero)) {
-    return false;
-  }
-  return &root == &hero ||
-         ReductionIsRaceFree(hero.GetModule()->config(),
-                             GetReductionKindAndContiguousComponents(hero));
+bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
+  return instr.opcode() == HloOpcode::kFusion &&
+         instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
+         instr.backend_config<GpuBackendConfig>().ok() &&
+         instr.backend_config<GpuBackendConfig>()
+                 ->fusion_backend_config()
+                 .kind() == kTritonSoftmaxFusionKind;
+}
+
+bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
+  // An empirically chosen constant: unrolling concat with a large amount of
+  // arguments causes excessive register spilling.
+  static constexpr int kMaxConcatArgumentsForUnrolling = 10;
+  return HloAnyOf(fusion.GetRoots(), fusion, [&](auto node) {
+    switch (node.opcode()) {
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kSort:
+      case HloOpcode::kDot:
+      case HloOpcode::kSin:
+      case HloOpcode::kCos:
+      case HloOpcode::kTan:
+      case HloOpcode::kPower:
+      case HloOpcode::kAtan2:
+        return true;
+      case HloOpcode::kConcatenate:
+        return node.instruction().operand_count() >
+               kMaxConcatArgumentsForUnrolling;
+      case HloOpcode::kReduce:
+        return node.instruction().shape().tuple_shapes_size() > 1;
+      default:
+        return false;
+    }
+  });
 }
 
 }  // namespace gpu

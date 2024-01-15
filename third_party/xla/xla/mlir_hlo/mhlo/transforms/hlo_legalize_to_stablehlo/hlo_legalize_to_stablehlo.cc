@@ -52,7 +52,7 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
   // Please let us know if we missed something, and we'll recategorize them.
   if (isa<mhlo::AddDependencyOp, mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
           mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp,
-          mhlo::FusionOp, mhlo::StochasticConvertOp, mhlo::TopKOp,
+          mhlo::FusionOp, mhlo::StochasticConvertOp,
           mhlo::XlaRngGetAndUpdateStateOp>(hloOp.getOperation())) {
     return true;
   }
@@ -140,12 +140,38 @@ std::optional<int64_t> getPublicFeaturesNotInStablehlo(HloOpTy hloOp) {
         mhlo::CustomCallApiVersion::API_VERSION_TYPED_FFI)
       return 1;
   }
+  // StableHLO doesn't support TopK yet.
+  // Proposal: https://github.com/openxla/stablehlo/pull/1593
+  if constexpr (std::is_same<HloOpTy, mhlo::TopKOp>::value) {
+    // Version 1: Initial version for TopK.
+    return 1;
+  }
   return std::nullopt;
 }
 
 template <typename HloOpTy>
 bool hasPublicFeaturesNotInStablehlo(HloOpTy op) {
   return getPublicFeaturesNotInStablehlo(op).has_value();
+}
+
+template <typename StablehloOpTy>
+Attribute convertDenseArray(Attribute hloAttr) {
+  auto denseInts = hloAttr.dyn_cast<DenseIntElementsAttr>();
+  if (!denseInts) return {};
+
+  // Handle DenseIntElementsAttr --> DenseI64ArrayAttr for StableHLO ops that
+  // use dense arrays. This is temporary while MHLO integrates this change.
+  if constexpr (std::is_same<StablehloOpTy, stablehlo::BroadcastOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::DynamicSliceOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::FftOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::PadOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::ReverseOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::SliceOp>::value ||
+                std::is_same<StablehloOpTy, stablehlo::TransposeOp>::value) {
+    return DenseI64ArrayAttr::get(
+        hloAttr.getContext(), llvm::to_vector(denseInts.getValues<int64_t>()));
+  }
+  return {};
 }
 
 #define RETURN_CONVERTED_ENUM_ATTR(Name)                      \
@@ -494,7 +520,11 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
             hloOp.getCustomCallSchedule() == mhlo::CustomCallSchedule::NONE)
           continue;
       }
-      auto stablehloAttr = convertAttr(hloAttr.getValue());
+      auto stablehloAttr =
+          convertDenseArray<HloToStablehloOp<HloOpTy>>(hloAttr.getValue());
+      if (!stablehloAttr) {
+        stablehloAttr = convertAttr(hloAttr.getValue());
+      }
       if (!stablehloAttr) return failure();
       stablehloAttrs.push_back({hloAttr.getName(), stablehloAttr});
     }
@@ -566,7 +596,7 @@ void populateHloToStablehloPatterns(RewritePatternSet* patterns,
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context, allowExperimentalFeatures);
 
-  populateHloToStablehloCustomCallPatterns<mhlo::TanOp>(
+  populateHloToStablehloCustomCallPatterns<mhlo::TanOp, mhlo::TopKOp>(
       patterns, converter, context, allowExperimentalFeatures);
 }
 

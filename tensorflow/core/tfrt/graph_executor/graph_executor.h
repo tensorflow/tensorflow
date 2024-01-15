@@ -87,8 +87,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     tfrt::ResourceContext* resource_context,
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
-    tfd::FallbackResourceArray* resource_array,
-    const FallbackState& fallback_state,
+    tfd::FallbackResourceArray* resource_array, FallbackState& fallback_state,
     const ProcessFunctionLibraryRuntime& process_function_library_runtime,
     CostRecorder* cost_recorder = nullptr);
 
@@ -110,7 +109,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
-    const FallbackState& fallback_state,
+    FallbackState& fallback_state,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,

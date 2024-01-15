@@ -28,6 +28,7 @@ from tensorflow.core.framework import dataset_options_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_autograph
 from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import iterator_ops
@@ -1443,7 +1444,7 @@ class DatasetV2(
 
     #### Fully shuffling all the data
 
-    To shuffle an entire dataset, set `buffer_size=dataset.cardinality(). This
+    To shuffle an entire dataset, set `buffer_size=dataset.cardinality()`. This
     is equivalent to setting the `buffer_size` equal to the number of elements
     in the dataset, resulting in uniform shuffle.
 
@@ -4210,6 +4211,17 @@ if tf2.enabled():
   Dataset = DatasetV2
 else:
   Dataset = DatasetV1
+
+
+def _tf2_callback():
+  global Dataset
+  if tf2.enabled():
+    Dataset = DatasetV2
+  else:
+    Dataset = DatasetV1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)
 
 
 class DatasetV1Adapter(DatasetV1):

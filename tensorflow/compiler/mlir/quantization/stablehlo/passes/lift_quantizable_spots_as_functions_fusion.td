@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-include "mlir/IR/OpBase.td"
-include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
+include "mlir/Dialect/Shape/IR/ShapeOps.td"
+include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "stablehlo/dialect/StablehloOps.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
-include "tensorflow/compiler/mlir/quantization/stablehlo/passes/utils.td"
-// TODO - b/303543789: Remove TF Quantizer util dependency.
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
+include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops with bias as functions
@@ -47,7 +46,7 @@ def LiftConvWithBias : Pat<
       (NamedAttr<"feature_group_count"> $feature_group_count),
       (NamedAttr<"batch_group_count"> $batch_group_count),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
-  [(IsNotInLiftedFunc $res)], [], (addBenefit 5)>;
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias)], [], (addBenefit 5)>;
 
 def LiftDotGeneralWithBias : Pat<
   (StableHLO_AddOp:$res
@@ -60,7 +59,44 @@ def LiftDotGeneralWithBias : Pat<
     (NamedAttributeList
       (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
-  [(IsNotInLiftedFunc $res)], [], (addBenefit 5)>;
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias)], [], (addBenefit 5)>;
+
+def LiftConvWithBiasDynamic : Pat<
+  (StableHLO_AddOp:$res
+    (StableHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding,
+        $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
+        $feature_group_count, $batch_group_count, $precision_config),
+    (StableHLO_DynamicBroadcastInDimOp
+      $bias,
+      (Shape_ShapeOfOp $conv), $_, $_, $_)),
+  (LiftAsTFXlaCallModule<"composite_conv_with_bias_dynamic_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"window_strides"> (DefaultOrNullAttr $window_strides)),
+      (NamedAttr<"padding"> (DefaultOrNullAttr $padding)),
+      (NamedAttr<"lhs_dilation"> (DefaultOrNullAttr $lhs_dilation)),
+      (NamedAttr<"rhs_dilation"> (DefaultOrNullAttr $rhs_dilation)),
+      (NamedAttr<"window_reversal"> (DefaultOrNullAttr $window_reversal)),
+      (NamedAttr<"dimension_numbers"> $dimension_numbers),
+      (NamedAttr<"feature_group_count"> $feature_group_count),
+      (NamedAttr<"batch_group_count"> $batch_group_count),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias)], [], (addBenefit 10)>;
+
+def LiftDotGeneralWithBiasDynamic : Pat<
+  (StableHLO_AddOp:$res
+    (StableHLO_DotGeneralOp $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+    (StableHLO_DynamicBroadcastInDimOp
+      $bias,
+      (Shape_ShapeOfOp $dot_general), $_, $_, $_)),
+  (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_dynamic_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias)], [], (addBenefit 10)>;
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops with activation as functions
@@ -100,6 +136,45 @@ def LiftDotGeneralWithRelu : Pat<
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
   [(IsNotInLiftedFunc $res),
    (FloatValueEquals<"0"> $cst)], [], (addBenefit 10)>;
+
+def LiftConvWithReluDynamic : Pat<
+  (StableHLO_MaxOp:$res
+    (StableHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding,
+        $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
+        $feature_group_count, $batch_group_count, $precision_config),
+    (StableHLO_DynamicBroadcastInDimOp
+      (StableHLO_ConstantOp $cst),
+      (Shape_ShapeOfOp $conv), $_, $_, $_)),
+  (LiftAsTFXlaCallModule<"composite_conv_with_relu_dynamic_fn">
+    (ArgumentList $lhs, $rhs),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"window_strides"> (DefaultOrNullAttr $window_strides)),
+      (NamedAttr<"padding"> (DefaultOrNullAttr $padding)),
+      (NamedAttr<"lhs_dilation"> (DefaultOrNullAttr $lhs_dilation)),
+      (NamedAttr<"rhs_dilation"> (DefaultOrNullAttr $rhs_dilation)),
+      (NamedAttr<"window_reversal"> (DefaultOrNullAttr $window_reversal)),
+      (NamedAttr<"dimension_numbers"> $dimension_numbers),
+      (NamedAttr<"feature_group_count"> $feature_group_count),
+      (NamedAttr<"batch_group_count"> $batch_group_count),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res),
+   (FloatValueEquals<"0"> $cst)], [], (addBenefit 15)>;
+
+def LiftDotGeneralWithReluDynamic : Pat<
+  (StableHLO_MaxOp:$res
+    (StableHLO_DotGeneralOp $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+    (StableHLO_DynamicBroadcastInDimOp
+      (StableHLO_ConstantOp $cst),
+      (Shape_ShapeOfOp $dot_general), $_, $_, $_)),
+  (LiftAsTFXlaCallModule<"composite_dot_general_with_relu_dynamic_fn">
+    (ArgumentList $lhs, $rhs),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res),
+   (FloatValueEquals<"0"> $cst)], [], (addBenefit 15)>;
 
 def LiftConvWithRelu6 : Pat<
   (StableHLO_ClampOp:$res
@@ -163,7 +238,7 @@ def LiftConvWithBiasAndRelu : Pat<
       (NamedAttr<"batch_group_count"> $batch_group_count),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
   [(IsNotInLiftedFunc $res),
-   (FloatValueEquals<"0"> $cst)], [], (addBenefit 10)>;
+   (FloatValueEquals<"0"> $cst), (IsStableHLOConstantOp $bias)], [], (addBenefit 10)>;
 
 def LiftDotGeneralWithBiasAndRelu : Pat<
   (StableHLO_MaxOp:$res
@@ -179,7 +254,55 @@ def LiftDotGeneralWithBiasAndRelu : Pat<
       (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
   [(IsNotInLiftedFunc $res),
-   (FloatValueEquals<"0"> $cst)], [], (addBenefit 10)>;
+   (FloatValueEquals<"0"> $cst), (IsStableHLOConstantOp $bias)], [], (addBenefit 10)>;
+
+def LiftConvWithBiasAndReluDynamic : Pat<
+  (StableHLO_MaxOp:$res
+    (StableHLO_AddOp
+      (StableHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding,
+          $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
+          $feature_group_count, $batch_group_count, $precision_config),
+      (StableHLO_DynamicBroadcastInDimOp
+        $bias,
+        (Shape_ShapeOfOp $conv), $_, $_, $_)),
+    (StableHLO_DynamicBroadcastInDimOp
+      (StableHLO_ConstantOp $cst),
+      (Shape_ShapeOfOp $add), $_, $_, $_)),
+  (LiftAsTFXlaCallModule<"composite_conv_with_bias_and_relu_dynamic_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"window_strides"> (DefaultOrNullAttr $window_strides)),
+      (NamedAttr<"padding"> (DefaultOrNullAttr $padding)),
+      (NamedAttr<"lhs_dilation"> (DefaultOrNullAttr $lhs_dilation)),
+      (NamedAttr<"rhs_dilation"> (DefaultOrNullAttr $rhs_dilation)),
+      (NamedAttr<"window_reversal"> (DefaultOrNullAttr $window_reversal)),
+      (NamedAttr<"dimension_numbers"> $dimension_numbers),
+      (NamedAttr<"feature_group_count"> $feature_group_count),
+      (NamedAttr<"batch_group_count"> $batch_group_count),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res),
+   (FloatValueEquals<"0"> $cst), (IsStableHLOConstantOp $bias)], [], (addBenefit 15)>;
+
+def LiftDotGeneralWithBiasAndReluDynamic : Pat<
+  (StableHLO_MaxOp:$res
+    (StableHLO_AddOp
+      (StableHLO_DotGeneralOp $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+      (StableHLO_DynamicBroadcastInDimOp
+        $bias,
+        (Shape_ShapeOfOp $dot_general), $_, $_, $_)),
+    (StableHLO_DynamicBroadcastInDimOp
+      (StableHLO_ConstantOp $cst),
+      (Shape_ShapeOfOp $add), $_, $_, $_)),
+  (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_and_relu_dynamic_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res),
+   (FloatValueEquals<"0"> $cst), (IsStableHLOConstantOp $bias)], [], (addBenefit 15)>;
+
 
 def LiftConvWithBiasAndRelu6 : Pat<
   (StableHLO_ClampOp:$res
@@ -203,7 +326,7 @@ def LiftConvWithBiasAndRelu6 : Pat<
       (NamedAttr<"feature_group_count"> $feature_group_count),
       (NamedAttr<"batch_group_count"> $batch_group_count),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
-  [(IsNotInLiftedFunc $res), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 10)>;
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 10)>;
 
 def LiftDotGeneralWithBiasAndRelu6 : Pat<
   (StableHLO_ClampOp:$res
@@ -219,4 +342,48 @@ def LiftDotGeneralWithBiasAndRelu6 : Pat<
     (NamedAttributeList
       (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
-  [(IsNotInLiftedFunc $res), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 10)>;
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 10)>;
+
+def LiftConvWithBiasAndRelu6Dynamic : Pat<
+  (StableHLO_ClampOp:$res
+    (StableHLO_ConstantOp $cst_0),
+    (StableHLO_AddOp
+      (StableHLO_ConvolutionOp $lhs, $rhs, $window_strides, $padding,
+          $lhs_dilation, $rhs_dilation, $window_reversal, $dimension_numbers,
+          $feature_group_count, $batch_group_count, $precision_config),
+      (StableHLO_DynamicBroadcastInDimOp
+        $bias,
+        (Shape_ShapeOfOp $conv), $_, $_, $_)),
+    (StableHLO_ConstantOp $cst_1)),
+  (LiftAsTFXlaCallModule<"composite_conv_with_bias_and_relu6_dynamic_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"window_strides"> (DefaultOrNullAttr $window_strides)),
+      (NamedAttr<"padding"> (DefaultOrNullAttr $padding)),
+      (NamedAttr<"lhs_dilation"> (DefaultOrNullAttr $lhs_dilation)),
+      (NamedAttr<"rhs_dilation"> (DefaultOrNullAttr $rhs_dilation)),
+      (NamedAttr<"window_reversal"> (DefaultOrNullAttr $window_reversal)),
+      (NamedAttr<"dimension_numbers"> $dimension_numbers),
+      (NamedAttr<"feature_group_count"> $feature_group_count),
+      (NamedAttr<"batch_group_count"> $batch_group_count),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 15)>;
+
+def LiftDotGeneralWithBiasAndRelu6Dynamic : Pat<
+  (StableHLO_ClampOp:$res
+    (StableHLO_ConstantOp $cst_0),
+    (StableHLO_AddOp
+      (StableHLO_DotGeneralOp
+          $lhs, $rhs, $dot_dimension_numbers, $precision_config),
+      (StableHLO_DynamicBroadcastInDimOp
+        $bias,
+        (Shape_ShapeOfOp $dot_general), $_, $_, $_)),
+    (StableHLO_ConstantOp $cst_1)),
+  (LiftAsTFXlaCallModule<"composite_dot_general_with_bias_and_relu6_dynamic_fn">
+    (ArgumentList $lhs, $rhs, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
+      (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $bias), (FloatValueEquals<"0"> $cst_0), (FloatValueEquals<"6"> $cst_1)], [], (addBenefit 15)>;

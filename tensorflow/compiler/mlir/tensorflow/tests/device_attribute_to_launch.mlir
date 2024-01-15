@@ -4,10 +4,10 @@
 // CHECK-LABEL: func @single_op_launch
 func.func @single_op_launch() {
   // CHECK: "tf_device.launch"
+  // CHECK: device = "CPU:0"
   // CHECK: "tf.opA"
   // CHECK-NOT device
   // CHECK: tf_device.return
-  // CHECK: device = "CPU:0"
   "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
   func.return
 }
@@ -16,10 +16,10 @@ func.func @single_op_launch() {
 // CHECK-LABEL: func @launch_return
 func.func @launch_return() -> tensor<i1> {
   // CHECK: %[[LAUNCH_OUT:.*]] = "tf_device.launch"
+  // CHECK: device = "CPU:0"
   // CHECK: %[[A_OUT:.*]] = "tf.opA"
   // CHECK-NOT device
   // CHECK: tf_device.return %[[A_OUT]]
-  // CHECK: device = "CPU:0"
   // CHECK: return %[[LAUNCH_OUT]]
   %a = "tf.opA"() {device = "CPU:0"} : () -> tensor<i1>
   func.return %a : tensor<i1>

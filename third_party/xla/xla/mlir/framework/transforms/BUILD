@@ -1,6 +1,6 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],

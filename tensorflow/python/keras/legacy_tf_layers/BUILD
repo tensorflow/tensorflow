@@ -37,7 +37,7 @@ py_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_decorator_py",
         "//tensorflow/python/util:tf_export",
     ],
 )

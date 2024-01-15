@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -34,6 +35,16 @@ limitations under the License.
 
 namespace xla {
 namespace ifrt {
+namespace {
+
+// A nullptr std::function implicitly converts to a non-nullptr
+// absl::AnyInvocable, which later crashes when being invoked. absl team
+// explicitly said this is WAI. See b/258212655#comment10.
+absl::AnyInvocable<void() &&> FromStdFunction(std::function<void()>&& f) {
+  return f ? std::move(f) : absl::AnyInvocable<void() &&>();
+}
+
+}  // namespace
 
 char PjRtCompatibleClient::ID = 0;
 char PjRtClient::ID = 0;
@@ -96,16 +107,17 @@ StatusOr<tsl::RCReference<Array>> PjRtClient::MakeArrayFromHostBuffer(
                         }));
     }
     TF_ASSIGN_OR_RETURN(
-        buffer, pjrt_client_->BufferFromHostBuffer(
-                    data, primitive_type, shape.dims(), byte_strides, semantics,
-                    std::move(on_done_with_host_buffer), memory_space,
-                    /*device_layout=*/nullptr));
-  } else {
-    TF_ASSIGN_OR_RETURN(
         buffer,
         pjrt_client_->BufferFromHostBuffer(
             data, primitive_type, shape.dims(), byte_strides, semantics,
-            std::move(on_done_with_host_buffer), sharding->devices().front()));
+            FromStdFunction(std::move(on_done_with_host_buffer)), memory_space,
+            /*device_layout=*/nullptr));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        buffer, pjrt_client_->BufferFromHostBuffer(
+                    data, primitive_type, shape.dims(), byte_strides, semantics,
+                    FromStdFunction(std::move(on_done_with_host_buffer)),
+                    sharding->devices().front()));
   }
   return PjRtArray::Create(
       this, dtype, std::move(shape), std::move(sharding),

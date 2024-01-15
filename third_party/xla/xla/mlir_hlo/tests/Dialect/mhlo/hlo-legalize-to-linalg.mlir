@@ -3078,7 +3078,7 @@ func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi3
 // CHECK-PRIMITIVE-DAG: %[[INIT:.*]] = tensor.extract %{{.*}} : tensor<i32>
 // CHECK-PRIMITIVE-DAG: %[[INIT_TENSOR:.*]] = tensor.empty()
 // CHECK-PRIMITIVE-DAG: %[[FILL_TENSOR:.*]] = linalg.fill ins(%[[INIT]]{{.*}}outs(%[[INIT_TENSOR]]
-// CHECK-PRIMITIVE: linalg.reduce { arith.addi }
+// CHECK-PRIMITIVE: linalg.reduce { arith.addi {overflowFlags = #arith.overflow<none>} }
 // CHECK-PRIMITIVE-SAME: ins(%{{.*}}tensor<5x4xi32>)
 // CHECK-PRIMITIVE-SAME: outs(%[[FILL_TENSOR]] : tensor<5xi32>)
 // CHECK-PRIMITIVE-SAME: dimensions = [1]  {someattr}
@@ -6130,7 +6130,8 @@ func.func @clamp_complex(%min: tensor<8xcomplex<f32>>,
 }
 
 // -----
-
+// CHECK: #[[$ST_3D:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed, d1 : compressed, d2 : compressed) }>
+// CHECK: #[[$ST_4D:.*]] = #sparse_tensor.encoding<{ map = (d0, d1, d2, d3) -> (d0 : compressed, d1 : compressed, d2 : compressed, d3 : compressed) }>
 // CHECK-LABEL: func @reshape_sparse_encoding
 // CHECK-PRIMITIVE-LABEL: func @reshape_sparse_encoding
 
@@ -6146,4 +6147,4 @@ func.func @reshape_sparse_encoding(%arg0: tensor<1x49x16xf32, #ST_3D>) -> tensor
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D>
   func.return %0 : tensor<1x784x1x1xf32, #ST_4D>
 }
-// CHECK: tensor.reshape %{{.*}} : (tensor<1x49x16xf32, #sparse_tensor.encoding<{ map = (d0, d1, d2) -> (d0 : compressed, d1 : compressed, d2 : compressed) }>>, tensor<4xi64>) -> tensor<1x784x1x1xf32, #sparse_tensor.encoding<{ map = (d0, d1, d2, d3) -> (d0 : compressed, d1 : compressed, d2 : compressed, d3 : compressed) }>>
+// CHECK: tensor.reshape %{{.*}} : (tensor<1x49x16xf32, #[[$ST_3D]]>, tensor<4xi64>) -> tensor<1x784x1x1xf32, #[[$ST_4D]]>

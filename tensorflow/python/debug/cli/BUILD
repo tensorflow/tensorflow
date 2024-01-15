@@ -306,7 +306,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )
@@ -329,6 +329,6 @@ py_strict_test(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
     ],
 )

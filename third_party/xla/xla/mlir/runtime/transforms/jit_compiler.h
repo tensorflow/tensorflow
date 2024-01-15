@@ -107,6 +107,9 @@ class JitCompiler {
 
     // How much verification would you like to do?
     int verification_level = 0;
+
+    // Whether to embed the LLVM IR generated in the executable
+    bool embed_ir_in_executable = false;
   };
 
   // Instantiates compiler from the serialized mlir source.

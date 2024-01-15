@@ -151,6 +151,23 @@ class TPUEmbeddingShardedVariable(
   def shard_dim(self) -> int:
     return 0
 
+  @property
+  def shape(self) -> tensor_shape.TensorShape:
+    """Returns the shape of the embedding variable for the current context."""
+    local_shape = self._values[0].shape
+    global_shape = local_shape.as_list()
+    global_shape[self.shard_dim] = global_shape[self.shard_dim] * len(
+        self.values
+    )
+    return tensor_shape.TensorShape(global_shape)
+
+  def _write_object_proto(self, proto, options):
+    super()._write_object_proto(proto, options)
+    # TODO(b/305882915): Reset the saved model shape to the local shape
+    # for backward compatibility of users that directly access the full
+    # variable shape as the shape of values.
+    proto.variable.shape.CopyFrom(self._values[0].shape.as_proto())
+
   def _gather_saveables_for_checkpoint(self) -> Dict[str, Callable[..., Any]]:
     """Overrides Trackable method.
 
@@ -530,13 +547,19 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           trainable=False,
       )
 
-    parameters = variable_creator(stacked_table_name, table_initialize_fn)
+    with variable_scope.variable_creator_scope(
+        make_sharded_variable_creator(self._strategy)
+    ):
+      parameters = variable_creator(stacked_table_name, table_initialize_fn)
 
     def slot_creator(name, initializer):
       return variable_creator(stacked_table_name + "/" + name, initializer)
 
     if optimizer is not None:
-      slot_vars = optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+      with variable_scope.variable_creator_scope(
+          make_sharded_variable_creator(self._strategy)
+      ):
+        slot_vars = optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
     else:
       slot_vars = {}
     slot_vars["parameters"] = parameters
@@ -629,11 +652,11 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     self._table_to_sample_count = {
         table_name: 0 for table_name in self._stacked_table_to_tables
     }
-    for _, feature in self._flat_features:
+    for feature_path, feature in self._flat_features:
       stacked_table_name = self._table_to_stacked_table_offset[
           feature.table.name
       ][0]
-      self._feature_to_sample_offset[feature.name] = (
+      self._feature_to_sample_offset[feature_path] = (
           self._table_to_sample_count[stacked_table_name]
       )
       self._table_to_sample_count[stacked_table_name] += functools.reduce(
@@ -651,12 +674,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     """
     variables = {}
     for stacked_table_name, tables in self._stacked_table_to_tables.items():
-      with variable_scope.variable_creator_scope(
-          make_sharded_variable_creator(self._strategy)
-      ):
-        variables[stacked_table_name] = self._create_variables(
-            tables, stacked_table_name=stacked_table_name
-        )
+      variables[stacked_table_name] = self._create_variables(
+          tables, stacked_table_name=stacked_table_name
+      )
     return variables
 
   def _maybe_build(self):
@@ -1033,13 +1053,13 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
     table_to_list_of_coos = {
         table_name: ([], [], []) for table_name in stacked_table_to_tables
     }
-    for inp, weight, (_, feature) in zip(
+    for inp, weight, (feature_path, feature) in zip(
         flat_inputs, flat_weights, flat_features
     ):
       table_name, col_offset, col_shift = table_to_stacked_table_offset[
           feature.table.name
       ]
-      row_offset = feature_to_sample_offset[feature.name]
+      row_offset = feature_to_sample_offset[feature_path]
       # Consider making this into one op per table rather than per feature?
       row_ids, col_ids, gains = TPUEmbeddingV2._convert_input_feature_to_coo(
           inp,
@@ -1716,14 +1736,14 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
         )
         for table_name in stacked_table_to_tables
     }
-    for inp, weight, (_, feature) in zip(
+    for inp, weight, (feature_path, feature) in zip(
         flat_inputs, flat_weights, flat_features
     ):
       table_name, col_offset, col_shift = table_to_stacked_table_offset[
           feature.table.name
       ]
       stacked_table_sample_count = stacked_table_to_sample_count[table_name]
-      row_offset = feature_to_sample_offset[feature.name]
+      row_offset = feature_to_sample_offset[feature_path]
       # Consider making this into one op per table rather than per feature?
       row_ids_list, col_ids_list, gains_list, sample_count = (
           TPUEmbeddingV2._experimental_convert_input_feature_to_list_of_coo_tensors(

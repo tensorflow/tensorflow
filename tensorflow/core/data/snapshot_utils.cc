@@ -137,18 +137,11 @@ Status Writer::Create(Env* env, const std::string& filename,
 }
 
 TFRecordWriter::TFRecordWriter(const std::string& filename,
-                               const std::string& compression_type,
-                               bool overwrite_existing)
-    : filename_(filename),
-      compression_type_(compression_type),
-      overwrite_existing_(overwrite_existing) {}
+                               const std::string& compression_type)
+    : filename_(filename), compression_type_(compression_type) {}
 
 Status TFRecordWriter::Initialize(tensorflow::Env* env) {
-  if (overwrite_existing_) {
-    TF_RETURN_IF_ERROR(env->NewWritableFile(filename_, &dest_));
-  } else {
-    TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
-  }
+  TF_RETURN_IF_ERROR(env->NewAppendableFile(filename_, &dest_));
 
   record_writer_ = std::make_unique<io::RecordWriter>(
       dest_.get(), io::RecordWriterOptions::CreateRecordWriterOptions(
@@ -749,6 +742,7 @@ TFRecordReaderImpl::TFRecordReaderImpl(
     std::optional<int64_t> output_buffer_size)
     : filename_(filename),
       offset_(0),
+      bytes_read_(0),
       compression_(compression),
       output_buffer_size_(output_buffer_size) {}
 
@@ -763,12 +757,14 @@ Status TFRecordReaderImpl::Initialize(Env* env) {
   }
 #endif  // IS_SLIM_BUILD
   record_reader_ = std::make_unique<io::RecordReader>(file_.get(), options);
+  bytes_read_ = 0;
   return OkStatus();
 }
 
 StatusOr<Tensor> TFRecordReaderImpl::GetNext() {
   tstring record;
   TF_RETURN_IF_ERROR(record_reader_->ReadRecord(&offset_, &record));
+  bytes_read_ += record.size();
   return Parse(record);
 }
 

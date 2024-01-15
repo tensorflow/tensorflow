@@ -16,7 +16,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
-#include "tensorflow/core/platform/logger.h"
 
 namespace tensorflow {
 namespace {
@@ -31,14 +30,6 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       return OkStatus();
     }
 
-    if (Logger* logger = Logger::GetSingletonAsync()) {
-      VLOG(2) << "Logging XlaAutoClusteringActivity";
-      VLOG(3) << auto_clustering_activity.DebugString();
-      logger->LogProto(auto_clustering_activity);
-    } else {
-      VLOG(2) << "Not logging: logger not ready yet.";
-    }
-
     return OkStatus();
   }
 
@@ -49,14 +40,6 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
       return OkStatus();
     }
 
-    if (Logger* logger = Logger::GetSingletonAsync()) {
-      VLOG(2) << "Logging XlaJitCompilationActivity";
-      VLOG(3) << jit_compilation_activity.DebugString();
-      logger->LogProto(jit_compilation_activity);
-    } else {
-      VLOG(2) << "Not logging: logger not ready yet.";
-    }
-
     return OkStatus();
   }
 
@@ -64,14 +47,6 @@ class XlaActivityLoggingListener final : public XlaActivityListener {
     if (!IsEnabled()) {
       VLOG(3) << "Logging XlaJitCompilationActivity disabled";
       return OkStatus();
-    }
-
-    if (Logger* logger = Logger::GetSingletonAsync()) {
-      VLOG(2) << "Logging XlaJitCompilationActivity";
-      VLOG(3) << optimization_remark.DebugString();
-      logger->LogProto(optimization_remark);
-    } else {
-      VLOG(2) << "Not logging: logger not ready yet.";
     }
 
     return OkStatus();

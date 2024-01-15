@@ -16,21 +16,29 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "absl/functional/function_ref.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
+#include "xla/service/gpu/nccl_errors.h"
 #include "xla/service/gpu/nccl_utils.h"
 #endif  // XLA_ENABLE_XCCL
 
@@ -43,12 +51,6 @@ namespace gpu {
 class NcclClique;
 
 struct NcclCollectiveConfig {
-  NcclCollectiveConfig();
-  NcclCollectiveConfig(NcclCollectiveConfig&&);
-  ~NcclCollectiveConfig();
-
-  NcclCollectiveConfig& operator=(NcclCollectiveConfig&&);
-
   int64_t operand_count;
   std::vector<PrimitiveType> operand_element_type;
   std::vector<ReplicaGroup> replica_groups;
@@ -58,6 +60,7 @@ struct NcclCollectiveConfig {
 
   template <typename OpT>
   void SetCollectiveOpKindAndID(OpT op);
+  void SetCollectiveOpKindAndID(const HloCollectivePermuteInstruction* instr);
   bool IsDegenerate(int64_t replica_count, int64_t partition_count) const;
 };
 
@@ -74,6 +77,9 @@ void NcclCollectiveConfig::SetCollectiveOpKindAndID(OpT op) {
     op_id = static_cast<int64_t>(unique_id.getInt());
   }
 }
+
+NcclCollectiveConfig GetNcclCollectiveConfig(
+    const HloInstruction* hlo, std::optional<bool> use_global_device_ids);
 
 template <typename OpT>
 NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
@@ -110,13 +116,13 @@ class NcclCollectiveThunk : public Thunk {
    public:
     // Executes the function on the async communications stream and records a
     // completion event.
-    Status Execute(
+    absl::Status Execute(
         absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
             fn,
         const ExecuteParams& params, ncclComm_t comm,
         AsyncStreamKind stream_kind);
     // Blocks the compute stream until async communication is complete.
-    Status Await(const ExecuteParams& params);
+    absl::Status Await(const ExecuteParams& params);
 
    private:
     absl::Mutex mu_;
@@ -131,20 +137,21 @@ class NcclCollectiveThunk : public Thunk {
   // When this is false, the ExecuteOnStream() call will simply return a status
   // error.
   static bool NcclIsEnabled();
-  static Status CheckImplementable();
+  static absl::Status CheckImplementable();
 
   // Logging support.
   static std::string GetDeviceString(const NcclExecuteParams& params);
 
   AsyncExecutor* async_executor() { return async_.get(); }
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
-  virtual Status RunNcclCollective(const ExecuteParams& params,
-                                   se::Stream& stream, ncclComm_t comm) = 0;
+  virtual absl::Status RunNcclCollective(const ExecuteParams& params,
+                                         se::Stream& stream,
+                                         ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
-    return kAsyncStreamCollective;
+    return AsyncStreamKind::kCollective;
   }
 
  private:
@@ -155,7 +162,7 @@ class NcclCollectiveThunk : public Thunk {
 
 #if XLA_ENABLE_XCCL
   bool first_call_to_execute_ = true;
-#endif  // XLA_ENABLE_XCCL
+#endif                                    // XLA_ENABLE_XCCL
   std::unique_ptr<AsyncExecutor> async_;  // null if not async.
 };
 
@@ -164,21 +171,35 @@ class NcclCollectiveDoneThunk : public Thunk {
   NcclCollectiveDoneThunk(Thunk::Kind kind, ThunkInfo thunk_info,
                           NcclCollectiveThunk::AsyncExecutor& async);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   NcclCollectiveThunk::AsyncExecutor& async_;
 };
 
-Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
+absl::Status IsValidOperand(mlir::Value operand, Thunk::Kind reduction_op);
+
+absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op);
 
 template <typename NcclThunkType, typename OpT>
-Status AddOpDescription(Status status, OpT op, int64_t replica_count,
-                        int64_t partition_count) {
+absl::Status AddOpDescription(absl::Status status, OpT op,
+                              int64_t replica_count, int64_t partition_count) {
   if (status.ok()) {
     return status;
   }
   CollectiveOpGroupMode group_mode = NcclThunkType::GetGroupMode(op);
+
+  int64_t operand_count = 0;
+  std::string str;
+
+  if constexpr (std::is_base_of_v<HloInstruction, std::remove_pointer_t<OpT>>) {
+    operand_count = op->operand_count();
+    str = op->ToString();
+  } else {
+    operand_count = op->getNumOperands() / 2;
+    str = llvm_ir::DumpToString(op.getOperation());
+  }
+
   return Status(
       status.code(),
       absl::StrFormat(
@@ -187,12 +208,12 @@ Status AddOpDescription(Status status, OpT op, int64_t replica_count,
           "operand_count: %d\n%s",
           status.message(), NcclThunkType::GetHloOpName(), replica_count,
           partition_count, CollectiveOpGroupModeToString(group_mode),
-          op->getNumOperands() / 2, llvm_ir::DumpToString(op.getOperation())));
+          operand_count, str));
 }
 
 #if XLA_ENABLE_XCCL
 // TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
-StatusOr<NcclComm::Lock> LockNcclComm(
+absl::StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
@@ -205,10 +226,26 @@ struct DeviceBufferPair {
   se::DeviceMemoryBase source_buffer;
   se::DeviceMemoryBase destination_buffer;
 };
-StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+
+absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const Thunk::ExecuteParams& params,
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
+
+absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const BufferAllocations* buffer_allocations,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types);
+
+// When using ncclMemAlloc, register buffers with the communicator to enable
+// copyless collectives.
+// Registration is only needed when not using cudaGraphs. Remove this function
+// when cudagraphs + nccl is enabled.
+// See
+// https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
+Status MaybeRegisterBuffers(int device_ordinal,
+                            const std::vector<DeviceBufferPair>& buffers,
+                            ncclComm_t comm);
 
 }  // namespace gpu
 }  // namespace xla

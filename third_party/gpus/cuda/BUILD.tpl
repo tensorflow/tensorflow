@@ -61,23 +61,23 @@ cuda_header_library(
 
 cc_library(
     name = "cudart_static",
-    srcs = ["cuda/lib/libcudart_static.a"],
+    srcs = ["cuda/lib/%{cudart_static_lib}"],
     linkopts = [
         "-ldl",
-        "-lrt",
         "-lpthread",
+        %{cudart_static_linkopt}
     ],
 )
 
 cc_library(
     name = "cuda_driver",
-    srcs = ["cuda/lib/libcuda.so"],
+    srcs = ["cuda/lib/%{cuda_driver_lib}"],
 )
 
 cc_library(
     name = "cudart",
-    srcs = glob(["cuda/lib/libcudart.so.*"]),
-    data = glob(["cuda/lib/libcudart.so.*"]),
+    srcs = ["cuda/lib/%{cudart_lib}"],
+    data = ["cuda/lib/%{cudart_lib}"],
     linkstatic = 1,
 )
 
@@ -128,30 +128,30 @@ cuda_header_library(
 
 cc_library(
     name = "cublas",
-    srcs = glob(["cuda/lib/libcublas.so.*"]),
-    data = glob(["cuda/lib/libcublas.so.*"]),
+    srcs = ["cuda/lib/%{cublas_lib}"],
+    data = ["cuda/lib/%{cublas_lib}"],
     linkstatic = 1,
 )
 
 cc_library(
     name = "cublasLt",
-    srcs = glob(["cuda/lib/libcublasLt.so.*"]),
-    data = glob(["cuda/lib/libcublasLt.so.*"]),
+    srcs = ["cuda/lib/%{cublasLt_lib}"],
+    data = ["cuda/lib/%{cublasLt_lib}"],
     linkstatic = 1,
 )
 
 cc_library(
     name = "cusolver",
-    srcs = glob(["cuda/lib/libcusolver.so.*"]),
-    data = glob(["cuda/lib/libcusolver.so.*"]),
+    srcs = ["cuda/lib/%{cusolver_lib}"],
+    data = ["cuda/lib/%{cusolver_lib}"],
     linkopts = ["-lgomp"],
     linkstatic = 1,
 )
 
 cc_library(
     name = "cudnn",
-    srcs = glob(["cuda/lib/libcudnn.so.*"]),
-    data = glob(["cuda/lib/libcudnn.so.*"]),
+    srcs = ["cuda/lib/%{cudnn_lib}"],
+    data = ["cuda/lib/%{cudnn_lib}"],
     linkstatic = 1,
 )
 
@@ -165,15 +165,15 @@ cc_library(
 
 cc_library(
     name = "cufft",
-    srcs = glob(["cuda/lib/libcufft.so.*"]),
-    data = glob(["cuda/lib/libcufft.so.*"]),
+    srcs = ["cuda/lib/%{cufft_lib}"],
+    data = ["cuda/lib/%{cufft_lib}"],
     linkstatic = 1,
 )
 
 cc_library(
     name = "curand",
-    srcs = glob(["cuda/lib/libcurand.so.*"]),
-    data = glob(["cuda/lib/libcurand.so.*"]),
+    srcs = ["cuda/lib/%{curand_lib}"],
+    data = ["cuda/lib/%{curand_lib}"],
     linkstatic = 1,
 )
 
@@ -192,7 +192,7 @@ cc_library(
 
 alias(
     name = "cub_headers",
-    actual = ":cuda_headers",
+    actual = "%{cub_actual}",
 )
 
 cuda_header_library(
@@ -213,13 +213,13 @@ cuda_header_library(
 
 cc_library(
     name = "cupti_dsos",
-    data = glob(["cuda/lib/libcupti.so.*"]),
+    data = ["cuda/lib/%{cupti_lib}"],
 )
 
 cc_library(
     name = "cusparse",
-    srcs = glob(["cuda/lib/libcusparse.so.*"]),
-    data = glob(["cuda/lib/libcusparse.so.*"]),
+    srcs = ["cuda/lib/%{cusparse_lib}"],
+    data = ["cuda/lib/%{cusparse_lib}"],
     linkopts = ["-lgomp"],
     linkstatic = 1,
 )

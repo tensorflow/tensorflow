@@ -75,7 +75,7 @@ class CollectivePipeliner : public HloModulePass {
     bool process_different_sized_ops = false;
     PipeliningDirection pipelining_direction = PipeliningDirection::kForward;
     HloPredicate should_process;
-    // Filter acceptable formatting ops for for forward piplining to discard
+    // Filter acceptable formatting ops for for forward pipelining to discard
     // cases that pipeline formatting operations that we don't want to support.
     HloPredicate acceptable_formatting;
     // If the pipelined op has same input/output size the we reuse  the same

@@ -816,7 +816,7 @@ REGISTER_OP("XlaRngBitGenerator")
     .Input("shape: Tshape")
     .Output("output_key: uint64")
     .Output("output: dtype")
-    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("dtype: {uint8, int8, int32, int64, uint32, uint64} = DT_UINT64")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle algorithm;
@@ -1392,7 +1392,10 @@ function_list: This list contains the TensorFlow FunctionDefs that are used by
 has_token_input_output: If true, the embedded StableHLO module's main function
   must take a `!stablehlo.token` as its first argument and returns a token as
   its first result. This can be used in conjunction with the TF2XLA's side
-  effect mechanism in order to model side effects.
+  effect mechanism in order to model side effects. This is used only in versions
+  prior to version 9. After that, the number and position of tokens among
+  the arguments and results are obtained from the main function type. This
+  allows us to support more than one token and not necessarily at the start.
 disabled_checks: A list of strings describing the safety checks that were
   disabled at serialization time. This attribute was added in version 6.
   For more details see

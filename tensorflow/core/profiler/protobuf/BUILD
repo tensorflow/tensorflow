@@ -239,6 +239,13 @@ tf_proto_library(
 #     deps = [":op_profile_proto"],
 # )
 #
+# py_proto_library(
+#     name = "op_metrics_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":op_metrics_proto"],
+# )
+#
 # copybara:uncomment_end
 tf_proto_library(
     name = "task_proto",
@@ -267,6 +274,13 @@ tf_proto_library(
 tf_proto_library(
     name = "dcn_slack_analysis_proto",
     srcs = ["dcn_slack_analysis.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "dcn_collective_info_proto",
+    srcs = ["dcn_collective_info.proto"],
     cc_api_version = 2,
     visibility = [":friends"],
 )

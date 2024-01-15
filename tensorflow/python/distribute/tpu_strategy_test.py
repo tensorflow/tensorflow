@@ -1208,6 +1208,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     strategy = tpu_lib.TPUStrategyV2(
         resolver, experimental_device_assignment=device_assignment
     )
+    strategy.extended._enable_data_reorder = True
 
     dist_dataset = create_dist_dataset_fn(strategy)
     iterator = iter(dist_dataset)

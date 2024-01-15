@@ -25,6 +25,8 @@ class XnnpackDelegateProvider : public DelegateProvider {
  public:
   XnnpackDelegateProvider() {
     default_params_.AddParam("use_xnnpack", ToolParam::Create<bool>(false));
+    default_params_.AddParam("xnnpack_force_fp16",
+                             ToolParam::Create<bool>(false));
   }
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
@@ -41,25 +43,34 @@ REGISTER_DELEGATE_PROVIDER(XnnpackDelegateProvider);
 
 std::vector<Flag> XnnpackDelegateProvider::CreateFlags(
     ToolParams* params) const {
-  std::vector<Flag> flags = {CreateFlag<bool>(
-      "use_xnnpack", params,
-      "explicitly apply the XNNPACK delegate. Note the XNNPACK delegate could "
-      "be implicitly applied by the TF Lite runtime regardless the value of "
-      "this parameter. To disable this implicit application, set the value to "
-      "false explicitly.")};
+  std::vector<Flag> flags = {
+      CreateFlag<bool>("use_xnnpack", params,
+                       "explicitly apply the XNNPACK delegate. Note the "
+                       "XNNPACK delegate could "
+                       "be implicitly applied by the TF Lite runtime "
+                       "regardless the value of "
+                       "this parameter. To disable this implicit application, "
+                       "set the value to "
+                       "false explicitly."),
+      CreateFlag<bool>("xnnpack_force_fp16", params,
+                       "enforce float16 inference."),
+  };
   return flags;
 }
 
 void XnnpackDelegateProvider::LogParams(const ToolParams& params,
                                         bool verbose) const {
   LOG_TOOL_PARAM(params, bool, "use_xnnpack", "Use xnnpack", verbose);
+  LOG_TOOL_PARAM(params, bool, "xnnpack_force_fp16", "xnnpack_force_fp16",
+                 verbose);
 }
 
 TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
   if (params.Get<bool>("use_xnnpack")) {
     return evaluation::CreateXNNPACKDelegate(
-        params.Get<int32_t>("num_threads"));
+        params.Get<int32_t>("num_threads"),
+        params.Get<bool>("xnnpack_force_fp16"));
   }
   return CreateNullDelegate();
 }

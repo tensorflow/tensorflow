@@ -19,10 +19,8 @@ include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "stablehlo/dialect/StablehloOps.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
-include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.td"
-include "tensorflow/compiler/mlir/quantization/stablehlo/passes/utils.td"
-// TODO - b/303543789: Remove TF Quantizer util dependency.
+include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.td"
+include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.td"
 
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops as functions
@@ -57,3 +55,15 @@ def LiftDotGeneral : Pat<
       (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
   [(IsNotInLiftedFunc $res)], [], (addBenefit 1)>;
+
+def LiftGather : Pat<
+  (StableHLO_GatherOp:$res
+      $operand, $start_indices, $dimension_numbers, $slice_sizes, $indices_are_sorted),
+  (LiftAsTFXlaCallModule<"composite_gather_fn">
+    (ArgumentList $operand, $start_indices),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dimension_numbers"> $dimension_numbers),
+      (NamedAttr<"slice_sizes"> $slice_sizes),
+      (NamedAttr<"indices_are_sorted"> (DefaultOrNullAttr $indices_are_sorted)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $operand)], [], (addBenefit 1)>;

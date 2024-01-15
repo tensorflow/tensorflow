@@ -1,0 +1,28 @@
+toc:
+- heading: XLA developer guide
+- title: Overview
+  path: /xla
+- title: Aliasing
+  path: /xla/aliasing
+- title: Architecture
+  path: /xla/architecture
+- title: Broadcasting
+  path: /xla/broadcasting
+- title: Build from source
+  path: /xla/build_from_source
+- title: Code reviews
+  path: /xla/code_reviews
+- title: Copybara quirks
+  path: /xla/copybara
+- title: Custom calls
+  path: /xla/custom_call
+- title: Developer guide
+  path: /xla/developer_guide
+- title: Developing a new backend
+  path: /xla/developing_new_backend
+- title: Operation semantics
+  path: /xla/operation_semantics
+- title: Shapes and layout
+  path: /xla/shapes
+- title: Tiled layout
+  path: /xla/tiled_layout

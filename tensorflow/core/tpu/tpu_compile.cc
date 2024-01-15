@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_compile.h"
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <optional>
@@ -29,15 +30,20 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/compile_only_client.h"
+#include "xla/literal_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
@@ -277,6 +283,28 @@ Status AssignReturnValueToCore(
   return OkStatus();
 }
 
+// If the metadata specifies any bounded dynamic shapes in the arg then create
+// the matching Tensor values for the Argument.
+Status MaybeBuildBoundedDynamicArgValues(
+    const tpu::TPUCompileMetadataProto::Arg& proto_arg,
+    const TensorShape& shape, XlaCompiler::Argument& arg) {
+  // If any entry in the is_bounded_dynamic_dim list is true then we update the
+  // value_bound and value_dynamism fields to indicate that there is dynamism,
+  // the bounds, and which dimensions are dynamic.
+  auto is_dynamic_dim = absl::MakeConstSpan(proto_arg.is_bounded_dynamic_dim());
+  if (std::any_of(is_dynamic_dim.begin(), is_dynamic_dim.end(),
+                  [](bool v) { return v; })) {
+    // Assume that the values in the shape are the maximums.
+    arg.value_bound = Tensor(arg.type, shape);
+    // Build a literal tensor of Bools to hold which Dims are dynamic.
+    auto literal = xla::LiteralUtil::CreateR1(is_dynamic_dim);
+    Tensor dynamism_tensor(DT_BOOL);
+    TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, DT_BOOL, &dynamism_tensor));
+    arg.value_dynamism = dynamism_tensor;
+  }
+  return OkStatus();
+}
+
 // Populates the arguments, core mapping and per core argument shape for the
 // computation.
 Status BuildComputationArgumentDescriptions(
@@ -305,6 +333,10 @@ Status BuildComputationArgumentDescriptions(
     switch (proto_arg.kind()) {
       case tpu::TPUCompileMetadataProto::Arg::PARAMETER:
         arg.kind = XlaCompiler::Argument::kParameter;
+        // TODO(b/308845592) Maybe do this with the XlaCompileOnDemand version
+        // of this method and maybe move whole method to a shared location.
+        TF_RETURN_IF_ERROR(
+            MaybeBuildBoundedDynamicArgValues(proto_arg, arg_shapes[i], arg));
         break;
       case tpu::TPUCompileMetadataProto::Arg::VARIABLE:
         arg.kind = XlaCompiler::Argument::kResource;

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
@@ -73,9 +74,10 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
 
     wrapped_instr->set_channel_id(new_channel_id);
     if (channel_id_comp_map.find(new_channel_id) == channel_id_comp_map.end()) {
-      channel_id_comp_map[new_channel_id] = new_instr->called_computations()[0];
+      channel_id_comp_map[new_channel_id] =
+          new_instr->async_wrapped_computation();
     } else {
-      channel_id_comp_map[new_channel_id]->AddAsyncInstruction(*new_instr);
+      channel_id_comp_map[new_channel_id]->AddAsyncStart(new_instr);
     }
   } else if (hlo_query::IsCollectiveCommunicationOp(new_instr->opcode()) ||
              hlo_query::IsAsyncCollectiveStartOp(new_instr->opcode())) {
@@ -83,10 +85,9 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
   }
 }
 
-Status PeelInstructionsForOddTripCount(HloModule* module,
-                                       HloInstruction* while_instr) {
-  HloCloneContext context(module, "peeled_double_buffer");
-
+absl::Status PeelInstructionsForOddTripCount(HloModule* module,
+                                             HloInstruction* while_instr) {
+  std::string suffix = "peeled_double_buffer";
   absl::flat_hash_map<HloInstruction*, HloInstruction*> old_to_new_map;
   HloComputation* while_body = while_instr->while_body();
   HloInstruction* input_parameter = while_body->parameter_instruction(0);
@@ -107,7 +108,7 @@ Status PeelInstructionsForOddTripCount(HloModule* module,
     }
     HloInstruction* new_instr =
         parent_comp->AddInstruction(old_instr->CloneWithNewOperands(
-            old_instr->shape(), new_operands, &context));
+            old_instr->shape(), new_operands, suffix));
 
     SetChannelIdForNewCollective(new_instr, module);
     old_to_new_map[old_instr] = new_instr;
@@ -145,11 +146,11 @@ Status PeelInstructionsForOddTripCount(HloModule* module,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
-StatusOr<bool> LoopDoubleBufferTransformer::Run(
+absl::StatusOr<bool> LoopDoubleBufferTransformer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -188,7 +189,7 @@ StatusOr<bool> LoopDoubleBufferTransformer::Run(
       TF_RETURN_IF_ERROR(PeelInstructionsForOddTripCount(module, while_instr));
       exact_trip_count -= 1;
     }
-    HloCloneContext context(module, "double_buffer_clone");
+    std::string suffix = "double_buffer_clone";
     old_to_new_map[input_parameter] = while_body->root_instruction();
     for (HloInstruction* old_instr : while_body->MakeInstructionPostOrder()) {
       if (old_to_new_map.find(old_instr) != old_to_new_map.end()) {
@@ -201,7 +202,7 @@ StatusOr<bool> LoopDoubleBufferTransformer::Run(
       }
       HloInstruction* new_instr =
           while_body->AddInstruction(old_instr->CloneWithNewOperands(
-              old_instr->shape(), new_operands, &context));
+              old_instr->shape(), new_operands, suffix));
 
       // If an elementwise instruction with constant operand is present, we
       // won't inject control dependency at the end to allow more constant

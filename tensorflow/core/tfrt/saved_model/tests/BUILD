@@ -349,13 +349,11 @@ pytype_strict_binary(
     deps = [
         ":disable_tf2",  # build_cleaner: keep; go/disable_tf2
         "//tensorflow/python/client:session",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:lookup_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:resource_variables_toggle",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/saved_model:builder",
@@ -363,7 +361,6 @@ pytype_strict_binary(
         "//tensorflow/python/saved_model:signature_def_utils",
         "//tensorflow/python/saved_model:tag_constants",
         "//tensorflow/python/saved_model:utils",
-        "//tensorflow/python/training",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],
@@ -620,6 +617,64 @@ cc_library(
         "@tf_runtime//:core_runtime_alwayslink",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "saved_model_ifrt_testlib",
+    testonly = 1,
+    srcs = ["saved_model_ifrt_test.cc"],
+    data = [
+        "toy_v2/saved_model.pb",
+        "toy_v2/variables/variables.data-00000-of-00001",
+        "toy_v2/variables/variables.index",
+    ],
+    tags = ["no_oss"],
+    deps = [
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
+        "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:ifrt_backend_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt:ifrt_program_ops_op_lib",
+        "//tensorflow/core/tfrt/ifrt:ifrt_model_context",
+        "//tensorflow/core/tfrt/runtime",
+        "//tensorflow/core/tfrt/saved_model:saved_model_cpu",
+        "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/ifrt:test_util",
+        "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@tf_runtime//:basic_kernels_alwayslink",
+        "@tf_runtime//:core_runtime_alwayslink",
+        "@tf_runtime//:test_kernels_alwayslink",
+        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
+        "@tf_runtime//backends/cpu:tf_ops_alwayslink",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_model_ifrt_test",
+    srcs = [],
+    tags = ["no_oss"],
+    deps = [
+        ":saved_model_ifrt_testlib",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_model_ifrt_test_mlrt",
+    srcs = [],
+    args = ["--enable_mlrt=true"],
+    tags = ["no_oss"],
+    deps = [
+        ":saved_model_ifrt_testlib",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_cc_test(

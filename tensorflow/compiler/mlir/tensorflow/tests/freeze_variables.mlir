@@ -464,7 +464,7 @@ module {
     func.return %arg0, %0 : tensor<?xf32>, tensor<0xf32>
   }
   // CHECK: func.func private @f_batch_callee(%[[ARG_0:.*]]: tensor<?xf32>) -> (tensor<?xf32>, tensor<0xf32>)
-  // CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {{{.*value = dense<> : tensor<0xf32>.*}}} : () -> tensor<0xf32>
+  // CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() <{value = dense<> : tensor<0xf32>}> : () -> tensor<0xf32>
   // CHECK: return %[[ARG_0]], %[[CST_0]] : tensor<?xf32>, tensor<0xf32>
 
   func.func @f(%arg: tensor<1xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
@@ -474,6 +474,6 @@ module {
   }
   // CHECK: func.func @f(%[[ARG_1:.*]]: tensor<1xf32>)
   // Make sure that `operandSegmentSizes` attribute is also updated.
-  // CHECK-NEXT: %[[BATCH_FUNC:.*]]:2 = "tf.BatchFunction"(%[[ARG_1]]) {{{.*operandSegmentSizes = array<i32: 1, 0>.*}}} : (tensor<1xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+  // CHECK-NEXT: %[[BATCH_FUNC:.*]]:2 = "tf.BatchFunction"(%[[ARG_1]]) <{{{.*operandSegmentSizes = array<i32: 1, 0>.*}}}> : (tensor<1xf32>) -> (tensor<*xf32>, tensor<*xf32>)
   // CHECK: return %[[BATCH_FUNC]]#0, %[[BATCH_FUNC]]#1 : tensor<*xf32>, tensor<*xf32>
 }

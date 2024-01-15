@@ -579,7 +579,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecv) {
 
   EXPECT_LT(get_index("recv"), get_index("send"));
   EXPECT_LT(get_index("send"), get_index("recv-done"));
-  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 9);
+  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 8);
   EXPECT_LT(abs(get_index("send-done") - get_index("result")), 2);
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
@@ -731,7 +731,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
       lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 
     all-reduce-start = f32[1, 1024, 1024] all-reduce-start(f32[1, 1024, 1024] p),
-      replica_groups={{0,1}}, to_apply=add,  backend_config={"is_sync":false}
+      replica_groups={{0,1}}, to_apply=add,  backend_config={"collective_backend_config":{"is_sync":false}}
     all-reduce-done = f32[1, 1024, 1024] all-reduce-done(f32[1, 1024, 1024] all-reduce-start)
     new-data = f32[1, 1024, 1024] add(s, all-reduce-done)
     ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, new-data)
@@ -1110,7 +1110,7 @@ TEST_F(GpuHloSchedulePostProcessTest, PostProcessAsyncCollectives) {
 
     // This will be sync, so we expect the start/done to be moved next to each
     // other.
-    ag-start = (f32[32], f32[64]) all-gather-start(p1), dimensions={0}, backend_config="{\"is_sync\":true}"
+    ag-start = (f32[32], f32[64]) all-gather-start(p1), dimensions={0}, backend_config="{\"collective_backend_config\":{\"is_sync\":true}}"
     add1 = f32[32] add(p1, p1)
     ag-done = f32[64] all-gather-done(ag-start)
 

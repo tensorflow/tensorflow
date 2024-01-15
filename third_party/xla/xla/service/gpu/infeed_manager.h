@@ -48,8 +48,8 @@ class InfeedManager
  public:
   explicit InfeedManager(se::StreamExecutor* executor);
 
-  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const LiteralSlice& literal);
+  absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                       const LiteralSlice& literal);
 
  private:
   se::Stream* stream() const { return stream_.get(); }

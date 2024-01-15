@@ -294,6 +294,18 @@ class XlaCompiledCpuFunction {
   // Recommended usage is to capture this in a variable for re-use.
   int LookupResultIndex(const string& name) const;
 
+  // Returns the name of the argument at `index`.
+  // Returns nullptr if `HasNameIndices() == false` or `index` is out of range.
+  const char* GetArgName(int index) const;
+
+  // Returns the name of the variable at `index`.
+  // Returns nullptr if `HasNameIndices() == false` or `index` is out of range.
+  const char* GetVariableName(int index) const;
+
+  // Returns the name of the result at `index`.
+  // Returns nullptr if `HasNameIndices() == false` or `index` is out of range.
+  const char* GetResultName(int index) const;
+
   // Returns the shape of the args and results. May return nullptr if the
   // program shape isn't available.
   const xla::ProgramShapeProto* ProgramShape() const { return program_shape_; }

@@ -48,14 +48,14 @@ class AutotunerCompileUtil {
   // the debug options. In justified cases, it may override some of the provided
   // debug options.
   using GenerateModuleFn =
-      absl::AnyInvocable<StatusOr<std::unique_ptr<HloModule>>(
+      absl::AnyInvocable<absl::StatusOr<std::unique_ptr<HloModule>>(
           const DebugOptions&)>;
 
   // Generates a compile util for a platform associated with the `stream`.
   //
   // Returns an empty optional if the AutotuneConfig is deviceless, as
   // autotuning is impossible in that case.
-  static StatusOr<std::optional<AutotunerCompileUtil>> Create(
+  static absl::StatusOr<std::optional<AutotunerCompileUtil>> Create(
       const AutotuneConfig& config, const DebugOptions& opts);
 
   struct ProfilingOutput {
@@ -72,7 +72,7 @@ class AutotunerCompileUtil {
   // Runs the resulting executable with the given extractor, cached with
   // `(cache_key, config)`. Returns `std::nullopt` on expected failure, bad
   // `Status` otherwise.
-  StatusOr<std::optional<ProfilingOutput>> ProfileExecutable(
+  absl::StatusOr<std::optional<ProfilingOutput>> ProfileExecutable(
       Executable* executable, se::Stream* stream,
       absl::Span<se::DeviceMemoryBase const> input_buffers,
       absl::Span<Shape const> input_shapes);
@@ -83,13 +83,14 @@ class AutotunerCompileUtil {
   //  - `nullptr` on *expected* failure
   //  - `Executable` if everything goes fine.
   //  - `Status` on *unexpected* failure.
-  StatusOr<std::unique_ptr<Executable>> Compile(GenerateModuleFn extractor);
+  absl::StatusOr<std::unique_ptr<Executable>> Compile(
+      GenerateModuleFn extractor);
 
   // Generic method to extract an HLO using the debug options of the
   // AutotunerCompileUtil.
   //
   // Typically we can use Compile directly.
-  StatusOr<std::unique_ptr<HloModule>> ExtractModule(
+  absl::StatusOr<std::unique_ptr<HloModule>> ExtractModule(
       GenerateModuleFn extractor);
 
  private:
@@ -98,8 +99,8 @@ class AutotunerCompileUtil {
                        se::DeviceMemoryAllocator& allocator,
                        const DebugOptions& opts);
 
-  StatusOr<ExecutionOutput> Execute(Executable& executable,
-                                    std::vector<ExecutionInput> arguments);
+  absl::StatusOr<ExecutionOutput> Execute(
+      Executable& executable, std::vector<ExecutionInput> arguments);
 
   AutotuneConfig config_;
   Compiler* compiler_;

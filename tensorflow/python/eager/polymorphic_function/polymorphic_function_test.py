@@ -69,6 +69,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_sendrecv_ops
+from tensorflow.python.ops import gen_training_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
@@ -86,7 +87,6 @@ from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
-from tensorflow.python.training import training_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -1483,7 +1483,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     @polymorphic_function.function
     def resource_apply_adam():
-      training_ops.resource_apply_adam(
+      gen_training_ops.resource_apply_adam(
           v_cpu.handle,
           v_gpu.handle,
           v_also_cpu.handle,
@@ -3833,7 +3833,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # function itself is not involved in a reference cycle.
     self.assertIs(None, weak_fn())
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testErrorMessageWhenGraphTensorIsPassedToEager(self):
 
     @polymorphic_function.function

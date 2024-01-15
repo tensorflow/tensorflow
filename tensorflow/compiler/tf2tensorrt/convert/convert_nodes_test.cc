@@ -4024,7 +4024,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
     Reset();
     // random data
     AddTestWeights("dims", {2}, {2, 2}, DT_INT32);
-    AddTestWeights("value", {1}, {42.0}, tf_type_);
+    AddTestWeights("value", {1}, {42}, tf_type_);
     RunValidationAndConversion(
         node_def, absl::StatusCode::kUnimplemented,
         convert_not_supported_implicit(node_def.op(), node_def.name()));
@@ -4042,16 +4042,19 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertFill) {
       for (auto output_dims : output_dims_params) {
         for (auto value_dims : value_dims_params) {
           Reset();
-          std::vector<int32> dims_dims = {output_dims.size()};
+          std::vector<int32_t> dims_dims = {
+              static_cast<int32_t>(output_dims.size())};
           if (dims_is_tensor) {
             AddTestTensor("dims", dims_dims, DT_INT32, output_dims, dims_dims);
           } else {
             AddTestWeights("dims", dims_dims, output_dims, DT_INT32);
           }
           if (value_is_tensor) {
-            AddTestTensor("value", value_dims, tf_type_, {val});
+            AddTestTensor("value", value_dims, tf_type_,
+                          {static_cast<int>(val)});
           } else {
-            AddTestWeights("value", value_dims, {val}, tf_type_);
+            AddTestWeights("value", value_dims, {static_cast<int>(val)},
+                           tf_type_);
           }
           size_t nb_el = 1;
           for (auto d : output_dims) {
@@ -4084,7 +4087,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
         // (a) for all parameters, when shape_idx > 3
         // (b) for all parameters, except shape_idx, when shape_idx >= 0
         // (c) for none of the shape_idx < 0
-        if (shape_idx > 3 || shape_idx >= 0 && shape_idx != i) {
+        if (shape_idx > 3 || (shape_idx >= 0 && shape_idx != i)) {
           partial_shape_dims = {1};
         }
         AddTestTensor(name[i], {1}, type[i], value[i], partial_shape_dims);
@@ -4140,7 +4143,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertRange) {
                                   limit_type == DT_INT32 &&
                                   delta_type == DT_INT32;
 
-        if (all_weights || all_integers && !config[2]) {
+        if (all_weights || (all_integers && !config[2])) {
           // Reject invalid parameters if delta = 0 and it's passed as a weight.
           param_value[2] = {0};
           set_parameters(param_name, param_value, param_type, config);
@@ -9435,8 +9438,8 @@ void OpConverter_Select::RunTest(const string& opName) {
           std::accumulate(std::begin(expect_dims), std::end(expect_dims), 1,
                           std::multiplies<int>());
 
-      assert(rank_out == expected_out ? expected_out->size()
-                                      : rank[use_indices >= 0 ? 0 : 1]);
+      assert(rank_out == (expected_out ? expected_out->size()
+                                       : rank[use_indices >= 0 ? 0 : 1]));
 
       expected_output.resize(rank_out);
       const auto& data_then = *par_value[1];
@@ -9476,7 +9479,7 @@ void OpConverter_Select::RunTest(const string& opName) {
     const auto nMax = testing_SelectV2 ? 2 : 1;
     for (int n = 0; n < nMax; n++) {
       set_parameters();
-      if (testing_SelectV2 || same_then_else_shapes && same_cond_chape) {
+      if (testing_SelectV2 || (same_then_else_shapes && same_cond_chape)) {
         TestOpConverter(node, exp_dims, OkStatus(), OkStatus(),
                         ElementsAreArray(expected_output));
       } else {

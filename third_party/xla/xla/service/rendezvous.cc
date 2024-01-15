@@ -15,16 +15,18 @@ limitations under the License.
 
 #include "xla/service/rendezvous.h"
 
-#include "absl/synchronization/mutex.h"
+#include <cstdlib>
+
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tsl/platform/logging.h"
 
-namespace xla {
+namespace xla::internal {
 
-void AwaitAndLogIfStuck(absl::Mutex& mutex, const absl::Condition& condition,
+void AwaitAndLogIfStuck(absl::Notification& ready,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
-  if (mutex.AwaitWithTimeout(condition, warn_stuck_timeout)) {
+  if (ready.WaitForNotificationWithTimeout(warn_stuck_timeout)) {
     return;
   }
 
@@ -32,7 +34,7 @@ void AwaitAndLogIfStuck(absl::Mutex& mutex, const absl::Condition& condition,
              << absl::ToInt64Seconds(warn_stuck_timeout)
              << " seconds and may be stuck:";
 
-  if (mutex.AwaitWithTimeout(condition, terminate_timeout)) {
+  if (ready.WaitForNotificationWithTimeout(terminate_timeout)) {
     LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
                   "Perhaps the timeout is too short.";
     return;
@@ -44,4 +46,4 @@ void AwaitAndLogIfStuck(absl::Mutex& mutex, const absl::Condition& condition,
   std::exit(42);
 }
 
-}  // namespace xla
+}  // namespace xla::internal

@@ -64,14 +64,6 @@ struct AotResult {
 StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
                                          AotOptions aot_options = {});
 
-// AOT compiles saved_model in input_model_dir, writing output
-// saved_model and aot packages to output_model_dir, or
-// "{input_model_dir}/aot_packages" if output dir provided. Warmup requests
-// should be present in input_model_dir
-Status AotCompileSavedModelAndSaveResult(
-    absl::string_view input_model_dir, AotOptions aot_options = {},
-    absl::string_view output_model_dir = "");
-
 // TODO(b/296466237): Add unit test.
 // Runs bridge and compiles the generated XLA functions corresponding to the
 // signature function with name `siganture_name` in MetaGraphDef.
@@ -107,7 +99,6 @@ StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,
     XlaCompiler::CompilationResult** compilation_result);
-
 }  // namespace tensorflow::tfrt_stub
 
 #endif  // TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_AOT_COMPILE_H_

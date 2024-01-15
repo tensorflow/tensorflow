@@ -224,7 +224,7 @@ class WrappedFunction(function.ConcreteFunction):
     _lift_unlifted_variables(fn_graph, variable_holder)
     # We call __init__ after lifting variables so that the function's signature
     # properly reflects the new captured inputs.
-    for f in fn_graph.as_graph_def().library.function:
+    for f in fn_graph.as_graph_def(use_pybind11_proto=True).library.function:
       context.context().add_function_def(f)
     self._signature = signature
     function_type = function_type_lib.from_structured_signature(

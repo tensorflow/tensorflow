@@ -41,11 +41,14 @@ class ShapeTest : public ::testing::Test {
       ShapeUtil::MakeTupleShape({tuple_, matrix_, token_});
   const Shape dynamic_matrix_ =
       ShapeUtil::MakeShape(S32, {5, 2}, {true, false});
+  const Shape unbounded_ =
+      ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
 };
 
 TEST_F(ShapeTest, ShapeToFromProto) {
-  for (const Shape& shape : {opaque_, token_, scalar_, matrix_, matrix2_,
-                             tuple_, nested_tuple_, dynamic_matrix_}) {
+  for (const Shape& shape :
+       {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_,
+        dynamic_matrix_, unbounded_}) {
     Shape shape_copy(shape.ToProto());
     EXPECT_TRUE(ShapeUtil::Equal(shape, shape_copy))
         << shape << " != " << shape_copy;
@@ -83,6 +86,8 @@ TEST_F(ShapeTest, DynamicShapeToString) {
 
   array_shape.set_dynamic_dimension(2, false);
   EXPECT_EQ("f32[<=23,44,55]", array_shape.ToString());
+
+  EXPECT_EQ("f32[?,784]", unbounded_.ToString());
 }
 
 TEST_F(ShapeTest, EqualityTest) {
@@ -120,6 +125,28 @@ TEST_F(ShapeTest, IsStatic) {
   ShapeUtil::GetMutableSubshape(&dynamic_tuple, {2})
       ->set_dynamic_dimension(1, true);
   EXPECT_FALSE(dynamic_tuple.is_static());
+
+  EXPECT_FALSE(unbounded_.is_static());
+}
+
+TEST_F(ShapeTest, IsDynamic) {
+  EXPECT_FALSE(matrix_.is_dynamic());
+  EXPECT_FALSE(matrix_.is_unbounded_dynamic());
+
+  EXPECT_TRUE(dynamic_matrix_.is_dynamic());
+  EXPECT_FALSE(dynamic_matrix_.is_unbounded_dynamic());
+
+  EXPECT_TRUE(unbounded_.is_dynamic());
+  EXPECT_TRUE(unbounded_.is_unbounded_dynamic());
+
+  Shape unbounded_tuple = tuple_;
+  EXPECT_FALSE(unbounded_tuple.is_unbounded_dynamic());
+  ShapeUtil::GetMutableSubshape(&unbounded_tuple, {2})
+      ->set_dynamic_dimension(1, true);
+  EXPECT_FALSE(unbounded_tuple.is_unbounded_dynamic());
+  ShapeUtil::GetMutableSubshape(&unbounded_tuple, {2})
+      ->set_dimensions(1, Shape::kUnboundedSize);
+  EXPECT_TRUE(unbounded_tuple.is_unbounded_dynamic());
 }
 
 TEST_F(ShapeTest, IsDynamicDimension) {
@@ -133,6 +160,9 @@ TEST_F(ShapeTest, IsDynamicDimension) {
   ShapeUtil::GetMutableSubshape(&dynamic_tuple, {2})
       ->set_dynamic_dimension(1, true);
   EXPECT_FALSE(dynamic_tuple.is_static());
+
+  EXPECT_TRUE(unbounded_.is_dynamic_dimension(0));
+  EXPECT_FALSE(unbounded_.is_dynamic_dimension(1));
 }
 
 TEST_F(ShapeTest, ProgramShapeToFromProto) {

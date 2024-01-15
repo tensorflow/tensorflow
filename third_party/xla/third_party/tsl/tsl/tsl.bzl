@@ -27,7 +27,7 @@ load(
     "onednn_v3_define",
 )
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
     "cc_shared_library",
@@ -36,6 +36,11 @@ load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
+
+# buildifier: disable=out-of-order-load
+# Internally this loads a macro, but in OSS this is a function
+def register_extension_info(**kwargs):
+    pass
 
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -186,6 +191,7 @@ def if_nccl(if_true, if_false = []):
     return select({
         clean_dep("//tsl:no_nccl_support"): if_false,
         clean_dep("//tsl:windows"): if_false,
+        clean_dep("//tsl:arm"): if_false,
         "//conditions:default": if_true,
     })
 
@@ -348,6 +354,8 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
+
+register_extension_info(extension = tsl_gpu_library, label_regex_for_dep = "{extension_name}")
 
 # Traverse the dependency graph along the "deps" attribute of the
 # target and return a struct with one field called 'tf_collected_deps'.
@@ -562,6 +570,7 @@ def tsl_pybind_extension_opensource(
         data = [],
         defines = [],
         deprecation = None,
+        enable_stub_generation = False,  # @unused
         features = [],
         licenses = None,
         linkopts = [],
@@ -753,9 +762,6 @@ def tsl_pybind_extension_opensource(
         restricted_to = restricted_to,
         compatible_with = compatible_with,
     )
-
-# Export open source version of pybind_extension under base name as well.
-tsl_pybind_extension = tsl_pybind_extension_opensource
 
 # Used for specifying external visibility constraints. In non-monorepo situations, this needs to be
 # public, but monorepos can have more precise constraints.

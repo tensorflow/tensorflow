@@ -37,8 +37,12 @@ message OpaqueShardingProto {
 message ConcreteShardingProto {
   DeviceListProto devices = 1;
   optional string memory_kind = 4;
-  ShapeProto shape = 2;
+  oneof shape_or_dynamic_shape {
+    ShapeProto shape = 2;
+    DynamicShapeProto dynamic_shape = 5;
+  }
   repeated ShapeProto shard_shapes = 3;
+  repeated DynamicShapeProto shard_dynamic_shapes = 6;
 }
 
 // Wire format for `ConcreteEvenSharding`.

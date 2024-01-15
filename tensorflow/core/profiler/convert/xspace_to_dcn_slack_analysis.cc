@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/profiler/protobuf/dcn_collective_info.pb.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
 #include "tensorflow/core/profiler/protobuf/topology.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
@@ -74,7 +75,7 @@ using xla::HloOpcode;
 // TODO: Identify mechanism to maintain consistency between producer and
 // consumer here.
 const char kHostEventRegex[] = {
-    "device_[0-9][0-9][0-9]([0-9][0-9][0-9])_gid_(.*)"};
+    "device_[0-9]+([0-9][0-9][0-9][0-9][0-9])_gid_(.*)"};
 
 std::optional<std::string> GetAttributeFromInstr(
     const xla::HloInstruction* instr, std::string_view attribute) {
@@ -108,6 +109,21 @@ std::optional<std::string> GetTransferType(const xla::HloInstruction* instr) {
 std::string HostCollectiveKey(int index_on_host,
                               std::string_view rendezvous_name) {
   return absl::StrCat(index_on_host, "_", rendezvous_name);
+}
+
+DcnCollectiveInfoProto GetDcnCollectiveInfoProto(const XEventVisitor& xevent) {
+  DcnCollectiveInfoProto dcn_collective_info;
+  xevent.Metadata().ForEachStat([&](const XStatVisitor& xstat) {
+    if (static_cast<StatType>(*xstat.Type()) == StatType::kDcnCollectiveInfo) {
+      absl::string_view byte_value = xstat.BytesValue();
+      if (!dcn_collective_info.ParseFromArray(byte_value.data(),
+                                              byte_value.size())) {
+        LOG(WARNING) << "Could not parse DcnCollectiveInfoProto from metadata.";
+      }
+    }
+  });
+
+  return dcn_collective_info;
 }
 
 }  // namespace
@@ -203,6 +219,55 @@ void DcnTracker::UpdateActiveOps(uint64_t duration) {
   }
 }
 
+int DcnTracker::GetReplicaGroupSize(const std::string& rendezvous_name,
+                                    const XEventVisitor& visitor) {
+  if (rendezvous_to_replica_group_size_map_.contains(rendezvous_name)) {
+    return rendezvous_to_replica_group_size_map_[rendezvous_name];
+  }
+
+  DcnCollectiveInfoProto dcn_collective_info =
+      GetDcnCollectiveInfoProto(visitor);
+
+  if (dcn_collective_info.one_to_one_groups_size() != 0) {
+    // OneToOneGroup has a source and a destination, which is one replica group
+    rendezvous_to_replica_group_size_map_[rendezvous_name] = 1;
+  } else if (dcn_collective_info.endpoint_groups_size() != 0) {
+    rendezvous_to_replica_group_size_map_[rendezvous_name] =
+        dcn_collective_info.endpoint_groups(0).endpoints().size();
+  } else {
+    rendezvous_to_replica_group_size_map_[rendezvous_name] = 0;
+  }
+
+  return rendezvous_to_replica_group_size_map_[rendezvous_name];
+}
+
+uint64_t DcnTracker::ComputeTransmittedDataSize(
+    const int64_t buffer_size, const int group_size,
+    const std::string& transfer_type) {
+  uint64_t transmitted_bytes = 0;
+  if (group_size == 0) {
+    LOG(ERROR) << "Replica group size is 0.";
+    return transmitted_bytes;
+  }
+
+  if (transfer_type == "ONE_TO_ONE") {
+    transmitted_bytes = group_size * buffer_size;
+  } else if (transfer_type == "ALL_GATHER") {
+    transmitted_bytes = (group_size - 1) * buffer_size;
+  } else if (transfer_type == "ALL_REDUCE") {
+    // Since the reduced buffer now has to be sent back to the replicas,
+    // the total bytes transmitted over the network is 2x the shape of the op.
+    transmitted_bytes =
+        2 * SafeDivide(group_size - 1, group_size) * buffer_size;
+  } else if (transfer_type == "ALL_TO_ALL" ||
+             transfer_type == "REDUCE_SCATTER") {
+    transmitted_bytes = SafeDivide(group_size - 1, group_size) * buffer_size;
+  } else {
+    LOG(ERROR) << "Unsupported transfer type: " << transfer_type;
+  }
+  return transmitted_bytes;
+}
+
 void DcnTracker::VisitOp(const InstrMetadata& instr,
                          const XEventVisitor& visitor) {
   std::string rendezvous_name;
@@ -233,6 +298,8 @@ void DcnTracker::VisitOp(const InstrMetadata& instr,
       opState.send_op_name = visitor.DisplayName();
       opState.send.set_duration_ps(visitor.DurationPs());
       opState.send.set_start_time_ps(visitor.TimestampPs());
+      opState.replica_group_size =
+          GetReplicaGroupSize(rendezvous_name, visitor);
       break;
     case HloOpcode::kRecv:
       opState.recv.set_duration_ps(visitor.DurationPs());
@@ -255,16 +322,8 @@ void DcnTracker::VisitOp(const InstrMetadata& instr,
         analysis->set_slack_us(NanoToMicro(visitor.TimestampNs() -
                                            opState.start_time -
                                            opState.overlapping_duration));
-        // TODO(b/294584919): The current transmitted bytes measures the
-        // buffer size at the recv-done. This could include bytes that were not
-        // received over the network. Fix the calculation based on the number of
-        // replica groups.
-        // In case of ALL_REDUCE, Since the reduced buffer now
-        // has to be sent back to the replicas, the total bytes transmitted over
-        // the network is 2x the shape of the op.
-        analysis->set_bytes_transmitted_over_network(
-            analysis->transfer_type() == "ALL_REDUCE" ? 2 * instr.size
-                                                      : instr.size);
+        analysis->set_bytes_transmitted_over_network(ComputeTransmittedDataSize(
+            instr.size, opState.replica_group_size, opState.transfer_type));
         analysis->set_stall_duration_us(NanoToMicro(opState.stall_duration_ns));
         analysis->set_recv_op_name(std::string(visitor.DisplayName()));
         analysis->set_send_op_name(opState.send_op_name);

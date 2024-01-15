@@ -22,11 +22,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -45,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -224,14 +228,17 @@ static xla::Status PopulateExecutableOutputMemoryKinds(
   return xla::OkStatus();
 }
 
-xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
-    PJRT_KeyValueGetCallback c_callback, void* user_arg) {
-  if (c_callback == nullptr) {
-    return nullptr;
-  }
-  return [c_callback, user_arg](
-             const std::string& key,
-             absl::Duration timeout) -> xla::StatusOr<std::string> {
+class CApiKeyValueStore : public xla::KeyValueStoreInterface {
+ public:
+  CApiKeyValueStore(PJRT_KeyValueGetCallback c_get_callback, void* get_user_arg,
+                    PJRT_KeyValuePutCallback c_put_callback, void* put_user_arg)
+      : c_get_callback_(c_get_callback),
+        get_user_arg_(get_user_arg),
+        c_put_callback_(c_put_callback),
+        put_user_arg_(put_user_arg) {}
+
+  absl::StatusOr<std::string> Get(std::string_view key,
+                                  absl::Duration timeout) override {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
                                            size_t message_size) {
@@ -239,28 +246,21 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
                                         std::string(message, message_size))};
     };
     PJRT_KeyValueGetCallback_Args args;
-    args.key = key.c_str();
+    args.key = key.data();
     args.key_size = key.size();
     args.timeout_in_ms = timeout / absl::Milliseconds(1);
     args.callback_error = &callback_error;
-    args.user_arg = user_arg;
-    std::unique_ptr<PJRT_Error> error(c_callback(&args));
+    args.user_arg = get_user_arg_;
+    std::unique_ptr<PJRT_Error> error(c_get_callback_(&args));
     if (error != nullptr) {
       return error->status;
     }
     auto result = std::string(args.value, args.value_size);
     args.value_deleter_callback(args.value);
     return result;
-  };
-}
-
-xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
-    PJRT_KeyValuePutCallback c_callback, void* user_arg) {
-  if (c_callback == nullptr) {
-    return nullptr;
   }
-  return [c_callback, user_arg](const std::string& key,
-                                const std::string& value) -> xla::Status {
+
+  absl::Status Set(std::string_view key, std::string_view value) override {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
                                            size_t message_size) {
@@ -268,18 +268,34 @@ xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
                                         std::string(message, message_size))};
     };
     PJRT_KeyValuePutCallback_Args args;
-    args.key = key.c_str();
+    args.key = key.data();
     args.key_size = key.size();
-    args.value = value.c_str();
+    args.value = value.data();
     args.value_size = value.size();
     args.callback_error = &callback_error;
-    args.user_arg = user_arg;
-    std::unique_ptr<PJRT_Error> error(c_callback(&args));
+    args.user_arg = put_user_arg_;
+    std::unique_ptr<PJRT_Error> error(c_put_callback_(&args));
     if (error != nullptr) {
       return error->status;
     }
-    return xla::OkStatus();
-  };
+    return absl::OkStatus();
+  }
+
+ private:
+  PJRT_KeyValueGetCallback c_get_callback_;
+  void* get_user_arg_;
+  PJRT_KeyValuePutCallback c_put_callback_;
+  void* put_user_arg_;
+};
+
+std::shared_ptr<xla::KeyValueStoreInterface> ToCppKeyValueStore(
+    PJRT_KeyValueGetCallback c_get_callback, void* get_user_arg,
+    PJRT_KeyValuePutCallback c_put_callback, void* put_user_arg) {
+  if (c_get_callback == nullptr || c_put_callback == nullptr) {
+    return nullptr;
+  }
+  return std::make_shared<CApiKeyValueStore>(c_get_callback, get_user_arg,
+                                             c_put_callback, put_user_arg);
 }
 
 // ---------------------------------- Errors -----------------------------------
@@ -375,6 +391,17 @@ PJRT_Error* PJRT_Client_PlatformVersion(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_TopologyDescription(
+    PJRT_Client_TopologyDescription_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_TopologyDescription_Args",
+      PJRT_Client_TopologyDescription_Args_STRUCT_SIZE, args->struct_size));
+
+  PJRT_RETURN_IF_ERROR(args->client->topology.status());
+  args->topology = args->client->topology->get();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Client_Devices(PJRT_Client_Devices_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Devices_Args", PJRT_Client_Devices_Args_STRUCT_SIZE,
@@ -416,27 +443,13 @@ PJRT_Error* PJRT_Client_LookupAddressableDevice(
   return nullptr;
 }
 
-// TODO: b/306669267 - this method is deprecated. When can we return
-// unimplemented?
+// TODO: b/306669267 - this method is deprecated. Return unimplemented error,
+// until the next major version upgrade.
 PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
     PJRT_LoadedExecutable_Fingerprint_Args* args) {
-  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_LoadedExecutable_Fingerprint_Args",
-      PJRT_LoadedExecutable_Fingerprint_Args_STRUCT_SIZE, args->struct_size));
-  const xla::Status& status = args->executable->fingerprint.status();
-  if (!status.ok()) {
-    return new PJRT_Error{status};
-  }
-  if (args->executable->fingerprint.value().has_value()) {
-    args->executable_fingerprint =
-        args->executable->fingerprint.value()->c_str();
-    args->executable_fingerprint_size =
-        args->executable->fingerprint.value()->size();
-  } else {
-    args->executable_fingerprint = nullptr;
-    args->executable_fingerprint_size = 0;
-  }
-  return nullptr;
+  return new PJRT_Error{
+      xla::Unimplemented("PJRT_LoadedExecutable_Fingerprint is deprecated, use "
+                         "PJRT_Executable_Fingerprint instead.")};
 }
 
 PJRT_Error* PJRT_Client_AddressableMemories(
@@ -450,8 +463,8 @@ PJRT_Error* PJRT_Client_AddressableMemories(
 }
 
 // Searches `device_list` for a PJRT_Device* that wraps a provided
-// `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device* is
-// returned. Otherwise, returns nullptr.
+// `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device*
+// is returned. Otherwise, returns nullptr.
 static PJRT_Device* FindDeviceWrapper(
     xla::PjRtDevice* cpp_device, absl::Span<PJRT_Device* const> device_list) {
   for (PJRT_Device* device : device_list) {
@@ -519,7 +532,7 @@ using ProgramVariant =
 xla::StatusOr<
     std::variant<mlir::OwningOpRef<mlir::ModuleOp>, xla::XlaComputation>>
 ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
-                 PJRT_Program* program) {
+                 const PJRT_Program* program) {
   auto format_str = absl::string_view(program->format, program->format_size);
   auto module_str = absl::string_view(program->code, program->code_size);
 
@@ -659,7 +672,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
   xla::PjRtFuture<xla::Status>::Promise promise =
       xla::PjRtFuture<xla::Status>::CreatePromise();
 
-  std::function<void()> on_done_with_host_buffer = [promise]() mutable {
+  absl::AnyInvocable<void() &&> on_done_with_host_buffer = [promise]() mutable {
     promise.Set(xla::OkStatus());
   };
 
@@ -675,9 +688,18 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
                     dims, byte_strides,
                     ::pjrt::ConvertFromPjRtHostBufferSemantics(
                         args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->memory->memory_space,
-                    &layout.value()));
+                    std::move(on_done_with_host_buffer),
+                    args->memory->memory_space, &layout.value()));
   } else if (has_layout_and_no_memory) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    std::move(on_done_with_host_buffer), args->device->device,
+                    &layout.value()));
+  } else if (has_memory_and_no_layout) {
     PJRT_ASSIGN_OR_RETURN(
         buffer,
         args->client->client->BufferFromHostBuffer(
@@ -685,16 +707,8 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
             byte_strides,
             ::pjrt::ConvertFromPjRtHostBufferSemantics(
                 args->host_buffer_semantics),
-            on_done_with_host_buffer, args->device->device, &layout.value()));
-  } else if (has_memory_and_no_layout) {
-    PJRT_ASSIGN_OR_RETURN(
-        buffer, args->client->client->BufferFromHostBuffer(
-                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
-                    dims, byte_strides,
-                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
-                        args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->memory->memory_space,
-                    /*device_layout=*/nullptr));
+            std::move(on_done_with_host_buffer), args->memory->memory_space,
+            /*device_layout=*/nullptr));
   } else {
     PJRT_ASSIGN_OR_RETURN(
         buffer, args->client->client->BufferFromHostBuffer(
@@ -702,7 +716,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
                     dims, byte_strides,
                     ::pjrt::ConvertFromPjRtHostBufferSemantics(
                         args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->device->device));
+                    std::move(on_done_with_host_buffer), args->device->device));
   }
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
@@ -1246,8 +1260,8 @@ static xla::SendCallback CSendCallbackToCpp(
         PJRT_Chunk c_chunk = ConvertFromCppChunk(std::move(input));
         // PJRT_CallbackError creates PJRT_Error in the implementation, but
         // using the caller's callback status code & message. This way, the
-        // caller avoids creating PJRT_Error itself, and the PJRT_Error is fully
-        // managed in the implementation layer.
+        // caller avoids creating PJRT_Error itself, and the PJRT_Error is
+        // fully managed in the implementation layer.
         PJRT_CallbackError c_callback_error =
             [](PJRT_Error_Code code, const char* message, size_t message_size) {
               return new PJRT_Error{
@@ -1310,7 +1324,7 @@ static void CRecvCallbackListsToCpp(
 }
 
 static std::vector<std::vector<xla::PjRtBuffer*>> Convert2DCBuffersToCppBuffers(
-    PJRT_Buffer*** c_lists, size_t outer_size, size_t inner_size) {
+    PJRT_Buffer* const* const* c_lists, size_t outer_size, size_t inner_size) {
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_lists;
   cpp_lists.reserve(outer_size);
   for (int i = 0; i < outer_size; ++i) {
@@ -1339,6 +1353,12 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   options.context = nullptr;
   options.multi_slice_config = nullptr;
   options.use_major_to_minor_data_layout_for_callbacks = true;
+  if (args->options->num_non_donatable_input_indices > 0) {
+    for (int i = 0; i < args->options->num_non_donatable_input_indices; ++i) {
+      options.non_donatable_input_indices.insert(
+          args->options->non_donatable_input_indices[i]);
+    }
+  }
 
   std::vector<std::vector<xla::PjRtBuffer*>> cpp_argument_lists =
       Convert2DCBuffersToCppBuffers(args->argument_lists, args->num_devices,
@@ -1409,7 +1429,8 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     if (args->num_devices != 1) {
       return new PJRT_Error{xla::InvalidArgument(
           "num_devices and corresponding output list sizes must be 1 when "
-          "calling PJRT_LoadedExecutable_Execute with non-null execute_device. "
+          "calling PJRT_LoadedExecutable_Execute with non-null "
+          "execute_device. "
           "Got "
           "num_devices=%i",
           args->num_devices)};
@@ -1472,6 +1493,22 @@ PJRT_Error* PJRT_Executable_Serialize(PJRT_Executable_Serialize_Args* args) {
       +[](PJRT_SerializedExecutable* serialized_executable) {
         delete serialized_executable;
       };
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Executable_GetCompiledMemoryStats(
+    PJRT_Executable_GetCompiledMemoryStats_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Executable_Serialize_Args",
+      PJRT_Executable_Serialize_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(auto memory_stats,
+                        args->executable->executable->GetCompiledMemoryStats());
+  args->generated_code_size_in_bytes =
+      memory_stats.generated_code_size_in_bytes;
+  args->argument_size_in_bytes = memory_stats.argument_size_in_bytes;
+  args->output_size_in_bytes = memory_stats.output_size_in_bytes;
+  args->alias_size_in_bytes = memory_stats.alias_size_in_bytes;
+  args->temp_size_in_bytes = memory_stats.temp_size_in_bytes;
   return nullptr;
 }
 
@@ -2136,8 +2173,19 @@ static void AttachDevicesAndMemories(PJRT_Client* c_client) {
   }
 }
 
+static xla::StatusOr<std::unique_ptr<PJRT_TopologyDescription>>
+GetStatusOrTopologyDescription(const xla::PjRtClient& cpp_client) {
+  xla::StatusOr<const xla::PjRtTopologyDescription*> status_or_cpp_topo =
+      cpp_client.GetTopologyDescription();
+  if (!status_or_cpp_topo.ok()) {
+    return status_or_cpp_topo.status();
+  }
+  return std::unique_ptr<PJRT_TopologyDescription>(
+      CreateWrapperDeviceTopology(*status_or_cpp_topo));
+}
+
 PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
-  PJRT_Client* c_client = new PJRT_Client{std::move(cpp_client)};
+  PJRT_Client* c_client = new PJRT_Client(std::move(cpp_client));
   PopulatePjrtClientDevices(c_client);
   PopulatePjrtClientMemories(c_client);
   AttachDevicesAndMemories(c_client);
@@ -2145,9 +2193,9 @@ PJRT_Client* CreateWrapperClient(std::unique_ptr<xla::PjRtClient> cpp_client) {
 }
 
 PJRT_TopologyDescription* CreateWrapperDeviceTopology(
-    std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology) {
+    const xla::PjRtTopologyDescription* cpp_topology) {
   PJRT_TopologyDescription* c_topology =
-      new PJRT_TopologyDescription{std::move(cpp_topology)};
+      new PJRT_TopologyDescription{/*owned_topology=*/nullptr, cpp_topology};
   c_topology->cpp_descriptions = c_topology->topology->DeviceDescriptions();
   c_topology->descriptions.reserve(c_topology->cpp_descriptions.size());
   c_topology->description_pointers.reserve(c_topology->cpp_descriptions.size());
@@ -2164,7 +2212,19 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
   return c_topology;
 }
 
+PJRT_TopologyDescription* CreateWrapperDeviceTopology(
+    std::unique_ptr<xla::PjRtTopologyDescription> cpp_topology) {
+  PJRT_TopologyDescription* topo_desc =
+      CreateWrapperDeviceTopology(cpp_topology.get());
+  topo_desc->owned_topology = std::move(cpp_topology);
+  return topo_desc;
+}
+
 }  // namespace pjrt
+
+PJRT_Client::PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client)
+    : client(std::move(cpp_client)),
+      topology(pjrt::GetStatusOrTopologyDescription(*client)) {}
 
 PJRT_Executable::PJRT_Executable(
     std::shared_ptr<xla::PjRtExecutable> executable)
@@ -2173,8 +2233,6 @@ PJRT_Executable::PJRT_Executable(
 
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(
     std::shared_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
-    : executable(std::move(executable)),
-      client(client),
-      fingerprint(client->client->ExecutableFingerprint(*this->executable)) {
+    : executable(std::move(executable)), client(client) {
   pjrt::PopulatePjrtExecutableAddressableDevices(this);
 }

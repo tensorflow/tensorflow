@@ -60,23 +60,5 @@ TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
       HasSubstr("S4/U4 is currently only supported in convert instructions"));
 }
 
-TEST_F(CpuGpuShapeVerifierTest, Int4OddNumberOfElements) {
-  const char* const hlo_string = R"(
-  HloModule Module
-
-  ENTRY main {
-    p0 = u4[11] parameter(0)
-    ROOT out = u8[11] convert(p0)
-  }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
-
-  auto status = verifier().Run(module.get()).status();
-  ASSERT_FALSE(status.ok());
-  EXPECT_THAT(status.message(),
-              HasSubstr("S4/U4 arrays must have an even number of elements,"));
-}
-
 }  // namespace
 }  // namespace xla

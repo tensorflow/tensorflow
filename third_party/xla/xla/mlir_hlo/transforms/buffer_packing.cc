@@ -422,8 +422,8 @@ class BufferPacking : bufferization::BufferPlacementTransformationBase {
     }
 
     // Find common dominators.
-    return findCommonDominator(packingInfos.begin()->source, allocValues,
-                               dominators);
+    return bufferization::findCommonDominator(packingInfos.begin()->source,
+                                              allocValues, dominators);
   }
 };
 

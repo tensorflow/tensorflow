@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_stream_interface.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -44,7 +44,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
             stream_, static_cast<TpuStream*>(other)->stream_);
   }
 
-  tsl::Status EnqueueTransferHostToDevice(
+  absl::Status EnqueueTransferHostToDevice(
       stream_executor::DeviceMemoryBase device_dst, const void* host_src,
       uint64_t size) {
     StatusHelper status;
@@ -55,7 +55,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
-  tsl::Status EnqueueTransferDeviceToHost(
+  absl::Status EnqueueTransferDeviceToHost(
       stream_executor::DeviceMemoryBase device_src, void* host_dst,
       uint64_t size) {
     StatusHelper status;
@@ -66,7 +66,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
-  tsl::Status EnqueueOnTpuDeviceSendRecvLocal(
+  absl::Status EnqueueOnTpuDeviceSendRecvLocal(
       stream_executor::DeviceMemoryBase send_buffer,
       stream_executor::DeviceMemoryBase recv_buffer) override {
     StatusHelper status;

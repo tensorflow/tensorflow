@@ -51,7 +51,7 @@ class TriangularSolveThunk : public Thunk {
   TriangularSolveThunk(const TriangularSolveThunk&) = delete;
   TriangularSolveThunk& operator=(const TriangularSolveThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   se::GpuAsmOpts asm_opts_;
@@ -72,15 +72,13 @@ class TriangularSolveThunk : public Thunk {
   const int64_t b_batch_stride_;
 };
 
-Status RunTriangularSolve(se::DeviceMemoryBase a_data,
-                          se::DeviceMemoryBase b_data,
-                          se::DeviceMemoryBase temp_data,
-                          se::GpuAsmOpts asm_opts, se::blas::UpperLower uplo,
-                          se::blas::Side side, se::blas::Diagonal unit_diagonal,
-                          se::blas::Transpose transpose_a, PrimitiveType type,
-                          int64_t batch_size, int64_t m, int64_t n,
-                          int64_t a_batch_stride, int64_t b_batch_stride,
-                          se::Stream* stream);
+absl::Status RunTriangularSolve(
+    se::DeviceMemoryBase a_data, se::DeviceMemoryBase b_data,
+    se::DeviceMemoryBase temp_data, se::GpuAsmOpts asm_opts,
+    se::blas::UpperLower uplo, se::blas::Side side,
+    se::blas::Diagonal unit_diagonal, se::blas::Transpose transpose_a,
+    PrimitiveType type, int64_t batch_size, int64_t m, int64_t n,
+    int64_t a_batch_stride, int64_t b_batch_stride, se::Stream* stream);
 
 }  // namespace gpu
 }  // namespace xla

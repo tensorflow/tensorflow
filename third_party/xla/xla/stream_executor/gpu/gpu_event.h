@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_EVENT_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EVENT_H_
 
+#include "absl/status/status.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -33,14 +33,14 @@ class GpuEvent : public internal::EventInterface {
   ~GpuEvent() override;
 
   // Populates the CUDA-platform-specific elements of this object.
-  tsl::Status Init();
+  absl::Status Init();
 
   // Deallocates any platform-specific elements of this object. This is broken
   // out (not part of the destructor) to allow for error reporting.
-  tsl::Status Destroy();
+  absl::Status Destroy();
 
   // Inserts the event at the current position into the specified stream.
-  tsl::Status Record(GpuStream* stream);
+  absl::Status Record(GpuStream* stream);
 
   // Polls the CUDA platform for the event's current status.
   Event::Status PollForStatus();

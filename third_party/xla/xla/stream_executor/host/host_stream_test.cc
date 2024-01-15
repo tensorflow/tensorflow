@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
@@ -56,7 +57,7 @@ TEST(HostStream, ReportsHostCallbackError) {
   stream.Init();
 
   stream.ThenDoHostCallbackWithStatus(
-      []() { return tsl::errors::Internal("error!"); });
+      []() { return absl::InternalError("error!"); });
 
   auto status = stream.BlockHostUntilDone();
   ASSERT_EQ(status.code(), tsl::error::INTERNAL);
@@ -71,9 +72,9 @@ TEST(HostStream, ReportsFirstHostCallbackError) {
   stream.Init();
 
   stream.ThenDoHostCallbackWithStatus(
-      []() { return tsl::errors::Internal("error 1"); });
+      []() { return absl::InternalError("error 1"); });
   stream.ThenDoHostCallbackWithStatus(
-      []() { return tsl::errors::Internal("error 2"); });
+      []() { return absl::InternalError("error 2"); });
 
   // "error 2" is just lost.
   ASSERT_EQ(stream.BlockHostUntilDone().message(), "error 1");

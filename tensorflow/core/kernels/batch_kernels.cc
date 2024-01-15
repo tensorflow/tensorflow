@@ -218,7 +218,7 @@ class BatchResource : public serving::BatchResourceBase {
         has_process_batch_function, std::move(batcher),
         GetAdaptiveBatcherQueueOptions(
             max_batch_size, batch_timeout_micros, max_enqueued_batches,
-            true /* enable large batch split */, allowed_batch_sizes,
+            /*enable_large_batch_splitting=*/true, allowed_batch_sizes,
             /*disable_padding=*/false),
         allowed_batch_sizes));
     return OkStatus();
@@ -302,9 +302,6 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
     OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
                                  &enable_large_batch_splitting_));
     has_attribute_enable_large_batch_splitting_ = true;
-  } else {
-    enable_large_batch_splitting_ = false;
-    has_attribute_enable_large_batch_splitting_ = false;
   }
 
   // Helper function `SetAdaptiveBatchSchedulerOptions` calls

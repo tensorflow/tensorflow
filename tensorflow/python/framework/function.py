@@ -38,6 +38,8 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
+is_oss = True  # updated by copybara
+
 
 # TODO(b/136040013): Drop support for Defun.
 class Defun(object):
@@ -1161,8 +1163,11 @@ def _from_definition(fdef, grad_func=None):
   result = _DefinedFunction(func, argnames, input_types, func_name, grad_func,
                             python_grad_func, out_names)
   # pylint: disable=protected-access
-  serialized = fdef.SerializeToString()
-  c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+  if is_oss:
+    serialized = fdef.SerializeToString()
+    c_func = c_api.TF_FunctionImportFunctionDef(serialized)
+  else:
+    c_func = c_api.TF_FunctionImportFunctionDefNoSerialization(fdef)
   result._c_func = c_api_util.ScopedTFFunction(c_func, func_name)
   result._extra_inputs = []
   result._op_def = fdef.signature

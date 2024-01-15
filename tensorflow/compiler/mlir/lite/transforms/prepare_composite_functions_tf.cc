@@ -341,7 +341,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
   StringRef api_name = attr.getName().getLeafReference().getValue();
   bool enable_fuse_tftext =
       tfl_fuse_tftext_ || IsTFTextRegistered(tensorflow::OpRegistry::Global());
-  if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
+  if (api_name.starts_with(kTFTextAPIPrefix) && enable_fuse_tftext) {
     if (failed(ConvertTFTextAPI(func, api_name, attr))) {
       return signalPassFailure();
     }
@@ -390,7 +390,7 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(func::FuncOp func,
   // outputs(full sequence) is used, not the last_output, not the new_states.
   // We will discard everything except the outputs.
   // And the outputs is in the shape of [batch, time, units].
-  if (attr.getValue().startswith("lstm_")) {
+  if (attr.getValue().starts_with("lstm_")) {
     // Check if the keras lstm can be fused, if not, we just don't do anything.
     if (failed(CheckFusableKerasLstm(func, module))) return;
     func.eraseBody();
@@ -405,7 +405,7 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(func::FuncOp func,
   // IndyLSTMs have diagonal recurrent weight matrices and can benefit from
   // more efficent operations in TFLite with the correct conversion (i.e. when
   // the diagonal recurrent weight matrices are provided as vectors).
-  if (attr.getValue().startswith("indy_lstm_")) {
+  if (attr.getValue().starts_with("indy_lstm_")) {
     // Check if the keras lstm can be fused, if not, we just don't do anything.
     if (failed(CheckFusableKerasLstm(func, module))) return;
     func.eraseBody();

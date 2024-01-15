@@ -15,7 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 
+#include <cstdint>
+
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

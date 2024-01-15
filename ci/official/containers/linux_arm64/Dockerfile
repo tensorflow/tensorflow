@@ -23,7 +23,7 @@ COPY apt.conf /etc/apt/
 RUN /build_patchelf.sh
 
 ################################################################################
-FROM nvidia/cuda:12.2.0-devel-ubuntu20.04 as devel
+FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 as devel
 ################################################################################
 COPY --from=builder /dt10 /dt10
 COPY --from=builder /patchelf/patchelf_0.14.3-1_arm64.deb /patchelf/patchelf_0.14.3-1_arm64.deb
@@ -79,6 +79,6 @@ COPY setup.python.sh /setup.python.sh
 RUN /setup.python.sh python3.9 devel.requirements.txt
 RUN /setup.python.sh python3.10 devel.requirements.txt
 RUN /setup.python.sh python3.11 devel.requirements.txt
+RUN /setup.python.sh python3.12 devel.requirements.txt
 # "python3" commands by default run under 3.10
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
-# RUN /setup.python.sh python3.12 devel.requirements.txt

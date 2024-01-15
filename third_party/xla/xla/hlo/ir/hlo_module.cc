@@ -74,6 +74,7 @@ HloModule::HloModule(const std::string& name,
       config_(std::move(config)),
       unique_id_(next_unique_module_id_++),
       metadata_(tsl::Env::Default()),
+      autofdo_fingerprint_(""),
       comp_envs_(std::move(comp_envs)) {
   metadata_.set_canonical_module_id(unique_id_);
 }
@@ -378,6 +379,14 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
                });
     printer->Append("}");
   }
+  if (config.replica_count() != 1) {
+    printer->Append(", replica_count=");
+    printer->Append(config.replica_count());
+  }
+  if (config.num_partitions() != 1) {
+    printer->Append(", num_partitions=");
+    printer->Append(config.num_partitions());
+  }
   if (!frontend_attributes_.map().empty()) {
     AppendCat(printer, ", frontend_attributes=",
               FrontendAttributesToString(frontend_attributes_));
@@ -471,6 +480,7 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_relative_speedup(profile_info.relative_speedup());
     profile_info_proto.set_profile_source(profile_info.profile_source());
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
+    profile_info_proto.set_fingerprint(profile_info.fingerprint());
   }
   if (config_.get().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
@@ -905,9 +915,11 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
   nonroot_computations.reserve(computations_.size() - 1);
   for (auto& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
-      for (HloComputation* called_computation :
-           instruction->called_computations()) {
-        nonroot_computations.insert(called_computation);
+      if (instruction->has_called_computations()) {
+        for (HloComputation* called_computation :
+             instruction->called_computations()) {
+          nonroot_computations.insert(called_computation);
+        }
       }
     }
   }

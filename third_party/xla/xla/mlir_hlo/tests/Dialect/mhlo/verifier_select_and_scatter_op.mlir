@@ -649,7 +649,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %arg1: tensor<10x12x12x64xf32>) -> () {
     %0 = mhlo.constant dense<0> : tensor<i32>
 
-    // expected-error @+1 {{The element-type of reduction-region's argument at index 1 is expected to be 'f32', but got 'tensor<i32>' as its type.}}
+    // expected-error @+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from 'f32', but got 'i32'}}
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {
@@ -677,7 +677,7 @@ func.func @select_and_scatter_invalid_scatter_reducer(
     %arg1: tensor<10x12x12x64xf32>) -> () {
     %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
 
-    // expected-error @+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<i32>' vs 'tensor<f32>'}}
+    // expected-error @+1 {{The element-type of reduction-region's result type at index 0 is expected to be promotable from the op's corresponding init-value element-type: 'tensor<i32>' vs 'tensor<f32>'}}
     %1 = "mhlo.select_and_scatter"(%arg0, %arg1, %0) ({
     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
       %2 = "mhlo.compare"(%arg3, %arg4) {

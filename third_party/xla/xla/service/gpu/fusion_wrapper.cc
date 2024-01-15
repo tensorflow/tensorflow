@@ -15,9 +15,9 @@ limitations under the License.
 #include "xla/service/gpu/fusion_wrapper.h"
 
 #include <functional>
-#include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -29,14 +29,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> FusionWrapper::Run(
+absl::StatusOr<bool> FusionWrapper::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto instructions = module->entry_computation()->MakeInstructionPostOrder();
   bool changed = false;
 
   std::function<Status(HloInstruction*)> handle_instruction;
-  handle_instruction = [&](HloInstruction* instruction) -> Status {
+  handle_instruction = [&](HloInstruction* instruction) -> absl::Status {
     switch (instruction->opcode()) {
       case HloOpcode::kConditional:
       case HloOpcode::kWhile:
@@ -61,6 +61,7 @@ StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kComplex:
       case HloOpcode::kConcatenate:
       case HloOpcode::kConvert:
+      case HloOpcode::kCopy:
       case HloOpcode::kCos:
       case HloOpcode::kDivide:
       case HloOpcode::kDot:
@@ -87,6 +88,7 @@ StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kPower:
       case HloOpcode::kReal:
       case HloOpcode::kReshape:
+      case HloOpcode::kReduce:
       case HloOpcode::kReducePrecision:
       case HloOpcode::kReduceWindow:
       case HloOpcode::kRemainder:
@@ -94,6 +96,7 @@ StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kRoundNearestAfz:
       case HloOpcode::kRoundNearestEven:
       case HloOpcode::kRsqrt:
+      case HloOpcode::kScatter:
       case HloOpcode::kSelect:
       case HloOpcode::kShiftLeft:
       case HloOpcode::kShiftRightLogical:
@@ -107,15 +110,11 @@ StatusOr<bool> FusionWrapper::Run(
       case HloOpcode::kTan:
       case HloOpcode::kTanh:
       case HloOpcode::kTranspose:
-      case HloOpcode::kXor:
-      case HloOpcode::kCopy:
-      case HloOpcode::kReduce: {
+      case HloOpcode::kXor: {
         auto* computation = instruction->parent();
         auto* fusion_instruction =
             computation->AddInstruction(HloInstruction::CreateFusion(
-                instruction->shape(),
-                ChooseFusionKind(*instruction /*unused but required*/,
-                                 *instruction),
+                instruction->shape(), ChooseFusionKind(*instruction),
                 instruction));
         instruction->GetModule()->SetAndUniquifyInstrName(
             fusion_instruction, absl::StrCat("wrapped_", instruction->name()));
@@ -134,7 +133,7 @@ StatusOr<bool> FusionWrapper::Run(
       default:
         break;
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   for (auto* instruction : instructions) {

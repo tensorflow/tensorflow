@@ -24,7 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "pybind11/gil.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 #include "xla/python/py_array.h"
 #include "xla/python/py_client.h"
@@ -134,13 +136,12 @@ class PyLoadedExecutable
   }
 
   StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    pybind11::gil_scoped_release scope;
     return ifrt_loaded_executable_->GetCompiledMemoryStats();
   }
 
-  StatusOr<absl::flat_hash_map<
-      std::string,
-      std::variant<std::string, int64_t, std::vector<int64_t>, float, bool>>>
-  GetCostAnalysis() const {
+  StatusOr<absl::flat_hash_map<std::string, PjRtValueType>> GetCostAnalysis()
+      const {
     return ifrt_loaded_executable_->GetCostAnalysis();
   }
 
@@ -171,6 +172,8 @@ class PyLoadedExecutable
       const;
 
   StatusOr<std::vector<Layout>> GetParameterLayouts() const;
+
+  StatusOr<std::vector<Layout>> GetOutputLayouts() const;
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 

@@ -305,19 +305,24 @@ class _CheckpointRestoreCoordinator:
     # restored when the variable is created/tracked. These get shifted over to
     # deferred_slot_restorations if the optimizer hasn't been created when that
     # happens.
-    self.slot_restorations = {}
+    self.slot_restorations = collections.defaultdict(list)
     # Controls whether errors are printed in __del__ if some objects did not
     # match.
     self.expect_partial_attr = False
-    for node_index, node in enumerate(self.object_graph_proto.nodes):
-      for slot_reference in node.slot_variables:
-        # `node` refers to an `Optimizer`, since only these have slot variables.
-        self.slot_restorations.setdefault(
-            slot_reference.original_variable_node_id, []).append(
-                base._SlotVariableRestoration(  # pylint: disable=protected-access
-                    optimizer_id=node_index,
-                    slot_variable_id=slot_reference.slot_variable_node_id,
-                    slot_name=slot_reference.slot_name))
+    if not self.options.experimental_skip_slot_variables:
+      for node_index, node in enumerate(self.object_graph_proto.nodes):
+        for slot_reference in node.slot_variables:
+          # `node` refers to an `Optimizer`, since only these have slot
+          # variables.
+          self.slot_restorations[
+              slot_reference.original_variable_node_id
+          ].append(
+              base._SlotVariableRestoration(  # pylint: disable=protected-access
+                  optimizer_id=node_index,
+                  slot_variable_id=slot_reference.slot_variable_node_id,
+                  slot_name=slot_reference.slot_name,
+              )
+          )
 
     self._deleter = _CheckpointRestoreCoordinatorDeleter(
         self.expect_partial_attr,
@@ -789,13 +794,15 @@ class CheckpointLoadStatus(_LoadStatus):
   See `Saver.restore` for usage examples.
   """
 
-  def __init__(self, checkpoint, feed_dict, graph_view):
+  def __init__(self, checkpoint, feed_dict, graph_view, options):
     self._checkpoint = checkpoint
     self._feed_dict = feed_dict
     self._object_graph_view = graph_view
     # Keep a reference to the root, since object_graph_view might only have a
     # weakref.
     self._root = graph_view.root
+    # CheckpointOptions used for restoring
+    self._options = options
 
   def assert_consumed(self):
     """Asserts that all objects in the checkpoint have been created/matched.
@@ -811,18 +818,28 @@ class CheckpointLoadStatus(_LoadStatus):
     pretty_printer = ObjectGraphProtoPrettyPrinter(
         self._checkpoint.object_graph_proto)
     self.assert_existing_objects_matched()
+    ignore_node_ids = []
+    if self._options.experimental_skip_slot_variables:
+      for node in self._checkpoint.object_graph_proto.nodes:
+        for sv in node.slot_variables:
+          ignore_node_ids.append(sv.slot_variable_node_id)
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
       if not node.attributes:
         # Only raise exceptions for the nodes with attributes themselves. Either
         # they're ultimately not important, or they have a child with an
         # attribute.
         continue
+      if node_id in ignore_node_ids:
+        continue
       trackable = self._checkpoint.object_by_proto_id.get(node_id, None)
       if trackable is None:
         raise AssertionError(
             "Unresolved object in checkpoint "
             f"{pretty_printer.node_names[node_id]}: {node}")
-    if self._checkpoint.slot_restorations:
+    if (
+        not self._options.experimental_skip_slot_variables
+        and self._checkpoint.slot_restorations
+    ):
       # Sanity check; this collection should be clear if everything has been
       # restored.
       raise AssertionError(
@@ -862,13 +879,16 @@ class CheckpointLoadStatus(_LoadStatus):
           trackable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
         raise AssertionError(
             f"Object {node} not assigned a value from checkpoint.")
-    for trackable_object in util.list_objects(self._object_graph_view):
+    for trackable_object in util.list_objects(
+        self._object_graph_view, self._options.experimental_skip_slot_variables
+    ):
       # Remove data structures that do not contain any variables from
       # restoration checks.
-      if (isinstance(trackable_object,
-                     data_structures.TrackableDataStructure) and
-          not trackable_object._trackable_children(  # pylint: disable=protected-access
-              save_type=base.SaveType.CHECKPOINT)):
+      if isinstance(
+          trackable_object, data_structures.TrackableDataStructure
+      ) and not trackable_object._trackable_children(  # pylint: disable=protected-access
+          save_type=base.SaveType.CHECKPOINT
+      ):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
@@ -891,24 +911,28 @@ class CheckpointLoadStatus(_LoadStatus):
 
   def assert_nontrivial_match(self):
     """Raises an exception if only the root object matched."""
-    for trackable_object in util.list_objects(self._object_graph_view):
+    for trackable_object in util.list_objects(
+        self._object_graph_view, self._options.experimental_skip_slot_variables
+    ):
       self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
-      unused_python_objects = (
-          object_identity.ObjectIdentitySet(
-              _objects_with_attributes(self._checkpoint.all_python_objects)) -
-          object_identity.ObjectIdentitySet(
-              self._checkpoint.object_by_proto_id.values()))
+      unused_python_objects = object_identity.ObjectIdentitySet(
+          _objects_with_attributes(self._checkpoint.all_python_objects)
+      ) - object_identity.ObjectIdentitySet(
+          self._checkpoint.object_by_proto_id.values()
+      )
       if unused_python_objects:
         raise AssertionError(
             "Nothing except the root object matched a checkpointed value. "
             "Typically this means that the checkpoint does not match the "
             "Python program. The following objects have no matching "
-            f"checkpointed value: {list(unused_python_objects)}")
+            f"checkpointed value: {list(unused_python_objects)}"
+        )
       else:
         raise AssertionError(
             "Nothing to load. No dependencies have been added to "
-            f"{self._object_graph_view.root} yet.")
+            f"{self._object_graph_view.root} yet."
+        )
     return self
 
   def run_restore_ops(self, session=None):
@@ -1510,7 +1534,8 @@ class TrackableSaver:
     load_status = CheckpointLoadStatus(
         checkpoint,
         graph_view=self._graph_view,
-        feed_dict=file_prefix_feed_dict)
+        feed_dict=file_prefix_feed_dict,
+        options=options)
     return load_status
 
 

@@ -82,8 +82,8 @@ cc_library(
         "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:float8",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -94,6 +94,9 @@ cc_library(
 xla_cc_test(
     name = "hlo_evaluator_test",
     srcs = ["hlo_evaluator_test.cc"],
+    tags = [
+        "noasan",  # times out
+    ],
     deps = [
         ":hlo_evaluator",
         "//xla:array2d",

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_CUB_SORT_THUNK_H_
 #define XLA_SERVICE_GPU_CUB_SORT_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/xla_data.pb.h"
 
@@ -32,13 +34,17 @@ namespace gpu {
 class CubSortRunnerInterface {
  public:
   virtual ~CubSortRunnerInterface() = default;
-  virtual Status Run(se::DeviceMemoryBase input_keys,
-                     se::DeviceMemoryBase input_values,
-                     se::DeviceMemoryBase output_keys,
-                     se::DeviceMemoryBase output_values,
-                     se::DeviceMemoryBase scratch, bool descending) = 0;
-  virtual Status Run(const Thunk::ExecuteParams& params,
-                     const class CubSortThunk* thunk) = 0;
+  virtual absl::Status Run(se::DeviceMemoryBase input_keys,
+                           se::DeviceMemoryBase input_values,
+                           se::DeviceMemoryBase output_keys,
+                           se::DeviceMemoryBase output_values,
+                           se::DeviceMemoryBase scratch, bool descending) = 0;
+  virtual absl::Status Run(const Thunk::ExecuteParams& params,
+                           const class CubSortThunk* thunk) = 0;
+  virtual absl::StatusOr<int64_t> GetScratchSize(int64_t num_items) = 0;
+
+  static absl::StatusOr<std::unique_ptr<CubSortRunnerInterface>> Create(
+      PrimitiveType type, std::optional<PrimitiveType> value_type);
 };
 
 class CubSortThunk : public Thunk {
@@ -49,7 +55,7 @@ class CubSortThunk : public Thunk {
                std::vector<BufferAllocation::Slice> results,
                BufferAllocation::Slice scratch, bool descending);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override {
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return runner_->Run(params, this);
   }
 
@@ -66,12 +72,13 @@ class CubSortThunk : public Thunk {
   bool descending_;
 };
 
-Status RunCubSort(PrimitiveType type, std::optional<PrimitiveType> value_type,
-                  se::DeviceMemoryBase input_keys,
-                  se::DeviceMemoryBase input_values,
-                  se::DeviceMemoryBase output_keys,
-                  se::DeviceMemoryBase output_values,
-                  se::DeviceMemoryBase scratch, bool descending);
+absl::Status RunCubSort(PrimitiveType type,
+                        std::optional<PrimitiveType> value_type,
+                        se::DeviceMemoryBase input_keys,
+                        se::DeviceMemoryBase input_values,
+                        se::DeviceMemoryBase output_keys,
+                        se::DeviceMemoryBase output_values,
+                        se::DeviceMemoryBase scratch, bool descending);
 
 }  // namespace gpu
 }  // namespace xla

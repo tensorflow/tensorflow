@@ -12,7 +12,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @f(%arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v})
   attributes {tf_saved_model.exported_names = ["f"]} {
     %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    // CHECK: "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+    // CHECK: "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
     func.return
   }
 }
@@ -67,7 +67,7 @@ module attributes {tf_saved_model.semantics} {
   }
 
   func.func private @f_callee(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
-    // CHECK: "tf.Const"() {value = dense<2.100000e+01> : tensor<f32>}
+    // CHECK: "tf.Const"() <{value = dense<2.100000e+01> : tensor<f32>}>
     func.return
   }
 }
@@ -90,7 +90,7 @@ module attributes {tf_saved_model.semantics} {
 
   func.func private @g_callee(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
     %val = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    // CHECK: "tf.Const"() {value = dense<3.200000e+01> : tensor<f32>}
+    // CHECK: "tf.Const"() <{value = dense<3.200000e+01> : tensor<f32>}>
     func.return
   }
 }
@@ -146,10 +146,10 @@ module attributes {tf_saved_model.semantics} {
 
   func.func @f(%arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @"v"}, %arg2: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @"v2"})
   attributes {tf_saved_model.exported_names = ["f"]} {
-    // CHECK-DAG: "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+    // CHECK-DAG: "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}>
     %0 = "tf.ReadVariableOp"(%arg1) {device = ""} : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
 
-    // CHECK-DAG: "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>}
+    // CHECK-DAG: "tf.Const"() <{value = dense<2.000000e+00> : tensor<f32>}>
     %1 = "tf.ReadVariableOp"(%arg2) {device = ""} : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     func.return
   }

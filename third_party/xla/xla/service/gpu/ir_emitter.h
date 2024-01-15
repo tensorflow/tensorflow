@@ -56,30 +56,33 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   IrEmitter(const IrEmitter&) = delete;
   IrEmitter& operator=(const IrEmitter&) = delete;
 
-  Status DefaultAction(HloInstruction* hlo) override;
-  Status HandleConstant(HloInstruction* constant) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-  Status HandleConvolution(HloInstruction* convolution) override;
-  Status HandleFft(HloInstruction* fft) override;
-  Status HandleAllReduce(HloInstruction* crs) override;
-  Status HandleInfeed(HloInstruction* infeed) override;
-  Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSend(HloInstruction* send) override;
-  Status HandleSendDone(HloInstruction* send_done) override;
-  Status HandleRecv(HloInstruction* recv) override;
-  Status HandleRecvDone(HloInstruction* recv_done) override;
-  Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleTuple(HloInstruction* tuple) override;
-  Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleBatchNormInference(HloInstruction* batch_norm) override;
-  Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
-  Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
-  Status HandleAddDependency(HloInstruction* add_dependency) override;
+  absl::Status DefaultAction(HloInstruction* hlo) override;
+  absl::Status HandleConstant(HloInstruction* constant) override;
+  absl::Status HandleGetTupleElement(
+      HloInstruction* get_tuple_element) override;
+  absl::Status HandleConvolution(HloInstruction* convolution) override;
+  absl::Status HandleFft(HloInstruction* fft) override;
+  absl::Status HandleAllReduce(HloInstruction* crs) override;
+  absl::Status HandleInfeed(HloInstruction* infeed) override;
+  absl::Status HandleOutfeed(HloInstruction* outfeed) override;
+  absl::Status HandleSend(HloInstruction* send) override;
+  absl::Status HandleSendDone(HloInstruction* send_done) override;
+  absl::Status HandleRecv(HloInstruction* recv) override;
+  absl::Status HandleRecvDone(HloInstruction* recv_done) override;
+  absl::Status HandleParameter(HloInstruction* parameter) override;
+  absl::Status HandleTuple(HloInstruction* tuple) override;
+  absl::Status HandleScatter(HloInstruction* scatter) override;
+  absl::Status HandleFusion(HloInstruction* fusion) override;
+  absl::Status HandleCall(HloInstruction* call) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
+  absl::Status HandleBatchNormInference(HloInstruction* batch_norm) override;
+  absl::Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
+  absl::Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
+  absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
 
-  Status FinishVisit(HloInstruction* root) override { return OkStatus(); }
+  absl::Status FinishVisit(HloInstruction* root) override {
+    return absl::OkStatus();
+  }
 
   llvm::IRBuilder<>* builder() { return &b_; }
 
@@ -115,7 +118,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // in the result of the given HLO instruction. This produces a series of
   // nested loops (e.g. one for each dimension of the `hlo`'s shape). The body
   // of the inner-most loop is provided by the body_emitter function.
-  virtual Status EmitTargetElementLoop(
+  virtual absl::Status EmitTargetElementLoop(
       const HloInstruction& hlo,
       const llvm_ir::ElementGenerator& body_emitter) = 0;
 

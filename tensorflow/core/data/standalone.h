@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -89,12 +90,9 @@ class Iterator {
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
   Status Restore(const std::vector<Tensor>& saved_iterator);
-  // Returns the time it takes the pipeline associated with this iterator
-  // to process an element.
-  // Returns std::nullopt if there is not currently enough information to
-  // determine the processing time, e.g. because not enough data has been
-  // produced yet from the iterator.
-  std::optional<double> GetProcessingTimeNsec() const;
+
+  // Returns the dataset model for performance analysis.
+  std::shared_ptr<model::Model> model() const;
 
  private:
   friend class Dataset;

@@ -31,10 +31,6 @@ int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config);
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// Returns true if either the dimensions being reduced or the dimensions being
-// kept are contiguous in the input of the reduce instruction.
-bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
-
 struct ReductionDimensions {
   // Indicates whether the reduction is a row reduction or a column reduction.
   bool is_row_reduction;
@@ -46,6 +42,15 @@ struct ReductionDimensions {
   // For column reduction, we do: [D, H, W] -> [D, W].
   Vector3 dimensions;
 };
+
+// Returns true if using the reduction emitter is estimated to be faster than
+// using the elemental emitter.
+bool IsUnnestedReductionFasterThanElemental(
+    const ReductionDimensions& reduction_dimensions);
+
+// Returns true if either the dimensions being reduced or the dimensions being
+// kept are contiguous in the input of the reduce instruction.
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
 // Given the input shape and dimensions to reduce for a reduction, returns
 // ReductionDimensions.
@@ -59,10 +64,19 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
 // Get tiling per thread for the given reduction in dimensions [D, H, W].
 Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions);
 
+// How big the reduction dimension can be to be race free.
+int64_t ReductionDimensionRaceFreeBound(
+    const HloModuleConfig& hlo_module_config,
+    const ReductionDimensions& reduction_dimensions);
+
 // Returns whether the given reduction can be safely generated without atomics :
 // that is, at most one block will write to every output element.
 bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
                          const ReductionDimensions& reduction_dimensions);
+
+// Whether the instruction is a reduction hero for the given root.
+bool IsRealReductionHero(const HloInstruction& root,
+                         const HloInstruction& hero);
 
 }  // namespace gpu
 }  // namespace xla

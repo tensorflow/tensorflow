@@ -438,7 +438,7 @@ class ShardedVariableMixin(trackable.Trackable):
         )
       for i in range(len(self._variables)):
         if i == len(self._variables) - 1 or (
-            s > self._var_offsets[i][0] and s < self._var_offsets[i + 1][0]
+            s >= self._var_offsets[i][0] and s < self._var_offsets[i + 1][0]
         ):
           return self._variables[i][
               (s - self._var_offsets[i][0],) + slice_spec[1:]

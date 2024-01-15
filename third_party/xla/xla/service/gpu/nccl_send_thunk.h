@@ -32,9 +32,9 @@ class NcclSendThunk : public NcclCollectiveThunk {
                                         int64_t replica_count,
                                         int64_t partition_count);
 
-  static Status CheckImplementable(mlir::lmhlo::SendOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
+  static absl::Status CheckImplementable(mlir::lmhlo::SendOp op,
+                                         int64_t replica_count,
+                                         int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::SendOp op);
   static const char* GetHloOpName() { return "send"; }
 
@@ -44,10 +44,10 @@ class NcclSendThunk : public NcclCollectiveThunk {
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
-  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
-                           ncclComm_t comm) override;
+  absl::Status RunNcclCollective(const ExecuteParams& params,
+                                 se::Stream& stream, ncclComm_t comm) override;
   AsyncStreamKind GetAsyncStreamKind() const override {
-    return kAsyncStreamP2P;
+    return AsyncStreamKind::kP2P;
   }
 
  private:
@@ -55,9 +55,10 @@ class NcclSendThunk : public NcclCollectiveThunk {
   const Buffer buffer_;
 };
 
-Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
-               DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
-               absl::string_view device_string, int64_t current_id);
+absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
+                     DeviceBufferPair& buffer, se::Stream& stream,
+                     ncclComm_t comm, absl::string_view device_string,
+                     int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

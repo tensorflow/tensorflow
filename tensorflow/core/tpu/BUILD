@@ -1,19 +1,18 @@
 # Description: Utilities for TPU Operations
 
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
     "if_windows",
     "tf_cc_test",
 )
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
-        "//tensorflow/compiler/xrt:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/dtensor:__subpackages__",
     ],
@@ -234,10 +233,12 @@ cc_library(
         ":tpu_defs",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
         "//tensorflow/core/framework:attr_value_proto_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
@@ -245,6 +246,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
+        "@local_xla//xla:literal_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:compile_only_client",
     ],

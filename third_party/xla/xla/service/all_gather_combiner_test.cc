@@ -312,7 +312,7 @@ ENTRY entry {
               op::Sharding("{{maximal device=0}, {maximal device=0}}"));
 }
 
-TEST_F(AllGatherCombinerTest, CombineAllGathersIrrespectiveOfDim) {
+TEST_F(AllGatherCombinerTest, CombineAllGathersDifferentDims) {
   const char* const hlo_string = R"(
 HloModule Module
 
@@ -343,7 +343,7 @@ ENTRY entry {
                 op::Bitcast(op::GetTupleElement(combined_all_gather, 1))));
 }
 
-TEST_F(AllGatherCombinerTest, CombineManyAllGathersIrrespectiveOfDim) {
+TEST_F(AllGatherCombinerTest, CombineManyAllGathersDifferentDims) {
   const char* const hlo_string = R"(
 HloModule Module
 
@@ -392,7 +392,7 @@ ENTRY entry {
   ASSERT_EQ(0, all_gathers.front()->all_gather_dimension());
 }
 
-TEST_F(AllGatherCombinerTest, CombineManyAllGathersIrrespectiveOfDimRank4) {
+TEST_F(AllGatherCombinerTest, CombineManyAllGathersDifferentDimsRank4) {
   const char* const hlo_string = R"(
 HloModule Module
 
@@ -439,6 +439,59 @@ ENTRY entry {
                 op::GetTupleElement(combined_all_gather, 4)));
   std::vector<HloAllGatherInstruction*> all_gathers = FindAllGathers(*module);
   ASSERT_EQ(1, all_gathers.size());
+  ASSERT_EQ(0, all_gathers.front()->all_gather_dimension());
+}
+
+TEST_F(AllGatherCombinerTest, CombineManyAllGathersDifferentDimsMixedRanks) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  param0 = f32[2,7]{1,0} parameter(0)
+  param1 = f32[3,8]{1,0} parameter(1)
+  param2 = f32[4,9]{0,1} parameter(2)
+  param3 = f32[5,10]{0,1} parameter(3)
+  param4 = f32[6]{0} parameter(4)
+  allgather0 = f32[2,28]{1,0} all-gather(param0), replica_groups={},
+      dimensions={1}
+  allgather1 = f32[3,32]{1,0} all-gather(param1), replica_groups={},
+      dimensions={1}
+  allgather2 = f32[4,36]{0,1} all-gather(param2), replica_groups={},
+      dimensions={1}
+  allgather3 = f32[5,40]{0,1} all-gather(param3), replica_groups={},
+      dimensions={1}
+  allgather4 = f32[24]{0} all-gather(param4), replica_groups={},
+      dimensions={0}
+  ROOT tuple = (f32[2,28]{1,0}, f32[3,32]{1,0}, f32[4,36]{0,1}, f32[5,40]{0,1},
+      f32[24]{0}) tuple(allgather0, allgather1, allgather2, allgather3,
+      allgather4)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
+                            /*combine_by_dim=*/false);
+  ASSERT_EQ(AllGatherCount(*module), 5);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  Matcher<const HloInstruction*> combined_all_gather = op::AllGather(
+      op::Bitcast(op::Parameter(0)), op::Bitcast(op::Parameter(1)),
+      op::Bitcast(op::Parameter(2)), op::Bitcast(op::Parameter(3)),
+      op::Parameter(4));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::Bitcast(op::GetTupleElement(combined_all_gather, 0)),
+                op::Bitcast(op::GetTupleElement(combined_all_gather, 1)),
+                op::Bitcast(op::GetTupleElement(combined_all_gather, 2)),
+                op::Bitcast(op::GetTupleElement(combined_all_gather, 3)),
+                op::GetTupleElement(combined_all_gather, 4)));
+  std::vector<HloAllGatherInstruction*> all_gathers = FindAllGathers(*module);
+  ASSERT_EQ(1, all_gathers.size());
+
+  // when using different ranks and the most frequent AG dim (1) is not valid
+  // for rank 1 shape, we use default dim 0.
   ASSERT_EQ(0, all_gathers.front()->all_gather_dimension());
 }
 

@@ -30,7 +30,7 @@ class GpuConvertAsyncCollectivesToSync : public ConvertAsyncCollectivesToSync {
     return "gpu-convert-async-collectives-to-sync";
   }
 
-  Status ConvertAsyncInstructionsToSync(
+  absl::Status ConvertAsyncInstructionsToSync(
       HloComputation* computation,
       absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs)
       const override;

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/generic_transfer_manager.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -88,6 +89,23 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {
   EXPECT_EQ(absl::Span<uint16_t>(device_ptr, expected.size()), expected);
 }
 
+MATCHER_P2(MaskedValuesEqual, mask, expected, "") {
+  if (arg.size() != expected.size()) {
+    *result_listener << "argument sizes do not match";
+    return false;
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    const auto v1 = arg[i] & mask;
+    const auto v2 = expected[i] & mask;
+    if (v1 != v2) {
+      *result_listener << "mismatch at position " << i << ", " << v1 << " vs "
+                       << v2;
+      return false;
+    }
+  }
+  return true;
+}
+
 TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
   Literal literal =
       LiteralUtil::CreateR2<s4>({{s4{1}, s4{-2}}, {s4{-3}, s4{4}}});
@@ -104,8 +122,10 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
     std::vector<int8_t> expected =
         pack ? std::vector<int8_t>{static_cast<int8_t>(0x1e),
                                    static_cast<int8_t>(0xd4)}
-             : std::vector<int8_t>{1, (-2) & 0xf, (-3) & 0xf, 4};
-    EXPECT_EQ(absl::Span<int8_t>(device_ptr, expected.size()), expected);
+             : std::vector<int8_t>{1, -2, -3, 4};
+    // Ignore high bits in equality comparisons.
+    EXPECT_THAT(absl::Span<int8_t>(device_ptr, expected.size()),
+                MaskedValuesEqual(pack ? 0xFF : 0x0F, expected));
   }
 }
 

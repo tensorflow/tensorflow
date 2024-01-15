@@ -21,8 +21,11 @@ limitations under the License.
 // Generated visualization is opened in a new default browser window using
 // /usr/bin/sensible-browser.
 
-#include <stdio.h>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+
+#include <stdio.h>
 
 #include <functional>
 #include <string>

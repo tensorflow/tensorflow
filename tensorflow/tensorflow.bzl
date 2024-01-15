@@ -6,6 +6,7 @@ load(
     "if_dynamic_kernels",
     "if_static",
     "tf_additional_grpc_deps_py",
+    "tf_additional_tpu_ops_deps",
     "tf_additional_xla_deps_py",
     "tf_exec_properties",
     "tf_gpu_tests_tags",
@@ -1630,22 +1631,23 @@ def tf_gpu_cc_test(
         linkopts = [],
         **kwargs):
     targets = []
-    tf_cc_test(
-        name = name,
-        size = size,
-        srcs = srcs,
-        args = args,
-        data = data,
-        extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
-        kernels = kernels,
-        linkopts = linkopts,
-        linkstatic = linkstatic,
-        suffix = "_cpu",
-        tags = tags,
-        deps = deps,
-        **kwargs
-    )
-    targets.append(name + "_cpu")
+    if "gpu" not in tags:
+        tf_cc_test(
+            name = name,
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
+            kernels = kernels,
+            linkopts = linkopts,
+            linkstatic = linkstatic,
+            suffix = "_cpu",
+            tags = tags,
+            deps = deps,
+            **kwargs
+        )
+        targets.append(name + "_cpu")
     tf_cc_test(
         name = name,
         size = size,
@@ -1755,7 +1757,8 @@ def tf_cc_tests(
         linkopts = lrt_if_needed(),
         kernels = [],
         create_named_test_suite = False,
-        visibility = None):
+        visibility = None,
+        features = []):
     test_names = []
     for src in srcs:
         test_name = src_to_test_name(src)
@@ -1769,6 +1772,7 @@ def tf_cc_tests(
             linkstatic = linkstatic,
             tags = tags,
             deps = deps,
+            features = features,
             visibility = visibility,
         )
         test_names.append(test_name)
@@ -2615,6 +2619,7 @@ def tf_py_test(
         # TODO(b/156911178): Revert this temporary workaround once TFRT open source
         # is fully integrated with TF.
         tfrt_enabled_internal = False,
+        tpu_ops_enabled = False,
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
@@ -2631,6 +2636,8 @@ def tf_py_test(
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
+    if tpu_ops_enabled:
+        deps = deps + tf_additional_tpu_ops_deps()
 
     # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
     # the difference between 'dep' and 'clean_dep(dep)'.
@@ -3404,9 +3411,6 @@ def tf_monitoring_python_deps():
 # Teams sharing the same repo can provide their own ops_to_register.h file using
 # this function, and pass in -Ipath/to/repo flag when building the target.
 def tf_selective_registration_deps():
-    return []
-
-def tf_jit_compilation_passes_extra_deps():
     return []
 
 def if_mlir(if_true, if_false = []):

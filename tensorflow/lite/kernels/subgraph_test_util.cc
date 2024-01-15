@@ -424,6 +424,13 @@ void SubgraphBuilder::BuildAddSubgraph(Subgraph* subgraph,
                         params, operand_type, operand_type, operand_type);
 }
 
+void SubgraphBuilder::BuildStablehloAddSubgraph(Subgraph* subgraph,
+                                                const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_STABLEHLO_ADD,
+                        kTfLiteBuiltinStablehloAdd, nullptr, operand_type,
+                        operand_type, operand_type);
+}
+
 // This body subgraph has arena and dynamic output tensors which are not in
 // place to verify that body subgraph outputs are written directly to node
 // outputs. It also has inplace dynamic and arena outputs.
@@ -573,6 +580,13 @@ void SubgraphBuilder::BuildMaximumSubgraph(Subgraph* subgraph,
                         /*output_type=*/operand_type);
 }
 
+void SubgraphBuilder::BuildStablehloMaximumSubgraph(
+    Subgraph* subgraph, const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_STABLEHLO_MAXIMUM,
+                        kTfLiteBuiltinStablehloMaximum, nullptr, operand_type,
+                        operand_type, operand_type);
+}
+
 void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph,
                                            const TfLiteType operand_type) {
   BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_MINIMUM,
@@ -580,6 +594,29 @@ void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph,
                         /*input1_type=*/operand_type,
                         /*input2_type=*/operand_type,
                         /*output_type=*/operand_type);
+}
+
+void SubgraphBuilder::BuildStablehloMinimumSubgraph(
+    Subgraph* subgraph, const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_STABLEHLO_MINIMUM,
+                        kTfLiteBuiltinStablehloMinimum, nullptr, operand_type,
+                        operand_type, operand_type);
+}
+
+void SubgraphBuilder::BuildLogicalOrSubgraph(Subgraph* subgraph) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_LOGICAL_OR,
+                        kTfLiteBuiltinLogicalOr, /*params=*/nullptr,
+                        /*input1_type=*/kTfLiteBool,
+                        /*input2_type=*/kTfLiteBool,
+                        /*output_type=*/kTfLiteBool);
+}
+
+void SubgraphBuilder::BuildLogicalAndSubgraph(Subgraph* subgraph) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_LOGICAL_AND,
+                        kTfLiteBuiltinLogicalAnd, /*params=*/nullptr,
+                        /*input1_type=*/kTfLiteBool,
+                        /*input2_type=*/kTfLiteBool,
+                        /*output_type=*/kTfLiteBool);
 }
 
 void SubgraphBuilder::BuildOutputIsSecondInputSubgraph(Subgraph* subgraph) {
@@ -611,6 +648,13 @@ void SubgraphBuilder::BuildMulSubgraph(Subgraph* subgraph,
                         params, /*input1_type=*/operand_type,
                         /*input2_type=*/operand_type,
                         /*output_type=*/operand_type);
+}
+
+void SubgraphBuilder::BuildStablehloMulSubgraph(Subgraph* subgraph,
+                                                const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_STABLEHLO_MULTIPLY,
+                        kTfLiteBuiltinStablehloMultiply, nullptr, operand_type,
+                        operand_type, operand_type);
 }
 
 // Build a subgraph with a pad op. Helper function for testing.

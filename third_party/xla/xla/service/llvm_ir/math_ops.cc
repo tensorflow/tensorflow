@@ -14,13 +14,21 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/llvm_ir/math_ops.h"
+
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 namespace llvm_ir {
 
-llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
+llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
+                          const TanhType input_type /* = TanhType::Double*/) {
   llvm::Type* type = input->getType();
+  const float plus_clamp = (input_type == TanhType::Double)
+                               ? kTanhInputUpperBounder
+                               : kTanhInputUpperBounderFloat;
+  const float minus_clamp = (input_type == TanhType::Double)
+                                ? kTanhInputLowerBounder
+                                : kTanhInputLowerBounderFloat;
 
   // For small values of x, we can approximate tanh(x)=x. For extremely small
   // values of x (|x| < 1e-37), the other approximation evaluates tanh(x) = 0.
@@ -30,14 +38,12 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
   auto use_aprox =
       b->CreateFCmpOLT(abs_x, llvm::ConstantFP::get(type, kCanUseApprox));
 
-  // Clamp the input to [-9, 9].
-  //
   // To simplify the code base until it's an issue, don't have a slow min/max in
   // this approximation.
   llvm::Value* input_clamped = llvm_ir::EmitFloatMin(
-      llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(type, -9.0), b,
+      llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(type, minus_clamp), b,
                             /*enable_fast_min_max=*/true),
-      llvm::ConstantFP::get(type, 9.0), b, /*enable_fast_min_max=*/true);
+      llvm::ConstantFP::get(type, plus_clamp), b, /*enable_fast_min_max=*/true);
 
   static constexpr std::array<float, 7> numerator_coeffs{
       -2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,

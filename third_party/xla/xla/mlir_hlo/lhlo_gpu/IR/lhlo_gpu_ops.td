@@ -165,12 +165,15 @@ def LHLOGPU_GEMMOp : LHLOGPU_Op<"gemm"> {
     Arg<LHLO_Buffer, "", [MemRead]>:$a,
     Arg<LHLO_Buffer, "", [MemRead]>:$b,
     Arg<LHLO_Buffer, "", [MemRead, MemWrite]>:$c,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead, MemWrite]>:$workspace,
     MHLO_DotDimensionNumbers:$dot_dimension_numbers,
     MHLO_PrecisionConfigAttr:$precision_config,
     F64Attr:$alpha_real,
     F64Attr:$alpha_imag,
     F64Attr:$beta,
-    OptionalAttr<I64Attr>:$algorithm);
+    OptionalAttr<I64Attr>:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandSegments]> {
@@ -187,7 +190,9 @@ def LHLOGPU_CublasLtMatmulOp : LHLOGPU_Op<"cublas.lt.matmul", [AttrSizedOperandS
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     CublasLtMatmulEpilogueAttr:$epilogue,
-    I64Attr:$algorithm);
+    I64Attr:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOperandSegments]> {
@@ -208,7 +213,9 @@ def LHLOGPU_CublasLtMatmulF8Op : LHLOGPU_Op<"cublas.lt.matmul.f8", [AttrSizedOpe
     F64Attr:$alpha_imag,
     F64Attr:$beta,
     CublasLtMatmulEpilogueAttr:$epilogue,
-    I64Attr:$algorithm);
+    I64Attr:$algorithm,
+    OptionalAttr<BoolAttr>:$grad_x,
+    OptionalAttr<BoolAttr>:$grad_y);
 }
 
 def LHLOGPU_CholeskyOp : LHLOGPU_Op<"cholesky"> {
@@ -237,7 +244,8 @@ class LHLOGPU_AsyncCollectiveCommunicationOp<string name, list<Trait> traits = [
     DefaultValuedOptionalAttr<BoolAttr, "false">:$constrain_layout,
     OptionalAttr<MHLO_ChannelHandle>:$channel_id,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$use_global_device_ids,
-    BoolAttr:$is_sync
+    BoolAttr:$is_sync,
+    BoolAttr:$no_parallel_custom_call
   );
 }
 
@@ -264,7 +272,8 @@ def LHLOGPU_CollectivePermuteStartOp :
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     I64ElementsAttr:$source_target_pairs,
     OptionalAttr<MHLO_ChannelHandle>:$channel_id,
-    BoolAttr:$is_sync
+    BoolAttr:$is_sync,
+    BoolAttr:$no_parallel_custom_call
   );
 }
 
@@ -322,6 +331,21 @@ def LHLOGPU_AllToAllDoneOp: LHLOGPU_Op<"all_to_all_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
+def LHLOGPU_CudnnNormOp : LHLOGPU_Op<"Norm", [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Arg<LHLO_Buffer, "", [MemRead]>:$input,
+    Arg<LHLO_Buffer, "", [MemRead]>:$scale,
+    Arg<LHLO_Buffer, "", [MemRead]>:$bias,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$expectation,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$norm_factor,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
+    NormAlgorithmConfigAttr:$algorithm_config,
+    F64Attr:$epsilon,
+    I64ArrayAttr:$operand_layouts
+    );
+}
+
 def LHLOGPU_fusedMHAOp : LHLOGPU_Op<"fMHA", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,
@@ -340,7 +364,9 @@ def LHLOGPU_fusedMHAOp : LHLOGPU_Op<"fMHA", [AttrSizedOperandSegments]> {
     FusedMhaDagSignatureAttr:$fused_mha_dag,
     FusedMHAAlgorithmConfigAttr:$algorithm_config,
     OptionalAttr<F64Attr>:$dropout_rate,
-    OptionalAttr<I64Attr>:$seed
+    OptionalAttr<I64Attr>:$seed,
+    BoolAttr:$is_flash_attention,
+    BoolAttr:$is_causal_mask
     );
 }
 
@@ -352,21 +378,30 @@ def LHLOGPU_fusedMHABackwardOp : LHLOGPU_Op<"fMHABackward", [AttrSizedOperandSeg
     Arg<LHLO_Buffer, "", [MemRead]>:$bmm2_grad_gemm1_lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
     Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$mask,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$fwd_output,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm1_lhs,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm1_rhs,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm2_rhs,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$d_S,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_S,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$softmax_sum,
+    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_Q_accum,
     Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
     Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_bias,
     MHLO_DotDimensionNumbers:$bmm1_grad_gemm1_dot_dimension_numbers,
     MHLO_DotDimensionNumbers:$bmm1_grad_gemm2_dot_dimension_numbers,
     MHLO_DotDimensionNumbers:$bmm2_grad_gemm1_dot_dimension_numbers,
     MHLO_DotDimensionNumbers:$bmm2_grad_gemm2_dot_dimension_numbers,
+    I64ArrayAttr:$intermediate_tensor_dimensions,
+    I64ArrayAttr:$intermediate_tensor_layout,
     F64Attr:$fmha_scale,
     FusedMhaBackwardDagSignatureAttr:$fused_mha_dag,
     FusedMHAAlgorithmConfigAttr:$algorithm_config,
     OptionalAttr<F64Attr>:$dropout_rate,
-    OptionalAttr<I64Attr>:$seed);
+    OptionalAttr<I64Attr>:$seed,
+    BoolAttr:$is_flash_attention,
+    BoolAttr:$is_causal_mask
+    );
 }
 
 def LHLOGPU_RadixSortOp: LHLOGPU_Op<"radix_sort", [SameVariadicOperandSize]> {

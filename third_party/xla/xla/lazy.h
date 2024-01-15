@@ -28,6 +28,8 @@ class Lazy {
   explicit Lazy(absl::AnyInvocable<T() &&> func)
       : maybe_value_(std::move(func)) {}
 
+  bool has_value() const { return std::holds_alternative<T>(maybe_value_); }
+
   const T& get() const {
     if (!std::holds_alternative<T>(maybe_value_)) {
       maybe_value_ =

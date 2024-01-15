@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
@@ -39,11 +41,11 @@ namespace stream_executor {
       std::ostringstream oss;                                                 \
       oss << error_string << "\nin " << __FILE__ << "(" << __LINE__ << "): '" \
           << #expr << "'";                                                    \
-      return tsl::Status(absl::StatusCode::kUnknown, oss.str().c_str());      \
+      return absl::UnknownError(oss.str().c_str());                           \
     }                                                                         \
   } while (false)
 
-tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
+absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     absl::string_view preferred_cuda_dir, gpu::GpuContext* context,
     std::vector<CubinOrPTXImage> images) {
   {
@@ -108,7 +110,7 @@ tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
 
   if (exit_status != 0) {
-    return tsl::errors::Internal(
+    return absl::InternalError(
         absl::StrFormat("nvlink exited with non-zero error code %d, output: %s",
                         exit_status, stderr_output));
   }
@@ -129,7 +131,7 @@ tsl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
   return cubin_vector;
 }
 
-tsl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
+absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
     gpu::GpuContext* context, std::vector<CubinOrPTXImage> images) {
   gpu::ScopedActivateContext activation(context);
 

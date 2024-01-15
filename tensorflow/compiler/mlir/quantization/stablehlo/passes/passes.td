@@ -67,7 +67,7 @@ def ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass : Pass<"stablehlo-
   }];
 }
 
-def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
+def QuantizePass : Pass<"stablehlo-quantize", "mlir::ModuleOp"> {
   let summary = "Applies static-range quantization on ops.";
   let dependentDialects = [
     "mlir::stablehlo::StablehloDialect",
@@ -75,7 +75,6 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
     "mlir::quantfork::QuantizationForkDialect",
   ];
 }
-
 
 def RestoreFunctionNamePass : Pass<"stablehlo-restore-function-name", "ModuleOp"> {
   let summary = "Restores function name from XlaCallModule op.";
@@ -87,4 +86,35 @@ def PostQuantizePass : Pass<"stablehlo-post-quantize", "mlir::func::FuncOp"> {
     "mlir::stablehlo::StablehloDialect",
     "mlir::quantfork::QuantizationForkDialect",
   ];
+}
+
+def QuantizeCompositeFunctionsPass : Pass<"stablehlo-quantize-composite-functions", "ModuleOp"> {
+  let summary = "Quantize composite functions with QDQ input / outputs.";
+  let options = [
+    Option<"mlir_dump_file_name_", "mlir-dump-file-name",
+        "std::optional<std::string>", /*default=*/"std::nullopt",
+        "MLIR dump file name.">
+  ];
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+    "TF::TensorFlowDialect",
+  ];
+}
+
+def UnwrapXlaCallModuleOpPass : Pass<"stablehlo-unwrap-xla-call-module-op", "ModuleOp"> {
+  let summary = "Unwrap XlaCallModuleOps into inline functions if not used for quantizing fused patterns.";
+  let dependentDialects = ["TF::TensorFlowDialect"];
+}
+
+def PopulateShapePass : Pass<"populate-shape", "ModuleOp"> {
+  let summary = "Populate output shape with known information for CustomAggregatorOp and XlaCallModuleOp.";
+  let dependentDialects = ["TF::TensorFlowDialect"];
+}
+
+def OptimizeGraphPass : Pass<"optimize-graph", "ModuleOp"> {
+  let summary = "Optimize the sub-optimal patterns after quantization.";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect",];
 }

@@ -58,7 +58,7 @@ struct NcclP2PConfig {
 };
 
 // Extracts source/target pairs for send/recv from frontend attributes.
-StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
+absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
     mlir::DictionaryAttr frontend_attributes);
 
 // Returns the GroupMode for Send and Recv.
@@ -67,7 +67,7 @@ std::enable_if_t<std::is_same_v<OpT, mlir::lmhlo::SendOp> ||
                      std::is_same_v<OpT, mlir::lmhlo::RecvOp>,
                  CollectiveOpGroupMode>
 GetGroupModeForSendRecv(OpT op) {
-  return GetCollectiveOpGroupMode(op.getChannelHandle().getHandle() > 1,
+  return GetCollectiveOpGroupMode(op.getChannelHandle().getHandle() > 0,
                                   std::nullopt)
       .value();
 }

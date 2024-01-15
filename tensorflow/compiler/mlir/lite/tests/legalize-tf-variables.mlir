@@ -46,7 +46,7 @@ module attributes {tf_saved_model.semantics} {
   }
 
   "tf_saved_model.session_initializer"() {initializers = [@init_all_tables]} : () -> ()
-  // CHECK: "tf_saved_model.session_initializer"() {initializers = [@init_all_tables]} : () -> ()
+  // CHECK: "tf_saved_model.session_initializer"() <{initializers = [@init_all_tables]}> : () -> ()
 
   // CHECK-LABEL: serving_default
   func.func @serving_default(%arg0: tensor<1x10xf32> {tf_saved_model.index_path = ["x"]}) ->

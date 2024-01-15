@@ -4359,14 +4359,19 @@ ENTRY main {
   c2 = s32[] constant(-2147483648)  // -2^31
   sub = s32[] subtract(c2, c1)  // -2^31 - 2^30, underflows
 
+  c3 = u32[] constant(4294967295)
+  c4 = u32[] constant(33)
+
   mul = s32[] multiply(c1, c1)
-  ROOT tuple = (s32[], s32[], s32[]) tuple(sum, sub, mul)
+
+  pow = u32[] power(c3, c4)
+  ROOT tuple = (s32[], s32[], s32[], u32[]) tuple(sum, sub, mul, pow)
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, Evaluate({}));
   std::vector<Literal> actual = literal.DecomposeTuple();
-  ASSERT_EQ(actual.size(), 3);
+  ASSERT_EQ(actual.size(), 4);
 
   uint32_t pow30 = uint32_t{1} << 30;
   uint32_t pow31 = uint32_t{1} << 31;
@@ -4375,6 +4380,7 @@ ENTRY main {
             static_cast<int32_t>(-(pow31 + pow30)));
   EXPECT_EQ(actual[2].GetFirstElement<int32_t>(),
             static_cast<int32_t>(pow31 * pow31));
+  EXPECT_EQ(actual[3].GetFirstElement<uint32_t>(), uint32_t{4294967295});
 }
 
 TEST_F(HloEvaluatorTest, GetDimensionSize) {
@@ -4827,6 +4833,23 @@ TEST_F(HloEvaluatorTest, SortC64) {
   ENTRY main {
     c = c64[3] constant({(2, 0), (4, 0), (6, 0)})
     ROOT sort = c64[3]{0} sort(c), dimensions={0}, to_apply=sort_lt_comparator
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected =
+      LiteralUtil::CreateR1<std::complex<float>>({2.f, 4.f, 6.f});
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ConvertC128ToC64) {
+  const absl::string_view hlo_text = R"(
+  HloModule m
+
+  ENTRY main {
+    c = c128[3] constant({(2, 0), (4, 0), (6, 0)})
+    ROOT sort = c64[3]{0} convert(c)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));

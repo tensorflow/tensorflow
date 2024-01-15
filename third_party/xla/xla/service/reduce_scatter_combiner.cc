@@ -19,6 +19,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -48,22 +49,26 @@ limitations under the License.
 namespace xla {
 namespace {
 
-int64_t FindMostFrequentGatherDim(
+// Returns the most frequent scatter dim if it can be a valid scatter dim
+// for all shapes involved, else returns 0.
+int64_t FindMostFrequentScatterDim(
     absl::Span<HloInstruction* const> to_combine) {
   assert(!to_combine.empty());
 
   // Count frequencies.
+  int64_t min_rank = std::numeric_limits<int64_t>::max();
   std::vector<int64_t> frequency;
   for (const HloInstruction* it : to_combine) {
     int64_t dim = Cast<HloReduceScatterInstruction>(it)->scatter_dimension();
     frequency.resize(std::max(dim + 1, static_cast<int64_t>(frequency.size())),
                      0);
     frequency[dim]++;
+    min_rank = std::min(min_rank, it->shape().rank());
   }
 
   int64_t most_frequent_dim = std::distance(
       frequency.begin(), std::max_element(frequency.begin(), frequency.end()));
-  return most_frequent_dim;
+  return most_frequent_dim < min_rank ? most_frequent_dim : 0;
 }
 
 using ReduceScatterKey =
@@ -90,8 +95,8 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   std::vector<std::optional<std::vector<int64_t>>> operand_permutations;
   std::vector<Shape> output_shapes;
 
-  // Find the most frequent all-gather dimension.
-  int64_t most_frequent_dim = FindMostFrequentGatherDim(to_combine);
+  // Find the most frequent reduce-scatter dimension.
+  int64_t most_frequent_dim = FindMostFrequentScatterDim(to_combine);
 
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {

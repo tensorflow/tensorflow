@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/statusor.h"
@@ -38,20 +38,17 @@ class NcclIdStore {
  public:
   NcclIdStore(int node_id,
               absl::flat_hash_map<GlobalDeviceId, int> device_to_node,
-              PjRtClient::KeyValueGetCallback kv_get,
-              PjRtClient::KeyValuePutCallback kv_put)
+              std::shared_ptr<KeyValueStoreInterface> kv_store)
       : node_id_(node_id),
         device_to_node_(std::move(device_to_node)),
-        kv_get_(kv_get),
-        kv_put_(kv_put) {}
+        kv_store_(std::move(kv_store)) {}
 
   StatusOr<std::string> GetNcclUniqueId(const gpu::NcclCliqueKey& key);
 
  private:
   const int node_id_;
   const absl::flat_hash_map<GlobalDeviceId, int> device_to_node_;
-  const PjRtClient::KeyValueGetCallback kv_get_;
-  const PjRtClient::KeyValuePutCallback kv_put_;
+  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   absl::Mutex mu_;
   absl::flat_hash_map<gpu::NcclCliqueKey, std::string> cache_

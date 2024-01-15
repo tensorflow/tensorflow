@@ -20,8 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/stream_executor/stream.h"
 
 #if XLA_ENABLE_XCCL
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -39,7 +42,7 @@ NcclP2PConfig GetNcclP2PConfig(SendOp op, int64_t replica_count,
   return GetNcclP2PConfigForSendRecv(op, replica_count, partition_count);
 }
 
-Status CheckImplementable(SendOp op) {
+absl::Status CheckImplementable(SendOp op) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   return IsValidOperand(op.getInputs()[0], Thunk::kNcclSend);
 }
@@ -58,9 +61,8 @@ NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, SendOp op,
   return impl::GetNcclP2PConfig(op, replica_count, partition_count);
 }
 
-/*static*/ Status NcclSendThunk::CheckImplementable(mlir::lmhlo::SendOp op,
-                                                    int64_t replica_count,
-                                                    int64_t partition_count) {
+/*static*/ absl::Status NcclSendThunk::CheckImplementable(
+    mlir::lmhlo::SendOp op, int64_t replica_count, int64_t partition_count) {
   return AddOpDescription<NcclSendThunk>(impl::CheckImplementable(op), op,
                                          replica_count, partition_count);
 }
@@ -69,8 +71,9 @@ NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, SendOp op,
   return GetGroupModeForSendRecv(op);
 }
 
-Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
-                                        se::Stream& stream, ncclComm_t comm) {
+absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
+                                              se::Stream& stream,
+                                              ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -95,9 +98,10 @@ Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
                              device_string, current_id);
 }
 
-Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
-               DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
-               absl::string_view device_string, int64_t current_id) {
+absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
+                     DeviceBufferPair& buffer, se::Stream& stream,
+                     ncclComm_t comm, absl::string_view device_string,
+                     int64_t current_id) {
 #if XLA_ENABLE_XCCL
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
@@ -127,10 +131,10 @@ Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
         "comm=%p, stream=%p)",
         device_string, src_addr.opaque(), element_count, *target_id,
         static_cast<const void*>(comm), gpu_stream);
-    XLA_CUDA_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
+    XLA_NCCL_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
                                       *target_id, comm, gpu_stream));
   }
-  return OkStatus();
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "

@@ -513,8 +513,8 @@ cc_test(
         ":framework_stable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )

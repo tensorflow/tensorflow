@@ -15,10 +15,9 @@ cc_library(
     hdrs = ["interpreter_transfer_manager.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/backends/interpreter:platform_id",
+        ":platform_id",
         "//xla/service:generic_transfer_manager",
         "//xla/service:transfer_manager",
-        "@com_google_absl//absl/memory",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
@@ -124,12 +123,9 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/stream_executor",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:mutex",
     ],
 )
 
@@ -145,6 +141,7 @@ cc_library(
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
@@ -163,6 +160,5 @@ cc_library(
         "//xla/stream_executor/host:host_stream",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
     ],
 )

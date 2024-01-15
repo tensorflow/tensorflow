@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tsl/util/command_line_flags.h"
 
+#include <algorithm>
 #include <cinttypes>
 #include <cstring>
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/stringpiece.h"
@@ -96,10 +98,10 @@ bool ParseBoolFlag(StringPiece arg, StringPiece flag,
     if (!absl::ConsumePrefix(&arg, "=")) {
       return false;
     }
-    if (absl::EqualsIgnoreCase(arg, "true")) {
+    if (absl::EqualsIgnoreCase(arg, "true") || arg == "1") {
       *value_parsing_ok = hook(true);
       return true;
-    } else if (absl::EqualsIgnoreCase(arg, "false")) {
+    } else if (absl::EqualsIgnoreCase(arg, "false") || arg == "0") {
       *value_parsing_ok = hook(false);
       return true;
     } else {
@@ -288,6 +290,29 @@ bool Flag::Parse(string arg, bool* value_parsing_ok) const {
   argv[dst++] = nullptr;
   *argc = unknown_flags.size() + 1;
   return result && (*argc < 2 || strcmp(argv[1], "--help") != 0);
+}
+
+/*static*/ bool Flags::Parse(std::vector<std::string>& flags,
+                             const std::vector<Flag>& flag_list) {
+  bool result = true;
+  std::vector<std::string> unknown_flags;
+  for (auto& flag : flags) {
+    for (const Flag& flag_object : flag_list) {
+      bool value_parsing_ok;
+      bool was_found = flag_object.Parse(flag, &value_parsing_ok);
+      if (!value_parsing_ok) {
+        result = false;
+      }
+      // Clear parsed flags, these empty entries are removed later.
+      if (was_found) {
+        flag.clear();
+        break;
+      }
+    }
+  }
+  auto IsEmpty = [](const std::string& flag) { return flag.empty(); };
+  flags.erase(std::remove_if(flags.begin(), flags.end(), IsEmpty), flags.end());
+  return result;
 }
 
 /*static*/ string Flags::Usage(const string& cmdline,

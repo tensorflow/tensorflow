@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -65,6 +66,25 @@ Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
 
 int64_t sgn(int64_t val) { return (0 < val) - (val < 0); }
 
+int64_t RangeCardinality(int64_t start, int64_t stop, int64_t step) {
+  // `enumerate` uses int max to simulate an infinite range dataset.
+  if (stop >= tsl::kint64max) {
+    return kInfiniteCardinality;
+  }
+
+  // If the signs of `stop - start` and `step` are different or either of
+  // the values is zero, the range will be empty.
+  if (sgn(stop - start) * sgn(step) <= 0) {
+    return 0;
+  } else if (step > 0) {
+    // Invariant: stop - start > 0 && step > 0
+    return (stop - start - 1) / step + 1;
+  } else {
+    // Invariant: start - stop > 0 && step < 0
+    return (start - stop - 1) / -step + 1;
+  }
+}
+
 // Class which produces the elements of `range(start, stop, step)`. Threadsafe.
 class RangeCounter {
  public:
@@ -99,6 +119,8 @@ class RangeCounter {
     mutex_lock l(mu_);
     next_ = value;
   }
+
+  int64_t Cardinality() const { return RangeCardinality(start_, stop_, step_); }
 
  private:
   const int64_t start_;
@@ -147,6 +169,8 @@ class RangeDatasetOp::RangeSplitProvider : public SplitProvider {
     return OkStatus();
   }
 
+  int64_t Cardinality() const override { return counter_.Cardinality(); }
+
  private:
   RangeCounter counter_;
 };
@@ -185,17 +209,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
-    // If the signs of `stop_ - start_` and `step_` are different or either of
-    // the values is zero, the range will be empty.
-    if (sgn(stop_ - start_) * sgn(step_) <= 0) {
-      return 0;
-    } else if (step_ > 0) {
-      // Invariant: stop_ - start_ > 0 && step_ > 0
-      return (stop_ - start_ - 1) / step_ + 1;
-    } else {
-      // Invariant: start_ - stop_ > 0 && step_ < 0
-      return (start_ - stop_ - 1) / -step_ + 1;
-    }
+    return RangeCardinality(start_, stop_, step_);
   }
 
   Status MakeSplitProviders(std::vector<std::unique_ptr<SplitProvider>>*

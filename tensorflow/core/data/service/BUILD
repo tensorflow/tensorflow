@@ -1,16 +1,16 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_portable", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
     "tf_protos_profiler_service",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_portable", "tf_grpc_cc_dependencies")
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-)
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package_group(
     name = "data_transfer_visibility",
@@ -393,6 +393,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/protobuf:protos_all_cc",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
@@ -450,8 +451,11 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:env",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -544,6 +548,8 @@ cc_library(
         ":common",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:retrying_utils",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -676,6 +682,8 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":credentials_factory",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/data:dataset_utils",
     ],
 )
 
@@ -739,6 +747,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "split_provider_test",
+    srcs = ["split_provider_test.cc"],
+    # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":common_proto_cc",
+        ":split_provider",
+        ":test_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "task_remover",
     srcs = ["task_remover.cc"],
@@ -765,6 +790,7 @@ cc_library(
         ":thread_safe_buffer",
         ":worker_proto_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:standalone",
@@ -822,6 +848,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/platform:env",
     ],
 )
 
@@ -847,15 +874,14 @@ cc_library(
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:path",
-        "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -1100,6 +1126,7 @@ cc_library(
         "//tensorflow/core/data/service/snapshot:snapshot_stream_writer",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",

@@ -226,7 +226,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
              {"cycle_length",
               strings::Printf("%lld", static_cast<long long>(cycle_length))},
              {"deterministic",
-              deterministic.IsNondeterministic() ? "false" : "true"}}) {
+              deterministic.IsNondeterministic() ? "false" : "true"},
+             {"buffer_output_elements",
+              strings::Printf("%lld",
+                              static_cast<long long>(buffer_output_elements_))},
+             {"prefetch_input_elements",
+              strings::Printf(
+                  "%lld", static_cast<long long>(prefetch_input_elements_))}}) {
     input_->Ref();
   }
 
@@ -489,6 +495,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(*mu_);
+      if (ctx->symbolic_checkpoint()) {
+        TF_RETURN_IF_ERROR(checkpoint_->GetStatus());
+      }
       TF_RETURN_IF_ERROR(checkpoint_->Save(writer));
       wait_for_checkpoint_ = true;
       // Wait for all in-flight calls to complete.

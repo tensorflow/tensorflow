@@ -31,38 +31,51 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   static NcclP2PConfig GetNcclP2PConfig(
       mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
       int64_t partition_count);
-
-  static Status CheckImplementable(mlir::lmhlo_gpu::CollectivePermuteStartOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
+  static NcclP2PConfig GetNcclP2PConfig(
+      const HloCollectivePermuteInstruction* instr, int64_t replica_count,
+      int64_t partition_count);
 
   static bool IsDegenerate(mlir::lmhlo_gpu::CollectivePermuteStartOp op,
                            int64_t replica_count, int64_t partition_count);
+  static bool IsDegenerate(const HloCollectivePermuteInstruction* instr,
+                           int64_t replica_count, int64_t partition_count);
+
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::CollectivePermuteStartOp op);
-
-  static const char* GetHloOpName() { return "collective-permute-start"; }
+  static CollectiveOpGroupMode GetGroupMode(
+      const HloCollectivePermuteInstruction* instr);
 
   NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
                                   mlir::lmhlo_gpu::CollectivePermuteStartOp op,
                                   int64_t replica_count,
                                   int64_t partition_count,
                                   const Buffer& buffer);
+  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
+                                  const HloCollectivePermuteInstruction* instr,
+                                  int64_t replica_count,
+                                  int64_t partition_count,
+                                  const Buffer& buffer);
+
+  static absl::Status CheckImplementable(
+      mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
+      int64_t partition_count);
+
+  static const char* GetHloOpName() { return "collective-permute-start"; }
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
-  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
-                           ncclComm_t comm) override;
+  absl::Status RunNcclCollective(const ExecuteParams& params,
+                                 se::Stream& stream, ncclComm_t comm) override;
 
  private:
   const NcclP2PConfig config_;
   const Buffer buffer_;
 };
 
-Status RunCollectivePermute(NcclP2PConfig::SourceTargetMapEntry source_target,
-                            DeviceBufferPair& buffer, se::Stream& stream,
-                            ncclComm_t comm, absl::string_view device_string,
-                            int64_t current_id);
+absl::Status RunCollectivePermute(
+    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
+    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
+    int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/runtime/executable.h"
 #include "xla/runtime/jit_executable.h"
@@ -33,16 +34,17 @@ limitations under the License.
 #include "xla/service/gpu/runtime/conv.h"
 #include "xla/service/gpu/runtime/conv_reorder.h"
 #include "xla/service/gpu/runtime/cub_sort.h"
-#include "xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/custom_call.h"
 #include "xla/service/gpu/runtime/custom_call_registry.h"
 #include "xla/service/gpu/runtime/fft.h"
 #include "xla/service/gpu/runtime/fused_attention.h"
 #include "xla/service/gpu/runtime/gemm.h"
+#include "xla/service/gpu/runtime/gpublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/graph_launch.h"
 #include "xla/service/gpu/runtime/io_feed.h"
 #include "xla/service/gpu/runtime/memcpy.h"
 #include "xla/service/gpu/runtime/memset.h"
+#include "xla/service/gpu/runtime/norm.h"
 #include "xla/service/gpu/runtime/send_recv.h"
 #include "xla/service/gpu/runtime/stream_synchronization.h"
 #include "xla/service/gpu/runtime/support.h"
@@ -86,23 +88,23 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterIoFeedCustomCalls(registry);
   RegisterMemsetCustomCalls(registry);
   RegisterSendRecvCustomCalls(registry);
-  RegisterTopkCustomCall(registry);
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
   RegisterMatmulCustomCalls(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
+  RegisterNormCustomCalls(registry);
   RegisterFusedAttentionCustomCalls(registry);
   RegisterFusedAttentionBackwardCustomCalls(registry);
-  RegisterCubSortCustomCalls(registry);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Graph launch kernels depend on Cuda Graph API.
   RegisterGraphLaunchCustomCalls(registry);
   RegisterConcurrentRegionCustomCalls(registry);
   RegisterStreamSynchronizationCustomCalls(registry);
-
+  RegisterCubSortCustomCalls(registry);
   RegisterXlaClassicCustomCalls(registry);
+  RegisterTopkCustomCall(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
@@ -121,6 +123,7 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
   registry.Register<Tagged<se::gpu::BlasLt::Epilogue>>(
       "__type_id_se_gpublas_lt_epilogue");
   RegisterFusedAttentionTypeIdNames(registry);
+  RegisterNormTypeIdNames(registry);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 }
 
@@ -135,6 +138,7 @@ void RegisterXlaGpuAttrEncoding(CustomCallAttrEncodingSet& encoding) {
   PopulateFusedAttentionAlgorithmConfigAttrEncoding(encoding);
   PopulateFusedAttentionForwardDAGSignatureAttrEncoding(encoding);
   PopulateFusedAttentionBackwardDAGSignatureAttrEncoding(encoding);
+  PopulateNormAlgorithmConfigAttrEncoding(encoding);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 }
 
@@ -147,10 +151,12 @@ static int64_t GetNumGraphs(const runtime::Executable& executable) {
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::string module_name, std::vector<int64_t> buffer_sizes,
+    std::vector<std::vector<int64_t>> allocation_indices,
     std::unique_ptr<JitExecutable> jit_executable, DebugOptions debug_options,
     ModulesState modules_state)
     : module_name_(std::move(module_name)),
       buffer_sizes_(std::move(buffer_sizes)),
+      allocation_indices_(std::move(allocation_indices)),
       executable_(std::move(jit_executable)),
       debug_options_(std::move(debug_options)),
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -162,10 +168,12 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 
 GpuRuntimeExecutable::GpuRuntimeExecutable(
     std::string module_name, std::vector<int64_t> buffer_sizes,
+    std::vector<std::vector<int64_t>> allocation_indices,
     std::unique_ptr<Executable> aot_executable, DebugOptions debug_options,
     ModulesState modules_state)
     : module_name_(std::move(module_name)),
       buffer_sizes_(std::move(buffer_sizes)),
+      allocation_indices_(std::move(allocation_indices)),
       executable_(std::move(aot_executable)),
       debug_options_(std::move(debug_options)),
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -179,7 +187,7 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 // Compile Xla program lowered to runtime dialects to Gpu runtime executable.
 //===----------------------------------------------------------------------===//
 
-/*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
+/*static*/ absl::StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(std::string module_name,
                              std::unique_ptr<GpuRuntimeProgram> program) {
   // Options for the default XLA Runtime compilation pipeline.
@@ -232,6 +240,7 @@ GpuRuntimeExecutable::Create(std::string module_name,
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
       std::move(module_name), std::move(program->buffer_sizes),
+      std::move(program->allocation_indices),
       std::make_unique<JitExecutable>(std::move(*jit_executable)),
       std::move(program->debug_options), std::move(*modules_state)));
 }
@@ -240,11 +249,11 @@ GpuRuntimeExecutable::Create(std::string module_name,
 // Constructs Gpu runtime executable from AOT compiled runtime artifact.
 //===----------------------------------------------------------------------===//
 
-/*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
-GpuRuntimeExecutable::Create(std::string module_name,
-                             absl::Span<const int64_t> buffer_sizes,
-                             Executable executable,
-                             DebugOptions debug_options) {
+/*static*/ absl::StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
+GpuRuntimeExecutable::Create(
+    std::string module_name, std::vector<int64_t> buffer_sizes,
+    std::vector<std::vector<int64_t>> allocation_indices, Executable executable,
+    DebugOptions debug_options) {
   // Instantiate state for all registered runtime modules.
   auto modules_state = ModulesState::Instantiate();
   if (!modules_state.ok())
@@ -252,8 +261,8 @@ GpuRuntimeExecutable::Create(std::string module_name,
                          modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
-      std::move(module_name),
-      std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
+      std::move(module_name), std::move(buffer_sizes),
+      std::move(allocation_indices),
       std::make_unique<Executable>(std::move(executable)),
       std::move(debug_options), std::move(*modules_state)));
 }
@@ -304,7 +313,7 @@ static void InitializeCallFrame(runtime::Executable::CallFrame& call_frame,
   }
 }
 
-Status GpuRuntimeExecutable::Execute(
+absl::Status GpuRuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
@@ -356,8 +365,9 @@ Status GpuRuntimeExecutable::Execute(
   // b/293945751.
   absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comm_streams(
       kAsyncStreamTotal, nullptr);
-  StatusOr<std::vector<StreamPool::Ptr>> streams = run_options->BorrowStreams(
-      executor->device_ordinal(), kAsyncStreamTotal, stream_priority);
+  absl::StatusOr<std::vector<StreamPool::Ptr>> streams =
+      run_options->BorrowStreams(executor->device_ordinal(), kAsyncStreamTotal,
+                                 stream_priority);
   if (streams.ok()) {
     for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
       async_comm_streams[i] = streams->at(i).get();
@@ -389,8 +399,6 @@ Status GpuRuntimeExecutable::Execute(
       executor_graphs->snapshot();
   CapturedFunctionExecutionCount::Snapshot execution_count =
       captured_function_counts_(executor)->snapshot();
-  OrdinalToFallback::Snapshot ordinal_to_fallback =
-      ordinal_to_fallback_.snapshot();
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Kernels in concurrent regions should be launched on borrowed stream, so
@@ -404,10 +412,12 @@ Status GpuRuntimeExecutable::Execute(
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
-  MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
+  MatmulPlans::Snapshot matmul_plans = gpublas_lt_matmul_plans_.snapshot();
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  StreamExecutorNormRunners::Snapshot norm_runners =
+      norm_runners_(executor)->snapshot();
   StreamExecutorFusedAttentionRunners::Snapshot fused_attention_runners =
       fused_attention_runners_(executor)->snapshot();
   StreamExecutorFusedAttentionBackwardRunners::Snapshot
@@ -426,15 +436,16 @@ Status GpuRuntimeExecutable::Execute(
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support
       // only.
-      &fused_attention_runners, &fused_attention_backward_runners,
+      &norm_runners, &fused_attention_runners,
+      &fused_attention_backward_runners,
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      &graph_instances, &execution_count, &ordinal_to_fallback,
+      &graph_instances, &execution_count,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
-      async_collectives.async_comm_stream(kAsyncStreamCollective)
+      async_collectives.async_comm_stream(AsyncStreamKind::kCollective)
           ? &async_collectives
           : nullptr);
 
@@ -448,25 +459,9 @@ Status GpuRuntimeExecutable::Execute(
   // Instantiate all CUDA graphs before executing the main function.
   if (debug_options_.xla_gpu_graph_num_runs_to_instantiate() < 0 &&
       !graph_instances_.InstantiatedAllGraphs(run_options, executable)) {
-    // To instantiate all Gpu graphs we have to pass a valid device pointer
-    // because some device operations in XLA (e.g. memcpy) query device
-    // information from a pointer. We have to find the largest allocation
-    // available, to guarantee that all memref slices are within bounds,
-    // otherwise we might get crashes from a Gpu driver.
-    void* device_ptr = temp_buffer.opaque();
-    size_t device_ptr_size = temp_buffer.size();
-
-    for (unsigned i = 0; i < buffer_allocations.size(); ++i) {
-      auto mem = buffer_allocations.GetDeviceAddress(i);
-      if (mem.size() > device_ptr_size) {
-        device_ptr = mem.opaque();
-        device_ptr_size = mem.size();
-      }
-    }
-
     if (auto instantiated = graph_instances_.InstantiateAllGraphs(
-            run_options, executable, user_data, device_ptr,
-            &ordinal_to_fallback,
+            run_options, executable, user_data, buffer_allocations,
+            buffer_sizes_, allocation_indices_,
             debug_options_.xla_gpu_graph_eviction_timeout_seconds());
         !instantiated.ok()) {
       return InternalError("Failed to instantiate GPU graphs: %s",
@@ -496,29 +491,26 @@ Status GpuRuntimeExecutable::Execute(
                          diagnostic);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
 
-Executable& GpuRuntimeExecutable::executable() {
+const Executable& GpuRuntimeExecutable::executable() const {
   if (auto* jit = std::get_if<std::unique_ptr<JitExecutable>>(&executable_)) {
     return *(*jit)->DefaultExecutable();
   }
   return *std::get<std::unique_ptr<Executable>>(executable_);
 }
 
-StatusOr<std::string_view> GpuRuntimeExecutable::GetObjFile() const {
-  const auto* jit = std::get_if<std::unique_ptr<JitExecutable>>(&executable_);
-  if (!jit) return InternalError("ObjFile is not available");
-
-  if (auto obj_file = (*jit)->DefaultExecutable()->obj_file())
+absl::StatusOr<std::string_view> GpuRuntimeExecutable::GetObjFile() const {
+  if (auto obj_file = executable().obj_file())
     return std::string_view(obj_file->getBuffer());
 
   return InternalError("gpu runtime executable didn't save the obj file");
 }
 
-StatusOr<std::string_view> GpuRuntimeExecutable::GetMlirModule() const {
+absl::StatusOr<std::string_view> GpuRuntimeExecutable::GetMlirModule() const {
   const auto* jit = std::get_if<std::unique_ptr<JitExecutable>>(&executable_);
   if (!jit) return InternalError("MLIR module is not available");
 

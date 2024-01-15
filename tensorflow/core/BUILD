@@ -121,7 +121,6 @@ package(
         "//tensorflow_models:__subpackages__",
     ],
     features = if_google([
-        "-layering_check",
         "-parse_headers",
     ]),
     licenses = ["notice"],
@@ -648,7 +647,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
         "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
@@ -665,7 +664,9 @@ cc_library(
 
 cc_library(
     name = "dynamic_kernels_impl",
-    visibility = [":__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/core/kernels:sobol_op",
     ],
@@ -1310,6 +1311,7 @@ cc_library(
     ],
     hdrs = [":lib_internal_public_headers"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
         ":lib_proto_parsing",
@@ -1405,7 +1407,6 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:load_library",
-        "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:net",
         "//tensorflow/core/platform:notification",
@@ -1456,6 +1457,9 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc_impl",
@@ -1475,6 +1479,9 @@ cc_library(
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
         "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
+        "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
+        "//tensorflow/lite/toco:model_flags_proto_cc_impl",
+        "//tensorflow/lite/toco:types_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
@@ -1641,6 +1648,7 @@ tf_cuda_library(
     ],
     hdrs = [":framework_internal_public_headers"],
     copts = tf_copts(),
+    features = ["-layering_check"],
     linkopts = select({
         "//tensorflow:freebsd": ["-lm"],
         "//tensorflow:windows": [],
@@ -1770,7 +1778,11 @@ tf_cuda_library(
         ":protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -1982,7 +1994,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_relu_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
-        "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
         "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]),
 )

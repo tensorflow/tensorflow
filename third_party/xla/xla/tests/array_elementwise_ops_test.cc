@@ -42,6 +42,10 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace xla {
 namespace {
 
@@ -1590,6 +1594,11 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
+#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION == 50700
+  GTEST_SKIP()
+      << "This test fails on rocm-5.7.0 platform due to a compiler bug";
+#endif
+
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
   auto eps = std::numeric_limits<float>::epsilon();
@@ -1999,6 +2008,121 @@ XLA_TEST_F(ArrayElementwiseOpTest, MinF32s) {
   ComputeAndCompareR1<float>(&builder, {1.0f, -5.0f, 1.0f, NAN, NAN}, {},
                              error_spec_);
 }
+
+using ScalarF32TestCase = std::tuple<float, float>;
+
+class ScalarF32MinMaxTest
+    : public ArrayElementwiseOpTest,
+      public ::testing::WithParamInterface<ScalarF32TestCase> {};
+
+XLA_TEST_P(ScalarF32MinMaxTest, Version_1) {
+  auto test_params = GetParam();
+  XlaBuilder builder(TestName());
+  SetFastMathDisabled(true);
+  float x = std::get<0>(test_params);
+  float y = std::get<1>(test_params);
+  auto lhs = ConstantR0<float>(&builder, x);
+  auto rhs = ConstantR0<float>(&builder, y);
+  Tuple(&builder, {Max(Max(lhs, rhs), rhs), Min(Min(lhs, rhs), rhs)});
+
+  float expected_min = std::min(x, y);
+  float expected_max = std::max(x, y);
+  if (std::isnan(x)) {
+    expected_min = x;
+    expected_max = x;
+  } else if (std::isnan(y)) {
+    expected_min = y;
+    expected_max = y;
+  }
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR0<float>(expected_max),
+       LiteralUtil::CreateR0<float>(expected_min)});
+  ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_P(ScalarF32MinMaxTest, Version_2) {
+  auto test_params = GetParam();
+  XlaBuilder builder(TestName());
+  SetFastMathDisabled(true);
+  float x = std::get<0>(test_params);
+  float y = std::get<1>(test_params);
+  auto lhs = ConstantR0<float>(&builder, x);
+  auto rhs = ConstantR0<float>(&builder, y);
+  Tuple(&builder, {Max(Max(lhs, rhs), lhs), Min(Min(lhs, rhs), lhs)});
+
+  float expected_min = std::min(x, y);
+  float expected_max = std::max(x, y);
+  if (std::isnan(x)) {
+    expected_min = x;
+    expected_max = x;
+  } else if (std::isnan(y)) {
+    expected_min = y;
+    expected_max = y;
+  }
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR0<float>(expected_max),
+       LiteralUtil::CreateR0<float>(expected_min)});
+  ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_P(ScalarF32MinMaxTest, Version_3) {
+  auto test_params = GetParam();
+  XlaBuilder builder(TestName());
+  SetFastMathDisabled(true);
+  float x = std::get<0>(test_params);
+  float y = std::get<1>(test_params);
+  auto lhs = ConstantR0<float>(&builder, x);
+  auto rhs = ConstantR0<float>(&builder, y);
+  Tuple(&builder, {Max(lhs, Max(lhs, rhs)), Min(lhs, Min(lhs, rhs))});
+
+  float expected_min = std::min(x, y);
+  float expected_max = std::max(x, y);
+  if (std::isnan(x)) {
+    expected_min = x;
+    expected_max = x;
+  } else if (std::isnan(y)) {
+    expected_min = y;
+    expected_max = y;
+  }
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR0<float>(expected_max),
+       LiteralUtil::CreateR0<float>(expected_min)});
+  ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_P(ScalarF32MinMaxTest, Version_4) {
+  auto test_params = GetParam();
+  XlaBuilder builder(TestName());
+  SetFastMathDisabled(true);
+  float x = std::get<0>(test_params);
+  float y = std::get<1>(test_params);
+  auto lhs = ConstantR0<float>(&builder, x);
+  auto rhs = ConstantR0<float>(&builder, y);
+  Tuple(&builder, {Max(rhs, Max(lhs, rhs)), Min(rhs, Min(lhs, rhs))});
+
+  float expected_min = std::min(x, y);
+  float expected_max = std::max(x, y);
+  if (std::isnan(x)) {
+    expected_min = x;
+    expected_max = x;
+  } else if (std::isnan(y)) {
+    expected_min = y;
+    expected_max = y;
+  }
+  auto expected = LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR0<float>(expected_max),
+       LiteralUtil::CreateR0<float>(expected_min)});
+  ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ScalarF32MinMaxTestInstance, ScalarF32MinMaxTest,
+    ::testing::Combine(
+        ::testing::Values(1.0, std::numeric_limits<float>::infinity(), NAN,
+                          -1.0, -std::numeric_limits<float>::infinity(), -NAN),
+        ::testing::Values(1.0, std::numeric_limits<float>::infinity(), NAN,
+                          -1.0, -std::numeric_limits<float>::infinity(),
+                          -NAN)));
 
 XLA_TEST_F(ArrayElementwiseOpTest, MinZeroElementF32s) {
   XlaBuilder builder(TestName());

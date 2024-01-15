@@ -11,8 +11,11 @@ cc_library(
     linkstatic = 1,
     deps = [
         ":host_compute_ops",
+        ":sparse_core_ops",
+        ":sparse_core_preprocess_ops",
         ":topk_ops",
         ":tpu_compile_op",
+        ":tpu_copy_with_dynamic_shape_op",
         ":tpu_embedding_ops",
         ":tpu_execute_op",
         ":tpu_handle_to_key_op",

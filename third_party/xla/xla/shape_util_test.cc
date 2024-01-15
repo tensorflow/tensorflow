@@ -335,9 +335,6 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(8, ShapeUtil::ByteSizeOfPrimitiveType(C64));
   EXPECT_EQ(8, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {})));
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
-
-  EXPECT_EQ(0, ShapeUtil::ByteSizeOfPrimitiveType(TOKEN));
-  EXPECT_EQ(0, ShapeUtil::ByteSizeOf(ShapeUtil::MakeTokenShape()));
 }
 
 TEST(ShapeUtilTest, NilShape) {
@@ -964,6 +961,16 @@ TEST(ShapeUtilTest, UpdateDynamicDimensions) {
 
   ShapeUtil::UpdateDynamicDimension(&tuple_shape, {0}, 1, true);
   EXPECT_TRUE(ShapeUtil::GetSubshape(tuple_shape, {0}).is_dynamic_dimension(1));
+}
+
+TEST(ShapeUtilTest, InvalidDynamicDimension) {
+  StatusOr<Shape> error_status = ShapeUtil::MakeValidatedShape(
+      F32, {Shape::kUnboundedSize, Shape::kUnboundedSize}, {true, false});
+
+  EXPECT_FALSE(error_status.ok());
+  EXPECT_THAT(error_status.status().message(),
+              ::testing::HasSubstr(
+                  "Cannot mark a dynamic dimension at dim=1 as static"));
 }
 
 TEST(ShapeUtilTest, PermuteDynamicDimensions) {

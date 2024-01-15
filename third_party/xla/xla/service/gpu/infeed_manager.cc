@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/service/gpu/infeed_manager.h"
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/xla_executor_state.h"
@@ -35,7 +39,7 @@ InfeedManager::InfeedManager(se::StreamExecutor* executor)
   stream_->Init();
 }
 
-static StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
+static absl::StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
     se::Stream* stream, int64_t size, const void* source) {
   if (size > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
@@ -54,8 +58,8 @@ static StatusOr<se::ScopedDeviceMemory<uint8_t>> CopyBufferToDevice(
   return std::move(buffer);
 }
 
-Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                              const LiteralSlice& literal) {
+absl::Status InfeedManager::TransferLiteralToInfeed(
+    se::StreamExecutor* executor, const LiteralSlice& literal) {
   const Shape& literal_shape = literal.shape();
   VLOG(2) << "Transferring literal to infeed with shape: "
           << ShapeUtil::HumanString(literal_shape);
@@ -77,14 +81,14 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   // TODO(b/30467474): Since this stream is shared across different infeed
   // requests, blocking on the stream might be heavy-handed. Figure out if
   // finer-grained acknowledgement is possible.
-  Status block_status = stream()->BlockHostUntilDone();
+  absl::Status block_status = stream()->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
                          stream(), block_status.message());
   }
 
   EnqueueDestination(std::move(buffer_tree));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor) {

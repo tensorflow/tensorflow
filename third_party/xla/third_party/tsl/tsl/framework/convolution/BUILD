@@ -1,4 +1,4 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tsl/platform:build_config.bzl",

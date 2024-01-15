@@ -16,11 +16,14 @@ limitations under the License.
 #include "xla/stream_executor/temporary_memory_manager.h"
 
 #include <cstdint>
+#include <memory>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/temporary_device_memory.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor {
@@ -92,16 +95,15 @@ bool TemporaryMemoryManager::HasAllocated(const DeviceMemoryBase& device_memory,
   return it->second.allocation_generation == generation;
 }
 
-tsl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>>
+absl::StatusOr<std::unique_ptr<TemporaryDeviceMemoryBase>>
 TemporaryMemoryManager::AllocateArrayBase(uint64_t element_count,
                                           uint64_t element_size) {
   uint64_t byte_size = element_count * element_size;
   DeviceMemoryBase device_memory =
       stream_->parent()->AllocateArray<uint8_t>(byte_size);
   if (device_memory == nullptr) {
-    return tsl::Status(absl::StatusCode::kResourceExhausted,
-                       absl::StrCat("could not allocate temporary memory of ",
-                                    byte_size, " bytes"));
+    return absl::ResourceExhaustedError(absl::StrCat(
+        "could not allocate temporary memory of ", byte_size, " bytes"));
   }
 
   uint64_t generation;

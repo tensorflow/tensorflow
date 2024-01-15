@@ -39,13 +39,16 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":xla_extension",
+        ":xla_extension",  # buildcleaner: keep
         "@ml_dtypes",
     ],
 )
 
 exports_files(
-    ["xla_client.pyi"],
+    [
+        "xla_client.py",
+        "xla_client.pyi",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -141,32 +144,13 @@ py_strict_test(
     ] + xla_py_test_deps(),
 )
 
-cc_library(
-    name = "status_casters",
-    hdrs = ["status_casters.h"],
-    compatible_with = [],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":exceptions",
-        "//xla:status",
-        "//xla:statusor",
-        "@local_tsl//tsl/platform:macros",
-        "@pybind11",
-    ],
-)
-
 tsl_pybind_extension(
     name = "status_casters_ext",
     srcs = ["status_casters_ext.cc"],
     visibility = ["//visibility:private"],
     deps = [
-        ":exceptions",
-        ":status_casters",
+        "//xla/pjrt:exceptions",
+        "//xla/pjrt:status_casters",
         "@pybind11",
     ],
 )
@@ -185,22 +169,6 @@ py_strict_test(
 )
 
 cc_library(
-    name = "exceptions",
-    hdrs = ["exceptions.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla:status",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
@@ -212,7 +180,6 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":exceptions",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
@@ -220,6 +187,7 @@ cc_library(
         "//xla:statusor",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/pjrt:exceptions",
         "//xla/python/ifrt",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -277,13 +245,13 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":exceptions",
         ":python_ref_manager",
         # placeholder for index annotation deps
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "//xla/pjrt:exceptions",
         "@local_tsl//tsl/platform:logging",
         "@pybind11",
     ],
@@ -348,13 +316,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":callback",
-        ":exceptions",
         ":pprof_profile_builder",
         ":py_client_gpu",
         ":py_host_callback_proto_cc",
         ":python_ref_manager",
         ":python_utils",
-        ":status_casters",
         ":traceback",
         ":transfer_guard_lib",
         ":types",
@@ -377,13 +343,16 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
+        "//xla/pjrt:exceptions",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:lru_cache",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:pjrt_stream_executor_client",
+        "//xla/pjrt:status_casters",
         "//xla/pjrt:transpose",
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
@@ -394,7 +363,7 @@ cc_library(
         "//xla/service:platform_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/python/lib/core:numpy",
@@ -456,8 +425,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":callback",
-        ":exceptions",
         "//xla:comparison_util",
+        "//xla/pjrt:exceptions",
         "//xla/service:custom_call_status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -512,29 +481,18 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":exceptions",
         ":py_client",
         ":python_ref_manager",
-        ":python_utils",
         ":pytree",
-        ":status_casters",
         ":types",
-        ":util",
         # placeholder for index annotation deps
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_python//:python_headers",  # build_cleaner: keep
-        "//xla:shape_util",
-        "//xla:statusor",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/pjrt:lru_cache",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -569,11 +527,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":inspect_sharding",
-        ":status_casters",
         # placeholder for index annotation deps
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/pjrt:status_casters",
         "//xla/service:call_inliner",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service:hlo_pass_pipeline",
@@ -595,7 +553,6 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":status_casters",
         ":types",
         # placeholder for index annotation deps
         "@com_google_absl//absl/types:span",
@@ -611,6 +568,7 @@ cc_library(
         "//xla/client/lib:self_adjoint_eig",
         "//xla/client/lib:sorting",
         "//xla/client/lib:svd",
+        "//xla/pjrt:status_casters",
         "@pybind11",
     ],
 )
@@ -653,14 +611,13 @@ cc_library(
         ":py_client",
         ":python_utils",
         ":pytree",
-        ":status_casters",
         ":transfer_guard_lib",
         ":util",
         # placeholder for index annotation deps
         "@com_google_absl//absl/synchronization",
         "//xla/pjrt:lru_cache",
+        "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
-        "//xla/python/pjrt_ifrt",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@pybind11",
@@ -679,12 +636,10 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":exceptions",
         ":jax_jit",
         ":py_client",
         ":python_utils",
         ":pytree",
-        ":status_casters",
         ":types",
         ":util",
         # placeholder for index annotation deps
@@ -695,9 +650,10 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "//xla:xla_data_proto_cc",
+        "//xla/pjrt:exceptions",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
-        "//xla/python/pjrt_ifrt",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -718,7 +674,7 @@ xla_cc_test(
         "//xla/client:xla_builder",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_stream_executor_client",
-        "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt/cpu:cpu_client",
         "//xla/service:platform_util",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:test_main",
@@ -739,7 +695,6 @@ cc_library(
     deps = [
         ":outfeed_receiver",
         ":py_client",
-        ":status_casters",
         ":types",
         # placeholder for index annotation deps
         "@com_google_absl//absl/algorithm:container",
@@ -747,6 +702,7 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/client:xla_builder",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:status_casters",
         "@pybind11",
     ],
 )
@@ -785,7 +741,6 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":exceptions",
         ":pytree_proto_cc",
         # placeholder for index annotation deps
         "@com_google_absl//absl/algorithm:container",
@@ -794,6 +749,7 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "//xla/pjrt:exceptions",
         "@local_tsl//tsl/platform:logging",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
@@ -813,7 +769,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":refine_polymorphic_shapes",
-        ":status_casters",
         ":types",
         # placeholder for index annotation deps
         "//xla:status",
@@ -822,6 +777,7 @@ cc_library(
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
         "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt:status_casters",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_tsl//tsl/platform:errors",
@@ -859,7 +815,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
-        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//stablehlo/experimental:experimental_stablehlo_passes",
     ],
 )
 
@@ -876,8 +832,6 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":exceptions",
-        ":status_casters",
         ":types",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
@@ -887,6 +841,8 @@ cc_library(
         "//xla/backends/profiler/cpu:python_tracer",
         "//xla/backends/profiler/plugin:plugin_tracer",
         "//xla/backends/profiler/plugin:profiler_c_api_hdrs",
+        "//xla/pjrt:exceptions",
+        "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "//xla/python/profiler/internal:traceme_wrapper",
@@ -917,11 +873,11 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":status_casters",
         # placeholder for index annotation deps
         "@com_google_absl//absl/base:core_headers",
         "//xla:status",
         "//xla:util",
+        "//xla/pjrt:status_casters",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
     ],
@@ -982,9 +938,7 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
-        ":exceptions",
         ":py_client",
-        ":status_casters",
         ":types",
         # placeholder for index annotation deps
         "@com_google_absl//absl/hash",
@@ -1003,6 +957,8 @@ cc_library(
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/pjrt:exceptions",
+        "//xla/pjrt:status_casters",
         "//xla/service:call_inliner",
         "//xla/service:computation_placer",
         "//xla/service:custom_call_target_registry",
@@ -1138,7 +1094,6 @@ cc_library(
         ":python_ref_manager",
         ":pytree",
         ":refine_polymorphic_shapes",
-        ":status_casters",
         ":traceback",
         ":transfer_guard_lib",
         ":types",
@@ -1147,10 +1102,12 @@ cc_library(
         ":xla_compiler",
         # placeholder for index annotation deps
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:initialize",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@local_config_python//:python_headers",  # buildcleaner: keep
         "//xla:literal",
@@ -1163,15 +1120,19 @@ cc_library(
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_c_api_client",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
-        "//xla/pjrt:tfrt_cpu_pjrt_client",
+        "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/cpu:cpu_client",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
+        "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:service",
         "//xla/python/ifrt",
         "//xla/python/pjrt_ifrt",
+        "//xla/service/cpu:collectives_interface",
         "@local_tsl//tsl/distributed_runtime/preemption:preemption_sync_manager",
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:logging",
@@ -1179,6 +1140,15 @@ cc_library(
         "@local_tsl//tsl/python/lib/core:numpy",
         "@pybind11",
     ] + select({
+        # gloo transport only builds on linux
+        "@local_tsl//tsl:macos": [],
+        "@local_tsl//tsl:windows": [],
+        "//conditions:default": [
+            "//third_party/gloo:transport_tcp",
+            "//xla/pjrt/cpu:gloo_collectives",
+            "//xla/pjrt/cpu:gloo_kv_store",
+        ],
+    }) + select({
         ":gpu_enabled": [
             "//xla/pjrt/gpu:se_gpu_pjrt_client",
         ],
@@ -1202,7 +1172,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -1235,5 +1204,14 @@ xla_cc_test(
         "@local_tsl//tsl/profiler/utils:file_system_utils",
         "@local_tsl//tsl/profiler/utils:xplane_builder",
         "@local_tsl//tsl/profiler/utils:xplane_schema",
+    ],
+)
+
+cc_library(
+    name = "status_casters",
+    hdrs = ["status_casters.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/pjrt:status_casters",
     ],
 )

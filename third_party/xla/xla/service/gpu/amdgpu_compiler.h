@@ -33,26 +33,25 @@ class AMDGPUCompiler : public GpuCompiler {
  public:
   AMDGPUCompiler();
 
-  Status OptimizeHloConvolutionCanonicalization(
+  absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) override;
 
-  Status OptimizeHloPostLayoutAssignment(
+  absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
+      const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
   bool RequiresCollectiveScheduleLinearizer(
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
-  Status AddConvAndGemmAutotuningPasses(
+  absl::Status AddConvAndGemmAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
+  absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       se::GpuComputeCapability gpu_version, bool relocatable,
       const HloModule* debug_module, const CompileOptions& options) override;

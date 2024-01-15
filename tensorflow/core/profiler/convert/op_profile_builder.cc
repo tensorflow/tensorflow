@@ -185,9 +185,12 @@ void PopulateOpMetricsNode(
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.flops());
+  metrics->set_occurrences(op_metrics.occurrences());
+  metrics->set_avg_time_ps(
+      SafeDivide(op_metrics.time_ps(), op_metrics.occurrences()));
 
   // Hack to approximate utilization for INT8/4 convolution HLOs:
-  // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor detemrined
+  // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor determined
   // by the computation size
   if (GetComputationSize(*node) == 8) {
     peak_gigaflops_per_second_per_core *= 2;

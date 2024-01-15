@@ -17,7 +17,14 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -41,6 +48,11 @@ bool IsCublasLtMatmulF8(const HloInstruction& hlo) {
          hlo.custom_call_target() == kCublasLtMatmulF8CallTarget;
 }
 
+bool IsTriangularSolve(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kTriangularSolveCallTarget;
+}
+
 const absl::string_view kGemmCallTarget = "__cublas$gemm";
 const absl::string_view kCublasLtMatmulCallTarget = "__cublas$lt$matmul";
 const absl::string_view kCublasLtMatmulF8CallTarget = "__cublas$lt$matmul$f8";
@@ -60,7 +72,7 @@ const absl::string_view kCudnnConvReorderFilterCallTarget =
 const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
     "__cudnn$convReorderFilterAndBias";
 
-const absl::string_view kCubDeviceRadixSortTarget = "__cub$DeviceRadixSort";
+const absl::string_view kCudnnNormCallTarget = "__cudnn$norm";
 
 // fMHA forward call targets.
 const absl::string_view kCudnnfMHABmmBmmCallTarget = "__cudnn$fhmaBmmBmm";
@@ -101,6 +113,8 @@ const absl::string_view kCudnnfMHAScaleMaskSoftmaxDropoutBackwardCallTarget =
 const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget =
     "__cudnn$fhmaSoftmaxDropoutBackward";
 
+const absl::string_view kCubDeviceRadixSortTarget = "__cub$DeviceRadixSort";
+
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;
@@ -122,9 +136,12 @@ bool IsCudnnConvolutionReorder(const HloInstruction& hlo) {
          target == kCudnnConvReorderFilterAndBiasCallTarget;
 }
 
-bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceRadixSortTarget;
+bool IsCustomCallToDnnNorm(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnNormCallTarget;
 }
 
 bool IsFwdCustomCallTofMHA(const HloInstruction& hlo) {
@@ -174,7 +191,12 @@ bool IsCustomCallTofMHA(const HloInstruction& hlo) {
   return (IsFwdCustomCallTofMHA(hlo) || IsBwdCustomCallTofMHA(hlo));
 }
 
-StatusOr<CudnnConvKind> GetCudnnConvKind(
+bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kCubDeviceRadixSortTarget;
+}
+
+absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();
   if (target == kCudnnConvForwardCallTarget) {
@@ -210,7 +232,7 @@ std::string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
+absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();
   if (target == kCudnnfMHABmmBmmCallTarget) return CudnnfMHAKind::kBmmBmm;
@@ -293,7 +315,7 @@ std::string CudnnfMHAKindToString(CudnnfMHAKind kind) {
   }
 }
 
-StatusOr<std::string> GetFMHAInstructionPrefix(
+absl::StatusOr<std::string> GetFMHAInstructionPrefix(
     const std::string& custom_call_target) {
   if (custom_call_target == kCudnnfMHABmmBmmCallTarget) {
     return "fmha-bmm-bmm";
@@ -358,11 +380,11 @@ StatusOr<std::string> GetFMHAInstructionPrefix(
 }
 
 // Give fmha instruction a more useful name than "custom-call.42".
-Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha) {
+absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha) {
   TF_ASSIGN_OR_RETURN(std::string fmha_prefix,
                       GetFMHAInstructionPrefix(fmha->custom_call_target()));
   module->SetAndUniquifyInstrName(fmha, fmha_prefix);
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace gpu
 }  // namespace xla

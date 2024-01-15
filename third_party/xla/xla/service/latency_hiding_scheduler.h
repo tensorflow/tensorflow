@@ -108,6 +108,7 @@ struct SchedulerConfig {
   bool aggressive_scheduling_policies = false;
   bool enable_release_start_policy = false;
   bool resource_sharing = false;
+  bool resource_serializing = false;
   bool depth_based_memory_pressure_reduction = false;
   int64_t rerun = 0;
 };
@@ -181,6 +182,10 @@ class AsyncTracker {
   virtual bool IsSupportedAsyncStart(const HloInstruction& hlo) const;
 
   // Returns resources used (i.e., occupied or released) by this instruction
+  virtual ResourcesVector GetResourcesFromInstructionImpl(
+      const HloInstruction& hlo) const;
+
+  // Returns resources used (i.e., occupied or released) by this instruction
   virtual ResourcesVector GetResourcesFromInstruction(
       const HloInstruction& hlo) const;
 
@@ -237,6 +242,11 @@ class AsyncTracker {
   GetOccupiedShareableResourcesFromVector(
       const ResourcesVector& resources) const;
 
+  // Returns the list of the occupied serial resources filtered from the given
+  // resources vector.
+  virtual absl::InlinedVector<int64_t, 1> GetOccupiedSerialResourcesFromVector(
+      const ResourcesVector& resources) const;
+
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
     return get_canonical_async_op_(hlo);
   }
@@ -252,6 +262,10 @@ class AsyncTracker {
                               absl::flat_hash_map<int64_t, int64_t>>
       async_in_computation_cache_;
   GetCanonicalAsyncOpFunc get_canonical_async_op_;
+
+ protected:
+  mutable absl::flat_hash_map<const HloInstruction*, ResourcesVector>
+      resources_cache_;
 };
 
 // Base class for the core scheduling algorithm.
@@ -499,6 +513,10 @@ class HloScheduleGraph {
   // List containing the original order (before scheduling) of the
   // instructions).
   std::vector<const HloInstruction*> original_order_;
+  // Searches through node's predecessors to see if
+  // possible_predecessor can be found.
+  bool IsPredecessorTransitively(const HloGraphNode* node,
+                                 const HloGraphNode* possible_predecessor);
 };
 
 // Tracks data about HloBuffers like where the first definition is in the

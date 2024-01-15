@@ -41,11 +41,6 @@ class HasRankAtMost<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
 
-// Checks if the value has rank at most 'n'.
-class HasRankAtLeast<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
-
 // Checks if the value has rank 'n'.
 class HasRank<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
@@ -68,6 +63,16 @@ def HasSameStaticShapes : Constraint<
           "$0.getType().cast<ShapedType>().getShape() =="
           "$1.getType().cast<ShapedType>().getShape()">,
     "have the same static shape">;
+
+def IsPermutationNCHW : Constraint<CPred<"IsPermutationNCHW($0)">>;
+
+def IsBiasShape : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().getRank() == 4 && "
+          "$0.getType().cast<ShapedType>().getShape()[2] == 1 && "
+          "$0.getType().cast<ShapedType>().getShape()[3] == 1">,
+    "has shape consistent with a bias">;
+
+def ReshapeNCHWBiasToNHWC : NativeCodeCall<"ReshapeNCHWBiasToNHWC($0, $1)">;
 
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
@@ -698,14 +703,10 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
   }
 }
 
-// Returns shape of a ranked tensor.
-// if called without a ranked tensor it will fail.
-def GetShape: NativeCodeCall<"GetShape($0)">;
-
 // Returns truncated shape of a ranked-tensor.
-// Truncated, here, means eliminating any contiguous 1s' in the lower
+// Prefix-Truncated, here, means eliminating any contiguous 1s' in the lower
 // dimentions of the tensor
-def GetTruncatedShape: NativeCodeCall<"GetShape($0, true)">;
+def GetPrefixTruncatedShape: NativeCodeCall<"GetShape($0, true)">;
 
 // Returns True if the operand type is RankedTensorType and valid.
 def HasValidRankedTensor : Constraint<CPred<
@@ -713,7 +714,7 @@ def HasValidRankedTensor : Constraint<CPred<
   "$0.getType().cast<RankedTensorType>().getNumDynamicDims() <= 1">>;
 
 // Check if the truncated shape of the lhs is equal to the shape of rhs
-def IsTruncatedShapeEqualTo : Constraint<CPred<
+def IsPrefixTruncatedShapeEqualTo : Constraint<CPred<
   "GetShape($0, true) == GetShape($1)">>;
 
 def ConvertSqueezeToReshape : Pat<
@@ -735,9 +736,9 @@ def ConvertTrasposeReshapeTransposeToReshape : Pat<
       (TFL_TransposeOp:$first_transpose $input, $permutation2),
         $shape),
       $permutation1),
-  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetTruncatedShape $input))),
-  [(IsTruncatedShapeEqualTo $first_transpose, $middle_reshape),
-   (IsTruncatedShapeEqualTo $input, $second_transpose)]>;
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetPrefixTruncatedShape $input))),
+  [(IsPrefixTruncatedShapeEqualTo $first_transpose, $middle_reshape),
+   (IsPrefixTruncatedShapeEqualTo $input, $second_transpose)]>;
 
 // TODO(b/294385379): This pattern only appears when we convert
 // from shlo due to differences in broadcasting behavior
@@ -1539,3 +1540,22 @@ def FuseTransposeAfterBatchMatmul : Pat<
                      $asymmetric_quantize_inputs
   ),
   [(AreLastTwoDimsTransposed $perm_value)]>;
+
+// Replace conv-->transpose-->add with conv-->add-->transpose
+// The bias needs only reshape (i.e. ReshapeNCHWBiasToNHWC) and not transpose
+// because the bias's shape simply changes from NxCx1x1 to Nx1x1xC.
+def ReorderNCHWTransposeAdd : Pat <
+  (TFL_AddOp:$add_op
+    (TFL_TransposeOp:$transpose_op $input, $perm),
+    (Arith_ConstantOp:$bias_op FloatElementsAttr:$bias),
+    $act_fn),
+  (TFL_TransposeOp
+    (TFL_AddOp $input,
+      (Arith_ConstantOp (ReshapeNCHWBiasToNHWC $bias_op, $bias)),
+      $act_fn),
+    $perm),
+  [(IsPermutationNCHW $perm),
+  (IsBiasShape $bias_op),
+  (IsDefinedByConv2DOp $input),
+  (HasOneUse $add_op),
+  (HasOneUse $transpose_op)]>;

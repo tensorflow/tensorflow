@@ -24,14 +24,23 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-TEST(UtilsTest, IsStablehloOp) {
-  MLIRContext ctx;
-  OpBuilder b(&ctx);
-  ctx.loadDialect<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect>();
+using ::testing::Test;
 
+class StablehloTypeUtilsTest : public Test {
+ protected:
+  StablehloTypeUtilsTest() {
+    ctx_.loadDialect<mlir::stablehlo::StablehloDialect,
+                     mlir::func::FuncDialect>();
+  }
+
+  MLIRContext ctx_;
+  OpBuilder builder_{&ctx_};
+};
+
+TEST_F(StablehloTypeUtilsTest, ValidStablehloOpSucceeds) {
   mlir::stablehlo::ConstantOp constant_op =
-      b.create<mlir::stablehlo::ConstantOp>(b.getUnknownLoc(),
-                                            b.getI32IntegerAttr(0));
+      builder_.create<mlir::stablehlo::ConstantOp>(
+          builder_.getUnknownLoc(), builder_.getI32IntegerAttr(0));
   EXPECT_TRUE(IsStablehloOp(constant_op));
   constant_op->erase();
 }

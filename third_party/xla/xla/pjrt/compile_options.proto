@@ -7,7 +7,7 @@ import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 16.
+// Next id: 18.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -84,6 +84,12 @@ message ExecutableBuildOptionsProto {
   bytes fdo_profile = 14;
 
   int64 device_memory_size = 15;
+
+  // Mesh shape in auto sharding options.
+  repeated int64 auto_spmd_partitioning_mesh_shape = 16;
+
+  // Mesh ids in auto sharding options.
+  repeated int64 auto_spmd_partitioning_mesh_ids = 17;
 }
 
 message OptionOverrideProto {

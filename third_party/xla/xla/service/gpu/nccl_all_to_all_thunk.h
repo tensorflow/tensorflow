@@ -38,29 +38,27 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
-  static Status CheckImplementable(mlir::lmhlo_gpu::AllToAllStartOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
+  static absl::Status CheckImplementable(mlir::lmhlo_gpu::AllToAllStartOp op,
+                                         int64_t replica_count,
+                                         int64_t partition_count);
 
   static const char* GetHloOpName() { return "all-to-all-start"; }
-  static bool IsDegenerate(mlir::lmhlo_gpu::AllToAllStartOp op,
-                           int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllToAllStartOp op);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
-  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
-                           ncclComm_t comm) override;
+  absl::Status RunNcclCollective(const ExecuteParams& params,
+                                 se::Stream& stream, ncclComm_t comm) override;
 
  private:
   const NcclAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
 };
 
-Status RunAllToAll(bool has_split_dimension,
-                   std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-                   ncclComm_t comm);
+absl::Status RunAllToAll(bool has_split_dimension,
+                         std::vector<DeviceBufferPair>& buffers,
+                         se::Stream& stream, ncclComm_t comm);
 
 }  // namespace gpu
 }  // namespace xla

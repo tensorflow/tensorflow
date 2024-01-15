@@ -150,9 +150,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "f9c5e1cf1bcc7920985df92322b95e537f284914339c0836e91c352f51345182",
-        strip_prefix = "XNNPACK-bbbaa7352a3ea729987d3e654d37be93e8009691",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/bbbaa7352a3ea729987d3e654d37be93e8009691.zip"),
+        sha256 = "36b2569789380cd72fbdd201a403f08b1b7a92f4102ae49c8a29386dd90ca202",
+        strip_prefix = "XNNPACK-a68aa0a24b0d3e1c75f2f7c0915b70121cee0470",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/a68aa0a24b0d3e1c75f2f7c0915b70121cee0470.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -172,18 +172,26 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        strip_prefix = "cpuinfo-959002f82d7962a473d8bf301845f2af720e0aa4",
-        sha256 = "a0f53ccfb477c57753c595df02bf79ed67bf092fd9a5c61ec5b8992b81bc1e65",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/959002f82d7962a473d8bf301845f2af720e0aa4.zip"),
+        strip_prefix = "cpuinfo-ef634603954d88d2643d5809011288b890ac126e",
+        sha256 = "e07512a11e1c71687359a133f49d60583d7465b737fe5dbe11f461c9aaa72a2b",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/ef634603954d88d2643d5809011288b890ac126e.zip"),
     )
 
     tf_http_archive(
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "d8dba9e2607a0c256aa8eacb45b39986ab6f3f24a4d431d4397047a3cb0cd4fb",
-        strip_prefix = "cudnn-frontend-0.9",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.9.zip"),
+        sha256 = "015ea933139a30e9ccd177b5e0dbfb16f3d08df78334aaacea57880275df734b",
+        strip_prefix = "cudnn-frontend-1.0.0",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.0.0.zip"),
+    )
+
+    tf_http_archive(
+        name = "cutlass_archive",
+        build_file = "//third_party:cutlass.BUILD",
+        sha256 = "84cf3fcc47c440a8dde016eb458f8d6b93b3335d9c3a7a16f388333823f1eae0",
+        strip_prefix = "cutlass-afa7b7241aabe598b725c65480bd9fa71121732c",
+        urls = tf_mirror_urls("https://github.com/chsigg/cutlass/archive/afa7b7241aabe598b725c65480bd9fa71121732c.tar.gz"),
     )
 
     tf_http_archive(
@@ -507,9 +515,9 @@ def _tf_repositories():
         name = "nccl_archive",
         build_file = "//third_party:nccl/archive.BUILD",
         patch_file = ["//third_party/nccl:archive.patch"],
-        sha256 = "16ac98f3e926c024ce48e10ab220e19ce734adc48c423cfd55ad6f509bd1179f",
-        strip_prefix = "nccl-2.18.5-1",
-        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.18.5-1.tar.gz"),
+        sha256 = "1c5474553afedb88e878c772f13d6f90b9226b3f2971dfa6f873adb9443100c2",
+        strip_prefix = "nccl-2.19.3-1",
+        urls = tf_mirror_urls("https://github.com/nvidia/nccl/archive/v2.19.3-1.tar.gz"),
     )
 
     java_import_external(
@@ -587,6 +595,16 @@ def _tf_repositories():
         sha256 = "b844b75c25cfe7ea34b832b369ab91234009b2dfe2ae1fcea53860c57253fe2e",
         strip_prefix = "pprof-83db2b799d1f74c40857232cb5eb4c60379fe6c2",
         urls = tf_mirror_urls("https://github.com/google/pprof/archive/83db2b799d1f74c40857232cb5eb4c60379fe6c2.tar.gz"),
+    )
+
+    # The CUDA 11 toolkit ships with CUB.  We should be able to delete this rule
+    # once TF drops support for CUDA 10.
+    tf_http_archive(
+        name = "cub_archive",
+        build_file = "//third_party:cub.BUILD",
+        sha256 = "162514b3cc264ac89d91898b58450190b8192e2af1142cf8ccac2d59aa160dda",
+        strip_prefix = "cub-1.9.9",
+        urls = tf_mirror_urls("https://github.com/NVlabs/cub/archive/1.9.9.zip"),
     )
 
     tf_http_archive(

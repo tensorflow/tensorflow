@@ -69,7 +69,8 @@ enum class CudnnfMHAKind {
   kBackwardScaleBiasSoftmaxDropout,
 };
 
-StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
+absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
+    const HloCustomCallInstruction* instr);
 
 // Converts a CudnnConvKind value to a string.
 std::string CudnnConvKindToString(CudnnConvKind kind);
@@ -87,6 +88,9 @@ bool IsCublasLtMatmul(const HloInstruction& hlo);
 
 // Scaled matrix multiplication in FP8. Calls into cublasLt.
 bool IsCublasLtMatmulF8(const HloInstruction& hlo);
+
+// Triangular solve that calls into legacy cublas.
+bool IsTriangularSolve(const HloInstruction& hlo);
 
 // A call to cuBLAS general matrix multiplication API.
 extern const absl::string_view kGemmCallTarget;
@@ -151,11 +155,11 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 // reordering helper (required for int8x32 convolutions).
 bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 
-// CUB library calls.
-// Reference: https://nvlabs.github.io/cub/
-extern const absl::string_view kCubDeviceRadixSortTarget;
+// A call to cuDNN for a fused norm.
+extern const absl::string_view kCudnnNormCallTarget;
 
-bool IsCubDeviceRadixSort(const HloInstruction& hlo);
+// Returns true if `hlo` will be implemented as a call to a cuDNN norm kernel.
+bool IsCustomCallToDnnNorm(const HloInstruction& hlo);
 
 // The fused_mha_rewriter phase where each of the MHA signatures are pattern
 // matched and rewritten into a custom-call with specific custom-call target.
@@ -199,12 +203,19 @@ bool IsFwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsBwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsCustomCallTofMHA(const HloInstruction& hlo);
 
-StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(const HloCustomCallInstruction* instr);
+absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
+    const HloCustomCallInstruction* instr);
 
 std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
-Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
+absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 
 bool MHACallHasDropout(absl::string_view fmha_call_name);
+
+// CUB library calls.
+// Reference: https://nvlabs.github.io/cub/
+extern const absl::string_view kCubDeviceRadixSortTarget;
+
+bool IsCubDeviceRadixSort(const HloInstruction& hlo);
 }  // namespace gpu
 }  // namespace xla
 

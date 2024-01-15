@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <random>
 #include <utility>
 
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -125,14 +126,29 @@ void PopulateWithNoDuplicateData(Literal* literal, std::minstd_rand0* engine) {
 }
 
 template <typename FloatT>
-void PopulateWithFloatingPointData(Literal* literal, std::minstd_rand0* engine,
-                                   bool no_duplicates, bool use_large_range) {
+void PopulateWithFloatingPointData(
+    Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
+    bool use_large_range, std::optional<int64_t> max_bits_of_precision) {
   using ComputeT =
       std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
   CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
-  if (no_duplicates) {
+  if (max_bits_of_precision.has_value()) {
+    CHECK(!use_large_range) << "Cannot set both use_large_range and "
+                               "max_bits_of_precision for floating points.";
+    CHECK(!no_duplicates) << "Cannot set both no_duplicates and "
+                             "max_bits_of_precision for floating points.";
+    std::uniform_int_distribution<int64_t> generator(
+        -(1 << *max_bits_of_precision), 1 << *max_bits_of_precision);
+    for (FloatT& value : literal->data<FloatT>()) {
+      int64_t temp = generator(*engine);
+      // We want to generate floating point numbers to a fixed precision, while
+      // keeping them between -1 and 1. This preserves their bits of precision
+      // while keeping the numbers small.
+      value = static_cast<FloatT>(temp * pow(2, -ceil(log2(abs(temp)))));
+    }
+  } else if (no_duplicates) {
     PopulateWithNoDuplicateData<FloatT>(literal, engine);
   } else if (use_large_range) {
     PopulateWithRandomFullRangeFloatingPointData<FloatT>(literal, engine);
@@ -153,10 +169,12 @@ void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
   Literal real_lit(floating_point_shape);
   Literal imaginary_lit(floating_point_shape);
 
-  PopulateWithFloatingPointData<InnerFloatT>(&real_lit, engine, no_duplicates,
-                                             use_large_range);
-  PopulateWithFloatingPointData<InnerFloatT>(&imaginary_lit, engine,
-                                             no_duplicates, use_large_range);
+  PopulateWithFloatingPointData<InnerFloatT>(
+      &real_lit, engine, no_duplicates, use_large_range,
+      /*max_bits_of_precision=*/std::nullopt);
+  PopulateWithFloatingPointData<InnerFloatT>(
+      &imaginary_lit, engine, no_duplicates, use_large_range,
+      /*max_bits_of_precision=*/std::nullopt);
 
   absl::Span<const InnerFloatT> real_data = real_lit.data<InnerFloatT>();
   absl::Span<const InnerFloatT> imaginary_data =
@@ -210,10 +228,13 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 // the type. (floating point format only)
 // 'use_large_range' indicates the sampled data is from the full range of the
 // floating point format. (floating point format only)
+// 'max_bits_of_precision' sets the data to have the given number of bits or
+// less (integer or floating point formats only).
 StatusOr<Literal> MakeFakeLiteralInternal(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
-    bool no_duplicates, bool use_large_range) {
+    bool no_duplicates, bool use_large_range,
+    std::optional<int64_t> max_bits_of_precision) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
     const auto& shape_tuple_shapes = shape.tuple_shapes();
@@ -222,7 +243,8 @@ StatusOr<Literal> MakeFakeLiteralInternal(
       TF_ASSIGN_OR_RETURN(
           Literal element,
           MakeFakeLiteralInternal(element_shape, engine, limit, is_sorted,
-                                  no_duplicates, use_large_range));
+                                  no_duplicates, use_large_range,
+                                  max_bits_of_precision));
       elements.push_back(std::move(element));
     }
     return LiteralUtil::MakeTupleOwned(std::move(elements));
@@ -244,7 +266,8 @@ StatusOr<Literal> MakeFakeLiteralInternal(
           if constexpr (primitive_util::IsFloatingPointType(
                             primitive_type_constant)) {
             PopulateWithFloatingPointData<NativeT>(
-                &literal, engine, no_duplicates, use_large_range);
+                &literal, engine, no_duplicates, use_large_range,
+                max_bits_of_precision);
             return OkStatus();
           }
           if constexpr (primitive_type_constant == PRED) {
@@ -262,6 +285,15 @@ StatusOr<Literal> MakeFakeLiteralInternal(
             if (limit.has_value()) {
               max = static_cast<NativeT>(limit->second);
               min = static_cast<NativeT>(limit->first);
+            }
+            if (max_bits_of_precision.has_value()) {
+              max = std::min(max,
+                             static_cast<NativeT>(1 << *max_bits_of_precision));
+              if (primitive_util::IsSignedIntegralType(
+                      primitive_type_constant)) {
+                min = std::max(
+                    min, static_cast<NativeT>(-(1 << *max_bits_of_precision)));
+              }
             }
             PopulateWithRandomIntegralDataWithBounds<NativeT>(
                 &literal, engine, /*no_duplicate*/ no_duplicates, min, max);
@@ -439,7 +471,8 @@ std::vector<HloInstruction*> FindConstrainedUses(
 StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<HloInstruction* const> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
-    std::minstd_rand0* engine, bool use_large_range) {
+    std::minstd_rand0* engine, bool use_large_range,
+    std::optional<int64_t> max_bits_of_precision) {
   int64_t index_bound = INT64_MAX;
   bool no_duplicates = false;
   bool needs_constant = false;
@@ -516,9 +549,10 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeFakeLiteralInternal(
-        param_shape, engine, std::pair<int64_t, int64_t>(0, index_bound),
-        needs_sorted_indices, no_duplicates, use_large_range);
+    return MakeFakeLiteralInternal(param_shape, engine,
+                                   std::pair<int64_t, int64_t>(0, index_bound),
+                                   needs_sorted_indices, no_duplicates,
+                                   use_large_range, max_bits_of_precision);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
@@ -532,27 +566,28 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         return MakeFakeLiteralInternal(
             param_shape, engine, /*limit=*/std::nullopt,
             /*is_sorted=*/needs_sorted_indices,
-            /*no_duplicates=*/false, use_large_range);
+            /*no_duplicates=*/false, use_large_range, max_bits_of_precision);
     }
   } else {
     return MakeFakeLiteralInternal(param_shape, engine, /*limit=*/std::nullopt,
                                    /*is_sorted=*/needs_sorted_indices,
-                                   no_duplicates, use_large_range);
+                                   no_duplicates, use_large_range,
+                                   max_bits_of_precision);
   }
 }
 
 // Given a module entry parameter, use the dataflow analysis to see if a
 // special case literal must be created, or if we can generate fake data.
-StatusOr<Literal> MakeConstrainedArgument(const HloDataflowAnalysis& dataflow,
-                                          const HloInstruction& param,
-                                          const Shape& param_shape,
-                                          std::minstd_rand0* engine,
-                                          bool use_large_range,
-                                          bool treat_gte_as_data_formatting) {
+StatusOr<Literal> MakeConstrainedArgument(
+    const HloDataflowAnalysis& dataflow, const HloInstruction& param,
+    const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
+    bool treat_gte_as_data_formatting,
+    std::optional<int64_t> max_bits_of_precision) {
   const auto constrained_uses =
       FindConstrainedUses(dataflow, param, treat_gte_as_data_formatting);
   return CreateLiteralForConstrainedUses(constrained_uses, param, param_shape,
-                                         engine, use_large_range);
+                                         engine, use_large_range,
+                                         max_bits_of_precision);
 }
 
 }  // namespace
@@ -562,20 +597,23 @@ StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
   auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeLiteralInternal(shape, engine.get(), /*limit=*/std::nullopt,
                                  /*is_sorted=*/false,
-                                 /*no_duplicates=*/false, use_large_range);
+                                 /*no_duplicates=*/false, use_large_range,
+                                 /*max_bits_of_precision=*/std::nullopt);
 }
 
 StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
-    bool treat_gte_as_data_formatting) {
+    bool treat_gte_as_data_formatting,
+    std::optional<int64_t> max_bits_of_precision) {
   auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
   return MakeFakeArguments(module, engine.get(), use_large_range,
-                           treat_gte_as_data_formatting);
+                           treat_gte_as_data_formatting, max_bits_of_precision);
 }
 
 StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
-    bool treat_gte_as_data_formatting) {
+    bool treat_gte_as_data_formatting,
+    std::optional<int64_t> max_bits_of_precision) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
@@ -594,7 +632,8 @@ StatusOr<std::vector<Literal>> MakeFakeArguments(
     TF_ASSIGN_OR_RETURN(
         arguments[i],
         MakeConstrainedArgument(*dataflow, *params[i], param_shape, engine,
-                                use_large_range, treat_gte_as_data_formatting));
+                                use_large_range, treat_gte_as_data_formatting,
+                                max_bits_of_precision));
   }
   return std::move(arguments);
 }

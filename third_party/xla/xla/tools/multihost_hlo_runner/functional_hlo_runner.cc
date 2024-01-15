@@ -244,18 +244,15 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
-  return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0);
+  return GetStreamExecutorGpuClient(GpuClientOptions());
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateMockGpuClient(
     int num_nodes) {
-  return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0,
-      /*num_nodes=*/num_nodes, /*allowed_devices=*/std::nullopt,
-      /*platform_name=*/std::nullopt,
-      /*should_stage_host_to_device_transfers=*/true,
-      /*kv_get=*/nullptr, /*kv_put=*/nullptr, /*enable_mock_nccl=*/true);
+  GpuClientOptions options;
+  options.num_nodes = num_nodes;
+  options.enable_mock_nccl = true;
+  return GetStreamExecutorGpuClient(options);
 }
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient(
@@ -268,28 +265,12 @@ StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient(
 
   TF_RET_CHECK(distributed_client != nullptr);
 
-  // Use the plugin name as key prefix.
-  static constexpr absl::string_view kKeyPrefix = "gpu:";
-
-  xla::PjRtClient::KeyValueGetCallback kv_get =
-      [distributed_client](
-          const std::string& k,
-          absl::Duration timeout) -> xla::StatusOr<std::string> {
-    return distributed_client->BlockingKeyValueGet(absl::StrCat(kKeyPrefix, k),
-                                                   timeout);
-  };
-
-  xla::PjRtClient::KeyValuePutCallback kv_put =
-      [distributed_client](const std::string& k,
-                           const std::string& v) -> xla::Status {
-    return distributed_client->KeyValueSet(absl::StrCat(kKeyPrefix, k), v);
-  };
-
-  return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(), node_id, num_nodes,
-      /*allowed_devices=*/std::nullopt,
-      /*platform_name=*/std::nullopt,
-      /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put);
+  GpuClientOptions options;
+  options.node_id = node_id;
+  options.num_nodes = num_nodes;
+  options.kv_store =
+      GetDistributedKeyValueStore(distributed_client, /*key_prefix=*/"gpu:");
+  return GetStreamExecutorGpuClient(options);
 }
 
 StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(
@@ -1466,7 +1447,7 @@ FunctionalHloRunner::FetchAndLogOutput(
                "same device";
         output_slice.emplace_back(
             ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
-        buffer->ToLiteral(&output_slice.back(), [&](Status s) {
+        buffer->ToLiteral(&output_slice.back()).OnReady([&](Status s) {
           absl::MutexLock lock(&mu);
           --num_pending_transfers;
           status.Update(s);

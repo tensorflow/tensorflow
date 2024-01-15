@@ -170,12 +170,20 @@ class CpuExecutable : public Executable {
       XlaFrameworkMapping xla_framework_mapping,
       runtime::JitExecutable::Options opts);
 
+  absl::Span<const std::string> obj_files() const { return obj_files_; }
+
+  void set_obj_files(std::vector<std::string> obj_files) {
+    obj_files_ = std::move(obj_files);
+  }
+
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
 
   void set_ir_module_string(const std::string& ir_module_string) {
     ir_module_string_ = ir_module_string;
   }
+
+  const std::string& module_name() const { return module_name_; }
 
   static int64_t ShapeSizeBytes(const Shape& shape);
 
@@ -246,10 +254,13 @@ class CpuExecutable : public Executable {
   // The JIT containing compiled modules.
   std::unique_ptr<SimpleOrcJIT> jit_;
 
+  // Object files (machine code) compiled from an HLO module by the JIT
+  // compiler. We capture all object files created by SimpleOrcJIT so we can
+  // export them to AOT compilation result.
+  std::vector<std::string> obj_files_;
+
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;
-
-  std::shared_ptr<const BufferAssignmentProto> buffer_assignment_;
 
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // CpuExecutable. We save a string instead of an llvm::Module* because leaving

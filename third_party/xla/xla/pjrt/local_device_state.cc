@@ -46,8 +46,9 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {
-  device_ordinal_ =
-      device_ordinal != -1 ? device_ordinal : executor->device_ordinal();
+  local_hardware_id_ = executor_->device_ordinal();
+  local_device_id_ =
+      device_ordinal != -1 ? device_ordinal : executor_->device_ordinal();
 
   int num_device_to_host_streams =
       stream_options.has_value() ? stream_options->num_device_to_host_streams

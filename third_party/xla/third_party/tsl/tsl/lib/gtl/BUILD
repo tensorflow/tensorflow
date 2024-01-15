@@ -5,7 +5,7 @@ load(
     "tsl_cc_test",
 )
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -40,8 +40,8 @@ cc_library(
     hdrs = ["flatrep.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:prefetch",
         "//tsl/platform:types",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 

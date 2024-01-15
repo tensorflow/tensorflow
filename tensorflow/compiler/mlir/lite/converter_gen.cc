@@ -60,8 +60,8 @@ llvm::cl::opt<ActionType> action(
 
 // Returns the associated option name for the given op definition.
 static inline std::string GetOperatorOptionName(const Record &def) {
-  assert(def.getName().startswith("TFL_") && "unexpected op prefix");
-  assert(def.getName().endswith("Op") && "unexpected op suffix");
+  assert(def.getName().starts_with("TFL_") && "unexpected op prefix");
+  assert(def.getName().ends_with("Op") && "unexpected op suffix");
 
   auto *custom_option = dyn_cast<StringInit>(def.getValueInit("customOption"));
   std::ostringstream oss;
@@ -74,8 +74,8 @@ static inline std::string GetOperatorOptionName(const Record &def) {
 
 // Returns the builder function name for the given op definition.
 static inline std::string GetOperatorBuilderName(StringRef op_name) {
-  assert(op_name.startswith("TFL_") && "unexpected op prefix");
-  assert(op_name.endswith("Op") && "unexpected op suffix");
+  assert(op_name.starts_with("TFL_") && "unexpected op prefix");
+  assert(op_name.ends_with("Op") && "unexpected op suffix");
 
   // E.g., AddOp -> CreateAddOperator
   std::ostringstream oss;
@@ -461,10 +461,10 @@ static bool OperatorWritersMain(raw_ostream &os, RecordKeeper &records) {
     // The generated TFLite op C++ class should be TFL::<OpName>Op.
     // The generated operator's options should be tflite::<OpName>Options.
     // The option builder should be Create<OpName>Options.
-    if (!def->getName().startswith("TFL_"))
+    if (!def->getName().starts_with("TFL_"))
       PrintFatalError(def->getLoc(),
                       "unexpected op name format: 'TFL_' prefix missing");
-    if (!def->getName().endswith("Op"))
+    if (!def->getName().ends_with("Op"))
       PrintFatalError(def->getLoc(),
                       "unexpected op name format: 'Op' suffix missing");
   }

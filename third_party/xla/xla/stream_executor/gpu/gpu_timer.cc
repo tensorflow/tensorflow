@@ -21,12 +21,15 @@ limitations under the License.
 
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/utility/utility.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -45,7 +48,7 @@ absl::Duration RandomDuration() {
 
 }  // namespace
 
-/*static*/ tsl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
+/*static*/ absl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
   GpuExecutor* parent = stream->parent();
   GpuContext* context = parent->gpu_context();
   GpuEventHandle start_event;
@@ -57,11 +60,11 @@ absl::Duration RandomDuration() {
   CHECK(start_event != nullptr && stop_event != nullptr);
   TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
                                             stream->gpu_stream()));
-  return tsl::StatusOr<GpuTimer>{absl::in_place, parent, start_event,
-                                 stop_event, stream};
+  return absl::StatusOr<GpuTimer>{absl::in_place, parent, start_event,
+                                  stop_event, stream};
 }
 
-/*static*/ tsl::StatusOr<std::optional<GpuTimer>> GpuTimer::CreateIfNeeded(
+/*static*/ absl::StatusOr<std::optional<GpuTimer>> GpuTimer::CreateIfNeeded(
     GpuStream* stream, bool is_needed) {
   if (is_needed) {
     TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
@@ -77,20 +80,20 @@ absl::Duration RandomDuration() {
 GpuTimer::~GpuTimer() {
   GpuContext* context = parent_->gpu_context();
   if (start_event_ != nullptr) {
-    tsl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
+    absl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }
   }
   if (stop_event_ != nullptr) {
-    tsl::Status status = GpuDriver::DestroyEvent(context, &stop_event_);
+    absl::Status status = GpuDriver::DestroyEvent(context, &stop_event_);
     if (!status.ok()) {
       LOG(ERROR) << status;
     }
   }
 }
 
-tsl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
+absl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
   if (is_stopped_) {
     return absl::InternalError("Measuring inactive timer");
   }

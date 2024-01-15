@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_compiler.h"
@@ -194,93 +195,6 @@ void ConstructFunctionAndArgs(const std::string& name,
 
 AotOptions::AotOptions() : graph_execution_options(nullptr) {}
 
-Status AotCompileSavedModelAndSaveResult(absl::string_view input_model_dir,
-                                         AotOptions aot_options,
-                                         absl::string_view output_model_dir) {
-  // Create aot_packages directory.
-  Env* env = Env::Default();
-  const bool new_directory = !output_model_dir.empty();
-  std::string output_dir;
-  if (!new_directory) {
-    output_dir = std::string(input_model_dir);
-  } else {
-    // TODO(chrisminge) modify to copy everything in input directory
-    output_dir = std::string(output_model_dir);
-    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(output_dir, {}));
-  }
-  const std::string aot_directory =
-      io::JoinPath(output_dir, kAoTPackagesDirectory);
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(aot_directory));
-
-  if (aot_options.graph_execution_options == nullptr) {
-    // Since we are not going to actually run the model during AoT
-    // compilation and optimization, we choose a value of 4 inter_op_threads
-    // which is commonly used for testing.
-    SetGlobalRuntime(tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/4));
-
-    GraphExecutionOptions graph_execution_options(GetGlobalRuntime());
-
-    graph_execution_options.enable_tfrt_gpu = true;
-    graph_execution_options.enable_grappler_function_optimizer = true;
-    graph_execution_options.compile_options.enable_grappler = true;
-    graph_execution_options.compile_options.device_target =
-        TfrtDeviceInfraTarget::kGpu;
-    graph_execution_options.compile_options.hoist_invariant_ops = true;
-    graph_execution_options.compile_options
-        .serialize_mlir_module_to_aot_packages = true;
-    graph_execution_options.compile_options.aot_mlir_module_file =
-        io::JoinPath(aot_directory, kMLIRModuleFilename);
-    graph_execution_options.enable_mlrt = false;
-    aot_options.graph_execution_options =
-        std::make_shared<GraphExecutionOptions>(graph_execution_options);
-  }
-
-  if (aot_options.tags.empty()) {
-    aot_options.tags = {"serve", "gpu"};
-  }
-
-  TF_ASSIGN_OR_RETURN(AotResult result,
-                      AotCompileSavedModel(input_model_dir, aot_options));
-
-  const std::string warmup_requests_path = io::JoinPath(
-      input_model_dir, "assets.extra", "tf_serving_warmup_requests");
-  TF_RETURN_IF_ERROR(env->FileExists(warmup_requests_path));
-
-  const std::string saved_model_pb_path =
-      io::JoinPath(input_model_dir, kSavedModelFilenamePb);
-  const std::string saved_model_pbtxt_path =
-      io::JoinPath(input_model_dir, kSavedModelFilenamePbTxt);
-  bool pb_found = env->FileExists(saved_model_pb_path).ok();
-  bool pbtxt_found = env->FileExists(saved_model_pbtxt_path).ok();
-  if (!pb_found && !pbtxt_found) {
-    return absl::NotFoundError(absl::StrCat(
-        "saved_model not found in input directory: ", input_model_dir));
-  }
-
-  // Serialize BEF/MLRT buffer to file.
-  if (aot_options.graph_execution_options->enable_mlrt) {
-    const std::string serialized_mlrt_path =
-        io::JoinPath(aot_directory, kMlrtBufferFileName);
-    TF_RETURN_IF_ERROR(SerializeMLRTBytecode(
-        std::get<mlrt::bc::Buffer>(result.buffer), serialized_mlrt_path));
-  } else {
-    const std::string serialized_bef_path =
-        io::JoinPath(aot_directory, kBefBufferFileName);
-    TF_RETURN_IF_ERROR(SerializeBEF(std::get<tfrt::BefBuffer>(result.buffer),
-                                    serialized_bef_path));
-  }
-
-  if (pb_found) {
-    const std::string output_file_directory =
-        io::JoinPath(std::string(output_model_dir), kSavedModelFilenamePb);
-    return env->CopyFile(saved_model_pb_path, output_file_directory);
-  } else {
-    const std::string output_file_directory =
-        io::JoinPath(std::string(output_model_dir), kSavedModelFilenamePbTxt);
-    return env->CopyFile(saved_model_pbtxt_path, output_file_directory);
-  }
-}
-
 StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
                                          AotOptions aot_options) {
   TF_ASSIGN_OR_RETURN(tensorflow::MetaGraphDef meta_graph_def,
@@ -289,8 +203,6 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
   UpdateTpuTargetByBridgeCompatibility(*aot_options.graph_execution_options,
                                        meta_graph_def.graph_def());
   UpdateCompileOptions(aot_options);
-  aot_options.graph_execution_options->compile_options.saved_model_dir =
-      input_model_dir;
   mlir::DialectRegistry registry;
   RegisterMlirDialect(registry);
   mlir::MLIRContext context(registry);
@@ -406,9 +318,8 @@ StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
     int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
     bool has_ref_vars, bool may_alias_resource_update,
     XlaCompiler::CompilationResult** compilation_result) {
-  TF_ASSIGN_OR_RETURN(auto client, xla::GetStreamExecutorGpuClient(
-                                       true, /*allocator_config=*/{},
-                                       /*node_id=*/0));
+  TF_ASSIGN_OR_RETURN(auto client,
+                      xla::GetStreamExecutorGpuClient(xla::GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<xla::StreamExecutorGpuClient*>(client.release()));
 

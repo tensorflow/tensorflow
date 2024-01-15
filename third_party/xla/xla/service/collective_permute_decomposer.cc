@@ -71,9 +71,14 @@ bool hasCycles(const std::vector<std::pair<int64_t, int64_t>>& pairs) {
 // relationship, with only one input and without any context data.
 bool ShouldDecompose(const HloCollectivePermuteInstruction& collective_permute,
                      int64_t threshold_in_bytes) {
+  // TODO(b/316043789): enable the transformation for the no channel_id case.
+  if (!collective_permute.channel_id().has_value()) {
+    return false;
+  }
+
   auto backend_config =
-      collective_permute.backend_config<xla::gpu::CollectiveBackendConfig>()
-          .value();
+      collective_permute.backend_config<xla::gpu::GpuBackendConfig>()
+          ->collective_backend_config();
   if (backend_config.is_sync()) {
     return false;
   }

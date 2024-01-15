@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -1647,8 +1648,8 @@ void HloDataflowAnalysis::OptimizePhiValues() {
             HloValue::Id phi_id = values[0]->id();
             HloValue::Id new_id = phi_graph_.FindOptimizedValue(phi_id);
             if (new_id != phi_id) {
-              VLOG(1) << "Replacing " << values[0]->ToString() << " with "
-                      << GetValue(new_id).ToString();
+              VLOG(1) << "Replacing " << values[0]->ToShortString() << " with "
+                      << GetValue(new_id).ToShortString();
               value_set->Clear();
               const HloValue& new_value = GetValue(new_id);
               value_set->AddValue(&new_value);
@@ -1846,59 +1847,63 @@ std::vector<std::pair<HloOperandIndex, ShapeIndex>>
 GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs;
+
   // Each of these leaves represents one array output of the fusion that might
   // be aliased with one of the fusion computation's array inputs (both could be
   // nested arbitrarily deep inside tuples).
-  for (const auto& fusion_output_array_shape :
-       ShapeUtil::GetLeafShapes(instruction->shape())) {
-    // Start from the root instruction of the fusion computation and follow
-    // tuple indirection backwards to find the "output source", i.e. the
-    // instruction that is the original source of the array output in question.
-    // If there is no such indirection the "output source" will just be the
-    // fusion root instruction itself.
-    const HloInstruction* output_source_instruction =
-        instruction->fused_expression_root();
-    ShapeIndex output_source_index = fusion_output_array_shape.index;
-    std::tie(output_source_instruction, output_source_index) =
-        FollowTupleIndirection(output_source_instruction, output_source_index);
+  ShapeUtil::ForEachLeafShape(
+      instruction->shape(),
+      [&](const Shape& sub_shape, const ShapeIndex& index) {
+        // Start from the root instruction of the fusion computation and follow
+        // tuple indirection backwards to find the "output source", i.e. the
+        // instruction that is the original source of the array output in
+        // question. If there is no such indirection the "output source" will
+        // just be the fusion root instruction itself.
+        const HloInstruction* output_source_instruction =
+            instruction->fused_expression_root();
+        ShapeIndex output_source_index = index;
+        std::tie(output_source_instruction, output_source_index) =
+            FollowTupleIndirection(output_source_instruction,
+                                   output_source_index);
 
-    // The aliasing rules of the "output source" instruction determine the
-    // aliasing rules for the entire fusion. If we can connect (following tuple
-    // indirection) the input of an "in-place" pair to one of the fusion's
-    // inputs, and the output of this "in-place" pair to the fusion output
-    // in question, then this fusion input and output must alias.
-    auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-        output_source_instruction);
-    ShapeIndex in_place_input_index;
-    const HloInstruction* in_place_input_source = nullptr;
+        // The aliasing rules of the "output source" instruction determine the
+        // aliasing rules for the entire fusion. If we can connect (following
+        // tuple indirection) the input of an "in-place" pair to one of the
+        // fusion's inputs, and the output of this "in-place" pair to the fusion
+        // output in question, then this fusion input and output must alias.
+        auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+            output_source_instruction);
+        ShapeIndex in_place_input_index;
+        const HloInstruction* in_place_input_source = nullptr;
 
-    for (const auto& output_source_in_place_pair : in_place_pairs) {
-      const HloOperandIndex& input = output_source_in_place_pair.first;
-      const ShapeIndex& output_index = output_source_in_place_pair.second;
-      if (output_index == output_source_index) {
-        // It is not possible for the same output to alias multiple inputs.
-        CHECK(in_place_input_source == nullptr);
-        in_place_input_source =
-            output_source_instruction->operand(input.operand_number);
-        in_place_input_index = input.operand_index;
-      }
-    }
+        for (const auto& output_source_in_place_pair : in_place_pairs) {
+          const HloOperandIndex& input = output_source_in_place_pair.first;
+          const ShapeIndex& output_index = output_source_in_place_pair.second;
+          if (output_index == output_source_index) {
+            // It is not possible for the same output to alias multiple inputs.
+            CHECK(in_place_input_source == nullptr);
+            in_place_input_source =
+                output_source_instruction->operand(input.operand_number);
+            in_place_input_index = input.operand_index;
+          }
+        }
 
-    if (in_place_input_source) {
-      // Follow tuple indirection backwards from the instruction input to try to
-      // find a fusion parameter. If found, that parameter aliases the current
-      // output. If not, the current output aliases no input.
-      std::tie(in_place_input_source, in_place_input_index) =
-          FollowTupleIndirection(in_place_input_source, in_place_input_index);
+        if (in_place_input_source) {
+          // Follow tuple indirection backwards from the instruction input to
+          // try to find a fusion parameter. If found, that parameter aliases
+          // the current output. If not, the current output aliases no input.
+          std::tie(in_place_input_source, in_place_input_index) =
+              FollowTupleIndirection(in_place_input_source,
+                                     in_place_input_index);
 
-      if (in_place_input_source->opcode() == HloOpcode::kParameter) {
-        in_place_input_output_pairs.emplace_back(
-            HloOperandIndex{in_place_input_source->parameter_number(),
-                            in_place_input_index},
-            fusion_output_array_shape.index);
-      }
-    }
-  }
+          if (in_place_input_source->opcode() == HloOpcode::kParameter) {
+            in_place_input_output_pairs.emplace_back(
+                HloOperandIndex{in_place_input_source->parameter_number(),
+                                in_place_input_index},
+                index);
+          }
+        }
+      });
   return in_place_input_output_pairs;
 }
 

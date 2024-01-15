@@ -27,7 +27,7 @@ namespace xla {
 
 namespace gpu {
 
-StatusOr<bool> GpuSanitizeConstantNames::Run(
+absl::StatusOr<bool> GpuSanitizeConstantNames::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

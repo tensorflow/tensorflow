@@ -100,7 +100,10 @@ class AsyncCollectiveOps : public CollectiveOpsTestE2E,
   }
 
   bool IsAsync(const HloInstruction* inst) {
-    return !inst->backend_config<gpu::CollectiveBackendConfig>()->is_sync();
+    return !inst->backend_config<gpu::GpuBackendConfig>()
+                .value()
+                .collective_backend_config()
+                .is_sync();
   }
 
   const int64_t num_devices_;

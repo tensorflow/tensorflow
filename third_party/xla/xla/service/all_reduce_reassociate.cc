@@ -214,7 +214,10 @@ StatusOr<bool> AllReduceReassociate::Run(
       if (!inst->shape().IsArray()) {
         continue;
       }
-      if (lhs->opcode() != rhs->opcode()) {
+      if (lhs->opcode() != rhs->opcode() ||
+          (lhs->opcode() == HloOpcode::kDynamicSlice &&
+           !ShapeUtil::Compatible(lhs->operand(0)->shape(),
+                                  rhs->operand(0)->shape()))) {
         continue;
       }
       HloAllReduceInstruction* ar0 = nullptr;
@@ -278,8 +281,8 @@ StatusOr<bool> AllReduceReassociate::Run(
         continue;
       }
       VLOG(2) << "Reassociated:";
-      VLOG(2) << "\tAR0: " << ar0->opcode();
-      VLOG(2) << "\tAR1: " << ar1->opcode();
+      VLOG(2) << "\tAR0: " << ar0->ToString();
+      VLOG(2) << "\tAR1: " << ar1->ToString();
 
       auto op_users = inst->users();
       // Found pattern op(ar(x), ar(y)). Transform it into ar(op(x,y)).

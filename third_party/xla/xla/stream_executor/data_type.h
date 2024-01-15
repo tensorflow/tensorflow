@@ -19,7 +19,7 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
-#include "tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {

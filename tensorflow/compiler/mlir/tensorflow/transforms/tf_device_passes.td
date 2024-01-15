@@ -154,80 +154,6 @@ def DeviceAttributeToLaunchPass : Pass<"tf-device-attribute-to-launch", "mlir::f
   let constructor = "TFDevice::CreateDeviceAttributeToLaunchPass()";
 }
 
-def OutsideCompiledToHostLaunchPass : Pass<"tf-outside-compiled-to-host-launch", "ModuleOp"> {
-  let summary = "Wraps each op with the _xla_outside_compiled attribute in a separate tf_device.launch on replicated host device.";
-
-  let description = [{
-    This pass wraps ops with the same `_xla_outside_compilation`
-    attribute value in a tf_device.launch op with host device assignment. The
-    `_xla_outside_compilation` attribute is deleted from the wrapped ops.
-
-    A simple example:
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf.B"() {_xla_outside_compilation = "cluster1"}
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-
-    Would become the following ops (unimportant attribute, type are omitted):
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf_device.launch"() {
-          "tf.B"() // Note xla_outside_compilation attribute deleted.
-          tf_device.return
-        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateOutsideCompiledToHostLaunchPass()";
-}
-
-def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-compiled", "ModuleOp"> {
-  let summary = "Converts each op wrapped in launch op with host device assignnment to op with _xla_outside_compiled attribute.";
-
-  let description = [{
-    This pass takes ops wrapped in a tf_device.launch op with host device
-    assignment extracts them from launch and adds an `_xla_outside_compilation`
-    attribute. This is the inverse of OutsideCompiledToHostLaunchPass.
-
-    A simple example:
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf_device.launch"() {
-          "tf.B"()
-          tf_device.return
-        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-
-    Would become the following ops (unimportant attribute, type are omitted):
-
-    ```mlir
-      "tf_device.cluster"() ( {
-        "tf.A"()
-        "tf.B"() {_xla_outside_compilation = "cluster1"}
-        "tf.C"()
-        tf_device.return
-      }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-    ```
-  }];
-
-  let constructor = "TFDevice::CreateHostLaunchToOutsideCompiledPass()";
-}
-
 def VerifyNoOutsideCompilationMarkersPass : Pass<"verify-no-outside-compilation-markers", "mlir::func::FuncOp"> {
   let summary = "Verifies that after Outside Compilation passes complete, there are no more _xla_outside_compilation attributes and no tf_device.launch ops.";
 
@@ -335,50 +261,6 @@ def LaunchToDeviceAttributePass : Pass<"tf-launch-to-device-attribute", "mlir::f
   ];
 
   let constructor = "TFDevice::CreateLaunchToDeviceAttributePass()";
-}
-
-def XlaClusterFormationPass : Pass<"tf-xla-cluster-formation", "ModuleOp"> {
-  let summary = "Encapsulate partitioned calls within a Cluster op";
-  let description = [{
-    This pass clusters `tf.PartitionedCall` and `tf.StatefulPartitionedCall`
-    with `_xla_compile_device_type` attribute into a `tf_device.cluster`.
-    Notice this pass will only rewrite the outermost call if there are nested
-    calls to avoid nested `tf.XlaLaunch` operations from being created later.
-
-    For example, the following code
-
-    ```mlir
-    func.func @main() -> tensor<i32> {
-      %0 = "tf.StatefulPartitionedCall"() {_xla_compile_device_type = "CPU", f = @stateful_pcall_func} : () -> (tensor<i32>)
-      func.return %0 : tensor<i32>
-    }
-
-    func.func @stateful_pcall_func() -> tensor<i32> {
-      %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-      func.return %0 : tensor<i32>
-    }
-    ```
-
-    will be transformed into,
-
-    ```mlir
-    func.func @main() -> tensor<i32> {
-      %0 = "tf_device.cluster"() ({
-        %1 = "tf.StatefulPartitionedCall"() {_xla_compile_device_type = "CPU", f = @stateful_pcall_func} : () -> tensor<i32>
-        tf_device.return %1 : tensor<i32>
-      }) : () -> tensor<i32>
-      func.return %0 : tensor<i32>
-    }
-
-    func.func @stateful_pcall_func() -> tensor<i32> {
-      %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-      func.return %0 : tensor<i32>
-    }
-
-    ```
-  }];
-  let constructor = "TFDevice::CreateXlaClusterFormationPass()";
-  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
 }
 
 def XlaInlineDeviceOpsPass : Pass<"tf-xla-inline-device-ops", "ModuleOp"> {

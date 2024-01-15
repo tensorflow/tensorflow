@@ -1,0 +1,179 @@
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
+#define XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
+
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
+
+namespace xla {
+namespace gpu {
+
+// Range represents a semi-closed interval [lower_bound, upper_bound).
+struct Range {
+  std::string ToString() const;
+
+  int64_t lower_bound = 0;
+  int64_t upper_bound = 0;
+};
+std::ostream& operator<<(std::ostream& out, const Range& range);
+
+template <typename H>
+H AbslHashValue(H h, const Range& range) {
+  return H::combine(std::move(h), range.lower_bound, range.upper_bound);
+}
+
+// Domain contains ranges for symbols and dimensions of an affine map.
+struct Domain {
+  std::string ToString() const;
+
+  static Domain FromUpperBounds(
+      absl::Span<const int64_t> dimension_upper_bounds,
+      absl::Span<const int64_t> symbol_upper_bounds);
+
+  std::vector<Range> dimension_ranges;
+  std::vector<Range> symbol_ranges;
+};
+std::ostream& operator<<(std::ostream& out, const Domain& domain);
+
+template <typename H>
+H AbslHashValue(H h, const Domain& domain) {
+  return H::combine(std::move(h), domain.dimension_ranges,
+                    domain.symbol_ranges);
+}
+
+// Contains an affine map with N dimension expressions and M symbols:
+//   (d0, ..., d_{N - 1})[s_0, ..., s_{M - 1}] -> f(d_i, s_j)
+// Dimensions d_i correspond to the iteration space of the output tensor. Some
+// or all of the dimensions of the input operands can be expressed as a function
+// of dimensions of output. For example, for broadcasts and cwise ops all
+// dimensions of the inputs are covered by the output dimensions.
+// Domain specifies for what ranges of values the indexing map is specified.
+//
+// Example:
+//
+// 1. Indexing map for the input of the following reduction
+// ```
+//   p0 = f32[150, 20, 10, 50] parameter(0)
+//   reduce = f32[150, 10] reduce(p0, p0_init), dimensions={3, 1}
+// ```
+// can be written as `(d0, d1)[s0, s1] -> (d0, s0, d1, s1)`  with
+// d0 in [0, 150), d1 in [0, 10), s0 in [0, 20) and s1 in [0, 50).
+//
+// 2. Indexing map for the input of the reverse op
+// ```
+//  %p0 = f32[1, 17, 9, 9] parameter(0)
+//  reverse = f32[1, 17, 9, 9] reverse(%p0), dimensions={1, 2}
+// ```
+// can be written as `(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)` with
+// d0 in [0, 1), d1 in [0, 17), d2 in [0, 9) and d3 in [0, 9).
+struct IndexingMap {
+  std::string ToString() const;
+
+  // Returns true if the map was simplified.
+  bool Simplify();
+
+  mlir::AffineMap affine_map;
+  Domain domain;
+};
+std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
+bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
+
+template <typename H>
+H AbslHashValue(H h, const IndexingMap& indexing_map) {
+  llvm::hash_code affine_map_hash = llvm::hash_combine(indexing_map.affine_map);
+  return H::combine(std::move(h), static_cast<size_t>(affine_map_hash),
+                    indexing_map.domain);
+}
+
+template <typename T>
+std::string ToStringImpl(const T& value) {
+  std::string s;
+  std::stringstream ss(s);
+  ss << value;
+  return ss.str();
+}
+
+class IndexingMapSimplifier {
+ public:
+  explicit IndexingMapSimplifier(mlir::MLIRContext* mlir_context)
+      : mlir_context_(mlir_context) {}
+
+  // Derives an indexing map simplifier for the parameter indexing map.
+  static IndexingMapSimplifier FromIndexingMap(const IndexingMap& indexing_map);
+
+  // Sets the inclusive bounds for the given expression. It can be used to set
+  // bounds for dimensions and symbols.
+  void SetInclusiveBounds(mlir::AffineExpr expr, int64_t lower, int64_t upper);
+
+  // Simplifies the map as much as possible.
+  mlir::AffineMap Simplify(mlir::AffineMap affine_map);
+
+  // Simplifies the expression as much as possible.
+  mlir::AffineExpr Simplify(mlir::AffineExpr expr);
+
+  // Checks whether an `AffineExpr` always describes a non-negative value.
+  bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
+
+  // Checks whether an `AffineExpr` always describes a non-positive value.
+  bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr);
+
+ private:
+  struct Bounds {
+    int64_t lower;
+    int64_t upper;
+  };
+  Bounds GetInclusiveBounds(mlir::AffineExpr expr);
+
+  std::optional<int64_t> GetConstantRhsMultiplier(mlir::AffineExpr expr);
+
+  // Simplifier for mod.
+  // - Rewrites (a * 100 + ...) % 100 to (...) % 100
+  // - Rewrites a % b to a if a is known to be less than b.
+  mlir::AffineExpr RewriteMod(mlir::AffineBinaryOpExpr mod);
+
+  // Simplifier for floordiv.
+  // - Rewrites (a * 100 + ...) / 100 to a + (...) / 100
+  // - Rewrites a / 100 to 0 when a is known to be less than 100.
+  mlir::AffineExpr RewriteFloorDiv(mlir::AffineBinaryOpExpr div);
+
+  mlir::AffineExpr RewriteSumIf(
+      mlir::AffineExpr expr, const std::function<bool(mlir::AffineExpr)>& pred);
+
+  // Attempts to simplify the expression, but doesn't attempt to simplify the
+  // result further.
+  mlir::AffineExpr SimplifyOnce(mlir::AffineExpr expr);
+
+  mlir::MLIRContext* mlir_context_;
+  llvm::DenseMap<mlir::AffineExpr, Bounds> bounds_{};
+};
+
+std::string ToString(const mlir::AffineMap& affine_map);
+
+}  // namespace gpu
+}  // namespace xla
+
+#endif  // XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_

@@ -51,7 +51,7 @@ class CholeskyThunk : public Thunk {
   CholeskyThunk(const CholeskyThunk&) = delete;
   CholeskyThunk& operator=(const CholeskyThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   se::GpuAsmOpts asm_opts_;
@@ -74,8 +74,8 @@ struct CholeskyParams {
   se::DeviceMemoryBase workspace_buffer;
   se::DeviceMemoryBase info_buffer;
 };
-Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
-                   CholeskyParams* params, se::Stream* stream);
+absl::Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
+                         CholeskyParams* params, se::Stream* stream);
 
 }  // namespace gpu
 }  // namespace xla

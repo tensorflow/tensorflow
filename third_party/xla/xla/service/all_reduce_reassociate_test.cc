@@ -701,5 +701,41 @@ ENTRY main {
   EXPECT_EQ(AllReduceCount(module), 1);
 }
 
+TEST_F(AllReduceSimplifierTest, AllReduceDynamicSliceDifferentSlices) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[1,8] parameter(0)
+  p1 = f32[1,8] parameter(1)
+  p2 = f32[1,16] parameter(2)
+  p3 = s32[] parameter(3)
+  cst = s32[] constant(0)
+  ar0 = f32[1,8] all-reduce(p0), replica_groups={}, to_apply=sum
+  ar1 = f32[1,8] all-reduce(p1), replica_groups={}, to_apply=sum
+  ar2 = f32[1,16] all-reduce(p2), replica_groups={}, to_apply=sum
+  dyn0 = f32[1,4] dynamic-slice(ar0, cst, p3), dynamic_slice_sizes={1,4}
+  dyn1 = f32[1,4] dynamic-slice(ar1, cst, p3), dynamic_slice_sizes={1,4}
+  dyn2 = f32[1,4] dynamic-slice(ar2, cst, p3), dynamic_slice_sizes={1,4}
+  add = f32[1,4] add(dyn0, dyn1)
+  ROOT add1 = f32[1,4] add(add, dyn2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/true));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      m::Add(m::DynamicSlice(),
+             m::DynamicSlice(m::AllReduce(), m::Constant(), m::Parameter(3))));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_EQ(AllReduceCount(module), 2);
+}
+
 }  // namespace
 }  // namespace xla

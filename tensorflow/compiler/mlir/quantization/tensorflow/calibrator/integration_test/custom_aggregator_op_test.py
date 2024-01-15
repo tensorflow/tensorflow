@@ -16,16 +16,15 @@
 
 import tensorflow  # pylint: disable=unused-import
 
-# pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stat_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import custom_aggregator_op_wrapper
-from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
+from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import pywrap_calibration
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
-from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stat_pb2
 
 _CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
 
@@ -37,8 +36,8 @@ class CustomAggregatorTest(test.TestCase):
     ops.disable_eager_execution()
 
   def testBypassAndMinMax(self):
-    with self.test_session():
-      quantize_model_wrapper.clear_calibrator()
+    with self.session():
+      pywrap_calibration.clear_calibrator()
       input_tensor = array_ops.constant(
           [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
       )
@@ -51,7 +50,7 @@ class CustomAggregatorTest(test.TestCase):
       self.assertAllEqual(self.evaluate(aggregator), [1.0, 2.0, 3.0, 4.0, 5.0])
 
       statistics: calib_stat_pb2.CalibrationStatistics = (
-          quantize_model_wrapper.get_statistics_from_calibrator('1')
+          pywrap_calibration.get_statistics_from_calibrator('1')
       )
 
       min_val = statistics.min_max_statistics.global_min
@@ -60,8 +59,8 @@ class CustomAggregatorTest(test.TestCase):
       self.assertAllEqual((min_val, max_val), (1.0, 5.0))
 
   def testTwoIdentities(self):
-    with self.test_session():
-      quantize_model_wrapper.clear_calibrator()
+    with self.session():
+      pywrap_calibration.clear_calibrator()
       input_tensor1 = array_ops.constant(
           [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
       )
@@ -84,21 +83,21 @@ class CustomAggregatorTest(test.TestCase):
       )
 
       statistics: calib_stat_pb2 = (
-          quantize_model_wrapper.get_statistics_from_calibrator('2')
+          pywrap_calibration.get_statistics_from_calibrator('2')
       )
       min_val = statistics.min_max_statistics.global_min
       max_val = statistics.min_max_statistics.global_max
       self.assertAllEqual((min_val, max_val), (1.0, 5.0))
       statistics: calib_stat_pb2 = (
-          quantize_model_wrapper.get_statistics_from_calibrator('3')
+          pywrap_calibration.get_statistics_from_calibrator('3')
       )
       min_val = statistics.min_max_statistics.global_min
       max_val = statistics.min_max_statistics.global_max
       self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
 
   def testClearData(self):
-    with self.test_session():
-      quantize_model_wrapper.clear_calibrator()
+    with self.session():
+      pywrap_calibration.clear_calibrator()
       input_tensor1 = array_ops.constant(
           [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
       )
@@ -121,33 +120,33 @@ class CustomAggregatorTest(test.TestCase):
       )
 
       statistics: calib_stat_pb2 = (
-          quantize_model_wrapper.get_statistics_from_calibrator('4')
+          pywrap_calibration.get_statistics_from_calibrator('4')
       )
       min_val = statistics.min_max_statistics.global_min
       max_val = statistics.min_max_statistics.global_max
       self.assertAllEqual((min_val, max_val), (1.0, 5.0))
 
       statistics: calib_stat_pb2 = (
-          quantize_model_wrapper.get_statistics_from_calibrator('5')
+          pywrap_calibration.get_statistics_from_calibrator('5')
       )
       min_val = statistics.min_max_statistics.global_min
       max_val = statistics.min_max_statistics.global_max
       self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
 
-      quantize_model_wrapper.clear_data_from_calibrator('4')
+      pywrap_calibration.clear_data_from_calibrator('4')
       with self.assertRaises(ValueError):
-        quantize_model_wrapper.get_statistics_from_calibrator('4')
+        pywrap_calibration.get_statistics_from_calibrator('4')
 
       statistics: calib_stat_pb2 = (
-          quantize_model_wrapper.get_statistics_from_calibrator('5')
+          pywrap_calibration.get_statistics_from_calibrator('5')
       )
       min_val = statistics.min_max_statistics.global_min
       max_val = statistics.min_max_statistics.global_max
       self.assertAllEqual((min_val, max_val), (-5.0, -1.0))
 
   def testBypassAndAverageMinMax(self):
-    with self.test_session():
-      quantize_model_wrapper.clear_calibrator()
+    with self.session():
+      pywrap_calibration.clear_calibrator()
       input_tensor1 = array_ops.constant(
           [-50.0, -25.0, 0.0, 25.0, 50.0], dtypes.float32
       )
@@ -173,7 +172,7 @@ class CustomAggregatorTest(test.TestCase):
       )
 
       statistics: calib_stat_pb2 = (
-          quantize_model_wrapper.get_statistics_from_calibrator('6')
+          pywrap_calibration.get_statistics_from_calibrator('6')
       )
 
       min_sum = statistics.average_min_max_statistics.min_sum

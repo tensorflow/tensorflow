@@ -855,52 +855,13 @@ TEST_F(HloComputationTest, CloneWrappedAsyncInstructionSameWrappedFunc) {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloInstruction* start = FindInstruction(module.get(), "reduce-scatter-start");
   HloInstruction* done = FindInstruction(module.get(), "reduce-scatter-done");
-  EXPECT_EQ(start->called_computations()[0], done->called_computations()[0]);
+  EXPECT_EQ(start->async_wrapped_computation(),
+            done->async_wrapped_computation());
   std::unique_ptr<HloInstruction> cloned_start = start->Clone();
   std::unique_ptr<HloInstruction> cloned_done =
       done->CloneWithNewOperands(done->shape(), {cloned_start.get()});
-  EXPECT_EQ(cloned_start.get()->called_computations()[0],
-            cloned_done.get()->called_computations()[0]);
-}
-
-TEST_F(HloComputationTest, CloneWrappedAsyncInstructionDiffWrappedFunc) {
-  const char* const hlo_string = R"(
-  HloModule Module
-    add (lhs: u32[], rhs: u32[]) -> u32[] {
-       lhs = u32[] parameter(0)
-       rhs = u32[] parameter(1)
-       ROOT add = u32[] add(u32[] lhs, u32[] rhs)
-    }
-
-    async_wrapped_1 (async_param: u32[8]) -> u32[4] {
-       async_param = u32[8]{0} parameter(0)
-       ROOT %reduce-scatter = u32[4]{0} reduce-scatter(u32[8]{0} async_param),
-         replica_groups={}, dimensions={0}, to_apply=add
-    }
-
-    async_wrapped_2 (async_param.1: u32[8]) -> u32[4] {
-       async_param.1 = u32[8]{0} parameter(0)
-       ROOT reduce-scatter.1 = u32[4]{0} reduce-scatter(u32[8]{0} async_param.1),
-         replica_groups={}, dimensions={0}, to_apply=add
-    }
-
-    ENTRY main (data: u32[8]) -> u32[4] {
-      data = u32[8]{0} parameter(0)
-      reduce-scatter-start = ((u32[8]{0}), u32[4]{0}) async-start(u32[8]{0} data),
-        calls=async_wrapped_1, backend_config={"is_sync":false}
-      ROOT reduce-scatter-done = u32[4]{0} async-done(((u32[8]{0}), u32[4]{0}) reduce-scatter-start),
-        calls=async_wrapped_2
-})";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  HloInstruction* start = FindInstruction(module.get(), "reduce-scatter-start");
-  HloInstruction* done = FindInstruction(module.get(), "reduce-scatter-done");
-  EXPECT_NE(start->called_computations()[0], done->called_computations()[0]);
-  std::unique_ptr<HloInstruction> cloned_start = start->Clone();
-  std::unique_ptr<HloInstruction> cloned_done =
-      done->CloneWithNewOperands(done->shape(), {cloned_start.get()});
-  EXPECT_NE(cloned_start.get()->called_computations()[0],
-            cloned_done.get()->called_computations()[0]);
+  EXPECT_EQ(cloned_start.get()->async_wrapped_computation(),
+            cloned_done.get()->async_wrapped_computation());
 }
 
 }  // namespace

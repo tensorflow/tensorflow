@@ -147,7 +147,10 @@ size_t TfLiteOpaqueTensorByteSize(const TfLiteOpaqueTensor* opaque_tensor) {
 }
 
 void* TfLiteOpaqueTensorData(const TfLiteOpaqueTensor* opaque_tensor) {
-  return TfLiteTensorData(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
+  return opaque_tensor != nullptr
+             ? TfLiteTensorData(
+                   reinterpret_cast<const TfLiteTensor*>(opaque_tensor))
+             : nullptr;
 }
 
 TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
@@ -275,6 +278,10 @@ TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
     TfLiteOpaqueTensorBuilder* builder, TfLiteQuantization quantization) {
   builder->quantization = quantization;
   return builder;
+}
+
+void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor) {
+  tflite::SetTensorToDynamic(Convert(tensor));
 }
 
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(

@@ -48,7 +48,7 @@ class HorizontalInputFusionImpl {
 
   ~HorizontalInputFusionImpl() = default;
 
-  StatusOr<bool> Run();
+  absl::StatusOr<bool> Run();
 
  private:
   HloComputation* computation_;
@@ -106,7 +106,7 @@ std::vector<HloInstruction*> FindAndSortFusionCandidates(
   return fusion_instrs;
 }
 
-StatusOr<bool> HorizontalInputFusionImpl::Run() {
+absl::StatusOr<bool> HorizontalInputFusionImpl::Run() {
   bool changed = false;
   XLA_VLOG_LINES(3, computation_->ToString());
 
@@ -155,13 +155,13 @@ StatusOr<bool> HorizontalInputFusionImpl::Run() {
 
 }  // namespace
 
-StatusOr<bool> GpuHorizontalInputFusion::RunOnComputation(
+absl::StatusOr<bool> GpuHorizontalInputFusion::RunOnComputation(
     HloComputation* computation) {
   HorizontalInputFusionImpl horizontal_fusion_impl(computation, device_info_);
   return horizontal_fusion_impl.Run();
 }
 
-StatusOr<bool> GpuHorizontalInputFusion::Run(
+absl::StatusOr<bool> GpuHorizontalInputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

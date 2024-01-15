@@ -609,7 +609,7 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
   if (pjrt_outputs.size() != num_computations) {
     return FailedPrecondition(
         "Unexpected number of computations in outputs: %d vs. %d",
-        pjrt_outputs.front().size(), num_computations);
+        pjrt_outputs.size(), num_computations);
   }
   const int num_outputs = pjrt_outputs.front().size();
   if (num_outputs != output_dtypes_.size()) {
@@ -669,8 +669,16 @@ StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
 
 StatusOr<std::optional<std::string>> PjRtLoadedExecutable::Fingerprint() const {
   DCHECK(this);
-  return client_->pjrt_client()->ExecutableFingerprint(
-      *pjrt_loaded_executable_);
+  StatusOr<std::string> fingerprint =
+      pjrt_loaded_executable_->FingerprintExecutable();
+  if (fingerprint.ok()) {
+    return {fingerprint.value()};
+  } else if (fingerprint.status().code() == absl::StatusCode::kUnimplemented) {
+    // Return nullopt in case of unimplemented error.
+    return std::nullopt;
+  } else {
+    return fingerprint.status();
+  }
 }
 
 StatusOr<std::string> PjRtLoadedExecutable::Serialize() const {

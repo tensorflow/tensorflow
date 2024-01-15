@@ -100,6 +100,9 @@ StatusOr<std::unique_ptr<CpuExecutable>> CpuExecutable::Create(
   std::unique_ptr<CpuExecutable> executable(new CpuExecutable(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
       std::move(hlo_profile_index_map), std::move(assignment)));
+  executable->set_ir_module_string(
+      xla_runtime_executable->GetExecutable().take_ir_module_string());
+  executable->module_name_ = "main";
   executable->xla_runtime_executable_ = std::move(xla_runtime_executable);
   return executable;
 }
@@ -112,13 +115,9 @@ CpuExecutable::CpuExecutable(
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       assignment_(std::move(assignment)) {
-  if (assignment_) {
-    buffer_assignment_ =
-        std::make_shared<BufferAssignmentProto>(assignment_->ToProto());
-  }
-  if (has_module()) {
+  if (assignment_ && has_module()) {
     XlaDebugInfoManager::Get()->RegisterModule(shared_module(),
-                                               buffer_assignment_);
+                                               assignment_->ToProto());
   }
 }
 

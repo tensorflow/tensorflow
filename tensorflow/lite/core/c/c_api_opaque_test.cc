@@ -166,6 +166,18 @@ TEST(TestTfLiteOpaqueTensorGetBufferAddressStability,
             TfLiteTensorGetBufferAddressStability(&t));
 }
 
+TEST(TestTfLiteOpaqueTensorData, ValidInput) {
+  TfLiteTensor t;
+  char data[] = "data";
+  t.data.raw = data;
+  EXPECT_EQ(TfLiteOpaqueTensorData(reinterpret_cast<TfLiteOpaqueTensor*>(&t)),
+            data);
+}
+
+TEST(TestTfLiteOpaqueTensorData, NullInput) {
+  EXPECT_EQ(TfLiteOpaqueTensorData(nullptr), nullptr);
+}
+
 TEST(TestTfLiteOpaqueTensorGetDataStability,
      WithMemNoneBehavesAsTfLiteTensorGetDataStability) {
   TfLiteTensor t;

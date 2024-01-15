@@ -19,7 +19,6 @@ import re
 import sys
 import textwrap
 
-import six
 
 from google.protobuf import text_format
 
@@ -30,13 +29,7 @@ from tensorflow.python.util.protobuf import compare_test_pb2
 
 def LargePbs(*args):
   """Converts ASCII string Large PBs to messages."""
-  pbs = []
-  for arg in args:
-    pb = compare_test_pb2.Large()
-    text_format.Merge(arg, pb)
-    pbs.append(pb)
-
-  return pbs
+  return [text_format.Merge(arg, compare_test_pb2.Large()) for arg in args]
 
 
 class ProtoEqTest(googletest.TestCase):
@@ -267,49 +260,44 @@ class NormalizeNumbersTest(googletest.TestCase):
   """Tests for NormalizeNumberFields()."""
 
   def testNormalizesInts(self):
-    pb = compare_test_pb2.Large()
-    pb.int64_ = 4
+    pb = compare_test_pb2.Large(int64_=4)
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertIsInstance(pb.int64_, int)
 
     pb.int64_ = 4
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertIsInstance(pb.int64_, int)
 
     pb.int64_ = 9999999999999999
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64_, six.integer_types))
+    self.assertIsInstance(pb.int64_, int)
 
   def testNormalizesRepeatedInts(self):
-    pb = compare_test_pb2.Large()
-    pb.int64s.extend([1, 400, 999999999999999])
+    pb = compare_test_pb2.Large(int64s=[1, 400, 999999999999999])
     compare.NormalizeNumberFields(pb)
-    self.assertTrue(isinstance(pb.int64s[0], six.integer_types))
-    self.assertTrue(isinstance(pb.int64s[1], six.integer_types))
-    self.assertTrue(isinstance(pb.int64s[2], six.integer_types))
+    self.assertIsInstance(pb.int64s[0], int)
+    self.assertIsInstance(pb.int64s[1], int)
+    self.assertIsInstance(pb.int64s[2], int)
 
   def testNormalizesFloats(self):
-    pb1 = compare_test_pb2.Large()
-    pb1.float_ = 1.2314352351231
-    pb2 = compare_test_pb2.Large()
-    pb2.float_ = 1.231435
+    pb1 = compare_test_pb2.Large(float_=1.2314352351231)
+    pb2 = compare_test_pb2.Large(float_=1.231435)
     self.assertNotEqual(pb1.float_, pb2.float_)
     compare.NormalizeNumberFields(pb1)
     compare.NormalizeNumberFields(pb2)
     self.assertEqual(pb1.float_, pb2.float_)
 
   def testNormalizesRepeatedFloats(self):
-    pb = compare_test_pb2.Large()
-    pb.medium.floats.extend([0.111111111, 0.111111])
+    pb = compare_test_pb2.Large(
+        medium=compare_test_pb2.Medium(floats=[0.111111111, 0.111111])
+    )
     compare.NormalizeNumberFields(pb)
     for value in pb.medium.floats:
       self.assertAlmostEqual(0.111111, value)
 
   def testNormalizesDoubles(self):
-    pb1 = compare_test_pb2.Large()
-    pb1.double_ = 1.2314352351231
-    pb2 = compare_test_pb2.Large()
-    pb2.double_ = 1.2314352
+    pb1 = compare_test_pb2.Large(double_=1.2314352351231)
+    pb2 = compare_test_pb2.Large(double_=1.2314352)
     self.assertNotEqual(pb1.double_, pb2.double_)
     compare.NormalizeNumberFields(pb1)
     compare.NormalizeNumberFields(pb2)
@@ -326,7 +314,7 @@ class AssertTest(googletest.TestCase):
   """Tests assertProtoEqual()."""
 
   def assertProtoEqual(self, a, b, **kwargs):
-    if isinstance(a, six.string_types) and isinstance(b, six.string_types):
+    if isinstance(a, str) and isinstance(b, str):
       a, b = LargePbs(a, b)
     compare.assertProtoEqual(self, a, b, **kwargs)
 
@@ -346,8 +334,7 @@ class AssertTest(googletest.TestCase):
 
   def testCheckInitialized(self):
     # neither is initialized
-    a = compare_test_pb2.Labeled()
-    a.optional = 1
+    a = compare_test_pb2.Labeled(optional=1)
     self.assertNone(a, a, 'Initialization errors: ', check_initialized=True)
     self.assertAll(a, check_initialized=False)
 
@@ -365,8 +352,7 @@ class AssertTest(googletest.TestCase):
         check_initialized=False)
 
     # both are initialized
-    a = compare_test_pb2.Labeled()
-    a.required = 2
+    a = compare_test_pb2.Labeled(required=2)
     self.assertAll(a, check_initialized=True)
     self.assertAll(a, check_initialized=False)
 
@@ -382,26 +368,20 @@ class AssertTest(googletest.TestCase):
     self.assertNone(a, b, message, check_initialized=False)
 
   def testAssertEqualWithStringArg(self):
-    pb = compare_test_pb2.Large()
-    pb.string_ = 'abc'
-    pb.float_ = 1.234
+    pb = compare_test_pb2.Large(string_='abc', float_=1.234)
     compare.assertProtoEqual(self, """
           string_: 'abc'
           float_: 1.234
         """, pb)
 
   def testNormalizesNumbers(self):
-    pb1 = compare_test_pb2.Large()
-    pb1.int64_ = 4
-    pb2 = compare_test_pb2.Large()
-    pb2.int64_ = 4
+    pb1 = compare_test_pb2.Large(int64_=4)
+    pb2 = compare_test_pb2.Large(int64_=4)
     compare.assertProtoEqual(self, pb1, pb2)
 
   def testNormalizesFloat(self):
-    pb1 = compare_test_pb2.Large()
-    pb1.double_ = 4.0
-    pb2 = compare_test_pb2.Large()
-    pb2.double_ = 4
+    pb1 = compare_test_pb2.Large(double_=4.0)
+    pb2 = compare_test_pb2.Large(double_=4)
     compare.assertProtoEqual(self, pb1, pb2, normalize_numbers=True)
 
   def testLargeProtoData(self):
@@ -542,9 +522,7 @@ class AssertTest(googletest.TestCase):
 class MixinTests(compare.ProtoAssertions, googletest.TestCase):
 
   def testAssertEqualWithStringArg(self):
-    pb = compare_test_pb2.Large()
-    pb.string_ = 'abc'
-    pb.float_ = 1.234
+    pb = compare_test_pb2.Large(string_='abc', float_=1.234)
     self.assertProtoEqual("""
           string_: 'abc'
           float_: 1.234

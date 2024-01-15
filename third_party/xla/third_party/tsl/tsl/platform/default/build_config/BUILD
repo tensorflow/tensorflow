@@ -1,7 +1,7 @@
 # Description:
 # Platform-specific build configurations.
 
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
 
 package(default_visibility = ["//visibility:public"])
@@ -117,10 +117,16 @@ cc_library(
     data = [
         "@local_config_cuda//cuda:cudart",
     ],
-    linkopts = [
-        "-Wl,-rpath,../local_config_cuda/cuda/lib64",
-        "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib64",
-    ],
+    linkopts = select({
+        "//tsl:macos": [
+            "-Wl,-rpath,../local_config_cuda/cuda/lib",
+            "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib",
+        ],
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_cuda/cuda/lib64",
+            "-Wl,-rpath,../local_config_cuda/cuda/extras/CUPTI/lib64",
+        ],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cudart",

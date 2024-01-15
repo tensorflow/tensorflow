@@ -53,10 +53,10 @@ inline constexpr char kBefBufferFileName[] = "serialized_bef.mlir.bef";
 inline constexpr char kMlrtBufferFileName[] = "serialized_mlrt.mlir.mlrt";
 
 // Filename for serialized MLIR_MODULE.
-inline constexpr char kMLIRModuleFilename[] = "serialized_mlir.mlir";
+inline constexpr char kMlirModuleFilename[] = "serialized_mlir.mlir";
 
 // Subdirectory where AoT Packages are saved
-inline constexpr char kAoTPackagesDirectory[] = "aot_packages";
+inline constexpr char kAotPackagesDirectory[] = "aot_packages";
 
 // TODO(tfrt-dev): Replace tfrt::TensorSpec with tensorflow::TensorSpec once the
 // latter is checked in.
@@ -106,6 +106,7 @@ using ::tensorflow::StatusOr;
 
 struct Initializer {
   std::string name;
+  std::vector<tensorflow::Tensor> inputs;
 };
 
 struct InitializersAndSignatures {
@@ -115,12 +116,14 @@ struct InitializersAndSignatures {
   SignatureMap signature_map;
 };
 
+// If `saved_model_dir` is non-empty, this function fills in the Initializer's
+// inputs in the returned result.
 StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module);
+    mlir::ModuleOp module, absl::string_view saved_model_dir = "");
 
 std::string GetAotPackagePath(absl::string_view saved_model_dir);
 
-std::string GetBEFFilePath(std::string aot_package_directory);
+std::string GetBefFilePath(std::string aot_package_directory);
 
 std::string GetMlirFilePath(const std::string& aot_package_directory);
 
@@ -131,11 +134,11 @@ absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state);
 
-absl::Status DeserializeAoTMlirModule(
+absl::Status DeserializeAotMlirModule(
     absl::string_view saved_model_dir, mlir::MLIRContext* context,
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
-void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry);
+void RegisterTfrtDialectsForAot(mlir::DialectRegistry& registry);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

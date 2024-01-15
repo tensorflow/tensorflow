@@ -587,6 +587,7 @@ def build_conversion_flags(
     mlir_elide_elementsattrs_if_larger=None,
     use_buffer_offset=False,
     reduce_type_precision=False,
+    qdq_conversion_mode=None,
     **_
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -711,6 +712,8 @@ def build_conversion_flags(
     reduce_type_precision: Convert some tensor types to a lower precision if all
       values within that tensor are within the range of the lower precision.
       This could have side effects e.g. reduced flatbuffer size.
+    qdq_conversion_mode: If set, assume input model is a quantized model
+      represented with QDQ ops and convert to quantized kernels.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -799,24 +802,26 @@ def build_conversion_flags(
 
   # Transfer debug options. Check for existence before populating in order to
   # leverage defaults specified in proto definition.
+  # TODO: b/319329480 - Match the debug_options fields with the user-facing
+  # flags.
   if mlir_dump_dir is not None:
-    conversion_flags.debug_options.mlir_dump_dir = mlir_dump_dir
+    conversion_flags.debug_options.ir_dump_dir = mlir_dump_dir
   if mlir_dump_pass_regex is not None:
-    conversion_flags.debug_options.mlir_dump_pass_regex = mlir_dump_pass_regex
+    conversion_flags.debug_options.ir_dump_pass_regex = mlir_dump_pass_regex
   if mlir_dump_func_regex is not None:
-    conversion_flags.debug_options.mlir_dump_func_regex = mlir_dump_func_regex
+    conversion_flags.debug_options.ir_dump_func_regex = mlir_dump_func_regex
   if mlir_enable_timing is not None:
-    conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
+    conversion_flags.debug_options.enable_timing = mlir_enable_timing
   if mlir_print_ir_before is not None:
-    conversion_flags.debug_options.mlir_print_ir_before = mlir_print_ir_before
+    conversion_flags.debug_options.print_ir_before = mlir_print_ir_before
   if mlir_print_ir_after is not None:
-    conversion_flags.debug_options.mlir_print_ir_after = mlir_print_ir_after
+    conversion_flags.debug_options.print_ir_after = mlir_print_ir_after
   if mlir_print_ir_module_scope is not None:
-    conversion_flags.debug_options.mlir_print_ir_module_scope = (
+    conversion_flags.debug_options.print_ir_module_scope = (
         mlir_print_ir_module_scope
     )
   if mlir_elide_elementsattrs_if_larger is not None:
-    conversion_flags.debug_options.mlir_elide_elementsattrs_if_larger = (
+    conversion_flags.debug_options.elide_elementsattrs_if_larger = (
         mlir_elide_elementsattrs_if_larger
     )
 
@@ -824,6 +829,8 @@ def build_conversion_flags(
     conversion_flags.use_buffer_offset = use_buffer_offset
   if reduce_type_precision is not None:
     conversion_flags.reduce_type_precision = reduce_type_precision
+  if qdq_conversion_mode is not None:
+    conversion_flags.qdq_conversion_mode = qdq_conversion_mode
   return conversion_flags
 
 

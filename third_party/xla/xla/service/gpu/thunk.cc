@@ -15,13 +15,21 @@ limitations under the License.
 
 #include "xla/service/gpu/thunk.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <ostream>
 #include <string>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 
 namespace xla {
@@ -30,11 +38,19 @@ namespace gpu {
 Thunk::ExecuteParams::ExecuteParams(
     const ServiceExecutableRunOptions& run_options,
     const BufferAllocations& buffer_allocations, se::Stream* stream,
+    se::Stream* command_buffer_trace_stream,
     absl::Span<se::Stream* const> async_streams)
     : buffer_allocations(&buffer_allocations),
       stream(stream),
+      command_buffer_trace_stream(command_buffer_trace_stream),
       async_comms_streams(async_streams.begin(), async_streams.end()),
-      nccl_params(run_options, stream->parent()) {}
+      nccl_params(run_options, stream->parent()),
+      device_to_host_stream(run_options.run_options().device_to_host_stream()),
+      host_to_device_stream(run_options.run_options().host_to_device_stream()),
+      send_device_memory_function(
+          run_options.run_options().send_device_memory_function()),
+      recv_device_memory_function(
+          run_options.run_options().recv_device_memory_function()) {}
 
 /*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {
 #define CASE(x)  \
@@ -50,6 +66,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kCubSort);
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
+    CASE(kCustomKernel);
     CASE(kNcclAllGather);
     CASE(kNcclAllGatherStart);
     CASE(kNcclAllGatherDone);
@@ -74,9 +91,14 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kKernel);
     CASE(kMemset32BitValue);
     CASE(kMemzero);
+    CASE(kNorm);
     CASE(kOutfeed);
-    CASE(kReplicaId);
+    CASE(kSend);
+    CASE(kSendDone);
     CASE(kPartitionId);
+    CASE(kReplicaId);
+    CASE(kRecv);
+    CASE(kRecvDone);
     CASE(kSequential);
     CASE(kTriangularSolve);
     CASE(kWhile);

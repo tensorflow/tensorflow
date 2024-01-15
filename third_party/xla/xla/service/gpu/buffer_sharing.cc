@@ -20,7 +20,9 @@ limitations under the License.
 #include <queue>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -90,12 +92,16 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   // fusion parameter to fusion output which are elementwise (no copy) or
   // bitcast or an elementwise dynamic update slice (i.e. with the first operand
   // being on this path).
+  // In addition to that, we can also share the buffer for Scatter fusions if
+  // the scatter is the single output of the fusion.
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
-  for (int64_t o : user_index) {
-    output = output->mutable_operand(o);
+  if (output->opcode() == HloOpcode::kTuple) {
+    CHECK(!user_index.empty());
+    output = output->mutable_operand(user_index[0]);
   }
+  CHECK_NE(output->opcode(), HloOpcode::kTuple);
   const HloInstruction* non_bitcast_root = output;
   if (non_bitcast_root->opcode() == HloOpcode::kBitcast) {
     non_bitcast_root = non_bitcast_root->operand(0);
@@ -105,17 +111,13 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   q.push(fusion_param);
   visited.insert(fusion_param);
   bool found_path_to_output = false;
-  int reached_root = 0;
   while (!q.empty()) {
     HloInstruction* hlo_operand = q.front();
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
       // We still need to process the users of 'hlo_operand'. There can be other
-      // reduction users in addition to the tuple user.
-      if (hlo_operand->user_count() > 1 && !is_reduction_emitter) {
-        return false;
-      }
+      // users in addition to the tuple user.
     }
     // Reduction emitter processes the reduction first, so the values below it
     // will not interfere with buffer sharing.
@@ -126,11 +128,15 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
       if (visited.insert(hlo).second) {
         q.push(hlo);
       }
-      // For scatter, we can share the buffer if the path goes through the first
-      // operand.
-      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kScatter &&
-          hlo->operand_index(hlo_operand) == 0) {
-        continue;
+      // For scatter, we can share the buffer if the path goes through one of
+      // the scatter inputs.
+      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kScatter) {
+        int64_t num_scatter_inputs =
+            hlo->shape().IsTuple() ? hlo->shape().tuple_shapes_size() : 1;
+        if (hlo->operand_index(hlo_operand) < num_scatter_inputs &&
+            absl::c_count(hlo->operands(), hlo_operand) == 1) {
+          continue;
+        }
       }
       if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
           hlo->opcode() == HloOpcode::kDynamicSlice &&
@@ -174,12 +180,22 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
           return false;
         }
       }
-      if (hlo->IsRoot()) {
-        ++reached_root;
+    }
+  }
+  // Special case: multi-output fusions with Scatter or DynamicUpdateSlice. For
+  // Scatter, we currently do not support multi-output fusions anyway, but still
+  // handle it here. To be on the safe side, check for !IsElementwise() instead
+  // of checking whether it is Scatter or DynamicUpdateSlice.
+  if (user->IsMultiOutputFusion() && !non_bitcast_root->IsElementwise()) {
+    // Check if any other fusion output was reached. If yes, we cannot share,
+    // because the order in which the output is written might be different.
+    for (HloInstruction* operand : user->fused_expression_root()->operands()) {
+      if (operand != output && visited.find(operand) != visited.end()) {
+        return false;
       }
     }
   }
-  return found_path_to_output && (user_index.empty() || reached_root == 1);
+  return found_path_to_output;
 }
 
 std::optional<bool> CanShareBufferHint(const HloInstruction* user,
@@ -195,7 +211,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
       // The matrix bias operand can be overwritten in-place.
       if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
         GemmBackendConfig config =
-            std::move(user->backend_config<GemmBackendConfig>()).value();
+            std::move(user->backend_config<GpuBackendConfig>())
+                ->gemm_backend_config();
         return (config.beta() != 0.) && user->operand(2) == operand;
       }
       // The operand of cholesky can be shared with the first output.

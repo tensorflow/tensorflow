@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "deallocation/IR/deallocation_ops.h"
 #include "deallocation/transforms/passes.h"
 #include "deallocation/utils/util.h"
 #include "llvm/ADT/STLExtras.h"
@@ -375,12 +374,6 @@ void promoteToStack(memref::DeallocOp dealloc) {
   auto alloca = b.create<memref::AllocaOp>(
       alloc->getLoc(), alloc->getResultTypes()[0].cast<MemRefType>(),
       alloc.getAlignmentAttr());
-  for (auto* user : alloc->getUsers()) {
-    if (auto ownership = llvm::dyn_cast<OwnOp>(user)) {
-      b.setInsertionPoint(ownership);
-      ownership->replaceAllUsesWith(b.create<NullOp>(ownership.getLoc()));
-    }
-  }
   alloc->replaceAllUsesWith(ValueRange{alloca.getResult()});
   alloc->erase();
   dealloc->erase();

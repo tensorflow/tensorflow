@@ -124,6 +124,17 @@ ExecutableRunOptions::gpu_executable_run_options() const {
   return gpu_executable_run_options_;
 }
 
+ExecutableRunOptions& ExecutableRunOptions::set_cpu_executable_run_options(
+    const cpu::CpuExecutableRunOptions* cpu_executable_run_options) {
+  cpu_executable_run_options_ = cpu_executable_run_options;
+  return *this;
+}
+
+const cpu::CpuExecutableRunOptions*
+ExecutableRunOptions::cpu_executable_run_options() const {
+  return cpu_executable_run_options_;
+}
+
 ExecutableRunOptions& ExecutableRunOptions::set_rng_seed(int rng_seed) {
   rng_seed_ = rng_seed;
   return *this;

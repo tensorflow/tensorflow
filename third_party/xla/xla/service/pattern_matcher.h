@@ -1867,6 +1867,53 @@ class HloInstructionPatternOneUserImpl
   }
 };
 
+class HloInstructionPatternNumUserImpl {
+ public:
+  explicit constexpr HloInstructionPatternNumUserImpl(int64_t user_num)
+      : user_num_(user_num) {}
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (inst->user_count() != user_num_) {
+      EXPLAIN << "HloInstruction has " << inst->user_count()
+              << " users, but expected exactly " << user_num_ << " users.";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which has exactly " << user_num_
+        << " users (but possibly is used multiple times by "
+           "same instruction)";
+  }
+
+ private:
+  int64_t user_num_;
+};
+
+class HloInstructionPatternAtMostNumUserImpl {
+ public:
+  explicit constexpr HloInstructionPatternAtMostNumUserImpl(int64_t user_num)
+      : user_num_(user_num) {}
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    if (inst->user_count() > user_num_) {
+      EXPLAIN << "HloInstruction has " << inst->user_count()
+              << " users, but expected less than or equal " << user_num_
+              << " users.";
+      return false;
+    }
+    return true;
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which has less than or equal " << user_num_
+        << " users (but possibly is used multiple times by "
+           "same instruction)";
+  }
+
+ private:
+  int64_t user_num_;
+};
+
 class HloInstructionPatternComparisonDirectionImpl {
  public:
   explicit constexpr HloInstructionPatternComparisonDirectionImpl(
@@ -2418,6 +2465,18 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternOneUserImpl());
   }
 
+  // Modifies the pattern to match if the instruction is used by exactly
+  // user_num times by other instruction.
+  constexpr auto WithNumUser(int64_t user_num) const {
+    return AppendImpl(HloInstructionPatternNumUserImpl(user_num));
+  }
+
+  // Modifies the pattern to match if the instruction is used by less than
+  // user_num times by other instruction.
+  constexpr auto WithAtMostNumUser(int64_t user_num) const {
+    return AppendImpl(HloInstructionPatternAtMostNumUserImpl(user_num));
+  }
+
   // Modifies the pattern to match only if the instruction has the given
   // comparison direction.
   auto WithComparisonDirection(ComparisonDirection direction) const {
@@ -2525,6 +2584,11 @@ XLA_NULLOP_PATTERN(ReplicaId)
 #define XLA_UNOP_PATTERN(NAME)                                       \
   inline auto NAME() { return Op().WithOpcode(HloOpcode::k##NAME); } \
                                                                      \
+  template <typename HloInstructionType>                             \
+  inline auto NAME(HloInstructionType** matched_inst) {              \
+    return Op(matched_inst).WithOpcode(HloOpcode::k##NAME);          \
+  }                                                                  \
+                                                                     \
   template <typename Arg>                                            \
   inline auto NAME(Arg&& arg) {                                      \
     return Op()                                                      \
@@ -2579,6 +2643,7 @@ XLA_UNOP_PATTERN(Sqrt)
 XLA_UNOP_PATTERN(Tan)
 XLA_UNOP_PATTERN(Tanh)
 XLA_UNOP_PATTERN(Transpose)
+XLA_UNOP_PATTERN(While)
 #undef XLA_UNOP_PATTERN
 
 // Helpers for binary instructions.

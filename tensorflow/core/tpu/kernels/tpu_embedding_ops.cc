@@ -25,7 +25,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/xla_builder.h"
+#include "xla/layout_util.h"
 #include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/tpu/c_api_conversions.h"
 #include "xla/stream_executor/tpu/c_api_decl.h"
@@ -252,7 +254,11 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
     auto builder = ctx->builder();
     gradient_shapes.reserve(gradients.size());
     for (xla::XlaOp op : gradients) {
-      gradient_shapes.push_back(builder->GetShape(op).value());
+      // Gradient layout information is added by XLA, so we can just create
+      // default layout information.
+      xla::Shape gradient_shape = builder->GetShape(op).value();
+      xla::LayoutUtil::SetToDefaultLayout(&gradient_shape);
+      gradient_shapes.push_back(gradient_shape);
     }
 
     std::vector<xla::XlaOp> learning_rates;
@@ -757,7 +763,7 @@ class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    VLOG(1) << "Compile ComputeDeduplicationDataShapeOp";
+    VLOG(1) << "Compile ComputeDedupDataTupleMaskOp";
 
     TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params params;
     params.tpu_embedding_config.bytes = config_string_.c_str();

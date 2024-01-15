@@ -580,6 +580,7 @@ class Interpreter {
   /// 5. kTfLiteError: Unexpected/runtime failure. \n
   /// \warning This is an experimental API and subject to change. \n
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
@@ -611,9 +612,12 @@ class Interpreter {
       std::unique_ptr<TfLiteDelegate> delegate) = delete;
 
   /// \warning This is an experimental API and subject to change. \n
-  /// \brief Ensure the data in `tensor.data` is readable. In case delegate is
-  /// used, it might require to copy the data from delegate buffer to raw
-  /// memory.
+  /// \brief Ensure the data in `tensor.data` is readable. If a
+  /// delegate has been used, and `SetAllowBufferHandleOutput(true)` has been
+  /// called, tensor outputs may be stored as delegate buffer handles whose data
+  /// is not directly readable until this method has been called.
+  /// In such cases, this method will copy the data from the delegate buffer
+  /// handle to CPU memory.
   TfLiteStatus EnsureTensorDataIsReadable(int tensor_index) {
     return primary_subgraph().EnsureTensorDataIsReadable(tensor_index);
   }

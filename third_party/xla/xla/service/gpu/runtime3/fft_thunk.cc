@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -82,7 +83,7 @@ FftThunk::FftThunk(ThunkInfo thunk_info, FftType fft_type,
       input_shape_(input_shape),
       output_shape_(output_shape) {}
 
-Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
 
   return RunFft(
@@ -92,11 +93,12 @@ Status FftThunk::ExecuteOnStream(const ExecuteParams& params) {
       &fft_plan_cache_, params.stream, buffer_allocations.memory_allocator());
 }
 
-Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
-              se::DeviceMemoryBase output, const Shape& output_shape,
-              se::fft::Type fft_type, absl::Span<const int64_t> fft_len,
-              int device_ordinal, FftPlanCache* fft_plan_cache,
-              se::Stream* stream, se::DeviceMemoryAllocator* memory_allocator) {
+absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
+                    se::DeviceMemoryBase output, const Shape& output_shape,
+                    se::fft::Type fft_type, absl::Span<const int64_t> fft_len,
+                    int device_ordinal, FftPlanCache* fft_plan_cache,
+                    se::Stream* stream,
+                    se::DeviceMemoryAllocator* memory_allocator) {
   VLOG(3) << "FFT type: " << FftTypeToString(fft_type);
   VLOG(3) << "Input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
   VLOG(3) << "Output shape: " << ShapeUtil::HumanStringWithLayout(output_shape);
@@ -237,9 +239,9 @@ Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
       LOG(FATAL) << "unsupported fft type";
   }
   if (launch_ok) {
-    return OkStatus();
+    return absl::OkStatus();
   }
-  return InternalError("Unable to launch fft with type %s",
+  return Internal("Unable to launch fft with type %s",
                        FftTypeToString(fft_type));
 }
 

@@ -1365,20 +1365,25 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
 // Using sqrt(a^2 + b^2) can cause overflow errors. Therefore we can use
 // sqrt(a^2 + b^2) = sqrt(a^2 * (1 + b^2/a^2))
 //                 = |a| * sqrt(1 + (b/a)^2)
-// With the assumption that |a| >= |b|.
+// With the assumption that |a| >= |b|. This assumption is enforced by swapping
+// a and b during the computation if necessary, since the final result is the
+// same.
 //
 // This method returns the min, max, and sqrt term for this calculation. This is
 // done to prevent potential overflow errors that can occur from multiplying the
 // max with the sqrt term. (i.e. when calculating the sqrt of the absolute
 // value, we can take the sqrt of the max and the sqrt term before multiplying
-// them together.) If return_sqrt is false, it returns 1 + (b/a)^2 instead of
-// sqrt(1 + (b/a)^2).
+// them together.) If return_sqrt is false, it returns 1 + (min/max)^2 instead
+// of sqrt(1 + (min/max)^2).
+//
+// Note that the precision of this computation can be improved by implementing
+// another algorithm:
+//   Carlos F. Borges - An Improved Algorithm for hypot(a,b):
+//   https://arxiv.org/pdf/1904.09481.pdf
 StatusOr<std::tuple<llvm::Value*, llvm::Value*, llvm::Value*>>
 ElementalIrEmitter::EmitComplexAbsHelper(PrimitiveType prim_type,
-                                         llvm::Value* operand_value,
+                                         llvm::Value* real, llvm::Value* imag,
                                          bool return_sqrt) {
-  llvm::Value* real = EmitExtractReal(operand_value);
-  llvm::Value* imag = EmitExtractImag(operand_value);
   llvm::Value* abs_real = llvm_ir::EmitCallToIntrinsic(
       llvm::Intrinsic::fabs, {real}, {real->getType()}, b_);
   llvm::Value* abs_imag = llvm_ir::EmitCallToIntrinsic(
@@ -1399,9 +1404,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
   llvm::Value* min;
   llvm::Value* max;
   llvm::Value* sqrt;
+  llvm::Value* real = EmitExtractReal(operand_value);
+  llvm::Value* imag = EmitExtractImag(operand_value);
   TF_ASSIGN_OR_RETURN(
       std::tie(min, max, sqrt),
-      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/true));
+      EmitComplexAbsHelper(prim_type, real, imag, /*return_sqrt=*/true));
   llvm::Value* result = FMul(max, sqrt);
   // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
   // In such cases, we return `min` instead of `result`.
@@ -1415,9 +1422,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrtComplexAbs(
   llvm::Value* min;
   llvm::Value* max;
   llvm::Value* one_p_div_sq;
+  llvm::Value* real = EmitExtractReal(operand_value);
+  llvm::Value* imag = EmitExtractImag(operand_value);
   TF_ASSIGN_OR_RETURN(
       std::tie(min, max, one_p_div_sq),
-      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/false));
+      EmitComplexAbsHelper(prim_type, real, imag, /*return_sqrt=*/false));
   TF_ASSIGN_OR_RETURN(llvm::Value * sqrt_max, EmitSqrt(prim_type, max));
   TF_ASSIGN_OR_RETURN(llvm::Value * pow,
                       EmitPow(prim_type, one_p_div_sq,
@@ -1435,9 +1444,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitRsqrtComplexAbs(
   llvm::Value* min;
   llvm::Value* max;
   llvm::Value* sqrt;
+  llvm::Value* real = EmitExtractReal(operand_value);
+  llvm::Value* imag = EmitExtractImag(operand_value);
   TF_ASSIGN_OR_RETURN(
       std::tie(min, max, sqrt),
-      EmitComplexAbsHelper(prim_type, operand_value, /*return_sqrt=*/true));
+      EmitComplexAbsHelper(prim_type, real, imag, /*return_sqrt=*/true));
   TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_max, EmitRsqrt(prim_type, max));
   TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_sqrt, EmitRsqrt(prim_type, sqrt));
   llvm::Value* result = FMul(rsqrt_max, rsqrt_sqrt);
@@ -1725,65 +1736,75 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
   return EmitComposeComplex(op, real_part, imag_part);
 }
 
-// (a+bi)^(c+di) =
-//    (a*a+b*b)^(0.5c) * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q)),
+//   lhs_value^rhs_value
+// = (a+bi)^(c+di)
+// = (a*a+b*b)^(0.5c) * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q)),
 //    where q = c*atan2(b,a)+0.5d*ln(a*a+b*b)
+// = |lhs|^c * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q))
+//   where q = c*atan2(b,a)+d*ln(|lhs|)
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
-    const HloInstruction* op, llvm::Value* a, llvm::Value* b, llvm::Value* c,
-    llvm::Value* d) {
+    const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   PrimitiveType component_type =
       primitive_util::ComplexComponentType(op->shape().element_type());
-  llvm::Value* inf = llvm::ConstantFP::getInfinity(a->getType());
-  auto aa_p_bb = FAdd(FMul(a, a), FMul(b, b));
-  auto zero = llvm::ConstantFP::get(a->getType(), 0);
-  auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
-  auto one = llvm::ConstantFP::get(a->getType(), 1);
-  auto half_c = FMul(one_half, c);
+  auto a = EmitExtractReal(lhs_value);
+  auto b = EmitExtractImag(lhs_value);
+  auto c = EmitExtractReal(rhs_value);
+  auto d = EmitExtractImag(rhs_value);
 
-  TF_ASSIGN_OR_RETURN(auto aa_p_bb_to_half_c,
-                      EmitPow(component_type, aa_p_bb, half_c, ""));
+  TF_ASSIGN_OR_RETURN(auto abs, EmitComplexAbs(component_type, lhs_value));
+  TF_ASSIGN_OR_RETURN(auto abs_to_c, EmitPow(component_type, abs, c, ""));
 
   auto neg_d = FNeg(d);
   TF_ASSIGN_OR_RETURN(auto arg_lhs, EmitAtan2(component_type, b, a, ""));
   auto neg_d_arg_lhs = FMul(neg_d, arg_lhs);
   TF_ASSIGN_OR_RETURN(auto e_to_neg_d_arg_lhs,
                       EmitExp(component_type, neg_d_arg_lhs, ""));
-  auto coeff = FMul(aa_p_bb_to_half_c, e_to_neg_d_arg_lhs);
-  TF_ASSIGN_OR_RETURN(auto ln_aa_p_bb, EmitLog(component_type, aa_p_bb));
-  auto half_d = FMul(one_half, d);
-  auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
+  auto coeff = FMul(abs_to_c, e_to_neg_d_arg_lhs);
+  TF_ASSIGN_OR_RETURN(auto ln_abs, EmitLog(component_type, abs));
+  auto q = FAdd(FMul(c, arg_lhs), FMul(d, ln_abs));
   TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
   TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
+
+  llvm::Value* inf = llvm::ConstantFP::getInfinity(a->getType());
+  auto zero = llvm::ConstantFP::get(a->getType(), 0);
+  auto one = llvm::ConstantFP::get(a->getType(), 1);
 
   // Case 0:
   // d^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
   // Branch Cuts for Complex Elementary Functions or Much Ado About
   // Nothing's Sign Bit, W. Kahan, Section 10.
-  auto cutoff_0 = Select(
-      And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
-      EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
-      EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
+  auto cutoff_0 =
+      Select(And(And(FCmpOEQ(abs, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
+             EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
+             EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
 
   // Case 1:
-  // 1^(c + d*i) = 1 + 0*i
-  auto cutoff_1 = Select(And(FCmpOEQ(a, one), FCmpOEQ(b, zero)),
+  // x^0 is defined to be 1 for any x, see
+  // Branch Cuts for Complex Elementary Functions or Much Ado About
+  // Nothing's Sign Bit, W. Kahan, Section 10.
+  auto cutoff_1 = Select(And(FCmpOEQ(zero, c), FCmpOEQ(d, zero)),
                          EmitComposeComplex(op, one, zero), cutoff_0);
 
   // Case 2:
-  // inf^(c + 0*i) = inf + 0*i, c > 0
-  auto cutoff_2 = Select(
-      And(FCmpOEQ(a, inf),
-          And(FCmpOEQ(b, zero), And(FCmpOEQ(d, zero), FCmpOGT(c, zero)))),
-      EmitComposeComplex(op, inf, zero), cutoff_1);
+  // 1^(c + d*i) = 1 + 0*i
+  auto cutoff_2 = Select(And(FCmpOEQ(a, one), FCmpOEQ(b, zero)),
+                         EmitComposeComplex(op, one, zero), cutoff_1);
 
   // Case 3:
-  // inf^(c + 0*i) = 0 + 0*i, c < 0
+  // inf^(c + 0*i) = inf + 0*i, c > 0
   auto cutoff_3 = Select(
       And(FCmpOEQ(a, inf),
-          And(FCmpOEQ(b, zero), And(FCmpOEQ(d, zero), FCmpOLT(c, zero)))),
-      EmitComposeComplex(op, zero, zero), cutoff_2);
+          And(FCmpOEQ(b, zero), And(FCmpOEQ(d, zero), FCmpOGT(c, zero)))),
+      EmitComposeComplex(op, inf, zero), cutoff_2);
 
-  return cutoff_3;
+  // Case 4:
+  // inf^(c + 0*i) = 0 + 0*i, c < 0
+  auto cutoff_4 = Select(
+      And(FCmpOEQ(a, inf),
+          And(FCmpOEQ(b, zero), And(FCmpOEQ(d, zero), FCmpOLT(c, zero)))),
+      EmitComposeComplex(op, zero, zero), cutoff_3);
+
+  return cutoff_4;
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
@@ -1828,11 +1849,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       }
     }
     case HloOpcode::kPower: {
-      auto a = EmitExtractReal(lhs_value);
-      auto b = EmitExtractImag(lhs_value);
-      auto c = EmitExtractReal(rhs_value);
-      auto d = EmitExtractImag(rhs_value);
-      return EmitComplexPower(op, a, b, c, d);
+      return EmitComplexPower(op, lhs_value, rhs_value);
     }
     case HloOpcode::kAtan2: {
       // atan2(y,x) = -i * log((x + i * y)/sqrt(x**2+y**2))

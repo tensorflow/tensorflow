@@ -21,6 +21,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,7 +35,7 @@ namespace gpu {
 
 class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleReduce(HloInstruction *hlo) override {
+  absl::Status HandleReduce(HloInstruction *hlo) override {
     auto reduce = Cast<HloReduceInstruction>(hlo);
 
     VLOG(4) << "Input: " << reduce->ToString();
@@ -82,7 +84,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
       }
 
       if (!changed) {  // Since all inputs have same shape dimensions.
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Shape grouped_shape =
@@ -101,7 +103,7 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-StatusOr<bool> ReductionDimensionGrouper::Run(
+absl::StatusOr<bool> ReductionDimensionGrouper::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   TF_ASSIGN_OR_RETURN(bool changed, ReduceDimensionGroupVisitor().RunOnModule(

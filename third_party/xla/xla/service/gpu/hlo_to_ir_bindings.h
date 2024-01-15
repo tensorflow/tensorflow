@@ -85,11 +85,6 @@ class HloToIrBindings {
   llvm::Value* EmitGetTupleElement(const HloInstruction* gte,
                                    llvm::Value* base_ptr);
 
-  // Returns an llvm typed ir representation of 'ir_value' based on 'hlo' shape.
-  llvm::Value* GetTypedIrValue(const HloInstruction& hlo,
-                               ShapeIndexView shape_index,
-                               llvm::Value* ir_value);
-
   const bool is_nested_;
 
   llvm::IRBuilder<>* b_;
@@ -105,10 +100,6 @@ class HloToIrBindings {
   // The address of the memory block that contains all temporary buffers.
   llvm::Value* temp_buffer_base_ = nullptr;
 };
-
-// Converts `ir_value` with type i8* to a typed LLVM Value* based on `shape`.
-llvm::Value* CastToTypedValue(const Shape& shape, llvm::Value* ir_value,
-                              llvm::IRBuilder<>* b);
 
 }  // namespace gpu
 }  // namespace xla

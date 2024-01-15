@@ -21,12 +21,15 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -36,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_autotune.h"
@@ -410,7 +414,8 @@ template <typename Scalar>
 struct LaunchBatchMatMul<CPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out) {
+                     bool trans_y, bool grad_x, bool grad_y,
+                     const MatMulBCast& bcast, Tensor* out) {
     typedef ParallelMatMulKernel<Scalar, Eigen::NumTraits<Scalar>::IsComplex>
         ParallelMatMulKernel;
     bool conjugate_result = false;
@@ -539,7 +544,8 @@ template <typename Scalar>
 struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
-                     bool trans_y, const MatMulBCast& bcast, Tensor* out) {
+                     bool trans_y, bool grad_x, bool grad_y,
+                     const MatMulBCast& bcast, Tensor* out) {
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
                                    se::blas::Transpose::kConjugateTranspose};
@@ -582,6 +588,16 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                                     std::is_same_v<Scalar, Eigen::bfloat16>;
     using Coefficient = std::conditional_t<is_16bit_input, float, Scalar>;
 
+    se::blas::CallContext call_context = se::blas::CallContext::kNone;
+    OP_REQUIRES(context, grad_x == false || grad_y == false,
+                errors::InvalidArgument(
+                    "At least 1 of grad_x and grad_y shall be false"));
+    if (grad_x) {
+      call_context = se::blas::CallContext::kBackpropInput1;
+    }
+    if (grad_y) {
+      call_context = se::blas::CallContext::kBackpropInput2;
+    }
 #if GOOGLE_CUDA || TF_HIPBLASLT
     static const bool use_autotune = MatmulAutotuneEnable();
     bool bCublasLtSupport = true;
@@ -711,7 +727,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                     static_cast<Coefficient>(1.0), b_ptrs,
                     adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                     static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    GetNumericOptions(), &scratch_allocator)
+                    GetNumericOptions(), &scratch_allocator, call_context)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -805,11 +821,12 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           }
         }
 
-        OP_REQUIRES_OK(context, stream->ThenBlasGemm(
-                                    blas_transpose_b, blas_transpose_a, n, m, k,
-                                    *(b_ptrs[0]), adj_y || trans_y ? k : n,
-                                    *(a_ptrs[0]), adj_x || trans_x ? m : k,
-                                    c_ptrs[0], n, GetNumericOptions()));
+        OP_REQUIRES_OK(context,
+                       stream->ThenBlasGemm(
+                           blas_transpose_b, blas_transpose_a, n, m, k,
+                           *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
+                           adj_x || trans_x ? m : k, c_ptrs[0], n,
+                           GetNumericOptions(), call_context));
       } else if (use_strided_batched) {
         OP_REQUIRES_OK(
             context, stream->ThenBlasGemmStridedBatched(
@@ -818,7 +835,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                          adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
                          adj_x || trans_x ? m : k, a_stride,
                          static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
-                         batch_size, GetNumericOptions()));
+                         batch_size, GetNumericOptions(), call_context));
       } else {
         BlasScratchAllocator scratch_allocator(context);
         bool blas_launch_status =
@@ -828,7 +845,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                     static_cast<Coefficient>(1.0), b_ptrs,
                     adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                     static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    GetNumericOptions(), &scratch_allocator)
+                    GetNumericOptions(), &scratch_allocator, call_context)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -884,11 +901,15 @@ class BaseBatchMatMulOp : public OpKernel {
       OP_REQUIRES_OK(context, context->GetAttr("transpose_b", &trans_y_));
       adj_x_ = false;
       adj_y_ = false;
+      OP_REQUIRES_OK(context, context->GetAttr("grad_a", &grad_input_1_));
+      OP_REQUIRES_OK(context, context->GetAttr("grad_b", &grad_input_2_));
     } else {
       OP_REQUIRES_OK(context, context->GetAttr("adj_x", &adj_x_));
       OP_REQUIRES_OK(context, context->GetAttr("adj_y", &adj_y_));
       trans_x_ = false;
       trans_y_ = false;
+      OP_REQUIRES_OK(context, context->GetAttr("grad_x", &grad_input_1_));
+      OP_REQUIRES_OK(context, context->GetAttr("grad_y", &grad_input_2_));
     }
   }
 
@@ -953,6 +974,14 @@ class BaseBatchMatMulOp : public OpKernel {
                 out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
                 errors::Internal("Failed to reshape output from ",
                                  out->shape().DebugString()));
+
+    // b/307285203: There seems to be an overly aggressive compiler optimization
+    // that optimizes away these data pointers unless we explicitly check them.
+    OP_REQUIRES(ctx,
+                in0_reshaped.data() != nullptr &&
+                    in1_reshaped.data() != nullptr &&
+                    out_reshaped.data() != nullptr,
+                absl::InternalError("Null data pointer encountered."));
     if constexpr (std::is_same_v<Device, CPUDevice> && std::is_same_v<Ta, Tb> &&
                   (std::is_same_v<Ta, bfloat16> ||
                    std::is_same_v<Ta, Eigen::half>)) {
@@ -964,7 +993,7 @@ class BaseBatchMatMulOp : public OpKernel {
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_reshaped.shape(),
                                              &out_reshaped_float));
 
-      // TODO: Avoid extra copy to make bfloat16 matmul efficient on CPU.
+      // TODO: Avoid extra copy to make (b)float16 matmul efficient on CPU.
       FastConvertToFloat(in0_reshaped.flat<Ta>().data(),
                          in0_reshaped_float.flat<float>().data(),
                          in0_reshaped.NumElements());
@@ -974,22 +1003,22 @@ class BaseBatchMatMulOp : public OpKernel {
 
       LaunchBatchMatMul<Device, float>::Launch(
           ctx, in0_reshaped_float, in1_reshaped_float, adj_x_, adj_y_, trans_x_,
-          trans_y_, bcast, &out_reshaped_float);
+          trans_y_, grad_input_1_, grad_input_2_, bcast, &out_reshaped_float);
       FastConvertFromFloat<Tout>(out_reshaped_float.flat<float>().data(),
                                  out_reshaped.flat<Tout>().data(),
                                  out->NumElements());
     } else {
       // Cast tensor to desired type to reuse Eigen.
       // TODO(b/178749687): remove this cast if Eigen supports this natively.
-      if (!std::is_same<Ta, Tout>::value) {
+      if constexpr (!std::is_same<Ta, Tout>::value) {
         in0_reshaped = CastTensor<Ta, Tout>(in0_reshaped);
       }
-      if (!std::is_same<Tb, Tout>::value) {
+      if constexpr (!std::is_same<Tb, Tout>::value) {
         in1_reshaped = CastTensor<Tb, Tout>(in1_reshaped);
       }
-      LaunchBatchMatMul<Device, Tout>::Launch(ctx, in0_reshaped, in1_reshaped,
-                                              adj_x_, adj_y_, trans_x_,
-                                              trans_y_, bcast, &out_reshaped);
+      LaunchBatchMatMul<Device, Tout>::Launch(
+          ctx, in0_reshaped, in1_reshaped, adj_x_, adj_y_, trans_x_, trans_y_,
+          grad_input_1_, grad_input_2_, bcast, &out_reshaped);
     }
   }
 
@@ -1003,6 +1032,8 @@ class BaseBatchMatMulOp : public OpKernel {
   bool adj_y_ = false;
   bool trans_x_ = false;
   bool trans_y_ = false;
+  bool grad_input_1_ = false;
+  bool grad_input_2_ = false;
 
   // Cast `t` from `SrcT` to `DstT`.
   template <typename SrcT, typename DstT>

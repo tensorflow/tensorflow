@@ -91,7 +91,6 @@ from tensorflow.python.lib.io import python_io
 from tensorflow.python.module import module
 
 # Ops
-from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
 from tensorflow.python.ops.random_crop_ops import *
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
@@ -118,6 +117,7 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.linalg.sparse import sparse
@@ -171,6 +171,7 @@ from tensorflow.python.client.client_lib import *
 
 # Summary
 from tensorflow.python.summary import summary
+from tensorflow.python.summary import tb_summary
 
 # TPU
 from tensorflow.python.tpu import api

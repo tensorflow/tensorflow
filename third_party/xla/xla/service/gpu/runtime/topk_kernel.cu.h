@@ -24,6 +24,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/service/gpu/runtime/topk_kernel_common.h"
 
 namespace xla::gpu {
@@ -33,49 +34,15 @@ namespace xla::gpu {
 // implementations below.
 template <typename T, typename V>
 struct Descending {
-  class KVT {
-   public:
-    __device__ KVT() = default;
-    __device__ KVT& operator=(const KVT&) = default;
-    __device__ KVT& operator=(KVT&&) = default;
-    __device__ KVT(const KVT&) = default;
-    __device__ KVT(KVT&&) = default;
-
-    __device__ KVT(T k, V v) : k_(k), v_(v) {}
-    __forceinline__ __device__ void Write(T* key, uint32_t* value) const {
-      *key = k_;
-      *value = v_;
-    }
-
-    __device__ __forceinline__ KVT ShuffleDown(int offset) const {
-      unsigned FULL_MASK = 0xffffffff;
-      // The static casts here are necessary because some types will be
-      // broadened (e.g. bfloat16 -> f32), so we need to narrow them back after
-      // the shuffle.
-      return KVT(static_cast<T>(__shfl_down_sync(FULL_MASK, k_, offset)),
-                 static_cast<V>(__shfl_down_sync(FULL_MASK, v_, offset)));
-    }
-
-   private:
-    T k_;
-    V v_;
-    friend class Descending<T, V>;
+  struct KVT {
+    T key;
+    V idx;
   };
 
-  __device__ __forceinline__ static constexpr bool Gt(const KVT& lhs,
-                                                      const KVT& rhs) {
-    return lhs.k_ == rhs.k_ ? lhs.v_ < rhs.v_ : lhs.k_ > rhs.k_;
+  __device__ FORCEINLINE static bool cmp(const KVT& lhs, const KVT& rhs) {
+    return lhs.key == rhs.key ? lhs.idx < rhs.idx : lhs.key > rhs.key;
   }
 };
-
-// -----------------------------------------------------------------------------
-// More efficient implementation of Descending.
-// -----------------------------------------------------------------------------
-
-// Strided indexing.
-__device__ __forceinline__ int Idx(int i) {
-  return blockDim.x * i + threadIdx.x;
-}
 
 // TopK implements a faster TopK for K < 16.
 //
@@ -146,105 +113,108 @@ __device__ __forceinline__ int Idx(int i) {
 //    allow better scaling past K=16. This is fairly tricky to implement
 //    efficiently, so it was let out of v1.
 //
+
 template <size_t K, typename KT, typename VT,
-          template <typename KT1, typename VT2> class Traits = Descending>
-class TopK {
- public:
+          template <class, class> class Traits = Descending>
+struct TopK {
   using Trait = Traits<KT, VT>;
   using KVT = typename Trait::KVT;
 
   __device__ TopK(void* buffer, int num_outputs)
       : buffer_(reinterpret_cast<KVT*>(buffer)), num_outputs_(num_outputs) {}
 
-  __device__ void Run(KT* key, int n, KT* keys, uint32_t* values) {
-    PerWarpTopK(key, n);
-    MergeTopKs(keys, values);
+  __device__ FORCEINLINE uint32_t Idx(uint32_t i) {
+    return blockDim.x * i + threadIdx.x;
   }
 
- private:
   // Compute a per-warp topk of a slice of data.
   __device__ void PerWarpTopK(KT* key, int n) {
     KVT tmp[K];
     // TODO(doak): Use bitonic sort.
 #pragma unroll
-    for (int i = 0; i < K; i++) tmp[i] = KVT(key[Idx(i)], Idx(i));
+    for (int i = 0; i < K; i++) {
+      tmp[i] = {key[Idx(i)], VT(Idx(i))};
+    }
 #pragma unroll
     for (int i = 0; i < K; i++) {
 #pragma unroll
       for (int j = i + 1; j < K; j++) {
         KVT ti = tmp[i];
         KVT tj = tmp[j];
-        bool cmp = Trait::Gt(ti, tj);
-        tmp[i] = cmp ? ti : tj;
-        tmp[j] = cmp ? tj : ti;
+        bool res = Trait::cmp(ti, tj);
+        tmp[i] = res ? ti : tj;
+        tmp[j] = res ? tj : ti;
       }
     }
+    constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
 
     for (int idx = K; idx < n; idx++) {
-      KVT kv(key[Idx(idx)], Idx(idx));
+      KVT kv{key[Idx(idx)], VT(Idx(idx))};
       Push(tmp, kv);
     }
+    Reduce(tmp, WarpSize);
 
-    Reduce(tmp, 32);
-
-    if (threadIdx.x % 32 != 0) return;
-    int warp_id = threadIdx.x / 32;
+    if (threadIdx.x % WarpSize != 0) return;
+    int warp_id = threadIdx.x / WarpSize;
+#pragma unroll
     for (int i = 0; i < K; i++) {
-      buffer_[i * 32 + warp_id] = tmp[i];
+      buffer_[i * WarpSize + warp_id] = tmp[i];
     }
   }
 
   // Merge the per-warp topks into a single topk. The final data is written to
-  // `keys` and `values`
-  __device__ void MergeTopKs(KT* keys, uint32_t* values) {
+  // `keys` and `idxs`
+  __device__ void MergeTopKs(KT* keys, uint32_t* idxs) {
+    constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
     KVT tmp[K];
     // We only use one warp for this step.
-    if (threadIdx.x / 32 != 0) return;
+    if (threadIdx.x >= WarpSize) return;
     __syncthreads();
 #pragma unroll
-    for (int i = 0; i < K; i++) tmp[i] = buffer_[i * 32 + threadIdx.x];
-    Reduce(tmp, blockDim.x / 32);
+    for (int i = 0; i < K; i++) {
+      tmp[i] = buffer_[i * WarpSize + threadIdx.x];
+    }
+    Reduce(tmp, blockDim.x / WarpSize);
     if (threadIdx.x != 0) return;
     for (int i = 0; i < num_outputs_; ++i) {
-      tmp[i].Write(&keys[i], &values[i]);
+      keys[i] = tmp[i].key;
+      idxs[i] = tmp[i].idx;
     }
   }
 
   // Merge `tmp` (a reverse-sorted array) from (0, `num_lanes`) lanes. The
   // resulting array is stored in the tmp array of lane 0. For all other lanes,
   // `tmp` is unspecified after this function is called.
-  __device__ __forceinline__ void Reduce(KVT tmp[K], int num_lanes) {
-    int lane_id = threadIdx.x % 32;
+  __device__ FORCEINLINE void Reduce(KVT tmp[K], int num_lanes) {
+    constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
+    int lane_id = threadIdx.x % WarpSize;
     for (int offset = num_lanes / 2; offset > 0; offset /= 2) {
 #pragma unroll
       for (int i = 0; i < K; i++) {
-        KVT kv = tmp[i].ShuffleDown(offset);
+        KVT kv = GpuShuffle<ShflType::Down>(tmp[i], offset);
         if (lane_id >= offset) continue;
         Push(tmp, kv);
       }
     }
   }
 
-  // Given a K-array of previously reverse-sorted KVTs, add kv to to it and
+  // Given a K-array of previously reverse-sorted KVTs, add kv to it and
   // remove the smallest element of the resulting array. Preserves the sorted
   // order of `tmp`.
-  static __device__ __forceinline__ bool Push(KVT tmp[K], const KVT& kv) {
-    if (Trait::Gt(tmp[K - 1], kv)) return false;
-    tmp[K - 1] = kv;
-    if constexpr (K >= 2) {
+  static __device__ FORCEINLINE bool Push(KVT tmp[K], const KVT& kv) {
+    if (Trait::cmp(tmp[K - 1], kv)) return false;
+    tmp[K - 1] = kv;  // (K-1)th is the smallest element out of K
 #pragma unroll
-      for (int i = K - 2; i >= 0; --i) {
-        if (Trait::Gt(tmp[i], kv)) break;
-        // Swap
-        KVT t = tmp[i];
-        tmp[i] = tmp[i + 1];
-        tmp[i + 1] = t;
-      }
+    for (int i = (int)K - 2; i >= 0; --i) {
+      if (Trait::cmp(tmp[i], kv)) break;
+      // Swap
+      auto t = tmp[i];
+      tmp[i] = tmp[i + 1];
+      tmp[i + 1] = t;
     }
     return true;
   }
 
-  int source_ = 0;
   KVT* buffer_;
   int num_outputs_;
 };
@@ -257,13 +227,19 @@ extern __device__ __shared__ int shmem[];
 template <size_t K, typename KT, typename VT>
 __launch_bounds__(kTopKMaxThreadsPerBlock, 1) __global__
     void Run(KT* data, int n, KT* result, uint32_t* result_idxs, int k) {
-  TopK<K, KT, VT> top_k(shmem, k);
+  TopK<K, KT, VT> obj(shmem, k);
+
+  const uint32_t bidx = blockIdx.x;
+  auto in = data + n * bidx;
+  auto vals_out = result + k * bidx;
+  auto idxs_out = result_idxs + k * bidx;
   int slice_size = n / blockDim.x;
   if (threadIdx.x < n % blockDim.x) {
     slice_size++;
   }
-  top_k.Run(&data[n * blockIdx.x], slice_size, &result[k * blockIdx.x],
-            &result_idxs[k * blockIdx.x]);
+
+  obj.PerWarpTopK(in, slice_size);
+  obj.MergeTopKs(vals_out, idxs_out);
 }
 
 template <typename T, size_t K>

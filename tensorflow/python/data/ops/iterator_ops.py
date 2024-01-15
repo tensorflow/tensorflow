@@ -39,7 +39,6 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saver import BaseSaverBuilder
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -1013,5 +1012,4 @@ def get_next_as_optional(iterator):
   return iterator.get_next_as_optional()
 
 
-_pywrap_utils.RegisterType("OwnedIterator", OwnedIterator)
 iterator_autograph.register_overrides()

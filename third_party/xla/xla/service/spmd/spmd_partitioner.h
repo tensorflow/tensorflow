@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 #define XLA_SERVICE_SPMD_SPMD_PARTITIONER_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -81,6 +82,11 @@ struct SpmdPartitionerOptions {
   // Whether to skip checking the numbers and shardings of windowed einsum's
   // users.
   bool skip_checking_windowed_einsum_users = false;
+
+  // Enables windowed einsum for operand all-gather.
+  bool enable_windowed_einsum_for_all_gather = true;
+  // Enables windowed einsum for result reduce-scatter.
+  bool enable_windowed_einsum_for_reduce_scatter = true;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -256,13 +262,25 @@ class SpmdPartitioner : public HloModulePass {
 
   const SpmdPartitionerOptions& options() { return options_; }
 
- protected:
   virtual std::unique_ptr<SpmdPartitioningVisitor> CreateVisitor(
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const SPMDCollectiveOpsCreator& collective_ops_creator,
       int64_t* next_channel_id, SpmdLogger* logger,
       SpmdPartitionerOptions options, const CallGraph& call_graph);
 
+  // Estimate the memory cost for an op, override this for target-specific
+  // op buffer implementation.
+  virtual int64_t MemoryCostInBytes(HloInstruction* hlo);
+
+  // Estimate the communication cost for a collective op, override this for
+  // target-specific collective implementation.
+  virtual int64_t CommunicationCostInBytes(HloInstruction* hlo);
+
+  const absl::flat_hash_set<absl::string_view>& execution_threads() const {
+    return execution_threads_;
+  }
+
+ protected:
   // This is the internal implementation for AllGatherShards(), returns a pair
   // of hlo instructions whose first element is the result of the all-gather
   // shard(which might not be the all-gather itself and it could go through
@@ -306,12 +324,18 @@ class SpmdPartitioner : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
+  void set_execution_threads(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    execution_threads_ = execution_threads;
+  }
+
   const int64_t num_partitions_;
   const int64_t num_replicas_;
 
   SpmdPartitionerOptions options_;
   SPMDCollectiveOpsCreator collective_ops_creator_;
   std::vector<std::vector<int64_t>> device_groups_;
+  absl::flat_hash_set<absl::string_view> execution_threads_;
 };
 
 // Class describes partition state of the data represented by an HLO created
@@ -499,6 +523,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       SpmdPartitionerOptions options, SpmdPartitioner* partitioner,
       const CallGraph& call_graph);
 
+  SpmdPartitioningVisitor(const SpmdPartitioningVisitor& src);
+
   Status DefaultAction(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
   Status HandleBroadcast(HloInstruction* hlo) override;
@@ -551,6 +577,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleCustomCallTopK(HloInstruction* hlo);
   // Convenient custom ops defined by the partitioner itself.
   Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+
+  virtual std::unique_ptr<SpmdPartitioningVisitor> Clone() const;
 
   // Returns the PartitionedHlo that corresponds to the original hlo.
   PartitionedHlo& GetPartitionedHlo(const HloInstruction* hlo) {
@@ -606,6 +634,21 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   const CallGraph& call_graph() { return call_graph_; }
   int64_t num_partitions() const { return num_partitions_; }
+  int64_t num_replicas() const { return num_replicas_; }
+  SpmdLogger* logger() { return logger_; }
+  const SpmdLogger* logger() const { return logger_; }
+  const SpmdPartitionerOptions& options() const { return options_; }
+  SpmdPartitioner* partitioner() { return partitioner_; }
+  const SpmdPartitioner* partitioner() const { return partitioner_; }
+  SPMDCollectiveOpsCreator& collective_ops_creator() {
+    return collective_ops_creator_;
+  }
+  const SPMDCollectiveOpsCreator& collective_ops_creator() const {
+    return collective_ops_creator_;
+  }
+  HloModule* module() { return module_; }
+  const HloModule* module() const { return module_; }
+  void set_module(HloModule* module) { module_ = module; }
 
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor

@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
-#include "third_party/protobuf/text_format.h"
 #include "xla/client/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -83,9 +83,8 @@ void ValidateResult(
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
   Compiler::TargetConfig gpu_target_config = xla::Compiler::TargetConfig(
@@ -113,14 +112,13 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
   auto gpu_compiler = gpu::NVPTXCompiler();
-  Compiler::TargetConfig gpu_target_config = gpu_compiler.GetGpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
+  Compiler::TargetConfig gpu_target_config{
+      se_client->client()->backend().default_stream_executor()};
   StreamExecutorGpuCompiler compiler;
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
@@ -143,9 +141,8 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
   auto se_client = absl::WrapUnique(
       tensorflow::down_cast<StreamExecutorGpuClient*>(client.release()));
   StreamExecutorGpuCompiler compiler;

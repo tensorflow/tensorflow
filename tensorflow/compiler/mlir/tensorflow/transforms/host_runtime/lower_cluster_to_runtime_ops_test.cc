@@ -50,7 +50,6 @@ namespace {
 using mlir::DialectRegistry;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
-using mlir::OpPassManager;
 using mlir::OwningOpRef;
 using mlir::func::FuncOp;
 using ::tensorflow::monitoring::testing::CellReader;
@@ -188,20 +187,6 @@ TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {
 
   TF_ASSERT_OK(env_->GetChildren(test_dir_, &files));
   EXPECT_THAT(files, ::testing::SizeIs(15));
-}
-
-TEST_F(LowerClusterToRuntimeOpsTest, AddsTPUPipelinePasses) {
-  OpPassManager pass_manager;
-  AddTPULowerClusterToRuntimeOpsPassPipeline(pass_manager);
-
-  EXPECT_EQ(pass_manager.size(), 8);
-}
-
-TEST_F(LowerClusterToRuntimeOpsTest, AddsNonTPUPipelinePasses) {
-  OpPassManager pass_manager;
-  AddNonTPULowerClusterToRuntimeOpsPassPipeline(pass_manager);
-
-  EXPECT_EQ(pass_manager.size(), 4);
 }
 
 }  // namespace

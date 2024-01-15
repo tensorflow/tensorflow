@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/service/float_normalization.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -25,18 +27,22 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_verifier.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 class TestFloatSupport : public FloatSupport {
  public:
-  explicit TestFloatSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  explicit TestFloatSupport(PrimitiveType low_precision_type,
+                            PrimitiveType high_precision_type)
+      : FloatSupport(low_precision_type, high_precision_type) {}
   ~TestFloatSupport() override = default;
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
@@ -80,8 +86,9 @@ class TestFloatSupport : public FloatSupport {
 // but supports some collectives.
 class TestFloatNoComputeSupport : public FloatSupport {
  public:
-  explicit TestFloatNoComputeSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  explicit TestFloatNoComputeSupport(PrimitiveType low_precision_type,
+                                     PrimitiveType high_precision_type)
+      : FloatSupport(low_precision_type, high_precision_type) {}
   ~TestFloatNoComputeSupport() override = default;
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
@@ -114,8 +121,9 @@ class FloatNormalizationTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
-  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16) {
-    TestFloatSupport float_support(low_precision_type);
+  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16,
+                 PrimitiveType high_precision_type = F32) {
+    TestFloatSupport float_support(low_precision_type, high_precision_type);
     FloatNormalization normalization(&float_support);
     StatusOr<bool> result = normalization.Run(module);
     EXPECT_IS_OK(result.status());
@@ -508,7 +516,7 @@ TEST_F(FloatNormalizationTest, ResolveIfUnsupportedF8e5m2) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module.get(), F8E5M2));
+  EXPECT_TRUE(Normalize(module.get(), F8E5M2, F16));
 
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(computation->root_instruction()->operand(0), mul1);
@@ -519,8 +527,10 @@ TEST_F(FloatNormalizationTest, ResolveIfUnsupportedF8e5m2) {
 
 class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
  protected:
-  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16) {
-    TestFloatNoComputeSupport float_support(low_precision_type);
+  bool Normalize(HloModule* module, PrimitiveType low_precision_type = BF16,
+                 PrimitiveType high_precision_type = F32) {
+    TestFloatNoComputeSupport float_support(low_precision_type,
+                                            high_precision_type);
     FloatNormalization normalization(&float_support);
 
     StatusOr<bool> result = normalization.Run(module);
@@ -535,7 +545,7 @@ class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
 };
 
 TEST_F(FloatNormalizationNoComputeSupportTest,
-       NoNormalizationForToApplyMultiOuputAllReduce) {
+       NoNormalizationForToApplyMultiOutputAllReduce) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
@@ -646,6 +656,39 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   EXPECT_EQ(computation->root_instruction()->shape().element_type(), BF16);
   EXPECT_EQ(crs->operand(0)->shape().element_type(), BF16);
   EXPECT_EQ(crs->to_apply()->root_instruction()->opcode(), HloOpcode::kAdd);
+}
+
+TEST_F(FloatNormalizationTest, ConvertBeforeTuple) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, bf16_shape, "a"));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, bf16_shape, "b"));
+
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(bf16_shape, HloOpcode::kMultiply, a, b));
+
+  HloInstruction* convert =
+      builder.AddInstruction(HloInstruction::CreateConvert(f32_shape, add));
+
+  builder.AddInstruction(HloInstruction::CreateVariadic(
+      ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), HloOpcode::kTuple,
+      {convert, add}));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(Normalize(module.get(), BF16));
+
+  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(computation->root_instruction()->operand(0)->shape().element_type(),
+            F32);
+  EXPECT_EQ(
+      computation->root_instruction()->shape().tuple_shapes(0).element_type(),
+      F32);
 }
 
 }  // namespace xla

@@ -248,11 +248,12 @@ def create_xml_file(result_store_dict: ResultDictType,
     f.write(b'<?xml version="1.0"?>\n')
     tree.write(f)
     if verbose:
-      print(f'Wrote to {file_path}')
+      print(f'\nWrote XML with Bazel invocation results to {file_path}')
 
 
 def print_invocation_results(result_store_dict: ResultDictType):
   """Prints out a short summary of the found ResultStore links (if any)."""
+  print()
   if not result_store_dict:
     print('Found no ResultStore links for Bazel build/test invocations.')
   else:

@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/device_id.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/gpu/gpu_driver.h"

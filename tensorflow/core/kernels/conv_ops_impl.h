@@ -805,9 +805,10 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(
-                                no_transpose, no_transpose, n, m, k, b_ptr, n,
-                                a_ptr, k, &c_ptr, n, GetNumericOptions()));
+    OP_REQUIRES_OK(context, stream->ThenBlasGemm(no_transpose, no_transpose, n,
+                                                 m, k, b_ptr, n, a_ptr, k,
+                                                 &c_ptr, n, GetNumericOptions(),
+                                                 se::blas::CallContext::kNone));
     return;
   } else if (!is_grouped_convolution && filter_same_dims && padding == VALID &&
              data_format == FORMAT_NHWC) {
@@ -826,9 +827,10 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(context, stream->ThenBlasGemm(
-                                no_transpose, no_transpose, n, m, k, b_ptr, n,
-                                a_ptr, k, &c_ptr, n, GetNumericOptions()));
+    OP_REQUIRES_OK(context, stream->ThenBlasGemm(no_transpose, no_transpose, n,
+                                                 m, k, b_ptr, n, a_ptr, k,
+                                                 &c_ptr, n, GetNumericOptions(),
+                                                 se::blas::CallContext::kNone));
     return;
   }
 

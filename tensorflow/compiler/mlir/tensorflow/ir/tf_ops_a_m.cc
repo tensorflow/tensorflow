@@ -67,6 +67,7 @@ limitations under the License.
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -85,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/side_effect_analysis_util.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
@@ -1715,9 +1717,10 @@ void ConstOp::build(OpBuilder& builder, OperationState& result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
-  auto value = attributes.get("value");
+  ConstOpAdaptor adaptor(operands, attributes, properties, regions);
+  auto value = adaptor.getValue();
   if (!value) return emitOptionalError(location, "missing attribute 'value'");
   if (auto elem_attr = value.dyn_cast<ElementsAttr>()) {
     inferredReturnTypes.assign({elem_attr.getType()});
@@ -1958,13 +1961,13 @@ static LogicalResult inferConvReturnTypeComponents(
 
 LogicalResult Conv2DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
-    RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes,
+    OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  Conv2DOpAdaptor op(operands.getValues(), attributes);
+  Conv2DOpAdaptor op(operands.getValues(), attributes, properties, regions);
   ArrayRef<Attribute> explicit_padding;
   ArrayAttr explicit_pad =
-      attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
+      op.getExplicitPaddings().dyn_cast_or_null<::mlir::ArrayAttr>();
   if (!explicit_pad) {
     explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
   }
@@ -2157,17 +2160,12 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 
 LogicalResult Conv3DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
-    RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes,
+    OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  Conv3DOpAdaptor op(operands.getValues(), attributes);
-  ArrayRef<Attribute> explicit_padding;
-  ArrayAttr explicit_pad =
-      attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
-  if (!explicit_pad) {
-    explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
-  }
-  explicit_padding = explicit_pad.getValue();
+  Conv3DOpAdaptor op(operands.getValues(), attributes, properties, regions);
+  ArrayAttr explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
+  ArrayRef<Attribute> explicit_padding = explicit_pad.getValue();
 
   return inferConvReturnTypeComponents(location, op, explicit_padding,
                                        inferredReturnShapes);
@@ -2586,7 +2584,8 @@ OpFoldResult EnsureShapeOp::fold(FoldAdaptor) {
   if (!type || !type.hasRank()) return {};
   // If shape attribute equals input operand's type's shape, fold it to input.
   std::optional<llvm::ArrayRef<int64_t>> shape_constraint = getShape();
-  if (type.getShape() == shape_constraint) return getInput();
+  if (type.getShape() == shape_constraint && getInput().getType() == getType())
+    return getInput();
 
   // If input operand's type's shape always satisfies the shape attribute, fold
   // it to input.
@@ -2598,7 +2597,7 @@ OpFoldResult EnsureShapeOp::fold(FoldAdaptor) {
         return {};
       }
     }
-    return getInput();
+    if (getInput().getType() == getType()) return getInput();
   }
   // Else retain to enable failing dynamically.
   return {};
@@ -3301,7 +3300,9 @@ OpFoldResult LeakyReluOp::fold(FoldAdaptor adaptor) {
   assert(operands.size() == 1 && "leaky relu has one operand");
 
   // leaky_relu(x, alpha: 1) -> x
-  if (getAlpha().convertToFloat() == 1.0f) return getOperand();
+  if (getAlpha().convertToFloat() == 1.0f &&
+      getOperand().getType() == getType())
+    return getOperand();
 
   auto calculate = [&](FloatAttr arg) {
     APFloat val = arg.getValue();

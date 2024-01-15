@@ -1,17 +1,18 @@
 # Description:
 #   Utilities for splitting and joining large protos > 2GB.
 
-# Placeholder: load py_proto_library
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_proto_library",
-)
+load("//tensorflow:strict.default.bzl", "py_strict_test")
+
+# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
     "tf_cc_test",
+)
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
 )
 
 package(
@@ -100,6 +101,7 @@ py_strict_test(
         ":chunk_proto_py",
         ":split",
         ":versions_proto_py",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_py",
         "@riegeli_py//python/riegeli",
@@ -136,6 +138,7 @@ py_strict_test(
         ":constants",
         ":split_graph_def",
         ":util",
+        #internal proto upb dep
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/python:test_util",
@@ -153,6 +156,7 @@ py_strict_test(
     srcs = ["util_test.py"],
     deps = [
         ":util",
+        #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_py",
     ],
@@ -183,6 +187,13 @@ cc_library(
 cc_library(
     name = "merge",
     hdrs = ["merge.h"],
+    visibility = [
+        "__subpackages__",
+        "//tensorflow:internal",
+        "//tensorflow/cc/experimental/tf2:__subpackages__",
+        "//tensorflow/cc/saved_model/image_format:__subpackages__",
+        "//waymo/onboard/ml/chauffeur_net/utils:__subpackages__",
+    ],
     deps = [
         ":chunk_proto_cc",
         ":merge_impl",

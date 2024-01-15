@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace tensorflow {
@@ -26,7 +27,43 @@ namespace internal {
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateVerifyClusteringPass();
 
+// Creates a pass that forms clusters from operations of the same
+// `_replication_info` attribute.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateTPUClusterFormationPass(bool strict_clusters = false);
+
+// Creates a pass that extracts outside compilation (Host ops inside device
+// cluster) at head/tail of Device cluster to run before/after XLA computation.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateExtractHeadTailOutsideCompilationPass();
+
+// Creates a pass that extract outside compilation (Host ops inside cevice
+// cluster) ops to a separate parallel_execute region to run on CPU.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateExtractOutsideCompilationPass();
+
+// Create a pass that encapsulates StatefulPartitionedCallOp within a cluster.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateXlaClusterFormationPass();
+
+// Create a pass that rewrites entry functions with `_xla_compile_device` into a
+// `tf.StatefulPartitionedCall` to the original function.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateXlaOutlineEntryFunctionsPass();
+
+// Creates a pass that marks unsupported ops in device cluster for outside
+// compilation.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateMarkOpsForOutsideCompilationPass();
+
+#define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
+#define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS
+#define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
+#define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_VERIFYCLUSTERINGPASS
+#define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
+#include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
 }  // namespace internal
 }  // namespace tf2xla

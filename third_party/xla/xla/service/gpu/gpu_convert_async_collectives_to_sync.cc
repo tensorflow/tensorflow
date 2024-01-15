@@ -19,12 +19,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 
 namespace xla {
 namespace gpu {
 
-Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
+absl::Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
     HloComputation* computation,
     absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs)
     const {
@@ -33,7 +34,10 @@ Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
   sync_config.set_is_sync(true);
   for (auto& [async_start, async_done] : async_pairs) {
     // Tag the async start with is_sync = true.
-    TF_RETURN_IF_ERROR(async_start->set_backend_config(sync_config));
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                        async_start->backend_config<GpuBackendConfig>());
+    *gpu_config.mutable_collective_backend_config() = sync_config;
+    TF_RETURN_IF_ERROR(async_start->set_backend_config(gpu_config));
     replaced_ops[async_start] = nullptr;
     replaced_ops[async_done] = async_start;
   }
@@ -62,7 +66,7 @@ Status GpuConvertAsyncCollectivesToSync::ConvertAsyncInstructionsToSync(
     new_sequence.push_back(instr);
   }
   module->schedule().set_sequence(computation, new_sequence);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

@@ -42,6 +42,7 @@ class IndexSplitProvider : public SplitProvider {
                     IteratorStateWriter* writer) override;
   absl::Status Restore(std::function<std::string(std::string)> full_name,
                        IteratorStateReader* reader) override;
+  int64_t Cardinality() const override;
 
  private:
   tsl::mutex mu_;

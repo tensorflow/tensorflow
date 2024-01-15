@@ -31,13 +31,14 @@ namespace v2 {
 // API. These transformations take as input a Tensorflow Graph as an MLIR Module
 // and transforms the module in place to cluster the given ops for compilation
 // that is compatible with the given device_type. The MLIR should be in the TF
-// Executor Dialect for graph nodes and edges. Individual Op inside a node
-// should be the Tensorflow Dialect. The output MLIR is in the TF Executor
-// Dialect. Returns OkStatus if passed, otherwise an error.
+// Executor Dialect for graph nodes and edges or be in TF Functional already.
+// Individual Op inside a node should be the Tensorflow Functional Dialect. The
+// output MLIR is in the TF Functional Dialect. Returns OkStatus if passed,
+// otherwise an error.
 //
 // Inputs:
 //   module - The MLIR Module that will be clustered. Expected to be in TF
-//   Executor Dialect
+//   Executor Dialect or TF Functional Dialect. Will convert to TF Functional.
 // . device_type - The device type to cluster for.
 //   is_in_fallback_enabled_mode - Whether this was called with fallback to the
 //   non-MLIR Bridge. This is just for logging purposes and doesn't affect

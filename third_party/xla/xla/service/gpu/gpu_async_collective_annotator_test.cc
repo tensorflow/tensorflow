@@ -110,15 +110,17 @@ XLA_TEST_P(GpuAsyncCollectiveAnnotatorTest, Test) {
     if (!hlo_query::IsAsyncCollectiveStartOp(hlo->opcode())) {
       continue;
     }
-    StatusOr<CollectiveBackendConfig> backend_config =
-        hlo->backend_config<CollectiveBackendConfig>();
-    ASSERT_TRUE(backend_config.ok());
+    auto gpu_config = hlo->backend_config<GpuBackendConfig>();
+    ASSERT_TRUE(gpu_config.ok());
+
+    const CollectiveBackendConfig& backend_config =
+        gpu_config.value().collective_backend_config();
     if (test_case.expected_async.contains(hlo->name())) {
-      EXPECT_FALSE(backend_config->is_sync());
+      EXPECT_FALSE(backend_config.is_sync());
     }
 
     if (test_case.expected_sync.contains(hlo->name())) {
-      EXPECT_TRUE(backend_config->is_sync());
+      EXPECT_TRUE(backend_config.is_sync());
     }
   }
 }

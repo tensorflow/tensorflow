@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tsl/platform/host_info.h"
 
 namespace tensorflow {
 namespace data {
@@ -46,6 +47,8 @@ constexpr char kDatasetType[] = "Root";
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kCpuBudget[] = "cpu_budget";
 constexpr char kExperiments[] = "experiments";
+constexpr char kReadRoundtripLatency[] = "read_latency_usec";
+constexpr char kReadResponseBytes[] = "read_bytes";
 constexpr char kIntraOpParallelism[] = "intra_op_parallelism";
 constexpr char kMemBandwidth[] = "mem_bw_used_megabytes_per_sec";
 constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
@@ -204,6 +207,12 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       }
     }
     IteratorContext iter_ctx(CreateParams(ctx));
+    if (model_) {
+      auto factory = [&iter_ctx, this](model::Node::Args args) {
+        return CreateNode(&iter_ctx, std::move(args));
+      };
+      model_->AddNode(std::move(factory), prefix(), nullptr, &node_);
+    }
     TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(&iter_ctx, this,
                                                        prefix(), &input_impl_));
     ctx->MergeCheckpoint(iter_ctx.checkpoint());
@@ -270,12 +279,26 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
                         static_cast<long long>(memory_info.total / 1.0e6),
                         static_cast<double>(100 * memory_usage) /
                             static_cast<double>(memory_info.total))));
-    if (model_node() != nullptr) {
+    const auto io_statistics = tsl::port::GetIOStatistics();
+    if (io_statistics.roundtrip_latency_usec.count > 0) {
       traceme_metadata.push_back(std::make_pair(
-          kMaxBufferBytes,
+          kReadRoundtripLatency,
           strings::Printf(
-              "%lld", static_cast<long long>(
-                          model_node()->TotalMaximumBufferedBytes() / 1.0e6))));
+              "(count: %lld, mean: %lld, std dev: %lld)",
+              static_cast<long long>(
+                  io_statistics.roundtrip_latency_usec.count),
+              static_cast<long long>(io_statistics.roundtrip_latency_usec.mean),
+              static_cast<long long>(
+                  io_statistics.roundtrip_latency_usec.std_dev))));
+    }
+    if (io_statistics.response_bytes.count > 0) {
+      traceme_metadata.push_back(std::make_pair(
+          kReadResponseBytes,
+          strings::Printf(
+              "(count: %lld, mean: %lld, std dev: %lld)",
+              static_cast<long long>(io_statistics.response_bytes.count),
+              static_cast<long long>(io_statistics.response_bytes.mean),
+              static_cast<long long>(io_statistics.response_bytes.std_dev))));
     }
     return traceme_metadata;
   }
