@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 
+#include "absl/base/nullability.h"
+#include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU: keep
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -31,12 +33,16 @@ namespace mlir::quant::stablehlo {
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::RunPasses;
 
+PostCalibrationComponent::PostCalibrationComponent(
+    absl::Nonnull<MLIRContext*> ctx)
+    : ctx_(ABSL_DIE_IF_NULL(ctx)) {}  // Crash OK
+
 absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
     ModuleOp module_op, const QuantizationConfig& config) {
   TF_RETURN_IF_ERROR(
       RunPasses(/*name=*/kName,
                 /*add_passes_func=*/[this](PassManager& pm) { AddPasses(pm); },
-                ctx_, module_op));
+                *ctx_, module_op));
   return module_op;
 }
 
