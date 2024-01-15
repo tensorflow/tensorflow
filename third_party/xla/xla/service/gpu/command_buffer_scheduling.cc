@@ -99,7 +99,7 @@ static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 template <>
 bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
                                   const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::WHILE) &&
+  return config.contains(DebugOptions::CONDITIONALS) &&
          IsCommand(hlo->while_body(), config) &&
          IsCommand(hlo->while_condition(), config);
 }
@@ -109,7 +109,7 @@ bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
 template <>
 bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
                                         const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::WHILE) &&
+  return config.contains(DebugOptions::CONDITIONALS) &&
          absl::c_all_of(hlo->branch_computations(),
                         [&](const HloComputation* comp) {
                           return IsCommand(comp, config);
@@ -156,12 +156,12 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
                                 const CommandBufferConfig& config) {
   if (hlo->opcode() == HloOpcode::kAllReduceStart ||
       hlo->opcode() == HloOpcode::kAllGatherStart) {
-    return config.contains(DebugOptions::NCCL);
+    return config.contains(DebugOptions::COLLECTIVES);
   }
 
   if (hlo->opcode() == HloOpcode::kAsyncStart) {
     if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-      return config.contains(DebugOptions::NCCL);
+      return config.contains(DebugOptions::COLLECTIVES);
     }
   }
 
@@ -563,7 +563,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   }
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
-  static constexpr auto kRequireConditionals = {DebugOptions::WHILE};
+  static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
   static constexpr auto kRequireTracing = {DebugOptions::CUBLAS,
                                            DebugOptions::CUDNN};
 

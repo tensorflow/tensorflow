@@ -459,15 +459,17 @@ message DebugOptions {
   // Whether to use cuBLASLt for GEMMs on GPUs.
   bool xla_gpu_enable_cublaslt = 166;
 
-  // Commands are categorized into four types: FUSION represents regular fusion
-  // kernels. CUBLAS, CUDNN, and NCCL represent library calls.
+  // Commands are categorized into 5 types:
+  // FUSION represents regular fusion kernels.
+  // CUBLAS, CUDNN, and COLLECTIVES represent library calls.
+  // CONDITIONALS represents control flow.
   enum CommandBufferCmdType {
     INVALID = 0;
     FUSION = 1;
     CUBLAS = 2;
     CUDNN = 3;
-    NCCL = 4;
-    WHILE = 5;
+    COLLECTIVES = 4;
+    CONDITIONALS = 5;
   }
 
   // Determine the types of commands that are recorded into command buffers.
