@@ -1494,6 +1494,19 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
           custom_call, operands);
       return set_common_fmha_backward_attributes(fmha_backward);
     }
+    case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout: {
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      }
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+      auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
+          custom_call, operands);
+      fmha_backward.setDropoutRateAttr(
+          builder_.getF64FloatAttr(config.dropout_rate()));
+      fmha_backward.setSeedAttr(builder_.getI64IntegerAttr(config.seed()));
+      return set_common_fmha_backward_attributes(fmha_backward);
+    }
     case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmax: {
       // push fwd output for bwd here if it is flash attention
       if (config.is_flash_attention()) {

@@ -819,6 +819,18 @@ class FusedAttentionBackwardLowering
         break;
 
       case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardSoftmaxDropout:
+        if (is_flash_attention) {
+          if (num_operands == 12) {
+            fused_attention += "scale.softmax.dropout";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Softmax_Dropout_BMM");
+          }
+        }
+        break;
+      case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasSoftmax:
         if (is_flash_attention) {
           if (num_operands == 13) {
@@ -843,6 +855,16 @@ class FusedAttentionBackwardLowering
 
       case mlir::lmhlo_gpu::FusedMhaBackwardDagSignature::
           BackwardScaleBiasSoftmaxDropout:
+        if (is_flash_attention) {
+          if (num_operands == 13) {
+            fused_attention += "scale.bias.softmax.dropout";
+          } else {
+            return op.emitOpError(
+                "unexpected number of operands for flash attention backward - "
+                "BMM_Bias_Softmax_Dropout_BMM");
+          }
+          break;
+        }
         if (num_operands == 10) {
           fused_attention += "scale.softmax.dropout";
         } else if (num_operands == 11) {
