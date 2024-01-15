@@ -98,6 +98,7 @@ cc_library(
     hdrs = ["export.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":import",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -143,6 +144,31 @@ tf_cc_test(
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "import",
+    srcs = ["import.cc"],
+    hdrs = ["import.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "import_test",
+    srcs = ["import_test.cc"],
+    deps = [
+        ":import",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -278,6 +304,7 @@ cc_library(
     deps = [
         ":context",
         ":export",
+        ":import",
         ":io",
         ":post_calibration",
         ":pre_calibration",
@@ -309,7 +336,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",

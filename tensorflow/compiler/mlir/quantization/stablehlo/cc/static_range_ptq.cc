@@ -32,8 +32,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -45,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
@@ -96,39 +95,6 @@ CalibrationOptions GetDefaultCalibrationOptions() {
   options.set_calibration_method(
       CalibrationOptions::CALIBRATION_METHOD_MIN_MAX);
   return options;
-}
-
-// Returns the updated function aliases. `module_op` may have different
-// function names from the original model, so it re-associates the aliases
-// with the new function names. Both the input `function_aliases` and the
-// returned value are function name -> alias mappings. `function_aliases` is
-// the function alias mapping of the original function.
-absl::flat_hash_map<std::string, std::string> UpdateFunctionAliases(
-    const absl::flat_hash_map<std::string, std::string> function_aliases,
-    ModuleOp module_op) {
-  absl::flat_hash_map<std::string, std::string> updated_function_aliases;
-
-  module_op->walk([&](func::FuncOp func_op) {
-    // We may retrieve the original function's name from the attribute.
-    // Functions without this attribute are ignored.
-    auto original_func_name =
-        func_op->getAttrOfType<StringAttr>("tf._original_func_name");
-    if (original_func_name) {
-      if (auto alias_itr = function_aliases.find(original_func_name.str());
-          alias_itr != function_aliases.end()) {
-        const std::string alias = alias_itr->second;
-        const std::string new_func_name = func_op.getSymName().str();
-
-        updated_function_aliases[new_func_name] = alias;
-
-        VLOG(1) << "Updated function alias. Alias: " << alias
-                << ", New function name: " << new_func_name
-                << ", Old function name: " << original_func_name.str();
-      }
-    }
-  });
-
-  return updated_function_aliases;
 }
 
 // Sets up and runs the passes for exporting `module_op`. The behavior of the
@@ -216,8 +182,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
       SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, ctx));
   auto [module_op, saved_model_bundle] = std::move(imported_module);
 
-  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
-      UpdateFunctionAliases(function_aliases, module_op);
+  const absl::flat_hash_map<FunctionName, FunctionAlias>
+      updated_function_aliases =
+          UpdateFunctionAliases(function_aliases, module_op);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.
@@ -269,8 +236,9 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, ctx));
   auto [module_op, saved_model_bundle] = std::move(imported_module);
 
-  const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
-      UpdateFunctionAliases(function_aliases, module_op);
+  const absl::flat_hash_map<FunctionName, FunctionAlias>
+      updated_function_aliases =
+          UpdateFunctionAliases(function_aliases, module_op);
 
   // Collect the names of the functions that have aliases so that they may not
   // be inlined.

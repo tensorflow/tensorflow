@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/import.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -53,6 +54,8 @@ namespace {
 
 using ::mlir::quant::kTfFilePrefix;
 using ::mlir::quant::kTfQuantSaveOpName;
+using ::mlir::quant::stablehlo::FunctionAlias;
+using ::mlir::quant::stablehlo::FunctionName;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
@@ -118,7 +121,7 @@ ExportedModel CreateExportedModel(
     GraphDef&& graph_def, const absl::string_view init_node_name,
     const absl::string_view checkpoint_dir,
     const std::optional<SaverDef> saver_def,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases,
+    const absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
     const std::vector<AssetFileDef>& asset_file_defs) {
   ExportedModel exported_model{};
   *exported_model.mutable_graph_def() = graph_def;
@@ -199,7 +202,7 @@ absl::StatusOr<std::optional<SaverDef>> CreateSaverDef(
 
 absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
     const mlir::ModuleOp module_op, const absl::string_view checkpoint_dir,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases,
+    const absl::flat_hash_map<FunctionName, FunctionAlias>& function_aliases,
     const std::vector<AssetFileDef>& asset_file_defs) {
   const tensorflow::GraphExportConfig config{};
   FunctionLibraryDefinition flib_def{OpRegistry::Global(),
