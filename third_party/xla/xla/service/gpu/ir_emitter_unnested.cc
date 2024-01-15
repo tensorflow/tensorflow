@@ -4235,6 +4235,11 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               Thunk::kNcclReduceScatter, instr, reduce_scatter,
               reduce_scatter->use_global_device_ids());
         }
+        case HloOpcode::kAllToAll: {
+          auto* all_to_all = Cast<HloAllToAllInstruction>(wrapped);
+          return EmitNcclThunk<NcclAllToAllStartThunk, HloAllToAllInstruction>(
+              Thunk::kNcclAllToAll, instr, all_to_all, std::nullopt);
+        }
         default:
           return InternalError(
               "Unsupported async start wrapped instruction: %s",
