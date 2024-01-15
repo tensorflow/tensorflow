@@ -16,27 +16,27 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 
 #include <algorithm>
-#include <memory>
+#include <cstdint>
+#include <ostream>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/map_util.h"
+#include "xla/service/buffer_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -95,9 +95,13 @@ std::string HloValue::ToString(int indent) const {
   for (const HloPosition& position : positions()) {
     StrAppend(&out, indentation, "  ", position.ToString(), "\n");
   }
-  StrAppend(&out, indentation, " uses:\n");
-  for (const HloUse& use : GetUses()) {
-    StrAppend(&out, indentation, "  ", use.ToString(), "\n");
+  if (uses_.has_value()) {
+    StrAppend(&out, indentation, " uses:\n");
+    for (const HloUse& use : GetUses()) {
+      StrAppend(&out, indentation, "  ", use.ToString(), "\n");
+    }
+  } else {
+    StrAppend(&out, indentation, " uses are not initialized yet.\n");
   }
   StrAppend(&out, indentation, " from instruction:", instruction()->ToString(),
             "\n");
