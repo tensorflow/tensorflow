@@ -55,6 +55,10 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
+#ifdef PLATFORM_GOOGLE
+#include "tsl/concurrency/ref_count.h"
+#endif
+
 #if XLA_ENABLE_XCCL
 #include "xla/service/gpu/nccl_utils.h"
 #endif  // XLA_ENABLE_XCCL
@@ -867,6 +871,16 @@ absl::Status AllReduceCmd::Record(const RecordParams& params,
       LockNcclComm(*params.nccl_params, config_.replica_groups,
                    config_.group_mode, config_.op_id, /*stream_id=*/0,
                    /*enable_clique_optimization=*/true));
+
+#ifdef PLATFORM_GOOGLE
+  // TODO: Remove once persistent allocator upstreamed.
+  auto allocator = tsl::MakeRef<NcclPersistentPlanAllocator>(
+      params.buffer_allocations->device_ordinal(),
+      params.buffer_allocations->memory_allocator(), params.stream);
+
+  ScopedNcclPersistentPlanAllocator scoped_allocator(
+      &comm, allocator->nccl_allocator());
+#endif
 
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,
