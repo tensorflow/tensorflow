@@ -209,11 +209,11 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
     const QuantizationConfig& quantization_config,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases) {
-  std::unique_ptr<MLIRContext> ctx = CreateMlirContextForQuantization();
+    const absl::flat_hash_map<std::string, std::string>& function_aliases,
+    MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND) {
   TF_ASSIGN_OR_RETURN(
       ImportedMlirModuleOp imported_module,
-      SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, *ctx));
+      SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, ctx));
   auto [module_op, saved_model_bundle] = std::move(imported_module);
 
   const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
@@ -229,14 +229,13 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/PreCalibrationComponent::kName,
       /*is_inliner_run=*/true, /*noinline_functions=*/aliased_function_names,
-      module_op, ctx.get(),
+      module_op, &ctx,
       saved_model_bundle == nullptr ? nullptr
                                     : saved_model_bundle->GetSession(),
       /*run_tf_to_stablehlo=*/true, /*deserialize_xla_call_module=*/false));
 
-  // Use StableHLO Quantizer option if opset is specified.
   PreCalibrationComponent pre_calibration_component(
-      ctx.get(), GetDefaultCalibrationOptions());
+      &ctx, GetDefaultCalibrationOptions());
   TF_ASSIGN_OR_RETURN(module_op, pre_calibration_component.Run(
                                      module_op, QuantizationConfig()));
 
@@ -251,7 +250,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
       absl::StrCat(PreCalibrationComponent::kName, kExportStepSuffix)};
 
   TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
-                      RunExportPasses(export_opts, *ctx, module_op));
+                      RunExportPasses(export_opts, ctx, module_op));
 
   return ConvertMlirModuleToExportedModel(
       module_op, checkpoint_dir, updated_function_aliases,
@@ -263,12 +262,11 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
     const QuantizationConfig& quantization_config,
-    const absl::flat_hash_map<std::string, std::string>& function_aliases) {
-  // Convert the SavedModelBundle to an MLIR module.
-  std::unique_ptr<MLIRContext> ctx = CreateMlirContextForQuantization();
+    const absl::flat_hash_map<std::string, std::string>& function_aliases,
+    MLIRContext& ctx ABSL_ATTRIBUTE_LIFETIME_BOUND) {
   TF_ASSIGN_OR_RETURN(
       ImportedMlirModuleOp imported_module,
-      SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, *ctx));
+      SavedModelToMlirModuleOp(saved_model_path, tags, signature_keys, ctx));
   auto [module_op, saved_model_bundle] = std::move(imported_module);
 
   const absl::flat_hash_map<std::string, std::string> updated_function_aliases =
@@ -287,12 +285,12 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
   TF_RETURN_IF_ERROR(PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/PostCalibrationComponent::kName,
       /*is_inliner_run=*/false, /*noinline_functions=*/aliased_function_names,
-      module_op, ctx.get(),
+      module_op, &ctx,
       saved_model_bundle == nullptr ? nullptr
                                     : saved_model_bundle->GetSession(),
       /*run_tf_to_stablehlo=*/false, /*deserialize_xla_call_module=*/true));
 
-  PostCalibrationComponent post_calibration_component(ctx.get());
+  PostCalibrationComponent post_calibration_component(&ctx);
   TF_ASSIGN_OR_RETURN(module_op, post_calibration_component.Run(
                                      module_op, quantization_config));
 
@@ -304,7 +302,7 @@ absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
       absl::StrCat(PostCalibrationComponent::kName, kExportStepSuffix)};
 
   TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
-                      RunExportPasses(export_opts, *ctx, module_op));
+                      RunExportPasses(export_opts, ctx, module_op));
 
   return ConvertMlirModuleToExportedModel(
       module_op, checkpoint_dir, updated_function_aliases,
@@ -328,10 +326,11 @@ absl::Status QuantizeStaticRangePtq(
   tags.insert(quantization_config.tf_saved_model().tags().begin(),
               quantization_config.tf_saved_model().tags().end());
 
-  TF_ASSIGN_OR_RETURN(
-      ExportedModel exported_model,
-      QuantizePtqModelPreCalibration(src_saved_model_path, signature_keys, tags,
-                                     quantization_config, function_aliases));
+  std::unique_ptr<MLIRContext> ctx = CreateMlirContextForQuantization();
+  TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
+                      QuantizePtqModelPreCalibration(
+                          src_saved_model_path, signature_keys, tags,
+                          quantization_config, function_aliases, *ctx));
 
   AssignIdsToCustomAggregatorOps(*exported_model.mutable_graph_def());
 
@@ -380,9 +379,9 @@ absl::Status QuantizeStaticRangePtq(
 
   TF_ASSIGN_OR_RETURN(
       const ExportedModel post_calibrated_exported_model,
-      QuantizePtqModelPostCalibration(*calibrated_saved_model_path,
-                                      signature_keys, tags, quantization_config,
-                                      function_aliases_after_calibration));
+      QuantizePtqModelPostCalibration(
+          *calibrated_saved_model_path, signature_keys, tags,
+          quantization_config, function_aliases_after_calibration, *ctx));
 
   // Remove the `tpu` tag for exporting because the output quantized model is
   // essentially a CPU model.
