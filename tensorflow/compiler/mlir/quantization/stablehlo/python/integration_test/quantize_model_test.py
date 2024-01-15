@@ -131,6 +131,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'same_scale_op': [
               'concatenate',
               'gather',
+              'max_pool',
               'pad',
               'reshape',
               'select',

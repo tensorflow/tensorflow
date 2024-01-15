@@ -2038,3 +2038,23 @@ func.func @get_dimension_size(
       tensor<?x4x!quant.uniform<i8:f32, 0.13170163023705575:-1>>) -> tensor<i32>
   return %0 : tensor<i32>
 }
+
+// -----
+
+// CHECK-LABEL: reduce_window
+func.func @reduce_window(
+    %arg0: tensor<2x3x10x3x!quant.uniform<i8:f32, 3.000000e-01:-49>>,
+    %arg1: tensor<!quant.uniform<i8:f32, 3.000000e-01:-49>>
+  ) -> tensor<2x3x10x3x!quant.uniform<i8:f32, 3.000000e-01:-49>> {
+  // CHECK: mhlo.reduce_window
+  // CHECK: %[[ARG2:.*]]: tensor<i8>, %[[ARG3:.*]]: tensor<i8>
+  // CHECK: %[[MAX:.*]] = mhlo.maximum %[[ARG2]], %[[ARG3]] : tensor<i8>
+  // CHECK: mhlo.return %[[MAX]] : tensor<i8>
+  // CHECK: (tensor<2x3x10x3xi8>, tensor<i8>) -> tensor<2x3x10x3xi8>
+  %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<!quant.uniform<i8:f32, 3.000000e-01:-49>>, %arg3: tensor<!quant.uniform<i8:f32, 3.000000e-01:-49>>):
+    %1 = mhlo.maximum %arg2, %arg3 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-49>>
+    mhlo.return %1 : tensor<!quant.uniform<i8:f32, 3.000000e-01:-49>>
+  }) {padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>} : (tensor<2x3x10x3x!quant.uniform<i8:f32, 3.000000e-01:-49>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:-49>>) -> tensor<2x3x10x3x!quant.uniform<i8:f32, 3.000000e-01:-49>>
+  return %0 : tensor<2x3x10x3x!quant.uniform<i8:f32, 3.000000e-01:-49>>
+}

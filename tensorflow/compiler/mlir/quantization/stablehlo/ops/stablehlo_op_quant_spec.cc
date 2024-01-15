@@ -71,8 +71,9 @@ std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op) {
   if (llvm::isa<mlir::stablehlo::BroadcastInDimOp,
                 mlir::stablehlo::ConcatenateOp, mlir::stablehlo::ConvertOp,
                 mlir::stablehlo::GatherOp, mlir::stablehlo::PadOp,
-                mlir::stablehlo::ReshapeOp, mlir::stablehlo::SelectOp,
-                mlir::stablehlo::SliceOp, mlir::stablehlo::TransposeOp>(op)) {
+                mlir::stablehlo::ReduceWindowOp, mlir::stablehlo::ReshapeOp,
+                mlir::stablehlo::SelectOp, mlir::stablehlo::SliceOp,
+                mlir::stablehlo::TransposeOp>(op)) {
     scale_spec->has_same_scale_requirement = true;
   }
   return scale_spec;

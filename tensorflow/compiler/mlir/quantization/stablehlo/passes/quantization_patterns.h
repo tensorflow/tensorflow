@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -53,6 +54,14 @@ namespace mlir::quant::stablehlo {
 // Checks if an op is quantizable in StableHLO quantizer. Argument op is not
 // necessarily a StableHLO op.
 bool IsOpQuantizableStableHlo(Operation* op);
+
+// Checks whether an op is connnected with a quantized composite function. If
+// not, the same-scale op will not be quantized. This decision is based on the
+// current assumption that the performance gain of the same-scale op itself
+// could not beat the overhead of the quantize and dequantize routines need to
+// be added around that op. When the assumption changes, this policy might
+// change as well.
+bool IsConnectedWithQuantizedCompsiteFunction(Operation* same_scale_op);
 
 // A base rewrite pattern which matches any N-in-M-out operations with
 // quantization parameters propagated to at least one of its operands. The
@@ -151,6 +160,11 @@ class StableHloQuantizationPattern : public RewritePattern {
       if (GetStableHloQuantScaleSpec(quantizing_op)
               ->has_same_scale_requirement &&
           !IsConnectedWithQuantizedCompsiteFunction(quantizing_op)) {
+        return failure();
+      }
+
+      // Ops with regions will be quantized in a separate pattern.
+      if (llvm::isa<mlir::stablehlo::ReduceWindowOp>(quantizing_op)) {
         return failure();
       }
 
@@ -261,104 +275,6 @@ class StableHloQuantizationPattern : public RewritePattern {
     return success();
   }
 
-  // Checks whether the operation is connnected with a quantized composite
-  // function. If not, the same-scale op will not be quantized. This decision is
-  // based on the current assumption that the performance gain of the same-scale
-  // op itself could not beat the overhead of the quantize and dequantize
-  // routines need to be added around that op. When the assumption changes,
-  // this policy might change as well.
-  bool IsConnectedWithQuantizedCompsiteFunction(
-      Operation* same_scale_op) const {
-    for (const auto& operand : same_scale_op->getOperands()) {
-      auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
-          operand.getDefiningOp());
-      if (!dq_op) continue;
-
-      Operation* preceding_op = dq_op.getArg().getDefiningOp();
-      if (!preceding_op) continue;
-
-      // Check whether the preceding op is a quantized composite function.
-      if (llvm::isa<func::CallOp>(preceding_op)) {
-        auto call_op = llvm::cast<func::CallOp>(preceding_op);
-        if (!IsQuantizedCompositeFunction(call_op)) continue;
-        return true;
-      }
-
-      // Check whether the preceding op is a quantized same-scale op.
-      if (GetStableHloQuantScaleSpec(preceding_op)
-              ->has_same_scale_requirement) {
-        for (auto result : preceding_op->getResults()) {
-          auto element_type = getElementTypeOrSelf(result.getType());
-          if (element_type.isa<UniformQuantizedType>()) {
-            return true;
-          }
-        }
-      }
-    }
-
-    for (const auto& result : same_scale_op->getResults()) {
-      // If the user is the Quantize op, it must be the only user.
-      if (!result.hasOneUse() ||
-          !llvm::isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
-        continue;
-      }
-
-      auto q_op = llvm::cast<quantfork::QuantizeCastOp>(*result.user_begin());
-      for (auto following_op : q_op->getUsers()) {
-        // Check whether the following op is a quantized composite function.
-        if (llvm::isa<func::CallOp>(following_op)) {
-          auto call_op = llvm::cast<func::CallOp>(following_op);
-          if (!IsQuantizedCompositeFunction(call_op)) continue;
-          return true;
-        }
-
-        // Check whether the following op is a quantized same-scale op.
-        if (GetStableHloQuantScaleSpec(following_op)
-                ->has_same_scale_requirement) {
-          for (auto operand : following_op->getOperands()) {
-            auto element_type = getElementTypeOrSelf(operand.getType());
-            if (element_type.isa<UniformQuantizedType>()) {
-              return true;
-            }
-          }
-        }
-      }
-    }
-
-    return false;
-  }
-
-  // Checks if op calls a composite function and all the inputs and outputs are
-  // quantized.
-  bool IsQuantizedCompositeFunction(func::CallOp call_op) const {
-    if (!call_op.getCallee().startswith("quantized_")) {
-      return false;
-    }
-
-    bool has_quantized_types = false;
-    for (Value operand : call_op.getOperands()) {
-      if (auto type = operand.getType().dyn_cast<TensorType>()) {
-        if (type.getElementType().isa<FloatType>()) {
-          return false;
-        }
-        if (type.getElementType().isa<UniformQuantizedType>()) {
-          has_quantized_types = true;
-        }
-      }
-    }
-    for (Value result : call_op.getResults()) {
-      if (auto type = result.getType().dyn_cast<TensorType>()) {
-        if (type.getElementType().isa<FloatType>()) {
-          return false;
-        }
-        if (type.getElementType().isa<UniformQuantizedType>()) {
-          has_quantized_types = true;
-        }
-      }
-    }
-    return has_quantized_types;
-  }
-
   QuantPassSpec quant_params_;
 };
 
@@ -367,6 +283,10 @@ class StableHloQuantizationPattern : public RewritePattern {
 void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
                                     RewritePatternSet& patterns);
 
+// Populates pattern for quantization of ops with regions such as
+// stablehlo.reduce_window op.
+void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
+                                         RewritePatternSet& patterns);
 }  // namespace mlir::quant::stablehlo
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERNS_H_
