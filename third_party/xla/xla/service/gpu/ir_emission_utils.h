@@ -246,6 +246,9 @@ std::string GetIrNameFromLoc(mlir::Location loc);
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
 
+// Whether the module's target is a SPIR.
+bool IsSPIR(const llvm::Module* module);
+
 // This class stores either a non-owning reference or owns data that represents
 // a dense array in XLA format. It is used for intermediate storage during IR
 // constant emission.

@@ -287,6 +287,29 @@ llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
       intrinsic, {b->getInt32(-1), value, offset, b->getInt32(WarpSize() - 1)});
 }
 
+// Helper function to emit call to SPIR shfl_down intrinsic.
+llvm::Value* EmitSPIRShflDown(llvm::Value* value, llvm::Value* offset,
+                              llvm::IRBuilder<>* b) {
+  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
+  if (value->getType()->isFloatTy()) {
+    return EmitDeviceFunctionCall(
+        "_Z34__spirv_GroupNonUniformShuffleDownffj",
+        {b->getInt32(3), value, offset}, {U32, F32, U32}, F32,
+        llvm::AttrBuilder(b->getContext())
+            .addAttribute(llvm::Attribute::NoUnwind)
+            .addAttribute(llvm::Attribute::Convergent),
+        b);
+  } else {
+    return EmitDeviceFunctionCall(
+        "_Z34__spirv_GroupNonUniformShuffleDownjjj",
+        {b->getInt32(3), value, offset}, {U32, U32, U32}, U32,
+        llvm::AttrBuilder(b->getContext())
+            .addAttribute(llvm::Attribute::NoUnwind)
+            .addAttribute(llvm::Attribute::Convergent),
+        b);
+  }
+}
+
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
@@ -299,6 +322,8 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       return EmitNVPTXShflDown(value, offset, builder);
     } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
       return EmitAMDGPUShflDown(value, offset, builder);
+    } else if (target_triple.isSPIR()) {
+      return EmitSPIRShflDown(value, offset, builder);
     } else {
       LOG(FATAL) << "Invalid triple " << target_triple.str();
     }
@@ -320,6 +345,9 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
     } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
       insert_val = EmitAMDGPUShflDown(builder->CreateExtractElement(x, i),
                                       offset, builder);
+    } else if (target_triple.isSPIR()) {
+      insert_val = EmitSPIRShflDown(builder->CreateExtractElement(x, i), offset,
+                                    builder);
     } else {
       LOG(FATAL) << "Invalid triple " << target_triple.str();
     }
@@ -1190,6 +1218,10 @@ std::string GetIrNameFromLoc(mlir::Location loc) {
 
 bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
+}
+
+bool IsSPIR(const llvm::Module* module) {
+  return llvm::Triple(module->getTargetTriple()).isSPIR();
 }
 
 absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(

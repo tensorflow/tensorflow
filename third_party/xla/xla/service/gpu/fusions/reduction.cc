@@ -1505,10 +1505,12 @@ absl::Status ReductionFusion::ReductionEmitter::EmitKernel(
       reduction_codegen_info_.GetIndexGroups();
   Shape reduce_operand_shape = reduction_codegen_info_.GetReduceOperandShape();
 
-  llvm::CallInst* raw_block_id_y = gpu::EmitCallToTargetIntrinsic(
+  llvm::Value* raw_block_id_y = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kBlockIdy, {}, {}, builder_);
   llvm_ir::AddRangeMetadata(0, instr_index_groups.size(),
                             llvm::cast<llvm::Instruction>(raw_block_id_y));
+  raw_block_id_y = builder_->CreateZExtOrTrunc(
+      raw_block_id_y, builder_->getInt32Ty(), "raw_block_id_y");
   for (int i = 0; i < instr_index_groups.size(); ++i) {
     TF_RETURN_IF_ERROR(ksl.IfWithStatus(
         absl::StrCat("reduce-group-", i),
