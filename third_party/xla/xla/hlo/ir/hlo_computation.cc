@@ -1182,6 +1182,10 @@ StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     TF_RETURN_IF_ERROR(
         new_instruction->CopyAllControlDepsFrom(old_instruction));
     TF_RETURN_IF_ERROR(old_instruction->DropAllControlDeps());
+  } else if (old_instruction->HasControlDependencies()) {
+    VLOG(10) << "Skipping replacement because old instruction has "
+                "control dependencies";
+    return false;
   }
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
