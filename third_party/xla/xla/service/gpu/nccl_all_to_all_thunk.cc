@@ -25,6 +25,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/shape.h"
@@ -51,6 +54,15 @@ NcclAllToAllConfig GetNcclAllToAllConfig(AllToAllStartOp op) {
   return config;
 }
 
+NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
+  NcclAllToAllConfig config;
+  // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
+  // attribute and it should be removed.
+  config.config = GetNcclCollectiveConfig(instr, std::nullopt);
+  config.has_split_dimension = instr->split_dimension().has_value();
+  return config;
+}
+
 }  // namespace
 
 NcclAllToAllStartThunk::NcclAllToAllStartThunk(
@@ -59,6 +71,16 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
     : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
                           op.getIsSync()),
       config_(GetNcclAllToAllConfig(op)),
+      buffers_(std::move(buffers)) {
+  CHECK_EQ(config_.config.operand_count, buffers_.size());
+}
+
+NcclAllToAllStartThunk::NcclAllToAllStartThunk(
+    ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
+    std::vector<NcclCollectiveThunk::Buffer> buffers)
+    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
+                          IsSyncCollective(instr)),
+      config_(GetNcclAllToAllConfig(instr)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
@@ -84,9 +106,35 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
                                                   partition_count);
 }
 
+/*static*/ absl::Status NcclAllToAllStartThunk::CheckImplementable(
+    const HloAllToAllInstruction* instr, int64_t replica_count,
+    int64_t partition_count) {
+  auto status = [&instr]() -> absl::Status {
+    TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+    std::optional<uint64_t> split_dim = instr->split_dimension();
+    for (HloInstruction* operand : instr->operands()) {
+      Shape shape = operand->shape();
+      TF_RETURN_IF_ERROR(IsValidOperand(shape, Thunk::kNcclAllToAll));
+      if (split_dim &&
+          !ShapeUtil::IsEffectivelyMostMajorDimension(shape, *split_dim)) {
+        return absl::UnimplementedError(absl::Substitute(
+            "all-to-all split dim $0 is not the most major in input shape $1",
+            *split_dim, shape.ToString(/*print_layout=*/true)));
+      }
+    }
+    return absl::OkStatus();
+  };
+  return AddOpDescription<NcclAllToAllStartThunk>(
+      status(), instr, replica_count, partition_count);
+}
+
 /*static*/ CollectiveOpGroupMode NcclAllToAllStartThunk::GetGroupMode(
     AllToAllStartOp op) {
   return GetNcclAllToAllConfig(op).config.group_mode;
+}
+/*static*/ CollectiveOpGroupMode NcclAllToAllStartThunk::GetGroupMode(
+    const HloAllToAllInstruction* instr) {
+  return GetNcclAllToAllConfig(instr).config.group_mode;
 }
 
 absl::Status NcclAllToAllStartThunk::RunNcclCollective(
