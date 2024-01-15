@@ -1922,15 +1922,6 @@ class HloInstruction {
   bool is_default_config() const { return is_default_config_; }
   void set_default_config() { is_default_config_ = true; }
 
-  void set_operation_queue_id(int64_t operation_queue_id) {
-    operation_queue_id_ = operation_queue_id;
-  }
-
-  std::optional<int64_t> operation_queue_id() const {
-    if (operation_queue_id_ == -1) return std::nullopt;
-    return operation_queue_id_;
-  }
-
   // Returns a string representation of a proto in the format used by
   // raw_backend_config_string.
   //

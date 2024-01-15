@@ -200,7 +200,7 @@ TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedByDone) {
       %a = s32[4] parameter(0)
       %start = s32[4]{0} all-reduce-start(s32[4]{0} %a),
         replica_groups={{0,1}}, to_apply=%add,
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
       ROOT %done = s32[4]{0} all-reduce-done(s32[4]{0} %start)
     })";
 
@@ -234,7 +234,7 @@ TEST_F(CommandBufferSchedulingTest, AllGatherStartFollowedByDone) {
 
       %start = (s32[2]{0}, s32[4]{0}) all-gather-start(%a),
         channel_id=555, replica_groups={{0,1}}, dimensions={0},
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
 
       ROOT %done = s32[4]{0} all-gather-done(%start)
     })";
@@ -275,7 +275,7 @@ TEST_F(CommandBufferSchedulingTest, ReduceScatterStartFollowedByDone) {
 
       %start = ((s32[4]{0}), s32[2]{0}) reduce-scatter-start(%a),
         channel_id=555, replica_groups={{0,1}}, dimensions={0}, to_apply=add,
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
 
       ROOT %done = s32[2]{0} reduce-scatter-done(%start)
     })";

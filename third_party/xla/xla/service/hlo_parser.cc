@@ -1322,10 +1322,6 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   attrs["backend_config"] = {/*required=*/false, AttrTy::kStringOrJsonDict,
                              &backend_config};
 
-  optional<int64_t> operation_queue_id;
-  attrs["operation_queue_id"] = {/*required=*/false, AttrTy::kInt64,
-                                 &operation_queue_id};
-
   std::optional<Shape> maybe_shape;
   if (parse_shape) {
     maybe_shape = shape;
@@ -1396,9 +1392,6 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   }
   if (statistics_viz) {
     instruction->set_statistics_viz(*statistics_viz);
-  }
-  if (operation_queue_id) {
-    instruction->set_operation_queue_id(*operation_queue_id);
   }
 
   return AddInstruction(name, instruction, name_loc);

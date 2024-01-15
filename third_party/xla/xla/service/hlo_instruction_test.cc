@@ -2574,39 +2574,6 @@ TEST_F(HloInstructionTest, PrintCycle) {
   ASSERT_IS_OK(send_done->DropAllControlDeps());
 }
 
-TEST_F(HloInstructionTest, SetOperationQueueId) {
-  std::unique_ptr<HloComputation> main_computation;
-  HloComputation::Builder main_builder("Entry");
-  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
-  HloInstruction* param0 = main_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-  HloInstruction* param1 = main_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-
-  HloInstruction* add =
-      main_builder.AddInstruction(HloInstruction::CreateBinary(
-          scalar_shape, HloOpcode::kAdd, param0, param1));
-  add->set_operation_queue_id(3);
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(main_builder.Build());
-
-  auto options = HloPrintOptions().set_print_metadata(false);
-  EXPECT_EQ(module->entry_computation()->root_instruction()->ToString(options),
-            "%add = f32[] add(f32[] %p0, f32[] %p1), operation_queue_id=3");
-}
-
-TEST_F(HloInstructionTest, ParseOperationQueueId) {
-  constexpr char kHloString[] = R"(
-  ENTRY main {
-    c0 = f32[] constant(0)
-    ROOT add0 = f32[] add(c0, c0), operation_queue_id=2
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  EXPECT_EQ(
-      module->entry_computation()->root_instruction()->operation_queue_id(), 2);
-}
-
 TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
   auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
