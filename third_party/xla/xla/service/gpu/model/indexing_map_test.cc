@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -130,6 +131,32 @@ TEST_F(IndexingMapTest, SimplifyDivsAndModsWithReverse) {
 
   EXPECT_THAT(printer_.ToString(simplifier.Simplify(map)),
               HasSubstr("(d0, d1) -> (d0, d1)"));
+}
+
+TEST_F(IndexingMapTest, AffineExprSignExtraction) {
+  AffineExpr d0, d1, d2, d3;
+  bindDims(&mlir_context_, d0, d1, d2, d3);
+  IndexingMapSimplifier simplifier(&mlir_context_);
+  simplifier.SetInclusiveBounds(d0, 0, 9);
+  simplifier.SetInclusiveBounds(d1, -10, -1);
+  simplifier.SetInclusiveBounds(d2, -1, 1);
+  simplifier.SetInclusiveBounds(d3, 0, 0);
+
+  // d0 is always positive.
+  EXPECT_TRUE(simplifier.IsAlwaysPositiveOrZero(d0));
+  EXPECT_FALSE(simplifier.IsAlwaysNegativeOrZero(d0));
+
+  // d1 is always negative.
+  EXPECT_FALSE(simplifier.IsAlwaysPositiveOrZero(d1));
+  EXPECT_TRUE(simplifier.IsAlwaysNegativeOrZero(d1));
+
+  // d2 is sometimes positive and sometimes negative.
+  EXPECT_FALSE(simplifier.IsAlwaysPositiveOrZero(d2));
+  EXPECT_FALSE(simplifier.IsAlwaysNegativeOrZero(d2));
+
+  // d3 is always 0.
+  EXPECT_TRUE(simplifier.IsAlwaysPositiveOrZero(d3));
+  EXPECT_TRUE(simplifier.IsAlwaysNegativeOrZero(d3));
 }
 
 // TODO(b/313840171): Simplify `(d1 * 4 + d2) floordiv 8` to `d1 floordiv 2`.

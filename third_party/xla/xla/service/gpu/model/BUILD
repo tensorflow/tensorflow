@@ -349,6 +349,7 @@ cc_library(
         ":affine_map_printer",
         ":indexing_map",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

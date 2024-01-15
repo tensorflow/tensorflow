@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_TILE_ANALYSIS_H_
 #define XLA_SERVICE_GPU_MODEL_TILE_ANALYSIS_H_
 
-#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -70,7 +69,7 @@ class SymbolicTile {
   mlir::AffineMap stride_map_;
 
   SymbolicTile(mlir::AffineMap offset_map, mlir::AffineMap size_map,
-               mlir::AffineMap stride_map, int64_t num_tiled_dims)
+               mlir::AffineMap stride_map)
       : offset_map_(offset_map), size_map_(size_map), stride_map_(stride_map) {}
 };
 
