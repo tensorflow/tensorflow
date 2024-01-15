@@ -32,7 +32,10 @@ struct Result {
   int64_t run_time_ns;
   int64_t scratch_bytes;
 
-  bool operator==(const Result& other) const = default;
+  bool operator==(const Result& other) const {
+    return other.run_time_ns == run_time_ns &&
+           other.scratch_bytes == scratch_bytes;
+  };
 
   explicit operator AutotuneResult() const {
     AutotuneResult result;
