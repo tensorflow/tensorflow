@@ -929,7 +929,16 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     // Match Add.
     DenseElementsAttr added_value;
     Value constant_val = add_op.getRhs();
-    if (!matchPattern(constant_val, m_Constant(&added_value))) return failure();
+    if (!matchPattern(constant_val, m_Constant(&added_value))) {
+      // The constant may be preceded by QDQs in models with QDQ format, so we
+      // should set it to the real constant.
+      auto dq = dyn_cast_or_null<DequantizeOp>(constant_val.getDefiningOp());
+      if (!dq) return failure();
+      auto q = dyn_cast_or_null<QuantizeOp>(dq.getInput().getDefiningOp());
+      if (!q || !matchPattern(q.getInput(), m_Constant(&added_value))) {
+        return failure();
+      }
+    }
 
     // Match Fully Connected.
     auto fc_op = dyn_cast_or_null<TFL::FullyConnectedOp>(
