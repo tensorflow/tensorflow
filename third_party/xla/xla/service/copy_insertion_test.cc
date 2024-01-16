@@ -3170,6 +3170,113 @@ ENTRY TestComputation {
   CHECK_EQ(tuple6->opcode(), HloOpcode::kParameter);
 }
 
+TEST_F(CopyInsertionTest, ConditionalWithMultiOutputFusion) {
+  const std::string& hlo_string = R"(
+HloModule TestModule
+
+branch_0 {
+  param_0 = f64[] parameter(0)
+  negate.2 = f64[] negate(f64[] param_0)
+  ROOT tuple = (f64[], f64[]) tuple(f64[] negate.2, f64[] negate.2)
+}
+
+fused_computation {
+  param_0.1 = f64[] parameter(0)
+  abs.2 = f64[] abs(f64[] param_0.1)
+  negate.1 = f64[] negate(f64[] param_0.1)
+  ROOT %tuple.2 = (f64[], f64[]) tuple(f64[] negate.1, f64[] abs.2)
+}
+
+branch_1 {
+  param_0.2 = f64[] parameter(0)
+  ROOT fusion = (f64[], f64[]) fusion(f64[] param_0.2), kind=kLoop, calls=%fused_computation
+}
+
+ENTRY main {
+  pred.0 = s32[] parameter(0)
+  param_1 = f64[] parameter(1)
+  param_2 = f64[] parameter(2)
+  ROOT conditional.0 = (f64[], f64[]) conditional(s32[] pred.0, f64[] param_1, f64[] param_2), branch_computations={%branch_0, %branch_1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
+
+  // `branch_0` returns the same result of `negate.2` twice. Normally the result
+  // would be put into one buffer and tuple would return two pointers to the
+  // same buffer.
+  // `branch_1` returns two results of multi-output fusion that should be put
+  // into different buffers.
+  // One copy is inserted in `branch_0` to ensure that result are put into two
+  // different buffers.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("branch_0")), 1);
+
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("branch_1")), 0);
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("main")), 0);
+}
+
+TEST_F(CopyInsertionTest, ConditionalWithVariadicReduce) {
+  const std::string& hlo_string = R"(
+HloModule TestModule
+
+branch_0 {
+  empty_tuple.0 = () parameter(0)
+  c_0 = f64[] constant(0)
+  ROOT tuple.3 = (f64[], f64[]) tuple(c_0, c_0)
+}
+
+fused_computation {
+  param_0.1 = f64[] parameter(0)
+  abs.2 = f64[] abs(f64[] param_0.1)
+  negate.1 = f64[] negate(f64[] param_0.1)
+  ROOT %tuple.2 = (f64[], f64[]) tuple(f64[] negate.1, f64[] abs.2)
+}
+
+reduce_region {
+  param_0.0 = f64[] parameter(0)
+  param_2.0 = f64[] parameter(2)
+  add.1.0 = f64[] add(param_0.0, param_2.0)
+  param_1.0 = f64[] parameter(1)
+  param_3.0 = f64[] parameter(3)
+  multiply.1.0 = f64[] multiply(param_1.0, param_3.0)
+  ROOT tuple.0.0 = (f64[], f64[]) tuple(add.1.0, multiply.1.0)
+}
+
+branch_1 {
+  c_0 = f64[] constant(0)
+  param_0.1 = f64[128]{0} parameter(0)
+  ROOT reduce = (f64[], f64[]) reduce(param_0.1, param_0.1, c_0, c_0), dimensions={0}, to_apply=reduce_region
+}
+
+ENTRY main {
+  pred.0 = s32[] parameter(0)
+  empty_tuple = () tuple()
+  param_2 = f64[128] parameter(1), sharding={replicated}
+  ROOT conditional.0 = (f64[], f64[]) conditional(s32[] pred.0, () empty_tuple, f64[128] param_2), branch_computations={%branch_0, %branch_1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(3) << module->ToString();
+
+  // `branch_0` returns the same constant twice. Without copies it would return
+  // pointers to read-only buffer for constant.
+  // `branch_1` returns two results of a that should be put into different
+  // buffers.
+  // `conditional` needs to buffers for results, so the constant in `branch_0`
+  // should be copied twice.
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("branch_0")), 2);
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("branch_1")), 0);
+  EXPECT_EQ(CountCopies(*module->GetComputationWithName("main")), 0);
+}
+
 TEST_F(CopyInsertionTest, RootInstructionNotLast) {
   // This is a test for b/189219227. When the root instruction is scheduled not
   // as the last instruction, it still lives out. So, we make sure that the copy

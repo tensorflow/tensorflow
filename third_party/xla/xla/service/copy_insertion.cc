@@ -781,6 +781,57 @@ class ComputeRelativeLocation {
       return Relation(order, false);
     }
 
+    // Special case for conditional instruction when in one branch two results
+    // can be put in one buffers and another branch returns two results from a
+    // multi-output instruction, e.g. fusion or variadic reduction.
+    //
+    //  branch_0 {
+    //    exp = f64[] exp(...)
+    //    ROOT tuple = (f64[], f64[]) tuple(exp, exp)
+    //  }
+    //
+    //  fused_computation {
+    //    abs = f64[] abs(...)
+    //    negate = f64[] negate(...)
+    //    ROOT tuple = (f64[], f64[]) tuple(abs, negate)
+    //  }
+    //
+    //  branch_1 {
+    //    ROOT fusion = (f64[], f64[]) fusion(...), calls=%fused_computation
+    //  }
+    //
+    //  ENTRY main {
+    //    ROOT root = (f64[], f64[]) conditional(...),
+    //    branch_computations={%branch_0, %branch_1}
+    //  }
+    //
+    // `branch_0` can use one buffer for both result. `branch_1` must use two
+    // different buffers.
+    //
+    // During live range analysis of results of `branch_0` this function will be
+    // called when entry1 and entry2 are different outputs on `fusion` in
+    // `branch_1`. `fusion` defines two buffers, but `value_definition` in
+    // LiveRangeRegions::InstructionInfo does not track output index. The
+    // analysis will say that they are not interfering and assign the same
+    // buffer to both. This will lead to incorrect numerical results during
+    // runtime.
+    //
+    // This check makes sure that outputs of multi-output instructions are
+    // always interfering and can not be combined. It can be a false positive
+    // when entry1 and entry2 correspond to the same output, but we prefer that
+    // over numerical issues.
+    //
+    // A proper solution would be to track output index in
+    // LiveRangeRegions::InstructionInfo.
+    if (use->parent() == def->parent() &&
+        def->parent()->IsConditionalBranchComputation() &&
+        def == entry2.first && def->shape().IsTuple()) {
+      VLOG(3) << "Setting interception for multi-output instruction inside "
+                 "conditional branch: "
+              << def->name();
+      return Relation(order, true);
+    }
+
     if (Relation::UseImpliesInterception(order)) {
       auto order2 = ComputeRuntimeOrdering(entry2.first, def);
       if (Relation::DefinitionImpliesInterception(order2)) {
