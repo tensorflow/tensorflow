@@ -118,7 +118,22 @@ bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
 
 static bool IsCommand(const HloCustomCallInstruction* hlo,
                       const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo);
+  if (config.contains(DebugOptions::CUBLAS) && IsLegacyCublasMatmul(*hlo)) {
+    return true;
+  }
+
+  if (config.contains(DebugOptions::CUSTOM_CALL)) {
+    if (hlo->custom_call_target() == "cu_threefry2x32") {
+      if (hlo->operand_count() == 4) {
+        return true;
+      }
+      // This version of cu_threefy2x32 requires synchronization, which is not
+      // supported by command buffers.
+      DCHECK_EQ(hlo->operand_count(), 5);
+    }
+  }
+
+  return false;
 }
 
 static bool IsCommand(const HloInstruction* hlo,
@@ -565,7 +580,8 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
   static constexpr auto kRequireTracing = {DebugOptions::CUBLAS,
-                                           DebugOptions::CUDNN};
+                                           DebugOptions::CUDNN,
+                                           DebugOptions::CUSTOM_CALL};
 
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {

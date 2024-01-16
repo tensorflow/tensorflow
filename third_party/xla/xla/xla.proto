@@ -470,6 +470,7 @@ message DebugOptions {
     CUDNN = 3;
     COLLECTIVES = 4;
     CONDITIONALS = 5;
+    CUSTOM_CALL = 6;
   }
 
   // Determine the types of commands that are recorded into command buffers.
