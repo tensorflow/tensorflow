@@ -149,11 +149,11 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
           // the same for both shardings and sometimes there's padding making
           // one of the two limits bigger than the other, but it shouldn't be
           // counted.
-          const bool is_last_tile =
-              subsharding_offset_j + potential_base_tile[j] >=
+          const bool with_paddings =
+              subsharding_offset_j + potential_base_tile[j] >
               potential_sharded_shape.dimensions(j);
-          if (!is_last_tile && subsharding_offset_j + potential_base_tile[j] >
-                                   sharding_offset[j] + base_tile[j]) {
+          if (!with_paddings && subsharding_offset_j + potential_base_tile[j] >
+                                    sharding_offset[j] + base_tile[j]) {
             return InternalError("");
           }
         }
