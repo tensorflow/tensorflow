@@ -2,7 +2,6 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_tsl//tsl:tsl.bzl", "if_nccl")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
@@ -43,6 +42,7 @@ cc_library(
         ":gpu_helpers",
         ":gpu_metrics",
         ":gpu_topology",
+        ":nccl_id_store",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
@@ -115,11 +115,9 @@ cc_library(
     ] + if_cuda_or_rocm([
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
-        ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
     ]) + if_rocm([
-        ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -160,15 +158,10 @@ xla_cc_test(
     ],
 )
 
-# We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
-# but Bazel does not allow nested selects. We can work around the problem using
-# an intermediate library that has the conditional NCCL pieces that is only
-# itself included as a dependency if CUDA is enabled.
 cc_library(
-    name = "nccl_id_store_cuda",
+    name = "nccl_id_store",
     srcs = ["nccl_id_store.cc"],
     hdrs = ["nccl_id_store.h"],
-    defines = if_nccl(["NCCL_ENABLED=1"]),
     visibility = ["//visibility:public"],
     deps = [
         "//xla:status_macros",
@@ -178,6 +171,7 @@ cc_library(
         "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:global_device_id",
+        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_clique_key",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -188,34 +182,7 @@ cc_library(
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_nccl(["@local_config_nccl//:nccl"]),
-)
-
-cc_library(
-    name = "nccl_id_store_rocm",
-    srcs = ["nccl_id_store.cc"],
-    hdrs = ["nccl_id_store.h"],
-    defines = if_nccl(["NCCL_ENABLED=1"]),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:util",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/distributed:client",
-        "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/service:global_device_id",
-        "//xla/service/gpu:nccl_clique_key",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_nccl(["@local_config_nccl//:nccl"]),
+    ],
 )
 
 xla_cc_test(
@@ -258,6 +225,7 @@ cc_library(
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//visibility:public"],
     deps = [
+        ":nccl_id_store",
         ":se_gpu_pjrt_client",
         "//xla:status_macros",
         "//xla/client:local_client",
@@ -284,13 +252,11 @@ cc_library(
     ] + if_cuda_or_rocm([
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
-        ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/cuda:cuda_activation_header",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "//xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm([
-        ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
         "//xla/service/gpu:amdgpu_compiler_impl",
     ]),

@@ -20,24 +20,12 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
-
-#ifdef NCCL_ENABLED
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif
-#else
-#include "third_party/nccl/nccl.h"
-#endif
-#endif  // NCCL_ENABLED
 
 namespace xla {
 
@@ -55,16 +43,8 @@ StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
   gpu::NcclCliqueId clique_id;
   int primary_node_id = device_to_node_.at(key.devices()[0]);
   if (node_id_ == primary_node_id) {
-#ifdef NCCL_ENABLED
-    ncclUniqueId id;
-    ncclResult_t r = ncclGetUniqueId(&id);
-    TF_RET_CHECK(r == ncclSuccess);
-    clique_id = gpu::NcclCliqueId(id.internal);
+    TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclApi::GetUniqueId());
     TF_RETURN_IF_ERROR(kv_store_->Set(key.ToString(), clique_id.ToString()));
-#else
-    return absl::FailedPreconditionError(
-        "NCCL support was not built into XLA binary.");
-#endif
   } else {
     TF_ASSIGN_OR_RETURN(std::string id_str,
                         kv_store_->Get(key.ToString(), absl::Minutes(10)));
