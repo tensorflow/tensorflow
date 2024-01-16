@@ -154,6 +154,8 @@ namespace wrap {
   __macro(hipModuleLaunchKernel)                    \
   __macro(hipModuleLoadData)                        \
   __macro(hipModuleUnload)                          \
+  __macro(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor) \
+  __macro(hipModuleOccupancyMaxPotentialBlockSize)  \
   __macro(hipPointerGetAttribute)                   \
   __macro(hipPointerGetAttributes)                  \
   __macro(hipRuntimeGetVersion)                     \

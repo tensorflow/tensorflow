@@ -673,25 +673,23 @@ xla_cc_binary(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor/host:host_platform",
-        "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_module_loader",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Target",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:rocm_rocdl_path",
         "@local_tsl//tsl/util:command_line_flags",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor/cuda:cublas_plugin",
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/stream_executor/rocm:rocm_platform_id",  # build_cleaner: keep
         "//xla/stream_executor/rocm:rocblas_plugin",
         "//xla/stream_executor/rocm:rocm_helpers",
         "//xla/service/gpu:amdgpu_compiler_impl",
-        "@local_tsl//tsl/platform:rocm_rocdl_path",
+        "@local_tsl//tsl/platform:rocm_rocdl_path",  # build_cleaner: keep
     ]),
 )
 

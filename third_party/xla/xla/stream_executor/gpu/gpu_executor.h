@@ -131,13 +131,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   absl::Status Submit(Stream* stream,
                       const CommandBuffer& command_buffer) override;
 
-  // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
                          uint64_t registers_per_thread,
                          uint64_t shared_memory_per_block,
                          const ThreadDim& thread_dims, GpuFunctionHandle func);
 
-  // (supported on CUDA only)
   int CompareOccupancy(int* initial_blocks,
                        const DeviceDescription& device_description,
                        uint64_t registers_per_thread,

@@ -125,8 +125,8 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_gpu_executor",
-    srcs = if_rocm_is_configured(["rocm_gpu_executor.cc"]),
+    name = "rocm_executor",
+    srcs = if_rocm_is_configured(["rocm_executor.cc"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":rocm_diagnostics",
@@ -176,7 +176,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":rocm_driver",
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         ":rocm_runtime",
         "@com_google_absl//absl/base",
@@ -218,7 +218,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":rocblas_if_static",
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor/platform",
@@ -238,7 +238,7 @@ cc_library(
         ":rocblas_if_static",
         ":rocblas_wrapper",
         ":hipblas_lt_header",
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         "@eigen_archive//:eigen3",
         "//xla/stream_executor",
@@ -329,7 +329,7 @@ cc_library(
         ":miopen_if_static",
         ":rocm_diagnostics",
         ":rocm_driver",
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         "@eigen_archive//:eigen3",
         "//xla/stream_executor",
@@ -391,7 +391,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":hipsparse_if_static",
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         "@local_config_rocm//rocm:rocm_headers",
         "//xla/stream_executor/platform",
@@ -423,7 +423,7 @@ cc_library(
     hdrs = if_rocm_is_configured(["rocsolver_wrapper.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         ":rocsolver_if_static",
         "@local_config_rocm//rocm:rocm_headers",
@@ -456,7 +456,7 @@ cc_library(
     hdrs = if_rocm_is_configured(["hipsolver_wrapper.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         ":hipsolver_if_static",
         "@local_config_rocm//rocm:rocm_headers",
@@ -485,7 +485,7 @@ cc_library(
     ]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         ":rocblas_plugin",
         ":hip_blas_utils",
@@ -563,7 +563,7 @@ cc_library(
     hdrs = if_rocm_is_configured(["roctracer_wrapper.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
-        ":rocm_gpu_executor",
+        ":rocm_executor",
         ":rocm_platform_id",
         ":roctracer_if_static",
         "@local_config_rocm//rocm:rocm_headers",

@@ -177,6 +177,12 @@ namespace rocm {
 using MemorySpace = gpu::MemorySpace;
 using ScopedActivateContext = gpu::ScopedActivateContext;
 
+// TODO: this function shall be added to the GpuDriver API as well
+absl::Status OccupancyGetMaxPotentialBlockSize(int* gridSize, int* blockSize,
+                                               hipFunction_t func,
+                                               size_t dynSharedMemPerBlk,
+                                               int blockSizeLimit);
+
 // Returns the current context set in ROCm. This is done by calling ROCm
 // driver (e.g., this value is not our cached view of the current context).
 hipCtx_t CurrentContextOrDie();

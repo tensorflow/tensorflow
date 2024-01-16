@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
+#include "xla/stream_executor/rocm/rocm_driver.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -340,25 +341,6 @@ absl::Status GpuExecutor::Submit(Stream* stream,
   return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
 }
 
-int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
-                                    uint64_t registers_per_thread,
-                                    uint64_t shared_memory_per_block,
-                                    const ThreadDim& thread_dims,
-                                    GpuFunctionHandle func) {
-  LOG(FATAL) << "Feature not supported on ROCM platform (CalculateOccupancy)";
-  return 0;
-}
-
-int GpuExecutor::CompareOccupancy(int* initial_blocks,
-                                  const DeviceDescription& device_description,
-                                  uint64_t registers_per_thread,
-                                  uint64_t shared_memory_per_block,
-                                  const ThreadDim& thread_dims,
-                                  GpuFunctionHandle func) {
-  LOG(FATAL) << "Feature not supported on ROCM platform (CompareOccupancy)";
-  return 0;
-}
-
 absl::Status GpuExecutor::LoadModule(const MultiModuleLoaderSpec& spec,
                                      ModuleHandle* module_handle) {
   // In GpuExecutor we store the pointer to the  HSACO binary  as
@@ -414,7 +396,72 @@ absl::Status GpuExecutor::LoadModuleFromHsaco(const char* hsaco,
 void GpuExecutor::VlogOccupancyInfo(const Kernel& kernel,
                                     const ThreadDim& thread_dims,
                                     const BlockDim& block_dims) {
-  // TODO(ROCm) implement this feature in HIP
+  VLOG(2) << "Computing kernel occupancy for kernel "
+          << kernel.demangled_name();
+  VLOG(2) << "Thread dimensions (" << thread_dims.x << ", " << thread_dims.y
+          << ", " << thread_dims.z << ")";
+
+  auto regs_per_thread = kernel.metadata().registers_per_thread();
+  auto smem_per_block = kernel.metadata().shared_memory_bytes();
+
+  if (!regs_per_thread && !smem_per_block) {
+    return;
+  }
+
+  const DeviceDescription& device_description =
+      kernel.parent()->GetDeviceDescription();
+
+  const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
+  auto hipfunc = rocm_kernel->AsGpuFunctionHandle();
+
+  int blocks_per_sm = CalculateOccupancy(device_description, *regs_per_thread,
+                                         *smem_per_block, thread_dims, hipfunc);
+  VLOG(2) << "Resident blocks per SM is " << blocks_per_sm;
+
+  int suggested_threads =
+      CompareOccupancy(&blocks_per_sm, device_description, *regs_per_thread,
+                       *smem_per_block, thread_dims, hipfunc);
+  if (suggested_threads != 0) {
+    VLOG(2) << "The rocm occupancy calculator recommends using "
+            << suggested_threads
+            << " threads per block to achieve an occupancy of " << blocks_per_sm
+            << " blocks per SM.";
+  }
+}
+
+// Compute and return maximum blocks per core (occupancy) based on the
+// device description, some kernel characteristics and the number of threads per
+// block.  If unable to compute occupancy, zero is returned.
+int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
+                                    uint64_t registers_per_thread,
+                                    uint64_t shared_memory_per_block,
+                                    const ThreadDim& thread_dims,
+                                    GpuFunctionHandle func) {
+  int suggested_blocks = 0;
+  int suggested_threads = 0;
+  (void)rocm::OccupancyGetMaxPotentialBlockSize(
+      &suggested_blocks, &suggested_threads, func, shared_memory_per_block, 0);
+  return suggested_blocks;
+}
+
+// Compute and return the suggested thread count to achieve ideal occupancy.
+// If the provided thread dimensions match this number, zero is returned.
+int GpuExecutor::CompareOccupancy(int* initial_blocks,
+                                  const DeviceDescription& device_description,
+                                  uint64_t registers_per_thread,
+                                  uint64_t shared_memory_per_block,
+                                  const ThreadDim& thread_dims,
+                                  GpuFunctionHandle func) {
+  int suggested_blocks = 0;
+  int suggested_threads = 0;
+  (void)rocm::OccupancyGetMaxPotentialBlockSize(
+      &suggested_blocks, &suggested_threads, func, shared_memory_per_block, 0);
+  if (suggested_blocks > *initial_blocks) {
+    *initial_blocks = suggested_blocks;
+    return suggested_threads;
+  } else {
+    return 0;
+  }
 }
 
 DeviceMemoryBase GpuExecutor::Allocate(uint64_t size, int64_t memory_space) {
@@ -960,4 +1007,4 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(rocm_gpu_executor, {});
+REGISTER_MODULE_INITIALIZER(rocm_executor, {});
