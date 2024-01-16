@@ -23,10 +23,12 @@ fi
 # Update the version numbers for Nightly only
 if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
   tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
+  # replace tensorflow to tf_nightly in the wheel name
+  export TFCI_BUILD_PIP_PACKAGE_ARGS="$(echo $TFCI_BUILD_PIP_PACKAGE_ARGS | sed 's/tensorflow/tf_nightly/')"
 fi
 
-tfrun bazel build $TFCI_BAZEL_COMMON_ARGS //tensorflow/tools/pip_package:build_pip_package
-tfrun ./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$TFCI_OUTPUT_DIR" $TFCI_BUILD_PIP_PACKAGE_ARGS
+tfrun bazel build $TFCI_BAZEL_COMMON_ARGS //tensorflow/tools/pip_package/v2:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
+cp bazel-bin/tensorflow/tools/pip_package/v2/wheel_house/* "$TFCI_OUTPUT_DIR"
 tfrun ./ci/official/utilities/rename_and_verify_wheels.sh
 
 if [[ "$TFCI_UPLOAD_WHL_PYPI_ENABLE" == 1 ]]; then
