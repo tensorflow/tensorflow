@@ -2592,9 +2592,6 @@ class HloInstruction {
   // String identifier for instruction.
   std::string name_;
 
-  // ID of the operation queue to run this instruction.
-  int64_t operation_queue_id_ = -1;
-
   // Metadata for debugging.  Allocate it on heap, so that it does not increase
   // the memory footprint of HloInstruction.
   std::unique_ptr<OpMetadata> metadata_ = std::make_unique<OpMetadata>();
