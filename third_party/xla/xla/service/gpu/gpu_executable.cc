@@ -82,6 +82,12 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_timer.h"
+#else
+namespace stream_executor::gpu {
+class GpuTimer {};
+}  // namespace stream_executor::gpu
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
@@ -198,9 +204,10 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 
 namespace {
 
-absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                                 uint64_t start_nanos,
-                                 se::Stream* stream_to_sync);
+absl::Status MaybeSyncAndProfile(
+    const ServiceExecutableRunOptions* run_options,
+    std::optional<se::gpu::GpuTimer> execution_timer,
+    se::Stream* stream_to_sync);
 
 absl::Status MaybeRendezvousAfterInitialization(
     const ServiceExecutableRunOptions* run_options,
@@ -247,7 +254,16 @@ absl::Status ExecuteThunks(const std::string& module_name,
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
-  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+  std::optional<se::gpu::GpuTimer> execution_timer;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  if (ExecutionProfile* profile =
+          run_options->run_options().execution_profile();
+      profile) {
+    TF_ASSIGN_OR_RETURN(
+        execution_timer,
+        se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(main_stream)));
+  }
+#endif
 
   Thunk::ExecuteParams execute_params{*run_options, buffer_allocations,
                                       main_stream, command_buffer_trace_stream,
@@ -281,7 +297,7 @@ absl::Status ExecuteThunks(const std::string& module_name,
 
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(execute_params));
   }
-  return MaybeSyncAndProfile(run_options, start_nanos,
+  return MaybeSyncAndProfile(run_options, std::move(execution_timer),
                              block_host_until_done ? main_stream : nullptr);
 }
 
@@ -367,9 +383,24 @@ absl::Status MaybeRendezvousAfterInitialization(
   return absl::OkStatus();
 }
 
-absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
-                                 uint64_t start_nanos,
-                                 se::Stream* stream_to_sync = nullptr) {
+absl::Status MaybeSyncAndProfile(
+    const ServiceExecutableRunOptions* run_options,
+    std::optional<se::gpu::GpuTimer> execution_timer,
+    se::Stream* stream_to_sync = nullptr) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  // If we're measuring the execution time then it's important to queue the
+  // stop event before triggering any synchronization.
+  if (ExecutionProfile* profile =
+          run_options->run_options().execution_profile();
+      profile) {
+    CHECK(execution_timer.has_value());
+    TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                        execution_timer->GetElapsedDuration());
+    profile->set_compute_time_ns(
+        std::max(absl::ToDoubleNanoseconds(elapsed), 1.0));
+  }
+#endif
+
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
@@ -381,17 +412,6 @@ absl::Status MaybeSyncAndProfile(const ServiceExecutableRunOptions* run_options,
           "Failed to complete all kernels launched on stream %p: %s",
           stream_to_sync, block_status.message());
     }
-  }
-
-  // FinishExecution() blocks until main_stream has completed if profiling is
-  // enabled; we therefore do not need to defer profile collection onto a
-  // stream.
-  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
-
-  if (run_options->run_options().execution_profile()) {
-    ExecutionProfile* profile = run_options->run_options().execution_profile();
-    const double nanoseconds = end_nanos - start_nanos;
-    profile->set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
   return absl::OkStatus();
@@ -610,18 +630,26 @@ static absl::Status ExecuteXlaRuntime(
     const BufferAllocations& buffer_allocations,
     const BufferAllocation* temp_buffer, bool block_host_until_done,
     NonAtomicallyUpgradeableRWLock& gpu_lock) {
-  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-
   tsl::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
       tsl::profiler::TraceMeLevel::kInfo);
 
+  std::optional<se::gpu::GpuTimer> execution_timer;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  if (ExecutionProfile* profile =
+          run_options->run_options().execution_profile();
+      profile) {
+    TF_ASSIGN_OR_RETURN(
+        execution_timer,
+        se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(run_options->stream())));
+  }
+#endif
   auto executed = gpu_runtime_executable.Execute(
       run_options, asm_text, binary, buffer_allocations, gpu_lock, temp_buffer);
   if (!executed.ok()) return executed;
 
   return MaybeSyncAndProfile(
-      run_options, start_nanos,
+      run_options, std::move(execution_timer),
       block_host_until_done ? run_options->stream() : nullptr);
 }
 

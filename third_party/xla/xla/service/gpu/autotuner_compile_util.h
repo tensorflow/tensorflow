@@ -99,8 +99,9 @@ class AutotunerCompileUtil {
                        se::DeviceMemoryAllocator& allocator,
                        const DebugOptions& opts);
 
-  absl::StatusOr<ExecutionOutput> Execute(
-      Executable& executable, std::vector<ExecutionInput> arguments);
+  absl::StatusOr<ExecutionOutput> Execute(Executable& executable,
+                                          std::vector<ExecutionInput> arguments,
+                                          ExecutionProfile* profile = nullptr);
 
   AutotuneConfig config_;
   Compiler* compiler_;

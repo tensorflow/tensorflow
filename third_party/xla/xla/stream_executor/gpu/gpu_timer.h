@@ -61,6 +61,16 @@ class GpuTimer {
         stop_event_(std::exchange(other.stop_event_, nullptr)),
         stream_(other.stream_) {}
 
+  GpuTimer& operator=(GpuTimer&& other) {
+    if (this != &other) {
+      parent_ = other.parent_;
+      start_event_ = std::exchange(other.start_event_, nullptr);
+      stop_event_ = std::exchange(other.stop_event_, nullptr);
+      stream_ = other.stream_;
+    }
+    return *this;
+  }
+
   ~GpuTimer();
 
   // Stops the timer on the first call and returns the elapsed duration.

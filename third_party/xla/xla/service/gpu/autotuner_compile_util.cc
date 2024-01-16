@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -121,14 +120,13 @@ AutotunerCompileUtil::ProfileExecutable(
   }
   std::vector<ExecutionInput> execution_inputs =
       ExecutionInputsFromBuffers(input_buffers, input_shapes);
-  TF_ASSIGN_OR_RETURN(auto timer,
-                      se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream)));
-  TF_ASSIGN_OR_RETURN(ExecutionOutput execution_output,
-                      Execute(*executable, std::move(execution_inputs)));
-  TF_ASSIGN_OR_RETURN(absl::Duration timer_duration,
-                      timer.GetElapsedDuration());
+  ExecutionProfile profile;
+  TF_ASSIGN_OR_RETURN(
+      ExecutionOutput execution_output,
+      Execute(*executable, std::move(execution_inputs), &profile));
   return std::make_optional<ProfilingOutput>(
-      timer_duration, execution_output.Commit().ConsumeResult());
+      absl::Nanoseconds(profile.compute_time_ns()),
+      execution_output.Commit().ConsumeResult());
 }
 
 absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
@@ -176,7 +174,8 @@ AutotunerCompileUtil::Create(const AutotuneConfig& config,
 }
 
 absl::StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
-    Executable& executable, std::vector<ExecutionInput> arguments) {
+    Executable& executable, std::vector<ExecutionInput> arguments,
+    ExecutionProfile* profile) {
   // Require exclusive GPU lock to prevent other runs during autotuning.
   GpuExecutableRunOptions gpu_opts;
   gpu_opts.set_requires_exclusive_lock_on_gpu();
@@ -186,6 +185,7 @@ absl::StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
   run_options.set_stream(&stream_);
   run_options.set_allocator(&allocator_);
   run_options.set_gpu_executable_run_options(&gpu_opts);
+  run_options.set_execution_profile(profile);
   ServiceExecutableRunOptions service_run_options(run_options);
   TF_ASSIGN_OR_RETURN(ExecutionOutput output,
                       executable.ExecuteAsyncOnStreamWrapper(
