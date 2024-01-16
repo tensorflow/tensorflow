@@ -228,7 +228,7 @@ absl::Status SnapshotStreamWriter::WriteRecord(
   tsl::profiler::TraceMe activity("SnapshotWriteRecord",
                                   tsl::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(writer.WriteTensors(element));
-  chunk_size_bytes_ += EstimatedSizeBytes(element);
+  chunk_size_bytes_ += EstimatedSize(element).ToUnsignedBytes();
   ++chunk_num_elements_;
   return absl::OkStatus();
 }

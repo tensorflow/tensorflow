@@ -22,9 +22,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/env.h"
@@ -55,6 +56,7 @@ class ParallelTFRecordWriter {
  public:
   explicit ParallelTFRecordWriter(const std::string& directory,
                                   const std::string& compression, tsl::Env* env,
+                                  ByteSize max_file_size = ByteSize::GB(2),
                                   int64_t num_write_threads = 10,
                                   int64_t buffer_size_per_thread = 1);
   virtual ~ParallelTFRecordWriter();
@@ -66,21 +68,39 @@ class ParallelTFRecordWriter {
   // blocks until there is enough space to buffer the record.
   absl::Status Write(std::vector<Tensor> record);
 
-  // Flushes the writer and finalizes the files. Returns the absolute paths.
-  // When the writer is finalized, `Write` will return FailedPreconditionErrors.
-  // The caller should make sure all `Write` calls have finished before calling
-  // `Finalize`. Will block until the writer is closed or an error occurs.
-  absl::StatusOr<absl::flat_hash_set<std::string>> Finalize();
+  // File stats: number of records in a file and the estimated size of the file.
+  struct FileStats {
+    int64_t num_records = 0;
+    ByteSize estimated_size;
+  };
+  using FileToStatsMap = absl::flat_hash_map<std::string, FileStats>;
+
+  // Flushes the writer and finalizes the files. Returns a map from absolute
+  // paths to the file stats. After the writer is finalized, `Write` will return
+  // `FailedPreconditionErrors`. The caller should make sure all `Write` calls
+  // have finished before calling `Finalize`. Will blocks until the writer is
+  // finalized or an error occurs.
+  absl::StatusOr<FileToStatsMap> Finalize();
 
  private:
-  // Run by a thread to write buffered records to a unique file.
-  void WriteFile();
+  // Run by a thread to write buffered records to sharded files.
+  void WriteFiles();
 
   // Whether there are more records to be written.
-  bool ShouldWriteRecord() const;
+  bool HasNext() const;
 
-  // Writes one record.
-  absl::Status WriteRecord(snapshot_util::TFRecordWriter& writer);
+  // Writes a new file.
+  absl::Status WriteFile();
+
+  // Whether the file can hold more records without exceeding `max_file_size_`.
+  bool ShouldWriteFile(const std::string& filename) const;
+
+  // Writes one record to file.
+  absl::Status WriteRecord(const std::string& filename,
+                           snapshot_util::TFRecordWriter& writer);
+
+  // Deletes the file if it's empty.
+  absl::Status DeleteEmptyFile(const std::string& filename);
 
   // Generates a unique file name in the requested directory.
   absl::StatusOr<std::string> GetUniqueFile() const;
@@ -91,6 +111,7 @@ class ParallelTFRecordWriter {
   tsl::Env* const env_;
   const std::string directory_;
   const std::string compression_;
+  const ByteSize max_file_size_;
   const int64_t buffer_size_;
 
   mutable absl::Mutex mu_;
@@ -100,8 +121,8 @@ class ParallelTFRecordWriter {
   bool finalized_ ABSL_GUARDED_BY(mu_) = false;
   absl::Status status_ ABSL_GUARDED_BY(mu_);
 
-  // Set of written files.
-  absl::flat_hash_set<std::string> files_ ABSL_GUARDED_BY(mu_);
+  // A map from absolute paths to the number of records in the files.
+  FileToStatsMap file_stats_ ABSL_GUARDED_BY(mu_);
 
   // Buffer to hold the records to be written. The size should be bounded by
   // `buffer_size_`.

@@ -21,14 +21,16 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/lib/core/status_test_util.h"
@@ -43,7 +45,13 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::testing::Each;
+using ::testing::Eq;
+using ::testing::Field;
+using ::testing::Gt;
 using ::testing::IsEmpty;
+using ::testing::Le;
+using ::testing::SizeIs;
 using ::testing::UnorderedElementsAreArray;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
@@ -77,7 +85,7 @@ class RangeIterator {
   int64_t next_ = 0;
 };
 
-absl::StatusOr<absl::flat_hash_set<std::string>> WriteRecords(
+absl::StatusOr<ParallelTFRecordWriter::FileToStatsMap> WriteRecords(
     ParallelTFRecordWriter& writer, RangeIterator& iterator,
     bool finalize_writer = true) {
   std::vector<Tensor> record;
@@ -90,7 +98,7 @@ absl::StatusOr<absl::flat_hash_set<std::string>> WriteRecords(
   if (finalize_writer) {
     return writer.Finalize();
   }
-  return absl::flat_hash_set<std::string>();
+  return ParallelTFRecordWriter::FileToStatsMap();
 }
 
 template <class T>
@@ -118,8 +126,7 @@ absl::StatusOr<std::vector<T>> ReadRecords(const std::string& filename,
 
 template <class T>
 absl::StatusOr<std::vector<T>> ReadRecords(
-    const absl::flat_hash_set<std::string>& filenames,
-    const std::string& compression) {
+    const std::vector<std::string>& filenames, const std::string& compression) {
   std::vector<T> result;
   for (const std::string& filename : filenames) {
     TF_ASSIGN_OR_RETURN(std::vector<T> records,
@@ -144,37 +151,87 @@ std::vector<int64_t> Repeat(const std::vector<int64_t>& values,
   return result;
 }
 
+template <class K, class V>
+std::pair<std::vector<K>, std::vector<V>> Unzip(
+    const absl::flat_hash_map<K, V>& m) {
+  std::vector<K> keys;
+  std::vector<V> values;
+  for (const auto& [k, v] : m) {
+    keys.push_back(k);
+    values.push_back(v);
+  }
+  return std::make_pair(keys, values);
+}
+
 class ParallelTFRecordWriterParamTest
-    : public ::testing::TestWithParam<
-          std::tuple<int64_t, int64_t, int64_t, int64_t, std::string>> {
+    : public ::testing::TestWithParam<std::tuple<
+          int64_t, int64_t, ByteSize, int64_t, int64_t, std::string>> {
  protected:
   int64_t NumElements() const { return std::get<0>(GetParam()); }
   int64_t NumClients() const { return std::get<1>(GetParam()); }
-  int64_t NumWriteThreads() const { return std::get<2>(GetParam()); }
-  int64_t BufferSizePerThread() const { return std::get<3>(GetParam()); }
-  std::string Compression() const { return std::get<4>(GetParam()); }
+  ByteSize MaxFileSize() const { return std::get<2>(GetParam()); }
+  int64_t NumWriteThreads() const { return std::get<3>(GetParam()); }
+  int64_t BufferSizePerThread() const { return std::get<4>(GetParam()); }
+  std::string Compression() const { return std::get<5>(GetParam()); }
+
+  void VerifyFileStats(
+      const std::vector<ParallelTFRecordWriter::FileStats>& file_stats,
+      int64_t expected_num_elements) const {
+    // Verifies total record counts.
+    auto add_num_elements = [](int64_t num_elements,
+                               const ParallelTFRecordWriter::FileStats& stats) {
+      return num_elements + stats.num_records;
+    };
+    EXPECT_EQ(absl::c_accumulate(file_stats, 0, add_num_elements),
+              expected_num_elements);
+
+    // There should be no empty file.
+    EXPECT_THAT(
+        file_stats,
+        Each(Field(&ParallelTFRecordWriter::FileStats::num_records, Gt(0))));
+
+    // Each file contains at most `MaxFileSize()` + sizeof(one record) bytes.
+    EXPECT_THAT(file_stats,
+                Each(Field(&ParallelTFRecordWriter::FileStats::estimated_size,
+                           Le(MaxFileSize() + ByteSize::Bytes(16)))));
+
+    if (MaxFileSize() <= ByteSize::Bytes(1)) {
+      // In this case, each file contains one record.
+      EXPECT_THAT(
+          file_stats,
+          Each(Field(&ParallelTFRecordWriter::FileStats::num_records, Eq(1))));
+      EXPECT_THAT(file_stats, SizeIs(expected_num_elements));
+    }
+
+    if (MaxFileSize() >= ByteSize::GB(1)) {
+      // In this case, each thread writes at most one file.
+      EXPECT_THAT(file_stats, SizeIs(Le(NumWriteThreads())));
+    }
+  }
 };
 
 TEST_P(ParallelTFRecordWriterParamTest, WriteRecords) {
   TF_ASSERT_OK_AND_ASSIGN(std::string test_dir, TestDir());
   ParallelTFRecordWriter parallel_tfrecord_writer(
-      test_dir, Compression(), tsl::Env::Default(), NumWriteThreads(),
-      BufferSizePerThread());
+      test_dir, Compression(), tsl::Env::Default(), MaxFileSize(),
+      NumWriteThreads(), BufferSizePerThread());
 
   RangeIterator range_iterator(NumElements());
   TF_ASSERT_OK_AND_ASSIGN(
-      absl::flat_hash_set<std::string> files,
+      ParallelTFRecordWriter::FileToStatsMap file_stats,
       WriteRecords(parallel_tfrecord_writer, range_iterator));
 
+  const auto [files, stats] = Unzip(file_stats);
   EXPECT_THAT(ReadRecords<int64_t>(files, Compression()),
               IsOkAndHolds(UnorderedElementsAreArray(Range(NumElements()))));
+  VerifyFileStats(stats, NumElements());
 }
 
 TEST_P(ParallelTFRecordWriterParamTest, ConcurrentWrites) {
   TF_ASSERT_OK_AND_ASSIGN(std::string test_dir, TestDir());
   ParallelTFRecordWriter parallel_tfrecord_writer(
-      test_dir, Compression(), tsl::Env::Default(), NumWriteThreads(),
-      BufferSizePerThread());
+      test_dir, Compression(), tsl::Env::Default(), MaxFileSize(),
+      NumWriteThreads(), BufferSizePerThread());
 
   std::vector<std::unique_ptr<tsl::Thread>> client_threads;
   for (int i = 0; i < NumClients(); ++i) {
@@ -188,19 +245,25 @@ TEST_P(ParallelTFRecordWriterParamTest, ConcurrentWrites) {
         })));
   }
   client_threads.clear();
-  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> files,
+  TF_ASSERT_OK_AND_ASSIGN(ParallelTFRecordWriter::FileToStatsMap file_stats,
                           parallel_tfrecord_writer.Finalize());
+
+  const auto [files, stats] = Unzip(file_stats);
   EXPECT_THAT(ReadRecords<int64_t>(files, Compression()),
               IsOkAndHolds(UnorderedElementsAreArray(
                   Repeat(Range(NumElements()), NumClients()))));
+  VerifyFileStats(stats, NumElements() * NumClients());
 }
 
 INSTANTIATE_TEST_SUITE_P(
     ParallelTFRecordWriterParams, ParallelTFRecordWriterParamTest,
     ::testing::Combine(
-        /*NumElements*/ ::testing::Values(100),
+        /*NumElements*/ ::testing::Values(0, 1, 100),
         /*NumClients*/ ::testing::Values(1, 5),
-        /*NumWriterThreads*/ ::testing::Values(1, 5),
+        /*MaxFileSize*/
+        ::testing::Values(ByteSize::Bytes(1), ByteSize::Bytes(100),
+                          ByteSize::GB(1)),
+        /*NumWriteThreads*/ ::testing::Values(1, 5),
         /*BufferSizePerThread*/ ::testing::Values(1, 10000),
         /*Compression*/
         ::testing::Values(tsl::io::compression::kNone,
@@ -211,8 +274,10 @@ TEST(ParallelTFRecordWriterTest, WriteNoRecord) {
   TF_ASSERT_OK_AND_ASSIGN(std::string test_dir, TestDir());
   ParallelTFRecordWriter parallel_tfrecord_writer(
       test_dir, tsl::io::compression::kNone, tsl::Env::Default());
-  TF_ASSERT_OK_AND_ASSIGN(absl::flat_hash_set<std::string> files,
+  TF_ASSERT_OK_AND_ASSIGN(ParallelTFRecordWriter::FileToStatsMap file_stats,
                           parallel_tfrecord_writer.Finalize());
+
+  const auto [files, stats] = Unzip(file_stats);
   EXPECT_THAT(ReadRecords<int64_t>(files, tsl::io::compression::kNone),
               IsOkAndHolds(IsEmpty()));
 }

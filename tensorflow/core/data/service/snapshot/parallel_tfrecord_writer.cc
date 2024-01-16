@@ -21,16 +21,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/data/service/byte_size.h"
+#include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
@@ -39,17 +42,19 @@ namespace data {
 ParallelTFRecordWriter::ParallelTFRecordWriter(const std::string& directory,
                                                const std::string& compression,
                                                tsl::Env* env,
+                                               ByteSize max_file_size,
                                                int64_t num_write_threads,
                                                int64_t buffer_size_per_thread)
     : env_(env),
       directory_(directory),
       compression_(compression),
+      max_file_size_(max_file_size),
       buffer_size_(num_write_threads * buffer_size_per_thread) {
   thread_pool_ = std::make_unique<tsl::thread::ThreadPool>(
       env_, tsl::ThreadOptions{}, "tf_data_snapshot_write_thread",
       num_write_threads);
   for (int64_t i = 0; i < num_write_threads; ++i) {
-    thread_pool_->Schedule([this]() { WriteFile(); });
+    thread_pool_->Schedule([this]() { WriteFiles(); });
   }
 }
 
@@ -77,7 +82,7 @@ absl::Status ParallelTFRecordWriter::Write(std::vector<Tensor> record)
   return absl::OkStatus();
 }
 
-absl::StatusOr<absl::flat_hash_set<std::string>>
+absl::StatusOr<ParallelTFRecordWriter::FileToStatsMap>
 ParallelTFRecordWriter::Finalize() ABSL_LOCKS_EXCLUDED(mu_) {
   {
     absl::MutexLock l(&mu_);
@@ -89,29 +94,16 @@ ParallelTFRecordWriter::Finalize() ABSL_LOCKS_EXCLUDED(mu_) {
   thread_pool_.reset();
   absl::MutexLock l(&mu_);
   TF_RETURN_IF_ERROR(status_);
-  return files_;
+  return file_stats_;
 }
 
-void ParallelTFRecordWriter::WriteFile() ABSL_LOCKS_EXCLUDED(mu_) {
-  absl::StatusOr<std::string> filename = GetUniqueFile();
-  if (!filename.status().ok()) {
-    UpdateStatus(filename.status());
-    return;
+void ParallelTFRecordWriter::WriteFiles() {
+  while (HasNext()) {
+    UpdateStatus(WriteFile());
   }
-
-  snapshot_util::TFRecordWriter writer(*filename, compression_);
-  UpdateStatus(writer.Initialize(env_));
-  while (ShouldWriteRecord()) {
-    UpdateStatus(WriteRecord(writer));
-  }
-  UpdateStatus(writer.Close());
-  absl::MutexLock l(&mu_);
-  files_.insert(*filename);
-  // TODO(b/297932263): Clean up empty files.
 }
 
-bool ParallelTFRecordWriter::ShouldWriteRecord() const
-    ABSL_LOCKS_EXCLUDED(mu_) {
+bool ParallelTFRecordWriter::HasNext() const ABSL_LOCKS_EXCLUDED(mu_) {
   absl::MutexLock l(&mu_);
   if (!status_.ok()) {
     return false;
@@ -119,8 +111,31 @@ bool ParallelTFRecordWriter::ShouldWriteRecord() const
   return !finalized_ || !buffer_.empty();
 }
 
+absl::Status ParallelTFRecordWriter::WriteFile() ABSL_LOCKS_EXCLUDED(mu_) {
+  TF_ASSIGN_OR_RETURN(const std::string filename, GetUniqueFile());
+  snapshot_util::TFRecordWriter writer(filename, compression_);
+  TF_RETURN_IF_ERROR(writer.Initialize(env_));
+  while (ShouldWriteFile(filename)) {
+    TF_RETURN_IF_ERROR(WriteRecord(filename, writer));
+  }
+  TF_RETURN_IF_ERROR(writer.Close());
+  return DeleteEmptyFile(filename);
+}
+
+bool ParallelTFRecordWriter::ShouldWriteFile(const std::string& filename) const
+    ABSL_LOCKS_EXCLUDED(mu_) {
+  if (!HasNext()) {
+    return false;
+  }
+  absl::MutexLock l(&mu_);
+  auto iterator = file_stats_.find(filename);
+  return iterator == file_stats_.end() ||
+         iterator->second.estimated_size < max_file_size_;
+}
+
 absl::Status ParallelTFRecordWriter::WriteRecord(
-    snapshot_util::TFRecordWriter& writer) ABSL_LOCKS_EXCLUDED(mu_) {
+    const std::string& filename, snapshot_util::TFRecordWriter& writer)
+    ABSL_LOCKS_EXCLUDED(mu_) {
   absl::MutexLock l(&mu_);
   while (status_.ok() && !finalized_ && buffer_.empty()) {
     ready_to_pop_.Wait(&mu_);
@@ -132,8 +147,25 @@ absl::Status ParallelTFRecordWriter::WriteRecord(
 
   std::vector<Tensor> record = std::move(buffer_.front());
   TF_RETURN_IF_ERROR(writer.WriteTensors(record));
+  ++file_stats_[filename].num_records;
+  file_stats_[filename].estimated_size += EstimatedSize(record);
   buffer_.pop_front();
   ready_to_push_.SignalAll();
+  return absl::OkStatus();
+}
+
+absl::Status ParallelTFRecordWriter::DeleteEmptyFile(
+    const std::string& filename) ABSL_LOCKS_EXCLUDED(mu_) {
+  absl::MutexLock l(&mu_);
+  auto iterator = file_stats_.find(filename);
+  if (iterator != file_stats_.end() && iterator->second.num_records > 0) {
+    return absl::OkStatus();
+  }
+
+  TF_RETURN_IF_ERROR(env_->DeleteFile(filename));
+  if (iterator != file_stats_.end()) {
+    file_stats_.erase(iterator);
+  }
   return absl::OkStatus();
 }
 

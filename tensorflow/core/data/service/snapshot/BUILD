@@ -113,10 +113,12 @@ cc_library(
     hdrs = ["parallel_tfrecord_writer.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:byte_size",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -124,6 +126,7 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -137,8 +140,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:byte_size",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -478,7 +482,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/data/service:byte_size",
         "//tensorflow/core/framework:tensor_proto_cc",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
@@ -493,9 +497,9 @@ tf_cc_test(
     deps = [
         ":utils",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data/service:byte_size",
         "//tensorflow/core/framework:dataset_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
         "@local_tsl//tsl/platform:errors",
