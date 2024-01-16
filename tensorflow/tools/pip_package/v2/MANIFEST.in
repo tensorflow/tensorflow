@@ -11,3 +11,5 @@ recursive-include * *.lib
 recursive-include * *.csv
 recursive-include tensorflow *
 recursive-exclude tensorflow *.md
+recursive-exclude tensorflow/_api/ *
+include tensorflow/_api/v2/api_packages.txt

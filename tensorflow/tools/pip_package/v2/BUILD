@@ -2,8 +2,10 @@
 #  Tools for building the TensorFlow pip package.
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
-load("//third_party/mkl:build_defs.bzl", "if_mkl_ml")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
+load("//third_party/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow/tools/pip_package/v2/utils:data_deps.bzl", "collect_data_files")
 load("//tensorflow/tools/pip_package/v2/utils:py_deps.bzl", "transitive_py_deps")
 load("//tensorflow/tools/pip_package/v2/utils:tf_wheel.bzl", "tf_wheel")
@@ -76,6 +78,56 @@ transitive_hdrs(
 filegroup(
     name = "xla_cmake",
     srcs = ["xla_build/CMakeLists.txt"],
+)
+
+filegroup(
+    name = "licenses",
+    srcs = [
+        "//:LICENSE",
+        "//third_party/icu/data:LICENSE",
+        "@com_google_absl//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
+        "@curl//:COPYING",
+        "@ducc//:LICENSE",
+        "@flatbuffers//:LICENSE",
+        "@gemmlowp//:LICENSE",
+        "@libjpeg_turbo//:LICENSE.md",
+        "@llvm-project//llvm:LICENSE.TXT",
+        "@llvm-project//mlir:LICENSE.TXT",
+        "@local_config_tensorrt//:LICENSE",
+        "@ml_dtypes//:LICENSE",
+        "@org_brotli//:LICENSE",
+        "@pasta//:LICENSE",
+        "@png//:LICENSE",
+        "@ruy//:LICENSE",
+        "@six_archive//:LICENSE",
+        "@snappy//:COPYING",
+        "@stablehlo//:LICENSE",
+        "@tf_runtime//:LICENSE",
+    ] + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
+        ],
+    }) + select({
+        "@local_tsl//tsl:with_numa_support": [
+            "@hwloc//:COPYING",
+        ],
+        "//conditions:default": [],
+    }) + if_cuda([
+        "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
+    ]) + if_mkl([
+        "//third_party/mkl_dnn:LICENSE",
+    ]) + if_enable_mkl(["//third_party/mkl:LICENSE"]) + if_not_system_lib(
+        "absl_py",
+        [
+            "@absl_py//:LICENSE",
+        ],
+    ) + tf_additional_license_deps(),
 )
 
 # Add dynamic kernel dso files here.
@@ -211,6 +263,7 @@ tf_wheel(
     name = "wheel",
     headers = [
         ":included_headers",
+        ":licenses",
         "//tensorflow/core:protos_all_proto_srcs",
     ],
     source_files = [
@@ -219,6 +272,7 @@ tf_wheel(
         "setup.py",
         ":cc_deps",
         ":py_deps",
+        "//tensorflow:tf_python_api_gen_v2",
     ] + select({
         "//tensorflow:dynamic_loaded_kernels": DYNAMIC_LOADED_KERNELS,
         "//conditions:default": [],
@@ -227,8 +281,7 @@ tf_wheel(
             "//tensorflow:tensorflow_cc",
             "//tensorflow:tensorflow_framework",
         ],
-        "//tensorflow:windows": [],
-        "//tensorflow:macos": [],
+        "//tensorflow:windows": ["//tensorflow/python:pywrap_tensorflow_import_lib_file"],
     }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
     xla_aot_compiled = [
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
