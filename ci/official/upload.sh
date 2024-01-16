@@ -26,14 +26,14 @@ fi
 source ci/official/utilities/get_versions.sh
 
 DOWNLOADS="$(mktemp -d)/$TF_VER_FULL"
-gsutil -m cp -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$STAGED"
-ls "$STAGED"
+gsutil -m cp -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
+ls "$DOWNLOADS"
 
 # Upload all build artifacts to e.g. gs://tensorflow/ci/2.16.0-rc1 (releases) or
 # gs://tensorflow/ci/2.16.0-dev20240105 (nightly), overwriting previous values.
 # TODO(angerson) Add "-a public-read" to make them publicly available.
 if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
-  gsutil -m cp -r "$STAGED" "$TFCI_ARTIFACT_FINAL_GCS_URI"
+  gsutil -m cp -r "$DOWNLOADS" "$TFCI_ARTIFACT_FINAL_GCS_URI"
   # Also mirror the latest-uploaded folder to the "latest" directory.
   # GCS does not support symlinks. -p preserves ACLs. -d deletes
   # no-longer-present files (it's what makes this act as a mirror).
