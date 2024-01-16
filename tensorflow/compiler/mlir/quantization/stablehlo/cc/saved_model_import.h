@@ -12,8 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_IMPORT_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_IMPORT_H_
+// Functionalities for importing MLIR ModuleOp from TensorFlow SavedModel.
+
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_IMPORT_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_IMPORT_H_
 
 #include <string>
 
@@ -42,4 +44,4 @@ absl::flat_hash_map<FunctionName, FunctionAlias> UpdateFunctionAliases(
 
 }  // namespace mlir::quant::stablehlo
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_IMPORT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_IMPORT_H_

@@ -42,11 +42,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/assign_ids.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -67,11 +67,7 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 using ::stablehlo::quantization::AddCalibrationStatistics;
-using ::stablehlo::quantization::AddExportPasses;
 using ::stablehlo::quantization::AssignIdsToCustomAggregatorOps;
-using ::stablehlo::quantization::ConvertMlirModuleToExportedModel;
-using ::stablehlo::quantization::ExportOptions;
-using ::stablehlo::quantization::kExportStepSuffix;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;

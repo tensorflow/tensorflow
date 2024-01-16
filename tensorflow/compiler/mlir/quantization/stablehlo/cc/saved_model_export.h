@@ -12,8 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_EXPORT_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_EXPORT_H_
+// Functionalities for exporting MLIR ModuleOp to TensorFlow SavedModel.
+
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_EXPORT_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_EXPORT_H_
 
 #include <optional>
 #include <string>
@@ -30,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 
-namespace stablehlo::quantization {
+namespace mlir::quant::stablehlo {
 
 // Suffix string for the module export step. Used for debugging.
 constexpr absl::string_view kExportStepSuffix = "_export";
@@ -109,6 +111,6 @@ ConvertMlirModuleToExportedModel(
     const absl::flat_hash_map<std::string, std::string>& function_aliases,
     const std::vector<tensorflow::AssetFileDef>& asset_file_defs);
 
-}  // namespace stablehlo::quantization
+}  // namespace mlir::quant::stablehlo
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_EXPORT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_EXPORT_H_

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 
 #include <optional>
 #include <string>
@@ -36,10 +36,9 @@ limitations under the License.
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
-namespace stablehlo::quantization {
+namespace mlir::quant::stablehlo {
 namespace {
 
-using ::mlir::quant::QuantizationTestBase;
 using ::tensorflow::AssetFileDef;
 using ::tensorflow::GraphDef;
 using ::tensorflow::NodeDef;
@@ -434,4 +433,4 @@ TEST_F(ConvertMlirModuleToExportedModelTest,
 }
 
 }  // namespace
-}  // namespace stablehlo::quantization
+}  // namespace mlir::quant::stablehlo

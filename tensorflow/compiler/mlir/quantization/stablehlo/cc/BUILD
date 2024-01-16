@@ -93,12 +93,12 @@ cc_library(
 )
 
 cc_library(
-    name = "export",
-    srcs = ["export.cc"],
-    hdrs = ["export.h"],
+    name = "saved_model_export",
+    srcs = ["saved_model_export.cc"],
+    hdrs = ["saved_model_export.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":import",
+        ":saved_model_import",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -126,10 +126,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "export_test",
-    srcs = ["export_test.cc"],
+    name = "saved_model_export_test",
+    srcs = ["saved_model_export_test.cc"],
     deps = [
-        ":export",
+        ":saved_model_export",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/core:all_kernels",  # buildcleaner: keep Required to export to GraphDef
         "//tensorflow/core:core_cpu_base",
@@ -148,9 +148,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "import",
-    srcs = ["import.cc"],
-    hdrs = ["import.h"],
+    name = "saved_model_import",
+    srcs = ["saved_model_import.cc"],
+    hdrs = ["saved_model_import.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
@@ -161,10 +161,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "import_test",
-    srcs = ["import_test.cc"],
+    name = "saved_model_import_test",
+    srcs = ["saved_model_import_test.cc"],
     deps = [
-        ":import",
+        ":saved_model_import",
         "//tensorflow/compiler/mlir/quantization/common:test_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
@@ -303,11 +303,11 @@ cc_library(
     ],
     deps = [
         ":context",
-        ":export",
-        ":import",
         ":io",
         ":post_calibration",
         ":pre_calibration",
+        ":saved_model_export",
+        ":saved_model_import",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:assign_ids",

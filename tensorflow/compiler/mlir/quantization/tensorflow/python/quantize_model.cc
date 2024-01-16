@@ -37,11 +37,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -64,16 +64,16 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
+using ::mlir::quant::stablehlo::AddExportPasses;
+using ::mlir::quant::stablehlo::ConvertMlirModuleToExportedModel;
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
+using ::mlir::quant::stablehlo::ExportOptions;
 using ::mlir::quant::stablehlo::FunctionAlias;
 using ::mlir::quant::stablehlo::FunctionName;
+using ::mlir::quant::stablehlo::kExportStepSuffix;
 using ::mlir::quant::stablehlo::PostCalibrationComponent;
 using ::mlir::quant::stablehlo::PreCalibrationComponent;
 using ::mlir::quant::stablehlo::UpdateFunctionAliases;
-using ::stablehlo::quantization::AddExportPasses;
-using ::stablehlo::quantization::ConvertMlirModuleToExportedModel;
-using ::stablehlo::quantization::ExportOptions;
-using ::stablehlo::quantization::kExportStepSuffix;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
 

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 
 #include <memory>
 #include <optional>
@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/import.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -49,13 +49,9 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
-namespace stablehlo::quantization {
+namespace mlir::quant::stablehlo {
 namespace {
 
-using ::mlir::quant::kTfFilePrefix;
-using ::mlir::quant::kTfQuantSaveOpName;
-using ::mlir::quant::stablehlo::FunctionAlias;
-using ::mlir::quant::stablehlo::FunctionName;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
@@ -230,4 +226,4 @@ absl::StatusOr<ExportedModel> ConvertMlirModuleToExportedModel(
                              function_aliases, asset_file_defs);
 }
 
-}  // namespace stablehlo::quantization
+}  // namespace mlir::quant::stablehlo
