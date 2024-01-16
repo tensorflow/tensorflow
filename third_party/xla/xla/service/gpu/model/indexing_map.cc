@@ -70,6 +70,11 @@ std::ostream& operator<<(std::ostream& out, const Range& range) {
   return out;
 }
 
+bool operator==(const Range& lhs, const Range& rhs) {
+  return lhs.lower_bound == rhs.lower_bound &&
+         lhs.upper_bound == rhs.upper_bound;
+}
+
 Domain Domain::FromUpperBounds(absl::Span<const int64_t> dimension_upper_bounds,
                                absl::Span<const int64_t> symbol_upper_bounds) {
   Domain domain;
@@ -107,6 +112,12 @@ std::ostream& operator<<(std::ostream& out, const Domain& domain) {
   domain.Print(out, printer);
   return out;
 }
+
+bool operator==(const Domain& lhs, const Domain& rhs) {
+  return lhs.dimension_ranges == rhs.dimension_ranges &&
+         lhs.symbol_ranges == rhs.symbol_ranges;
+}
+
 std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
   std::string s;
   std::stringstream ss(s);
@@ -126,6 +137,10 @@ std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
   AffineMapPrinter printer;
   indexing_map.Print(out, printer);
   return out;
+}
+
+bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
+  return lhs.affine_map == rhs.affine_map && lhs.domain == rhs.domain;
 }
 
 bool IndexingMap::Simplify() {

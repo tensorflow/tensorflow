@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Hashing.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
@@ -37,12 +38,12 @@ struct Range {
   std::string ToString() const;
   void Print(std::ostream& out) const;
 
-  bool operator==(const Range&) const = default;
 
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
 };
 std::ostream& operator<<(std::ostream& out, const Range& range);
+bool operator==(const Range& lhs, const Range& rhs);
 
 template <typename H>
 H AbslHashValue(H h, const Range& range) {
@@ -60,12 +61,11 @@ struct Domain {
       absl::Span<const int64_t> dimension_upper_bounds,
       absl::Span<const int64_t> symbol_upper_bounds);
 
-  bool operator==(const Domain&) const = default;
-
   std::vector<Range> dimension_ranges;
   std::vector<Range> symbol_ranges;
 };
 std::ostream& operator<<(std::ostream& out, const Domain& domain);
+bool operator==(const Domain& lhs, const Domain& rhs);
 
 template <typename H>
 H AbslHashValue(H h, const Domain& domain) {
@@ -107,12 +107,11 @@ struct IndexingMap {
   // Returns true if the map was simplified.
   bool Simplify();
 
-  bool operator==(const IndexingMap&) const = default;
-
   mlir::AffineMap affine_map;
   Domain domain;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
+bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
