@@ -2365,79 +2365,31 @@ std::string PrintSolutionMemoryUsage(const LivenessSet& liveness_set,
 }
 
 void SaveShardingForInstruction(
+    const HloInstruction* inst, bool save_for_copy_users,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
-        preserve_shardings,
-    HloInstruction* inst) {
-  if (!inst->has_sharding()) {
-    return;
-  }
-  if (!inst->sharding().IsTuple()) {
-    preserve_shardings[inst->name()] = {inst->sharding()};
-  } else {
-    preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
-  }
-}
+        preserve_shardings) {
+  auto save_sharding = [&preserve_shardings](const HloInstruction* inst) {
+    if (!inst->has_sharding()) {
+      return;
+    }
+    if (!inst->sharding().IsTuple()) {
+      preserve_shardings[inst->name()] = {inst->sharding()};
+    } else {
+      preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
+    }
+  };
 
-// Saves the user shardings that need to be preserved, and check whether they
-// are preserved after this pass.
-absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
-    HloModule* module,
-    const absl::flat_hash_set<std::string>& replicated_small_tensors,
-    AutoShardingOption::PreserveShardingsType type) {
-  absl::flat_hash_map<std::string, std::vector<HloSharding>> preserve_shardings;
-  if (type == AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
-    // Saves shardings for all instructions.
-    for (const auto computation : module->computations()) {
-      for (const auto inst : computation->instructions()) {
-        SaveShardingForInstruction(preserve_shardings, inst);
-        for (const auto user : inst->users()) {
-          // Also preserve the shardings of copy ops that are the users of those
-          // instructions.
-          if (user->opcode() == HloOpcode::kCopy) {
-            SaveShardingForInstruction(preserve_shardings, user);
-          }
-        }
-      }
-    }
-  } else if (type == AutoShardingOption::PreserveShardingsType::
-                         kKeepInputOutputShardings) {
-    // Saves parameter shardings.
-    for (const auto inst :
-         module->entry_computation()->parameter_instructions()) {
-      SaveShardingForInstruction(preserve_shardings, inst);
-      for (const auto user : inst->users()) {
-        // Also preserve the shardings of copy ops that are the users of those
-        // instructions.
-        if (user->opcode() == HloOpcode::kCopy) {
-          SaveShardingForInstruction(preserve_shardings, user);
-        }
-      }
-    }
-    for (const auto computation : module->computations()) {
-      for (const auto inst : computation->instructions()) {
-        if (inst->opcode() == HloOpcode::kOutfeed ||
-            replicated_small_tensors.count(inst->name())) {
-          SaveShardingForInstruction(preserve_shardings, inst);
-        }
-      }
-    }
-    // Saves output shardings.
-    auto inst = module->entry_computation()->root_instruction();
-    SaveShardingForInstruction(preserve_shardings, inst);
-  }
+  save_sharding(inst);
 
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "User shardings that need to be kept (printing only the 1st "
-                 "elemenet of tuples): ";
-    for (const auto& tmp : preserve_shardings) {
-      std::string sharding;
-      for (const auto& s : tmp.second) {
-        sharding += s.ToString() + ",";
+  if (save_for_copy_users) {
+    for (const auto user : inst->users()) {
+      // Also preserve the shardings of copy ops that are the users of those
+      // instructions.
+      if (user->opcode() == HloOpcode::kCopy) {
+        save_sharding(user);
       }
-      LOG(INFO) << tmp.first << ": " << sharding;
     }
   }
-  return preserve_shardings;
 }
 
 // Check whether the shardings that need to be perserved are preserved.
@@ -3241,49 +3193,80 @@ bool HasReduceScatterOpportunity(
 
 }  // namespace spmd
 
-StatusOr<bool> AutoShardingImplementation::RemoveShardingAnnotation(
+std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
     HloModule* module,
     const absl::flat_hash_set<std::string>& replicated_small_tensors,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  absl::flat_hash_map<std::string, std::vector<HloSharding>> preserve_shardings;
+  absl::flat_hash_set<HloInstruction*> keep_inst;
+
+  for (const HloComputation* computation :
+       module->computations(execution_threads)) {
+    for (const auto inst : computation->instructions()) {
+      if (inst->opcode() == HloOpcode::kOutfeed) {
+        spmd::SaveShardingForInstruction(inst,
+                                         /* save_for_copy_users */ false,
+                                         preserve_shardings);
+      }
+    }
+  }
+
   if (option_.preserve_shardings ==
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
-    return false;
+    // Saves shardings for all instructions.
+    for (const HloComputation* computation :
+         module->computations(execution_threads)) {
+      for (const auto inst : computation->instructions()) {
+        spmd::SaveShardingForInstruction(inst,
+                                         /* save_for_copy_users */ true,
+                                         preserve_shardings);
+      }
+    }
+    return std::make_pair(preserve_shardings, /* module_is_changed */ false);
   }
-  VLOG(0) << "Removing user sharding annotations.";
-  bool changed = false;
-  absl::flat_hash_set<HloInstruction*> keep_inst;
+
+  bool module_is_changed = false;
   for (HloComputation* computation : module->computations(execution_threads)) {
     bool is_entry_computation = computation->IsEntryComputation();
 
     for (HloInstruction* ins : computation->instructions()) {
-      // Do not remove sharding annotations from instructions replicated as they
-      // are small tensors
+      // Do not remove sharding annotations from instructions replicated as
+      // they are small tensors
       if (replicated_small_tensors.count(ins->name())) {
         keep_inst.insert(ins);
+        spmd::SaveShardingForInstruction(ins,
+                                         /* save_for_copy_users */ false,
+                                         preserve_shardings);
         continue;
       }
-
       // Do not remove entry computation's parameter and root instruction's
       // sharding if preserve_shardings is kKeepInputOutputShardings.
       if (option_.preserve_shardings ==
               AutoShardingOption::PreserveShardingsType::
                   kKeepInputOutputShardings &&
-          (is_entry_computation &&
-           (ins->opcode() == HloOpcode::kParameter || ins->IsRoot()))) {
+          is_entry_computation &&
+          (ins->opcode() == HloOpcode::kParameter || ins->IsRoot())) {
         keep_inst.insert(ins);
+        spmd::SaveShardingForInstruction(
+            ins,
+            /* save_for_copy_users */ ins->opcode() == HloOpcode::kParameter,
+            preserve_shardings);
         continue;
       }
+
       if (ins->opcode() == HloOpcode::kCopy &&
           keep_inst.find(ins->operand(0)) != keep_inst.end()) {
         continue;
       }
+
       if (ins->has_sharding()) {
-        changed |= true;
+        module_is_changed |= true;
         ins->clear_sharding();
       }
     }
   }
-  return changed;
+  return std::make_pair(preserve_shardings, module_is_changed);
 }
 
 Status AutoShardingImplementation::CanonicalizeLayouts(HloModule* module) {
@@ -3348,27 +3331,12 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                "custom_call_target=Sharding.";
   }
 
+  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+      preserve_shardings_result = SaveAndRemoveShardingAnnotation(
+          module, replicated_small_tensors, execution_threads);
   absl::flat_hash_map<std::string, std::vector<HloSharding>>
-      preserve_shardings = spmd::SaveUserShardings(
-          module, replicated_small_tensors, option_.preserve_shardings);
-
-  // Remove XLA sharding annotations, if there are any.
-  if (option_.preserve_shardings !=
-      AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
-    StatusOr<bool> changed = RemoveShardingAnnotation(
-        module, replicated_small_tensors, execution_threads);
-    if (!changed.ok()) {
-      return changed.status();
-    }
-    if (changed.value()) {
-      module_is_changed = true;
-      LOG(INFO) << "XLA sharding annotations are removed.";
-    } else {
-      LOG(INFO) << "This workload does not have XLA sharding annotations.";
-    }
-  } else {
-    LOG(INFO) << "Preserving XLA sharding annotations.";
-  }
+      preserve_shardings = preserve_shardings_result.first;
+  module_is_changed |= preserve_shardings_result.second;
 
   // ----- Get a sequential schedule and do liveness analysis -----
   auto size_fn = [](const BufferValue& buffer) {

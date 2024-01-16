@@ -78,12 +78,14 @@ class AutoShardingImplementation {
       const absl::flat_hash_map<std::string, const HloInstruction*>&
           sharding_propagation_solution = {});
 
-  // Removes SPMD annotations (if there are) to test AutoSharding on manually
-  // annotated graphs.
-  StatusOr<bool> RemoveShardingAnnotation(
+  // Returns sharding annotations that need to be preserved in a map (for
+  // verification after auto-sharding is done), and removes any sharding
+  // anotations that need to be removed.
+  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+  SaveAndRemoveShardingAnnotation(
       HloModule* module,
-      const absl::flat_hash_set<std::string>& replicated_small_tensors = {},
-      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
+      const absl::flat_hash_set<std::string>& replicated_small_tensors,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Canonicalizes entry_computation_layouts by calling
   // module.layout_canonicalization_callback(), which gives canonicalized
