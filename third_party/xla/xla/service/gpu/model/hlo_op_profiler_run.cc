@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiler.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -121,8 +122,9 @@ int RunProfiler(int argc, char** argv) {
 
   VLOG(1) << "\n" << instr_profiles;
 
+  auto profile_name = HloOpProfiles::GetProfileName(&dev_info);
   DeviceHloInstructionProfiles device_profiles;
-  device_profiles.mutable_entries()->insert({dev_info.name(), instr_profiles});
+  device_profiles.mutable_entries()->insert({profile_name, instr_profiles});
   if (!output_file.empty()) {
     WriteOutput(device_profiles, output_file);
   }

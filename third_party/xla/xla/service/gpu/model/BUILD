@@ -149,6 +149,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":hlo_op_profile_proto_cc",
+        ":hlo_op_profiles",
         "//xla:shape_util",
         "//xla:status",
         "//xla:util",
@@ -164,6 +165,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
@@ -424,6 +426,40 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "hlo_op_profiles",
+    srcs = ["hlo_op_profiles.cc"],
+    hdrs = ["hlo_op_profiles.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":hlo_op_profile_proto_cc",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_proto_cc",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_op_profiles_test",
+    srcs = ["hlo_op_profiles_test.cc"],
+    deps = [
+        ":hlo_op_profiles",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "hlo_op_profiler_lib",
     testonly = True,
     srcs = ["hlo_op_profiler.cc"],
@@ -475,6 +511,7 @@ cc_library(
         deps = [
             ":hlo_op_profile_proto_cc",
             ":hlo_op_profiler_lib",
+            ":hlo_op_profiles",
             "//xla:debug_options_flags",
             "//xla:xla_data_proto_cc",
             "//xla/hlo/ir:hlo",
