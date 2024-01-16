@@ -21,14 +21,18 @@ namespace xla {
 namespace llvm_ir {
 
 llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
-                          const TanhType input_type /* = TanhType::Double*/) {
+                          bool with_fma) {
   llvm::Type* type = input->getType();
-  const float plus_clamp = (input_type == TanhType::Double)
-                               ? kTanhInputUpperBounder
-                               : kTanhInputUpperBounderFloat;
-  const float minus_clamp = (input_type == TanhType::Double)
-                                ? kTanhInputLowerBounder
-                                : kTanhInputLowerBounderFloat;
+  const float plus_clamp =
+      with_fma ? 7.99881172180175781f : 7.90531110763549805f;
+  const float minus_clamp = -plus_clamp;
+  // Inputs in the range [plus_clamp, 9.0] may cause the output
+  // of EmitFastTanh to be greater than 1, so we set the input to be at most
+  // 'plus_clamp'. We choose 'plus_clamp' in a way that the
+  // tanh approximation on that input is exactly 1.0. Similarly for
+  // 'minus_clamp', where the tanh approximation will return exactly
+  // -1.0.
+  // Taken from tanh(Eigen/src/Core/MathFunctionsImpl.h).
 
   // For small values of x, we can approximate tanh(x)=x. For extremely small
   // values of x (|x| < 1e-37), the other approximation evaluates tanh(x) = 0.

@@ -22,26 +22,11 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
-enum TanhType {
-  Double = 0,
-  Float = 1,
-};
-
-static constexpr float kTanhInputUpperBounder = 9.0;
-static constexpr float kTanhInputLowerBounder = -9.0;
-
-// Inputs in the range [kTanhInputUpperBounderFloat, 9.0] may cause the output
-// of EmitFastTanh to be greater than 1, so we set the input to be less than
-// kUpperBounderFloat. 7.90531110763549805f by eigen float
-// tanh(Eigen/src/Core/MathFunctionsImpl.h).
-// We select 7.90531110763549805f because `EmitFastTanh` on GPU don't use FMA .
-static constexpr float kTanhInputUpperBounderFloat = 7.90531110763549805f;
-static constexpr float kTanhInputLowerBounderFloat = -7.90531110763549805f;
-
 // Emits an approximation of tanh. The implementation uses the same rational
-// interpolant as implemented in Eigen3.
+// interpolant as implemented in Eigen3. 'with_fma' should be set to true if FMA
+// instructions are available.
 llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
-                          TanhType input_type = TanhType::Double);
+                          bool with_fma = false);
 
 }  // namespace llvm_ir
 }  // namespace xla

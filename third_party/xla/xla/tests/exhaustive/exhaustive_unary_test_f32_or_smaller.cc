@@ -518,10 +518,10 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Sinh, {
   Run(Sinh, host_sinh);
 })
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(DISABLED_ON_CPU(TanhBounderTestUpperBound), {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestUpperBound, {
   SetBounder(8, 9);
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA") {
+  if (platform_ == "CUDA" || platform_ == "CPU") {
     error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0}; };
   }
   Run(
@@ -529,10 +529,10 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(DISABLED_ON_CPU(TanhBounderTestUpperBound), {
       [](NativeT actual) { return actual >= -1 && actual <= 1; });
 })
 
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(DISABLED_ON_CPU(TanhBounderTestLowerBound), {
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(TanhBounderTestLowerBound, {
   SetBounder(-9, -8);
   ErrorSpecGen error_spec_gen = GetDefaultSpecGenerator();
-  if (platform_ == "CUDA") {
+  if (platform_ == "CUDA" || platform_ == "CPU") {
     error_spec_gen = +[](NativeT x) { return ErrorSpec{0, 0}; };
   }
   Run(

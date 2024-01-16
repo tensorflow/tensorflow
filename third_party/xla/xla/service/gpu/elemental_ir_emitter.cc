@@ -322,10 +322,7 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(
   llvm::Value* abs_value =
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {input}, {type}, b());
 
-  llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(
-      b(), input,
-      input->getType()->isFloatTy() ? llvm_ir::TanhType::Float
-                                    : llvm_ir::TanhType::Double);
+  llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b(), input);
   auto one = llvm::ConstantFP::get(type, 1.0);
   auto one_with_sign = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::copysign,
                                                     {one, input}, {type}, b());

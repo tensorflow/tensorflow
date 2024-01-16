@@ -135,15 +135,15 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, kTriple_x86_64, "",
-        R"(CHECK: fcmp fast uge <4 x float> %wide.load, <float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00>)"},
+        R"(CHECK: fcmp fast uge <4 x float> %wide.load, <float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000>)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, kTriple_x86_64, "+avx",
-        R"(CHECK: fcmp fast uge <8 x float> %wide.load, <float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00>)"},
+        R"(CHECK: fcmp fast uge <8 x float> %wide.load, <float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000>)"},
 
     IntrinsicTestSpec{
         HloOpcode::kTanh, kTriple_android_arm, "",
-        R"(CHECK: fcmp fast uge <4 x float> %wide.load, <float -9.000000e+00, float -9.000000e+00, float -9.000000e+00, float -9.000000e+00>)"},
+        R"(CHECK: fcmp fast uge <4 x float> %wide.load, <float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000, float 0xC01FFEC880000000>)"},
 
     IntrinsicTestSpec{
         HloOpcode::kLog, kTriple_x86_64, "",
