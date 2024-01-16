@@ -1,58 +1,43 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/DFAJumpThreading.cpp b/llvm/lib/Transforms/Scalar/DFAJumpThreading.cpp
---- a/llvm/lib/Transforms/Scalar/DFAJumpThreading.cpp
-+++ b/llvm/lib/Transforms/Scalar/DFAJumpThreading.cpp
-@@ -910,8 +910,9 @@
-       PathBBs.pop_front();
+diff -ruN --strip-trailing-cr a/llvm/test/MC/ARM/pcrel-ldrd-same-section.s b/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
+--- a/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
++++ b/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
+@@ -10,7 +10,7 @@
+ @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
+ @ RUN: llvm-objdump -d --triple=thumbv7  %t | FileCheck %s --check-prefix=THUMB_OFFSET
  
-     auto DetIt = llvm::find(PathBBs, Determinator);
--    auto Prev = std::prev(DetIt);
--    BasicBlock *PrevBB = *Prev;
-+    // When there is only one BB in PathBBs, the determinator takes itself as a
-+    // direct predecessor.
-+    BasicBlock *PrevBB = PathBBs.size() == 1 ? *DetIt : *std::prev(DetIt);
-     for (auto BBIt = DetIt; BBIt != PathBBs.end(); BBIt++) {
-       BasicBlock *BB = *BBIt;
-       BlocksToClean.insert(BB);
-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/DFAJumpThreading/dfa-jump-threading-transform.ll b/llvm/test/Transforms/DFAJumpThreading/dfa-jump-threading-transform.ll
---- a/llvm/test/Transforms/DFAJumpThreading/dfa-jump-threading-transform.ll
-+++ b/llvm/test/Transforms/DFAJumpThreading/dfa-jump-threading-transform.ll
-@@ -267,3 +267,38 @@
- end:
-   ret void
- }
-+
-+define void @self-reference(i1 %c) {
-+; CHECK-LABEL: @self-reference(
-+; CHECK-NEXT:  entry:
-+; CHECK-NEXT:    br i1 [[C:%.*]], label [[DOTSPLIT_PREHEADER:%.*]], label [[DOTSPLIT_PREHEADER]]
-+; CHECK:       .split.preheader:
-+; CHECK-NEXT:    br label [[DOTSPLIT:%.*]]
-+; CHECK:       .split:
-+; CHECK-NEXT:    [[TMP0:%.*]] = phi i32 [ 0, [[DOTSPLIT_PREHEADER]] ]
-+; CHECK-NEXT:    switch i32 [[TMP0]], label [[END:%.*]] [
-+; CHECK-NEXT:      i32 -1, label [[END]]
-+; CHECK-NEXT:      i32 0, label [[DOTSPLIT_JT4294967295:%.*]]
-+; CHECK-NEXT:    ]
-+; CHECK:       .split.jt4294967295:
-+; CHECK-NEXT:    [[TMP1:%.*]] = phi i32 [ -1, [[DOTSPLIT]] ]
-+; CHECK-NEXT:    br label [[END]]
-+; CHECK:       end:
-+; CHECK-NEXT:    ret void
-+;
-+entry:
-+  br i1 %c, label %.split.preheader, label %.split.preheader
-+
-+.split.preheader:
-+  br label %.split
-+
-+.split:
-+  %0 = phi i32 [ 0, %.split.preheader ], [ -1, %.split ]
-+  switch i32 %0, label %end [
-+  i32 -1, label %end
-+  i32 0, label %.split
-+  ]
-+
-+end:
-+  ret void
-+}
+-@ RUN: llvm-mc -filetype=obj -o %y %s -triple=thumbebv7
++@ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbebv7
+ @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
+ @ RUN: llvm-objdump -d --triple=thumbebv7 %t | FileCheck %s --check-prefix=THUMB_OFFSET
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/MC/ARM/pcrel-vldr-same-section.s b/llvm/test/MC/ARM/pcrel-vldr-same-section.s
+--- a/llvm/test/MC/ARM/pcrel-vldr-same-section.s
++++ b/llvm/test/MC/ARM/pcrel-vldr-same-section.s
+@@ -7,7 +7,7 @@
+ @ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbv8.2a-eabi
+ @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
+ @ RUN: llvm-objdump -d --triple=thumbv8.2a-eabi    --mattr=+fullfp16 %t | FileCheck %s --check-prefix=THUMB_OFFSET
+-@ RUN: llvm-mc -filetype=obj -o %y %s -triple=thumbebv8.2a-eabi
++@ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbebv8.2a-eabi
+ @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
+ @ RUN: llvm-objdump -d --triple=thumbebv8.2a-eabi  --mattr=+fullfp16 %t | FileCheck %s --check-prefix=THUMB_OFFSET
+ 
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -4,11 +4,11 @@
+ 
+ load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
+ load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+-load(":tblgen.bzl", "gentbl")
++load(":binary_alias.bzl", "binary_alias")
+ load(":config.bzl", "llvm_config_defines")
+-load(":targets.bzl", "llvm_targets")
+ load(":enum_targets_gen.bzl", "enum_targets_gen")
+-load(":binary_alias.bzl", "binary_alias")
++load(":targets.bzl", "llvm_targets")
++load(":tblgen.bzl", "gentbl")
+ 
+ package(
+     default_visibility = ["//visibility:public"],
