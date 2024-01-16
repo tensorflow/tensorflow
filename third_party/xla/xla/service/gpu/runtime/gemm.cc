@@ -109,7 +109,7 @@ absl::Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
     config->algorithm = algorithms[best_algorithm.gemm().algorithm()];
     return absl::OkStatus();
   } else {
-    return InternalError("Runtime autotuning failed to select an algorithm");
+    return Internal("Runtime autotuning failed to select an algorithm");
   }
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

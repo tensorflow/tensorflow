@@ -31,7 +31,7 @@ absl::Status InvalidArgument(const absl::FormatSpec<Args...>& format,
 }
 
 template <typename... Args>
-absl::Status InternalError(const absl::FormatSpec<Args...>& format,
+absl::Status Internal(const absl::FormatSpec<Args...>& format,
                            const Args&... args) {
   return absl::InternalError(absl::StrFormat(format, args...));
 }

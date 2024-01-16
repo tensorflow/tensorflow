@@ -808,7 +808,7 @@ struct Decode<internal::UserData<T>, checks> {
     if (auto decoded = DecodeUserData<UserDataT, checks>(ctx.user_data);
         LLVM_LIKELY(succeeded(decoded)))
       return decoded;
-    return ctx.diagnostic->EmitError(InternalError(
+    return ctx.diagnostic->EmitError(Internal(
         "failed to decode UserData of type %s", typeid(T).name()));
   }
 };

@@ -261,7 +261,7 @@ Status CpuExecutable::ExecuteComputeFunction(
     std::optional<absl::string_view> error_message =
         CustomCallStatusGetMessage(&status);
     if (error_message) {
-      return InternalError("CustomCall failed: %s", *error_message);
+      return Internal("CustomCall failed: %s", *error_message);
     }
   }
 
@@ -285,7 +285,7 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
 
   // Load MLIR module behind the compiled object file.
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, ctx.get());
-  if (!module) return InternalError("Failed to parse AOT compiled module");
+  if (!module) return Internal("Failed to parse AOT compiled module");
 
   llvm::StringRef data(obj_file.data(), obj_file.size());
   auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
@@ -296,16 +296,16 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
   absl::StatusOr<runtime::FunctionType> sig =
       opts.compiler.type_converter.Convert(func_type);
   if (!sig.ok())
-    return InternalError("Type converter failed to convert function type");
+    return Internal("Type converter failed to convert function type");
 
   mlir::FunctionType runtime_type = opts.compiler.calling_convention(func_type);
   if (!runtime_type)
-    return InternalError("Calling convention failed to convert function type");
+    return Internal("Calling convention failed to convert function type");
 
   absl::StatusOr<runtime::FunctionType> runtime_sig =
       opts.compiler.type_converter.Convert(runtime_type);
   if (!runtime_sig.ok())
-    return InternalError(
+    return Internal(
         "Type converter failed to convert runtime function type");
 
   // Cpu executable has a single exported function.
@@ -318,7 +318,7 @@ StatusOr<std::unique_ptr<Executable>> CpuExecutable::LoadFromObjFile(
       opts.compiler.symbols_binding);
 
   if (!executable.ok())
-    return InternalError("Failed to load XLA Runtime executable: %s",
+    return Internal("Failed to load XLA Runtime executable: %s",
                          executable.status().message());
 
   // Move runtime::Executable ownership to the XlaRuntimeCpuExecutable.
@@ -441,7 +441,7 @@ static StatusOr<runtime::MemrefDesc> BufferToMemref(
     size_t descriptor_index, size_t operand_index) {
   auto* memref = llvm::dyn_cast<runtime::MemrefType>(&operand_type);
   if (!memref) {
-    return InternalError(
+    return Internal(
         "Cannot convert descriptor %zu (operand_index %zu): "
         "the corresponding type in the signature is a %s, "
         "not a MemrefType.",
@@ -495,7 +495,7 @@ Status XlaRuntimeCpuExecutable::Execute(
   // Verify that the number of arguments in the mapping matches the signature.
   // Add one to num_arguments to account for the signature's execution context.
   if (num_arguments + 1 != signature.num_operands()) {
-    return InternalError(
+    return Internal(
         "Wrong number of arguments: got %zu via XLA FrameworkMapping, expected "
         "%d.",
         num_arguments, static_cast<int>(signature.num_operands()) - 1);
@@ -551,7 +551,7 @@ Status XlaRuntimeCpuExecutable::Execute(
           GetExecutable().InitializeCallFrame(arguments, &call_frame,
                                               /*verify_arguments=*/false);
       !status.ok()) {
-    return InternalError("Failed to initialize call frame: %s.",
+    return Internal("Failed to initialize call frame: %s.",
                          status.message());
   }
 
@@ -581,7 +581,7 @@ Status XlaRuntimeCpuExecutable::Execute(
   GetExecutable().Execute(call_frame, opts);
   if (auto status = GetExecutable().ReturnResults(converter, &call_frame);
       !status.ok()) {
-    return InternalError("Failed to execute XLA Runtime executable: %s%s%s.",
+    return Internal("Failed to execute XLA Runtime executable: %s%s%s.",
                          status.message(), diagnostic.empty() ? "" : ": ",
                          diagnostic);
   }

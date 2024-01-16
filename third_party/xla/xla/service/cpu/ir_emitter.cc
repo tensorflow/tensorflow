@@ -2799,7 +2799,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       break;
     }
     default:
-      return InternalError(
+      return Internal(
           "Unknown custom-call API version enum value: %d (%s)",
           typed_custom_call->api_version(),
           CustomCallApiVersion_Name(typed_custom_call->api_version()));
@@ -2827,7 +2827,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
           const BufferAllocation::Slice slice_b =
               assignment_.GetUniqueSlice(b, index).value();
           if (slice_a != slice_b) {
-            return InternalError(
+            return Internal(
                 "instruction %s %s does not share slice with "
                 "instruction %s %s",
                 a->ToString(), slice_a.ToString(), b->ToString(),

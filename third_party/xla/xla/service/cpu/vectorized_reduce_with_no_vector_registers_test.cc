@@ -34,7 +34,7 @@ StatusOr<unsigned> GetTargetVectorRegisterByteSize(std::string triple) {
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple, error);
   if (target == nullptr) {
-    return InternalError("TargetRegistry::lookupTarget failed: %s", error);
+    return Internal("TargetRegistry::lookupTarget failed: %s", error);
   }
 
   llvm::LLVMContext context;

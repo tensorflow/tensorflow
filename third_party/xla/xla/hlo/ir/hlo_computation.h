@@ -100,7 +100,7 @@ class HloComputation {
     StatusOr<HloInstruction*> AddParameter(
         std::unique_ptr<HloInstruction> parameter) {
       if (!parameter_numbers_.insert(parameter->parameter_number()).second) {
-        return InternalError("Duplicate parameter number %d",
+        return Internal("Duplicate parameter number %d",
                              parameter->parameter_number());
       }
       return AddInstruction(std::move(parameter));

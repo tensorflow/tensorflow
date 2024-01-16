@@ -79,7 +79,7 @@ class XlaRuntimeCpuExecutable {
   StatusOr<std::string_view> GetObjFile() const {
     if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
             executable_)) {
-      return InternalError("No JitExecutable");
+      return Internal("No JitExecutable");
     }
 
     runtime::JitExecutable* jit_executable =
@@ -87,7 +87,7 @@ class XlaRuntimeCpuExecutable {
     std::unique_ptr<llvm::MemoryBuffer> obj_file =
         jit_executable->DefaultExecutable()->obj_file();
     if (!obj_file)
-      return InternalError("XlaRuntimeCpuExecutable didn't save the obj file");
+      return Internal("XlaRuntimeCpuExecutable didn't save the obj file");
 
     return std::string_view(obj_file->getBuffer());
   }
@@ -95,7 +95,7 @@ class XlaRuntimeCpuExecutable {
   StatusOr<std::string_view> GetMlirModule() const {
     if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
             executable_)) {
-      return InternalError("No JitExecutable");
+      return Internal("No JitExecutable");
     }
 
     runtime::JitExecutable* jit_executable =

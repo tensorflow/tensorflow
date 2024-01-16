@@ -1359,7 +1359,7 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
       post_optimization_ir_hook,
       CreateOrcJITPostCompilationHook(module.get(), &obj_files));
   if (!jit) {
-    return InternalError("Creating JIT failed: %s",
+    return Internal("Creating JIT failed: %s",
                          llvm::toString(jit.takeError()));
   }
   llvm_module->setDataLayout((*jit)->data_layout());
@@ -1503,7 +1503,7 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
   absl::StatusOr<runtime::JitExecutable> jit_executable =
       runtime::JitExecutable::Instantiate(serialized_mlir, entry_point, opts);
   if (!jit_executable.ok()) {
-    return InternalError("Failed to compile XLA Runtime program: %s",
+    return Internal("Failed to compile XLA Runtime program: %s",
                          jit_executable.status().message());
   }
 
@@ -1652,7 +1652,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
   if (target == nullptr) {
-    return InternalError("TargetRegistry::lookupTarget failed: %s", error);
+    return Internal("TargetRegistry::lookupTarget failed: %s", error);
   }
 
   llvm::Reloc::Model reloc_model = llvm::Reloc::Static;
@@ -1759,7 +1759,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
       llvm_module = mlir::translateModuleToLLVMIR(*mlir_module, llvm_context);
       if (!llvm_module) {
-        return InternalError("Failed to translate module to LLVM IR");
+        return Internal("Failed to translate module to LLVM IR");
       }
       // Set missing information
       llvm_module->setDataLayout(target_machine->createDataLayout());
@@ -1917,7 +1917,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
   FromString(const std::string& serialized) {
     CompilationResultProto proto;
     if (!proto.ParseFromString(serialized)) {
-      return InternalError(
+      return Internal(
           "Failed to parse serialized CpuExecutableAotCompilationResult.");
     }
     return std::unique_ptr<CpuExecutableAotCompilationResult>(
@@ -1964,7 +1964,7 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       /*pre_optimization_hook=*/nullptr, /*post_optimization_hook=*/nullptr,
       /*post_codegen_hook=*/nullptr);
   if (!jit) {
-    return InternalError("Creating JIT failed: %s",
+    return Internal("Creating JIT failed: %s",
                          llvm::toString(jit.takeError()));
   }
 

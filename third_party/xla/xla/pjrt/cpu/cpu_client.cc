@@ -1345,7 +1345,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     std::optional<absl::string_view> error_message =
         xla::CustomCallStatusGetMessage(&status);
     if (error_message) {
-      return InternalError("Generated function failed: %s", *error_message);
+      return Internal("Generated function failed: %s", *error_message);
     }
 
   } else {
@@ -1457,7 +1457,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
         [done_event = done_event.CopyRef(), event = execute_event.CopyRef()]() {
           Status s;
           if (auto* error = event.GetErrorIfPresent()) {
-            s = InternalError("Compute error: %s", error->message());
+            s = Internal("Compute error: %s", error->message());
           }
           done_event.emplace(std::move(s));
         });

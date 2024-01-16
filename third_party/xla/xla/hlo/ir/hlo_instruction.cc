@@ -4167,7 +4167,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
     case HloOpcode::kOptimizationBarrier:
       return visitor->HandleOptimizationBarrier(this);
   }
-  return InternalError(
+  return Internal(
       "Unhandled HloOpcode for DfsHloVisitor: %s. This should not happen - "
       "please file a bug for XLA.",
       HloOpcodeString(opcode_));

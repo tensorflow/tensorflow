@@ -142,7 +142,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
   // the operands have unresolved constraints.
   if (opts.specialization == Specialization::kDisabled &&
       IsSpecializationOnly(fn.constraints))
-    return InternalError(
+    return Internal(
         "compilation options disabled specialization, yet operands "
         "have unresolved constraints: [%s]",
         absl::StrJoin(fn.constraints, ", "));
@@ -279,7 +279,7 @@ StatusOr<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
     }
 
     assert(false && "failed to detect incorrect operand");
-    return InternalError("failed to resolve symbolic shapes");
+    return Internal("failed to resolve symbolic shapes");
   }
 
   // Combine with a hash value computed from the value constrained operands.
@@ -319,7 +319,7 @@ StatusOr<AsyncValuePtr<Executable>> JitExecutable::GetExecutable(
   if (auto specialized = (*compiler)->Specialize(0, arguments, *symbolic_shapes,
                                                  fn.constraints, listener);
       !specialized.ok()) {
-    return InternalError("failed to specialize executable: %s",
+    return Internal("failed to specialize executable: %s",
                          specialized.message());
   }
 

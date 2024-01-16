@@ -115,7 +115,7 @@ class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
   FromString(const std::string& serialized) {
     XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable;
     if (!xla_runtime_cpu_executable.ParseFromString(serialized)) {
-      return InternalError("Failed to parse serialized JitRtExecutableProto.");
+      return Internal("Failed to parse serialized JitRtExecutableProto.");
     }
     return std::make_unique<CpuXlaRuntimeAotCompilationResult>(
         xla_runtime_cpu_executable);

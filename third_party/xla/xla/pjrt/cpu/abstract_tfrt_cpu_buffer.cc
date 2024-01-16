@@ -168,7 +168,7 @@ StatusOr<Shape> AbstractTfrtCpuBuffer::logical_on_device_shape() {
   const auto& av = device_buffer->definition_event();
   BlockUntilReady(av.GetAsyncValue());
   if (auto* error = av.GetErrorIfPresent()) {
-    return InternalError("Error Execute: %s", error->message());
+    return Internal("Error Execute: %s", error->message());
   }
 
   ShapedBuffer shaped_buffer =
@@ -347,7 +347,7 @@ AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
       BlockUntilReady(av.GetAsyncValue());
       if (auto* error = av.GetErrorIfPresent()) {
         first_error.Update(
-            InternalError("Error Execute: %s", error->message()));
+            Internal("Error Execute: %s", error->message()));
       }
     }
     if (!first_error.ok()) return std::move(first_error);

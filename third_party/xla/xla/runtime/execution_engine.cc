@@ -166,9 +166,9 @@ absl::Status ExportWithXlaRuntimeAbi(llvm::Module &module,
   // Check that we have a function with a valid type.
   llvm::Function *func = module.getFunction(original_name);
   if (!func)
-    return InternalError("exported function not found: %s", original_name);
+    return Internal("exported function not found: %s", original_name);
   if (!func->getReturnType()->isVoidTy())
-    return InternalError("exported function must return void");
+    return Internal("exported function must return void");
 
   // Add an XLA interface function for the exported function.
   llvm::FunctionType *xla_runtime_type =
@@ -296,7 +296,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
 
   // Set up the target machine details.
   if (!options.target_machine)
-    return InternalError("target machine was not provided");
+    return Internal("target machine was not provided");
   module->setDataLayout(options.target_machine->createDataLayout());
   module->setTargetTriple(options.target_machine->getTargetTriple().str());
 
@@ -305,7 +305,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
     if (auto status =
             ExportWithXlaRuntimeAbi(*module, name, GetExportedName(name));
         !status.ok()) {
-      return InternalError(
+      return Internal(
           "failed to set up exported function %s interface: %s", name,
           status.message());
     }
@@ -320,7 +320,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
   auto transformer =
       options.make_optimizing_transformer(options.target_machine.get());
   if (auto err = transformer(module_ptr))
-    return InternalError("failed to run optimization pipeline: %s",
+    return Internal("failed to run optimization pipeline: %s",
                          ToString(err));
 
   // Callback to create the object layer with a user-provided section memory
@@ -364,7 +364,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
       nullptr, std::make_unique<InPlaceTaskDispatcher>());
 
   if (auto err = executorProcessControl.takeError())
-    return InternalError("failed to create executor process control: %s",
+    return Internal("failed to create executor process control: %s",
                          ToString(err));
 
   // TODO(b/286475799): Concurrent compilation leads to spurious memory
@@ -382,14 +382,14 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                  .create();
 
   if (auto err = jit.takeError())
-    return InternalError("failed to construct LLJIT: %s", ToString(err));
+    return Internal("failed to construct LLJIT: %s", ToString(err));
 
   lljit_lock.reset();
 
   // Register input module with the LLJIT.
   ThreadSafeModule tsm(std::move(module), std::move(ctx));
   if (auto err = (*jit)->addIRModule(std::move(tsm)))
-    return InternalError("failed to add source module: %s", ToString(err));
+    return Internal("failed to add source module: %s", ToString(err));
 
   llvm::orc::JITDylib &main_jd = (*jit)->getMainJITDylib();
   llvm::DataLayout data_layout = (*jit)->getDataLayout();
@@ -400,7 +400,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
                                                data_layout);
     auto symbols = absoluteSymbols(options.symbols_binding(mangle));
     if (auto err = main_jd.define(symbols))
-      return InternalError("failed to add symbols bindings: %s", ToString(err));
+      return Internal("failed to add symbols bindings: %s", ToString(err));
   }
 
   // Resolve all exported functions to function pointers.
@@ -408,13 +408,13 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
     // Trigger compilation by looking up the exported function.
     Expected<ExecutorAddr> addr = (*jit)->lookup(GetExportedName(name));
     if (auto err = addr.takeError())
-      return InternalError("failed to compile exported function %s: %s", name,
+      return Internal("failed to compile exported function %s: %s", name,
                            ToString(err));
 
     // Check that we found an address of an exported function.
     auto ptr = addr->toPtr<ExportedFunctionPtr>();
     if (!ptr)
-      return InternalError("exported function %s resolved to null", name);
+      return Internal("exported function %s resolved to null", name);
 
     engine->exported_.push_back(ptr);
   }
@@ -425,7 +425,7 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
       options.save_compiled_obj_file ? obj_cache->stealObject(module_ptr)
                                      : nullptr;
   if (options.save_compiled_obj_file && !obj_file)
-    return InternalError("could not find object file for the XLA module");
+    return Internal("could not find object file for the XLA module");
 
   // Fill remaining fields and return constructed ExecutionEngine to the caller.
   engine->jit_ = std::move(*jit);
@@ -473,10 +473,10 @@ ExecutionEngine::CreateFromObjFile(
                  .setObjectLinkingLayerCreator(obj_layer_creator)
                  .create();
   if (auto err = jit.takeError())
-    return InternalError("failed to construct LLJIT: %s", ToString(err));
+    return Internal("failed to construct LLJIT: %s", ToString(err));
 
   if (auto err = (*jit)->addObjectFile(std::move(obj_file)))
-    return InternalError("failed to add object file: %s", ToString(err));
+    return Internal("failed to add object file: %s", ToString(err));
 
   llvm::orc::JITDylib &main_jd = (*jit)->getMainJITDylib();
   llvm::DataLayout data_layout = (*jit)->getDataLayout();
@@ -485,7 +485,7 @@ ExecutionEngine::CreateFromObjFile(
   auto generator = DynamicLibrarySearchGenerator::GetForCurrentProcess(
       data_layout.getGlobalPrefix());
   if (auto err = generator.takeError())
-    return InternalError("failed to construct DyLib search generator");
+    return Internal("failed to construct DyLib search generator");
   main_jd.addGenerator(std::move(*generator));
 
   // Register user-provided symbols.
@@ -494,7 +494,7 @@ ExecutionEngine::CreateFromObjFile(
                                                data_layout);
     auto symbols = absoluteSymbols(options.symbols_binding(mangle));
     if (auto err = main_jd.define(symbols))
-      return InternalError("failed to add symbols bindings: %s", ToString(err));
+      return Internal("failed to add symbols bindings: %s", ToString(err));
   }
 
   // Resolve all exported functions to function pointers.
@@ -502,13 +502,13 @@ ExecutionEngine::CreateFromObjFile(
     // Lookup exported function in the loaded object file.
     Expected<ExecutorAddr> addr = (*jit)->lookup(GetExportedName(name));
     if (auto err = addr.takeError())
-      return InternalError("failed to look up the exported function %s: %s",
+      return Internal("failed to look up the exported function %s: %s",
                            name, ToString(err));
 
     // Check that we found an address of an exported function.
     auto ptr = addr->toPtr<ExportedFunctionPtr>();
     if (!ptr)
-      return InternalError("exported function %s resolved to null", name);
+      return Internal("exported function %s resolved to null", name);
 
     engine->exported_.push_back(ptr);
   }

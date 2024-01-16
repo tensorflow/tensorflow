@@ -274,7 +274,7 @@ TEST(TfrtCpuClientTest, AsyncTransferSetBufferError) {
                           client->CreateBuffersForAsyncHostToDevice(
                               {shape}, client->addressable_devices()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
-  transfer_manager->SetBufferError(0, InternalError("foobar"));
+  transfer_manager->SetBufferError(0, Internal("foobar"));
   EXPECT_THAT(
       buffer->ToLiteralSync(),
       tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
@@ -284,7 +284,7 @@ TEST(TfrtCpuClientTest, CreateErrorBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(CpuClientOptions()));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->CreateErrorBuffer(InternalError("foobar"), shape,
+      auto buffer, client->CreateErrorBuffer(Internal("foobar"), shape,
                                              client->addressable_devices()[0]));
   EXPECT_THAT(
       buffer->ToLiteralSync(),

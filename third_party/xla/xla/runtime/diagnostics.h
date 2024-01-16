@@ -98,7 +98,7 @@ class InFlightDiagnostic {
   // Example:
   //
   //   LogicalResult call(DiagnosticEngine diag, ...) {
-  //     if (<check failed>) return diag.EmitError(InternalError("oops"));
+  //     if (<check failed>) return diag.EmitError(Internal("oops"));
   //     ...
   //   }
   //

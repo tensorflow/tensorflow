@@ -2303,7 +2303,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     // the device memory long enough to complete the memcpy command.
     auto done_event = MakeConstructedAsyncValueRef<se::Event>(stream->parent());
     if (!done_event->Init())
-      return InternalError("Failed to initialize done event (channel_id=%d)",
+      return Internal("Failed to initialize done event (channel_id=%d)",
                            channel_id);
 
     thread_pool->Schedule([done_event, stream, src, channel_id, shape, send] {
@@ -2462,7 +2462,7 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     // `StreamExecutorCopyToDeviceStream` implementation above).
     auto done_event = MakeConstructedAsyncValueRef<se::Event>(stream->parent());
     if (!done_event->Init())
-      return InternalError("Failed to initialize done event (channel_id=%d)",
+      return Internal("Failed to initialize done event (channel_id=%d)",
                            channel_id);
 
     recv->callback({shape}, std::make_unique<StreamExecutorCopyToDeviceStream>(
@@ -3168,7 +3168,7 @@ StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
   absl::Span<const std::shared_ptr<LocalExecutable>> local_executables =
       se_executable->executables();
   if (local_executables.empty()) {
-    return InternalError("No local executable");
+    return Internal("No local executable");
   }
   if (local_executables.size() != 1) {
     return Unimplemented(

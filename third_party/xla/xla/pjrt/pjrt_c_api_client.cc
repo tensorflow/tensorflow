@@ -1058,7 +1058,7 @@ PjRtCApiExecutable::GetHloModules() const {
   absl::string_view program_format(program.format, program.format_size);
   if (program_format != ::pjrt::kHloWithConfigFormat &&
       program_format != ::pjrt::kMlirFormat) {
-    return xla::InternalError(
+    return xla::Internal(
         "expected program format `hlo_with_config` or `mlir` but got %s",
         program_format);
   }
@@ -1074,11 +1074,11 @@ PjRtCApiExecutable::GetHloModules() const {
     mlir::mhlo::registerAllMhloDialects(registry);
     ctx.appendDialectRegistry(registry);
     auto module = mlir::parseSourceString<mlir::ModuleOp>(code, &ctx);
-    if (!module) return xla::InternalError("failed to parse source module");
+    if (!module) return xla::Internal("failed to parse source module");
     mlir::PassManager pm(&ctx);
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     if (mlir::failed(pm.run(module.get())))
-      return xla::InternalError("failed to convert to MHLO");
+      return xla::Internal("failed to convert to MHLO");
     mlir::MlirToHloConversionOptions options;
     // TODO(jieying): Tuple args should really come from GetCompileOptions (or
     // equivalent) once implemented.
@@ -2203,7 +2203,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     std::shared_ptr<KeyValueStoreInterface> kv_store) {
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
-    return InternalError("PJRT C API is nullptr for %s", device_type);
+    return Internal("PJRT C API is nullptr for %s", device_type);
   }
 
   PJRT_Client_Create_Args init_args;
@@ -2237,7 +2237,7 @@ StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options) {
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
-    return InternalError("PJRT C API is nullptr for %s", device_type);
+    return Internal("PJRT C API is nullptr for %s", device_type);
   }
 
   PJRT_TopologyDescription_Create_Args init_args;

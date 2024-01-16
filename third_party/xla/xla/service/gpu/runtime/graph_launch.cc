@@ -518,7 +518,7 @@ static absl::StatusOr<OwnedGpuGraph> CaptureGraph(
   });
 
   if (!captured.ok()) {
-    return InternalError("CaptureGpuGraph failed (%s): %s",
+    return Internal("CaptureGpuGraph failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,
                          captured.status().ToString());
   }
@@ -560,7 +560,7 @@ static absl::Status RunGraphOpByOp(
       function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode());
   concurrent_region_status->EnableConcurrentRegion();
   if (!executed.ok()) {
-    return InternalError("RunGraphOpByOp failed (%s): %s",
+    return Internal("RunGraphOpByOp failed (%s): %s",
                          diagnostic.empty() ? "<no details>" : diagnostic,
                          executed.status().ToString());
   }
