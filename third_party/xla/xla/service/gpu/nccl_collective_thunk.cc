@@ -413,14 +413,15 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Run the collective on main stream or using the async executor.
   absl::Status status = [&]() {
     if (!IsAsync()) {
-      return RunNcclCollective(params, *params.stream, *comm);
+      return RunNcclCollective(params, *params.stream,
+                               reinterpret_cast<ncclComm_t>(*comm));
     }
     return async_->Execute(
         [this](const ExecuteParams& params, se::Stream& stream,
                ncclComm_t comm) {
           return RunNcclCollective(params, stream, comm);
         },
-        params, *comm, GetAsyncStreamKind());
+        params, reinterpret_cast<ncclComm_t>(*comm), GetAsyncStreamKind());
   }();
   TF_RETURN_IF_ERROR(status);
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
@@ -59,10 +60,25 @@ absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
                                     se::Stream& stream, ncclComm_t comm,
                                     Thunk::Kind reduce_op);
 
+inline absl::Status RunMockNcclCollectives(
+    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
+    NcclCommHandle comm, Thunk::Kind reduce_op) {
+  return RunMockNcclCollectives(buffers, stream,
+                                reinterpret_cast<ncclComm_t>(comm), reduce_op);
+}
+
 // Mock a NCCL-based All-To-All op.
 absl::Status RunMockNcclAllToAll(bool has_split_dimension,
                                  std::vector<DeviceBufferPair>& buffers,
                                  se::Stream& stream, ncclComm_t comm);
+
+inline absl::Status RunMockNcclAllToAll(bool has_split_dimension,
+                                        std::vector<DeviceBufferPair>& buffers,
+                                        se::Stream& stream,
+                                        NcclCommHandle comm) {
+  return RunMockNcclAllToAll(has_split_dimension, buffers, stream,
+                             reinterpret_cast<ncclComm_t>(comm));
+}
 
 // Mock a collective permute op.
 absl::Status RunMockCollectivePermute(

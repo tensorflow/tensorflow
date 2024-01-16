@@ -18,16 +18,13 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
-#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
-#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -40,8 +37,6 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/gpu/nccl_errors.h"
-#include "xla/service/gpu/nccl_types.h"
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
@@ -81,7 +76,7 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
 namespace {
 
 struct NcclCliqueState {
-  NcclUniqueId unique_id;
+  NcclCliqueId clique_id;
   int64_t run_id = -1;
 
   // `mu` guards `communicators` and `status` during initialization.
@@ -104,17 +99,6 @@ struct NcclCliques {
   absl::Mutex mu;
   absl::node_hash_map<NcclCliqueKey, NcclClique> cliques ABSL_GUARDED_BY(mu);
 };
-
-absl::StatusOr<NcclUniqueId> ToNcclUniqueId(const NcclCliqueId& id) {
-#ifdef XLA_ENABLE_XCCL
-  static_assert(sizeof(NcclUniqueId) == sizeof(NcclCliqueId),
-                "size of nccl unique id must match the clique id");
-  NcclUniqueId nccl_id;
-  absl::c_copy(id.data(), nccl_id.internal);
-  return nccl_id;
-#endif
-  return absl::InternalError("XLA compiled without NCCL support.");
-}
 
 std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
@@ -151,8 +135,8 @@ std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
         const NcclCliqueKey& clique_key = std::get<2>(rendezvous_key);
         NcclClique::Lock clique = cliques[clique_key].Acquire();
         if (clique->run_id < 0) {
-          TF_ASSIGN_OR_RETURN(NcclCliqueId id, clique_id_callback(clique_key));
-          TF_ASSIGN_OR_RETURN(clique->unique_id, ToNcclUniqueId(id));
+          TF_ASSIGN_OR_RETURN(clique->clique_id,
+                              clique_id_callback(clique_key));
         }
         // If multiple executable are running simultaneously while using
         // multiple hosts, it is possible that different executables could
@@ -171,7 +155,6 @@ std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
 // Adds NCCL communicator to a global per-process state that tracks NCCL
 // communicators health.
 void TrackNcclCommunicatorHealth(NcclComm* comm) {
-#ifdef XLA_ENABLE_XCCL
   struct AllCommunicators {
     absl::Mutex mu;
     std::vector<NcclComm*> communicators ABSL_GUARDED_BY(mu);
@@ -189,19 +172,14 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
     NcclCommHandle comm = *lockable_comm->Acquire();
     if (comm == nullptr) return absl::OkStatus();
 
-    NcclStatus async_err;
-    XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(comm, &async_err));
-
-    if (async_err != ncclSuccess) {
+    absl::Status async_err = NcclApi::CommGetAsyncError(comm);
+    if (!async_err.ok()) {
       LOG(ERROR) << "Aborting communicator: " << comm
-                 << " due to async NCCL error: "
-                 << ncclGetErrorString(async_err)
-                 << ". Last NCCL warning(error) log entry (may be unrelated): "
-                 << ncclGetLastError(nullptr);
-      XLA_NCCL_RETURN_IF_ERROR(ncclCommAbort(comm));
+                 << " due to async NCCL error: " << async_err;
+      TF_RETURN_IF_ERROR(NcclApi::CommAbort(comm));
     }
 
-    return XLA_NCCL_STATUS(async_err);
+    return async_err;
   };
 
   // Launch a thread that periodically checks all NCCL communicators for
@@ -223,7 +201,6 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
         }
       });
   (void)check_async_error_thread;  // Silence unused variable warning.
-#endif
 }
 
 }  // namespace
@@ -233,7 +210,6 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     size_t num_local_participants,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     int64_t stream_id, bool enable_clique_optimization) {
-#ifdef XLA_ENABLE_XCCL
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
   // The enable_clique_optimization value is only used for asynchronous
@@ -254,19 +230,18 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
 
   if (!state.ready.HasBeenNotified()) {
     int nranks = clique_key.devices().size();
-    const ncclUniqueId& id = state.unique_id;
 
-    VLOG(3) << "Initialize NCCL communicator for rank #" << rank << " of "
-            << nranks << "; id=" << absl::HashOf(absl::MakeSpan(id.internal));
-
-    ncclComm_t comm = nullptr;
-    absl::Status status =
-        XLA_NCCL_STATUS(ncclCommInitRank(&comm, nranks, id, rank));
+    absl::StatusOr<NcclCommHandle> comm =
+        NcclApi::CommInitRank(nranks, state.clique_id, rank);
 
     size_t num_initialized = [&] {
       absl::MutexLock lock(&state.mu);
-      state.status.Update(status);
-      state.communicators[rank] = std::make_unique<NcclComm>(comm);
+      if (comm.ok()) {
+        state.communicators[rank] = std::make_unique<NcclComm>(*comm);
+      } else {
+        state.status.Update(comm.status());
+        state.communicators[rank] = std::make_unique<NcclComm>(nullptr);
+      }
       return state.communicators.size();
     }();
 
@@ -278,7 +253,7 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     if (num_initialized == num_local_participants) {
       state.ready.Notify();
     } else {
-      TF_RETURN_IF_ERROR(status);
+      TF_RETURN_IF_ERROR(comm.status());
       state.ready.WaitForNotification();
     }
 
@@ -288,9 +263,6 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
 
   TF_RETURN_IF_ERROR(state.status);
   return state.communicators[rank]->Acquire();
-#endif
-
-  return absl::InternalError("XLA compiled without NCCL support.");
 }
 
 }  // namespace xla::gpu

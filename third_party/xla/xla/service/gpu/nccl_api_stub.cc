@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/gpu/nccl_api.h"
@@ -21,6 +23,20 @@ limitations under the License.
 namespace xla::gpu {
 
 absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::StatusOr<NcclCommHandle> NcclApi::CommInitRank(int32_t,
+                                                     const NcclCliqueId&,
+                                                     int32_t) {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::Status NcclApi::CommAbort(NcclCommHandle comm) {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 

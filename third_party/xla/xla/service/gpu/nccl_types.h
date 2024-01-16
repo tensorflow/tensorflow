@@ -34,7 +34,6 @@ namespace xla::gpu {
 
 #if defined(XLA_ENABLE_XCCL)
 
-using NcclCommHandle = ncclComm_t;
 using NcclDataType = ncclDataType_t;
 using NcclRedOp = ncclRedOp_t;
 using NcclStatus = ncclResult_t;
@@ -46,7 +45,6 @@ using NcclUniqueId = ncclUniqueId;
 // pointers and always return errors in implementations. By doing this we can
 // keep all XLA headers compilable even if NCCL is not available and do not
 // spread ifdefs throughout the code base.
-using NcclCommHandle = void*;
 using NcclDataType = void*;
 using NcclRedOp = void*;
 using NcclStatus = void*;

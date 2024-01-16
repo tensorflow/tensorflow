@@ -20,12 +20,15 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/status.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -132,9 +135,23 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, ncclComm_t comm);
 
+inline absl::Status RunAllReduce(ReductionKind reduction_kind,
+                                 std::vector<DeviceBufferPair>& buffers,
+                                 se::Stream& stream, NcclCommHandle comm) {
+  return RunAllReduce(reduction_kind, buffers, stream,
+                      reinterpret_cast<ncclComm_t>(comm));
+}
+
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
                               se::Stream& stream, ncclComm_t comm);
+
+inline absl::Status RunReduceScatter(ReductionKind reduction_kind,
+                                     std::vector<DeviceBufferPair>& buffers,
+                                     se::Stream& stream, NcclCommHandle comm) {
+  return RunReduceScatter(reduction_kind, buffers, stream,
+                          reinterpret_cast<ncclComm_t>(comm));
+}
 
 }  // namespace gpu
 }  // namespace xla

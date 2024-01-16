@@ -172,15 +172,18 @@ absl::Status NcclPersistentPlanAllocator::Deallocate(
 ScopedNcclPersistentPlanAllocator::ScopedNcclPersistentPlanAllocator(
     NcclComm::Lock* comm, ncclPersistentPlanAllocator* allocator)
     : comm_(comm) {
-  CHECK(ncclCommGetPersistentPlanAllocator(**comm_, &recover_) == ncclSuccess)
+  CHECK(ncclCommGetPersistentPlanAllocator(
+            reinterpret_cast<ncclComm_t>(**comm_), &recover_) == ncclSuccess)
       << "Failed to get NCCL persistent plan allocator";
 
-  CHECK(ncclCommSetPersistentPlanAllocator(**comm, allocator) == ncclSuccess)
+  CHECK(ncclCommSetPersistentPlanAllocator(
+            reinterpret_cast<ncclComm_t>(**comm_), allocator) == ncclSuccess)
       << "Faield to set NCCL persistent plan allocator";
 }
 
 ScopedNcclPersistentPlanAllocator::~ScopedNcclPersistentPlanAllocator() {
-  CHECK(ncclCommSetPersistentPlanAllocator(**comm_, recover_) == ncclSuccess)
+  CHECK(ncclCommSetPersistentPlanAllocator(
+            reinterpret_cast<ncclComm_t>(**comm_), recover_) == ncclSuccess)
       << "Faield to set NCCL persistent plan allocator";
 }
 #endif

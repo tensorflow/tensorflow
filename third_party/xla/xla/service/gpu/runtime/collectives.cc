@@ -297,8 +297,9 @@ absl::Status MockNcclP2PImplCommon(
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
 
-  return runner(source_target, (*device_buffers)[0], *stream, **comm,
-                device_string, current_id);
+  return runner(source_target, (*device_buffers)[0], *stream,
+                reinterpret_cast<ncclComm_t>(**comm), device_string,
+                current_id);
 }
 
 absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
@@ -353,8 +354,9 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
   return RunRepeated(debug_options->xla_gpu_collective_inflation_factor(),
                      [&]() -> absl::Status {
                        return runner(source_target, (*device_buffers)[0],
-                                     *stream, **comm, device_string,
-                                     current_id);
+                                     *stream,
+                                     reinterpret_cast<ncclComm_t>(**comm),
+                                     device_string, current_id);
                      });
 }
 #endif  // XLA_ENABLE_XCCL
