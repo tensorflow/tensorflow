@@ -110,7 +110,7 @@ StatusOr<HloInstruction*> GetMatchingSendOrRecvFromMap(
       kXlaHostTransferRendezvousNameAttr);
   auto send_recv_iter = send_recv_group_map.find(rendezvous);
   if (send_recv_iter == send_recv_group_map.end()) {
-    return InternalError("Missing send or recv from send recv group.");
+    return Internal("Missing send or recv from send recv group.");
   }
   if (send_or_recv->opcode() == HloOpcode::kSend) {
     return send_recv_iter->second.recv;

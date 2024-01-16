@@ -125,7 +125,7 @@ class BarBlowerUpper : public HloModulePass {
          module->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->name() == "bar") {
-          return InternalError("Module has instruction named bar");
+          return Internal("Module has instruction named bar");
         }
       }
     }

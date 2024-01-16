@@ -707,7 +707,7 @@ TEST_F(CallGraphTest, VisitWithError) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
 
   Status status = call_graph->VisitNodes(
-      [](const CallGraphNode&) { return InternalError("Visitation failed"); });
+      [](const CallGraphNode&) { return Internal("Visitation failed"); });
 
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.code(), tsl::error::INTERNAL);

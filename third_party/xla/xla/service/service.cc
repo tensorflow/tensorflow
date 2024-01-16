@@ -429,7 +429,7 @@ Service::ExecuteParallelAndRegisterResult(
   for (int64_t i = 0, end = streams.size(); i < end; ++i) {
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
-      return InternalError("failed to complete execution for stream %d: %s", i,
+      return Internal("failed to complete execution for stream %d: %s", i,
                            block_status.message());
     }
   }

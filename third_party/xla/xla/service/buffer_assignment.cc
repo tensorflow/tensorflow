@@ -205,7 +205,7 @@ Status GatherComputationsByAllocationType(
                                               true));  // Thread local.
             break;
           default:
-            return InternalError("Unexpected calling opcode: %s",
+            return Internal("Unexpected calling opcode: %s",
                                  HloOpcodeString(instruction->opcode()));
         }
       }

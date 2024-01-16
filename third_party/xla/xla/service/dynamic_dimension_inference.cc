@@ -1415,7 +1415,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(
       SetDynamicSizes(hlo, {}, dynamic_sizes);
       return OkStatus();
     }
-    return InternalError(
+    return Internal(
         "Need inferred dimension to be set to "
         "flatten-unflatten pair. %s",
         hlo->ToString());
@@ -1844,7 +1844,7 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
               }
               ++operand_dimension;
             }
-            return InternalError("Invalid instruction: %s", hlo->ToString());
+            return Internal("Invalid instruction: %s", hlo->ToString());
           }
           return Unimplemented(
               "Detects a dynamic dimension on the data input of gather, which "

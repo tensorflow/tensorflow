@@ -2233,7 +2233,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitPredBinaryOp(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-      return InternalError("Invalid binary op '%s' for pred",
+      return Internal("Invalid binary op '%s' for pred",
                            HloOpcodeString(op->opcode()));
 
     default:

@@ -176,7 +176,7 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
               instruction, config_.get_context_shapes(instruction));
           break;
         default:
-          return InternalError("Unexpected opcode %s",
+          return Internal("Unexpected opcode %s",
                                HloOpcodeString(instruction->opcode()));
       }
       TF_RETURN_IF_ERROR(async_pair.status());

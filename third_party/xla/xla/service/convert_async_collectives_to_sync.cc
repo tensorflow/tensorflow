@@ -74,7 +74,7 @@ StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
       break;
     }
     default:
-      return InternalError("Unexpected async start op %s",
+      return Internal("Unexpected async start op %s",
                            HloOpcodeString(async_start->opcode()));
   }
 

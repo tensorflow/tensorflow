@@ -174,7 +174,7 @@ class HloModuleGroupPass : public HloPassInterface {
   StatusOr<bool> Run(HloModule* module,
                      const absl::flat_hash_set<absl::string_view>&
                          execution_threads) override {
-    return InternalError("Module group pass cannot be run on a module");
+    return Internal("Module group pass cannot be run on a module");
   }
 };
 

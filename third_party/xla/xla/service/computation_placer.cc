@@ -49,7 +49,7 @@ StatusOr<DeviceAssignment::LogicalID> DeviceAssignment::LogicalIdForDevice(
     for (int c = 0; c < computation_count(); ++c) {
       if ((*this)(r, c) == device_id.value()) {
         if (logical_id.has_value()) {
-          return InternalError(
+          return Internal(
               "Device %d appears twice in DeviceAssignment: %s",
               device_id.value(), ToString());
         }
@@ -60,7 +60,7 @@ StatusOr<DeviceAssignment::LogicalID> DeviceAssignment::LogicalIdForDevice(
   if (logical_id.has_value()) {
     return *logical_id;
   } else {
-    return InternalError("Device %d doesn't appear in DeviceAssignment: %s",
+    return Internal("Device %d doesn't appear in DeviceAssignment: %s",
                          device_id.value(), ToString());
   }
 }

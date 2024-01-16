@@ -131,7 +131,7 @@ Status DecomposeStochasticConvert(HloComputation* comp,
   }
 
   // TODO(b/232442915): Add support for converting to floats.
-  return InternalError("Unsupported stochastic convert: from %s to %s",
+  return Internal("Unsupported stochastic convert: from %s to %s",
                        PrimitiveType_Name(from_type),
                        PrimitiveType_Name(to_type));
 }

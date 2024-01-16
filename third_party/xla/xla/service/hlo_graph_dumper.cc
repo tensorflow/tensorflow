@@ -1830,7 +1830,7 @@ StatusOr<std::string> WrapFusionExplorer(
     const FusionVisualizerProgress& visualizer_progress,
     absl::string_view graph_title) {
   if (visualizer_progress.frames.empty()) {
-    return InternalError("Empty");
+    return Internal("Empty");
   }
 
   std::string dot_graphs =

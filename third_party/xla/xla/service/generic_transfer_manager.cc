@@ -203,7 +203,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
           ->callback_is_host_callback_safe) {
     stream->ThenDoHostCallback([done = std::move(done), stream] {
       done(stream->ok() ? OkStatus()
-                        : InternalError("`TransferLiteralFromDevice` failed"));
+                        : Internal("`TransferLiteralFromDevice` failed"));
     });
   } else {
     done(stream->BlockHostUntilDone());

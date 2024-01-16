@@ -237,7 +237,7 @@ PlatformUtil::GetStreamExecutors(
     }
   }
   if (out.empty()) {
-    return InternalError("no supported devices found for platform %s",
+    return Internal("no supported devices found for platform %s",
                          platform->Name());
   }
   return out;
