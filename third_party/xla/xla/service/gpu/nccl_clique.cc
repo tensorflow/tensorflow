@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_errors.h"
 #include "xla/service/gpu/nccl_types.h"
@@ -60,18 +61,6 @@ bool IsGlobalNcclConfig() {
   return nccl_comm_id != nullptr;
 }
 
-// Creates a new NCCL unique id for local communication.
-static absl::StatusOr<NcclCliqueId> LocalNcclUniqueId(const NcclCliqueKey&) {
-#ifdef XLA_ENABLE_XCCL
-  NcclUniqueId id;
-  XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
-  static_assert(sizeof(NcclUniqueId) == sizeof(NcclCliqueId),
-                "size of nccl unique id must match the clique id");
-  return NcclCliqueId(id.internal);
-#endif
-  return absl::InternalError("XLA compiled without NCCL support.");
-}
-
 absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
     const NcclCliqueIdCallback* clique_id_callback, bool is_local) {
   if (clique_id_callback != nullptr) return clique_id_callback;
@@ -80,7 +69,8 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
       << "If non-local devices are taking part of a collective API on "
          "GPU, the nccl_clique_id_callback must be provided by the client.";
 
-  static auto* local_callback = new NcclCliqueIdCallback(LocalNcclUniqueId);
+  static auto* local_callback = new NcclCliqueIdCallback(
+      [](const NcclCliqueKey&) { return NcclApi::GetUniqueId(); });
   return local_callback;
 }
 
