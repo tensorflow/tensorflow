@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -39,8 +40,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/layout_util.h"
-#include "xla/literal_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -96,6 +97,9 @@ namespace xla {
 //       contracting dimensions.
 //     - WithReplicaGroups: Collective instruction's replica groups matches the
 //       given pattern.
+//     - WithSharding: Instruction's sharding is equal to the given sharding.
+//     - WithControlDeps: Instruction's control predecessors/successors match
+//       the given list of instructions.
 //
 //   Shape():
 //     - EqualTo
@@ -2183,6 +2187,63 @@ class HloInstructionShardingImpl {
   std::optional<HloSharding> sharding_;
 };
 
+class HloInstructionControlDepsImpl {
+ public:
+  explicit HloInstructionControlDepsImpl(
+      absl::Span<HloInstruction* const> preds,
+      absl::Span<HloInstruction* const> succs)
+      : preds_(preds), succs_(succs) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    auto print_deps = [os](absl::Span<HloInstruction* const> deps,
+                           absl::string_view type) {
+      if (deps.empty()) {
+        *os << "no control " << type;
+      } else {
+        *os << "control " << type << " {" << absl::StrJoin(deps, ",", fmt)
+            << "}";
+      }
+    };
+
+    *os << "with ";
+    print_deps(preds_, "predecessors");
+    *os << " and ";
+    print_deps(succs_, "successors");
+  }
+
+ private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    auto match_deps = [&](absl::Span<HloInstruction* const> expected_deps,
+                          const PtrVec<HloInstruction*>& actual_deps,
+                          absl::string_view type) {
+      if (!absl::c_equal(expected_deps, actual_deps)) {
+        EXPLAIN << "HloInstruction expected to have control " << type << " {"
+                << absl::StrJoin(expected_deps, ",", fmt) << "} but has {"
+                << absl::StrJoin(actual_deps, ",", fmt) << "}";
+        return false;
+      }
+      return true;
+    };
+    return match_deps(preds_, inst->control_predecessors(), "predecessors") &&
+           match_deps(succs_, inst->control_successors(), "successors");
+  }
+
+  static void fmt(std::string* out, const HloInstruction* inst) {
+    absl::StrAppend(out, inst->name());
+  };
+
+  absl::Span<HloInstruction* const> preds_, succs_;
+};
+
 // Matches a constant scalar or effective scalar, optionally with a given value.
 template <typename ScalarTy>
 class HloConstantScalarImpl {
@@ -2510,6 +2571,11 @@ class HloInstructionPattern {
   auto WithSharding(absl::string_view sharding) const {
     return AppendImpl(
         HloInstructionShardingImpl(ParseSharding(sharding).value()));
+  }
+
+  auto WithControlDeps(absl::Span<HloInstruction* const> preds,
+                       absl::Span<HloInstruction* const> succs) {
+    return AppendImpl(HloInstructionControlDepsImpl(preds, succs));
   }
 
   void DescribeTo(std::ostream* os, int64_t indent = 0) const {

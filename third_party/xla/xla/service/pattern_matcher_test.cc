@@ -1453,5 +1453,35 @@ TEST_F(PatternMatcherTest, TestWithSharding) {
       "sharding={devices=[1,2,2,1]0,1,2,3}");
 }
 
+TEST_F(PatternMatcherTest, TestWithControlDeps) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      p0 = f32[4] parameter(0)
+      p1 = f32[4] parameter(1)
+      add = f32[4] add(p0, p1)
+      mul = f32[4] multiply(p0, p1), control-predecessors={add}
+      div = f32[4] divide(p0, p1), control-predecessors={mul}
+      ROOT t = (f32[4], f32[4], f32[4]) tuple(add, mul, div)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* add = FindInstruction(hlo_module.get(), "add");
+  auto* mul = FindInstruction(hlo_module.get(), "mul");
+  auto* div = FindInstruction(hlo_module.get(), "div");
+
+  EXPECT_TRUE(Match(add, m::Op().WithControlDeps({}, {mul})));
+  EXPECT_TRUE(Match(mul, m::Op().WithControlDeps({add}, {div})));
+  EXPECT_TRUE(Match(div, m::Op().WithControlDeps({mul}, {})));
+  EXPECT_FALSE(Match(div, m::Op().WithControlDeps({mul}, {div})));
+  EXPECT_DESC_AND_EXPLANATION(
+      div, m::Op().WithControlDeps({mul}, {div}),
+      "an HloInstruction with control predecessors {mul} and control "
+      "successors {div}",
+      "HloInstruction expected to have control successors {div} but has {}\n"
+      "in div = f32[4]{0} divide(f32[4]{0} p0, f32[4]{0} p1), "
+      "control-predecessors={mul}");
+}
+
 }  // namespace
 }  // namespace xla

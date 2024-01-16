@@ -801,10 +801,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":hlo_parser",
-        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:ptrvec",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
