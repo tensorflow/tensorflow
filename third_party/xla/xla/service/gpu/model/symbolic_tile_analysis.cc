@@ -464,9 +464,9 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
     TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
                         ParametersSatisfyConstraints(tile_parameters));
     if (!constraints_are_satisfied) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Tile parameters ", absl::StrJoin(tile_parameters, ", "),
-          " do not satisfy the SymbolicTileAnalysis's constraints."));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Tile parameters ", absl::StrJoin(tile_parameters, ", "),
+                       " do not satisfy constraints."));
     }
   }
 
