@@ -188,7 +188,7 @@ HloComputation* HloModule::AddEntryComputationWithLayouts(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  if (has_schedule() && !to_remove->IsCalledComputation()) {
+  if (has_schedule()) {
     schedule_->remove_computation(to_remove);
   }
 

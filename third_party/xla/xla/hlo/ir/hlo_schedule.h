@@ -151,7 +151,8 @@ class HloSchedule {
   // Removes the computation from the sequences.
   void remove_computation(const HloComputation* computation) {
     auto it = sequences_.find(computation->unique_id());
-    CHECK(it != sequences_.end());
+    // The computation is not scheduled. Nothing to remove.
+    if (it == sequences_.end()) return;
     sequences_.erase(it);
     execution_threads_.erase(computation->unique_id());
   }
