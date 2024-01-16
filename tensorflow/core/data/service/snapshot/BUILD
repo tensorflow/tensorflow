@@ -108,6 +108,52 @@ tf_kernel_library(
 )
 
 cc_library(
+    name = "parallel_tfrecord_writer",
+    srcs = ["parallel_tfrecord_writer.cc"],
+    hdrs = ["parallel_tfrecord_writer.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/data:snapshot_utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
+tf_cc_test(
+    name = "parallel_tfrecord_writer_test",
+    srcs = ["parallel_tfrecord_writer_test.cc"],
+    deps = [
+        ":parallel_tfrecord_writer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:snapshot_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "path_utils",
     srcs = ["path_utils.cc"],
     hdrs = ["path_utils.h"],
