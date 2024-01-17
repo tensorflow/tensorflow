@@ -261,9 +261,22 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
     outputs[i] = computation.AddInstruction(HloInstruction::CreateBitcast(
         all_reduce->operand(i)->shape(), outputs[i]));
   }
+  HloInstruction* replacement = MaybeMakeTuple(outputs);
 
-  TF_RETURN_IF_ERROR(
-      computation.ReplaceInstruction(all_reduce, MaybeMakeTuple(outputs)));
+  // Preserve control dependencies. Control predecessors of all-reduce
+  // become control predecessors of the reduce-scatter, and control successors
+  // of all-reduce become control successors of the reduce-scatter
+  for (HloInstruction* control_predecessor :
+       all_reduce->control_predecessors()) {
+    TF_RETURN_IF_ERROR(
+        control_predecessor->AddControlDependencyTo(reduce_scatter));
+  }
+  for (HloInstruction* control_successor : all_reduce->control_successors()) {
+    TF_RETURN_IF_ERROR(replacement->AddControlDependencyTo(control_successor));
+  }
+
+  TF_RETURN_IF_ERROR(all_reduce->DropAllControlDeps());
+  TF_RETURN_IF_ERROR(computation.ReplaceInstruction(all_reduce, replacement));
 
   // Try to apply decomposition recursively.
   TF_RETURN_IF_ERROR(

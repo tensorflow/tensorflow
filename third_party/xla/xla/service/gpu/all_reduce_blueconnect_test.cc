@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -265,6 +266,69 @@ ENTRY %comp {
 
   AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
   EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(AllReduceBlueConnectTest, ControlDeps) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+%add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %comp {
+  p0 = f32[4,4] parameter(0)
+  p1 = f32[4,4] parameter(1)
+  add = f32[4,4] add(p0, p1)
+  crs = f32[4,4] all-reduce(p0), to_apply=add, control-predecessors={add}
+  ROOT add1 = f32[4,4] add(crs, add), control-predecessors={crs}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  SetModuleConfig(*module, /*replica_count=*/8);
+
+  // Remember all-reduce's control succ and preds.
+  const HloInstruction* ar =
+      module->entry_computation()->root_instruction()->operand(0);
+  auto expected_preds = ar->control_predecessors();
+  auto expected_succs = ar->control_successors();
+
+  AllReduceBlueConnect pass(/*num_devices_per_host=*/4);
+  EXPECT_THAT(pass.Run(module.get()), IsOkAndHolds(true));
+
+  // clang-format off
+  std::vector<std::vector<int64_t>> scatter_gather_groups = {
+      {0, 1, 2, 3}, {4, 5, 6, 7}};
+  std::vector<std::vector<int64_t>> new_all_reduce_groups = {
+      {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+  // clang-format on
+
+  const HloInstruction *matched_rs, *matched_bitcast;
+  auto bitcast = m::Bitcast(m::Parameter(0)).WithShape(F32, {16});
+  auto reduce_scatter = m::ReduceScatter(&matched_rs, bitcast)
+                            .WithShape(F32, {4})
+                            .WithReplicaGroups(scatter_gather_groups);
+  auto all_reduce = m::AllReduce(reduce_scatter)
+                        .WithShape(F32, {4})
+                        .WithReplicaGroups(new_all_reduce_groups);
+  auto all_gather = m::AllGather(all_reduce)
+                        .WithShape(F32, {16})
+                        .WithReplicaGroups(scatter_gather_groups);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Add()));
+
+  EXPECT_THAT(
+      root->operand(0),
+      GmockMatch(
+          m::Bitcast(&matched_bitcast, all_gather).WithShape(F32, {4, 4})));
+
+  // Verify that control dependencies are transferred correctly.
+  EXPECT_THAT(matched_rs, GmockMatch(m::Op().WithControlDeps(
+                              absl::MakeSpan(expected_preds), {})));
+  EXPECT_THAT(matched_bitcast, GmockMatch(m::Op().WithControlDeps(
+                                   {}, absl::MakeSpan(expected_succs))));
 }
 
 }  // namespace

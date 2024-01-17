@@ -3966,6 +3966,7 @@ xla_cc_test(
         "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
