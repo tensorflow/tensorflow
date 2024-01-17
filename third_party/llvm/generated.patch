@@ -1,25 +1,119 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/test/MC/ARM/pcrel-ldrd-same-section.s b/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
---- a/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
-+++ b/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
-@@ -10,7 +10,7 @@
- @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
- @ RUN: llvm-objdump -d --triple=thumbv7  %t | FileCheck %s --check-prefix=THUMB_OFFSET
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AMDGPU/SIInstrInfo.td b/llvm/lib/Target/AMDGPU/SIInstrInfo.td
+--- a/llvm/lib/Target/AMDGPU/SIInstrInfo.td
++++ b/llvm/lib/Target/AMDGPU/SIInstrInfo.td
+@@ -767,9 +767,12 @@
+   return CurDAG->getTargetConstant(Bit, SDLoc(N), MVT::i1);
+ }]>;
  
--@ RUN: llvm-mc -filetype=obj -o %y %s -triple=thumbebv7
-+@ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbebv7
- @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
- @ RUN: llvm-objdump -d --triple=thumbebv7 %t | FileCheck %s --check-prefix=THUMB_OFFSET
+-def SIMM16bit : TImmLeaf <i32,
+-  [{return isInt<16>(Imm) || isUInt<16>(Imm);}],
+-  as_i16timm
++def SIMM16bit : ImmLeaf <i32,
++  [{return isInt<16>(Imm);}]
++>;
++
++def UIMM16bit : ImmLeaf <i32,
++  [{return isUInt<16>(Imm);}]
+ >;
  
-diff -ruN --strip-trailing-cr a/llvm/test/MC/ARM/pcrel-vldr-same-section.s b/llvm/test/MC/ARM/pcrel-vldr-same-section.s
---- a/llvm/test/MC/ARM/pcrel-vldr-same-section.s
-+++ b/llvm/test/MC/ARM/pcrel-vldr-same-section.s
-@@ -7,7 +7,7 @@
- @ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbv8.2a-eabi
- @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
- @ RUN: llvm-objdump -d --triple=thumbv8.2a-eabi    --mattr=+fullfp16 %t | FileCheck %s --check-prefix=THUMB_OFFSET
--@ RUN: llvm-mc -filetype=obj -o %y %s -triple=thumbebv8.2a-eabi
-+@ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbebv8.2a-eabi
- @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
- @ RUN: llvm-objdump -d --triple=thumbebv8.2a-eabi  --mattr=+fullfp16 %t | FileCheck %s --check-prefix=THUMB_OFFSET
+ def i64imm_32bit : ImmLeaf<i64, [{
+diff -ruN --strip-trailing-cr a/llvm/lib/Target/AMDGPU/SOPInstructions.td b/llvm/lib/Target/AMDGPU/SOPInstructions.td
+--- a/llvm/lib/Target/AMDGPU/SOPInstructions.td
++++ b/llvm/lib/Target/AMDGPU/SOPInstructions.td
+@@ -1124,7 +1124,7 @@
+   pattern>;
  
+ def S_SETREG_B32 : S_SETREG_B32_Pseudo <
+-  [(int_amdgcn_s_setreg (i32 SIMM16bit:$simm16), i32:$sdst)]> {
++  [(int_amdgcn_s_setreg (i32 timm:$simm16), i32:$sdst)]> {
+   // Use custom inserter to optimize some cases to
+   // S_DENORM_MODE/S_ROUND_MODE/S_SETREG_B32_mode.
+   let usesCustomInserter = 1;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.s.setreg.ll b/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.s.setreg.ll
+--- a/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.s.setreg.ll
++++ b/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.s.setreg.ll
+@@ -1433,72 +1433,6 @@
+   ret void
+ }
+ 
+-define amdgpu_ps void @test_63489(i32 inreg %var.mode) {
+-; GFX6-LABEL: test_63489:
+-; GFX6:       ; %bb.0:
+-; GFX6-NEXT:    s_setreg_b32 hwreg(HW_REG_MODE), s0 ; encoding: [0x01,0xf8,0x80,0xb9]
+-; GFX6-NEXT:    ;;#ASMSTART
+-; GFX6-NEXT:    ;;#ASMEND
+-; GFX6-NEXT:    s_endpgm ; encoding: [0x00,0x00,0x81,0xbf]
+-;
+-; GFX789-LABEL: test_63489:
+-; GFX789:       ; %bb.0:
+-; GFX789-NEXT:    s_setreg_b32 hwreg(HW_REG_MODE), s0 ; encoding: [0x01,0xf8,0x00,0xb9]
+-; GFX789-NEXT:    ;;#ASMSTART
+-; GFX789-NEXT:    ;;#ASMEND
+-; GFX789-NEXT:    s_endpgm ; encoding: [0x00,0x00,0x81,0xbf]
+-;
+-; GFX10-LABEL: test_63489:
+-; GFX10:       ; %bb.0:
+-; GFX10-NEXT:    s_setreg_b32 hwreg(HW_REG_MODE), s0 ; encoding: [0x01,0xf8,0x80,0xb9]
+-; GFX10-NEXT:    ;;#ASMSTART
+-; GFX10-NEXT:    ;;#ASMEND
+-; GFX10-NEXT:    s_endpgm ; encoding: [0x00,0x00,0x81,0xbf]
+-;
+-; GFX11-LABEL: test_63489:
+-; GFX11:       ; %bb.0:
+-; GFX11-NEXT:    s_setreg_b32 hwreg(HW_REG_MODE), s0 ; encoding: [0x01,0xf8,0x00,0xb9]
+-; GFX11-NEXT:    ;;#ASMSTART
+-; GFX11-NEXT:    ;;#ASMEND
+-; GFX11-NEXT:    s_endpgm ; encoding: [0x00,0x00,0xb0,0xbf]
+-  call void @llvm.amdgcn.s.setreg(i32 63489, i32 %var.mode)
+-  call void asm sideeffect "", ""()
+-  ret void
+-}
+-
+-define amdgpu_ps void @test_minus_2047(i32 inreg %var.mode) {
+-; GFX6-LABEL: test_minus_2047:
+-; GFX6:       ; %bb.0:
+-; GFX6-NEXT:    s_setreg_b32 hwreg(HW_REG_MODE), s0 ; encoding: [0x01,0xf8,0x80,0xb9]
+-; GFX6-NEXT:    ;;#ASMSTART
+-; GFX6-NEXT:    ;;#ASMEND
+-; GFX6-NEXT:    s_endpgm ; encoding: [0x00,0x00,0x81,0xbf]
+-;
+-; GFX789-LABEL: test_minus_2047:
+-; GFX789:       ; %bb.0:
+-; GFX789-NEXT:    s_setreg_b32 hwreg(HW_REG_MODE), s0 ; encoding: [0x01,0xf8,0x00,0xb9]
+-; GFX789-NEXT:    ;;#ASMSTART
+-; GFX789-NEXT:    ;;#ASMEND
+-; GFX789-NEXT:    s_endpgm ; encoding: [0x00,0x00,0x81,0xbf]
+-;
+-; GFX10-LABEL: test_minus_2047:
+-; GFX10:       ; %bb.0:
+-; GFX10-NEXT:    s_setreg_b32 hwreg(HW_REG_MODE), s0 ; encoding: [0x01,0xf8,0x80,0xb9]
+-; GFX10-NEXT:    ;;#ASMSTART
+-; GFX10-NEXT:    ;;#ASMEND
+-; GFX10-NEXT:    s_endpgm ; encoding: [0x00,0x00,0x81,0xbf]
+-;
+-; GFX11-LABEL: test_minus_2047:
+-; GFX11:       ; %bb.0:
+-; GFX11-NEXT:    s_setreg_b32 hwreg(HW_REG_MODE), s0 ; encoding: [0x01,0xf8,0x00,0xb9]
+-; GFX11-NEXT:    ;;#ASMSTART
+-; GFX11-NEXT:    ;;#ASMEND
+-; GFX11-NEXT:    s_endpgm ; encoding: [0x00,0x00,0xb0,0xbf]
+-  call void @llvm.amdgcn.s.setreg(i32 -2047, i32 %var.mode)
+-  call void asm sideeffect "", ""()
+-  ret void
+-}
+-
+ ; FIXME: Broken for DAG
+ ; define void @test_setreg_roundingmode_var_vgpr(i32 %var.mode) {
+ ;   call void @llvm.amdgcn.s.setreg(i32 4097, i32 %var.mode)
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/unittests/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/unittests/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/llvm/unittests/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/unittests/BUILD.bazel
+@@ -41,6 +41,7 @@
+         allow_empty = False,
+         exclude = [
+             # TODO: Add this file to the build.
++            "Analysis/ConstraintSystemTest.cpp",
+             "Analysis/TFUtilsTest.cpp",
+             "Analysis/TrainingLoggerTest.cpp",
+             "Analysis/MLModelRunnerTest.cpp",
