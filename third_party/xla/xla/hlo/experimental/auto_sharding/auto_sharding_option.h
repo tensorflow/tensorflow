@@ -168,7 +168,10 @@ struct AutoShardingOption {
   // sharding_propagation.cc.
   int64_t solver_timeout_in_seconds = 3600;
 
-  // Static estimate for iteration count of a while loop, used in the cost model
+  // Static estimate for iteration count of a while loop, used in the cost
+  // model. This estimate is used when we cannot infer an upper bound on the
+  // number of iterations in the loop (as implemented in
+  // third_party/tensorflow/compiler/xla/service/while_loop_analysis.h)
   int64_t loop_iteration_count_estimate = 100;
 
   // Allows the conversion of aliases to followers if their pairwise strategy
