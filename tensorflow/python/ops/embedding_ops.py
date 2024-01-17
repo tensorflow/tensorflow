@@ -308,11 +308,8 @@ def embedding_lookup(
     ids: A `Tensor` or a 'RaggedTensor' with type `int32` or `int64` containing
       the ids to be looked up in `params`.
       
-      Caution: Without XLA,on CPU, if an out of bound id is found, an error is raised.
-      On GPU, if an out of bound id is found, a 0 is stored in the corresponding
-      output value.With XLA, for both CPU and GPU, all out of bound ids are
-      replaced with maximum of `ids` inferred from the input `params` and
-      corresponding value will be taken into output.
+      Caution: Out-of-bounds indices will result in undefined behavior,
+      which will differ between devices and backends.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
