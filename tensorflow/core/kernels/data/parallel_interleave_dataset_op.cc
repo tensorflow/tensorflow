@@ -495,9 +495,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(*mu_);
-      if (ctx->symbolic_checkpoint()) {
-        TF_RETURN_IF_ERROR(checkpoint_->GetStatus());
-      }
       TF_RETURN_IF_ERROR(checkpoint_->Save(writer));
       wait_for_checkpoint_ = true;
       // Wait for all in-flight calls to complete.
