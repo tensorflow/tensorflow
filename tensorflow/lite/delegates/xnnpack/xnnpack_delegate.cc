@@ -3147,6 +3147,16 @@ class Subgraph {
             /*input4_id=*/input_output_tensors.at(node->inputs->data[3]),
             /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
             /*flags=*/0);
+      } else if (num_inputs == 5) {
+        status = xnn_define_concatenate5(
+            subgraph, axis,
+            /*input1_id=*/input_output_tensors.at(node->inputs->data[0]),
+            /*input2_id=*/input_output_tensors.at(node->inputs->data[1]),
+            /*input3_id=*/input_output_tensors.at(node->inputs->data[2]),
+            /*input4_id=*/input_output_tensors.at(node->inputs->data[3]),
+            /*input5_id=*/input_output_tensors.at(node->inputs->data[4]),
+            /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+            /*flags=*/0);
       }
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(
