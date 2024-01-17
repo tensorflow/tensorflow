@@ -2863,4 +2863,51 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir b/stableh
    // CHECK: }) : (!vhlo.tensor_v1<10x24x24x64x!vhlo.f32_v1>, !vhlo.tensor_v1<12x13x13x66x!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<10x24x24x64x!vhlo.f64_v1>
    %0 = "stablehlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
      ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -426,15 +426,19 @@
+   return success();
+ }
+ 
+-template <typename T, typename Attr>
+-SpecialResult convertDenseArray(StringAttr vhloName, Attribute vhloAttr,
+-                                SmallVector<NamedAttribute>& stablehloAttrs) {
++SpecialResult convertDenseI64Array(
++    StringAttr vhloName, Attribute vhloAttr,
++    SmallVector<NamedAttribute>& stablehloAttrs) {
+   auto tensorAttr = dyn_cast<vhlo::TensorV1Attr>(vhloAttr);
+   if (!tensorAttr) return specialFailure();
+ 
+-  auto data = SmallVector<T>(
+-      ArrayRef<T>(reinterpret_cast<const T*>(tensorAttr.getData().data()),
+-                  tensorAttr.getData().size() / sizeof(T)));
++  if (tensorAttr.getData().size() % sizeof(int64_t) != 0)
++    return specialFailure();
++
++  auto data = ArrayRef<int64_t>(
++                  reinterpret_cast<const int64_t*>(tensorAttr.getData().data()),
++                  tensorAttr.getData().size() / sizeof(int64_t))
++                  .vec();
+ 
+   // Handle splats
+   if (data.size() == 1) {
+@@ -445,15 +449,9 @@
+     data.resize(size, data[0]);
+   }
+ 
+-  stablehloAttrs.emplace_back(vhloName, Attr::get(vhloAttr.getContext(), data));
++  stablehloAttrs.emplace_back(
++      vhloName, DenseI64ArrayAttr::get(vhloAttr.getContext(), data));
+   return specialSuccess();
+-}
+-
+-SpecialResult convertDenseI64Array(
+-    StringAttr vhloName, Attribute vhloAttr,
+-    SmallVector<NamedAttribute>& stablehloAttrs) {
+-  return convertDenseArray<int64_t, DenseI64ArrayAttr>(vhloName, vhloAttr,
+-                                                       stablehloAttrs);
+ }
+ 
+ template <typename VhloOpTy>
 
