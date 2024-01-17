@@ -10786,6 +10786,70 @@ TEST_F(MemoryBoundLoopOptimizerTest, TempAndPinnedAllocations) {
   EXPECT_EQ(remaining_memory.at(4), 512 - (2 * 16 + 16));
 }
 
+TEST_F(MemoryBoundLoopOptimizerTest, NegativeSavingNotPinned) {
+  absl::string_view hlo_str = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    while_cond_param = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+    ROOT p = pred[] get-tuple-element(while_cond_param), index=5
+  }
+
+  while_body {
+    while_body_param = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+    pinned_prev_param0 = f32[28,4] get-tuple-element(while_body_param), index=0
+    zero = s32[] constant(0)
+    next_param0 = f32[1,4] get-tuple-element(while_body_param), index=1
+    prev_prev_op3 = f32[1,4] get-tuple-element(while_body_param), index=2
+    prev_prev_op4 = f32[1,4] get-tuple-element(while_body_param), index=3
+    prev_op0 = f32[1,4] add(f32[1,4] prev_prev_op3, f32[1,4] prev_prev_op4)
+    prev_op1 = f32[1,4] add(f32[1,4] prev_prev_op4, f32[1,4] prev_op0)
+    prev_op2 = f32[1,4] add(f32[1,4] prev_op0, f32[1,4] prev_op1)
+    prev_op3 = f32[1,4] add(f32[1,4] prev_op1, f32[1,4] prev_op2)
+    pinned_slice = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    prev_op4 = f32[1,4] multiply(f32[1,4] pinned_slice, f32[1,4] prev_op3)
+    op0 = f32[1,4] add(f32[1,4] prev_op3, f32[1,4] prev_op4)
+    op1 = f32[1,4] add(f32[1,4] prev_op4, f32[1,4] op0)
+    op2 = f32[1,4] add(f32[1,4] op0, f32[1,4] op1)
+    op3 = f32[1,4] add(f32[1,4] op1, f32[1,4] op2)
+    pinned_slice2 = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    op4 = f32[1,4] multiply(f32[1,4] pinned_slice2, f32[1,4] op3)
+    next_op0 = f32[1,4] add(f32[1,4] op3, f32[1,4] op4)
+    next_op1 = f32[1,4] add(f32[1,4] op4, f32[1,4] next_op0)
+    next_op2 = f32[1,4] add(f32[1,4] next_op0, f32[1,4] next_op1)
+    next_op3 = f32[1,4] add(f32[1,4] next_op1, f32[1,4] next_op2)
+    pinned_slice3 = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    next_op4 = f32[1,4] multiply(f32[1,4] pinned_slice3, f32[1,4] next_op3)
+    p = pred[] get-tuple-element(while_body_param), index=5
+    ROOT root = tuple(pinned_prev_param0, next_param0, prev_prev_op3, prev_prev_op4, next_op4, p)
+  }
+
+  ENTRY entry {
+    p0 = f32[28,4] parameter(0)
+    p1 = f32[1,4] parameter(1)
+    p2 = f32[1,4] parameter(2)
+    p3 = f32[1,4] parameter(3)
+    p4 = pred[] parameter(4)
+    copy = f32[1,4] copy(p3)
+    tuple = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) tuple(p0, p1, p2, p3, copy, p4)
+    while = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) while(tuple), condition=while_cond, body=while_body
+    ROOT root = f32[1,4] get-tuple-element(while), index=4
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto optimizer,
+                          CreateOptimizer(21, 27, module.get(),
+                                          /*alternate_memory_size=*/512));
+  optimizer->Optimize();
+
+  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  // We expect that pinned_prev_param0 would not get pinned due to negative
+  // savings: 32(uses) -  28 * 16(size) = -416 Time 0: 3 temporaries (16 B) + 1
+  // pinned (4 B)
+  EXPECT_EQ(remaining_memory.at(0), 512 - (3 * 16 + 4));
+}
+
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndWhileLoop) {
   absl::string_view hlo_str = R"(
 HloModule module, is_scheduled=true

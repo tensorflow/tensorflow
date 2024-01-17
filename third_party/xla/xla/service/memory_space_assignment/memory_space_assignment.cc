@@ -2641,7 +2641,9 @@ void MemoryBoundLoopOptimizer::AllocateLoopValues() {
         AllocateTemporary(value);
         break;
       case LoopValue::AllocationType::kPinned:
-        AllocatePinned(value);
+        if (value.savings > 0) {
+          AllocatePinned(value);
+        }
         break;
       case LoopValue::AllocationType::kPrefetch:
         prefetch_values.push_back(&value);
