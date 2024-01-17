@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -33,11 +32,11 @@ limitations under the License.
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/errors.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -151,60 +150,44 @@ absl::Status NcclAllToAllStartThunk::RunNcclCollective(
 absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
                          se::Stream& stream, ncclComm_t comm) {
-#if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
-
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   TF_ASSIGN_OR_RETURN(
       int32_t num_participants,
       NcclApi::CommCount(reinterpret_cast<NcclApi::NcclCommHandle>(comm)));
 
   TF_RETURN_IF_ERROR(NcclApi::GroupStart());
+
   // AllToAll can operate in two modes. Either it specifies a split dimension,
   // in which case inputs are split and outputs concatenated in that dimension
   // (here, we only support dimension 0), or it takes a list of inputs
   // and produces a tuple of outputs.
   if (has_split_dimension) {
-    for (size_t i = 0; i < buffers.size(); ++i) {
-      DeviceBufferPair& buffer = buffers[i];
-      const uint8_t* send_buffer =
-          static_cast<uint8_t*>(buffer.source_buffer.opaque());
-      uint8_t* recv_buffer =
-          static_cast<uint8_t*>(buffer.destination_buffer.opaque());
-
-      TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                          ToNcclDataTypeAndCountMultiplier(
-                              buffer.element_type, Thunk::kNcclAllToAll));
-      auto [dtype, multiplier] = dtype_and_multiplier;
-      int64_t element_count = buffer.element_count;
-
-      TF_RET_CHECK(element_count % num_participants == 0)
+    for (DeviceBufferPair& buffer : buffers) {
+      TF_RET_CHECK(buffer.element_count % num_participants == 0)
           << "Buffer was not an exact multiple of the number of participants.";
-      size_t chunk_elements = element_count / num_participants;
-      size_t chunk_bytes = chunk_elements * ShapeUtil::ByteSizeOfPrimitiveType(
-                                                buffer.element_type);
 
-      for (int rank = 0; rank < num_participants; ++rank) {
-        VLOG(3) << absl::StreamFormat(
-            "Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
-            "comm=%p, stream=%p)",
-            send_buffer + rank * chunk_bytes, chunk_elements * multiplier, rank,
-            static_cast<const void*>(comm), gpu_stream);
-        XLA_NCCL_RETURN_IF_ERROR(ncclSend(send_buffer + rank * chunk_bytes,
-                                          chunk_elements * multiplier, dtype,
-                                          rank, comm, gpu_stream));
+      size_t chunk_elements = buffer.element_count / num_participants;
 
-        VLOG(3) << absl::StreamFormat(
-            "Calling ncclRecv(recvbuff=%p, count=%d, peer=%d "
-            "comm=%p, stream=%p)",
-            recv_buffer + rank * chunk_bytes, chunk_elements * multiplier, rank,
-            static_cast<const void*>(comm), gpu_stream);
+      for (int peer = 0; peer < num_participants; ++peer) {
+        TF_ASSIGN_OR_RETURN(
+            se::DeviceMemoryBase send_slice,
+            NcclApi::Slice(buffer.source_buffer, buffer.element_type,
+                           peer * chunk_elements, chunk_elements));
 
-        XLA_NCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer + rank * chunk_bytes,
-                                          chunk_elements * multiplier, dtype,
-                                          rank, comm, gpu_stream));
+        TF_ASSIGN_OR_RETURN(
+            se::DeviceMemoryBase recv_slice,
+            NcclApi::Slice(buffer.destination_buffer, buffer.element_type,
+                           peer * chunk_elements, chunk_elements));
+
+        TF_RETURN_IF_ERROR(NcclApi::Send(
+            send_slice, buffer.element_type, chunk_elements, peer,
+            reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+
+        TF_RETURN_IF_ERROR(NcclApi::Recv(
+            recv_slice, buffer.element_type, chunk_elements, peer,
+            reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
       }
     }
   } else {
@@ -213,45 +196,18 @@ absl::Status RunAllToAll(bool has_split_dimension,
 
     for (size_t i = 0; i < buffers.size(); ++i) {
       DeviceBufferPair& buffer = buffers[i];
-      const uint8_t* send_buffer =
-          static_cast<uint8_t*>(buffer.source_buffer.opaque());
-      uint8_t* recv_buffer =
-          static_cast<uint8_t*>(buffer.destination_buffer.opaque());
 
-      TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                          ToNcclDataTypeAndCountMultiplier(
-                              buffer.element_type, Thunk::kNcclAllToAll));
-      auto [dtype, multiplier] = dtype_and_multiplier;
-      int64_t element_count = buffer.element_count * multiplier;
+      TF_RETURN_IF_ERROR(NcclApi::Send(
+          buffer.source_buffer, buffer.element_type, buffer.element_count, i,
+          reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
 
-      VLOG(3) << absl::StreamFormat(
-          "Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
-          "comm=%p, stream=%p)",
-          send_buffer, element_count, i, static_cast<const void*>(comm),
-          gpu_stream);
-
-      XLA_NCCL_RETURN_IF_ERROR(ncclSend(send_buffer, element_count, dtype,
-                                        /*rank=*/i, comm, gpu_stream));
-
-      VLOG(3) << absl::StreamFormat(
-          "Calling ncclRecv(recvbuff=%p, count=%d, peer=%d "
-          "comm=%p, stream=%p)",
-          recv_buffer, element_count, i, static_cast<const void*>(comm),
-          gpu_stream);
-
-      XLA_NCCL_RETURN_IF_ERROR(ncclRecv(recv_buffer, element_count, dtype,
-                                        /*rank=*/i, comm, gpu_stream));
+      TF_RETURN_IF_ERROR(NcclApi::Recv(
+          buffer.destination_buffer, buffer.element_type, buffer.element_count,
+          i, reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
     }
   }
-  TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
 
-  VLOG(3) << "Done performing all-to-all for ordinal: " << device_ordinal;
-  return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
+  return NcclApi::GroupEnd();
 }
 
 }  // namespace gpu

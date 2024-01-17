@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
@@ -172,6 +173,14 @@ static ncclUniqueId AsNcclUniqueId(const NcclCliqueId& clique_id) {
   return id;
 }
 
+absl::StatusOr<se::DeviceMemoryBase> NcclApi::Slice(se::DeviceMemoryBase buff,
+                                                    PrimitiveType dtype,
+                                                    size_t offset,
+                                                    size_t count) {
+  size_t multiplier = ShapeUtil::ByteSizeOfPrimitiveType(dtype);
+  return buff.GetByteSlice(offset * multiplier, count * multiplier);
+}
+
 absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
   VLOG(3) << "Get NCCL unique id";
   ncclUniqueId id;
@@ -287,6 +296,40 @@ absl::Status NcclApi::AllGather(se::DeviceMemoryBase send_buffer,
   return XLA_NCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
       nccl_dtype, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
+}
+
+absl::Status NcclApi::Send(se::DeviceMemoryBase send_buffer,
+                           PrimitiveType dtype, size_t count, int32_t peer,
+                           NcclCommHandle comm, se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL Send operation on device #%d; send_buffer=%p; dtype=%s; "
+      "count=%d; peer=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(),
+      primitive_util::LowercasePrimitiveTypeName(dtype), count, peer, comm,
+      stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  return XLA_NCCL_STATUS(
+      ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+               peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
+}
+
+absl::Status NcclApi::Recv(se::DeviceMemoryBase recv_buffer,
+                           PrimitiveType dtype, size_t count, int32_t peer,
+                           NcclCommHandle comm, se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL Recv operation on device #%d; recv_buffer=%p; dtype=%s; "
+      "count=%d; peer=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), recv_buffer.opaque(),
+      primitive_util::LowercasePrimitiveTypeName(dtype), count, peer, comm,
+      stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  return XLA_NCCL_STATUS(
+      ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
+               peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
 }  // namespace xla::gpu

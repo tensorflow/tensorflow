@@ -45,6 +45,13 @@ struct NcclApi {
   // Convenience handles for defining API functions.
   using NcclCommHandle = NcclComm*;
 
+  // Returns a slice of device memory `buff` containing `count` values of data
+  // type `dtype` starting from `offset`.
+  static absl::StatusOr<se::DeviceMemoryBase> Slice(se::DeviceMemoryBase buff,
+                                                    PrimitiveType dtype,
+                                                    size_t offset,
+                                                    size_t count);
+
   // Creates a new unique clique id.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclgetuniqueid
@@ -111,6 +118,20 @@ struct NcclApi {
                                 se::DeviceMemoryBase recv_buffer,
                                 PrimitiveType dtype, size_t count,
                                 NcclCommHandle comm, se::Stream* stream);
+
+  // Send data from `send_buff` to rank `peer`.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/p2p.html#ncclsend
+  static absl::Status Send(se::DeviceMemoryBase send_buffer,
+                           PrimitiveType dtype, size_t count, int32_t peer,
+                           NcclCommHandle comm, se::Stream* stream);
+
+  // Receive data from rank `peer` into `recv_buff`.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/p2p.html#ncclrecv
+  static absl::Status Recv(se::DeviceMemoryBase recv_buffer,
+                           PrimitiveType dtype, size_t count, int32_t peer,
+                           NcclCommHandle comm, se::Stream* stream);
 };
 
 //===----------------------------------------------------------------------===//

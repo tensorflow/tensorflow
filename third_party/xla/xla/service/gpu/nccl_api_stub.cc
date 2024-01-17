@@ -26,6 +26,12 @@ limitations under the License.
 
 namespace xla::gpu {
 
+absl::StatusOr<se::DeviceMemoryBase> NcclApi::Slice(se::DeviceMemoryBase,
+                                                    PrimitiveType, size_t,
+                                                    size_t) {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
 absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
@@ -71,6 +77,16 @@ absl::Status NcclApi::ReduceScatter(se::DeviceMemoryBase, se::DeviceMemoryBase,
 absl::Status NcclApi::AllGather(se::DeviceMemoryBase, se::DeviceMemoryBase,
                                 PrimitiveType, size_t, NcclCommHandle,
                                 se::Stream*) {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::Status NcclApi::Send(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
+                           NcclCommHandle, se::Stream*) {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::Status NcclApi::Recv(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
+                           NcclCommHandle, se::Stream*) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
