@@ -84,6 +84,7 @@ static ncclUniqueId AsNcclUniqueId(const NcclCliqueId& clique_id) {
 }
 
 absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
+  VLOG(3) << "Get NCCL unique id";
   ncclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
   return NcclCliqueId(id.internal);
@@ -108,6 +109,13 @@ absl::StatusOr<NcclCommHandle> NcclApi::CommInitRank(
 absl::Status NcclApi::CommAbort(NcclCommHandle comm) {
   VLOG(3) << "Abort NCCL communicator: " << comm;
   return XLA_NCCL_STATUS(ncclCommAbort(Cast(comm)));
+}
+
+absl::StatusOr<int32_t> NcclApi::CommCount(NcclCommHandle comm) {
+  VLOG(3) << "Get the number of ranks in NCCL communicator: " << comm;
+  int32_t count;
+  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(Cast(comm), &count));
+  return count;
 }
 
 absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {

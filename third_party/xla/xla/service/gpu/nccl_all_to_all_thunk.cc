@@ -157,8 +157,9 @@ absl::Status RunAllToAll(bool has_split_dimension,
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
-  int num_participants;
-  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
+  TF_ASSIGN_OR_RETURN(
+      int32_t num_participants,
+      NcclApi::CommCount(reinterpret_cast<NcclApi::NcclCommHandle>(comm)));
 
   TF_RETURN_IF_ERROR(NcclApi::GroupStart());
   // AllToAll can operate in two modes. Either it specifies a split dimension,

@@ -57,6 +57,11 @@ struct NcclApi {
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommabort
   static absl::Status CommAbort(NcclCommHandle comm);
 
+  // Returns the number of ranks in the NCCL communicator comm.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommcount
+  static absl::StatusOr<int32_t> CommCount(NcclCommHandle comm);
+
   // Queries the progress and potential errors of asynchronous operations
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommgetasyncerror
