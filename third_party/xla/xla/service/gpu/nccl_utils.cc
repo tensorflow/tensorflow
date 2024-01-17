@@ -37,23 +37,6 @@ limitations under the License.
 
 namespace xla::gpu {
 
-absl::StatusOr<NcclRedOp> ToNcclReduction(ReductionKind kind) {
-#if XLA_ENABLE_XCCL
-  switch (kind) {
-    case ReductionKind::SUM:
-      return ncclSum;
-    case ReductionKind::PRODUCT:
-      return ncclProd;
-    case ReductionKind::MIN:
-      return ncclMin;
-    case ReductionKind::MAX:
-      return ncclMax;
-  }
-#endif  // XLA_ENABLE_XCCL
-
-  return absl::InternalError("XLA compiled without NCCL");
-}
-
 static absl::StatusOr<NcclDataType> ToNcclDataType(PrimitiveType element_type,
                                                    Thunk::Kind reduction_op) {
 #if XLA_ENABLE_XCCL

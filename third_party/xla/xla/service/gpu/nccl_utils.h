@@ -32,8 +32,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<NcclRedOp> ToNcclReduction(ReductionKind kind);
-
 absl::StatusOr<std::pair<NcclDataType, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op);
 
