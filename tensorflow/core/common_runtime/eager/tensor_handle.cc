@@ -546,7 +546,6 @@ Status TensorHandle::InferenceShape(
     shape_inference::InferenceContext* const inference_context,
     shape_inference::ShapeHandle* shape_handle) {
   if (IsReady()) {
-    TF_RETURN_IF_ERROR(is_poisoned_);
     std::vector<shape_inference::DimensionHandle> dims_handle;
     int num_dims;
     TF_RETURN_IF_ERROR(NumDims(&num_dims));
@@ -593,7 +592,6 @@ void TensorHandle::SetInferenceShape(
 
 Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
   if (IsReady()) {
-    TF_RETURN_IF_ERROR(is_poisoned_);
     return OkStatus();
   }
   if (other->IsReady()) {
