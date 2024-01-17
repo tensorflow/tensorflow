@@ -43,10 +43,12 @@ struct NcclApi {
   // types (also defined as opaque structs).
   struct NcclComm;
   struct NcclPersistentPlanAllocator;
+  struct NcclRegisteredBuffer;
 
   // Convenience handles for defining API functions.
   using NcclCommHandle = NcclComm*;
   using NcclPersistentPlanAllocatorHandle = NcclPersistentPlanAllocator*;
+  using NcclRegisteredBufferHandle = NcclRegisteredBuffer*;
 
   // Persistent plan allocator allows to pass XLA memory allocator to NCCL to
   // allocate device memory for persistent execution plans for NCCL operations
@@ -177,6 +179,19 @@ struct NcclApi {
   static absl::Status Recv(se::DeviceMemoryBase recv_buffer,
                            PrimitiveType dtype, size_t count, int32_t peer,
                            NcclCommHandle comm, se::Stream* stream);
+
+  // Register `buffer` with communicator `comm` for zero-copy communication.
+  // Returned handle can be used for future unregistration.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommregister
+  static absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
+      NcclCommHandle comm, se::DeviceMemoryBase buffer);
+
+  // Deregister buffer represented by `handle` from communicator `comm`.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommderegister
+  static absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
+      NcclCommHandle comm, NcclRegisteredBufferHandle handle);
 };
 
 //===----------------------------------------------------------------------===//

@@ -440,4 +440,25 @@ absl::Status NcclApi::Recv(se::DeviceMemoryBase recv_buffer,
                peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
+absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::RegisterBuffer(
+    NcclCommHandle comm, se::DeviceMemoryBase buffer) {
+  VLOG(3) << absl::StreamFormat(
+      "Register buffer for NCCL communicator; buffer=%p; size=%d; comm=%p",
+      buffer.opaque(), buffer.size(), comm);
+  void* handle = nullptr;
+  XLA_NCCL_RETURN_IF_ERROR(
+      ncclCommRegister(Cast(comm), buffer.opaque(), buffer.size(), &handle));
+
+  return reinterpret_cast<NcclRegisteredBufferHandle>(handle);
+}
+
+absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::DeregisterBuffer(
+    NcclCommHandle comm, NcclRegisteredBufferHandle handle) {
+  VLOG(3) << absl::StreamFormat(
+      "Deregister buffer for NCCL communicator; handle=%p; comm=%p", handle,
+      comm);
+  return XLA_NCCL_STATUS(
+      ncclCommDeregister(Cast(comm), reinterpret_cast<void*>(handle)));
+}
+
 }  // namespace xla::gpu

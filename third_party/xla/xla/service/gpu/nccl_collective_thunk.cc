@@ -24,6 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -36,6 +39,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
@@ -44,6 +48,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -331,11 +336,11 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
-#if defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
 // This function is used to determine if a buffer resides in memory that was
 // allocated using ncclMemAlloc.
 StatusOr<bool> IsBufferInCollectiveMemory(int device_ordinal,
                                           const void* buffer) {
+#if defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
   // Get base address, size.
   CUdeviceptr base_ptr;
   size_t base_size;
@@ -368,15 +373,14 @@ StatusOr<bool> IsBufferInCollectiveMemory(int device_ordinal,
   // Check granularity and property requirements are met.
   return base_ptr % granularity == 0 && base_size % granularity == 0 &&
          prop.requestedHandleTypes & CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
+#else   // defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
+  return absl::InternalError("XLA compiled without NCCL");
+#endif  // defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
 }
-#endif
 
 Status MaybeRegisterBuffers(int device_ordinal,
                             const std::vector<DeviceBufferPair>& buffers,
                             ncclComm_t comm) {
-  // TODO(tmorris): Only register if xla_gpu_enable_nccl_user_buffers is true.
-  // Remove this function when cuda graphs are enabled for nccl collectives.
-#if defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
   // Keep track of which communicators we have registered for already.
   // Each device has one NCCL buffer which only needs to be registered once per
   // each comm.
@@ -385,7 +389,8 @@ Status MaybeRegisterBuffers(int device_ordinal,
     absl::flat_hash_map<int, absl::flat_hash_set<ncclComm_t>> per_device_comms
         ABSL_GUARDED_BY(mu);
     // Buffers could be deregistered with ncclCommDeregister.
-    std::vector<void*> handles ABSL_GUARDED_BY(mu);
+    std::vector<NcclApi::NcclRegisteredBufferHandle> handles
+        ABSL_GUARDED_BY(mu);
   };
   static auto& all_registered = *new RegisteredBuffers;
 
@@ -397,13 +402,10 @@ Status MaybeRegisterBuffers(int device_ordinal,
           IsBufferInCollectiveMemory(device_ordinal,
                                      buffers[i].source_buffer.opaque()));
       if (send_buff_in_collective_mem) {
-        void* handle;
-        VLOG(1) << "ncclCommRegister comm=" << comm
-                << " buff=" << buffers[i].source_buffer.opaque()
-                << " size=" << buffers[i].source_buffer.size();
-        XLA_NCCL_RETURN_IF_ERROR(ncclCommRegister(
-            comm, const_cast<void*>(buffers[i].source_buffer.opaque()),
-            buffers[i].source_buffer.size(), &handle));
+        TF_ASSIGN_OR_RETURN(NcclApi::NcclRegisteredBufferHandle handle,
+                            NcclApi::RegisterBuffer(
+                                reinterpret_cast<NcclApi::NcclCommHandle>(comm),
+                                buffers[i].source_buffer));
         all_registered.handles.push_back(handle);
         all_registered.per_device_comms[device_ordinal].insert(comm);
         continue;
@@ -413,22 +415,16 @@ Status MaybeRegisterBuffers(int device_ordinal,
           IsBufferInCollectiveMemory(device_ordinal,
                                      buffers[i].source_buffer.opaque()));
       if (dest_buff_in_collective_mem) {
-        void* handle;
-        VLOG(1) << "ncclCommRegister comm=" << comm
-                << " buff=" << buffers[i].destination_buffer.opaque()
-                << " size=" << buffers[i].source_buffer.size();
-        XLA_NCCL_RETURN_IF_ERROR(ncclCommRegister(
-            comm, const_cast<void*>(buffers[i].destination_buffer.opaque()),
-            buffers[i].destination_buffer.size(), &handle));
+        TF_ASSIGN_OR_RETURN(NcclApi::NcclRegisteredBufferHandle handle,
+                            NcclApi::RegisterBuffer(
+                                reinterpret_cast<NcclApi::NcclCommHandle>(comm),
+                                buffers[i].destination_buffer));
         all_registered.handles.push_back(handle);
         all_registered.per_device_comms[device_ordinal].insert(comm);
       }
     }
   }
   return OkStatus();
-#else   // GOOGLE_CUDA
-  return OkStatus();
-#endif  // GOOGLE_CUDA
 }
 
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {

@@ -124,4 +124,14 @@ absl::Status NcclApi::Recv(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
+absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::RegisterBuffer(
+    NcclCommHandle, se::DeviceMemoryBase) {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::DeregisterBuffer(
+    NcclCommHandle, NcclRegisteredBufferHandle) {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
 }  // namespace xla::gpu
