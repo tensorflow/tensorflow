@@ -867,7 +867,6 @@ tsl_gpu_library(
         ":nccl_api",
         ":nccl_clique",
         ":nccl_clique_key",
-        ":nccl_utils",
         ":thunk",
         "//xla:shape_util",
         "//xla:status",
@@ -931,12 +930,6 @@ cc_library(
 alias(
     name = "nccl_clique",
     actual = if_nccl(":_nccl_clique", ":empty"),
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "nccl_utils",
-    actual = if_nccl(":_nccl_utils", ":empty"),
     visibility = ["//visibility:public"],
 )
 
@@ -1048,38 +1041,6 @@ tsl_gpu_library(
     ]),
 )
 
-tsl_gpu_library(
-    name = "_nccl_utils",
-    srcs = ["nccl_utils.cc"],
-    hdrs = ["nccl_utils.h"],
-    compatible_with = [],  # Override tsl_gpu_library()'s internal default value
-    visibility = ["//visibility:public"],
-    deps = [
-        ":_nccl_clique",
-        ":thunk",
-        "//xla:shape_util",
-        "//xla:status",
-        "//xla:status_macros",
-        "//xla:statusor",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:collective_ops_utils",
-        "//xla/service:global_device_id",
-        "//xla/stream_executor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/concurrency:ref_count",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rccl",
-    ]),
-)
-
 cuda_library(
     name = "mock_nccl_sleep_kernel_cuda",
     srcs = if_cuda_is_configured(
@@ -1165,7 +1126,6 @@ cc_library(
         ":mock_nccl_xml_google",
         ":nccl_collective_thunks",
         ":nccl_api",
-        ":nccl_utils",
         ":nccl_clique_key",
         ":nccl_clique",
         ":thunk",
@@ -1214,7 +1174,6 @@ cc_library(
     deps = if_gpu_is_configured([
         ":gpu_executable_run_options",
         ":nccl_collective_thunks",
-        ":nccl_utils",
         ":nccl_clique_key",
         ":nccl_clique",
         ":thunk",

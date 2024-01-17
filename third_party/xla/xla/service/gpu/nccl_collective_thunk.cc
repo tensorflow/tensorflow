@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #if XLA_ENABLE_XCCL
+#include "third_party/nccl/nccl.h"
 #include "xla/service/gpu/nccl_clique.h"
 #endif  // XLA_ENABLE_XCCL
 
@@ -548,6 +550,16 @@ absl::Status IsValidOperand(Shape shape, Thunk::Kind reduction_op) {
         primitive_util::LowercasePrimitiveTypeName(shape.element_type())));
   }
   return absl::OkStatus();
+}
+
+size_t GetNumLocalParticipants(
+    const std::vector<GlobalDeviceId>& participants,
+    const std::vector<GlobalDeviceId>* local_devices) {
+  if (local_devices == nullptr) return participants.size();
+
+  return absl::c_count_if(participants, [&](const GlobalDeviceId& device_id) {
+    return absl::c_linear_search(*local_devices, device_id);
+  });
 }
 
 }  // namespace gpu

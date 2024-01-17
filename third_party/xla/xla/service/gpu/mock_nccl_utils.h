@@ -30,10 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
-#include "xla/service/gpu/nccl_utils.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {

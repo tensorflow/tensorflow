@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -27,18 +28,18 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
-#include "xla/service/gpu/nccl_utils.h"
+#include "xla/service/gpu/nccl_clique.h"
 #endif  // XLA_ENABLE_XCCL
 
 struct ncclComm;
@@ -209,6 +210,10 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
           partition_count, CollectiveOpGroupModeToString(group_mode),
           operand_count, str));
 }
+
+size_t GetNumLocalParticipants(
+    const std::vector<GlobalDeviceId>& participants,
+    const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
 #if XLA_ENABLE_XCCL
 // TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
