@@ -392,6 +392,48 @@ TEST_F(MatmulTest, ReLUTestF32) {
   )");
 }
 
+TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_F32) {
+  const char* matmul_module_str = R"(
+  HloModule jit_apply, entry_computation_layout={(f32[3072]{0}, f32[768,3072]{1,0}, f32[16,128,768]{2,1,0})->bf16[16,128,3072]{2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+  ENTRY matmul.test.bf16 {
+    Arg_2.3 = f32[16,128,768]{2,1,0} parameter(2), sharding={replicated}
+    convert.4 = bf16[16,128,768]{2,1,0} convert(Arg_2.3)
+    Arg_1.2 = f32[768,3072]{1,0} parameter(1), sharding={replicated}
+    convert.5 = bf16[768,3072]{1,0} convert(Arg_1.2)
+    dot.7 = bf16[16,128,3072]{2,1,0} dot(convert.4, convert.5), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = f32[3072]{0} parameter(0), sharding={replicated}
+    convert.6 = bf16[3072]{0} convert(Arg_0.1)
+    reshape.8 = bf16[1,1,3072]{2,1,0} reshape(convert.6)
+    broadcast.9 = bf16[1,1,3072]{2,1,0} broadcast(reshape.8), dimensions={0,1,2}
+    reshape.10 = bf16[3072]{0} reshape(broadcast.9)
+    broadcast.11 = bf16[16,128,3072]{2,1,0} broadcast(reshape.10), dimensions={2}
+    ROOT add.12 = bf16[16,128,3072]{2,1,0} add(dot.7, broadcast.11)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+}
+
+TEST_F(MatmulTest, SimpleBiasTestBF16_PARAM_BF16) {
+  const char* matmul_module_str = R"(
+  HloModule jit_apply, entry_computation_layout={(bf16[3072]{0}, bf16[768,3072]{1,0}, f32[16,128,768]{2,1,0})->bf16[16,128,3072]{2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+  ENTRY matmul.test.bf16 {
+    Arg_2.3 = f32[16,128,768]{2,1,0} parameter(2), sharding={replicated}
+    convert.4 = bf16[16,128,768]{2,1,0} convert(Arg_2.3)
+    Arg_1.2 = bf16[768,3072]{1,0} parameter(1), sharding={replicated}
+    dot.5 = bf16[16,128,3072]{2,1,0} dot(convert.4, Arg_1.2), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+    Arg_0.1 = bf16[3072]{0} parameter(0), sharding={replicated}
+    reshape.6 = bf16[1,1,3072]{2,1,0} reshape(Arg_0.1)
+    broadcast.7 = bf16[1,1,3072]{2,1,0} broadcast(reshape.6), dimensions={0,1,2}
+    reshape.8 = bf16[3072]{0} reshape(broadcast.7)
+    broadcast.9 = bf16[16,128,3072]{2,1,0} broadcast(reshape.8), dimensions={2}
+    ROOT add.10 = bf16[16,128,3072]{2,1,0} add(dot.5, broadcast.9)
+  })";
+
+  EXPECT_TRUE(RunAndCompare(matmul_module_str, ErrorSpec{1e-2, 1e-2}));
+  MatchOptimizedHlo(matmul_module_str, fused_matmul_bias_);
+}
+
 }  // namespace cpu
 }  // namespace xla
 

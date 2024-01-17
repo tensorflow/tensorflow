@@ -215,6 +215,7 @@ cc_library(
         ":compiler_functor",
         ":conv_canonicalization",
         ":cpu_executable",
+        ":cpu_float_support",
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
@@ -323,6 +324,7 @@ cc_library(
         "//xla/service:select_and_scatter_expander",
         "//xla/service:sharding_propagation",
         "//xla/service:sharding_remover",
+        "//xla/service:simplify_fp_conversions",
         "//xla/service:slice_sinker",
         "//xla/service:slow_operation_alarm",
         "//xla/service:sort_simplifier",
@@ -1739,6 +1741,18 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service:pattern_matcher",
     ] + mkl_deps(),
+)
+
+cc_library(
+    name = "cpu_float_support",
+    srcs = ["cpu_float_support.cc"],
+    hdrs = ["cpu_float_support.h"],
+    copts = tsl_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":onednn_matmul_rewriter",
+        "//xla/service:float_support",
+    ],
 )
 
 cc_library(

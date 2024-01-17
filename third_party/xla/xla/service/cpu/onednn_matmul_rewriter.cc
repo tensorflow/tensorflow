@@ -219,6 +219,7 @@ bool OneDnnMatMulRewriter::ShouldRewrite(const HloInstruction* dot_instr) {
   // Currently, blocking control dependencies
   if (dot_instr->HasControlDependencies()) return false;
   if (!IsSupportedType(dot_instr->shape().element_type())) return false;
+  if (dot_instr->operands().size() != 2) return false;
 
   // Currently, we rewrite when the data type is F32 or BF16. Note we do not
   // need to check equality of contraction dim-size of the operands. HLO
