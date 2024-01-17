@@ -15,24 +15,99 @@ limitations under the License.
 
 #include "xla/pjrt/mlir_to_hlo.h"
 
+#include <cstdint>
+#include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/statusor.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
 namespace xla {
+
+static mlir::Attribute ArrayToElements(mlir::Attribute attr) {
+  if (auto array = attr.dyn_cast<mlir::DenseI64ArrayAttr>()) {
+    return mlir::DenseIntElementsAttr::get(
+        mlir::RankedTensorType::get(array.size(), array.getElementType()),
+        array.asArrayRef());
+  }
+  return attr;
+}
+
+static mlir::Attribute ElementsToArray(mlir::Attribute attr) {
+  if (auto elements = llvm::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
+    return mlir::DenseI64ArrayAttr::get(
+        attr.getContext(), llvm::to_vector(elements.getValues<int64_t>()));
+  }
+  return attr;
+}
+
+// Convert attrs that use DenseI64ArrayAttr to use a different type of
+// Attribute. For backwards compatibility purposes, arrays should be converted
+// to DenseIntElementsAttr right before serialization, and converted back right
+// after serialization. Deserialization checks the IR is valid by default, so
+// you will need to disable that and do the verification explicitly after
+// parsing.
+void ConvertStablehloDenseAttributes(
+    mlir::Operation* op,
+    llvm::function_ref<mlir::Attribute(mlir::Attribute)> convert) {
+  llvm::TypeSwitch<mlir::Operation*>(op)
+      .Case([&](mlir::stablehlo::BroadcastOp op) {
+        op->setAttr("broadcast_sizes", convert(op->getAttr("broadcast_sizes")));
+      })
+      .Case([&](mlir::stablehlo::DynamicSliceOp op) {
+        op->setAttr("slice_sizes", convert(op->getAttr("slice_sizes")));
+      })
+      .Case([&](mlir::stablehlo::FftOp op) {
+        op->setAttr("fft_length", convert(op->getAttr("fft_length")));
+      })
+      .Case([&](mlir::stablehlo::PadOp op) {
+        op->setAttr("edge_padding_low",
+                    convert(op->getAttr("edge_padding_low")));
+        op->setAttr("edge_padding_high",
+                    convert(op->getAttr("edge_padding_high")));
+        op->setAttr("interior_padding",
+                    convert(op->getAttr("interior_padding")));
+      })
+      .Case([&](mlir::stablehlo::ReverseOp op) {
+        op->setAttr("dimensions", convert(op->getAttr("dimensions")));
+      })
+      .Case([&](mlir::stablehlo::SliceOp op) {
+        op->setAttr("start_indices", convert(op->getAttr("start_indices")));
+        op->setAttr("limit_indices", convert(op->getAttr("limit_indices")));
+        op->setAttr("strides", convert(op->getAttr("strides")));
+      })
+      .Case([&](mlir::stablehlo::TransposeOp op) {
+        op->setAttr("permutation", convert(op->getAttr("permutation")));
+      });
+}
 
 Status MlirToXlaComputation(mlir::ModuleOp module,
                             XlaComputation& xla_computation,
@@ -78,24 +153,46 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   return OkStatus();
 }
 
+StatusOr<std::string> SerializeModule(mlir::ModuleOp module) {
+  std::string bytecode;
+  llvm::raw_string_ostream os(bytecode);
+  mlir::BytecodeWriterConfig config;
+  // Pin bytecode version to 1 until transition to stable.
+  // TODO: b/285913864 - Remove post enabling frameworks to set it.
+  config.setDesiredBytecodeVersion(1);
+  DowngradeStablehlo(module);
+  if (mlir::failed(mlir::writeBytecodeToFile(module, os, config))) {
+    return absl::InvalidArgumentError("mlir::writeBytecodeToFile failed");
+  }
+  return bytecode;
+}
+
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context) {
   mlir::OwningOpRef<mlir::ModuleOp> module;
+
   mlir::DialectRegistry registry;
+  registry.insert<mlir::arith::ArithDialect>();
+  registry.insert<mlir::func::FuncDialect>();
+  registry.insert<mlir::ml_program::MLProgramDialect>();
+  registry.insert<mlir::shape::ShapeDialect>();
+  mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::stablehlo::registerAllDialects(registry);
   mlir::func::registerAllExtensions(registry);
   context.appendDialectRegistry(registry);
-  context.loadDialect<mlir::func::FuncDialect>();
-  context.loadDialect<mlir::mhlo::MhloDialect>();
-  context.loadDialect<mlir::chlo::ChloDialect>();
-  context.loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
-  context.loadDialect<mlir::stablehlo::StablehloDialect>();
+
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(&context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
-      &context);
+      // IR may be invalid because some fields may be using DenseElements
+      // instead of DenseArray. We rectify that below and verify after.
+      mlir::ParserConfig{&context, /*verifyAfterParse=*/false});
   if (!module) {
     return diagnostic_handler.ConsumeStatus();
   }
+
+  UpgradeStablehlo(*module);
+
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
@@ -112,6 +209,18 @@ Status ParseMlirModuleStringAndConvertToXlaComputation(
                       xla::ParseMlirModuleString(mlir_module_str, context));
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
                                    return_tuple);
+}
+
+void DowngradeStablehlo(mlir::ModuleOp module) {
+  module->walk([](mlir::Operation* op) {
+    ConvertStablehloDenseAttributes(op, ArrayToElements);
+  });
+}
+
+void UpgradeStablehlo(mlir::ModuleOp module) {
+  module->walk([](mlir::Operation* op) {
+    ConvertStablehloDenseAttributes(op, ElementsToArray);
+  });
 }
 
 }  // namespace xla
