@@ -3663,7 +3663,7 @@ ENTRY e {
                   ->fused_instructions_computation()
                   ->root_instruction(),
               GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 32}, {1, 0}),
-                                m::Op().WithShape(BF16, {32, 40}, {1, 0}))
+                                m::Op().WithShape(BF16, {40, 32}, {1, 0}))
                              .WithShape(BF16, {16, 40}, {1, 0})));
 }
 
