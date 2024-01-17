@@ -2456,6 +2456,9 @@ class HloInstruction {
   // Rare is allocated lazily, only when any of its constituent fields are
   // non-empty.  This reduces the memory footprint of HloInstruction objects.
   struct Rare {
+    // Computations called by this instruction.
+    PtrVec<HloComputation*> called_computations;
+
     // The set of control predecessors of this instruction.
     // Note that the order of the instructions in the vector influences the
     // order computed in HloComputation::ComputeInstructionPostOrder, which may
@@ -2465,9 +2468,6 @@ class HloInstruction {
 
     // The set of control successors of this instruction.
     PtrVec<HloInstruction*> control_successors;
-
-    // Computations called by this instruction.
-    PtrVec<HloComputation*> called_computations;
 
     // Attributes passed from the frontend to give hints to the backend about
     // how to compile this HLO.

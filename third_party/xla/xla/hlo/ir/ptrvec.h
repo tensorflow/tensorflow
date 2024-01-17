@@ -85,6 +85,7 @@ class PtrVec {
   // kEmptyTag and kBigTag have bottom bit 1. If we attempt to store a single
   // pointer whose bottom bit is 1, we immediately switch to the big
   // representation to avoid ambiguity.
+  // Empty vectors are represented uniquely in the small representation.
   static constexpr uintptr_t kEmptyTag = 0x1;
   static constexpr uintptr_t kBigTag = 0x3;
   static constexpr uintptr_t kTagMask = 0x3;
@@ -182,6 +183,12 @@ inline PtrVec<T>& PtrVec<T>::operator=(const PtrVec& x) {
     // Switch to big representation.
     b = MakeBig(x.size());
   } else {
+    if (n == 0) {
+      // Make empty() faster by always using a unique representation for empty
+      // vectors (tag is empty).
+      clear();
+      return *this;
+    }
     b = big();
     if (b->capacity < n) {
       FreeBig(b);
@@ -218,7 +225,7 @@ inline size_t PtrVec<T>::size() const {
 
 template <class T>
 inline bool PtrVec<T>::empty() const {
-  return size() == 0;
+  return rep_ == kEmptyTag;
 }
 
 template <class T>
@@ -272,10 +279,9 @@ inline typename PtrVec<T>::const_iterator PtrVec<T>::end() const {
 template <class T>
 inline void PtrVec<T>::clear() {
   if (is_big()) {
-    big()->size = 0;
-  } else {
-    rep_ = kEmptyTag;
+    FreeBig(big());
   }
+  rep_ = kEmptyTag;
 }
 
 template <class T>
@@ -283,6 +289,10 @@ inline void PtrVec<T>::pop_back() {
   DCHECK(!empty());
   if (is_big()) {
     big()->size--;
+    if (big()->size == 0) {
+      // Revert to unique representation of empty vectors.
+      clear();
+    }
   } else {
     rep_ = kEmptyTag;  // From length 1 to length 0
   }
@@ -340,11 +350,16 @@ inline void PtrVec<T>::erase(const_iterator iter) {
     memmove(b->data + index, b->data + index + 1,
             (b->size - index - 1) * sizeof(T));
     b->size--;
+    if (b->size == 0) {
+      // Revert to unique representation for empty vectors.
+      clear();
+    }
   }
 }
 
 template <class T>
 inline PtrVec<T>::operator std::vector<T>() const {
+  if (empty()) return {};
   return std::vector<T>(begin(), end());
 }
 

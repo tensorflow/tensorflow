@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <list>
 #include <memory>
 #include <optional>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/map_util.h"
 #include "xla/printer.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
@@ -495,10 +497,12 @@ void HloComputation::ForEachInstructionPostOrderImpl(
     const HloInstruction::InstructionVector& operands = current.operands();
     dfs_stack->insert(dfs_stack->end(), operands.rbegin(), operands.rend());
 
-    const std::vector<HloInstruction*>& predecessors =
+    const PtrVec<HloInstruction*>& predecessors =
         current.control_predecessors();
-    dfs_stack->insert(dfs_stack->end(), predecessors.begin(),
-                      predecessors.end());
+    if (!predecessors.empty()) {
+      dfs_stack->insert(dfs_stack->end(), predecessors.begin(),
+                        predecessors.end());
+    }
   }
 }
 
@@ -663,20 +667,24 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   // stack should contain only mutable computations. Also, we don't want to
   // include the computation itself in the list of embedded computations.
   for (auto* instruction : instructions()) {
-    auto process_called_computations =
-        [&](const std::vector<HloComputation*>& called_computations) {
-          // Put the called computations in reverse order onto the stack.
-          // Otherwise we don't match the recursive enumeration of
-          // computations, which processes the first called computation first.
-          for (auto i = called_computations.rbegin();
-               i != called_computations.rend(); ++i) {
-            HloComputation* called_computation = *i;
-            if (visited.insert(called_computation).second) {
-              st.emplace(called_computation,
-                         called_computation->instructions_.cbegin());
-            }
-          }
-        };
+    using PtrVec = PtrVec<HloComputation*>;
+    auto process_called_computations = [&](const PtrVec& called_computations) {
+      if (called_computations.empty()) return;
+      // Put the called computations in reverse order onto the stack.
+      // Otherwise we don't match the recursive enumeration of
+      // computations, which processes the first called computation first.
+      std::reverse_iterator<PtrVec::const_iterator> i(
+          called_computations.end());
+      std::reverse_iterator<PtrVec::const_iterator> rend(
+          called_computations.begin());
+      for (; i != rend; ++i) {
+        HloComputation* called_computation = *i;
+        if (visited.insert(called_computation).second) {
+          st.emplace(called_computation,
+                     called_computation->instructions_.cbegin());
+        }
+      }
+    };
     process_called_computations(instruction->called_computations());
     while (!st.empty()) {
       auto& cur = st.top();
