@@ -54,7 +54,6 @@ fi
 
 PYTHON_VERSION=`python3 -c "import sys;print(f'{sys.version_info.major}.{sys.version_info.minor}')"`
 export TF_PYTHON_VERSION=$PYTHON_VERSION
-yes "" | TF_NEED_CLANG=0 ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
 # Explicitly define resource constraints on bazel to avoid overload on rocm-ci
 if [[ -n $restriction ]]; then
     RESOURCE_OPTION="--local_ram_resources=60000 --local_cpu_resources=35 --jobs=70"
@@ -62,12 +61,29 @@ else
     RESOURCE_OPTION=""
 fi
 
-if [[ -n $nightly ]]; then
-	bazel build $RESOURCE_OPTION --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
-	bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm --nightly_flag &&
-	pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
+if [ -f /usertools/rocm.bazelrc ]; then
+	# Use the bazelrc files in /usertools if available
+	if [[ -n $nightly ]]; then
+		python3 tensorflow/tools/ci_build/update_version.py --nightly --rocm_version &&
+		bazel --bazelrc=/usertools/rocm.bazelrc build $RESOURCE_OPTION --config=rocm --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+		./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tf/pkg --rocm --nightly_flag &&
+		pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
+	else
+		python3 tensorflow/tools/ci_build/update_version.py --rocm_version &&
+		bazel --bazelrc=/usertools/rocm.bazelrc build $RESOURCE_OPTION --config=rocm --action_env=TF_PYTHON_VERSION=$PYTHON_VERSION tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+		./bazel-bin/tensorflow/tools/pip_package/build_pip_package /tf/pkg --rocm --project_name tensorflow_rocm &&
+		pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
+	fi
 else
-	bazel build $RESOURCE_OPTION --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
-	bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm &&
-	pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
+	# Legacy style: run configure then build
+	yes "" | TF_NEED_CLANG=0 ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure &&
+	if [[ -n $nightly ]]; then
+		bazel build $RESOURCE_OPTION --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+		bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm --nightly_flag &&
+		pip3 install --upgrade $TF_PKG_LOC/tf_nightly_rocm*.whl
+	else
+		bazel build $RESOURCE_OPTION --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+		bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC --rocm &&
+		pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
+	fi
 fi
