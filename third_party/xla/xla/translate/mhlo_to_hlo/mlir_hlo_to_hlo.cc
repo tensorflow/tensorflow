@@ -949,21 +949,49 @@ LogicalResult ExportXlaOp(AddDependencyOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands))) {
     return failure();
-  TensorType operand_type = op.getOperand().getType().cast<TensorType>();
-  TensorType result_type = op.getType();
-  if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
-    return failure();
+  }
+
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return failure();
+
   auto all_gather_dim = op.getAllGatherDim();
-  int64_t shard_count = result_type.getDimSize(all_gather_dim) /
-                        operand_type.getDimSize(all_gather_dim);
-  value_map[op] = xla::AllGather(
-      operand, all_gather_dim, shard_count,
-      Convert_replica_groups(op.getReplicaGroups()),
-      Convert_channel_handle(op.getChannelHandle()), std::nullopt,
-      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  int64_t shard_count = 0;
+  for (size_t i = 0; i < operands.size(); ++i) {
+    TensorType operand_type = op.getOperand(i).getType().cast<TensorType>();
+    TensorType result_type = op.getType(i).cast<TensorType>();
+    if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
+      return failure();
+    if (i == 0) {
+      shard_count = result_type.getDimSize(all_gather_dim) /
+                    operand_type.getDimSize(all_gather_dim);
+    }
+  }
+
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Layout> layout = std::nullopt;
+    if (shape_or->has_layout()) {
+      layout = shape_or->layout();
+    }
+    auto tuple = xla::AllGatherTuple(
+        operands, all_gather_dim, shard_count,
+        Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), layout,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    value_map[op->getResults()[0]] = xla::AllGather(
+        operands[0], all_gather_dim, shard_count,
+        Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), std::nullopt,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  }
+
   return success();
 }
 
@@ -1093,8 +1121,8 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
       dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     TensorType operand_type =
-        all_gather_op.getOperand().getType().cast<TensorType>();
-    TensorType result_type = all_gather_op.getType();
+        all_gather_op.getOperand(0).getType().cast<TensorType>();
+    TensorType result_type = all_gather_op.getType(0).cast<TensorType>();
     if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
       return failure();
     if (operands.size() != 1) return failure();
@@ -1268,7 +1296,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildAllGatherDone(
-            ctx.builder, operand, xla::TypeToShape(all_gather_op.getType()));
+            ctx.builder, operand, xla::TypeToShape(all_gather_op.getType(0)));
     return success();
   }
   auto all_reduce_op =

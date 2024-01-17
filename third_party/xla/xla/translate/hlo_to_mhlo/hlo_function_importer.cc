@@ -1422,6 +1422,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllGather: {
       auto all_gather = Cast<HloAllGatherInstruction>(instruction);
+      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
+
+      llvm::SmallVector<Type> result_types = {result_type};
+      if (result_tuple_ty) {
+        result_types = llvm::to_vector(result_tuple_ty.getTypes());
+      }
       attributes.push_back(builder_->getNamedAttr(
           "all_gather_dim",
           builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
@@ -1432,10 +1438,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             ConvertChannelHandle(all_gather->channel_id().value()));
       if (all_gather->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds());
-      return func_builder
-          ->create<mlir::mhlo::AllGatherOp>(loc, result_type, operands,
-                                            attributes)
-          .getOperation();
+      auto all_gather_op = func_builder->create<mlir::mhlo::AllGatherOp>(
+          loc, result_types, operands, attributes);
+      if (result_tuple_ty) {
+        return func_builder
+            ->create<mlir::mhlo::TupleOp>(loc, result_type,
+                                          all_gather_op.getResults())
+            .getOperation();
+      }
+      return all_gather_op.getOperation();
     }
     case HloOpcode::kAllGatherStart: {
       auto all_gather_start = Cast<HloAllGatherInstruction>(instruction);
@@ -1449,6 +1460,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             ConvertChannelHandle(all_gather_start->channel_id().value()));
       if (all_gather_start->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds());
+      if (all_gather_start->operands().size() > 1)
+        return InvalidArgument(
+            "Async tuple all-gather is not supported in MHLO");
 
       return ImportOldStyleAsyncStart<mlir::mhlo::AllGatherOp>(
           attributes, operands, loc, result_type, func_builder, "all_gather_",

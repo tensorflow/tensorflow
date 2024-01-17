@@ -1449,8 +1449,9 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   string summary = "AllGather operation";
   string description = [{
     Within each process group in the process grid, concatenates the values of the
-    `operand` tensor from each process along `all_gather_dim` and produces a
-    `result` tensor.
+    operand tensor from each process along `all_gather_dim` and produces a
+    result tensor. The `computation` is applied separately for each operand in
+    `operands`, producing one result per operand.
 
     See:
     https://github.com/openxla/stablehlo/blob/main/docs/spec.md#all_gather
@@ -1468,13 +1469,13 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   }];
 
   let arguments = (ins
-    MHLO_Tensor:$operand,
+    Variadic<MHLO_Tensor>:$operands,
     I64Attr:$all_gather_dim,
     I64ElementsAttr:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
-  let results = (outs MHLO_Tensor);
+  let results = (outs Variadic<MHLO_Tensor>);
   // use_global_device_ids is rarely used, so we add simplified builder methods
   // for convenience.
   let builders = [

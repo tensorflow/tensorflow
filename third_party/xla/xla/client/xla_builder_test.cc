@@ -454,6 +454,21 @@ TEST_F(XlaBuilderTest, AllGatherWithTuple) {
                                  ShapeUtil::MakeShape(F32, {64, 4})})));
 }
 
+TEST_F(XlaBuilderTest, AllGatherTuple) {
+  XlaBuilder b(TestName());
+  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {128, 4}), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {128, 8}), "p1");
+  AllGatherTuple({p0, p1}, /*all_gather_dimension=*/1, /*shard_count=*/4);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  auto tuple_shape =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {128, 16}),
+                                 ShapeUtil::MakeShape(F32, {128, 32})});
+  EXPECT_THAT(root, GmockMatch(m::Op()
+                                   .WithOpcode(HloOpcode::kAllGather)
+                                   .WithShapeEqualTo(&tuple_shape)));
+}
+
 TEST_F(XlaBuilderTest, ReduceScatter) {
   XlaBuilder b(TestName());
   XlaComputation to_apply;
