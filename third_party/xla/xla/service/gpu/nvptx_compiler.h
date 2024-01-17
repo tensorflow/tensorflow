@@ -148,11 +148,6 @@ class NVPTXCompiler : public GpuCompiler {
   absl::node_hash_map<CompilationCacheKey, CompilationCacheValue>
       compilation_cache_ ABSL_GUARDED_BY(mutex_);
 
-  absl::StatusOr<std::vector<uint8_t>> CompileWithPtxAs(
-      const std::string& ptx, se::CudaComputeCapability cc,
-      const HloModuleConfig& hlo_module_config, CompileOptions compile_options,
-      bool relocatable);
-
   NVPTXCompiler(const NVPTXCompiler&) = delete;
   NVPTXCompiler& operator=(const NVPTXCompiler&) = delete;
 };
