@@ -1114,9 +1114,9 @@ cc_library(
         "flatbuffer_import.h",
     ],
     deps = [
+        ":const_tensor_utils",
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
-        ":low_bit_utils",
         ":offset_buffer",
         ":size_utils",
         ":tensorflow_lite",
@@ -1132,16 +1132,14 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/schema:schema_utils",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -1150,7 +1148,8 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TranslateLib",
-        "@local_xla//xla:statusor",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -1440,6 +1439,31 @@ cc_library(
 cc_library(
     name = "offset_buffer",
     hdrs = ["offset_buffer.h"],
+)
+
+cc_library(
+    name = "const_tensor_utils",
+    srcs = ["utils/const_tensor_utils.cc"],
+    hdrs = ["utils/const_tensor_utils.h"],
+    deps = [
+        ":convert_type",
+        ":low_bit_utils",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
+    ],
 )
 
 tf_cc_test(
