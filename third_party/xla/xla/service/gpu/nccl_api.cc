@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 #include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -123,6 +125,32 @@ static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
   }
 }
 
+static ncclRedOp_t ToNcclReduction(ReductionKind kind) {
+  switch (kind) {
+    case ReductionKind::SUM:
+      return ncclSum;
+    case ReductionKind::PRODUCT:
+      return ncclProd;
+    case ReductionKind::MIN:
+      return ncclMin;
+    case ReductionKind::MAX:
+      return ncclMax;
+  }
+}
+
+static std::string_view ToString(ReductionKind reduction_kind) {
+  switch (reduction_kind) {
+    case ReductionKind::SUM:
+      return "sum";
+    case ReductionKind::PRODUCT:
+      return "prod";
+    case ReductionKind::MIN:
+      return "min";
+    case ReductionKind::MAX:
+      return "max";
+  }
+}
+
 //==-----------------------------------------------------------------------===//
 // NcclApi
 //==-----------------------------------------------------------------------===//
@@ -199,6 +227,27 @@ absl::Status NcclApi::GroupStart() {
 absl::Status NcclApi::GroupEnd() {
   VLOG(5) << "End NCCL group";
   return XLA_NCCL_STATUS(ncclGroupEnd());
+}
+
+absl::Status NcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
+                                se::DeviceMemoryBase recv_buffer,
+                                PrimitiveType dtype, size_t count,
+                                ReductionKind reduction_kind,
+                                NcclCommHandle comm, se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL AllReduce operation on device #%d; send_buffer=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
+      "stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(),
+      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
+      count, ToString(reduction_kind), comm, stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  return XLA_NCCL_STATUS(ncclAllReduce(
+      send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+      nccl_dtype, ToNcclReduction(reduction_kind), Cast(comm),
+      se::gpu::AsGpuStreamValue(stream)));
 }
 
 absl::Status NcclApi::AllGather(se::DeviceMemoryBase send_buffer,

@@ -55,43 +55,19 @@ using mlir::lmhlo_gpu::ReduceScatterStartOp;
 absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, ncclComm_t comm) {
-#if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(ncclRedOp_t reduce_op, ToNcclReduction(reduction_kind));
-
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
-
   TF_RETURN_IF_ERROR(NcclApi::GroupStart());
-  for (size_t i = 0; i < buffers.size(); ++i) {
-    DeviceBufferPair& buffer = buffers[i];
-    const void* send_buffer = buffer.source_buffer.opaque();
-    void* recv_buffer = buffer.destination_buffer.opaque();
-
-    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(
-                            buffer.element_type, Thunk::kNcclAllReduce));
-    ncclDataType_t dtype = dtype_and_multiplier.first;
-    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
-    VLOG(3) << absl::StreamFormat(
-        "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
-        "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
-        gpu_stream);
-
-    XLA_NCCL_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
-                                           element_count, dtype, reduce_op,
-                                           comm, gpu_stream));
+  for (DeviceBufferPair& buffer : buffers) {
+    TF_RETURN_IF_ERROR(NcclApi::AllReduce(
+        buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+        buffer.element_count, reduction_kind,
+        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
   }
+
   return NcclApi::GroupEnd();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
 }
 
 namespace {

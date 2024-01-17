@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
@@ -52,6 +53,12 @@ absl::Status NcclApi::GroupStart() {
 }
 
 absl::Status NcclApi::GroupEnd() {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::Status NcclApi::AllReduce(se::DeviceMemoryBase, se::DeviceMemoryBase,
+                                PrimitiveType, size_t, ReductionKind,
+                                NcclCommHandle, se::Stream*) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 

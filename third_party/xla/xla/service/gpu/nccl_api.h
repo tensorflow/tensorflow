@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -80,6 +81,16 @@ struct NcclApi {
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupend
   static absl::Status GroupEnd();
+
+  // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
+  // reduction and leaves identical copies of the result on each `recv_buff`.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclallreduce
+  static absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
+                                se::DeviceMemoryBase recv_buffer,
+                                PrimitiveType dtype, size_t count,
+                                ReductionKind reduction_kind,
+                                NcclCommHandle comm, se::Stream* stream);
 
   // Gather `count` values from all GPUs into recv_buffer, receiving data from
   // rank `i` at offset `i * sendcount`.
