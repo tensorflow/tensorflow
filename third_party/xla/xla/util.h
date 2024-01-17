@@ -243,46 +243,78 @@ DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unknown);
 #undef DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE
 
 template <typename... Args>
-Status InvalidArgumentStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::InvalidArgument(std::forward<Args>(concat)...));
-}
-
-template <typename... Args>
-Status UnimplementedStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::Unimplemented(std::forward<Args>(concat)...));
-}
-
-template <typename... Args>
 Status InternalErrorStrCat(Args&&... concat) {
   return WithLogBacktrace(tsl::errors::Internal(std::forward<Args>(concat)...));
 }
 
-template <typename... Args>
-struct ResourceExhaustedStrCat {
-  Status status;
+// The following three macros define a common set of code for creating
+// absl::Status errors with the given error_type, with the addition of adding
+// absl::SourceLocation if it's available (PLATFORM_GOOGLE).  They're a
+// complicated by the need to use #ifdefs within the code.  This would be the
+// equivalent code for ResourceExhausted if a #define macro could have embedded
+// #ifdef directives:
+//
+// template <typename... Args>
+// struct ResourceExhaustedStrCat {
+//   Status status;
+// #if defined(PLATFORM_GOOGLE)
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   ResourceExhaustedStrCat(Args&&... concat, absl::SourceLocation loc =
+//                                                 absl::SourceLocation::current())
+//       : status(WithLogBacktrace(
+//             tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)
+//                 .WithSourceLocation(loc))) {}
+// #else
+//   ResourceExhaustedStrCat(Args&&... concat)
+//       : status(WithLogBacktrace(
+//             tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)))
+//             {}
+// #endif
+//
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   operator Status() const { return status; }
+// };
+//
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type) \
+  template <typename... Args>                                  \
+  struct error_type##StrCat {                                  \
+    Status status;                                             \
+    /* NOLINTNEXTLINE(google-explicit-constructor) */
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)           \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  operator Status() const { return status; }                             \
+  }                                                                      \
+  ;                                                                      \
+  /*Deduction guide to make variadic arguments play nice with default */ \
+  /* absl::SourceLocation argument. */                                   \
+  template <typename... Args>                                            \
+  error_type##StrCat(Args&&...)->error_type##StrCat<Args...>;
+
 #if defined(PLATFORM_GOOGLE)
-  // NOLINTNEXTLINE(google-explicit-constructor)
-  ResourceExhaustedStrCat(Args&&... concat, absl::SourceLocation loc =
-                                                absl::SourceLocation::current())
-      : status(WithLogBacktrace(
-            tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)
-                .WithSourceLocation(loc))) {}
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                     \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                    \
+  error_type##StrCat(Args&&... concat, absl::SourceLocation loc =           \
+                                           absl::SourceLocation::current()) \
+      : status(WithLogBacktrace(                                            \
+            tsl::errors::error_type(std::forward<Args>(concat)...)          \
+                .WithSourceLocation(loc))) {}                               \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
 #else
-  ResourceExhaustedStrCat(Args&&... concat)
-      : status(WithLogBacktrace(
-            tsl::errors::ResourceExhausted(std::forward<Args>(concat)...))) {}
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                 \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                \
+  error_type##StrCat(Args&&... concat)                                  \
+      : status(WithLogBacktrace(                                        \
+            tsl::errors::error_type(std::forward<Args>(concat)...))) {} \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
 #endif
 
-  // NOLINTNEXTLINE(google-explicit-constructor)
-  operator Status() const { return status; }
-};
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(ResourceExhausted);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(InvalidArgument);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Unimplemented);
 
-// Deduction guide to make variadic arguments play nice with default
-// absl::SourceLocation argument.
-template <typename... Args>
-ResourceExhaustedStrCat(Args&&...) -> ResourceExhaustedStrCat<Args...>;
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
