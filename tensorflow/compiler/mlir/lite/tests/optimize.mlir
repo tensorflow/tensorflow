@@ -597,6 +597,26 @@ func.func @FuseFullyConnectedAddBroadcasted(%arg0: tensor<40x37xf32>, %arg1: ten
   // CHECK: return %[[fc]]
 }
 
+// CHECK-LABEL: @FuseFullyConnectedBroadcastedBiasAddWithQDQs
+func.func @FuseFullyConnectedBroadcastedBiasAddWithQDQs(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
+  %cst = "tfl.no_value"() {value} : () -> none
+  %cst1 = arith.constant dense<2.0> : tensor<1x40xf32>
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<40x37xf32>, tensor<40x37xf32>, none) -> (tensor<40x40xf32>)
+  %1 = "tfl.quantize"(%cst1) {qtype = tensor<2x1x!quant.uniform<i8:f32, 0.024986599940879671:92>>} : (tensor<1x40xf32>) -> tensor<1x40x!quant.uniform<i8:f32, 0.024986599940879671:92>>
+  %2 = "tfl.dequantize"(%1) : (tensor<1x40x!quant.uniform<i8:f32, 0.024986599940879671:92>>) -> tensor<1x40xf32>
+  %3 = "tfl.add"(%0, %2) {fused_activation_function = "NONE"} : (tensor<40x40xf32>, tensor<1x40xf32>) -> tensor<40x40xf32>
+  func.return %3 : tensor<40x40xf32>
+
+  // CHECK: %[[cst:.*]] = arith.constant dense<2.000000e+00> : tensor<40xf32>
+  // CHECK: %[[q:.*]] = "tfl.quantize"
+  // CHECK-SAME: {qtype = tensor<40x!quant.uniform<i8:f32, 0.024986599940879671:92>>} : (tensor<40xf32>) -> tensor<40x!quant.uniform<i8:f32, 0.024986599940879671:92>>
+  // CHECK: %[[dq:.*]] = "tfl.dequantize"
+  // CHECK-SAME: (tensor<40x!quant.uniform<i8:f32, 0.024986599940879671:92>>) -> tensor<40xf32>
+  // CHECK: %[[fc:.*]] = "tfl.fully_connected"
+  // CHECK-SAME: (tensor<40x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<40x40xf32>
+  // CHECK: return %[[fc]]
+}
+
 // CHECK-LABEL: @FuseFullyConnectedAddBroadcastedExistingBias
 func.func @FuseFullyConnectedAddBroadcastedExistingBias(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
   %cst = arith.constant dense<3.0> : tensor<40xf32>
