@@ -326,7 +326,7 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
                                                          llvm::IRBuilder<>* b) {
   std::string encoded_shape = shape.SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
-    return InternalError("Encoded shape size exceeded int32_t size limit.");
+    return Internal("Encoded shape size exceeded int32_t size limit.");
   }
   *shape_size = static_cast<int32_t>(encoded_shape.size());
   return b->CreateGlobalStringPtr(encoded_shape);

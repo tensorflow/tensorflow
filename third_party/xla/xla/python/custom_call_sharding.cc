@@ -132,7 +132,7 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
             py::cast<std::tuple<const XlaComputation*, std::vector<HloSharding>,
                                 HloSharding>>(py_result);
       } catch (const py::cast_error& e) {
-        return xla::InternalError(
+        return xla::Internal(
             "Shardings returned from partitioning %s: expected "
             "Tuple[XlaComputation, List[HloSharding], HloSharding] got: %s",
             instruction->ToString(), py::repr(py_result));
@@ -147,7 +147,7 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       std::vector<HloInstruction*> operands;
       operands.reserve(instruction->operand_count());
       if (arg_shardings.size() != instruction->operand_count()) {
-        return xla::InternalError(
+        return xla::Internal(
             "Shardings returned from partitioning %s must match: %d vs %d",
             instruction->ToString(), arg_shardings.size(),
             instruction->operand_count());
@@ -179,7 +179,7 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
       partitioner->SetPartitionedHlo(instruction, result_partitioned);
       return xla::OkStatus();
     } catch (const pybind11::error_already_set& e) {
-      return xla::InternalError("custom_partitioner: %s", e.what());
+      return xla::Internal("custom_partitioner: %s", e.what());
     }
   }
   HloSharding PropagateUserSharding(

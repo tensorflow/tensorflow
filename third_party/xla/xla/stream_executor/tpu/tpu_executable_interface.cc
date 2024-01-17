@@ -142,8 +142,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     // Return an InternalError if result_index is invalid. This avoids failing
     // the CHECK when calling GetAliasedParameter
     if (!ShapeUtil::IndexIsValid(alias_config.shape(), result_index)) {
-      return InternalError("result_index is invalid: %s",
-                           result_index.ToString());
+      return Internal("result_index is invalid: %s", result_index.ToString());
     }
 
     std::optional<HloInputOutputAliasConfig::Alias> alias =

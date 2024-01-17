@@ -4560,7 +4560,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
   HloEvaluator evaluator;
   evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
                                        absl::Span<const Literal*> operands) {
-    return InternalError("Test error");
+    return Internal("Test error");
   });
   EXPECT_EQ(evaluator.Evaluate(*m_, {&args[0]}).status().code(),
             ::tsl::error::INTERNAL);

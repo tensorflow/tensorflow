@@ -193,7 +193,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
           // The subsharding contains data outside of the tile we are comparing
           // against.
           if (subsharding_offset_j < sharding_offset[j]) {
-            return InternalError("");
+            return Internal("");
           }
           // Skip last tile. It can never go beyond the limit as the shape is
           // the same for both shardings and sometimes there's padding making
@@ -203,7 +203,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
                   potential_sharded_shape.dimensions(j) &&
               subsharding_offset_j + potential_base_tile[j] >
                   sharding_offset[j] + base_tile[j]) {
-            return InternalError("");
+            return Internal("");
           }
         }
         return absl::OkStatus();

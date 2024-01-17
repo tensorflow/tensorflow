@@ -415,7 +415,7 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
       return ::tsl::OkStatus();
     }));
     if (i != output.size()) {
-      return xla::InternalError("output sizes don't match");
+      return xla::Internal("output sizes don't match");
     }
   }
 
@@ -747,7 +747,7 @@ tsl::StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
     case xla::gpu::GemmBackendConfig::BIAS_GELU_AUX:
       return lmhlo_gpu::CublasLtMatmulEpilogue::BiasGeluAux;
     default:
-      return xla::InternalError("unknown epilogue");
+      return xla::Internal("unknown epilogue");
   }
 }
 
@@ -773,7 +773,7 @@ tsl::StatusOr<lmhlo_gpu::FusedMhaDagSignature> AsLhloFusedMhaDagSignature(
     case xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout:
       return lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmaxDropout;
     default:
-      return xla::InternalError("unknown cudnn fmha fwd kind");
+      return xla::Internal("unknown cudnn fmha fwd kind");
   }
 }
 tsl::StatusOr<lmhlo_gpu::FusedMhaBackwardDagSignature>
@@ -801,7 +801,7 @@ AsLhloFusedMhaBackwardDagSignature(xla::gpu::CudnnfMHAKind kind) {
       return lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmaxDropout;
       break;
     default:
-      return xla::InternalError("unknown cudnn fmha bwd kind");
+      return xla::Internal("unknown cudnn fmha bwd kind");
   }
 }
 }  // namespace
@@ -982,7 +982,7 @@ static tsl::StatusOr<mlir::lmhlo_gpu::Activation> GetLHLOActivation(
     case stream_executor::dnn::kLeakyRelu:
       return mlir::lmhlo_gpu::Activation::LeakyRelu;
     default:
-      return xla::InternalError("Unknown activation");
+      return xla::Internal("Unknown activation");
   }
 }
 
@@ -1380,7 +1380,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHA(
       return set_common_fmha_attributes(fmha);
     }
     default:
-      return xla::InternalError("Unknown forward fused MHA call.");
+      return xla::Internal("Unknown forward fused MHA call.");
   }
 }
 
@@ -1592,7 +1592,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
     }
 
     default:
-      return xla::InternalError("Unknown backward fused MHA call.");
+      return xla::Internal("Unknown backward fused MHA call.");
   }
 }
 

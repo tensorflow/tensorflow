@@ -79,7 +79,7 @@ StatusOr<stream_executor::dnn::ActivationMode> ConvertConvActivationMode(
     case mlir::lmhlo_gpu::Activation::LeakyRelu:
       return stream_executor::dnn::kLeakyRelu;
     default:
-      return InternalError("Unexpected activation");
+      return Internal("Unexpected activation");
   }
 }
 
@@ -91,7 +91,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
       input.getType().dyn_cast<mlir::RankedTensorType>();
   if (!type || type.getRank() != 2 ||
       !type.getElementType().isInteger(/*width=*/64)) {
-    return InternalError("Execpted replica group to be a rank 2 tensor of i64");
+    return Internal("Execpted replica group to be a rank 2 tensor of i64");
   }
   // rank 0 is num_groups, rank 1 is group size.
   auto replica_group_values_it = input.getValues<uint64_t>().begin();
@@ -119,7 +119,7 @@ StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
   mlir::DenseIntElementsAttr attr = *optional_attr;
   auto type = attr.getType().dyn_cast<mlir::RankedTensorType>();
   if (!type || type.getRank() != 2 || type.getShape()[1] != 2)
-    return InternalError("expected Nx2 attribute to be a tensor of shape Nx2");
+    return Internal("expected Nx2 attribute to be a tensor of shape Nx2");
   auto it = attr.getValues<int64_t>().begin();
   std::vector<std::pair<int64_t, int64_t>> out(attr.getNumElements() / 2);
   for (auto& item : out) {
@@ -282,7 +282,7 @@ StatusOr<std::vector<int64_t>> ConvertMlirArrayAttrToInt64Array(
   for (int i = 0; i < rank; i++) {
     mlir::IntegerAttr attr = array[i].dyn_cast<mlir::IntegerAttr>();
     if (!attr) {
-      return InternalError("Type Error: Expected layout integer attribute");
+      return Internal("Type Error: Expected layout integer attribute");
     }
     converted_array[i] = attr.getInt();
   }

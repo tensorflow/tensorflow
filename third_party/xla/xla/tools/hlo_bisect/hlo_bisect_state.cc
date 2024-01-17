@@ -271,7 +271,7 @@ StatusOr<bool> HloBisectState::TrimByInstructions() {
 
   // Sanity check for the bug checker.
   if (bisect_high == computation->num_parameters()) {
-    return InternalError(
+    return Internal(
         "The checker fails on an empty computation! Something is not right. "
         "Can't bisect.");
   }
@@ -341,7 +341,7 @@ Status HloBisectState::ExpectModuleIsBuggy() {
                                bug_count, " failures seen in ",
                                (retry_count + 1), " runs)");
   }
-  return InternalError("We \"lost\" the bug while bisecting!");
+  return Internal("We \"lost\" the bug while bisecting!");
 }
 
 }  // namespace bisect

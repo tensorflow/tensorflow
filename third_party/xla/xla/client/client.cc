@@ -202,7 +202,7 @@ StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
   VLOG(3) << "ComputeConstant: {" << response.DebugString() << "}";
 
   if (!response.has_literal()) {
-    return InternalError(
+    return Internal(
         "no computed literal in the provided response in ComputeConstantGraph "
         "request");
   }

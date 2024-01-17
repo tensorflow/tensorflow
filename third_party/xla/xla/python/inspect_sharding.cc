@@ -60,7 +60,7 @@ class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
                         HloInstruction* instruction) const override {
     const HloInstruction* operand = instruction->operand(0);
     if (!operand->has_sharding()) {
-      return xla::InternalError(
+      return xla::Internal(
           "Inspect sharding called but no sharding is available.");
     }
     std::string sharding_spec =
@@ -71,14 +71,14 @@ class InspectShardingCallPartitioner : public xla::CustomCallPartitioner {
     args.error_txt = nullptr;
     const auto& str = instruction->raw_backend_config_string();
     if (str.size() != sizeof(JAX_InspectSharding_Callback)) {
-      return xla::InternalError("Invalid config string for inspect sharding.");
+      return xla::Internal("Invalid config string for inspect sharding.");
     }
     JAX_InspectSharding_Callback cb;
     memcpy(&cb, str.data(), sizeof(JAX_InspectSharding_Callback));
     cb.call(cb.data, &args);
     if (args.error_txt) {
-      auto result = xla::InternalError("Error calling inspect_sharding: %s",
-                                       args.error_txt);
+      auto result =
+          xla::Internal("Error calling inspect_sharding: %s", args.error_txt);
       args.free_error(&args);
       return result;
     }

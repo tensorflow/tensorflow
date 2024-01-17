@@ -187,8 +187,7 @@ InterpreterExecutableBase::AllocateOutputMemoryWithInputReuse(
             result.Result().on_device_shape(), result_index));
 
     if (!ShapeUtil::IndexIsValid(alias_config.shape(), result_index)) {
-      return InternalError("result_index is invalid: %s",
-                           result_index.ToString());
+      return Internal("result_index is invalid: %s", result_index.ToString());
     }
 
     std::optional<HloInputOutputAliasConfig::Alias> alias =

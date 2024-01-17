@@ -58,7 +58,7 @@ absl::StatusOr<DataType> AsBlasDataType(PrimitiveType dtype) {
     case PrimitiveType::C128:
       return DataType::kComplexDouble;
     default:
-      return xla::InternalError(
+      return xla::Internal(
           "AsBlasDataType: unsupported type: %s",
           xla::primitive_util::LowercasePrimitiveTypeName(dtype));
   }
@@ -87,7 +87,7 @@ absl::StatusOr<PrimitiveType> AsXlaPrimitiveType(DataType dtype) {
     case DataType::kComplexDouble:
       return PrimitiveType::C128;
     default:
-      return xla::InternalError("AsXlaPrimitiveType: unsupported dtype");
+      return xla::Internal("AsXlaPrimitiveType: unsupported dtype");
   }
 }
 
@@ -147,7 +147,7 @@ absl::StatusOr<ComputationType> GetBlasComputationType(
     case PrimitiveType::S32:
       return ComputationType::kI32;
     default:
-      return xla::InternalError("GetBlasComputationType: unsupported type");
+      return xla::Internal("GetBlasComputationType: unsupported type");
   }
 }
 
@@ -176,7 +176,7 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
     -> absl::StatusOr<MatmulPlanPtr> {
   auto blas = Get(stream);
   if (blas == nullptr) {
-    return xla::InternalError("BlasLt is unavailable");
+    return xla::Internal("BlasLt is unavailable");
   }
   return blas->GetMatmulPlan(cfg, epilogue);
 }

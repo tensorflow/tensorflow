@@ -153,9 +153,8 @@ StatusOr<std::string> MakeOpaque(TfCallbackData callback_data) {
 StatusOr<KernelInstantiation*> GetInstantiation(absl::string_view opaque) {
   constexpr absl::string_view kFingerprintPrefix = "fingerprint128=";
   if (!absl::StartsWith(opaque, kFingerprintPrefix)) {
-    return xla::InternalError(
-        "Invalid opaque; must start with '%s', but was '%s'",
-        kFingerprintPrefix, opaque);
+    return xla::Internal("Invalid opaque; must start with '%s', but was '%s'",
+                         kFingerprintPrefix, opaque);
   }
   opaque.remove_prefix(kFingerprintPrefix.length());
 
@@ -165,8 +164,8 @@ StatusOr<KernelInstantiation*> GetInstantiation(absl::string_view opaque) {
   absl::string_view fingerprint_str = opaque.substr(0, kFingerprintLen);
   opaque.remove_prefix(kFingerprintLen);
   if (fingerprint_str.length() != kFingerprintLen) {
-    return xla::InternalError(
-        "Invalid opaque; fingerprint is wrong length: '%s'", fingerprint_str);
+    return xla::Internal("Invalid opaque; fingerprint is wrong length: '%s'",
+                         fingerprint_str);
   }
 
   static absl::Mutex mu{absl::kConstInit};
@@ -182,9 +181,8 @@ StatusOr<KernelInstantiation*> GetInstantiation(absl::string_view opaque) {
     // the serialized TfCallbackData from the opaque.
     constexpr absl::string_view kSerializedPrefix = " serialized=";
     if (!absl::StartsWith(opaque, kSerializedPrefix)) {
-      return xla::InternalError(
-          "Invalid opaque; must start with '%s', but was '%s'",
-          kSerializedPrefix, opaque);
+      return xla::Internal("Invalid opaque; must start with '%s', but was '%s'",
+                           kSerializedPrefix, opaque);
     }
     opaque.remove_prefix(kSerializedPrefix.length());
 
@@ -194,12 +192,12 @@ StatusOr<KernelInstantiation*> GetInstantiation(absl::string_view opaque) {
     // Unescape the base64 string, then parse the proto.
     std::string unescaped_opaque;
     if (!absl::Base64Unescape(opaque, &unescaped_opaque)) {
-      return xla::InternalError("Failed to base64 decode opaque %s", opaque);
+      return xla::Internal("Failed to base64 decode opaque %s", opaque);
     }
     TfCallbackData callback_data;
     if (!callback_data.ParseFromString(unescaped_opaque)) {
-      return xla::InternalError("Failed to parse TfCallbackData from opaque %s",
-                                opaque);
+      return xla::Internal("Failed to parse TfCallbackData from opaque %s",
+                           opaque);
     }
     TF_ASSIGN_OR_RETURN(instantiation,
                         KernelInstantiation::Create(std::move(callback_data)));
@@ -587,7 +585,7 @@ Status CallTfKernel(void* stream_handle, void** buffers, const char* opaque,
                       platform->GetExecutor(config));
   se::Stream* stream = executor->FindAllocatedStream(stream_handle);
   if (!stream) {
-    return xla::InternalError("Stream not found for %p", stream_handle);
+    return xla::Internal("Stream not found for %p", stream_handle);
   }
 
   TF_ASSIGN_OR_RETURN(KernelInstantiation * instantiation,

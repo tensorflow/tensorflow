@@ -210,9 +210,8 @@ StatusOr<bool> MiscompareChecker::Run(const HloModule& module) {
   }
 
   // Prepare the reference module.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> reference_module,
-      PrepareReferenceModule(*test_module, test_runner_.get()));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> reference_module,
+                      PrepareReferenceModule(*test_module, test_runner_.get()));
 
   // Run the module on the reference platform.
   Literal reference_result = ExecuteWithRunnerAndRetrieveResult(
@@ -242,7 +241,7 @@ absl::flat_hash_map<std::string, Literal> MiscompareChecker::GetResults() {
 }
 
 StatusOr<std::unique_ptr<HloModule>> MiscompareChecker::PrepareReferenceModule(
-      const HloModule& hlo_module, HloRunnerInterface* hlo_runner) const {
+    const HloModule& hlo_module, HloRunnerInterface* hlo_runner) const {
   // By default clone the test module (could be overridden).
   return xla::PrepareReferenceModule(hlo_module, hlo_runner);
 }
@@ -252,7 +251,7 @@ StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
   // Write hlo into a temporary file.
   std::string hlo_path;
   if (!env->LocalTempFilename(&hlo_path)) {
-    return InternalError("couldn't get temp HLO file name");
+    return Internal("couldn't get temp HLO file name");
   }
 
   absl::Cleanup hlo_cleaner = [&] {
@@ -273,7 +272,7 @@ StatusOr<bool> ScriptChecker::Run(const HloModule& module) {
   script_subprocess.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   script_subprocess.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!script_subprocess.Start()) {
-    return InternalError("Failed to launch script");
+    return Internal("Failed to launch script");
   }
 
   std::string stderr_output;

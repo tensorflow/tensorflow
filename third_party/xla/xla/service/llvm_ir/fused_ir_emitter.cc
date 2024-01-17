@@ -128,24 +128,22 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
   llvm::IRBuilder<>* b = elemental_emitter_.b();
   llvm::Type* type = llvm::StructType::get(b->getContext(), element_ir_types);
 
-  return StatusOr<IndexedGenerator>(
-      [&, b, type](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-        llvm::Value* ret = llvm::UndefValue::get(type);
-        for (size_t i = 0; i < tuple.operand_count(); ++i) {
-          IrArray::Index used_index = index;
-          if (i > 0 &&
-              !ShapeUtil::EqualIgnoringElementType(tuple.operand(i)->shape(),
-                                                   tuple.operand(0)->shape())) {
-            used_index = used_index.SourceIndexOfBitcast(
-                tuple.operand(0)->shape(), tuple.operand(i)->shape(), b);
-          }
-          TF_ASSIGN_OR_RETURN(
-              llvm::Value * value,
-              indexed_generators_.at(tuple.operand(i))(used_index));
-          ret = b->CreateInsertValue(ret, value, i);
-        }
-        return ret;
-      });
+  return StatusOr<IndexedGenerator>([&, b, type](const IrArray::Index& index)
+                                        -> StatusOr<llvm::Value*> {
+    llvm::Value* ret = llvm::UndefValue::get(type);
+    for (size_t i = 0; i < tuple.operand_count(); ++i) {
+      IrArray::Index used_index = index;
+      if (i > 0 && !ShapeUtil::EqualIgnoringElementType(
+                       tuple.operand(i)->shape(), tuple.operand(0)->shape())) {
+        used_index = used_index.SourceIndexOfBitcast(
+            tuple.operand(0)->shape(), tuple.operand(i)->shape(), b);
+      }
+      TF_ASSIGN_OR_RETURN(llvm::Value * value,
+                          indexed_generators_.at(tuple.operand(i))(used_index));
+      ret = b->CreateInsertValue(ret, value, i);
+    }
+    return ret;
+  });
 }
 
 StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
@@ -154,7 +152,7 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::CreateGenerator(
     case HloOpcode::kConstant:
       return HandleConstant(instruction);
     case HloOpcode::kGetTupleElement:
-      return InternalError("Tuple parameters are not supported for fusion");
+      return Internal("Tuple parameters are not supported for fusion");
     case HloOpcode::kParameter:
       return InvalidArgument("Unbound parameter: %s", instruction.ToString());
     case HloOpcode::kTuple:

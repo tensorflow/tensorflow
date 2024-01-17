@@ -243,7 +243,7 @@ absl::Status LinkWithBitcodeVector(
       LOG(ERROR) << "bitcode module is required by this HLO module but was "
                     "not found at "
                  << bitcode_path;
-      return xla::InternalError("bitcode module not found at %s", bitcode_path);
+      return xla::Internal("bitcode module not found at %s", bitcode_path);
     }
 
     std::unique_ptr<llvm::Module> bitcode_module =
@@ -258,8 +258,8 @@ absl::Status LinkWithBitcodeVector(
                 return !GV.hasName() || (GVS.count(GV.getName()) == 0);
               });
             })) {
-      return xla::InternalError("Error linking bitcode module from %s",
-                                bitcode_path);
+      return xla::Internal("Error linking bitcode module from %s",
+                           bitcode_path);
     }
   }
   return absl::OkStatus();
@@ -548,7 +548,7 @@ absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
     LOG(WARNING)
         << "libdevice is required by this HLO module but was not found at "
         << libdevice_path;
-    return xla::InternalError("libdevice not found at %s", libdevice_path);
+    return xla::Internal("libdevice not found at %s", libdevice_path);
   }
 
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
@@ -581,8 +581,7 @@ absl::StatusOr<std::string> CompileToPtx(
     auto compute_capability =
         std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (!compute_capability) {
-      return xla::InternalError(
-          "Incompatible compute capability was specified.");
+      return xla::Internal("Incompatible compute capability was specified.");
     }
 
     llvm::Triple default_target_triple("nvptx64-unknown-unknown");
@@ -714,7 +713,7 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   std::vector<std::string> tempdir_vector;
   env->GetLocalTempDirectories(&tempdir_vector);
   if (tempdir_vector.empty()) {
-    return xla::InternalError(
+    return xla::Internal(
         "Unable to locate a temporary directory for compile-time artifacts.");
   }
   std::string tempdir_name = tempdir_vector.front();
@@ -776,8 +775,8 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   std::string lld_path = tsl::io::JoinPath("/opt/rocm", "llvm/bin");
   auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
-    return xla::InternalError("unable to find ld.lld in PATH: %s",
-                              lld_program.getError().message());
+    return xla::Internal("unable to find ld.lld in PATH: %s",
+                         lld_program.getError().message());
   }
   std::vector<llvm::StringRef> lld_args{
       llvm_ir::AsStringRef("ld.lld"),    llvm_ir::AsStringRef("-flavor"),
@@ -791,8 +790,8 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
                                 std::nullopt, {}, 0, 0, &error_message);
   if (lld_result) {
-    return xla::InternalError("ld.lld execute fail: %s, error code %d",
-                              error_message, lld_result);
+    return xla::Internal("ld.lld execute fail: %s, error code %d",
+                         error_message, lld_result);
   }
 
   // Read HSACO.
@@ -832,7 +831,7 @@ absl::Status AMDGPUTargetModuleLinker(
   auto compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
   if (!compute_capability) {
-    return xla::InternalError("Incompatible compute capability was specified.");
+    return xla::Internal("Incompatible compute capability was specified.");
   }
 
   std::string gcn_arch_name = compute_capability->gcn_arch_name();
@@ -995,8 +994,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     auto compute_capability =
         std::get_if<se::RocmComputeCapability>(&gpu_version);
     if (!compute_capability) {
-      return xla::InternalError(
-          "Incompatible compute capability was specified.");
+      return xla::Internal("Incompatible compute capability was specified.");
     }
 
     std::string gcn_arch_name = compute_capability->gcn_arch_name();
