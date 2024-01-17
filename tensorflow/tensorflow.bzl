@@ -2334,7 +2334,7 @@ def tf_custom_op_py_library(
 # module init functions are not exported unless
 # they contain one of the keywords in the version file
 # this prevents custom python modules.
-# This function attempts to append init_module_name to list of
+# This function attempts to append PyInit_module_name to list of
 # exported functions in version script
 def _append_init_to_versionscript_impl(ctx):
     mod_name = ctx.attr.module_name
@@ -2343,7 +2343,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "global:": "global:\n     init_%s;\n     _init_%s;\n     PyInit_*;\n     _PyInit_*;" % (mod_name, mod_name),
+                "global:": "global:\n     PyInit_*;\n     _PyInit_*;",
             },
             is_executable = False,
         )
@@ -2352,7 +2352,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "*tensorflow*": "*tensorflow*\ninit_%s\n_init_%s\nPyInit_*\n_PyInit_*\n" % (mod_name, mod_name),
+                "*tensorflow*": "*tensorflow*\nPyInit_*\n_PyInit_*\n",
             },
             is_executable = False,
         )
@@ -3050,8 +3050,6 @@ def pybind_extension_opensource(
     filegroup_name = "%s_filegroup" % name
     pyd_file = "%s%s.pyd" % (prefix, sname)
     exported_symbols = [
-        "init%s" % sname,
-        "init_%s" % sname,
         "PyInit_%s" % sname,
     ] + additional_exported_symbols
 
