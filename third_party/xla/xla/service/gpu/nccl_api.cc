@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -71,6 +73,8 @@ static absl::Status ToStatus(ncclResult_t s, const char* file, int64_t line,
       LOG(ERROR) << s.ToString();           \
     }                                       \
   } while (0)
+
+#define XLA_NCCL_CHECK(expr) CHECK(XLA_NCCL_STATUS(expr).ok())
 
 //==-----------------------------------------------------------------------===//
 // Conversions between XLA and NCCL data types
@@ -153,19 +157,123 @@ static std::string_view ToString(ReductionKind reduction_kind) {
 }
 
 //==-----------------------------------------------------------------------===//
+// Casting between opaque API structs and NCCL types.
+//==-----------------------------------------------------------------------===//
+
+static NcclApi::NcclCommHandle Cast(ncclComm_t comm) {
+  return reinterpret_cast<NcclCommHandle>(comm);
+}
+
+static ncclComm_t Cast(NcclApi::NcclCommHandle comm) {
+  return reinterpret_cast<ncclComm_t>(comm);
+}
+
+#ifdef PLATFORM_GOOGLE
+static ncclPersistentPlanAllocator* Cast(
+    NcclApi::NcclPersistentPlanAllocatorHandle handle) {
+  return reinterpret_cast<ncclPersistentPlanAllocator*>(handle);
+}
+
+static ncclPersistentPlanAllocator** Cast(
+    NcclApi::NcclPersistentPlanAllocatorHandle* handle) {
+  return reinterpret_cast<ncclPersistentPlanAllocator**>(handle);
+}
+
+static NcclApi::NcclPersistentPlanAllocatorHandle Cast(
+    ncclPersistentPlanAllocator* ptr) {
+  return reinterpret_cast<NcclApi::NcclPersistentPlanAllocatorHandle>(ptr);
+}
+#endif  // PLATFORM_GOOGLE
+
+//==-----------------------------------------------------------------------===//
+// NcclApi::PersistentPlanAllocator
+//==-----------------------------------------------------------------------===//
+
+using PersistentPlanAllocator = NcclApi::PersistentPlanAllocator;
+using ScopedPersistentPlanAllocator = NcclApi::ScopedPersistentPlanAllocator;
+
+PersistentPlanAllocator::PersistentPlanAllocator(
+    int64_t device_ordinal, se::DeviceMemoryAllocator* allocator,
+    se::Stream* stream)
+    : handle_(nullptr),
+      device_ordinal_(device_ordinal),
+      allocator_(allocator),
+      stream_(stream) {
+  // NCCL persistent plan allocator is implemented as NCCL patch that is not yet
+  // open sourced and can't be used from OSS XLA.
+#ifdef PLATFORM_GOOGLE
+  auto* nccl_allocator = new ncclPersistentPlanAllocator;
+  nccl_allocator->ctl = this;
+
+  nccl_allocator->alloc = +[](void** ptr, void* src, size_t size, void* ctl) {
+    auto allocator = reinterpret_cast<PersistentPlanAllocator*>(ctl);
+    auto allocated = allocator->AllocateAndInitialize(src, size);
+    if (!allocated.ok()) return ncclInternalError;
+    *ptr = allocated->opaque();
+    allocator->AddRef();
+    return ncclSuccess;
+  };
+
+  nccl_allocator->free = +[](void* ptr, void* ctl) -> ncclResult_t {
+    auto allocator = reinterpret_cast<PersistentPlanAllocator*>(ctl);
+    auto status = allocator->Deallocate(se::DeviceMemoryBase(ptr));
+    allocator->DropRef();
+    return status.ok() ? ncclSuccess : ncclInternalError;
+  };
+
+  handle_ = Cast(nccl_allocator);
+#endif  // PLATFORM_GOOGLE
+}
+
+PersistentPlanAllocator::~PersistentPlanAllocator() {
+#ifdef PLATFORM_GOOGLE
+  delete Cast(handle_);
+#endif  // PLATFORM_GOOGLE
+}
+
+absl::StatusOr<se::DeviceMemoryBase>
+PersistentPlanAllocator::AllocateAndInitialize(void* src, size_t size) {
+  TF_ASSIGN_OR_RETURN(auto owned_mem,
+                      allocator_->Allocate(device_ordinal_, size));
+  VLOG(5) << "Allocate and initialize NCCL persistent plan; mem="
+          << owned_mem->opaque() << "; size=" << size;
+  se::DeviceMemoryBase mem = owned_mem.Release();
+  stream_->ThenMemcpy(&mem, src, size);
+  return mem;
+}
+
+absl::Status PersistentPlanAllocator::Deallocate(se::DeviceMemoryBase mem) {
+  VLOG(5) << "Deallocate NCCL persistent plan; mem=" << mem.opaque();
+  return allocator_->Deallocate(device_ordinal_, mem);
+}
+
+ScopedPersistentPlanAllocator::ScopedPersistentPlanAllocator(
+    NcclCommHandle comm, tsl::RCReference<PersistentPlanAllocator> allocator)
+    : comm_(comm), allocator_(std::move(allocator)) {
+#ifdef PLATFORM_GOOGLE
+  XLA_NCCL_CHECK(
+      ncclCommGetPersistentPlanAllocator(Cast(comm_), Cast(&recover_)))
+      << "Failed to get NCCL persistent plan allocator";
+  XLA_NCCL_CHECK(ncclCommSetPersistentPlanAllocator(Cast(comm_),
+                                                    Cast(allocator_->handle())))
+      << "Failed to set NCCL persistent plan allocator";
+#endif  // PLATFORM_GOOGLE
+}
+
+ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
+#ifdef PLATFORM_GOOGLE
+  XLA_NCCL_CHECK(
+      ncclCommSetPersistentPlanAllocator(Cast(comm_), Cast(recover_)))
+      << "Failed to set NCCL persistent plan allocator";
+#endif  // PLATFORM_GOOGLE
+}
+
+//==-----------------------------------------------------------------------===//
 // NcclApi
 //==-----------------------------------------------------------------------===//
 
 static_assert(NCCL_UNIQUE_ID_BYTES == NcclCliqueId::kSize,
               "size of nccl unique id must match the clique id size");
-
-static NcclCommHandle Cast(ncclComm_t comm) {
-  return reinterpret_cast<NcclCommHandle>(comm);
-}
-
-static ncclComm_t Cast(NcclCommHandle comm) {
-  return reinterpret_cast<ncclComm_t>(comm);
-}
 
 static ncclUniqueId AsNcclUniqueId(const NcclCliqueId& clique_id) {
   ncclUniqueId id;

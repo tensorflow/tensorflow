@@ -22,10 +22,9 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/service/global_device_id.h"
-#include "xla/service/gpu/nccl_clique.h"
+#include "xla/service/gpu/nccl_clique.h"  // IWYU pragma: export
 #include "xla/service/gpu/thunk.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/concurrency/ref_count.h"
 
 #if XLA_ENABLE_XCCL
 #include "third_party/nccl/nccl.h"
@@ -43,44 +42,6 @@ size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
-#ifdef PLATFORM_GOOGLE
-//==-----------------------------------------------------------------------===//
-// RAII helper to set NCCL persistent plan allocator.
-//==-----------------------------------------------------------------------===//
-
-class NcclPersistentPlanAllocator
-    : public tsl::ReferenceCounted<NcclPersistentPlanAllocator> {
- public:
-  NcclPersistentPlanAllocator(int64_t device_ordinal,
-                              stream_executor::DeviceMemoryAllocator* allocator,
-                              stream_executor::Stream* stream);
-  ~NcclPersistentPlanAllocator();
-
-  absl::StatusOr<stream_executor::DeviceMemoryBase> AllocateAndInitialize(
-      void* src, size_t size);
-  absl::Status Deallocate(stream_executor::DeviceMemoryBase mem);
-
-  ncclPersistentPlanAllocator* nccl_allocator() { return &nccl_allocator_; }
-
- private:
-  int64_t device_ordinal_;
-  stream_executor::DeviceMemoryAllocator* allocator_;
-  stream_executor::Stream* stream_;
-
-  ncclPersistentPlanAllocator nccl_allocator_;
-};
-
-class ScopedNcclPersistentPlanAllocator {
- public:
-  ScopedNcclPersistentPlanAllocator(
-      NcclComm::Lock* comm, ncclPersistentPlanAllocator* nccl_allocator);
-  ~ScopedNcclPersistentPlanAllocator();
-
- private:
-  NcclComm::Lock* comm_;
-  ncclPersistentPlanAllocator* recover_;
-};
-#endif
 }  // namespace gpu
 }  // namespace xla
 

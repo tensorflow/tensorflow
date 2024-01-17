@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/status.h"
@@ -51,16 +52,13 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
-#ifdef PLATFORM_GOOGLE
-#include "tsl/concurrency/ref_count.h"
-#endif
-
-#if XLA_ENABLE_XCCL
-#include "xla/service/gpu/nccl_utils.h"
+#ifdef XLA_ENABLE_XCCL
+#include "xla/service/gpu/nccl_clique.h"
 #endif  // XLA_ENABLE_XCCL
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -854,7 +852,7 @@ absl::Status AllReduceCmd::Record(const RecordParams& params,
     return absl::InvalidArgumentError("AllReduceCmd requires nccl_params");
   }
 
-#if XLA_ENABLE_XCCL
+#ifdef XLA_ENABLE_XCCL
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`, and enable clique optimization.
   TF_ASSIGN_OR_RETURN(
@@ -863,15 +861,11 @@ absl::Status AllReduceCmd::Record(const RecordParams& params,
                    config_.group_mode, config_.op_id, /*stream_id=*/0,
                    /*enable_clique_optimization=*/true));
 
-#ifdef PLATFORM_GOOGLE
-  // TODO: Remove once persistent allocator upstreamed.
-  auto allocator = tsl::MakeRef<NcclPersistentPlanAllocator>(
-      params.buffer_allocations->device_ordinal(),
-      params.buffer_allocations->memory_allocator(), params.stream);
-
-  ScopedNcclPersistentPlanAllocator scoped_allocator(
-      &comm, allocator->nccl_allocator());
-#endif
+  // Use custom allocator for persistent execution plans.
+  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
+      *comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
+                 params.buffer_allocations->device_ordinal(),
+                 params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,
@@ -882,11 +876,9 @@ absl::Status AllReduceCmd::Record(const RecordParams& params,
           }));
 
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
-#else   // XLA_ENABLE_XCCL
-  return absl::UnimplementedError(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
+#else
+  return absl::InternalError("XLA compiled without NCCL support");
+#endif
 }
 
 CommandBufferCmd::BufferUsageVector AllReduceCmd::buffers() {
@@ -930,7 +922,7 @@ absl::Status ReduceScatterCmd::Record(const RecordParams& params,
     return absl::InvalidArgumentError("ReduceScatterCmd requires nccl_params");
   }
 
-#if XLA_ENABLE_XCCL
+#ifdef XLA_ENABLE_XCCL
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`, and enable clique optimization.
   TF_ASSIGN_OR_RETURN(
@@ -938,6 +930,12 @@ absl::Status ReduceScatterCmd::Record(const RecordParams& params,
       LockNcclComm(*params.nccl_params, config_.replica_groups,
                    config_.group_mode, config_.op_id, /*stream_id=*/0,
                    /*enable_clique_optimization=*/true));
+
+  // Use custom allocator for persistent execution plans.
+  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
+      *comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
+                 params.buffer_allocations->device_ordinal(),
+                 params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,
@@ -948,11 +946,9 @@ absl::Status ReduceScatterCmd::Record(const RecordParams& params,
           }));
 
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
-#else   // XLA_ENABLE_XCCL
-  return absl::UnimplementedError(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
+#else
+  return absl::InternalError("XLA compiled without NCCL support");
+#endif
 }
 
 CommandBufferCmd::BufferUsageVector ReduceScatterCmd::buffers() {
@@ -993,7 +989,7 @@ absl::Status AllGatherCmd::Record(const RecordParams& params,
     return absl::InvalidArgumentError("AllGatherCmd requires nccl_params");
   }
 
-#if XLA_ENABLE_XCCL
+#ifdef XLA_ENABLE_XCCL
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`, and enable clique optimization.
   TF_ASSIGN_OR_RETURN(
@@ -1001,6 +997,12 @@ absl::Status AllGatherCmd::Record(const RecordParams& params,
       LockNcclComm(*params.nccl_params, config_.replica_groups,
                    config_.group_mode, config_.op_id, /*stream_id=*/0,
                    /*enable_clique_optimization=*/true));
+
+  // Use custom allocator for persistent execution plans.
+  NcclApi::ScopedPersistentPlanAllocator scoped_allocator(
+      *comm, tsl::MakeRef<NcclApi::PersistentPlanAllocator>(
+                 params.buffer_allocations->device_ordinal(),
+                 params.buffer_allocations->memory_allocator(), params.stream));
 
   TF_ASSIGN_OR_RETURN(
       auto nested_buffer,
@@ -1010,11 +1012,9 @@ absl::Status AllGatherCmd::Record(const RecordParams& params,
           }));
 
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
-#else   // XLA_ENABLE_XCCL
-  return absl::UnimplementedError(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
+#else
+  return absl::InternalError("XLA compiled without NCCL support");
+#endif
 }
 
 CommandBufferCmd::BufferUsageVector AllGatherCmd::buffers() {
