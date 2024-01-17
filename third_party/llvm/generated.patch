@@ -23,21 +23,3 @@ diff -ruN --strip-trailing-cr a/llvm/test/MC/ARM/pcrel-vldr-same-section.s b/llv
  @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
  @ RUN: llvm-objdump -d --triple=thumbebv8.2a-eabi  --mattr=+fullfp16 %t | FileCheck %s --check-prefix=THUMB_OFFSET
  
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -4,11 +4,11 @@
- 
- load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
- load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
--load(":tblgen.bzl", "gentbl")
-+load(":binary_alias.bzl", "binary_alias")
- load(":config.bzl", "llvm_config_defines")
--load(":targets.bzl", "llvm_targets")
- load(":enum_targets_gen.bzl", "enum_targets_gen")
--load(":binary_alias.bzl", "binary_alias")
-+load(":targets.bzl", "llvm_targets")
-+load(":tblgen.bzl", "gentbl")
- 
- package(
-     default_visibility = ["//visibility:public"],
