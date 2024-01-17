@@ -291,6 +291,11 @@ def random_uniform(shape,
     if dtype.is_integer:
       raise ValueError("Must specify maxval for integer dtype %r" % dtype)
     maxval = 1
+  if minval >= maxval:
+    raise ValueError(
+        "`minval` should be lower than `maxval`, "
+        f"got minval={minval}, maxval={maxval}. "
+    )
   with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
     shape = shape_util.shape_tensor(shape)
     # In case of [0,1) floating results, minval and maxval is unused. We do an
