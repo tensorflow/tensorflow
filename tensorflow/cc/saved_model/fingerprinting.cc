@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/cc/saved_model/constants.h"
-// Placeholder for protosplitter riegeli includes.
-#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/regularization/simple_delete.h"
 #include "tensorflow/core/graph/regularization/util.h"
@@ -32,24 +32,39 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/protobuf.h"  // IWYU pragma: keep
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
-// Placeholder for protosplitter util include.
-#include "tensorflow/tsl/platform/errors.h"
+// b/291933687, b/291001524
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
+#include "tensorflow/cc/saved_model/fingerprinting_utils.h"
+#include "tensorflow/tools/proto_splitter/cc/util.h"
+#endif
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+// IWYU pragma: no_include "third_party/protobuf/io/coded_stream.h"
+// IWYU pragma: no_include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
 
 namespace tensorflow::saved_model::fingerprinting {
 
 namespace {
+
+using ::tensorflow::protobuf::Map;
+// NOLINTNEXTLINE: clang-tidy missing-includes false positive
+using ::tensorflow::protobuf::io::CodedOutputStream;
+// NOLINTNEXTLINE: clang-tidy missing-includes false positive
+using ::tensorflow::protobuf::io::StringOutputStream;
 
 // TODO(b/290063184): remove when USM is GA
 uint64_t HashCheckpointIndexFile(absl::string_view model_dir) {
   std::string meta_filename = MetaFilename(io::JoinPath(
       model_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename));
   std::string data;
-  Status read_status = ReadFileToString(Env::Default(), meta_filename, &data);
+  absl::Status read_status =
+      ReadFileToString(Env::Default(), meta_filename, &data);
   if (read_status.ok()) {
     return tensorflow::Fingerprint64(data);
   } else {
@@ -57,36 +72,36 @@ uint64_t HashCheckpointIndexFile(absl::string_view model_dir) {
   }
 }
 
-uint64 HashSavedModel(const SavedModel& saved_model) {
+uint64_t HashSavedModel(const SavedModel& saved_model) {
   std::string saved_model_serialized;
   {
     // Local scope guarantees coded stream will be trimmed (ensures
     // serialization determinism).
     // Unfortunately the saving process itself isn't deterministic, so the
     // checksum may still change since the saved_model proto may be different.
-    google::protobuf::io::StringOutputStream stream(&saved_model_serialized);
-    google::protobuf::io::CodedOutputStream output(&stream);
+    StringOutputStream stream(&saved_model_serialized);
+    CodedOutputStream output(&stream);
     output.SetSerializationDeterministic(true);
     saved_model.SerializeToCodedStream(&output);
   }
   return tensorflow::Fingerprint64(saved_model_serialized);
 }
 
-uint64 RegularizeAndHashSignatureDefs(
-    const google::protobuf::Map<std::string, SignatureDef>& signature_def_map) {
+uint64_t RegularizeAndHashSignatureDefs(
+    const Map<std::string, SignatureDef>& signature_def_map) {
   // Sort `signature_def_map`, which is an unordered map from string keys to
   // SignatureDefs.
   absl::btree_map<std::string, SignatureDef> sorted_signature_defs;
   sorted_signature_defs.insert(signature_def_map.begin(),
                                signature_def_map.end());
-  uint64 result_hash = 0;
+  uint64_t result_hash = 0;
   for (const auto& item : sorted_signature_defs) {
     result_hash =
         FingerprintCat64(result_hash, tensorflow::Fingerprint64(item.first));
     std::string signature_def_serialized;
     {
-      google::protobuf::io::StringOutputStream stream(&signature_def_serialized);
-      google::protobuf::io::CodedOutputStream output(&stream);
+      StringOutputStream stream(&signature_def_serialized);
+      CodedOutputStream output(&stream);
       output.SetSerializationDeterministic(true);
       item.second.SerializeToCodedStream(&output);
     }
@@ -98,7 +113,7 @@ uint64 RegularizeAndHashSignatureDefs(
 
 // The SavedObjectGraph contains two parts: the list of nodes and the map of
 // concrete functions. Regularization treats these two parts separately.
-absl::StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
+absl::StatusOr<uint64_t> RegularizeAndHashSavedObjectGraph(
     const SavedObjectGraph& object_graph_def) {
   // Sort `concrete_functions`, which is an unordered map from function names to
   // SavedConcreteFunction, using the suffix UID of the function name. Assumes
@@ -111,7 +126,7 @@ absl::StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
     TF_ASSIGN_OR_RETURN(int64_t uid, graph_regularization::GetSuffixUID(name));
     uid_to_function_names.insert({uid, name});
   }
-  uint64 result_hash = 0;
+  uint64_t result_hash = 0;
   for (const auto& [uid, function_name] : uid_to_function_names) {
     // Hash the function name (with the UID stripped).
     result_hash = FingerprintCat64(result_hash,
@@ -120,8 +135,8 @@ absl::StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
     // Hash the serialized concrete function.
     std::string concrete_function_serialized;
     {
-      google::protobuf::io::StringOutputStream stream(&concrete_function_serialized);
-      google::protobuf::io::CodedOutputStream output(&stream);
+      StringOutputStream stream(&concrete_function_serialized);
+      CodedOutputStream output(&stream);
       output.SetSerializationDeterministic(true);
       object_graph_def.concrete_functions()
           .at(function_name)
@@ -159,9 +174,9 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDefPb(
       RegularizeAndHashSignatureDefs(metagraph->signature_def()));
   // Set fingerprint field #4.
   TF_ASSIGN_OR_RETURN(
-      StatusOr<uint64> object_graph_hash,
+      uint64_t object_graph_hash,
       RegularizeAndHashSavedObjectGraph(metagraph->object_graph_def()));
-  fingerprint_def.set_saved_object_graph_hash(object_graph_hash.value());
+  fingerprint_def.set_saved_object_graph_hash(object_graph_hash);
   // Set fingerprint field #5.
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));
   // Set version of the fingerprint.
@@ -177,20 +192,28 @@ absl::StatusOr<FingerprintDef> CreateFingerprintDef(
     absl::string_view export_dir) {
   std::string prefix = io::JoinPath(export_dir, kSavedModelFilenamePrefix);
 
-  return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+#if !defined(PLATFORM_WINDOWS) && !defined(__APPLE__)
+  TF_ASSIGN_OR_RETURN(bool only_contains_pb,
+                      tools::proto_splitter::OnlyContainsPb(prefix));
+  if (only_contains_pb) {
+    return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+  }
 
-  return absl::PermissionDeniedError("Chunked proto format is not available in OSS.");
+  return CreateFingerprintDefCpb(export_dir, absl::StrCat(prefix, ".cpb"));
+#else
+  return CreateFingerprintDefPb(export_dir, absl::StrCat(prefix, ".pb"));
+#endif
 }
 
 absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
     absl::string_view export_dir) {
-  const string fingerprint_pb_path =
+  const std::string fingerprint_pb_path =
       io::JoinPath(export_dir, kFingerprintFilenamePb);
-  Status found_pb = Env::Default()->FileExists(fingerprint_pb_path);
+  absl::Status found_pb = Env::Default()->FileExists(fingerprint_pb_path);
   if (!found_pb.ok()) return found_pb;
 
   FingerprintDef fingerprint_proto;
-  Status result =
+  absl::Status result =
       ReadBinaryProto(Env::Default(), fingerprint_pb_path, &fingerprint_proto);
   if (!result.ok()) return result;
 
@@ -213,9 +236,10 @@ std::string Singleprint(const FingerprintDef& fingerprint) {
       fingerprint.saved_object_graph_hash(), fingerprint.checkpoint_hash());
 }
 
-std::string Singleprint(absl::string_view export_dir) {
-  FingerprintDef fingerprint = ReadSavedModelFingerprint(export_dir).value();
-  return Singleprint(fingerprint);
+absl::StatusOr<std::string> Singleprint(absl::string_view export_dir) {
+  TF_ASSIGN_OR_RETURN(const FingerprintDef fingerprint_def,
+                      ReadSavedModelFingerprint(export_dir));
+  return Singleprint(fingerprint_def);
 }
 
 }  // namespace tensorflow::saved_model::fingerprinting

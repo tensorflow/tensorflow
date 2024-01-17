@@ -108,23 +108,41 @@ func.func @dynamicReshapeI64Unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xi64>)
 func.func @avgPool2D(%arg0: tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // OK
   %0 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
-  // Unsupported data format
-  %1 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
   // Unsupported ksize
-  %2 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [3, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
+  %1 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [3, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
   // Unsupported strides
-  %3 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 3]} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
+  %2 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 3]} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
 
   %5 = arith.addf %0, %1 : tensor<1x1x1x16xf32>
-  %6 = arith.addf %2, %3 : tensor<1x1x1x16xf32>
-  %7 = arith.addf %5, %6 : tensor<1x1x1x16xf32>
-  func.return %7 : tensor<1x1x1x16xf32>
+  %6 = arith.addf %2, %5 : tensor<1x1x1x16xf32>
+  func.return %6 : tensor<1x1x1x16xf32>
 
 // CHECK-LABEL: func @avgPool2D
 // CHECK:  "tfl.average_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
 // CHECK:  %1 = "tf.AvgPool"(%arg0)
 // CHECK:  %2 = "tf.AvgPool"(%arg0)
+}
+
+func.func @avgPool2DChannelFirst(%arg0: tensor<1x16x6x6xf32>) -> tensor<1x16x1x1xf32> {
+  // OK
+  %0 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", ksize = [1, 1, 3, 6], padding = "VALID", strides = [1, 1, 3, 1]} : (tensor<1x16x6x6xf32>) -> tensor<1x16x1x1xf32>
+  // Unsupported ksize
+  %1 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", ksize = [3, 1, 3, 6], padding = "VALID", strides = [1, 1, 3, 1]} : (tensor<1x16x6x6xf32>) -> tensor<1x16x1x1xf32>
+  // Unsupported strides
+  %2 = "tf.AvgPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", ksize = [1, 1, 3, 6], padding = "VALID", strides = [1, 3, 3, 1]} : (tensor<1x16x6x6xf32>) -> tensor<1x16x1x1xf32>
+
+  %5 = arith.addf %0, %1 : tensor<1x16x1x1xf32>
+  %6 = arith.addf %2, %5 : tensor<1x16x1x1xf32>
+  func.return %6 : tensor<1x16x1x1xf32>
+
+// CHECK-LABEL: func @avgPool2DChannelFirst
+// CHECK:  %cst = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
+// CHECK:  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<1x16x6x6xf32>, tensor<4xi32>) -> tensor<1x6x6x16xf32>
+// CHECK:  %1 = "tfl.average_pool_2d"(%0) {filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
+// CHECK:  %cst_0 = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+// CHECK:  %2 = "tfl.transpose"(%1, %cst_0) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x16x1x1xf32>
 // CHECK:  %3 = "tf.AvgPool"(%arg0)
+// CHECK:  %4 = "tf.AvgPool"(%arg0)
 }
 
 func.func @softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -180,7 +198,7 @@ func.func @fakeQuantVarsTrue(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>, %ar
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantVarsTrue
-  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32, narrow_range = true, num_bits = 5 : i64}
+  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) <{narrow_range = true, num_bits = 5 : i64}> {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32}
 }
 
 func.func @fakeQuantArgsFalse4Bits(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
@@ -217,7 +235,7 @@ func.func @fakeQuantVarsTrue4Bits(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantVarsTrue
-  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32, narrow_range = true, num_bits = 3 : i64}
+  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) <{narrow_range = true, num_bits = 3 : i64}> {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32}
 }
 
 func.func @const() -> tensor<2xi32> {
@@ -328,25 +346,44 @@ func.func @maxPool2D(%arg0: tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32> {
   // OK
   %0 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32>
 
-  // Unsupported data_format
-  %1 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32>
-
   // Unsupported ksize
-  %2 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [3, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32>
+  %1 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [3, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 1]} : (tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32>
 
   // Unsupported strides
-  %3 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 3]} : (tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32>
+  %2 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", ksize = [1, 3, 6, 1], padding = "VALID", strides = [1, 3, 1, 3]} : (tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32>
 
   %5 = arith.addf %0, %1 : tensor<1x1x1x16xf32>
-  %6 = arith.addf %2, %3 : tensor<1x1x1x16xf32>
-  %7 = arith.addf %5, %6 : tensor<1x1x1x16xf32>
-  func.return %7 : tensor<1x1x1x16xf32>
+  %6 = arith.addf %2, %5 : tensor<1x1x1x16xf32>
+  func.return %6 : tensor<1x1x1x16xf32>
 
 // CHECK-LABEL: func @maxPool2D
 // CHECK:  "tfl.max_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x1x1x16xf32>) -> tensor<1x1x1x16xf32>
 // CHECK:  %1 = "tf.MaxPool"(%arg0)
 // CHECK:  %2 = "tf.MaxPool"(%arg0)
+}
+
+func.func @maxPool2DChannelFirst(%arg0: tensor<1x16x6x6xf32>) -> tensor<1x16x1x1xf32> {
+  // OK
+  %0 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", ksize = [1, 1, 3, 6], padding = "VALID", strides = [1, 1, 3, 1]} : (tensor<1x16x6x6xf32>) -> tensor<1x16x1x1xf32>
+
+  // Unsupported ksize
+  %1 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", ksize = [3, 1, 3, 6], padding = "VALID", strides = [1, 1, 3, 1]} : (tensor<1x16x6x6xf32>) -> tensor<1x16x1x1xf32>
+
+  // Unsupported strides
+  %2 = "tf.MaxPool"(%arg0) {T = "tfdtype$DT_FLOAT", data_format = "NCHW", ksize = [1, 1, 3, 6], padding = "VALID", strides = [1, 3, 3, 1]} : (tensor<1x16x6x6xf32>) -> tensor<1x16x1x1xf32>
+
+  %5 = arith.addf %0, %1 : tensor<1x16x1x1xf32>
+  %6 = arith.addf %2, %5 : tensor<1x16x1x1xf32>
+  func.return %6 : tensor<1x16x1x1xf32>
+
+// CHECK-LABEL: func @maxPool2DChannelFirst
+// CHECK:  %cst = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
+// CHECK:  %0 = "tfl.transpose"(%arg0, %cst) : (tensor<1x16x6x6xf32>, tensor<4xi32>) -> tensor<1x6x6x16xf32>
+// CHECK:  %1 = "tfl.max_pool_2d"(%0) {filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32>
+// CHECK:  %cst_0 = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+// CHECK:  %2 = "tfl.transpose"(%1, %cst_0) : (tensor<1x1x1x16xf32>, tensor<4xi32>) -> tensor<1x16x1x1xf32>
 // CHECK:  %3 = "tf.MaxPool"(%arg0)
+// CHECK:  %4 = "tf.MaxPool"(%arg0)
 }
 
 func.func @abs(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -1384,7 +1421,7 @@ func.func @strided_slice_big_dims(%arg0: tensor<5x6x7xf32>, %arg1: tensor<3xi32>
   %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64, offset = false} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
   func.return %0 : tensor<1x1x5x6x7xf32>
   // CHECK-LABEL: strided_slice_big_dims
-  // CHECK: %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, offset = false, shrink_axis_mask = 0 : i64} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
+  // CHECK: %0 = "tf.StridedSlice"(%arg0, %arg1, %arg2, %arg3) <{begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 7 : i64, shrink_axis_mask = 0 : i64}> {offset = false} : (tensor<5x6x7xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x1x5x6x7xf32>
 }
 
 func.func @slice1Tensor(%arg0: tensor<2x3x5xf32>, %arg1: tensor<3xi32>, %arg2: tensor<3xi32>) -> tensor<?x3x5xf32> {
@@ -1569,7 +1606,7 @@ func.func @sparse_to_dense_with_2d_sparse_indices_and_second_dim_greater_than_4(
   %0 = "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true}: (tensor<3x5xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
   func.return %0 : tensor<?x?x?xf32>
   // CHECK-LABEL: sparse_to_dense_with_2d_sparse_indices_and_second_dim_greater_than_4
-  // CHECK: "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) {validate_indices = true} : (tensor<3x5xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
+  // CHECK: "tf.SparseToDense"(%arg0, %arg1, %arg2, %arg3) <{validate_indices = true}> : (tensor<3x5xi32>, tensor<3xi32>, tensor<2xf32>, tensor<f32>) -> tensor<?x?x?xf32>
 }
 
 func.func @where(%arg0: tensor<3x5xi1>) -> tensor<?x2xi64> {
@@ -1888,24 +1925,50 @@ func.func @add_with_int32_7d_inputs(%arg0: tensor<1x1x1x1x1x3x1xi32>, %arg1 : te
 // CHECK: %2 = tfl.add %0, %1 {fused_activation_function = "NONE"} : tensor<1x1x1x1x1x3x4xi32>
 }
 
-// CHECK-LABEL: testSubWithBroadcastToOps
-func.func @testSubWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
-  // CHECK: [[CST:%.*]] = arith.constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
-  // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
-  // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: tfl.sub [[BCAST]], [[BCAST_1]] {fused_activation_function = "NONE"} : tensor<1x2x3x4x5x6xi32>
+func.func @test5DSubWithImplicitBroadcast(%arg0: tensor<1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32> {
+  %0 = "tf.Sub"(%arg0, %arg1): (tensor<1x1x1x3x1xi32>, tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32>
+  func.return %0 : tensor<1x1x1x3x4xi32>
+// CHECK-LABEL: test5DSubWithImplicitBroadcast
+// CHECK: %0 = tfl.sub(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x3x1xi32>, tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32>
+}
+
+func.func @test6DSubWithImplicitBroadcast(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
+// CHECK-LABEL: test6DSubWithImplicitBroadcast
+// CHECK:  %0 = tfl.sub(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   func.return %0 : tensor<1x2x3x4x5x6xi32>
 }
 
-// CHECK-LABEL: testMulWithBroadcastToOps
-func.func @testMulWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
-  // CHECK: [[CST:%.*]] = arith.constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
-  // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
-  // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: tfl.mul [[BCAST]], [[BCAST_1]] {fused_activation_function = "NONE"} : tensor<1x2x3x4x5x6xi32>
+func.func @sub_with_int32_7d_inputs(%arg0: tensor<1x1x1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x1x1x4xi32>) -> tensor<1x1x1x1x1x3x4xi32> {
+  %0 = "tf.Sub"(%arg0, %arg1): (tensor<1x1x1x1x1x3x1xi32>, tensor<1x1x1x1x1x1x4xi32>) -> tensor<1x1x1x1x1x3x4xi32>
+  func.return %0 : tensor<1x1x1x1x1x3x4xi32>
+// CHECK-LABEL: sub_with_int32_7d_inputs
+// CHECK: %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<1x1x1x1x1x3x1xi32>, tensor<7xi64>) -> tensor<1x1x1x1x1x3x4xi32>
+// CHECK: %1 = "tfl.broadcast_to"(%arg1, %cst) : (tensor<1x1x1x1x1x1x4xi32>, tensor<7xi64>) -> tensor<1x1x1x1x1x3x4xi32>
+// CHECK: %2 = tfl.sub %0, %1 {fused_activation_function = "NONE"} : tensor<1x1x1x1x1x3x4xi32>
+}
+
+func.func @test5DMulWithImplicitBroadcast(%arg0: tensor<1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32> {
+  %0 = "tf.Mul"(%arg0, %arg1): (tensor<1x1x1x3x1xi32>, tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32>
+  func.return %0 : tensor<1x1x1x3x4xi32>
+// CHECK-LABEL: test5DMulWithImplicitBroadcast
+// CHECK: %0 = tfl.mul(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x3x1xi32>, tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32>
+}
+
+func.func @test6DMulWithImplicitBroadcast(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
+// CHECK-LABEL: test6DMulWithImplicitBroadcast
+// CHECK:  %0 = tfl.mul(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   func.return %0 : tensor<1x2x3x4x5x6xi32>
+}
+
+func.func @mul_with_int32_7d_inputs(%arg0: tensor<1x1x1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x1x1x4xi32>) -> tensor<1x1x1x1x1x3x4xi32> {
+  %0 = "tf.Mul"(%arg0, %arg1): (tensor<1x1x1x1x1x3x1xi32>, tensor<1x1x1x1x1x1x4xi32>) -> tensor<1x1x1x1x1x3x4xi32>
+  func.return %0 : tensor<1x1x1x1x1x3x4xi32>
+// CHECK-LABEL: mul_with_int32_7d_inputs
+// CHECK: %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<1x1x1x1x1x3x1xi32>, tensor<7xi64>) -> tensor<1x1x1x1x1x3x4xi32>
+// CHECK: %1 = "tfl.broadcast_to"(%arg1, %cst) : (tensor<1x1x1x1x1x1x4xi32>, tensor<7xi64>) -> tensor<1x1x1x1x1x3x4xi32>
+// CHECK: %2 = tfl.mul %0, %1 {fused_activation_function = "NONE"} : tensor<1x1x1x1x1x3x4xi32>
 }
 
 // CHECK-LABEL: testDivWithBroadcastToOps
@@ -2248,7 +2311,7 @@ func.func @conv3d_invalid_strides(%arg0: tensor<?x?x?x?x?xf32>,%arg1:  tensor<?x
   %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
   func.return %0: tensor<?x?x?x?x?xf32>
   // CHECK-LABEL: conv3d_invalid_strides
-  // CHECK:  [[BCT:%.*]] = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [2, 1, 1, 1, 1]} : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
+  // CHECK:  [[BCT:%.*]] = "tf.Conv3D"(%arg0, %arg1) <{padding = "SAME", strides = [2, 1, 1, 1, 1]}> : (tensor<?x?x?x?x?xf32>, tensor<?x?x?x?x?xf32>) -> tensor<?x?x?x?x?xf32>
   // CHECK:  return [[BCT]] : tensor<?x?x?x?x?xf32>
 }
 
@@ -2642,7 +2705,7 @@ func.func @approx_top_k_with_min_k(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, 
   func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
 
   // CHECK-LABEL: approx_top_k_with_min_k
-  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = false, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) <{aggregate_to_topk = true, is_max_k = false, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64}> : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
   // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
 }
 
@@ -2651,7 +2714,7 @@ func.func @approx_top_k_reduction_dimension_not_last_dim(%arg0: tensor<1x4xf32>)
   func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
 
   // CHECK-LABEL: approx_top_k_reduction_dimension_not_last_dim
-  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 0 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) <{aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 0 : i64, reduction_input_size_override = -1 : i64}> : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
   // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
 }
 

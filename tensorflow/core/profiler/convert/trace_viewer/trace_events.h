@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/context_types.h"
 #include "tensorflow/core/profiler/protobuf/task.pb.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/profiler/utils/timespan.h"
+#include "tsl/platform/status.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {

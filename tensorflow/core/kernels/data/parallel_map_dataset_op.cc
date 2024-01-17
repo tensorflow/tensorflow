@@ -263,12 +263,12 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
-      IteratorContext::Params params(ctx);
-      params.cancellation_manager = cancellation_manager_.get();
-      IteratorContext iter_ctx(std::move(params));
+      auto params = std::make_unique<IteratorContext::Params>(ctx);
+      params->cancellation_manager = cancellation_manager_.get();
+      auto iter_ctx = std::make_unique<IteratorContext>(*params);
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
-          &iter_ctx, this, prefix(), &input_impl_));
-      ctx->MergeCheckpoint(iter_ctx.checkpoint());
+          iter_ctx.get(), this, prefix(), &input_impl_));
+      ctx->MergeCheckpoint(iter_ctx->checkpoint());
       TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_));
       if (ctx->warm_start() && !ctx->is_restoring()) {

@@ -1,6 +1,6 @@
-load("//tensorflow:py.default.bzl", "py_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_test")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -45,12 +45,12 @@ cc_library(
         "//tensorflow/core/tfrt/runtime:tf_threadpool_concurrent_work_queue",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/utils",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:errors",
         "@tf_runtime//:core_runtime",
     ] + if_google([
         "//learning/brain/tfrt/tpu:tfrttpu_alwayslink",
@@ -75,15 +75,23 @@ tf_cc_shared_test(
         "//tensorflow/cc:array_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
+        "//tensorflow/core/common_runtime:local_session_selection",
+        "//tensorflow/core/common_runtime:process_util",
+        "//tensorflow/core/common_runtime:session_factory",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:threadpool_options",
+        "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/core/tfrt/utils:thread_pool",
         "//tensorflow/python/framework:test_ops_kernels",
@@ -93,7 +101,7 @@ tf_cc_shared_test(
 )
 
 # copybara:uncomment_begin(C++ Global registration not working in python, b/290988709)
-# py_library(
+# py_strict_library(
 #     name = "tfrt_session_py",
 #     srcs_version = "PY3",
 #     visibility = ["//visibility:public"],
@@ -102,7 +110,7 @@ tf_cc_shared_test(
 #     ],
 # )
 #
-# tf_py_test(
+# tf_py_strict_test(
 #     name = "tfrt_session_python_test",
 #     srcs = ["tfrt_session_python_test.py"],
 #     python_version = "PY3",

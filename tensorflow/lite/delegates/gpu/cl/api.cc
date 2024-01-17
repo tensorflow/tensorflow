@@ -561,11 +561,14 @@ class InferenceRunnerImpl : public CLInferenceRunner {
       ProfilingInfo profiling_info;
       RETURN_IF_ERROR(context_->Profile(profiling_queue_, &profiling_info));
       AddTfLiteProfilerEvents(&profiling_info);
-    } else {
-      RETURN_IF_ERROR(context_->AddToQueue(queue_));
-      clFlush(queue_->queue());
     }
 
+    // TODO(b/300902515): This code introduces duplicate runs, it should not
+    // be needed if the profiling execution would produce result correctly,
+    // but currently it does not, see the bug for details. Once fixed, this
+    // code should be in an else clause of the above if statement.
+    RETURN_IF_ERROR(context_->AddToQueue(queue_));
+    clFlush(queue_->queue());
     return absl::OkStatus();
   }
 

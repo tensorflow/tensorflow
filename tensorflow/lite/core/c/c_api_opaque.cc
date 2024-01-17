@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 
+#include <stdarg.h>
+#include <stdint.h>
+
 #include <cstdio>
-#include <iostream>
-#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/lite/c/c_api_opaque_internal.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace {
 
@@ -89,6 +91,14 @@ const ::tflite::Subgraph* GetSubgraph(
 }
 }  // namespace
 
+struct TfLiteOpaqueTensorBuilder {
+  TfLiteType type;
+  void* data;
+  TfLiteAllocationType allocation_type;
+  TfLiteQuantizationParams quantization_params;
+  TfLiteQuantization quantization;
+};
+
 TfLiteType TfLiteOpaqueTensorType(const TfLiteOpaqueTensor* opaque_tensor) {
   return TfLiteTensorType(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
 }
@@ -138,12 +148,38 @@ size_t TfLiteOpaqueTensorByteSize(const TfLiteOpaqueTensor* opaque_tensor) {
 }
 
 void* TfLiteOpaqueTensorData(const TfLiteOpaqueTensor* opaque_tensor) {
-  return TfLiteTensorData(reinterpret_cast<const TfLiteTensor*>(opaque_tensor));
+  return opaque_tensor != nullptr
+             ? TfLiteTensorData(
+                   reinterpret_cast<const TfLiteTensor*>(opaque_tensor))
+             : nullptr;
 }
 
 TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
     const TfLiteOpaqueTensor* opaque_tensor) {
   return Convert(opaque_tensor)->allocation_type;
+}
+
+TfLiteAllocationStrategy TfLiteOpaqueTensorGetAllocationStrategy(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetAllocationStrategy(Convert(t));
+}
+
+TfLiteRunStability TfLiteOpaqueTensorGetBufferAddressStability(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetBufferAddressStability(Convert(t));
+}
+
+TfLiteRunStability TfLiteOpaqueTensorGetDataStability(
+    const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetDataStability(Convert(t));
+}
+
+TfLiteRunStep TfLiteOpaqueTensorGetDataKnownStep(const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetDataKnownStep(Convert(t));
+}
+
+TfLiteRunStep TfLiteOpaqueTensorGetShapeKnownStep(const TfLiteOpaqueTensor* t) {
+  return TfLiteTensorGetShapeKnownStep(Convert(t));
 }
 
 const char* TfLiteOpaqueTensorName(const TfLiteOpaqueTensor* opaque_tensor) {
@@ -205,6 +241,48 @@ TfLiteStatus TfLiteOpaqueTensorWriteString(TfLiteOpaqueTensor* tensor,
                                            const char* str, const int len) {
   TfLiteOpaqueTensorWriteStrings(tensor, &str, 1, &len);
   return kTfLiteOk;
+}
+
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderCreate() {
+  return new TfLiteOpaqueTensorBuilder{};
+}
+
+void TfLiteOpaqueTensorBuilderDelete(TfLiteOpaqueTensorBuilder* builder) {
+  delete builder;
+}
+
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetType(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteType type) {
+  builder->type = type;
+  return builder;
+}
+
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetData(
+    TfLiteOpaqueTensorBuilder* builder, void* data) {
+  builder->data = data;
+  return builder;
+}
+
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetAllocationType(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteAllocationType allocation_type) {
+  builder->allocation_type = allocation_type;
+  return builder;
+}
+
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantizationParams(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteQuantizationParams params) {
+  builder->quantization_params = params;
+  return builder;
+}
+
+TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
+    TfLiteOpaqueTensorBuilder* builder, TfLiteQuantization quantization) {
+  builder->quantization = quantization;
+  return builder;
+}
+
+void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor) {
+  tflite::SetTensorToDynamic(Convert(tensor));
 }
 
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
@@ -271,6 +349,24 @@ TfLiteStatus TfLiteOpaqueNodeTemporaries(const TfLiteOpaqueNode* opaque_node,
   *temporaries = node->temporaries->data;
   *num_temporaries = node->temporaries->size;
   return kTfLiteOk;
+}
+
+int TfLiteOpaqueNodeGetInputTensorIndex(const TfLiteOpaqueNode* opaque_node,
+                                        int index_of_input) {
+  auto* node = Convert(opaque_node);
+  if (index_of_input < 0 || index_of_input >= node->inputs->size) {
+    return -1;
+  }
+  return node->inputs->data[index_of_input];
+}
+
+int TfLiteOpaqueNodeGetOutputTensorIndex(const TfLiteOpaqueNode* opaque_node,
+                                         int index_of_output) {
+  auto* node = Convert(opaque_node);
+  if (index_of_output < 0 || index_of_output >= node->outputs->size) {
+    return -1;
+  }
+  return node->outputs->data[index_of_output];
 }
 
 TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
@@ -456,15 +552,58 @@ TfLiteStatus TfLiteOpaqueContextGetNodeInitDataMmapInfo(
                                            custom_initial_data_size);
 }
 
-TfLiteStatus TfLiteOpaqueContextAddTensors(TfLiteOpaqueContext* context,
-                                           int tensors_to_add,
-                                           int* first_new_tensor_index) {
-  if (tensors_to_add <= 0) {
+TfLiteStatus TfLiteOpaqueContextAddTensor(TfLiteOpaqueContext* context,
+                                          TfLiteOpaqueTensorBuilder* builder,
+                                          int* new_tensor_index) {
+  if (builder->allocation_type != kTfLiteDynamic &&
+      builder->allocation_type != kTfLiteArenaRw &&
+      builder->allocation_type != kTfLiteArenaRwPersistent) {
+    TfLiteOpaqueContextReportError(
+        context,
+        "Invalid allocation type '%d'.  Allocation type for "
+        "TfLiteOpaqueContextAddTensor must be one of: "
+        "'kTfLiteDynamic', 'kTfLiteArenaRw' or 'kTfLiteArenaRwPersistent'.",
+        builder->allocation_type);
     return kTfLiteError;
   }
+
+  if (builder->allocation_type == kTfLiteDynamic && builder->data == nullptr) {
+    TfLiteOpaqueContextReportError(context,
+                                   "For tensors of allocation type "
+                                   "'kTfLiteDynamic' 'data' must be provided.");
+    return kTfLiteError;
+  }
+  if ((builder->allocation_type == kTfLiteArenaRw ||
+       builder->allocation_type == kTfLiteArenaRwPersistent) &&
+      builder->data != nullptr) {
+    TfLiteOpaqueContextReportError(
+        context,
+        "For tensors of allocation type "
+        "'kTfLiteArenaRw' or 'kTfLiteArenaRwPersistent' "
+        "'data' must not be provided.");
+    return kTfLiteError;
+  }
+
   auto* tflite_context = Convert(context);
-  return tflite_context->AddTensors(tflite_context, tensors_to_add,
-                                    first_new_tensor_index);
+  int index = -1;
+  auto status = tflite_context->AddTensors(tflite_context, 1, &index);
+  if (status != kTfLiteOk) return status;
+
+  tflite_context->tensors[index].type = builder->type;
+  tflite_context->tensors[index].data.data = builder->data;
+  tflite_context->tensors[index].allocation_type = builder->allocation_type;
+  tflite_context->tensors[index].params = builder->quantization_params;
+  tflite_context->tensors[index].quantization = builder->quantization;
+  if (new_tensor_index != nullptr) {
+    *new_tensor_index = index;
+  }
+  return status;
+}
+
+TfLiteStatus TfLiteOpaqueContextGetSizeOfType(TfLiteOpaqueContext* context,
+                                              const TfLiteType type,
+                                              size_t* bytes) {
+  return tflite::GetSizeOfType(Convert(context), type, bytes);
 }
 
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,
@@ -497,4 +636,40 @@ void TfLiteOpaqueContextReportErrorVa(
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   TF_LITE_KERNEL_LOG(context, "%s", buffer);
   delete[] buffer;
+}
+
+#ifndef TF_LITE_STATIC_MEMORY
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
+    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
+  if (!opaque_delegate_builder) return nullptr;
+
+  TfLiteDelegate* result = new TfLiteDelegate{};
+  result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
+  *(result->opaque_delegate_builder) = *opaque_delegate_builder;
+
+  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
+}
+
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
+  if (!opaque_delegate) return;
+
+  const TfLiteDelegate* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
+  delete tflite_delegate->opaque_delegate_builder;
+  delete tflite_delegate;
+}
+#endif  // TF_LITE_STATIC_MEMORY
+
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
+  if (!delegate) return nullptr;
+
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
+  const auto* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(delegate);
+
+  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
+
+  return tflite_delegate->opaque_delegate_builder->data;
 }

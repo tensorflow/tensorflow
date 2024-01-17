@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -165,7 +166,7 @@ GetMergedMeshClusterResults(mlir::tf_device::ClusterOp current_cluster,
 // Updates the users of `merging_cluster` so that they use values
 // from `merged_cluster` instead.
 void ReplaceOperandUsagesWithMergedClusterOutputs(
-    const llvm::SmallVectorImpl<mlir::Value>& values_to_replace,
+    mlir::ValueRange values_to_replace,
     mlir::tf_device::ClusterOp merged_cluster) {
   for (auto result :
        llvm::zip(values_to_replace, merged_cluster.getResults())) {

@@ -36,6 +36,8 @@ from tensorflow.python.platform import test
 
 _TEST_DTYPES = (
     dtypes.bfloat16.as_numpy_dtype,
+    dtypes.float8_e5m2.as_numpy_dtype,
+    dtypes.float8_e4m3fn.as_numpy_dtype,
     np.float16,
     np.float32,
     np.float64,

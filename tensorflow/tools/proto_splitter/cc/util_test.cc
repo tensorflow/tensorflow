@@ -26,11 +26,11 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/test_util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {

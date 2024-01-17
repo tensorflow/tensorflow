@@ -576,7 +576,7 @@ def get_module_docstring(module_name, package, api_name):
     if docsrc.docstring_module_name:
       docstring_module_name = docsrc.docstring_module_name
 
-  if package != 'keras':
+  if package != 'tf_keras':
     docstring_module_name = package + '.' + docstring_module_name
   if (docstring_module_name in sys.modules and
       sys.modules[docstring_module_name].__doc__):
@@ -695,8 +695,8 @@ def create_primary_api_files(output_files,
         f'Missing outputs for genrule:\n{missing_files}. Be sure to add these '
         'targets to tensorflow/python/tools/api/generator/api_init_files_v1.bzl'
         ' and tensorflow/python/tools/api/generator/api_init_files.bzl '
-        '(tensorflow repo), keras/api/api_init_files.bzl (keras repo), or '
-        'tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator '
+        '(tensorflow repo), tf_keras/api/api_init_files.bzl (tf_keras repo), '
+        'or tensorflow_estimator/python/estimator/api/api_gen.bzl (estimator '
         'repo)')
 
 
@@ -744,7 +744,7 @@ def main():
       type=str,
       help='Packages to exclude from the api generation. This is used to hide '
       'certain packages from this script when multiple copy of code exists, '
-      'eg Keras. It is useful to avoid the SymbolExposedTwiceError.'
+      'eg tf_keras. It is useful to avoid the SymbolExposedTwiceError.'
       )
   parser.add_argument(
       '--root_init_template',

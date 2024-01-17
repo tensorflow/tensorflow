@@ -387,8 +387,8 @@ class FuncGraph(ops.Graph):
         else:
           ret_nest = closure()
 
-        ret_nest = spec._cast(ret_nest, trace_type.InternalCastContext)  # pylint: disable=protected-access
-        return spec._to_tensors(ret_nest)  # pylint: disable=protected-access
+        ret_nest = spec.cast(ret_nest, trace_type.InternalCastContext)
+        return spec.to_tensors(ret_nest)
 
       wrapped_closure.output_spec = spec
       self._function_captures.add_or_replace(
@@ -999,7 +999,7 @@ def func_graph_from_py_func(name,
       func_args, func_kwargs = args, kwargs
 
     input_trace_types = trace_type.from_value([func_args, func_kwargs])
-    func_graph.inputs = input_trace_types._to_tensors([func_args, func_kwargs])  # pylint: disable=protected-access
+    func_graph.inputs = input_trace_types.to_tensors([func_args, func_kwargs])  # pylint: disable=protected-access
 
     # Reset variables watched while deconstructing inputs.
     func_graph._watched_variables = object_identity.ObjectIdentityWeakSet()  # pylint: disable=protected-access

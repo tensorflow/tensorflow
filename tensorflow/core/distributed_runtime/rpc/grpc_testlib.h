@@ -89,7 +89,8 @@ class TestCluster {
   absl::flat_hash_map<std::string, std::vector<std::string>> targets_;
   std::vector<DeviceAttributes> devices_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TestCluster);
+  TestCluster(const TestCluster&) = delete;
+  void operator=(const TestCluster&) = delete;
 };
 
 }  // end namespace test

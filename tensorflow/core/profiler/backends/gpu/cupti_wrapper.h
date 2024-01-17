@@ -176,7 +176,8 @@ class CuptiWrapper : public tensorflow::profiler::CuptiInterface {
   bool Disabled() const override { return false; }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CuptiWrapper);
+  CuptiWrapper(const CuptiWrapper&) = delete;
+  void operator=(const CuptiWrapper&) = delete;
 };
 
 }  // namespace profiler

@@ -38,11 +38,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/primitive_util.h"
+#include "xla/side_effect_util.h"
+#include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 
 namespace mlir {
 
@@ -240,15 +240,6 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
       StringAttr::get(context, xla::kXlaHostTransferRendezvousNameAttr),
       rendezvous_name);
 
-  auto element_type = getElementTypeOrSelf(type);
-  auto xla_element_type = ::xla::TypeToPrimitiveType(element_type);
-  const std::string& xla_element_type_str =
-      ::xla::primitive_util::LowercasePrimitiveTypeName(xla_element_type);
-  auto original_type = StringAttr::get(context, xla_element_type_str);
-  auto original_type_attr = NamedAttribute(
-      StringAttr::get(context, xla::kXlaHostTransferOriginalTypeAttr),
-      original_type);
-
   auto host_handler_name_value =
       StringAttr::get(context, host_handler_name.str());
   auto host_handler_name_attr = NamedAttribute(
@@ -257,8 +248,7 @@ void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
 
   auto frontend_attributes = DictionaryAttr::get(
       context,
-      ArrayRef<NamedAttribute>{rendezvous_name_attr, original_type_attr,
-                               host_handler_name_attr});
+      ArrayRef<NamedAttribute>{rendezvous_name_attr, host_handler_name_attr});
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 
@@ -511,8 +501,8 @@ Value CreateSubTuple(OpBuilder& builder, Value value, size_t end) {
 // return the first element. Otherwise, `mhlo.get_tuple_element` users are
 // simply updated with `replacement`, and all other users are updated with a
 // slice of `replacement`.
-void ReplaceWithTupleResult(OpBuilder& builder, ArrayRef<Value> values,
-                            ArrayRef<Value> replacements, bool flatten_tuple) {
+void ReplaceWithTupleResult(OpBuilder& builder, ValueRange values,
+                            ValueRange replacements, bool flatten_tuple) {
   if (flatten_tuple) {
     for (size_t result_index = 0; result_index < values.size(); result_index++)
       values[result_index].replaceAllUsesWith(replacements[result_index]);
@@ -557,10 +547,8 @@ Value UpdateControlFlowBlockArgWithToken(OpBuilder& builder, Block& block,
   block.addArguments(
       types, SmallVector<Location>(types.size(), block.getParent()->getLoc()));
 
-  auto old_args = ArrayRef<Value>(block.getArguments().begin(),
-                                  block.getArguments().begin() + old_args_size);
-  auto new_args = ArrayRef<Value>(block.getArguments().begin() + old_args_size,
-                                  block.getArguments().end());
+  ValueRange old_args = block.getArguments().take_front(old_args_size);
+  ValueRange new_args = block.getArguments().drop_front(old_args_size);
   assert(!new_args.empty());
 
   ReplaceWithTupleResult(builder, old_args, new_args, /*flatten_tuple=*/true);

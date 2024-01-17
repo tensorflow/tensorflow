@@ -20,7 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_OP_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_SPARSE_TO_DENSE_OP_GPU_H_
 
-#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {

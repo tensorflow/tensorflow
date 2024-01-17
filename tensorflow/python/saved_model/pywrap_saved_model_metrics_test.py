@@ -166,10 +166,51 @@ class MetricsTest(test.TestCase):
     metrics.SetReadPathAndSingleprint(path="foo", singleprint="bar")
     self.assertEqual(metrics.GetReadPathAndSingleprint(), ("foo", "bar"))
 
+  def test_SM_read_invalid_path_and_singleprint(self):
+    with self.assertRaises(metrics.MetricException) as excinfo:
+      metrics.SetReadPathAndSingleprint(path="", singleprint="bar")
+    self.assertRegex(str(excinfo.exception),
+                     "Invalid path_and_singleprint argument. Empty path.")
+
+    with self.assertRaises(metrics.MetricException) as excinfo:
+      metrics.SetReadPathAndSingleprint(path="foo", singleprint="")
+    self.assertRegex(
+        str(excinfo.exception),
+        "Invalid path_and_singleprint argument. Empty singleprint.")
+
   def test_SM_write_path_and_singleprint(self):
     self.assertEqual(metrics.GetWritePathAndSingleprint(), ("", ""))
     metrics.SetWritePathAndSingleprint(path="foo", singleprint="bar")
     self.assertEqual(metrics.GetWritePathAndSingleprint(), ("foo", "bar"))
+
+  def test_SM_write_invalid_path_and_singleprint(self):
+    with self.assertRaises(metrics.MetricException) as excinfo:
+      metrics.SetWritePathAndSingleprint(path="", singleprint="bar")
+    self.assertRegex(str(excinfo.exception),
+                     "Invalid path_and_singleprint argument. Empty path.")
+
+    with self.assertRaises(metrics.MetricException) as excinfo:
+      metrics.SetWritePathAndSingleprint(path="foo", singleprint="")
+    self.assertRegex(
+        str(excinfo.exception),
+        "Invalid path_and_singleprint argument. Empty singleprint.")
+
+  def test_SM_found_fingerprint_on_load(self):
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintFound)
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "FOUND")
+
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintNotFound)
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "NOT_FOUND")
+
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintError)
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "ERROR")
+
+  def test_invalid_SM_found_fingerprint_on_load(self):
+    metrics.SetFoundFingerprintOnLoad(found_status="absolute nonsense")
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "")
+
+    metrics.SetFoundFingerprintOnLoad(found_status="found")
+    self.assertEqual(metrics.GetFoundFingerprintOnLoad(), "")
 
 
 if __name__ == "__main__":

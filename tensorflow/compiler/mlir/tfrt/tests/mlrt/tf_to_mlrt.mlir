@@ -41,7 +41,7 @@ func.func @main(%input0: tensor<i32>, %input1: tensor<i32>) -> tensor<i32> {
   // CHECK-SAME: num_futures = 3
   %promise_b, %promise_c, %promise_d, %future_b, %future_c, %future_d =
     "tf_mlrt.allocate_futures"()
-    {num_futures = 3 : i32, result_segment_sizes = array<i32: 3, 3>} : () ->
+    {num_futures = 3 : i32, resultSegmentSizes = array<i32: 3, 3>} : () ->
     (!mlrt.promise, !mlrt.promise, !mlrt.promise,
      !mlrt.future, !mlrt.future, !mlrt.future)
 
@@ -144,7 +144,7 @@ func.func @main(%x: tensor<1xi32>) -> (tensor<1xi32>, tensor<1xi32>, tensor<1xi3
     batching_queue = "", container = "", device = "/device:CPU:0",
     enable_large_batch_splitting = false, f = @batched_function,
     max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64,
-    num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 0>,
+    num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 0>,
     shared_name = "batch_function"
   } : (tensor<1xi32>) -> tensor<1xi32>
 
@@ -290,7 +290,7 @@ func.func @callee(%arg: tensor<i32>) -> (tensor<i32>) {
 // CHECK-LABEL: @executeop_input
 func.func @executeop_input(%arg0: tensor<i32>) -> (tensor<i32>) {
   // CHECK: [[async_out:%.*]] = tf_mlrt.batch_function
-  %2 = "tf.BatchFunction"(%arg0) {device = "/device:CPU:0", allowed_batch_sizes = [64], batch_timeout_micros = 1 : i64, batching_queue = "", container = "", f = @callee, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operand_segment_sizes = array<i32: 1, 0>, shared_name = ""} : (tensor<i32>) -> tensor<i32>
+  %2 = "tf.BatchFunction"(%arg0) {device = "/device:CPU:0", allowed_batch_sizes = [64], batch_timeout_micros = 1 : i64, batching_queue = "", container = "", f = @callee, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operandSegmentSizes = array<i32: 1, 0>, shared_name = ""} : (tensor<i32>) -> tensor<i32>
   // CHECK-NEXT: mlrt.async([[async_out]]) {{.*}} : (!mlrt.future)
   %3 = mlrt.async(%2) {callee = @serving_default_stream_1} : (tensor<i32>) -> !mlrt.async_handle
   // CHECK: mlrt.await_handle
@@ -344,7 +344,7 @@ func.func @main(%input0: tensor<i32>) -> tensor<i32> {
   // CHECK: [[promises:%.*]], [[futures:%.*]] = "tf_mlrt.allocate_futures"
   // CHECK-SAME: num_futures = 1
   %promise_b, %future_b = "tf_mlrt.allocate_futures"()
-    {num_futures = 1 : i32, result_segment_sizes = array<i32: 1, 1>} : () ->
+    {num_futures = 1 : i32, resultSegmentSizes = array<i32: 1, 1>} : () ->
     (!mlrt.promise, !mlrt.future)
 
   // CHECK: [[handle_0:%.*]] = mlrt.async([[input0]], [[promises]])
@@ -416,4 +416,45 @@ func.func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>
   // CHECK-NEXT: [[out:%.*]] = mlrt.case [[idx]] [@branch0, @branch1]([[branch_arg0]], [[branch_arg1]])
   %0 = "tf.Case"(%arg0, %arg1, %arg2) {_lower_using_switch_merge = true, branches = [@branch0, @branch1], is_stateless = true} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
+}
+
+// -----
+
+// Test await is added for unused futures
+
+// CHECK-LABEL: func @unused_future_arg
+// CHECK-SAME: ({{%.*}}: !tf_mlrt.tensor, [[unused:%.*]]: !mlrt.future)
+func.func @unused_future_arg(%x: tensor<i32>, %unused: !mlrt.future) -> tensor<i32> {
+  // CHECK: mlrt.await_all_control [[unused]]
+  return %x : tensor<i32>
+}
+
+// CHECK-LABEL: func @unused_future
+func.func @unused_future(%x: tensor<i32>) -> tensor<i32> {
+  // CHECK: [[unused:%.*]] = tf_mlrt.async_executeop
+  %unused = "tf.TestAsyncIdentity"(%x) {__op_key = 0: i32, T = i32} : (tensor<i32>) -> tensor<i32>
+  // CHECK: mlrt.await_all_control [[unused]]
+  return %x : tensor<i32>
+}
+
+// -----
+
+// Test for XlaLaunch
+
+func.func private @xla_func_0(%arg0: tensor<1x3xf32>, %arg1: tensor<1x3xf32>) -> tensor<1x3xf32> attributes {tf._XlaMustCompile = true, tf._noinline = true, tf._original_func_name = "should_not_be_used"} {
+  %1 = "tf.AddV2"(%arg0, %arg1) {__op_key = 0: i32} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<1x3xf32>
+  func.return %1 : tensor<1x3xf32>
+}
+
+// CHECK-LABEL: func @xla_func
+func.func @xla_func(%arg0: tensor<1x3xf32>) -> tensor<*xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "input:0", outputs = "output:0"}} {
+  %0 = "tf.VarHandleOp"() {__op_key = 1: i32, device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
+  %1 = "tf.ReadVariableOp"(%0) {__op_key = 2: i32, device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
+  // CHECK: tf_mlrt.executeop
+  // CHECK: tf_mlrt.async_executeop{{.*}}op: \22XlaLaunch\22\0A
+  // CHECK: tf_mlrt.await
+  // CHECK: return
+  // CHECK-SAME: !tf_mlrt.tensor
+  %2 = "tf.XlaLaunch"(%arg0, %1) {__op_key = 3: i32, _noinline = true, _xla_compile_device_type = "GPU", device = "/device:GPU:0", function = @xla_func_0, operandSegmentSizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<1x3xf32>) -> tensor<*xf32>
+  func.return %2 : tensor<*xf32>
 }

@@ -458,7 +458,7 @@ class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
   @property
   def environment(self):
     """Returns the current environment which TensorFlow is running in."""
-    return self._environment
+    return ''
 
   def _start_local_server(self):
     address = compat.as_text(self._cloud_tpu_client.get_local_ip())

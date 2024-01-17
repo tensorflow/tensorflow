@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -60,6 +62,8 @@ namespace {
 
 constexpr char kOutputSize[] = "output_size";
 constexpr char kCode[] = "code";
+constexpr char kExperimentOptAll[] = "all";
+constexpr char kExperimentOptOutAllExceptOptIn[] = "all_except_opt_in";
 constexpr char kMessage[] = "msg";
 constexpr char kOutput[] = "output";
 
@@ -95,6 +99,8 @@ constexpr char kMakeSloppyOpt[] = "make_sloppy";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
+constexpr char kInjectIoPrefetchEligibleOpt[] = "inject_io_prefetch_eligible";
+constexpr char kInjectIoPrefetchOpt[] = "inject_io_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
@@ -216,14 +222,6 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kInjectPrefetchOpt);
     } else {
       optimization_disabled->insert(kInjectPrefetchOpt);
-    }
-  }
-  if (optimization_options.optional_warm_start_case() ==
-      OptimizationOptions::kWarmStart) {
-    if (optimization_options.warm_start()) {
-      optimization_enabled->insert(kWarmStartOpt);
-    } else {
-      optimization_disabled->insert(kWarmStartOpt);
     }
   }
 }
@@ -506,38 +504,47 @@ absl::flat_hash_set<string> GetExperiments(
     opt_outs_raw = string(opt_outs_raw_cs);
   }
 
-  // Identify opted out experiments.
   auto live_experiments = DatasetExperimentRegistry::Experiments();
+  for (const auto& [experiment, unused] : live_experiments) {
+    metrics::RecordTFDataExperimentLive(experiment);
+  }
+
+  // Identify opted out experiments.
   absl::flat_hash_set<string> opt_outs;
-  if (opt_outs_raw == "all") {
+  if (opt_outs_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       opt_outs.insert(pair.first);
     }
+    metrics::RecordTFDataExperimentOptOut(kExperimentOptAll);
   } else {
     for (const auto& experiment :
          str_util::Split(opt_outs_raw, ',', str_util::SkipEmpty())) {
       opt_outs.insert(experiment);
+      metrics::RecordTFDataExperimentOptOut(experiment);
     }
   }
 
   // Include opted in experiments unless they are opted out.
-  if (opt_ins_raw == "all") {
+  if (opt_ins_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       auto experiment = pair.first;
       if (!opt_outs.contains(experiment)) {
         experiments.insert(experiment);
       }
     }
+    metrics::RecordTFDataExperimentOptIn(kExperimentOptAll);
   } else {
     for (const auto& experiment :
          str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty())) {
       if (!opt_outs.contains(experiment)) {
         experiments.insert(experiment);
       }
+      metrics::RecordTFDataExperimentOptIn(experiment);
     }
   }
 
-  if (opt_outs_raw == "all_except_opt_in") {
+  if (opt_outs_raw == kExperimentOptOutAllExceptOptIn) {
+    metrics::RecordTFDataExperimentOptOut(kExperimentOptOutAllExceptOptIn);
     return experiments;
   }
   // Stochastically include live experiments unless they are opted out.
@@ -586,6 +593,13 @@ void GetOptimizations(const Options& options,
       optimizations_enabled->insert(kSlackOpt);
     } else {
       optimizations_disabled->insert(kSlackOpt);
+    }
+  }
+  if (options.optional_warm_start_case() == Options::kWarmStart) {
+    if (options.warm_start()) {
+      optimizations_enabled->insert(kWarmStartOpt);
+    } else {
+      optimizations_disabled->insert(kWarmStartOpt);
     }
   }
 }
@@ -857,14 +871,17 @@ Status CopyBatch(CopyBatchParams params,
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::array<tstring, 7> autotune_only_optimizations = {
+  std::array<tstring, 10> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
       kFilterParallelizationOpt,
       kMapParallelizationOpt,
-      kInjectPrefetchOpt};
+      kMapFusionOpt,
+      kInjectPrefetchOpt,
+      kInjectIoPrefetchEligibleOpt,
+      kInjectIoPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -958,6 +975,10 @@ bool IndependentHostTasks(int64_t task_id, bool evens) {
 
 namespace {
 
+REGISTER_DATASET_EXPERIMENT("noop_task_level", RandomJobSamplePercentage<50>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("noop_job_level", RandomJobSamplePercentage<50>,
+                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
@@ -977,10 +998,18 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
 REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
-                            IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<50>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
                             AllTasks);
 REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("no_compression_v2", RandomJobSamplePercentage<50>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<50>,
                             AllTasks);
 }  // namespace
 }  // namespace data

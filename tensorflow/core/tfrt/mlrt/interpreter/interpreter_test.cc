@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/future.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/interpreter_testutil.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace mlrt {

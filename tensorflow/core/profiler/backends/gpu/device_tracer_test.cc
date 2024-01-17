@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 // TODO(b/186367334)
 #define CUPTI_NVBUG_3299481_WAR (10000 <= CUDA_VERSION && CUDA_VERSION < 11000)

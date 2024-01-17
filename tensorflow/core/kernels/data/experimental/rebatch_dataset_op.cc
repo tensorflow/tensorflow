@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
@@ -406,7 +407,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         // different input tensors.
         int64_t batch_size = 0;
 
-        std::vector<std::vector<Tensor>> slices_to_concatenate;
+        std::vector<std::vector<TensorSlice>> slices_to_concatenate;
         // Get slices from input tensors until they make up the whole batch
         // size or we run out of input.
         while (batch_size < desired_batch_size) {
@@ -427,10 +428,10 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
               std::min(offset_ + desired_batch_size - batch_size,
                        tensors_[0].dim_size(0));
 
-          std::vector<Tensor> slices;
+          std::vector<TensorSlice> slices;
           slices.reserve(tensors_.size());
           for (const auto& tensor : tensors_) {
-            slices.push_back(tensor.Slice(offset_, slice_end));
+            slices.push_back(TensorSlice(tensor, offset_, slice_end));
           }
           slices_to_concatenate.push_back(std::move(slices));
 
@@ -493,12 +494,15 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         // Special case: when there's only one slice, we return the slice
         // directly where possible instead of copying the tensor data.
         if (slices_to_concatenate.size() == 1) {
-          auto tensors = std::move(slices_to_concatenate[0]);
+          std::vector<Tensor> tensors;
+          tensors.reserve(num_components);
           for (size_t i = 0; i < num_components; ++i) {
+            Tensor& tensor = slices_to_concatenate[0][i].Slice();
             // If the slice is aligned, we return it directly.
-            if (!tensors[i].IsAligned()) {
-              tensors[i] = tensor::DeepCopy(std::move(tensors[i]));
+            if (!tensor.IsAligned()) {
+              tensor = tensor::DeepCopy(tensor);
             }
+            tensors.push_back(std::move(tensor));
           }
           *out_tensors = std::move(tensors);
           return OkStatus();
@@ -507,7 +511,8 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         // For each component, concatenate slices into one tensor.
         for (size_t i = 0; i < num_components; ++i) {
           TensorShape component_shape({batch_size});
-          TensorShape remaining_shape = slices_to_concatenate[0][i].shape();
+          TensorShape remaining_shape =
+              slices_to_concatenate[0][i].Slice().shape();
           remaining_shape.RemoveDim(0);
           component_shape.AppendShape(remaining_shape);
           out_tensors->emplace_back(ctx->allocator({}),
@@ -519,10 +524,43 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
           }
           int64_t dst_offset = 0;
           for (size_t j = 0; j < slices_to_concatenate.size(); ++j) {
-            auto num_slices = slices_to_concatenate[j][i].shape().dim_size(0);
-            TF_RETURN_IF_ERROR(batch_util::CopyContiguousSlices(
-                slices_to_concatenate[j][i], 0, dst_offset, num_slices,
-                &(*out_tensors)[i]));
+            auto num_slices =
+                slices_to_concatenate[j][i].Slice().shape().dim_size(0);
+            TensorSlice& slice = slices_to_concatenate[j][i];
+            if (slice.OwnsTensor()) {
+              slice.ClearSliceRef();
+              // Instead of using the slice,
+              // we directly use its parent tensor to make sure
+              // the reference count is 1 and can move the data potentially.
+              TF_RETURN_IF_ERROR(batch_util::MaybeMoveContiguousSlices(
+                  slice.Parent(), slice.Start(), dst_offset, num_slices,
+                  &(*out_tensors)[i]));
+            } else if (slice.Parent().RefCount() == 3 &&
+                       j == slices_to_concatenate.size() - 1 &&
+                       !tensors_.empty()) {
+              // Special case:
+              // When `tensors_` still holds a reference to the tensor buffer,
+              // we could clear both parent and slice so that we can
+              // potentially move the underlying data by dirctly using
+              // `tensors_[i]`.
+              //
+              // For example:
+              // B = 3, B_new = 2
+              // tensors_:  [| e | e | e |, ...]
+              //               v   v
+              // new batch:  | e | e |
+              slice.ClearAllRefs();
+              Tensor& parent = tensors_[i];
+              TF_RETURN_IF_ERROR(batch_util::MaybeMoveContiguousSlices(
+                  parent, slice.Start(), dst_offset, num_slices,
+                  &(*out_tensors)[i]));
+            } else {
+              // Other iterator ops are holding references,
+              // we have to copy the underlying tensor buffer.
+              TF_RETURN_IF_ERROR(batch_util::CopyContiguousSlices(
+                  slice.Slice(), 0, dst_offset, num_slices,
+                  &(*out_tensors)[i]));
+            }
             dst_offset += num_slices;
           }
         }
@@ -598,6 +636,38 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         }
         return OkStatus();
       }
+
+      class TensorSlice {
+       public:
+        TensorSlice(const Tensor& t, int64_t start, int64_t end)
+            : start_(start),
+              end_(end),
+              parent_(std::make_unique<Tensor>(t)),
+              slice_(std::make_unique<Tensor>(t.Slice(start, end))) {}
+        bool OwnsTensor() {
+          // If this iterator op owns this tensor,
+          // there will be one reference from `parent_` and one from `slice_`.
+          // Otherwise, some other iterator op might own this tensor.
+          // For example, tensor_dataset_op.cc
+          return parent_->RefCount() == 2;
+        }
+        Tensor& Slice() { return *slice_; }
+        Tensor& Parent() { return *parent_; }
+        inline void ClearSliceRef() { slice_.reset(); }
+        inline void ClearAllRefs() {
+          parent_.reset();
+          slice_.reset();
+        }
+        int64_t Start() { return start_; }
+        int64_t End() { return end_; }
+
+       private:
+        const int64_t start_;
+        const int64_t end_;
+        std::unique_ptr<Tensor> parent_;
+        // A slice taken from the first dimension of `parent`.
+        std::unique_ptr<Tensor> slice_;
+      };
 
       mutex mu_;
       std::unique_ptr<IteratorBase> input_impl_;

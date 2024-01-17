@@ -337,21 +337,21 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testCastPythinPrimitives(self):
     spec = tensor.TensorSpec([], dtypes.float32)
     ctx = trace_type.InternalCastContext()
-    value = spec._cast(1, ctx)
+    value = spec.cast(1, ctx)
     self.assertEqual(value.dtype, spec.dtype)
 
   def testCastTensor(self):
     spec = tensor.TensorSpec([], dtypes.float32)
     ctx = trace_type.InternalCastContext()
-    # _cast does not support cast int tensor to float tensor
+    # cast does not support cast int tensor to float tensor
     with self.assertRaises(TypeError):
-      _ = spec._cast(constant_op.constant(1, dtype=dtypes.int32), ctx)
+      _ = spec.cast(constant_op.constant(1, dtype=dtypes.int32), ctx)
 
   def testCastAssert(self):
     spec = tensor.TensorSpec([], dtypes.float32)
     ctx = trace_type.InternalCastContext()
     with self.assertRaises(TypeError):
-      _ = spec._cast([1, 2, 3], ctx)
+      _ = spec.cast([1, 2, 3], ctx)
 
   @parameterized.named_parameters(
       (
@@ -387,7 +387,7 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     generated_type = trace_type.from_value(
         structure, trace_type.InternalTracingContext(is_legacy_signature=True)
     )
-    flattened = generated_type._flatten()
+    flattened = generated_type.flatten()
     self.assertEqual(
         flattened,
         [

@@ -64,7 +64,7 @@ TfLiteDelegatePtr CreateTfLiteDelegate(const TfliteInferenceParams& params,
       return p;
     }
     case TfliteInferenceParams::XNNPACK: {
-      auto p = CreateXNNPACKDelegate(params.num_threads());
+      auto p = CreateXNNPACKDelegate(params.num_threads(), false);
       if (!p && error_msg) *error_msg = "XNNPACK delegate not supported.";
       return p;
     }
@@ -156,6 +156,9 @@ tools::ToolParams DelegateProviders::GetAllParams(
     case TfliteInferenceParams::XNNPACK:
       if (tool_params.HasParam("use_xnnpack")) {
         tool_params.Set<bool>("use_xnnpack", true);
+      }
+      if (tool_params.HasParam("xnnpack_force_fp16")) {
+        tool_params.Set<bool>("xnnpack_force_fp16", true);
       }
       break;
     case TfliteInferenceParams::COREML:

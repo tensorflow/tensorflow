@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
+#include "tsl/c/tsl_status_internal.h"
 
 using tensorflow::dyn_cast;
 using tensorflow::string;

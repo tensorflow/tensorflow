@@ -19,11 +19,17 @@ See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 
 # Must be separate from array_ops to avoid a cyclic dependency.
 
+from typing import Union
 import numpy as np
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
+# Import constant_tensor_conversion.py to register tensor conversion functions
+# for builtins. These functions were previously in this file, but were
+# refactored out so they can be registered at TF import time without importing
+# all of constant_op.py.
+from tensorflow.python.framework import constant_tensor_conversion  # pylint: disable=unused-import
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor as tensor_lib
@@ -66,7 +72,7 @@ def _eager_identity(tensor, ctx):
   return result
 
 
-def convert_to_eager_tensor(value, ctx, dtype=None):
+def convert_to_eager_tensor(value, ctx, dtype=None) -> ops._EagerTensorBase:
   """Converts the given `value` to an `EagerTensor`.
 
   Note that this function could return cached copies of created constants for
@@ -104,7 +110,8 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
 
 @tf_export(v1=["constant"])
 def constant_v1(
-    value, dtype=None, shape=None, name="Const", verify_shape=False):
+    value, dtype=None, shape=None, name="Const", verify_shape=False
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Creates a constant tensor.
 
   The resulting tensor is populated with values of type `dtype`, as
@@ -168,7 +175,9 @@ def constant_v1(
 
 
 @tf_export("constant", v1=[])
-def constant(value, dtype=None, shape=None, name="Const"):
+def constant(
+    value, dtype=None, shape=None, name="Const"
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Creates a constant tensor from a tensor-like object.
 
   Note: All eager `tf.Tensor` values are immutable (in contrast to
@@ -269,7 +278,8 @@ def constant(value, dtype=None, shape=None, name="Const"):
 
 
 def _constant_impl(
-    value, dtype, shape, name, verify_shape, allow_broadcast):
+    value, dtype, shape, name, verify_shape, allow_broadcast
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Implementation of constant."""
   ctx = context.context()
   if ctx.executing_eagerly():
@@ -284,7 +294,9 @@ def _constant_impl(
   return const_tensor
 
 
-def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
+def _constant_eager_impl(
+    ctx, value, dtype, shape, verify_shape
+) -> ops._EagerTensorBase:
   """Creates a constant on the current device."""
   t = convert_to_eager_tensor(value, ctx, dtype)
   if shape is None:
@@ -320,24 +332,6 @@ def is_constant(tensor_or_op):
   else:
     op = tensor_or_op
   return op.type == "Const"
-
-
-def _constant_tensor_conversion_function(v, dtype=None, name=None,
-                                         as_ref=False):
-  _ = as_ref
-  return constant(v, dtype=dtype, name=name)
-
-# Register the conversion function for the "unconvertible" types
-# as a conversion to a constant.
-tensor_conversion_registry.register_tensor_conversion_function_internal(
-    tensor_conversion_registry._CONSTANT_OP_CONVERTIBLES,  # pylint: disable=protected-access
-    _constant_tensor_conversion_function,
-    0)
-
-tensor_conversion_registry.register_tensor_conversion_function(
-    (list, tuple), _constant_tensor_conversion_function, 100)
-tensor_conversion_registry.register_tensor_conversion_function(
-    object, _constant_tensor_conversion_function, 200)
 
 
 def _tensor_shape_tensor_conversion_function(s,

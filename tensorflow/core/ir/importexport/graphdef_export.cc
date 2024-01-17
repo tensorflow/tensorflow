@@ -230,7 +230,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
 // The only dialect attributes allowed have the "tf." prefix. This is a slightly
 // faster check that an attribute is a dialect attribute.
 static bool IsDialectAttr(const NamedAttribute &attr) {
-  return attr.getName().getValue().startswith("tf.");
+  return attr.getName().getValue().starts_with("tf.");
 }
 
 // Export the given attribute list.

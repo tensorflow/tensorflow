@@ -15,12 +15,11 @@ limitations under the License.
 
 #include "lhlo/IR/lhlo_ops.h"
 #include "lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tfrt/gpu/passes/passes.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
 int main(int argc, char **argv) {
@@ -33,7 +32,6 @@ int main(int argc, char **argv) {
   tfrt::RegisterTFRTDialects(registry);
 
   mlir::registerAllPasses();
-  tfrt::gpu::RegisterPasses();
   return failed(
       mlir::MlirOptMain(argc, argv, "MHLO TFRT pass driver\n", registry));
 }

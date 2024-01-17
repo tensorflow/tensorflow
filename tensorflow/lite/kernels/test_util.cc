@@ -50,7 +50,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tsl/platform/logging.h"
 
 namespace tflite {
 
@@ -148,6 +148,21 @@ void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
       builtin_options,
       /*custom_options=*/0, CustomOptionsFormat_FLEXBUFFERS, 0,
       builder_.CreateVector<int32_t>(intermediates_)));
+}
+
+void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
+                                 BuiltinOptions2 builtin_options_2_type,
+                                 flatbuffers::Offset<void> builtin_options_2) {
+  opcodes_.push_back(CreateOperatorCode(builder_, type, 0, 0));
+  operators_.push_back(CreateOperator(
+      builder_, /*opcode_index=*/0, builder_.CreateVector<int32_t>(inputs_),
+      builder_.CreateVector<int32_t>(outputs_), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, /*custom_options=*/0,
+      CustomOptionsFormat_FLEXBUFFERS, /*mutating_variable_inputs=*/0,
+      builder_.CreateVector<int32_t>(intermediates_),
+      /*large_custom_options_offset=*/0,
+      /*large_custom_options_size=*/0, builtin_options_2_type,
+      builtin_options_2));
 }
 
 void SingleOpModel::SetCustomOp(

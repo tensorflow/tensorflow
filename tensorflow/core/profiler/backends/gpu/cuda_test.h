@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUDA_TEST_H_
 #define TENSORFLOW_CORE_PROFILER_BACKENDS_GPU_CUDA_TEST_H_
 
-#include "tensorflow/compiler/xla/backends/profiler/gpu/cuda_test.h"
+#include "xla/backends/profiler/gpu/cuda_test.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -21,7 +21,7 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "stablehlo/dialect/ChloOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.td"
+include "mhlo/IR/hlo_ops.td"
 
 def SignedIntTensor : TensorOf<[I1, I8, I16, I32, I64]>;
 def UnsignedIntTensor : TensorOf<[UI8, UI16, UI32, UI64]>;
@@ -392,7 +392,7 @@ foreach src = [TF_PreventGradientOp, TF_CheckNumericsOp] in
 def GetPrecisionConfig: NativeCodeCall<
   "GetPrecisionConfig(&$_builder)">;
 
-def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
+def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b, $grad_a, $grad_b),
           (MHLO_DotOp
           (TF_TransposeOp $a, (TF_ConstOp (Get2DTransposePerm $transpose_a))),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
@@ -617,7 +617,7 @@ def : Pat<(TF_TransposeOp:$res $arg, (ConstantLikeMatcher ElementsAttr:$permutat
 // Lowering these ops with static shape to mhlo.reshape
 foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
   def : Pat<(TfOp:$res MHLO_Tensor:$arg, $ignored),
-            (MHLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)],
+            (MHLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)], [],
             (addBenefit 2)>;
 }
 

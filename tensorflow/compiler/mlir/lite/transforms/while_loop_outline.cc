@@ -85,8 +85,8 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
       elemType.isF64())
     return true;
 
-  // I1, I8 I16, I32, I64 types are allowed.
-  if (elemType.isInteger(1) || elemType.isInteger(8) ||
+  // I1, I4, I8, I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(4) || elemType.isInteger(8) ||
       elemType.isInteger(16) || elemType.isInteger(32) ||
       elemType.isInteger(64))
     return true;

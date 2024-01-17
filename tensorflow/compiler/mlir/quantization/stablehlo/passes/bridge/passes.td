@@ -29,7 +29,7 @@ def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncO
         "Legalizes intermediate chlo ops to hlo">
     ];
 
-  let constructor = "mlir::stablehlo::createConvertMHLOQuantToIntPass()";
+  let constructor = "mlir::quant::stablehlo::createConvertMHLOQuantToIntPass()";
   let dependentDialects = ["chlo::ChloDialect", "mhlo::MhloDialect",
                            "quant::QuantizationDialect",
                            "shape::ShapeDialect",
@@ -43,7 +43,7 @@ def ConvertTFQuantOpsToMHLO : Pass<"quant-convert-tf-quant-ops-to-mhlo", "mlir::
     Convert TF Quant ops to MHLO quant ops.
   }];
 
-  let constructor = "mlir::stablehlo::CreateConvertTFQuantOpsToMHLOPass()";
+  let constructor = "mlir::quant::stablehlo::CreateConvertTFQuantOpsToMHLOPass()";
   let dependentDialects = ["TF::TensorFlowDialect", "chlo::ChloDialect",
                            "mhlo::MhloDialect", "tf_type::TFTypeDialect",
                            "quant::QuantizationDialect"];
@@ -58,6 +58,31 @@ def ConvertTFQuantTypes : Pass<"convert-tf-quant-types", "mlir::func::FuncOp"> {
     tf.Cast around the ops so that they are still valid.
   }];
 
-  let constructor = "::mlir::stablehlo::CreateConvertTFQuantTypesPass()";
+  let constructor = "mlir::quant::stablehlo::CreateConvertTFQuantTypesPass()";
   let dependentDialects = ["TF::TensorFlowDialect", "tf_type::TFTypeDialect"];
+}
+
+def VerifyQuantLegalization : Pass<"verify-quant-legalization", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TF quant ops and types have been legalized.";
+
+  let description = [{
+    Ensures that all TF quant ops and types have been legalized to HLO
+    and reports an error about which op failed to legalize. This pass
+    does not transform any ops and is checking.}];
+
+  let constructor = "mlir::quant::stablehlo::CreateVerifyQuantLegalizationPass()";
+  let dependentDialects =  ["tf_type::TFTypeDialect",
+                            "quant::QuantizationDialect"];
+
+}
+
+def OptimizeIntGraph : Pass<"optimize-int-graph", "mlir::func::FuncOp"> {
+  let summary = "Optimization patterns for quantized integer graph";
+
+  let description = [{
+    This includes patterns for merging addition of zp offset and bias.
+  }];
+
+  let constructor = "mlir::quant::stablehlo::CreateOptimizeIntGraphPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
 }

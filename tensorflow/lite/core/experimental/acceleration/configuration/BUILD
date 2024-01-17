@@ -22,9 +22,7 @@ cc_library(
 cc_library(
     name = "stable_delegate_registry",
     hdrs = ["stable_delegate_registry.h"],
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ] + experimental_acceleration_api_allowlist(),
+    visibility = experimental_acceleration_api_allowlist(),
     deps = [
         "//tensorflow/lite/core/acceleration/configuration:stable_delegate_registry",
     ],

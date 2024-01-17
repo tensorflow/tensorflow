@@ -213,7 +213,7 @@ class KerasTensor(object):
     return nest.map_structure(
         component_to_placeholder, self.type_spec, expand_composites=True)
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     return self.shape
 
   def __len__(self):

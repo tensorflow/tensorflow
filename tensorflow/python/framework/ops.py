@@ -21,7 +21,8 @@ import re
 import sys
 import threading
 import types
-from typing import Any, AnyStr, Callable, List, NoReturn, Pattern, Tuple, Type, Union, Optional
+from typing import Any, AnyStr, Callable, List, NoReturn, Optional, Pattern, Sequence, Tuple, Union
+
 from absl import app
 import numpy as np
 
@@ -79,6 +80,9 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
 
+
+# TODO(b/307794935): Remove after bug is fixed.
+is_oss = True  # Updated by copybara
 
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
@@ -234,9 +238,6 @@ def value_text(tensor, is_repr=False) -> AnyStr:
   return text
 
 
-Tensor: Type[tensor_lib.Tensor] = tensor_lib.Tensor
-
-
 @tf_export("__internal__.SymbolicTensor")
 class SymbolicTensor(pywrap_tf_session.PyTensor, tensor_lib.Tensor):
   """A symbolic tensor from a graph or tf.function."""
@@ -257,7 +258,7 @@ class SymbolicTensor(pywrap_tf_session.PyTensor, tensor_lib.Tensor):
 
 def _create_graph_constant(
     value, dtype, shape, name, verify_shape, allow_broadcast
-):
+) -> "Operation":
   """Create a graph constant and invoke constant callbacks."""
   g = get_default_graph()
   tensor_value = attr_value_pb2.AttrValue()
@@ -377,7 +378,7 @@ class _EagerTensorBase(
     view of the contents without doing a copy:
 
     >>> t = tf.constant([42])
-    >>> np.array(memoryview(t))
+    >>> np.asarray(memoryview(t))
     array([42], dtype=int32)
 
     Note that `memoryview` is only zero-copy for Tensors on CPU. If a Tensor
@@ -491,7 +492,7 @@ class _EagerTensorBase(
     # pylint: enable=protected-access
 
   @property
-  def shape(self):
+  def shape(self) -> tensor_shape.TensorShape:
     if self._tensor_shape is None:  # pylint: disable=access-member-before-definition
       # pylint: disable=protected-access
       try:
@@ -691,7 +692,7 @@ def convert_to_tensor(
     # TODO(b/268347915): Remove argument.
     ctx=None,  # pylint: disable=unused-argument
     accepted_result_types=(tensor_lib.Tensor,),
-) -> tensor_lib.Tensor:
+) -> Union[EagerTensor, SymbolicTensor]:
   """Implementation of the public convert_to_tensor."""
   # TODO(b/142518781): Fix all call-sites and remove redundant arg
   preferred_dtype = preferred_dtype or dtype_hint
@@ -700,7 +701,8 @@ def convert_to_tensor(
   )
 
 
-internal_convert_to_tensor: Callable[..., tensor_lib.Tensor] = convert_to_tensor
+internal_convert_to_tensor: Callable[
+    ..., Union[EagerTensor, SymbolicTensor]] = convert_to_tensor
 
 
 def internal_convert_n_to_tensor(
@@ -710,7 +712,7 @@ def internal_convert_n_to_tensor(
     as_ref=False,
     preferred_dtype=None,
     # TODO(b/268347915): Remove argument.
-    ctx=None) -> List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:  # pylint: disable=unused-argument
+    ctx=None) -> List[Union[EagerTensor, SymbolicTensor]]:  # pylint: disable=unused-argument
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -752,7 +754,7 @@ def internal_convert_n_to_tensor(
 
 def convert_n_to_tensor(
     values, dtype=None, name=None, preferred_dtype=None
-) ->  List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:
+) ->  List[Union[EagerTensor, SymbolicTensor]]:
   """Converts `values` to a list of `Tensor` objects.
 
   Args:
@@ -785,7 +787,7 @@ def convert_n_to_tensor(
 
 def convert_to_tensor_or_composite(
     value, dtype=None, name=None
-) -> Union[tensor_lib.Tensor, composite_tensor.CompositeTensor]:
+) -> Union[EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor]:
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
   If `value` is a `CompositeTensor` it is returned unmodified. Otherwise, it
@@ -812,7 +814,7 @@ def internal_convert_to_tensor_or_composite(
     value, dtype=None,
     name=None,
     as_ref=False
-) -> List[Union[tensor_lib.Tensor, internal.IndexedSlices]]:
+) -> Union[EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor]:
   """Converts the given object to a `Tensor` or `CompositeTensor`.
 
   If `value` is a `CompositeTensor` it is returned unmodified.  Otherwise, it
@@ -855,7 +857,7 @@ def internal_convert_n_to_tensor_or_composite(
     name=None,
     as_ref=False
 ) -> List[Union[
-    tensor_lib.Tensor, composite_tensor.CompositeTensor, type(None)]]:
+    EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:
   """Converts `values` to a list of `Tensor` or `CompositeTensor` objects.
 
   Any `CompositeTensor` objects in `values` are returned unmodified.
@@ -895,7 +897,7 @@ def internal_convert_n_to_tensor_or_composite(
 def convert_n_to_tensor_or_composite(
     values, dtype=None, name=None
 ) -> List[Union[
-    tensor_lib.Tensor, composite_tensor.CompositeTensor, type(None)]]:
+    EagerTensor, SymbolicTensor, composite_tensor.CompositeTensor, type(None)]]:
   """Converts `values` to a list of `Output` or `CompositeTensor` objects.
 
   Any `CompositeTensor` objects in `values` are returned unmodified.
@@ -1188,7 +1190,7 @@ class Operation(pywrap_tf_session.PyOperation):
     self._init(g)
     return self
 
-  def _init(self, graph):
+  def _init(self, graph: "Graph"):
     """Initializes Operation from a TF_Operation."""
     self.graph = graph
     self._original_op = None
@@ -1444,7 +1446,7 @@ class Operation(pywrap_tf_session.PyOperation):
     raise TypeError("can't convert Operation '{}' to Tensor".format(self.name))
 
   @property
-  def inputs(self):
+  def inputs(self) -> Sequence[tensor_lib.Tensor]:
     """The sequence of `Tensor` objects representing the data inputs of this op."""
     if self._inputs_val is None:
       # pylint: disable=protected-access
@@ -2053,10 +2055,6 @@ class Graph(pywrap_tf_session.PyGraph):
 
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
-    # Cache for constant results of `broadcast_gradient_args()`. The keys are
-    # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
-    # values are tuples of reduction indices: (rx, ry).
-    self._bcast_grad_args_cache = {}
     # Cache for constant results of `reduced_shape()`. The keys are pairs of
     # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
     # are pairs of tuples: (output_shape_kept_dims, tile_scaling).
@@ -2411,7 +2409,9 @@ class Graph(pywrap_tf_session.PyGraph):
 
     return graph, self.version
 
-  def as_graph_def(self, from_version=None, add_shapes=False):
+  def as_graph_def(
+      self, from_version=None, add_shapes=False, use_pybind11_proto=False
+  ):
     # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
@@ -2427,6 +2427,9 @@ class Graph(pywrap_tf_session.PyGraph):
         property had the given value.
       add_shapes: If true, adds an "_output_shapes" list attr to each node with
         the inferred shapes of each of its outputs.
+      use_pybind11_proto: If true, If true, uses the c++ pybind11_proto api to
+        get the GraphDef proto directly from c++, instead of through a TF
+        buffer. See https://github.com/pybind/pybind11_protobuf for reference.
 
     Returns:
       A
@@ -2437,7 +2440,11 @@ class Graph(pywrap_tf_session.PyGraph):
       ValueError: If the `graph_def` would be too large.
     """
     # pylint: enable=line-too-long
-    result, _ = self._as_graph_def(from_version, add_shapes)
+    if is_oss:
+      use_pybind11_proto = False
+    result, _ = self._as_graph_def(
+        from_version, add_shapes, use_pybind11_proto=use_pybind11_proto
+    )
     return result
 
   def _is_function(self, name):
@@ -2604,7 +2611,7 @@ class Graph(pywrap_tf_session.PyGraph):
       name=None,
       attrs=None,
       op_def=None,
-      compute_device=True):
+      compute_device=True) -> "Operation":
     """Creates an `Operation` in this graph.
 
     Implements `Graph.create_op()` without the overhead of the deprecation

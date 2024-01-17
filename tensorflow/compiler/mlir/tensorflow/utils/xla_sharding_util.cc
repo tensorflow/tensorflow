@@ -37,9 +37,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -244,7 +244,8 @@ mlir::LogicalResult DecodeShardingAttribute(const std::string& shard_str,
     sharding = sharding_hlo->ToProto();
     return mlir::success();
   }
-  if (report_error) llvm::errs() << sharding_hlo.status().message() << "\n";
+  if (report_error)
+    llvm::errs() << std::string(sharding_hlo.status().message()) << "\n";
   return mlir::failure();
 }
 
@@ -257,7 +258,7 @@ mlir::LogicalResult DecodeShardingAttribute(mlir::Attribute shard_attr,
   return DecodeShardingAttribute(shard_str, sharding, report_error);
 }
 
-void EncodeSharding(mlir::Operation* op, absl::string_view shard_str) {
+void EncodeSharding(mlir::Operation* op, llvm::StringRef shard_str) {
   if (!op->hasAttrOfType<mlir::StringAttr>(shard_str)) return;
 
   ::xla::OpSharding sharding;
@@ -638,10 +639,8 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
     mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder) {
-  for (const auto& result_and_index :
+  for (auto [output_index, old_parallel_execute_output] :
        llvm::enumerate(old_parallel_execute.getResults())) {
-    const auto output_index = result_and_index.index();
-    const auto old_parallel_execute_output = result_and_index.value();
     if (output_index < num_results_pre_cluster) {
       // Replace the use of those results of old parallel_execute op from host
       // with corresponding results of new parallel_execute op

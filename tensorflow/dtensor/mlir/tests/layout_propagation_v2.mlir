@@ -4,7 +4,7 @@
 // CHECK-LABEL: func @main
 func.func @main() {
     // CHECK:        "tf_device.cluster"()
-    // CHECK-NEXT:     %[[CONST_OUT:.*]] = "tf.Const"() {_global_shape = [#tf_type.shape<>], value = dense<10> : tensor<i32>}
+    // CHECK-NEXT:     %[[CONST_OUT:.*]] = "tf.Const"() <{value = dense<10> : tensor<i32>}> {_global_shape = [#tf_type.shape<>]}
     // CHECK-NEXT:     %[[DTENSOR_LAYOUT_OUT:.*]] = "tf.DTensorLayout"(%[[CONST_OUT]])
     // CHECK-SAME:     layout = #dtensor.layout<sharding_specs: mesh:CPU|x=4,y=1|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
     // CHECK-NEXT:     %[[NEG_OUT:.*]] = "tf.Neg"(%[[DTENSOR_LAYOUT_OUT]])
@@ -56,10 +56,10 @@ func.func @main() {
 func.func @main() {
    %6, %7 = "tf_device.cluster"() ({
     // CHECK:        "tf_device.cluster"()
-    // CHECK-NEXT:     %[[CONST_OUT_1:.*]] = "tf.Const"() {_global_shape = [#tf_type.shape<2x2>], value = dense<10> : tensor<2x2xi32>}
+    // CHECK-NEXT:     %[[CONST_OUT_1:.*]] = "tf.Const"() <{value = dense<10> : tensor<2x2xi32>}> {_global_shape = [#tf_type.shape<2x2>]}
     // CHECK-NEXT:     %[[DTENSOR_LAYOUT_OUT:.*]] = "tf.DTensorLayout"(%[[CONST_OUT_1]])
     // CHECK-SAME:     layout = #dtensor.layout<sharding_specs:x,y, mesh:CPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
-    // CHECK-NEXT:     %[[CONST_OUT_2:.*]] = "tf.Const"() {_global_shape = [#tf_type.shape<2x2>], value = dense<10> : tensor<2x2xi32>}
+    // CHECK-NEXT:     %[[CONST_OUT_2:.*]] = "tf.Const"() <{value = dense<10> : tensor<2x2xi32>}> {_global_shape = [#tf_type.shape<2x2>]}
     // CHECK-NEXT:     %[[DTENSOR_LAYOUT_OUT:.*]] = "tf.DTensorLayout"(%[[CONST_OUT_2]])
     // CHECK-SAME:     layout = #dtensor.layout<sharding_specs:x,unsharded, mesh:CPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3>
     %1 = "tf.Const"() {value = dense<10> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
@@ -896,7 +896,8 @@ func.func @main(%arg0: tensor<1xi32>,
                 %arg3: tensor<8x32x32x32x3xf32>) {
   // CHECK:      "tf_device.cluster"
   // CHECK:      %[[CONV_OUT:.*]] = "tf.Conv3DBackpropInput"
-  // CHECK-SAME: data_format = "NDHWC", dilations = [1, 1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1, 1]
+  // CHECK-SAME: dilations = [1, 1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1, 1]
+  // CHECK-SAME: data_format = "NDHWC"
   // CHECK:      "tf.DTensorLayout"(%[[CONV_OUT]])
   // CHECK-SAME: layout = #dtensor.layout<sharding_specs:x,unsharded,unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   %0 = "tf_device.cluster"() ({
@@ -1018,7 +1019,8 @@ func.func @main(%arg0: tensor<1xi32>,
                 %arg3: tensor<8x32x32x32x3xf32>) {
   // CHECK:      "tf_device.cluster"
   // CHECK:      %[[CONV_OUT:.*]] = "tf.Conv3DBackpropFilter"
-  // CHECK-SAME: data_format = "NDHWC", dilations = [1, 1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1, 1]
+  // CHECK-SAME: dilations = [1, 1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1, 1]
+  // CHECK-SAME: data_format = "NDHWC"
   // CHECK:      "tf.DTensorLayout"(%[[CONV_OUT]])
   // CHECK-SAME: layout = #dtensor.layout<sharding_specs:unsharded,unsharded,unsharded,unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3>
   %0 = "tf_device.cluster"() ({

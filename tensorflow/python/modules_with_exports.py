@@ -42,6 +42,9 @@ from tensorflow.python.compiler.mlir import mlir
 # Data
 from tensorflow.python import data
 
+# Distributions
+from tensorflow.python.ops import distributions
+
 # TensorFlow Debugger (tfdbg).
 from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.debug.lib import dumping_callback
@@ -81,19 +84,24 @@ from tensorflow.python.framework import ops
 # Function
 from tensorflow.core.function.trace_type import *
 
+# IO
+from tensorflow.python.lib.io import python_io
+
 # Module
 from tensorflow.python.module import module
 
 # Ops
-from tensorflow.python.ops.standard_ops import *  # pylint: disable=redefined-builtin
 from tensorflow.python.ops.random_crop_ops import *
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import bitwise_ops as bitwise
-from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import composite_tensor_ops
+from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import gen_audio_ops
 from tensorflow.python.ops import gen_boosted_trees_ops
+from tensorflow.python.ops import gen_clustering_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
+from tensorflow.python.ops import gen_filesystem_ops
+from tensorflow.python.ops import gen_map_ops
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gen_tpu_ops
@@ -109,8 +117,8 @@ from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops import while_v2
-from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.linalg.sparse import sparse
 from tensorflow.python.ops.losses import losses
@@ -155,11 +163,18 @@ from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2
 from tensorflow.python.profiler import trace
 
+# Saved Model
+from tensorflow.python.saved_model import saved_model
+
 # Session
 from tensorflow.python.client.client_lib import *
 
 # Summary
 from tensorflow.python.summary import summary
+from tensorflow.python.summary import tb_summary
+
+# TPU
+from tensorflow.python.tpu import api
 
 # Training
 from tensorflow.python.training import training as train

@@ -61,6 +61,7 @@ py_strict_library(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/trackable:base_delegate",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/types:core",

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 
@@ -138,6 +138,10 @@ int DirectPluginOpKernelContext::GetDeviceId() const {
   const auto* device = ctx_->device();
   CHECK(device->parsed_name().has_id);  // Crash OK.
   return device->parsed_name().id;
+}
+
+std::string_view DirectPluginOpKernelContext::GetDeviceName() const {
+  return ctx_->device()->name();
 }
 
 }  // namespace tensorflow

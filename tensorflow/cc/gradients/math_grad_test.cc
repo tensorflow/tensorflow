@@ -38,6 +38,7 @@ using ops::Atan2;
 using ops::BatchMatMul;
 using ops::BatchMatMulV3;
 using ops::Cast;
+using ops::ClipByValue;
 using ops::Const;
 using ops::Cumsum;
 using ops::Div;
@@ -1162,6 +1163,16 @@ TEST_F(NaryGradTest, UnsortedSegmentSumGrad) {
   auto y = UnsortedSegmentSum(scope_, x, segment_ids, /*num_segments=*/2);
   TensorShape y_shape({2, 2, 5});
   RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, ClipByValueGrad) {
+  TensorShape shape({3, 1, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = ClipByValue(scope_, x, 0.0f, 5.0f);
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  TensorShape y_shape({3, 1, 5});
+  RunTest(x, x_init_value, y, y_shape);
 }
 
 }  // namespace

@@ -106,6 +106,7 @@ class SaveOptions:
       "experimental_variable_policy",
       "experimental_custom_gradients",
       "experimental_image_format",
+      "experimental_skip_saver",
   )
 
   def __init__(
@@ -117,6 +118,7 @@ class SaveOptions:
       experimental_variable_policy=None,
       experimental_custom_gradients=True,
       experimental_image_format=False,
+      experimental_skip_saver=False,
   ):
     """Creates an object that stores options for SavedModel saving.
 
@@ -164,6 +166,10 @@ class SaveOptions:
         capable of saving models larger than the 2GB protobuf limit. Enabling
         this option will likely break compatibility with downstream consumers.
         This option is currently disabled in OSS.
+      experimental_skip_saver: If True, will prevent SavedModel from creating
+        its native checkpointing ops - this is for models that do not use
+        SavedModel's native checkpointing functionality to avoid the costs
+        associated with creating and serializing those ops.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
         namespace_whitelist
@@ -175,6 +181,7 @@ class SaveOptions:
     self.experimental_variable_policy = VariablePolicy.from_obj(
         experimental_variable_policy
     )
+    self.experimental_skip_saver = experimental_skip_saver
 
     # TODO(b/277279153): Enable image format in OSS after proto splitter is
     #  public.

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace tensorflow {
 

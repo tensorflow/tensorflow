@@ -83,6 +83,32 @@ TEST(MulTest, ConstantTensorSingleChannel) {
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, 6, 8}));
 }
 
+TEST(MulTest, DegenerateConstantTensorSingleValue) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = input.shape;
+
+  ElementwiseAttributes attr;
+  Tensor<HWC, DataType::FLOAT32> tensor_3d;
+  tensor_3d.shape.h = 1;
+  tensor_3d.shape.w = 1;
+  tensor_3d.shape.c = 1;
+  tensor_3d.id = 2;
+  tensor_3d.data = {-2};
+  attr.param = std::move(tensor_3d);
+
+  SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
+  ASSERT_OK(model.Invoke(*NewMultiplyNodeShader()));
+  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, -6, -8}));
+}
+
 TEST(MulTest, ConstantTensorLinear) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;

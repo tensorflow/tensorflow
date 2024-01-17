@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_
 #define TENSORFLOW_PYTHON_SAVED_MODEL_PYWRAP_SAVED_MODEL_METRICS_H_
 
+// placeholder for index annotation headers
 #include "pybind11/pybind11.h"  // from @pybind11
 
 namespace tensorflow {

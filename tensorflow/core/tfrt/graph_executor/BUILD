@@ -1,6 +1,7 @@
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_shared_object", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,10 +13,13 @@ package_group(
     name = "friends",
     packages = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/...",
-        # copybara:uncomment "//learning/brain/tfrt/support/...",
+        # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//learning/serving/servables/tfrt/...",
         # copybara:uncomment "//smartass/brain/inference/...",
+        # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",
+        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/...",
         # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
     ],
 )
@@ -25,6 +29,7 @@ cc_library(
     srcs = ["graph_execution_options.cc"],
     hdrs = ["graph_execution_options.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
     deps = [
         ":config",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
@@ -33,6 +38,8 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -97,14 +104,13 @@ cc_library(
         "//tensorflow/core/tfrt/mlrt/interpreter:execute",
         "//tensorflow/core/tfrt/mlrt/kernel:context",
         "//tensorflow/core/tfrt/runtime",
+        "//tensorflow/core/tfrt/runtime:step_id",
         "//tensorflow/core/tfrt/runtime:stream",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/stubs:tfrt_native_lowering_stub",
         "//tensorflow/core/tfrt/utils",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
-        "//tensorflow/tsl/platform:refcount",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -116,6 +122,9 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:refcount",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/profiler/lib:traceme",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
@@ -150,10 +159,10 @@ tf_cc_test(
         "//tensorflow/core/tfrt/mlrt/interpreter:value",
         "//tensorflow/core/tfrt/mlrt/kernel",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
         "@tf_runtime//:tensor",
         "@tf_runtime//cpp_tests:common",
     ] + if_google(
@@ -197,6 +206,10 @@ tf_proto_library(
     name = "test_config_proto",
     testonly = True,
     srcs = ["test_config.proto"],
+    visibility = if_google(
+        [":friends"],
+        ["//visibility:public"],
+    ),
 )
 
 tf_cc_test(
@@ -206,11 +219,11 @@ tf_cc_test(
         ":config",
         ":config_proto_cc",
         ":test_config_proto_cc",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:status_matchers",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

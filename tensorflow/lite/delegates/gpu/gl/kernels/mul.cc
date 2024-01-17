@@ -23,8 +23,13 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
@@ -128,22 +133,30 @@ absl::Status GenerateMultiplyConstantTensorCode(
   }
 
   if (std::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(attr.param)) {
-    bool single_channel_mask =
-        std::get<Tensor<HWC, DataType::FLOAT32>>(attr.param).shape.c == 1;
     std::string source;
-    if (single_channel_mask) {
-      source = "vec4 const_val = $hwc_buffer[gid.x, gid.y, 0]$;";
-      // Single channel mask support. Without this duplication, the rest of
-      // channels will be zeros, which will make the mul operation produce
-      // incorrect result.
-      if (ctx.input_shapes[0][3] != 1) {
-        absl::StrAppend(
-            &source,
-            "\nconst_val = vec4(const_val.x, const_val.x, const_val.x, "
-            "const_val.x);\n");
+    if (ctx.input_shapes[0][1] == 1 && ctx.input_shapes[0][2] == 1 &&
+        ctx.input_shapes[0][3] == 1) {
+      source = R"(
+        value_0 = $input_data_0[0, 0, 0]$;
+        value_0 = vec4(value_0.x, value_0.x, value_0.x, value_0.x);
+      )";
+    }
+
+    auto param_shape =
+        std::get<Tensor<HWC, DataType::FLOAT32>>(attr.param).shape;
+
+    if (param_shape.c == 1) {
+      if (param_shape.h == 1 && param_shape.w == 1) {
+        absl::StrAppend(&source, "vec4 const_val = $hwc_buffer[0, 0, 0]$;");
+      } else {
+        absl::StrAppend(&source,
+                        "vec4 const_val = $hwc_buffer[gid.x, gid.y, 0]$;");
       }
+      absl::StrAppend(&source,
+                      "const_val = vec4(const_val.x, const_val.x, const_val.x, "
+                      "const_val.x);");
     } else {
-      source = "vec4 const_val = $hwc_buffer[gid.x, gid.y, gid.z]$;";
+      source += "vec4 const_val = $hwc_buffer[gid.x, gid.y, gid.z]$;";
     }
 
     absl::StrAppend(&source, "value_0 *= const_val;");
@@ -153,9 +166,8 @@ absl::Status GenerateMultiplyConstantTensorCode(
         /*objects=*/
         {{"hwc_buffer",
           MakeReadonlyObject(
-              uint3(static_cast<int>(ctx.input_shapes[0][2]),
-                    static_cast<int>(ctx.input_shapes[0][1]),
-                    DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
+              uint3(param_shape.w, param_shape.h,
+                    DivideRoundUp(param_shape.c, 4)),
               ConvertToPHWC4(
                   std::get<Tensor<HWC, DataType::FLOAT32>>(attr.param)))}},
         /*shared_variables=*/{},

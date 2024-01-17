@@ -78,6 +78,33 @@ TF_CAPI_EXPORT extern void TF_AssignUpdateVariable(
                        TF_Tensor* value, int Op),
     TF_Status* status);
 
+// Expose higher level temporary variable operator for Pluggable vendors to
+// implement in the plugin for managing temporary variables. The API takes in
+// the context with indices for the input and value tensors. It also accepts the
+// allocator provided by pluggable vendor to do the allocate_temp of the
+// tensors. The caller takes ownership of temporary variables and is responsible
+// for freeing them with TF_DestroyTemporaryVariable. This function will return
+// an error when the following conditions are met:
+//   1. Cannot allocate a new temporary variable
+//   2. Calling plugin allocator failed
+TF_CAPI_EXPORT extern void TF_TemporaryVariable(
+    TF_OpKernelContext* ctx, TF_DataType dtype, const int64_t* dims,
+    int num_dims, TF_StringView* var_name,
+    void (*plugin_allocator)(TF_OpKernelContext*, TF_Tensor*, TF_DataType,
+                             const int64_t*, int, TF_Status*),
+    TF_Status* tf_status);
+
+// Expose higher level temporary variable operator for Pluggable vendors to
+// implement in the plugin for destroying temporary variables. The API takes in
+// the context with indices for the input and variable name. This function will
+// return an error when either of the following conditions is met:
+//   1. `input data type` is not ref type
+//   2. Cannot find temporary variable by name in arguments
+TF_CAPI_EXPORT extern void TF_DestroyTemporaryVariable(TF_OpKernelContext* ctx,
+                                                       const int index,
+                                                       TF_StringView* var_name,
+                                                       TF_Status* tf_status);
+
 // This is a helper function which acquires mutexes in-order to provide
 // thread-safe way of performing weights update during the optimizer op. It
 // returns an opaque LockHolder handle back to plugin. This handle is passed to

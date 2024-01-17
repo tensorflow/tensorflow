@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/python/util/stack_trace.h"
-#include "tensorflow/tsl/platform/mutex.h"
+#include "tsl/platform/mutex.h"
 
 struct StackFrame;  // Forward declaration.
 struct StackTrace;

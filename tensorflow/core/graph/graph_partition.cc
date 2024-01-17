@@ -32,14 +32,12 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/graph/costmodel.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -329,7 +327,8 @@ NodeDef* AddDummyConst(const PartitionOptions& opts, GraphDef* gdef,
   const Node* src = edge->src();
   Tensor tensor(DT_FLOAT, TensorShape({0}));
   NodeDef* result = gdef->add_node();
-  *status = NodeDefBuilder(opts.new_name(src->name()), "Const")
+  *status = NodeDefBuilder(opts.new_name(strings::StrCat(src->name(), "/ctrl")),
+                           "Const")
                 .Device(src->assigned_device_name())
                 .Attr("dtype", DT_FLOAT)
                 .Attr("value", tensor)
@@ -1141,6 +1140,12 @@ Status Partition(const PartitionOptions& opts, Graph* g,
       } else {
         tensor_name_attr =
             strings::StrCat("edge_", edge->id(), "_", edge->src()->name());
+      }
+
+      if (VLOG_IS_ON(1) && IsConstant(edge->src())) {
+        LOG(WARNING) << "Send/Recv constant: " << edge->src()->name() << " ["
+                     << edge->src()->assigned_device_name() << "] -> ["
+                     << edge->dst()->assigned_device_name() << "]";
       }
 
       // Need to split edge by placing matching send/recv nodes on

@@ -114,6 +114,7 @@ TEST_F(RemapperTest, FusedBatchNormNCHW) {
 }
 
 TEST_F(RemapperTest, FuseBatchNormWithRelu) {
+  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
   for (bool is_training : {true, false}) {
@@ -345,6 +346,7 @@ TEST_F(RemapperTest, FuseBatchNormGradWithReluGrad) {
 #endif  // defined(GOOGLE_CUDA) && CUDNN_VERSION >= 7402
 
 TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
+  if (IsMKLEnabled()) GTEST_SKIP() << "Fusion not available with oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
   for (bool is_training : {true, false}) {
@@ -721,14 +723,14 @@ class RemapperFuseConvWithBias : public RemapperTest {
 TEST_F(RemapperFuseConvWithBias, Conv2D_F32) { RunTest<2, DT_FLOAT>(); }
 TEST_F(RemapperFuseConvWithBias, Conv3D_F32) { RunTest<3, DT_FLOAT>(); }
 TEST_F(RemapperFuseConvWithBias, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "FuseConv2DWithBias with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithBias, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "FuseConv3DWithBias with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
@@ -876,15 +878,172 @@ TEST_F(RemapperFuseConvWithBiasAndActivation, Conv3D_F32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseConvWithBiasAndActivation, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "FuseConv2DWithBiasAndActivation with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithBiasAndActivation, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "FuseConv3DWithBiasAndActivation with bfloat16.";
+  RunTest<3, DT_BFLOAT16>();
+}
+
+class RemapperFuseConvWithBiasAndAddActivation : public RemapperTest {
+ public:
+  template <int dim, DataType DTYPE>
+  void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    using ::tensorflow::ops::Placeholder;
+
+    for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+      tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+      auto input_shape = Placeholder::Shape({8, 32, 32, 3});
+      auto filter_shape = Placeholder::Shape({1, 1, 3, 128});
+      auto bias_shape = Placeholder::Shape({128});
+      auto add_shape = ops::Placeholder::Shape({8, 32, 32, 128});
+
+      auto input_t = GenerateRandomTensor<DT_FLOAT>({8, 32, 32, 3});
+      auto filter_t = GenerateRandomTensor<DT_FLOAT>({1, 1, 3, 128});
+      auto bias_t = GenerateRandomTensor<DT_FLOAT>({128});
+      auto add_t = GenerateRandomTensor<DT_FLOAT>({8, 32, 32, 128});
+
+      float leakyrelu_alpha = 0.5;
+
+      std::vector<int> strides = {1, 1, 1, 1};
+
+      if (dim == 3) {
+        input_shape = Placeholder::Shape({8, 4, 32, 32, 3});
+        filter_shape = Placeholder::Shape({1, 1, 1, 3, 128});
+        bias_shape = Placeholder::Shape({128});
+        add_shape = ops::Placeholder::Shape({8, 4, 32, 32, 128});
+        strides = {1, 1, 1, 1, 1};
+
+        input_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 3});
+        filter_t = GenerateRandomTensor<DT_FLOAT>({1, 1, 1, 3, 128});
+        bias_t = GenerateRandomTensor<DT_FLOAT>({128});
+        add_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 128});
+      }
+
+      auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+      auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
+      auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
+      auto input_add =
+          Placeholder(s.WithOpName("input_add"), DT_FLOAT, add_shape);
+
+      if (dim == 2) {
+        auto conv =
+            ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
+        auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+        auto add = ops::Add(s.WithOpName("add_op"), input_add, bias_add);
+
+        ops::Identity fetch = [&]() -> ops::Identity {
+          auto activate = s.WithOpName("activation");
+          auto fetch = s.WithOpName("fetch");
+
+          if (activation == "Relu") {
+            return ops::Identity(fetch, ops::Relu(activate, add));
+          } else if (activation == "Relu6") {
+            return ops::Identity(fetch, ops::Relu6(activate, add));
+          } else if (activation == "Elu") {
+            return ops::Identity(fetch, ops::Elu(activate, add));
+          } else if (activation == "LeakyRelu") {
+            auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
+            return ops::Identity(fetch,
+                                 ops::internal::LeakyRelu(activate, add, attr));
+          }
+
+          return ops::Identity(fetch, bias);
+        }();
+      } else if (dim == 3) {
+        auto conv =
+            ops::Conv3D(s.WithOpName("conv"), input, filter, strides, "SAME");
+        auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+        auto add = ops::Add(s.WithOpName("add_op"), input_add, bias_add);
+
+        ops::Identity fetch = [&]() -> ops::Identity {
+          auto activate = s.WithOpName("activation");
+          auto fetch = s.WithOpName("fetch");
+
+          if (activation == "Relu") {
+            return ops::Identity(fetch, ops::Relu(activate, add));
+          } else if (activation == "Relu6") {
+            return ops::Identity(fetch, ops::Relu6(activate, add));
+          } else if (activation == "Elu") {
+            return ops::Identity(fetch, ops::Elu(activate, add));
+          } else if (activation == "LeakyRelu") {
+            auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
+            return ops::Identity(fetch,
+                                 ops::internal::LeakyRelu(activate, add, attr));
+          }
+
+          return ops::Identity(fetch, bias);
+        }();
+      }
+
+      GrapplerItem item;
+      item.fetch = {"fetch"};
+      item.feed = {{"input", input_t},
+                   {"filter", filter_t},
+                   {"bias", bias_t},
+                   {"input_add", add_t}};
+      TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+      // Place all nodes on CPU.
+      for (int i = 0; i < item.graph.node_size(); ++i) {
+        item.graph.mutable_node(i)->set_device("/device:CPU:0");
+      }
+
+      Remapper optimizer(RewriterConfig::AGGRESSIVE);
+      GraphDef output;
+      TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+      int found = 0;
+      for (const NodeDef& node : output.node()) {
+        if (node.name() == "activation") {
+          if (dim == 2) {
+            EXPECT_EQ(node.op(), "_FusedConv2D");
+          } else if (dim == 3) {
+            EXPECT_EQ(node.op(), "_FusedConv3D");
+          }
+          ASSERT_GE(node.input_size(), 3);
+          EXPECT_EQ(node.input(0), "input");
+          EXPECT_EQ(node.input(1), "filter");
+
+          EXPECT_EQ(node.attr().at("num_args").i(), 2);
+          EXPECT_EQ(node.input(2), "bias");
+
+          const auto fused_ops = node.attr().at("fused_ops").list().s();
+          ASSERT_EQ(fused_ops.size(), 3);
+          EXPECT_EQ("BiasAdd", fused_ops[0]);
+          EXPECT_EQ("Add", fused_ops[1]);
+          EXPECT_EQ(activation, fused_ops[2]);
+          found++;
+        }
+      }
+      EXPECT_EQ(found, 1);
+
+      auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+      ASSERT_EQ(tensors_expected.size(), 1);
+      auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+      ASSERT_EQ(tensors.size(), 1);
+      test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+    }
+  }
+};
+
+TEST_F(RemapperFuseConvWithBiasAndAddActivation, Conv2D_F32) {
+  RunTest<2, DT_FLOAT>();
+}
+TEST_F(RemapperFuseConvWithBiasAndAddActivation, Conv3D_F32) {
+  RunTest<3, DT_FLOAT>();
+}
+TEST_F(RemapperFuseConvWithBiasAndAddActivation, Conv2D_BF16) {
+  RunTest<2, DT_BFLOAT16>();
+}
+TEST_F(RemapperFuseConvWithBiasAndAddActivation, Conv3D_BF16) {
   RunTest<3, DT_BFLOAT16>();
 }
 
@@ -1000,14 +1159,14 @@ TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_FP32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv2D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "FuseConvWithSqueezeAndBias with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseConvWithSqueezeAndBias, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "FuseConvWithSqueezeAndBias with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
@@ -1400,10 +1559,144 @@ TEST_F(RemapperFuseSoftplusTanhMul, FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFuseSoftplusTanhMul, BF16) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Test only applicable to oneDNN.";
   RunTest<DT_BFLOAT16>();
 }
 #endif
+
+TEST_F(RemapperTest, FuseMklLayerNorm) {
+  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+  using ::tensorflow::ops::Placeholder;
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  TensorShape input_shape = TensorShape({2, 4});
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT,
+                           ops::Placeholder::Shape(input_shape));
+  auto add_const = ops::Const(s.WithOpName("add_const"), 1.0f, {2, 4});
+  auto add = ops::Add(s.WithOpName("b_add"), add_const, input);
+  auto r_indices = ops::Const(s.WithOpName("r_indices"), {1}, {1});
+  ops::Mean::Attrs attrs;
+  attrs = attrs.KeepDims(true);
+  auto mean = ops::Mean(s.WithOpName("mean"), add, r_indices, attrs);
+  auto s_diff = ops::SquaredDifference(s.WithOpName("s_diff"), mean, add);
+  auto variance = ops::Mean(s.WithOpName("variance"), s_diff, r_indices, attrs);
+  auto e_const = ops::Const(s.WithOpName("e_const"), {0.001f}, {});
+  auto add_1 = ops::Add(s.WithOpName("add_1"), e_const, variance);
+  auto rsqrt = ops::Rsqrt(s.WithOpName("rsqrt"), add_1);
+  auto g_const = ops::Const(s.WithOpName("g_const"), 1.0f, {4});
+  auto mul = ops::Mul(s.WithOpName("mul"), rsqrt, g_const);
+  auto mul_1 = ops::Mul(s.WithOpName("mul_1"), mul, add);
+  auto mul_2 = ops::Mul(s.WithOpName("mul_2"), mul, mean);
+  auto b_const = ops::Const(s.WithOpName("b_const"), 0.0f, {4});
+  auto sub = ops::Sub(s.WithOpName("sub"), b_const, mul_2);
+  auto add_2 = ops::Add(s.WithOpName("add_2"), mul_1, sub);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), add_2);
+
+  auto input_t = GenerateTensorWithSetRandom<DT_FLOAT>({2, 4});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_t}};
+  TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::ON);
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "add_2") {
+      EXPECT_EQ(node.op(), "_MklLayerNorm");
+      ASSERT_GE(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "b_add");
+      EXPECT_EQ(node.input(1), "g_const");
+      EXPECT_EQ(node.input(2), "b_const");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 1);
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-4);
+}
+
+class FuseMklLayerNormPattern : public RemapperTest {
+ public:
+  template <DataType DTYPE>
+  void RunTest() {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
+    using ::tensorflow::ops::Placeholder;
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    TensorShape input_shape = TensorShape({2, 4});
+    auto input = Placeholder(s.WithOpName("input"), DTYPE,
+                             ops::Placeholder::Shape(input_shape));
+    auto add_const = ops::Const(s.WithOpName("add_const"), 1.0f, {2, 4});
+    auto add = ops::Add(s.WithOpName("b_add"), add_const, input);
+    auto r_indices = ops::Const(s.WithOpName("r_indices"), {1}, {1});
+    ops::Mean::Attrs attrs;
+    attrs = attrs.KeepDims(true);
+    auto mean = ops::Mean(s.WithOpName("mean"), add, r_indices, attrs);
+    auto sub = ops::Sub(s.WithOpName("sub"), add, mean);
+    auto s_diff = ops::SquaredDifference(s.WithOpName("s_diff"), mean, add);
+    auto variance =
+        ops::Mean(s.WithOpName("variance"), s_diff, r_indices, attrs);
+    auto e_const = ops::Const(s.WithOpName("e_const"), {0.001f}, {});
+    auto add_1 = ops::AddV2(s.WithOpName("add_1"), e_const, variance);
+    auto rsqrt = ops::Rsqrt(s.WithOpName("rsqrt"), add_1);
+    auto mul = ops::Mul(s.WithOpName("mul"), sub, rsqrt);
+    auto g_const = ops::Const(s.WithOpName("g_const"), 1.0f, {4});
+    auto mul_1 = ops::Mul(s.WithOpName("mul_1"), g_const, mul);
+    auto b_const = ops::Const(s.WithOpName("b_const"), 0.0f, {4});
+    auto add_2 = ops::AddV2(s.WithOpName("add_2"), mul_1, b_const);
+    auto fetch = ops::Identity(s.WithOpName("fetch"), add_2);
+
+    auto input_t = GenerateTensorWithSetRandom<DTYPE>({2, 4});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}};
+    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "add_2") {
+        EXPECT_EQ(node.op(), "_MklLayerNorm");
+        ASSERT_GE(node.input_size(), 3);
+        EXPECT_EQ(node.input(0), "b_add");
+        EXPECT_EQ(node.input(1), "g_const");
+        EXPECT_EQ(node.input(2), "b_const");
+        found++;
+      }
+    }
+
+    EXPECT_EQ(found, 1);
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-4);
+  }
+};
+
+TEST_F(FuseMklLayerNormPattern, F32) { RunTest<DT_FLOAT>(); }
 
 class RemapperTensorToHashBucketTest : public RemapperTest {
  public:
@@ -1548,7 +1841,7 @@ class RemapperFuseMatMulWithBiasTest : public RemapperTest {
 
 TEST_F(RemapperFuseMatMulWithBiasTest, F16) {
   bool skip_test = false;
-#if !defined(GOOGLE_CUDA)
+#if !defined(GOOGLE_CUDA) || !TF_HIPBLASLT
   skip_test = true;
 #endif
   if (skip_test || GetNumAvailableGPUs() == 0) {
@@ -1558,13 +1851,22 @@ TEST_F(RemapperFuseMatMulWithBiasTest, F16) {
   RunTest<DT_HALF>();
 }
 
-TEST_F(RemapperFuseMatMulWithBiasTest, F32) { RunTest<DT_FLOAT>(); }
+TEST_F(RemapperFuseMatMulWithBiasTest, F32) {
+  bool skip_test = false;
+#if !defined(GOOGLE_CUDA)
+  skip_test = true;
+#endif
+  if (skip_test || GetNumAvailableGPUs() == 0) {
+    GTEST_SKIP() << "Skipping FuseMatMulWithBias with float, which is only "
+                    "supported in CUDA.";
+  }
+  RunTest<DT_FLOAT>();
+}
 
 TEST_F(RemapperFuseMatMulWithBiasTest, Bf16) {
-#if !defined(ENABLE_MKL)
-  GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                  "FuseMatMulWithBias with bfloat16.";
-#endif
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "FuseMatMulWithBias with bfloat16.";
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
@@ -1647,12 +1949,11 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
-    std::vector<string> activations = {"Relu", "Relu6", "Elu", "Tanh",
-                                       "LeakyRelu"};
-#else
     std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu"};
-#endif
+
+#if !defined(GOOGLE_CUDA)
+    activations.push_back("Tanh");
+#endif  // !GOOGLE_CUDA
 
     for (const string& activation : activations) {
       if (DTYPE == DT_HALF && activation != "Relu") continue;
@@ -1681,10 +1982,10 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           return ops::Identity(fetch, ops::Relu6(activate, bias_add));
         } else if (activation == "Elu") {
           return ops::Identity(fetch, ops::Elu(activate, bias_add));
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if !defined(GOOGLE_CUDA)
         } else if (activation == "Tanh") {
           return ops::Identity(fetch, ops::Tanh(activate, bias_add));
-#endif
+#endif  // !GOOGLE_CUDA
         } else if (activation == "LeakyRelu") {
           auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
           return ops::Identity(
@@ -1756,7 +2057,7 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F16) {
   bool skip_test = false;
-#if !defined(GOOGLE_CUDA)
+#if !defined(GOOGLE_CUDA) || !TF_HIPBLASLT
   skip_test = true;
 #endif
   if (skip_test || GetNumAvailableGPUs() == 0) {
@@ -1767,14 +2068,21 @@ TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F16) {
 }
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, F32) {
+  bool skip_test = false;
+#if !defined(GOOGLE_CUDA)
+  skip_test = true;
+#endif
+  if (skip_test || GetNumAvailableGPUs() == 0) {
+    GTEST_SKIP() << "Skipping FuseMatMulWithBiasAndActivationTest with float, "
+                    "which is only supported in CUDA.";
+  }
   RunTest<DT_FLOAT>();
 }
 
 TEST_F(RemapperFuseMatMulWithBiasAndActivationTest, Bf16) {
-#if !defined(ENABLE_MKL)
-  GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
-                  "FuseMatMulWithBiasAndActivation with bfloat16.";
-#endif
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "FuseMatMulWithBiasAndActivation with bfloat16.";
   RunTest<DT_BFLOAT16>();  // NOLINT
 }
 
@@ -2190,102 +2498,6 @@ TEST_F(RemapperTest, FuseConv3DWithBiasAndAdd) {
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
 
-TEST_F(RemapperTest, FuseConv3DWithBiasAndAddActivation) {
-  if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
-  using ::tensorflow::ops::Placeholder;
-
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
-    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-    auto input_shape = Placeholder::Shape({8, 4, 32, 32, 3});
-    auto filter_shape = Placeholder::Shape({1, 1, 1, 3, 128});
-    auto bias_shape = Placeholder::Shape({128});
-    auto add_shape = ops::Placeholder::Shape({8, 4, 32, 32, 128});
-
-    auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
-    auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
-    auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
-    auto input_add =
-        Placeholder(s.WithOpName("input_add"), DT_FLOAT, add_shape);
-
-    float leakyrelu_alpha = 0.5;
-
-    std::vector<int> strides = {1, 1, 1, 1, 1};
-    auto conv =
-        ops::Conv3D(s.WithOpName("conv"), input, filter, strides, "SAME");
-    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
-    auto add = ops::Add(s.WithOpName("add_op"), input_add, bias_add);
-
-    ops::Identity fetch = [&]() -> ops::Identity {
-      auto activate = s.WithOpName("activation");
-      auto fetch = s.WithOpName("fetch");
-
-      if (activation == "Relu") {
-        return ops::Identity(fetch, ops::Relu(activate, add));
-      } else if (activation == "Relu6") {
-        return ops::Identity(fetch, ops::Relu6(activate, add));
-      } else if (activation == "Elu") {
-        return ops::Identity(fetch, ops::Elu(activate, add));
-      } else if (activation == "LeakyRelu") {
-        auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
-        return ops::Identity(fetch,
-                             ops::internal::LeakyRelu(activate, add, attr));
-      }
-
-      return ops::Identity(fetch, bias);
-    }();
-
-    auto input_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 3});
-    auto filter_t = GenerateRandomTensor<DT_FLOAT>({1, 1, 1, 3, 128});
-    auto bias_t = GenerateRandomTensor<DT_FLOAT>({128});
-    auto add_t = GenerateRandomTensor<DT_FLOAT>({8, 4, 32, 32, 128});
-
-    GrapplerItem item;
-    item.fetch = {"fetch"};
-    item.feed = {{"input", input_t},
-                 {"filter", filter_t},
-                 {"bias", bias_t},
-                 {"input_add", add_t}};
-    TF_ASSERT_OK(s.ToGraphDef(&item.graph));
-
-    // Place all nodes on CPU.
-    for (int i = 0; i < item.graph.node_size(); ++i) {
-      item.graph.mutable_node(i)->set_device("/device:CPU:0");
-    }
-
-    Remapper optimizer(RewriterConfig::AGGRESSIVE);
-    GraphDef output;
-    TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-
-    int found = 0;
-    for (const NodeDef& node : output.node()) {
-      if (node.name() == "activation") {
-        EXPECT_EQ(node.op(), "_FusedConv3D");
-        ASSERT_GE(node.input_size(), 3);
-        EXPECT_EQ(node.input(0), "input");
-        EXPECT_EQ(node.input(1), "filter");
-
-        EXPECT_EQ(node.attr().at("num_args").i(), 2);
-        EXPECT_EQ(node.input(2), "bias");
-
-        const auto fused_ops = node.attr().at("fused_ops").list().s();
-        ASSERT_EQ(fused_ops.size(), 3);
-        EXPECT_EQ("BiasAdd", fused_ops[0]);
-        EXPECT_EQ("Add", fused_ops[1]);
-        EXPECT_EQ(activation, fused_ops[2]);
-        found++;
-      }
-    }
-    EXPECT_EQ(found, 1);
-
-    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
-    ASSERT_EQ(tensors_expected.size(), 1);
-    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
-    ASSERT_EQ(tensors.size(), 1);
-    test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
-  }
-}
-
 // Conv2D + Add {6,} + Conv2D + Biasadd fusion.
 TEST_F(RemapperTest, FuseConv2DWithSemanticAdd) {
   if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to MKL.";
@@ -2455,8 +2667,8 @@ TEST_F(RemapperFusePadConv3D, Conv3D_FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFusePadConv3D, Conv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "RemapperFusePadConv3D with bfloat16.";
   RunTest<DT_BFLOAT16>();
 }
@@ -2579,8 +2791,8 @@ TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_FP32) {
   RunTest<DT_FLOAT>();
 }
 TEST_F(RemapperFusePadWithFusedConv3D, FusedConv3D_BF16) {
-  if (!IsMKLEnabled())
-    GTEST_SKIP() << "Intel MKL with bfloat16 support is not enabled, skipping "
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
                     "RemapperFusePadWithFusedConv3D with bfloat16.";
   RunTest<DT_BFLOAT16>();
 }
@@ -2648,7 +2860,12 @@ class RemapperLeakyReluTest : public GrapplerTest {
 };
 
 TEST_F(RemapperLeakyReluTest, F32) { RunTest<DT_FLOAT>(); }
-TEST_F(RemapperLeakyReluTest, BF16) { RunTest<DT_BFLOAT16>(); }
+TEST_F(RemapperLeakyReluTest, BF16) {
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "RemapperLeakyRelu with bfloat16.";
+  RunTest<DT_BFLOAT16>();
+}
 
 class RemapperFuseFusedConvWithFusedActivation : public RemapperTest {
  public:
@@ -2793,12 +3010,18 @@ TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv2D_F32) {
   RunTest<2, DT_FLOAT>();
 }
 TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv2D_BF16) {
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "RemapperFuseFusedConvWithFusedActivation with bfloat16.";
   RunTest<2, DT_BFLOAT16>();
 }
 TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv3D_F32) {
   RunTest<3, DT_FLOAT>();
 }
 TEST_F(RemapperFuseFusedConvWithFusedActivation, Conv3D_BF16) {
+  if (!IsMKLEnabled() || !IsDataTypeSupportedByOneDNNOnThisCPU(DT_BFLOAT16))
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "RemapperFuseFusedConvWithFusedActivation with bfloat16.";
   RunTest<3, DT_BFLOAT16>();
 }
 

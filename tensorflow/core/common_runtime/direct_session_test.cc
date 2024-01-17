@@ -2585,6 +2585,8 @@ void TestFeedAndFetchTensorsInDeviceMemoryForAllDataTypes(
       case DT_INT8:
       case DT_UINT16:
       case DT_UINT8:
+      case DT_INT4:
+      case DT_UINT4:
         TestFeedAndFetchTensorsInDeviceMemory(opts, dtype);
         break;
       default:

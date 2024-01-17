@@ -20,9 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/regexp.h"
-#include "tensorflow/tsl/platform/strcat.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/regexp.h"
+#include "tsl/platform/strcat.h"
 
 namespace tensorflow {
 

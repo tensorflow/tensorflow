@@ -21,6 +21,7 @@ import gzip
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -1220,3 +1221,20 @@ else:
   SqlDataset = SqlDatasetV1
   make_batched_features_dataset = make_batched_features_dataset_v1
   make_csv_dataset = make_csv_dataset_v1
+
+
+def _tf2_callback():
+  global CsvDataset, SqlDataset, make_batched_features_dataset, make_csv_dataset
+  if tf2.enabled():
+    CsvDataset = CsvDatasetV2
+    SqlDataset = SqlDatasetV2
+    make_batched_features_dataset = make_batched_features_dataset_v2
+    make_csv_dataset = make_csv_dataset_v2
+  else:
+    CsvDataset = CsvDatasetV1
+    SqlDataset = SqlDatasetV1
+    make_batched_features_dataset = make_batched_features_dataset_v1
+    make_csv_dataset = make_csv_dataset_v1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)

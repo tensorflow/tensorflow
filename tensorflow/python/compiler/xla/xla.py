@@ -167,7 +167,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
         logging.warning('... and %d more',
                         len(self._unsupported_ops) - _MAX_WARNING_LINES)
 
-  def _RemoveExternalControlEdges(self, op):
+  def _RemoveExternalControlEdges(self, op: ops.Operation):
     """Remove any external control dependency on this op."""
     internal_control_inputs = []
     external_control_inputs = []
@@ -191,7 +191,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
     # pylint: enable=protected-access
     return internal_control_inputs, external_control_inputs
 
-  def AddOp(self, op):
+  def AddOp(self, op: ops.Operation):
     """Create op in XLACompileContext and notifies outer context recursively."""
     # pylint: disable=protected-access
     if op.type in _DENYLISTED_OPS:
@@ -281,7 +281,7 @@ class XLACompileContext(control_flow_ops.XLAControlFlowContext):
 
     return result
 
-  def AddInnerOp(self, op):
+  def AddInnerOp(self, op: ops.Operation):
     self.AddOp(op)
     if self._outer_context:
       self._outer_context.AddInnerOp(op)

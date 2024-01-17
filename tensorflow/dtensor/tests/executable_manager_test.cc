@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace dtensor {

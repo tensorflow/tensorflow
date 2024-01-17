@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 // TODO(b/139060984): After all filesystems are converted, all calls to
 // methods from `FileSystem` will have to be replaced to calls to private

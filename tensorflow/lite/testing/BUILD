@@ -233,7 +233,7 @@ cc_library(
     hdrs = ["split.h"],
     deps = [
         "//tensorflow/lite:string",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -290,8 +290,8 @@ cc_library(
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/evaluation:utils",
-        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ] + select({
         "//tensorflow:ios": [],
         "//conditions:default": ["//tensorflow/lite/delegates/flex:delegate"],
@@ -365,7 +365,7 @@ cc_library(
         "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
-        "//tensorflow/tsl/platform:logging",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -482,8 +482,6 @@ cc_library(
         # "//learning/brain/mobile/lite/brella_benchmark:__subpackages__",
         # copybara:uncomment_end
         "//tensorflow/lite/delegates/flex:__subpackages__",
-        "//tensorflow/lite/java/src/main/native:__subpackages__",
-        "//tensorflow/lite/testing:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",
     ],
     deps = select({
@@ -611,8 +609,8 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -651,7 +649,14 @@ pybind_extension(
         "string_util_wrapper.cc",
     ],
     hdrs = ["string_util.h"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy:numpy",
+    ],
+    enable_stub_generation = True,
     features = ["-use_header_modules"],
+    pytype_srcs = [
+        "_pywrap_string_util.pyi",
+    ],
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",

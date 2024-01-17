@@ -16,13 +16,14 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -84,7 +85,7 @@ class RaggedRangeOp : public OpKernel {
       if (((delta > 0) && (limit < start)) ||
           ((delta < 0) && (limit > start))) {
         size = 0;
-      } else if (std::is_integral<T>::value) {
+      } else if constexpr (std::is_integral<T>::value) {
         // The following is copied from tensorflow::RangeOp::Compute().
         size = Eigen::divup(Eigen::numext::abs(limit - start),
                             Eigen::numext::abs(delta));

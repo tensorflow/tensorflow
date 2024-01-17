@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for vectorization of math kernels."""
+import itertools
 
 from absl.testing import parameterized
 
@@ -494,16 +495,26 @@ class MathTest(PForTestCase, parameterized.TestCase):
           self._test_loop_fn(loop_fn, 2)
 
   @parameterized.parameters(
-      (math_ops.unsorted_segment_sum,), (math_ops.unsorted_segment_min,),
-      (math_ops.unsorted_segment_max,), (math_ops.unsorted_segment_prod,))
-  def test_unsorted_segment_reduction(self, reduction_op):
-    t = random_ops.random_uniform([3, 3, 2])
+      *itertools.product(
+          (
+              math_ops.unsorted_segment_mean,
+              math_ops.unsorted_segment_sum,
+              math_ops.unsorted_segment_min,
+              math_ops.unsorted_segment_max,
+              math_ops.unsorted_segment_prod,
+          ),
+          (
+              [[0, 0, 2], [0, 1, 2], [2, 2, 2]],
+              [[0, 0, 2, -1], [0, 1, 2, -1], [2, 2, 2, -1]],
+          ),
+      )
+  )
+  def test_unsorted_segment_reduction(self, reduction_op, indices):
+    t = random_ops.random_uniform(constant_op.constant(indices).shape + [2])
     for segment_ids_dtype in (dtypes.int32, dtypes.int64):
+      segment_ids = constant_op.constant(indices, dtype=segment_ids_dtype)
       for num_segments_dtype in (dtypes.int32, dtypes.int64):
-        segment_ids = constant_op.constant([[0, 0, 2], [0, 1, 2], [2, 2, 2]],
-                                           dtype=segment_ids_dtype)
         num_segments = constant_op.constant(3, dtype=num_segments_dtype)
-
         # pylint: disable=cell-var-from-loop
         def loop_fn(i):
           data = array_ops.gather(t, i)

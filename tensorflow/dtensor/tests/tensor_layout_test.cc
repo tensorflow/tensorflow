@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace dtensor {

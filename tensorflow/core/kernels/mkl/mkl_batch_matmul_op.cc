@@ -25,7 +25,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL)
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -49,7 +49,9 @@ template <typename Device, typename Tlhs, typename Trhs, typename Toutput,
 class BatchMatMulMkl : public OpKernel {
  public:
   explicit BatchMatMulMkl(OpKernelConstruction* context) : OpKernel(context) {
-    if (context && context->HasAttr("transpose_a")) {
+    if (!context) return;
+
+    if (context->HasAttr("transpose_a")) {
       // This is needed for using BatchMatMulMkl as the super class of
       // MklMatMulOp (below) whose context has a transpose_a attribute which is
       // effectively the same as adj_x_
@@ -58,7 +60,7 @@ class BatchMatMulMkl : public OpKernel {
       OP_REQUIRES_OK(context, context->GetAttr("adj_x", &adj_x_));
     }
 
-    if (context && context->HasAttr("transpose_b")) {
+    if (context->HasAttr("transpose_b")) {
       // This is needed for using BatchMatMulMkl as the super class of
       // MklMatMulOp (below) whose context has a transpose_b attribute which is
       // effectively the same as adj_y_
@@ -294,6 +296,10 @@ class FusedBatchMatMulMkl
       }
       if (this->fused_ops_.size() > 1 && this->fused_ops_.at(1) == "Add") {
         auto add_shape = ctx->input(3).shape();
+        OP_REQUIRES(ctx, add_shape.dims() == 4,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Add fusion expects add shape to have 4 dims, but got ",
+                        add_shape.dims())));
         memory::dims add_dims = {add_shape.dim_size(0), add_shape.dim_size(1),
                                  add_shape.dim_size(2), add_shape.dim_size(3)};
         params.post_op_params.push_back(
@@ -358,6 +364,9 @@ TF_CALL_float(REGISTER_FUSED_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_bfloat16(REGISTER_FUSED_BATCH_MATMUL_MKL);
+TF_CALL_half(REGISTER_BATCH_MATMUL_MKL);
+TF_CALL_half(REGISTER_BATCH_MATMUL_MKL_V2);
+TF_CALL_half(REGISTER_FUSED_BATCH_MATMUL_MKL);
 
 #ifdef DNNL_AARCH64_USE_ACL
 TF_CALL_float(REGISTER_MATMUL_MKL);

@@ -25,11 +25,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
+#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/tpu/tpu_executor.h"
+#include "xla/stream_executor/tpu/tpu_executor_interface.h"
+#include "xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -75,7 +75,8 @@ Status TPUReshardVariablesOpKernel::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(reshard_util::CheckIsValidKey(*new_format_key));
 
   TF_RET_CHECK(context->input_dtype(num_vars_ + 1) == DT_RESOURCE);
-  const ResourceHandle& handle = HandleFromInput(context, num_vars_ + 1);
+  ResourceHandle handle;
+  TF_RETURN_IF_ERROR(HandleFromInput(context, num_vars_ + 1, &handle));
   core::RefCountPtr<Var> format_state_var;
   TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
       context, handle, &format_state_var, [new_format_key](Var** ptr) {
@@ -173,7 +174,8 @@ Status TPUReshardVariablesOpKernel::DoTpuExecute(
   std::vector<VariableInfo> variables;
   for (int i = 0; i < num_vars_; ++i) {
     TF_RET_CHECK(context->input_dtype(i) == DT_RESOURCE);
-    const ResourceHandle& handle = HandleFromInput(context, i);
+    ResourceHandle handle;
+    TF_RETURN_IF_ERROR(HandleFromInput(context, i, &handle));
     Var* variable;
     TF_RETURN_IF_ERROR(LookupResource(context, handle, &variable));
     variables.push_back(VariableInfo(i, handle.name(), variable));

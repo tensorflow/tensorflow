@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/cast_op_impl.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -160,6 +161,10 @@ Status CpuCastOp::Prepare() {
     work_ = GetCpuCastFromFloat8e5m2(dst_dtype_);
   } else if (src_dtype_ == DT_FLOAT8_E4M3FN) {
     work_ = GetCpuCastFromFloat8e4m3fn(dst_dtype_);
+  } else if (src_dtype_ == DT_INT4) {
+    work_ = GetCpuCastFromInt4(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT4) {
+    work_ = GetCpuCastFromUint4(dst_dtype_);
   }
 
   // TODO(sesse): If CPU casting to or from Eigen::half ever becomes a
@@ -218,8 +223,11 @@ class GpuCastOp : public CastOpBase {
       work_ = GetGpuCastFromFloat8e5m2(dst_dtype_);
     } else if (src_dtype_ == DT_FLOAT8_E4M3FN) {
       work_ = GetGpuCastFromFloat8e4m3fn(dst_dtype_);
+    } else if (src_dtype_ == DT_INT4) {
+      work_ = GetGpuCastFromInt4(dst_dtype_);
+    } else if (src_dtype_ == DT_UINT4) {
+      work_ = GetGpuCastFromUint4(dst_dtype_);
     }
-
     return work_ == nullptr ? Unimplemented() : OkStatus();
   }
 };
@@ -291,6 +299,46 @@ REGISTER_CAST_GPU(float8_e4m3fn, bfloat16);
 REGISTER_CAST_GPU(float8_e4m3fn, Eigen::half);
 REGISTER_CAST_GPU(float8_e4m3fn, float8_e5m2);
 REGISTER_CAST_GPU(float8_e4m3fn, float8_e4m3fn);
+
+REGISTER_CAST_GPU(int4, int4);
+REGISTER_CAST_GPU(int4, int8);
+REGISTER_CAST_GPU(int4, int16);
+REGISTER_CAST_GPU(int4, int32);
+REGISTER_CAST_GPU(int4, int64_t);
+REGISTER_CAST_GPU(int4, uint4);
+REGISTER_CAST_GPU(int4, uint8);
+REGISTER_CAST_GPU(int4, uint16);
+REGISTER_CAST_GPU(int4, uint32);
+REGISTER_CAST_GPU(int4, uint64_t);
+
+REGISTER_CAST_GPU(int8, int4);
+REGISTER_CAST_GPU(int16, int4);
+REGISTER_CAST_GPU(int32, int4);
+REGISTER_CAST_GPU(int64_t, int4);
+REGISTER_CAST_GPU(uint4, int4);
+REGISTER_CAST_GPU(uint8, int4);
+REGISTER_CAST_GPU(uint16, int4);
+REGISTER_CAST_GPU(uint32, int4);
+REGISTER_CAST_GPU(uint64_t, int4);
+
+REGISTER_CAST_GPU(uint4, int8);
+REGISTER_CAST_GPU(uint4, int16);
+REGISTER_CAST_GPU(uint4, int32);
+REGISTER_CAST_GPU(uint4, int64_t);
+REGISTER_CAST_GPU(uint4, uint4);
+REGISTER_CAST_GPU(uint4, uint8);
+REGISTER_CAST_GPU(uint4, uint16);
+REGISTER_CAST_GPU(uint4, uint32);
+REGISTER_CAST_GPU(uint4, uint64_t);
+
+REGISTER_CAST_GPU(int8, uint4);
+REGISTER_CAST_GPU(int16, uint4);
+REGISTER_CAST_GPU(int32, uint4);
+REGISTER_CAST_GPU(int64_t, uint4);
+REGISTER_CAST_GPU(uint8, uint4);
+REGISTER_CAST_GPU(uint16, uint4);
+REGISTER_CAST_GPU(uint32, uint4);
+REGISTER_CAST_GPU(uint64_t, uint4);
 
 #undef REGISTER_CAST_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -24,6 +24,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -53,16 +55,18 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status_to_from_proto.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/status.pb.h"
+#include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_to_from_proto.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -377,8 +381,6 @@ StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
 
 StatusOr<bool> DataServiceWorkerImpl::DisableCompressionAtRuntime(
     const std::string& dataset_id) const {
-  DisableCompressionAtRuntimeRequest request;
-  request.set_dataset_id(dataset_id);
   DisableCompressionAtRuntimeResponse response;
 
   absl::Time deadline =
@@ -389,16 +391,12 @@ StatusOr<bool> DataServiceWorkerImpl::DisableCompressionAtRuntime(
   };
   TF_RETURN_IF_ERROR(grpc_util::Retry(
       [&]() {
-        return dispatcher_->DisableCompressionAtRuntime(request, response);
+        return dispatcher_->DisableCompressionAtRuntime(
+            dataset_id, /*disable_compression_at_runtime=*/false, response);
       },
       should_retry, "Disable compression at runtime.",
       absl::ToUnixMicros(deadline)));
 
-  if (response.not_enough_information()) {
-    return errors::Internal(
-        "Either compression should not have been set or a runtime compression "
-        "disabling decision should've been made.");
-  }
   if (response.no_compression_to_disable()) {
     return false;
   }
@@ -413,6 +411,11 @@ DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
   TF_ASSIGN_OR_RETURN(bool compression_disabled_at_runtime,
                       DisableCompressionAtRuntime(task_def.dataset_id()));
   GraphDef graph = dataset_def.graph();
+  if (VLOG_IS_ON(1)) {
+    std::string prefix = absl::StrCat(task_def.dataset_id(), "_", worker_uid_);
+    DumpGraphDefToFile(absl::StrCat(prefix, "-prerewrite_GraphDef"), graph);
+    DumpProtoToFile(absl::StrCat(prefix, "-prerewrite_TaskDef"), task_def);
+  }
   if (compression_disabled_at_runtime) {
     RemoveCompressionMapRewriter remove_compression_map_rewriter;
     TF_ASSIGN_OR_RETURN(
@@ -613,11 +616,14 @@ std::vector<ActiveTask> DataServiceWorkerImpl::GetActiveTasks() const
       mutex_lock task_lock(task->mu);
       task_initialized = task->initialized;
     }
-    if (task_initialized && task->task_runner != nullptr) {
-      std::optional<double> processing_time_nsec =
-          task->task_runner->GetProcessingTimeNsec();
-      active_task.set_processing_time_nsec(
-          processing_time_nsec ? processing_time_nsec.value() : 0.0);
+
+    if (task_initialized && task->task_runner != nullptr &&
+        task->task_runner->model() != nullptr) {
+      std::shared_ptr<model::Model> model = task->task_runner->model();
+      double processing_time_nsec = model->ComputeSnapshotProcessingTimeNsec();
+      if (processing_time_nsec > 0) {
+        active_task.set_processing_time_nsec(processing_time_nsec);
+      }
     }
     active_tasks.push_back(std::move(active_task));
   }

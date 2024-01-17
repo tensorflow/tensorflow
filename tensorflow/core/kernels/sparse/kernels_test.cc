@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/sparse/kernels.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace {

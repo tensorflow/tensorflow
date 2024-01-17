@@ -24,7 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {

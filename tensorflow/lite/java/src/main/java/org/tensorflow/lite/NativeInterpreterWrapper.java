@@ -194,7 +194,6 @@ class NativeInterpreterWrapper implements AutoCloseable {
       run(inputsList, outputsWithOutputIndex);
       return;
     }
-
     for (Map.Entry<String, Object> input : inputs.entrySet()) {
       TensorImpl tensor = getInputTensor(input.getKey(), signatureKey);
       int[] newShape = tensor.getInputShapeIfDifferent(input.getValue());
@@ -401,12 +400,11 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
     NativeSignatureRunnerWrapper signatureRunnerWrapper = getSignatureRunnerWrapper(signatureKey);
     int subgraphIndex = signatureRunnerWrapper.getSubgraphIndex();
-    if (subgraphIndex > 0) {
-      return signatureRunnerWrapper.getInputTensor(inputName);
+    if (subgraphIndex == 0) {
+      int inputIndex = signatureRunnerWrapper.getInputIndex(inputName);
+      return getInputTensor(inputIndex);
     }
-
-    int inputIndex = signatureRunnerWrapper.getInputIndex(inputName);
-    return getInputTensor(inputIndex);
+    return signatureRunnerWrapper.getInputTensor(inputName);
   }
 
   /** Gets the keys of SignatureDefs available in the model, if any. */
@@ -459,12 +457,11 @@ class NativeInterpreterWrapper implements AutoCloseable {
     }
     NativeSignatureRunnerWrapper signatureRunnerWrapper = getSignatureRunnerWrapper(signatureKey);
     int subgraphIndex = signatureRunnerWrapper.getSubgraphIndex();
-    if (subgraphIndex > 0) {
-      return signatureRunnerWrapper.getOutputTensor(outputName);
+    if (subgraphIndex == 0) {
+      int outputIndex = signatureRunnerWrapper.getOutputIndex(outputName);
+      return getOutputTensor(outputIndex);
     }
-
-    int outputIndex = signatureRunnerWrapper.getOutputIndex(outputName);
-    return getOutputTensor(outputIndex);
+    return signatureRunnerWrapper.getOutputTensor(outputName);
   }
 
   /** Gets the number of ops in the execution plan. */

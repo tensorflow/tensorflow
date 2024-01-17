@@ -23,7 +23,7 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -249,6 +249,7 @@ class StatefulMultinomialOp : public MultinomialOp<Device, T, OutputType> {
                           StatefulMultinomialOp<CPUDevice, TYPE, int64>);
 
 TF_CALL_half(REGISTER);
+TF_CALL_bfloat16(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 #undef REGISTER
@@ -317,6 +318,7 @@ class StatelessMultinomialOp : public MultinomialOp<Device, T, OutputType> {
                           StatelessMultinomialOp<CPUDevice, TYPE, int64>);
 
 TF_CALL_half(REGISTER);
+TF_CALL_bfloat16(REGISTER);
 TF_CALL_float(REGISTER);
 TF_CALL_double(REGISTER);
 #undef REGISTER

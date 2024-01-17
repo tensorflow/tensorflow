@@ -139,7 +139,7 @@ tf_cc_test(
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:range_dataset_op",
         "//tensorflow/core/kernels/data:shard_dataset_op",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -243,6 +243,7 @@ tf_kernel_library(
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
@@ -309,7 +310,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:split_utils",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -364,7 +365,7 @@ tf_kernel_library(
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -465,7 +466,7 @@ tf_kernel_library(
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -484,8 +485,8 @@ tf_kernel_library(
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:initializable_lookup_table",
         "//tensorflow/core/kernels:lookup_util",
-        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -546,7 +547,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -661,7 +662,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:random_seed_ops",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -706,7 +707,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:range_dataset_op",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -844,7 +845,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -872,11 +873,11 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/framework:dataset_options_proto_cc",
-        "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:mutex",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:strcat",
-        "//tensorflow/tsl/platform:thread_annotations",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -888,7 +889,7 @@ tf_kernel_library(
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -907,7 +908,7 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -964,6 +965,7 @@ tf_kernel_library(
         ":to_tf_record_op",
         ":unbatch_dataset_op",
         ":unique_dataset_op",
+        "//tensorflow/core/data/service/snapshot:list_snapshot_chunks_dataset_op",
         "//tensorflow/core/data/service/snapshot:snapshot_chunk_dataset_op",
     ] + select({
         "//tensorflow:fuchsia": [],

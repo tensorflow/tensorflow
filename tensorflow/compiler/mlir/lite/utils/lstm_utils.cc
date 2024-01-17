@@ -866,8 +866,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
 
   // All the rest: states, device.
   for (int i = 2; i < 5; ++i) {
-    auto result_type =
-        func_op.getCallableResults()[i].dyn_cast<RankedTensorType>();
+    auto result_type = func_op.getResultTypes()[i].dyn_cast<RankedTensorType>();
     outputs.push_back(CreatTfF32ConstOp(builder, result_type.getShape(), 0.0f,
                                         func_op.getLoc()));
     output_types.push_back(result_type);

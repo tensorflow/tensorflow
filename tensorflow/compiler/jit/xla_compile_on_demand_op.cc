@@ -40,23 +40,24 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/tf_pjrt_client.h"
-#include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/tf_pjrt_client.h"
+#include "xla/service/executable.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -199,11 +200,15 @@ Status XlaCompileOnDemandOp::Compile(
   ResourceMgr* rm = ctx->resource_manager();
   CHECK(rm);
 
+  TF_ASSIGN_OR_RETURN(DeviceType compilation_device_type,
+                      GetCompilationDeviceType(platform_info_.device_type()));
+
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaDeviceCompiler>(
       rm->default_container(), "xla_device_compiler", xla_device_compiler,
       [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(ctx->device(), ctx->function_library(),
-                                      platform_info_, xla_device_compiler);
+                                      platform_info_, compilation_device_type,
+                                      xla_device_compiler);
       }));
 
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(

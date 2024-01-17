@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_PYTHON_SAVED_MODEL_LOAD_AND_RUN_H_
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_PYTHON_SAVED_MODEL_LOAD_AND_RUN_H_
 
+#include <Python.h>
+
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -32,12 +34,13 @@ tensorflow::StatusOr<std::unique_ptr<SavedModel>> LoadSavedModel(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags);
 
-tensorflow::Status Run(
-    SavedModel& saved_model,
-    const tensorflow::tfrt_stub::GraphExecutionRunOptions& run_options,
-    absl::string_view name, absl::Span<const tensorflow::Tensor> inputs,
-    std::vector<tensorflow::Tensor>* outputs);
+std::vector<tensorflow::Tensor> RunConvertor(PyObject* args);
 
+tensorflow::Status Run(
+    SavedModel* saved_model,
+    const tensorflow::tfrt_stub::GraphExecutionRunOptions& run_options,
+    absl::string_view name, const std::vector<tensorflow::Tensor>& inputs,
+    std::vector<tensorflow::Tensor>* outputs);
 }  // namespace tensorflow::tfrt_stub
 
 #endif  // TENSORFLOW_CORE_TFRT_SAVED_MODEL_PYTHON_SAVED_MODEL_LOAD_AND_RUN_H_

@@ -37,7 +37,7 @@ class CheckAcceptedOpsPass
 
   explicit CheckAcceptedOpsPass(
       const std::vector<std::string> &optional_accepted_dialects)
-      : accepted_dialects_(GetAcceptedDialects()),
+      : accepted_dialects_(GetAcceptedStableHLODialects()),
         optional_accepted_dialects_(optional_accepted_dialects) {}
 
   // Check if TF dialect ops exist over the module.

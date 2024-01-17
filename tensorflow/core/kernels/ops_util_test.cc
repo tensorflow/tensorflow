@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/ops_util.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/test.h"

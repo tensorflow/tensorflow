@@ -121,8 +121,12 @@ struct TfrtCompileOptions {
   // supposed to be turned on by default.
   bool sink_in_invariant_ops = false;
 
-  // If true, tf.While's iterations will be parallelized on a best-effort
-  // basis. This is currently experimental.
+  // This flag behaves differently for TFRT and MLRT.
+  // For TFRT, if true, tf.While's iterations will be parallelized on a
+  // best-effort basis. This is currently experimental. MLRT attempts to convert
+  // tf.while to tf_mlrt.map_fn regardless of this flag. For tf.While that
+  // cannot be onverted tf_mlrt.map_fn, MLRT try to parallerize tf.while's
+  // iterations on a best-effort basis.
   bool enable_while_parallel_iterations = false;
 
   // The cost threshold to decide whether a sequence of operations is cheap, and
@@ -131,12 +135,6 @@ struct TfrtCompileOptions {
   // be positive integers, setting the threshold to 1 makes all operations
   // expensive.
   uint64_t cost_threshold = 1;
-
-  // The threshold to decie whether an inline execution sequence is too large
-  // even if the operations forms a sequential data dependency as it may occupy
-  // the CPU core for too long. In that case, they are broken into multiple
-  // sequences. The default is -1 which means no limit.
-  int64_t upper_cost_threshold = -1;
 
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
@@ -147,6 +145,22 @@ struct TfrtCompileOptions {
 
   // Whether to compile to sync TFRT dialect.
   bool compile_to_sync_tfrt_dialect = false;
+
+  // Whether to use gpurt.compile_and_execute for GPU.
+  // TODO(b/294895431): Remove the flag and default to the fused op.
+  bool use_gpu_compile_and_execute_op = false;
+
+  // If true, MLIR module will be serialized to aot_packages.
+  bool serialize_mlir_module_to_aot_packages = false;
+
+  // Serialized MLIR module file under aot_packages.
+  std::string aot_mlir_module_file;
+
+  // If true, BEF will be serialized to aot_packages.
+  bool serialize_bef_to_aot_packages = false;
+
+  // Serialized BEF file under aot_packages.
+  std::string aot_bef_file;
 };
 
 std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);

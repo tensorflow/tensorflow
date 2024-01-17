@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_SETROUND_H_
 
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/tsl/platform/setround.h"
+#include "tsl/platform/setround.h"
 
 namespace tensorflow {
 namespace port {

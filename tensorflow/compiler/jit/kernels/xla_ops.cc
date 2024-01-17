@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/pjrt_compile_util.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
@@ -47,11 +48,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -66,7 +67,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 // OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
 // in error case, it returns RET instead of void.
@@ -131,7 +132,8 @@ class ExecutableClosure {
   ResourceVarsSnapshot resource_var_snapshots_;
   int num_constant_args_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutableClosure);
+  ExecutableClosure(const ExecutableClosure&) = delete;
+  void operator=(const ExecutableClosure&) = delete;
 };
 
 // This maintains a mapping from a globally unique ID to ExecutableClosure
@@ -172,7 +174,8 @@ class ExecutableClosureStore {
   absl::flat_hash_map<KeyT, ExecutableClosure<ExecutableType, ClientType>>
       closures_ TF_GUARDED_BY(mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutableClosureStore);
+  ExecutableClosureStore(const ExecutableClosureStore&) = delete;
+  void operator=(const ExecutableClosureStore&) = delete;
 };
 
 using XlaExecutableClosure =
@@ -366,18 +369,6 @@ GetXlaCompilerArgsAndSnapshotVariables(
   return result;
 }
 
-XlaCompiler::CompileOptions GenerateCompileOptions(
-    bool has_ref_vars, bool may_alias_resource_update) {
-  XlaCompiler::CompileOptions compile_options;
-  compile_options.is_entry_computation = true;
-  // Optimization: where possible, have the computation return a naked array
-  // rather than a one-element tuple.
-  compile_options.always_return_tuple = false;
-  compile_options.alias_resource_update =
-      !has_ref_vars && may_alias_resource_update;
-  return compile_options;
-}
-
 Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
     const XlaPlatformInfo& platform_info,
@@ -393,12 +384,16 @@ Status CompileToLocalExecutable(
     return absl::InternalError("No resource manager.");
   }
 
+  TF_ASSIGN_OR_RETURN(DeviceType compilation_device_type,
+                      GetCompilationDeviceType(platform_info.device_type()));
+
   XlaDeviceCompiler* xla_device_compiler;
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaDeviceCompiler>(
       rm->default_container(), "xla_device_compiler", &xla_device_compiler,
       [&](XlaDeviceCompiler** xla_device_compiler) {
         return BuildXlaDeviceCompiler(ctx->device(), ctx->function_library(),
-                                      platform_info, xla_device_compiler);
+                                      platform_info, compilation_device_type,
+                                      xla_device_compiler);
       }));
   DeviceCompilationProfiler* profiler;
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
@@ -423,46 +418,6 @@ Status CompileToLocalExecutable(
       GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
 
   return xla_device_compiler->CompileIfNeeded(
-      options, function, args, compile_options, compile_mode, profiler,
-      compilation_result, executable);
-}
-
-Status CompileToPjRtLoadedExecutable(
-    const OpKernelContext& ctx, const XlaPlatformInfo& platform_info,
-    const NameAttrList& function,
-    const std::vector<XlaCompiler::Argument>& args,
-    DeviceCompileMode compile_mode, bool has_ref_vars,
-    bool may_alias_resource_update,
-    const XlaCompiler::CompilationResult** compilation_result,
-    xla::PjRtClient** client, xla::PjRtLoadedExecutable** executable) {
-  // We store information about the JIT-compiled XLA computation
-  // in the ResourceMgr.
-  ResourceMgr* rm = ctx.resource_manager();
-  if (!rm) {
-    return absl::InternalError("No resource manager.");
-  }
-
-  PjRtDeviceCompiler* pjrt_device_compiler;
-  DeviceCompilationProfiler* profiler;
-  TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
-      ctx, platform_info, ctx.function_library(), &pjrt_device_compiler,
-      &profiler));
-  // Hold the reference to the PJRT device compiler and profiler during
-  // evaluation. (We could probably free them sooner because the ResourceMgr
-  // will retain references, but this is more obviously correct.)
-  core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
-  core::ScopedUnref profiler_ref(profiler);
-
-  *client = pjrt_device_compiler->client();
-
-  XlaCompiler::Options options =
-      GenerateCompilerOptionsForPjRt(*ctx.function_library(), ctx.device(),
-                                     platform_info, pjrt_device_compiler);
-
-  XlaCompiler::CompileOptions compile_options =
-      GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
-
-  return pjrt_device_compiler->CompileIfNeeded(
       options, function, args, compile_options, compile_mode, profiler,
       compilation_result, executable);
 }
@@ -1048,11 +1003,22 @@ REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
                             .HostMemory("resources"),
                         XlaCompileOp);
 
+REGISTER_KERNEL_BUILDER(Name("_XlaCompile")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("constants")
+                            .HostMemory("key")
+                            .HostMemory("compilation_successful")
+                            .HostMemory("resources"),
+                        XlaCompileOp);
+
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_CPU), XlaRunOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaRun").Device(DEVICE_GPU).HostMemory("key"),
                         XlaRunOp);
+REGISTER_KERNEL_BUILDER(
+    Name("_XlaRun").Device(DEVICE_DEFAULT).HostMemory("key"), XlaRunOp);
 
 REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_CPU), XlaMergeOp);
 REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_GPU), XlaMergeOp);
+REGISTER_KERNEL_BUILDER(Name("_XlaMerge").Device(DEVICE_DEFAULT), XlaMergeOp);
 
 }  // namespace tensorflow

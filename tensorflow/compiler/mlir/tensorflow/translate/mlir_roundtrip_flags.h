@@ -111,6 +111,9 @@ struct GraphExportConfig {
   // Whether to export the entry function to function library instead of the
   // graph.
   bool export_entry_func_to_flib = false;
+  // Whether to export functions using the name set in the attribute
+  // `tf._original_func_name` if it exists.
+  bool export_original_tf_func_name = false;
 };
 
 // Parses the command line flag strings to the specification of nodes in

@@ -406,7 +406,8 @@ class GraphConstructor {
   };
   std::vector<EdgeInfo> back_edges_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphConstructor);
+  GraphConstructor(const GraphConstructor&) = delete;
+  void operator=(const GraphConstructor&) = delete;
 };
 
 // Implementation of GraphConstructor that does not take ownership of the
@@ -1145,6 +1146,18 @@ void GraphConstructor::PrintCycles() {
     //              cur_branch.end(), i) != cur_branch.end())
     std::vector<bool> is_on_cur_branch(num_nodes, false);
     DFS(cur_node, &cur_branch, &is_on_cur_branch, &unvisited, node_names);
+  }
+}
+
+FunctionDefLibraryStackTraces
+GraphConstructor::CreateStackTracesForFunctionDefLibrary(
+    const FunctionDefLibrary& library) const {
+  if (debug_info() == nullptr) {
+    FunctionDefLibraryStackTraces library_traces;
+    return library_traces;
+  } else {
+    return FunctionLibraryDefinition::CreateStackTracesForFunctionDefLibrary(
+        library, *debug_info());
   }
 }
 

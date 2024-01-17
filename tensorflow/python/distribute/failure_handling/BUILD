@@ -27,12 +27,12 @@ py_strict_library(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -134,7 +134,7 @@ tf_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:server_lib",
         "@absl_py//absl/testing:parameterized",
-        "@dill_archive//:dill",  # build_cleaner: keep
+        "@pypi_dill//:pkg",  # build_cleaner: keep
     ],
 )
 

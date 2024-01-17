@@ -60,6 +60,7 @@ Internal VarHandleOp registration used for XLA AOT compilation.
 )doc")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("debug_name: string = ''")
     .Attr("dtype: type")
     .Attr("shape: shape")
     .Output("resource: resource")

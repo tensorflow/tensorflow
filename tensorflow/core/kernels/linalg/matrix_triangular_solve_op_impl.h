@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LINALG_MATRIX_TRIANGULAR_SOLVE_OP_IMPL_H_
 #define TENSORFLOW_CORE_KERNELS_LINALG_MATRIX_TRIANGULAR_SOLVE_OP_IMPL_H_
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/util/matmul_bcast.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/gpu_solvers.h"

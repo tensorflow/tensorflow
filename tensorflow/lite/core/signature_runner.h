@@ -43,8 +43,6 @@ class SignatureRunnerJNIHelper;  // Class for friend declarations.
 class TensorHandle;              // Class for friend declarations.
 
 namespace impl {
-/// WARNING: Experimental interface, subject to change
-///
 /// SignatureRunner class for running TFLite models using SignatureDef.
 ///
 /// Usage:

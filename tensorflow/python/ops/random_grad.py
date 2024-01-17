@@ -34,7 +34,7 @@ def add_leading_unit_dimensions(x, num_dimensions):  # pylint: disable=invalid-n
 
 
 @ops.RegisterGradient("RandomGamma")
-def _RandomGammaGrad(op, grad):  # pylint: disable=invalid-name
+def _RandomGammaGrad(op: ops.Operation, grad):  # pylint: disable=invalid-name
   """Returns the gradient of a Gamma sample w.r.t. alpha.
 
   The gradient is computed using implicit differentiation
@@ -74,7 +74,7 @@ def _RandomGammaGrad(op, grad):  # pylint: disable=invalid-name
 
 
 @ops.RegisterGradient("StatelessRandomGammaV2")
-def _StatelessRandomGammaV2Grad(op, grad):  # pylint: disable=invalid-name
+def _StatelessRandomGammaV2Grad(op: ops.Operation, grad):  # pylint: disable=invalid-name
   """Returns the gradient of a Gamma sample w.r.t. alpha.
 
   The gradient is computed using implicit differentiation
@@ -106,7 +106,7 @@ def _StatelessRandomGammaV2Grad(op, grad):  # pylint: disable=invalid-name
 
 
 @ops.RegisterGradient("StatelessRandomGammaV3")
-def _StatelessRandomGammaV3Grad(op, grad):  # pylint: disable=invalid-name
+def _StatelessRandomGammaV3Grad(op: ops.Operation, grad):  # pylint: disable=invalid-name
   """Returns the gradient of a Gamma sample w.r.t. alpha.
 
   The gradient is computed using implicit differentiation
@@ -169,7 +169,7 @@ def _Ndtr(x):
 
 
 @ops.RegisterGradient("StatelessParameterizedTruncatedNormal")
-def _StatelessParameterizedTruncatedNormalGrad(op, grad):  # pylint: disable=invalid-name
+def _StatelessParameterizedTruncatedNormalGrad(op: ops.Operation, grad):  # pylint: disable=invalid-name
   """Returns the gradient of a TruncatedNormal sample w.r.t. parameters.
 
   The gradient is computed using implicit differentiation

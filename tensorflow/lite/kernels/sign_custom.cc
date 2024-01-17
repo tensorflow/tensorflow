@@ -73,11 +73,11 @@ TfLiteStatus PointwiseUnaryOpEval(TfLiteContext* context, TfLiteNode* node) {
           context,
           (PointwiseUnaryOpDoEval<Op, double>(context, input, output)));
       break;
-    default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Unsupported datatype for atan2 output: %s",
-          TfLiteTypeGetName(output->type));
+    default: {
+      TF_LITE_KERNEL_LOG(context, "Unsupported datatype for sign output: %s",
+                         TfLiteTypeGetName(output->type));
+      return TfLiteStatus::kTfLiteError;
+    }
   }
 
   return TfLiteStatus::kTfLiteOk;

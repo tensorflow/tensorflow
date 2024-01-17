@@ -69,7 +69,7 @@ class StochasticCastOpTest(xla_test.XLATestCase, parameterized.TestCase):
   def testStochasticCastOpResultProbability(self, value, from_dtype, to_dtype):
     test_value = value
     with self.session() as sess, self.test_scope():
-      input_t = constant_op.constant(test_value, from_dtype, [10000, 10000])
+      input_t = constant_op.constant(test_value, from_dtype, [1000, 1000])
       op = stochastic_cast_op.stochastic_cast(
           input_t, to_dtype, [12345, 12345], "auto_select"
       )

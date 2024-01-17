@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -28,9 +29,13 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace odml {
@@ -99,6 +104,63 @@ Value materializeEpsilon(Operation *op, FloatAttr epsilon_attr,
   return b.createOrFold<mhlo::DynamicBroadcastInDimOp>(
       broadcast_to_type, epsilon, shape_value, dims);
 }
+
+class UnfuseBatchNormTrainingPattern
+    : public OpRewritePattern<mhlo::BatchNormTrainingOp> {
+ public:
+  using OpRewritePattern<mhlo::BatchNormTrainingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::BatchNormTrainingOp bn_op,
+                                PatternRewriter &rewriter) const override {
+    auto inputs = bn_op.getOperand();
+    auto input_type = inputs.getType().dyn_cast<RankedTensorType>();
+    if (!input_type) {
+      return failure();
+    }
+    auto feature_index = bn_op.getFeatureIndex();
+
+    // Compute mean
+    int64_t input_last_dim = input_type.getRank() - 1;
+    auto dims_type = RankedTensorType::get(/*shape=*/{input_last_dim},
+                                           rewriter.getIntegerType(32));
+    ::mlir::SmallVector<int32_t> reduce_dim_axes;
+    for (int i = 0; i < input_type.getRank(); ++i) {
+      if (i != feature_index) {
+        reduce_dim_axes.push_back(i);
+      }
+    }
+    auto mean_dims = DenseIntElementsAttr::get(dims_type, reduce_dim_axes);
+    ::mlir::TF::ConstOp reduce_dim_op =
+        rewriter.create<TF::ConstOp>(bn_op.getLoc(), mean_dims);
+    int64_t feature_dim_size = input_type.getDimSize(feature_index);
+    auto mean_var_type = RankedTensorType::get(/*shape=*/{feature_dim_size},
+                                               rewriter.getF32Type());
+    ::mlir::Value mean = rewriter.create<TF::MeanOp>(
+        bn_op.getLoc(), mean_var_type, inputs, reduce_dim_op,
+        /*keep_dims=*/rewriter.getBoolAttr(false));
+
+    // Compute variance
+    Value shape_value =
+        getShapeValue(bn_op.getLoc(), bn_op.getOperand(), rewriter);
+    auto broadcast_mean = broadcastToFeatureDim(
+        bn_op.getLoc(), input_type, mean, shape_value, feature_index, rewriter);
+    ::mlir::Value square_diff = rewriter.create<TF::SquaredDifferenceOp>(
+        bn_op.getLoc(), inputs, broadcast_mean);
+    ::mlir::Value variance = rewriter.create<TF::MeanOp>(
+        bn_op.getLoc(), mean_var_type, square_diff, reduce_dim_op,
+        /*keep_dims=*/rewriter.getBoolAttr(false));
+
+    // Invoke BatchNormInferenceOp
+    ::mlir::FloatAttr epsilon = bn_op.getEpsilonAttr();
+    ::mlir::Value batch_norm = rewriter.create<mhlo::BatchNormInferenceOp>(
+        bn_op.getLoc(), inputs, bn_op.getScale(), bn_op.getOffset(), mean,
+        variance, epsilon, rewriter.getI64IntegerAttr(feature_index));
+
+    // Return normalized values, mean, variable.
+    rewriter.replaceOp(bn_op, ::mlir::ValueRange{batch_norm, mean, variance});
+    return success();
+  }
+};
 
 class UnfuseBatchNormInferencePattern
     : public OpRewritePattern<mhlo::BatchNormInferenceOp> {
@@ -175,11 +237,13 @@ class UnfuseMhloBatchNormPass
     return "Unfuses MHLO batch norm inference op into arithmetic ops";
   }
   void getDependentDialects(::mlir::DialectRegistry &registry) const override {
-    registry.insert<shape::ShapeDialect>();
+    // TODO(b/299514833): Remove TensorFlowDialect usage.
+    registry.insert<shape::ShapeDialect, mlir::TF::TensorFlowDialect>();
   }
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
+    patterns.add<UnfuseBatchNormTrainingPattern>(&getContext());
     patterns.add<UnfuseBatchNormInferencePattern>(&getContext());
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {

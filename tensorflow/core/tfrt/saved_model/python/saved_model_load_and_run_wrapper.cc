@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
@@ -26,17 +26,29 @@ namespace tensorflow::tfrt_stub {
 PYBIND11_MODULE(_pywrap_saved_model, m) {
   py::google::ImportStatusModule();
 
+  py::class_<tensorflow::tfrt_stub::SavedModel> give_me_a_name(m, "SavedModel");
+
   m.def("LoadSavedModel", &tensorflow::tfrt_stub::LoadSavedModel,
         py::arg("saved_model_dir") = absl::string_view(),
         py::arg("tags") = std::unordered_set<std::string>());
 
-  m.def("Run", &tensorflow::tfrt_stub::Run,
-        py::arg("saved_model") =
-            *(tensorflow::tfrt_stub::LoadSavedModel("", {}).value()),
+  m.def("RunConvertor", [](const py::args args) {
+    return tensorflow::tfrt_stub::RunConvertor(args.ptr());
+  });
+
+  py::class_<tensorflow::tfrt_stub::GraphExecutionRunOptions>(
+      m, "GraphExecutionRunOptions")
+      .def(py::init<>());
+  m.doc() =
+      "pybind11 GraphExecutionRunOptions wrapper";  // optional module docstring
+
+  py::class_<tensorflow::Tensor>(m, "Tensor").def(py::init<>());
+
+  m.def("Run", &tensorflow::tfrt_stub::Run, py::arg("saved_model") = nullptr,
         py::arg("run_options") =
             tensorflow::tfrt_stub::GraphExecutionRunOptions(),
         py::arg("name") = absl::string_view(),
-        py::arg("inputs") = absl::Span<const tensorflow::Tensor>(),
+        py::arg("inputs") = std::vector<tensorflow::Tensor>(),
         py::arg("outputs") = std::vector<tensorflow::Tensor>());
 }
 }  // namespace tensorflow::tfrt_stub

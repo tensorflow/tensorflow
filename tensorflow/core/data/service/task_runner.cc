@@ -20,15 +20,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/cross_trainer_cache.h"
 #include "tensorflow/core/data/service/data_transfer.h"
-#include "tensorflow/core/data/service/logging_utils.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -73,8 +74,8 @@ Status StandaloneTaskIterator::Restore(
   return iterator_->Restore(saved_iterator);
 }
 
-std::optional<double> StandaloneTaskIterator::GetProcessingTimeNsec() const {
-  return iterator_->GetProcessingTimeNsec();
+std::shared_ptr<model::Model> StandaloneTaskIterator::model() const {
+  return iterator_->model();
 }
 
 Status TaskRunner::Create(const experimental::WorkerConfig& worker_config,
@@ -168,10 +169,8 @@ void FirstComeFirstServedTaskRunner::Cancel() {
   buffer_.Cancel(errors::Cancelled("tf.data service FCFS task is cancelled."));
 }
 
-std::optional<double> FirstComeFirstServedTaskRunner::GetProcessingTimeNsec()
-    TF_LOCKS_EXCLUDED(mu_) {
-  mutex_lock l(mu_);
-  return iterator_->GetProcessingTimeNsec();
+std::shared_ptr<model::Model> FirstComeFirstServedTaskRunner::model() const {
+  return model_;
 }
 
 CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
@@ -180,7 +179,7 @@ CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
       cache_(max_cache_size_bytes,
              std::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
   LOG(INFO) << "Initialized tf.data service cross-trainer cache with "
-            << FormatBytes(max_cache_size_bytes) << " of memory.";
+            << ByteSize::Bytes(max_cache_size_bytes) << " of memory.";
 }
 
 CachingTaskRunner::~CachingTaskRunner() { Cancel(); }
@@ -223,8 +222,8 @@ void CachingTaskRunner::Cancel() {
   fcfs_task_runner_.Cancel();
 }
 
-std::optional<double> CachingTaskRunner::GetProcessingTimeNsec() {
-  return fcfs_task_runner_.GetProcessingTimeNsec();
+std::shared_ptr<model::Model> CachingTaskRunner::model() const {
+  return fcfs_task_runner_.model();
 }
 
 RoundRobinTaskRunner::RoundRobinTaskRunner(
@@ -361,8 +360,8 @@ void RoundRobinTaskRunner::Cancel() {
   new_round_cv_.notify_all();
 }
 
-std::optional<double> RoundRobinTaskRunner::GetProcessingTimeNsec() {
-  return prefetch_thread_.GetProcessingTimeNsec();
+std::shared_ptr<model::Model> RoundRobinTaskRunner::model() const {
+  return prefetch_thread_.model();
 }
 
 PrefetchThread::PrefetchThread(std::unique_ptr<TaskIterator> iterator,
@@ -447,8 +446,8 @@ Status PrefetchThread::GetStatus() {
   return status_;
 }
 
-std::optional<double> PrefetchThread::GetProcessingTimeNsec() const {
-  return iterator_->GetProcessingTimeNsec();
+std::shared_ptr<model::Model> PrefetchThread::model() const {
+  return iterator_->model();
 }
 }  // namespace data
 }  // namespace tensorflow

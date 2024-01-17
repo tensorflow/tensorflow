@@ -18,6 +18,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
+from tensorflow.tools.proto_splitter.python import test_util
 
 
 class MakeGraphDefTest(test.TestCase, parameterized.TestCase):
@@ -29,9 +30,8 @@ class MakeGraphDefTest(test.TestCase, parameterized.TestCase):
     expected_sizes = [75, 50, 100, 95, 120]
     fn1 = [121, 153, 250, 55]
     fn2 = [552, 45]
-    graph_def = self._make_graph_def_with_constant_nodes(
-        expected_sizes, dtype=dtype, fn1=fn1, fn2=fn2
-    )
+    graph_def = test_util.make_graph_def_with_constant_nodes(
+        expected_sizes, dtype=dtype, fn1=fn1, fn2=fn2)
     self.assertAllClose(
         expected_sizes, [node.ByteSize() for node in graph_def.node], atol=5
     )
@@ -45,3 +45,7 @@ class MakeGraphDefTest(test.TestCase, parameterized.TestCase):
         [node.ByteSize() for node in graph_def.library.function[1].node_def],
         atol=10,
     )
+
+
+if __name__ == "__main__":
+  test.main()

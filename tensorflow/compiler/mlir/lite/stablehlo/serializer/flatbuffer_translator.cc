@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/lite/stablehlo/schema/schema_generated.h"
 
 #define kStablehloOptionalTensor (-1)
@@ -329,10 +329,9 @@ CreateBroadcastInDimOperator(mlir::stablehlo::BroadcastInDimOp& hlo_op,
   auto inputs = fbb->CreateVector(operands);
   auto outputs = fbb->CreateVector(results);
 
-  std::vector<int64_t> broadcast_dimension_vec =
-      GetOptionalVector<int64_t>(hlo_op.getBroadcastDimensions(), 0, 0);
-
-  auto broadcast_dimension = fbb->CreateVector(broadcast_dimension_vec);
+  auto dims = hlo_op.getBroadcastDimensions();
+  auto broadcast_dimension =
+      fbb->CreateVector(std::vector<int64_t>(dims.begin(), dims.end()));
 
   auto options = ::stablehlo::flatbuf::CreateBroadcastInDimOptions(
       *fbb, broadcast_dimension);

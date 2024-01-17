@@ -26,13 +26,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/types.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
@@ -246,8 +247,10 @@ Status ResolveDeviceAssignment(
   }
   const std::string& communicator_key =
       params->group.runtime_details.communicator_key;
-  gpu_options.set_nccl_unique_id_callback(
-      [=](const xla::gpu::NcclCliqueKey& key) { return communicator_key; });
+  gpu_options.set_nccl_clique_id_callback(
+      [=](const xla::gpu::NcclCliqueKey& key) {
+        return xla::gpu::NcclCliqueId::FromString(communicator_key);
+      });
   run_options.set_device_assignment(&device_assignment);
   run_options.set_gpu_executable_run_options(&gpu_options);
   return OkStatus();

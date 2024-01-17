@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/composable_splitter_base.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {

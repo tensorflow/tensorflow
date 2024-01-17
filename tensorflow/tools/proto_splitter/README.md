@@ -2,6 +2,8 @@
 
 Utilities for splitting large protos.
 
+For a more detailed overview of the library, see our [in-depth guide](g3doc/in-depth-guide.md).
+
 ## The Python `Splitter` class
 
 Users can apply the Splitter implementations by calling:
@@ -113,3 +115,7 @@ Merger::Merge(my_chunks, chunked_message, &my_proto);
 my_project::MyOtherProto my_other_proto;
 Merger::Read("path/to/saved_model", &my_other_proto);
 ```
+
+##### In-Depth Guide
+
+Looking for a more detailed overview of the library? See our [in-depth guide](g3doc/in-depth-guide.md).

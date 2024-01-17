@@ -18,10 +18,16 @@ on:
   push:
     branches:
       - master
+      
+permissions: {}
 
 jobs:
   create-issue-on-pr-rollback:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
     if: |
       github.repository == 'tensorflow/tensorflow' &&
       startsWith(github.event.head_commit.message, 'Rollback of PR #')

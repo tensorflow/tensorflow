@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
+#include <climits>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <limits>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -34,16 +35,15 @@ limitations under the License.
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -53,24 +53,28 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_arith_ops_folder.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_canonicalization_helper.h"
@@ -78,14 +82,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_tensor_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/side_effect_analysis_util.h"
 
 namespace mlir {
 namespace TF {
@@ -383,7 +386,8 @@ OpFoldResult PackOp::fold(FoldAdaptor) {
     return {};
 
   // Replace %pack with %shape.
-  return slice_op.getInput();
+  if (slice_op.getInput().getType() == getType()) return slice_op.getInput();
+  return {};
 }
 
 // Convert Pack to Reshape when there is only one operand to be packed.
@@ -607,7 +611,7 @@ OpFoldResult PowOp::fold(FoldAdaptor adaptor) {
           output_type,
           FloatAttr::get(output_type.getElementType(), /*value=*/1.0));
     }
-    if (y_value.isExactlyValue(1.0)) {
+    if (y_value.isExactlyValue(1.0) && getX().getType() == getType()) {
       return getX();
     }
   }
@@ -664,6 +668,16 @@ LogicalResult RandomUniformOp::verify() {
   if (!IsOfRankOrUnranked(op.getShape(), 1))
     return op.emitOpError("shape must be 1D tensor");
   return success();
+}
+
+std::optional<std::string> RandomUniformOp::GetResourceInstanceStr() {
+  // We do not create dependencies among the ops. XLA will run the ops in a
+  // deterministic order. However, we cannot mark the op as Pure as that may
+  // lead to incorrect optimization, e.g. two ops with the same constant input
+  // may end up returning the same value, even though they should have returned
+  // different values.
+  static unsigned counter = 0;
+  return std::to_string(counter++);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2332,21 +2346,13 @@ void TPUExecuteOp::getEffects(
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::TPUExecute::get());
 
+  // Conservatively mark resource handles as read and write, as without
+  // analyzing TPUCompile, there is not sufficient information to determine
+  // effects on resources. For the MLIR bridge, this op will never be
+  // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
+  // used instead.
   for (Value value : getArgs()) {
-    if (value.getType()
-            .cast<TensorType>()
-            .getElementType()
-            .isa<ResourceType>()) {
-      // Conservatively mark resource handles as read and write, as without
-      // analyzing TPUCompile, there is not sufficient information to determine
-      // effects on resources. For the MLIR bridge, this op will never be
-      // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
-      // used instead.
-      effects.emplace_back(MemoryEffects::Read::get(), value,
-                           ResourceEffects::Variable::get());
-      effects.emplace_back(MemoryEffects::Write::get(), value,
-                           ResourceEffects::Variable::get());
-    }
+    MarkResourceAsReadAndWrite(value, effects);
   }
 }
 
@@ -2361,19 +2367,11 @@ void _XlaRunOp::getEffects(
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::_XlaRun::get());
 
+  // Conservatively mark resource handles as read and write, as without
+  // analyzing _XlaCompile, there is not sufficient information to determine
+  // effects on resources.
   for (Value value : getArgs()) {
-    if (value.getType()
-            .cast<TensorType>()
-            .getElementType()
-            .isa<ResourceType>()) {
-      // Conservatively mark resource handles as read and write, as without
-      // analyzing _XlaCompile, there is not sufficient information to determine
-      // effects on resources.
-      effects.emplace_back(MemoryEffects::Read::get(), value,
-                           ResourceEffects::Variable::get());
-      effects.emplace_back(MemoryEffects::Write::get(), value,
-                           ResourceEffects::Variable::get());
-    }
+    MarkResourceAsReadAndWrite(value, effects);
   }
 }
 
@@ -2478,9 +2476,9 @@ class ConvertTensorListGetItemOpOfTensorListFromTensorOpToGather
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<GatherOp>(
-        op, op.getType(), tensor_list_from_tensor_op.getTensor(),
-        op.getIndex());
+    ReplaceTfOpWithNewOp<GatherOp>(rewriter, op, op.getType(),
+                                   tensor_list_from_tensor_op.getTensor(),
+                                   op.getIndex());
     return success();
   }
 };
@@ -2645,7 +2643,8 @@ OpFoldResult TileOp::fold(FoldAdaptor) {
     // Return input directly when multiples are all ones,
     // regardless what input is.
     if (multiples_attr.isSplat() &&
-        multiples_attr.getSplatValue<APInt>().getSExtValue() == 1) {
+        multiples_attr.getSplatValue<APInt>().getSExtValue() == 1 &&
+        getInput().getType() == getType()) {
       return getInput();
     }
   }
@@ -2706,8 +2705,8 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
       if (!zero_attr) return failure();
 
       auto zero_const = rewriter.create<TF::ConstOp>(op.getLoc(), zero_attr);
-      rewriter.replaceOpWithNewOp<TF::NotEqualOp>(
-          op, result_type, op.getOperand(), zero_const, false);
+      ReplaceTfOpWithNewOp<TF::NotEqualOp>(rewriter, op, result_type,
+                                           op.getOperand(), zero_const, false);
     } else {
       // If the input is a non-scalar ranked tensor, ToBool can be expanded
       // to numElements != 0. numElements will be 0 iff one of the dimensions is
@@ -2869,14 +2868,7 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
     if (it.index() != it.value()) return {};
   }
 
-  // TODO(jpienaar): Remove if/when we handle this more generally.
-  if (op.getType() != op.getX().getType()) {
-    // If the types don't match then only fold if all the operands are in the TF
-    // dialect.
-    for (auto user : op.getOperation()->getUsers())
-      if (user->getDialect() != op->getDialect()) return {};
-  }
-
+  if (op.getType() != op.getX().getType()) return {};
   return op.getX();
 }
 
@@ -2916,6 +2908,7 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   // With permutation indices that cancel each other
   if (!AreCancellablePermutations(perm0, perm1)) return {};
 
+  if (op.getType() != transpose.getX().getType()) return {};
   return transpose.getX();
 }
 
@@ -2958,8 +2951,8 @@ class NMSV3ToNMSV4Op : public OpRewritePattern<NonMaxSuppressionV3Op> {
         tensorflow::GetTypeFromTFTensorShape({}, input_ty.getElementType());
     new_result_types.push_back(valid_output_type);
 
-    auto nmsv4 = rewriter.create<TF::NonMaxSuppressionV4Op>(
-        nms_op.getLoc(), new_result_types, nms_op.getBoxes(),
+    auto nmsv4 = CreateTfOp<TF::NonMaxSuppressionV4Op>(
+        rewriter, nms_op, new_result_types, nms_op.getBoxes(),
         nms_op.getScores(), nms_op.getMaxOutputSize(), nms_op.getIouThreshold(),
         nms_op.getScoreThreshold());
     // Cannot replace the NMSv3 Op with NMSv4 since the outputs between the
@@ -2990,13 +2983,10 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
     // reserve_space_3
     new_result_types.push_back(
         UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
-
-    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
-                             TF::FusedBatchNormV3Op::getOperationName(),
-                             tf_fused_batch_norm_op.getOperands(),
-                             new_result_types,
-                             tf_fused_batch_norm_op->getAttrs());
-    Operation *tf_fused_batch_norm_op_v3 = rewriter.create(new_state);
+    auto tf_fused_batch_norm_op_v3 = CreateTfOp<TF::FusedBatchNormV3Op>(
+        rewriter, tf_fused_batch_norm_op, new_result_types,
+        tf_fused_batch_norm_op.getOperands(),
+        tf_fused_batch_norm_op->getAttrs());
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
                        tf_fused_batch_norm_op_v3->getResults().drop_back());
@@ -3050,35 +3040,22 @@ LogicalResult XlaCallModuleOp::verifySymbolUses(
 void XlaLaunchOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.reserve(getArgs().size() + 1);
+  effects.reserve(2 * getArgs().size() + 1);
   effects.emplace_back(MemoryEffects::Write::get(),
                        ResourceEffects::XlaLaunch::get());
 
+  // Conservatively mark resource handles as read and write, as without
+  // analyzing XlaLaunch, there is not sufficient information to determine
+  // effects on resources.
   for (Value value : getArgs()) {
-    if (value.getType()
-            .cast<TensorType>()
-            .getElementType()
-            .isa<ResourceType>()) {
-      // Conservatively mark resource handles as read and write, as without
-      // analyzing XlaLaunch, there is not sufficient information to determine
-      // effects on resources.
-      effects.emplace_back(MemoryEffects::Read::get(), value,
-                           ResourceEffects::Variable::get());
-      effects.emplace_back(MemoryEffects::Write::get(), value,
-                           ResourceEffects::Variable::get());
-    }
+    MarkResourceAsReadAndWrite(value, effects);
   }
 }
 
 // For `XlaLaunch` ops the `device` attribute corresponds to the resource
 // instance.
 std::optional<std::string> XlaLaunchOp::GetResourceInstanceStr() {
-  auto device_attr = (*this)->getAttrOfType<StringAttr>("device");
-  // Treat missing device attribute like unspecified (= empty string) attribute.
-  // Note that different op instances with the same string (including empty
-  // string) are seen as dependent (same resource instance).
-  if (!device_attr) return "";
-  return device_attr.str();
+  return GetDeviceAttrAsResourceInstanceStr(*this);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3147,10 +3124,12 @@ LogicalResult HoistCwiseUnaryOutOfUnpack::matchAndRewrite(
                                     op.getOperand(), op.getOperand().getType(),
                                     ArrayRef<NamedAttribute>());
   Operation *new_unary_op = rewriter.create(new_unary_op_state);
+  CopyDeviceAndUnderscoredAttributes(op, new_unary_op);
 
   // Unpack results after applying unary operation.
-  auto unpack_unary_op = rewriter.create<UnpackOp>(
-      loc, op.getResultTypes(), new_unary_op->getResult(0), op.getAxis());
+  auto unpack_unary_op =
+      CreateTfOp<UnpackOp>(rewriter, op, op.getResultTypes(),
+                           new_unary_op->getResult(0), op.getAxis());
 
   // Bypass all users of the original unpack operation and use `unpack_unary_op`
   // results instead.
@@ -3416,11 +3395,16 @@ LogicalResult WhileOp::verifySymbolUses(SymbolTableCollection &symbol_table) {
 //===----------------------------------------------------------------------===//
 LogicalResult WhileRegionOp::verify() {
   WhileRegionOp op = *this;
+
   // Verify that the condition generates a single tensor<i1> result.
   Operation *cond_yield = op.getCond().front().getTerminator();
-  if (cond_yield->getNumOperands() != 1)
+
+  // Allow either the "yield cond" or "yield cond, arg1, ... argN" form,
+  // for the yield in the condition block.
+  if (cond_yield->getNumOperands() != 1 &&
+      cond_yield->getNumOperands() != op.getCond().getArguments().size() + 1)
     return op.emitOpError()
-           << "condition should have a single tensor<i1> result";
+           << "condition should yield a tensor<i1> and forward the arguments";
 
   auto cond_type =
       cond_yield->getOperand(0).getType().dyn_cast<RankedTensorType>();
@@ -3436,6 +3420,20 @@ LogicalResult WhileRegionOp::verify() {
                               /*body_result=*/body_yield->getOperandTypes(),
                               op.getShapeInvariant())))
     return failure();
+
+  if (cond_yield->getNumOperands() > 1) {
+    // Iteration variables on the "cond" block are not allowed to be modified,
+    // if they are yielded they always have to be forwarded 1:1.
+    auto forwarded_operands = cond_yield->getOperands().drop_front(1);
+    for (auto [arg, yield] :
+         llvm::zip(op.getCond().getArguments(), forwarded_operands)) {
+      if (arg != yield) {
+        return op.emitOpError()
+               << "arguments on condition block aren't forwarded to yield";
+      }
+    }
+  }
+
   return success();
 }
 
@@ -3443,7 +3441,70 @@ LogicalResult WhileRegionOp::verify() {
 // WhileRegionOp LoopLikeOpInterface
 //===----------------------------------------------------------------------===//
 
-Region &WhileRegionOp::getLoopBody() { return getBody(); }
+SmallVector<Region *> WhileRegionOp::getLoopRegions() { return {&getBody()}; }
+
+//===----------------------------------------------------------------------===//
+// WhileRegionOp RegionBranchOpInterface
+//===----------------------------------------------------------------------===//
+
+OperandRange WhileRegionOp::getEntrySuccessorOperands(
+    RegionBranchPoint point) {
+  if (point.isParent()) {
+    // WhileRegionOp branches to the condition, which branches to the body. But
+    // the op itself doesn't branch back to itself. So this range is empty.
+    auto end = this->getOperation()->operand_end();
+    return ::mlir::OperandRange(end, end);
+  } else {
+    // "cond" gets the full arguments from the WhileRegionOp.
+    // As does "body", if the condition block only returns a single boolean.
+    auto begin = this->getOperation()->operand_begin();
+    auto end = this->getOperation()->operand_end();
+    return ::mlir::OperandRange(begin, end);
+  }
+}
+
+void WhileRegionOp::getSuccessorRegions(
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
+  if (!point.isParent() && point == (*this)->getRegion(0)) {
+    // 'cond' branches to the body or returns.
+    Operation *yield = getCond().front().getTerminator();
+    if (yield->getOperands().size() ==
+        1 + this->getOperation()->getOperands().size()) {
+      regions.push_back(
+          RegionSuccessor(&getBody(), getBody().front().getArguments()));
+      regions.push_back(getResults());
+    } else {
+      // For compatibility with older code, we allow the "yield" in a condition
+      // to only yield a single boolean. In that case we can't forward any args.
+      regions.push_back(RegionSuccessor(&getBody()));
+      regions.push_back(RegionSuccessor());  // branch back to parent, no args
+    }
+  } else if (!point.isParent() && point == (*this)->getRegion(1)) {
+    // 'body' branches back to 'cond'.
+    regions.push_back(
+        RegionSuccessor(&getCond(), getCond().front().getArguments()));
+  } else if (point.isParent()) {
+    // The parent branches to 'cond'. It is also considered to branch to `body`
+    // in case the terminator of `cond` doesn't forward the arguments of `cond`.
+    regions.push_back(
+        RegionSuccessor(&getCond(), getCond().front().getArguments()));
+    regions.push_back(
+        RegionSuccessor(&getBody(), getBody().front().getArguments()));
+  }
+}
+
+void WhileRegionOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds> &invocationBounds) {
+  // We execute cond at least once, and body any number of times.
+  invocationBounds.emplace_back(InvocationBounds(1, std::nullopt));
+  invocationBounds.emplace_back(InvocationBounds::getUnknown());
+}
+
+bool WhileRegionOp::areTypesCompatible(Type t1, Type t2) {
+  // For now, we don't enforce type checking across control-flow edges.
+  return true;
+}
 
 //===----------------------------------------------------------------------===//
 // WhileRegionOp canonicalization
@@ -3496,24 +3557,34 @@ struct WhileRegionEliminatePassThrough
     int new_num_operands = old_num_operands;
     auto &body_block = while_op.getBody().front();
     auto &cond_block = while_op.getCond().front();
-    auto &yield = *body_block.getTerminator();
+    auto &body_yield = *body_block.getTerminator();
+    auto &cond_yield = *cond_block.getTerminator();
+
+    bool cond_forwards_args = cond_yield.getOperands().size() > 1;
 
     // Bit mask indicating which operands will be removed.
     llvm::BitVector removed_operand(old_num_operands);
 
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
       auto body_arg = body_block.getArgument(op_idx);
-      auto yield_operand = LookThroughIdentity(yield.getOperand(op_idx));
+      auto cond_arg = cond_block.getArgument(op_idx);
+      auto body_yield_operand =
+          LookThroughIdentity(body_yield.getOperand(op_idx));
+      auto cond_yield_operand =
+          cond_forwards_args
+              ? LookThroughIdentity(cond_yield.getOperand(op_idx + 1))
+              : nullptr;
       auto while_operand = while_op.getOperand(op_idx);
-      if (body_arg == yield_operand || while_operand == yield_operand) {
+      if ((body_arg == body_yield_operand ||
+           while_operand == body_yield_operand) &&
+          (!cond_forwards_args || cond_arg == cond_yield_operand ||
+           while_operand == cond_yield_operand)) {
         // Replace the use of the passthrough value with the while operand
         // in the body and condition regions, as well as the while output (if
         // type match)
         // TODO(jurahul): Use PatternRewriter API for IR modification.
         if (body_arg.getType() == while_operand.getType())
           body_arg.replaceAllUsesWith(while_operand);
-
-        auto cond_arg = cond_block.getArgument(op_idx);
         if (cond_arg.getType() == while_operand.getType())
           cond_arg.replaceAllUsesWith(while_operand);
 
@@ -3558,14 +3629,21 @@ struct WhileRegionEliminatePassThrough
     rewriter.inlineRegionBefore(while_op.getBody(), new_while_op.getBody(),
                                 new_while_op.getBody().end());
 
-    auto &new_cond_block = new_while_op.getCond().front();
     auto &new_body_block = new_while_op.getBody().front();
-    auto &new_yield = *new_body_block.getTerminator();
+    auto &new_cond_block = new_while_op.getCond().front();
+    auto &new_body_yield = *new_body_block.getTerminator();
+    auto &new_cond_yield = *new_cond_block.getTerminator();
 
     // Patch up the region bodies and yield.
     new_cond_block.eraseArguments(removed_operand);
     new_body_block.eraseArguments(removed_operand);
-    new_yield.eraseOperands(removed_operand);
+    new_body_yield.eraseOperands(removed_operand);
+    if (cond_forwards_args) {
+      BitVector removed_operand_plus_one = removed_operand;
+      removed_operand_plus_one.resize(removed_operand.size() + 1);
+      removed_operand_plus_one <<= 1;
+      new_cond_yield.eraseOperands(removed_operand_plus_one);
+    }
 
     // Build a vector of new results. Also patch up the region bodies and
     // yield.
@@ -3686,8 +3764,8 @@ class XlaConvToV2 : public OpRewritePattern<TF::XlaConvOp> {
   LogicalResult matchAndRewrite(TF::XlaConvOp op,
                                 PatternRewriter &rewriter) const override {
     SmallVector<Type> result_types{op.getResult().getType()};
-    rewriter.replaceOpWithNewOp<TF::XlaConvV2Op>(
-        op, op.getResult().getType(), op.getLhs(), op.getRhs(),
+    ReplaceTfOpWithNewOp<TF::XlaConvV2Op>(
+        rewriter, op, op.getResult().getType(), op.getLhs(), op.getRhs(),
         op.getWindowStrides(), op.getPadding(), op.getLhsDilation(),
         op.getRhsDilation(), op.getFeatureGroupCount(),
         op.getDimensionNumbers(), op.getPrecisionConfig(), 1);
@@ -3790,9 +3868,9 @@ class XlaReduceToXlaVariadicReduceV2
     SmallVector<Value> inputs{op.getInput()};
     SmallVector<Value> init_values{op.getInitValue()};
     SmallVector<Type> result_types{op.getResult().getType()};
-    rewriter.replaceOpWithNewOp<TF::XlaVariadicReduceV2Op>(
-        op, result_types, inputs, init_values, op.getDimensionsToReduce(),
-        op.getReducer());
+    ReplaceTfOpWithNewOp<TF::XlaVariadicReduceV2Op>(
+        rewriter, op, result_types, inputs, init_values,
+        op.getDimensionsToReduce(), op.getReducer());
     return ::mlir::success();
   };
 };
@@ -3966,12 +4044,10 @@ class XlaVariadicReduceToV2 : public OpRewritePattern<TF::XlaVariadicReduceOp> {
 
   LogicalResult matchAndRewrite(TF::XlaVariadicReduceOp op,
                                 PatternRewriter &rewriter) const override {
-    mlir::TF::XlaVariadicReduceV2Op xla_variadic_reduce_v2_op =
-        rewriter.create<::mlir::TF::XlaVariadicReduceV2Op>(
-            op.getLoc(), op.getResults().getTypes(), op.getInput(),
-            op.getInitValue(), op.getDimensionsToReduce(), op.getReducer());
+    ReplaceTfOpWithNewOp<::mlir::TF::XlaVariadicReduceV2Op>(
+        rewriter, op, op.getResults().getTypes(), op.getInput(),
+        op.getInitValue(), op.getDimensionsToReduce(), op.getReducer());
 
-    rewriter.replaceOp(op, xla_variadic_reduce_v2_op.getResults());
     return ::mlir::success();
   };
 };
@@ -4266,6 +4342,32 @@ LogicalResult UniformQuantizedClipByValueOp::verify() {
   return VerifyScalesAndZeroPoints(op, op.getScales(), op.getZeroPoints(),
                                    op.getQuantizationAxis());
 }
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+MutableOperandRange YieldOp::getMutableSuccessorOperands(
+    RegionBranchPoint point) {
+  if (auto whileOp =
+          llvm::dyn_cast<WhileRegionOp>(this->getOperation()->getParentOp())) {
+    if (&whileOp.getCond() == this->getOperation()->getParentRegion()) {
+      // cut off the boolean (the condition itself) at the start
+      return MutableOperandRange(
+          this->getOperation(), 1,
+          this->getOperation()->getOperands().size() - 1);
+    }
+  } else if (auto regionOp = llvm::dyn_cast<GeneratorDatasetRegionOp>(
+                 this->getOperation()->getParentOp())) {
+    if (&regionOp.getFinalize() == this->getOperation()->getParentRegion()) {
+      // `finalize`'s returns get discarded.
+      return MutableOperandRange(this->getOperation(), 0, 0);
+    }
+  }
+  return MutableOperandRange(this->getOperation());
+}
+
+//===----------------------------------------------------------------------===//
 
 }  // namespace TF
 }  // namespace mlir

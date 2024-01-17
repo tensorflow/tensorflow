@@ -104,6 +104,28 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
 
+  def testFloat8E5M2GPU(self):
+    with test_util.use_gpu():
+      p1 = np.random.rand(2, 3).astype(dtypes.float8_e5m2.as_numpy_dtype)
+      p2 = np.random.rand(2, 3).astype(dtypes.float8_e5m2.as_numpy_dtype)
+      x1 = constant_op.constant(p1)
+      x2 = constant_op.constant(p2)
+      c = array_ops.concat([x1, x2], 0)
+      result = self.evaluate(c)
+    self.assertAllEqual(result[:2, :], p1)
+    self.assertAllEqual(result[2:, :], p2)
+
+  def testFloat8E4M3FNGPU(self):
+    with test_util.use_gpu():
+      p1 = np.random.rand(2, 3).astype(dtypes.float8_e4m3fn.as_numpy_dtype)
+      p2 = np.random.rand(2, 3).astype(dtypes.float8_e4m3fn.as_numpy_dtype)
+      x1 = constant_op.constant(p1)
+      x2 = constant_op.constant(p2)
+      c = array_ops.concat([x1, x2], 0)
+      result = self.evaluate(c)
+    self.assertAllEqual(result[:2, :], p1)
+    self.assertAllEqual(result[2:, :], p2)
+
   def testRefType(self):
     with test_util.use_gpu():
       p1 = np.random.rand(4, 4).astype("f")
@@ -174,6 +196,8 @@ class ConcatOpTest(test.TestCase):
     self._testRandom(dtypes.int32)
     self._testRandom(dtypes.int64)
     self._testRandom(dtypes.bfloat16)
+    self._testRandom(dtypes.float8_e5m2)
+    self._testRandom(dtypes.float8_e4m3fn)
     self._testRandom(dtypes.complex64)
     self._testRandom(dtypes.complex128)
 

@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {

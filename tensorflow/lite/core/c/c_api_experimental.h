@@ -20,7 +20,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_C_API_EXPERIMENTAL_H_
 #define TENSORFLOW_LITE_CORE_C_C_API_EXPERIMENTAL_H_
 
+#include <stdint.h>
+
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/common.h"
 
@@ -29,29 +32,21 @@ extern "C" {
 #endif  // __cplusplus
 
 // --------------------------------------------------------------------------
-// Opaque types used by the C API.
-
-/// TfLiteSignatureRunner is used to run inference on a signature.
-///
-/// Note: A signature is used to define a computation in a TF model. A model can
-/// have multiple signatures. Each signature contains three components:
-///   * Signature Key: A unique string to identify a signature
-///   * Inputs: A list of names, each mapped to an input tensor of a signature
-///   * Outputs: A list of names, each mapped to an output tensor of a signature
-///
-/// To learn more about signatures in TFLite, refer to:
-/// https://www.tensorflow.org/lite/guide/signatures
-///
-/// Using the TfLiteSignatureRunner, for a particular signature, you can set its
-/// inputs, invoke (i.e. execute) the computation, and retrieve its outputs.
-typedef struct TfLiteSignatureRunner TfLiteSignatureRunner;
-
-// --------------------------------------------------------------------------
 /// Resets all variable tensors to zero.
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResetVariableTensors(
     TfLiteInterpreter* interpreter);
+
+// Returns the number of variable tensors associated with the model.
+TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetVariableTensorCount(
+    const TfLiteInterpreter* interpreter);
+
+// Returns the tensor associated with the variable tensor index.
+// REQUIRES: 0 <= input_index <
+// TfLiteInterpreterGetVariableTensorCount(interpreter)
+TFL_CAPI_EXPORT extern TfLiteTensor* TfLiteInterpreterGetVariableTensor(
+    const TfLiteInterpreter* interpreter, int32_t variable_index);
 
 /// Adds an op registration for a builtin operator.
 ///
@@ -284,17 +279,6 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetUseNNAPI(
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetEnableDelegateFallback(
     TfLiteInterpreterOptions* options, bool enable);
 
-// Set if buffer handle output is allowed.
-//
-/// When using hardware delegation, Interpreter will make the data of output
-/// tensors available in `tensor->data` by default. If the application can
-/// consume the buffer handle directly (e.g. reading output from OpenGL
-/// texture), it can set this flag to false, so Interpreter won't copy the
-/// data from buffer handle to CPU memory. WARNING: This is an experimental
-/// API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteSetAllowBufferHandleOutput(
-    const TfLiteInterpreter* interpreter, bool allow_buffer_handle_output);
-
 /// Allow a delegate to look at the graph and modify the graph to handle
 /// parts of the graph themselves. After this is called, the graph may
 /// contain new nodes that replace 1 more nodes.
@@ -323,160 +307,70 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetInputTensorIndex(
 TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorIndex(
     const TfLiteInterpreter* interpreter, int32_t output_index);
 
+/// Assigns (or reassigns) a custom memory allocation for the given
+/// tensor. `flags` is a bitmask, see TfLiteCustomAllocationFlags.
+/// The runtime does NOT take ownership of the underlying memory.
+///
+/// NOTE: User needs to call TfLiteInterpreterAllocateTensors() after this.
+/// Invalid/insufficient buffers will cause an error during
+/// TfLiteInterpreterAllocateTensors or TfLiteInterpreterInvoke (in case of
+/// dynamic shapes in the graph).
+///
+/// Parameters should satisfy the following conditions:
+/// 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+///    In general, this is true for I/O tensors & variable tensors.
+/// 2. allocation->data has the appropriate permissions for runtime access
+///    (Read-only for inputs, Read-Write for others), and outlives
+///    TfLiteInterpreter.
+/// 3. allocation->bytes >= tensor->bytes.
+///    This condition is checked again if any tensors are resized.
+/// 4. allocation->data should be aligned to kDefaultTensorAlignment
+///    defined in lite/util.h. (Currently 64 bytes)
+///    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+///    set through `flags`.
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus
+TfLiteInterpreterSetCustomAllocationForTensor(
+    TfLiteInterpreter* interpreter, int tensor_index,
+    const TfLiteCustomAllocation* allocation, int64_t flags);
+
+/// --------------------------------------------------------------------------
+/// BufferHandle APIs
+
+/// Sets the delegate buffer handle for the given tensor.
+///
+/// This function sets the buffer handle for a tensor that is used by other
+/// computing hardware such as EdgeTpu. For example, EdgeTpu delegate imports a
+/// tensor's memory into EdgeTpu's virtual address and returns a buffer handle.
+/// Then EdgeTpu delegate calls this API to associate the tensor with the buffer
+/// handle.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterSetBufferHandle(
+    TfLiteInterpreter* interpreter, TfLiteTensor* tensor,
+    TfLiteBufferHandle buffer_handle, TfLiteOpaqueDelegate* delegate);
+
+/// Gets the delegate buffer handle, and the delegate which can process
+/// the buffer handle.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterGetBufferHandle(
+    TfLiteInterpreter* interpreter, int tensor_index,
+    TfLiteBufferHandle* buffer_handle, TfLiteOpaqueDelegate** delegate);
+
+/// Sets whether buffer handle output is allowed.
+/// When using hardware delegation, Interpreter will make the data of output
+/// tensors available in `tensor->data` by default. If the application can
+/// consume the buffer handle directly (e.g. reading output from OpenGL
+/// texture), it can set this flag to false, so Interpreter won't copy the
+/// data from buffer handle to CPU memory.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern void TfLiteSetAllowBufferHandleOutput(
+    const TfLiteInterpreter* interpreter, bool allow_buffer_handle_output);
+
 /// --------------------------------------------------------------------------
 /// SignatureRunner APIs
-///
-/// You can run inference by either:
-///
-/// (i) (recommended) using the Interpreter to initialize SignatureRunner(s) and
-///     then only using SignatureRunner APIs.
-///
-/// (ii) only using Interpreter APIs.
-///
-/// NOTE:
-/// * Only use one of the above options to run inference, i.e. avoid mixing both
-///   SignatureRunner APIs and Interpreter APIs to run inference as they share
-///   the same underlying data (e.g. updating an input tensor “A” retrieved
-///   using the Interpreter APIs will update the state of the input tensor “B”
-///   retrieved using SignatureRunner APIs, if they point to the same underlying
-///   tensor in the model; as it is not possible for a user to debug this by
-///   analyzing the code, it can lead to undesirable behavior).
-/// * The TfLiteSignatureRunner type is conditionally thread-safe, provided that
-///   no two threads attempt to simultaneously access two TfLiteSignatureRunner
-///   instances that point to the same underlying signature, or access a
-///   TfLiteSignatureRunner and its underlying TfLiteInterpreter, unless all
-///   such simultaneous accesses are reads (rather than writes).
-/// * The lifetime of a TfLiteSignatureRunner object ends when
-///   TfLiteSignatureRunnerDelete() is called on it (or when the lifetime of the
-///   underlying TfLiteInterpreter ends -- but you should call
-///   TfLiteSignatureRunnerDelete() before that happens in order to avoid
-///   resource leaks).
-/// * You can only apply delegates to the interpreter (via
-///   TfLiteInterpreterOptions) and not to a signature.
-
-/// Returns the number of signatures defined in the model.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetSignatureCount(
-    const TfLiteInterpreter* interpreter);
-
-/// Returns the key of the Nth signature in the model, where N is specified as
-/// `signature_index`.
-///
-/// NOTE: The lifetime of the returned key is the same as (and depends on) the
-/// lifetime of `interpreter`.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern const char* TfLiteInterpreterGetSignatureKey(
-    const TfLiteInterpreter* interpreter, int32_t signature_index);
-
-/// Returns a new signature runner using the provided interpreter and signature
-/// key, or nullptr on failure.
-///
-/// NOTE: `signature_key` is a null-terminated C string that must match the
-/// key of a signature in the interpreter's model.
-///
-/// NOTE: The returned signature runner should be destroyed, by calling
-/// TfLiteSignatureRunnerDelete(), before the interpreter is destroyed.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern TfLiteSignatureRunner*
-TfLiteInterpreterGetSignatureRunner(const TfLiteInterpreter* interpreter,
-                                    const char* signature_key);
-
-/// Returns the number of inputs associated with a signature.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern size_t TfLiteSignatureRunnerGetInputCount(
-    const TfLiteSignatureRunner* signature_runner);
-
-/// Returns the (null-terminated) name of the Nth input in a signature, where N
-/// is specified as `input_index`.
-///
-/// NOTE: The lifetime of the returned name is the same as (and depends on) the
-/// lifetime of `signature_runner`.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern const char* TfLiteSignatureRunnerGetInputName(
-    const TfLiteSignatureRunner* signature_runner, const int32_t input_index);
-
-/// Resizes the input tensor identified as `input_name` to be the dimensions
-/// specified by `input_dims` and `input_dims_size`. Only unknown dimensions can
-/// be resized with this function. Unknown dimensions are indicated as `-1` in
-/// the `dims_signature` attribute of a TfLiteTensor.
-///
-/// Returns status of failure or success. Note that this doesn't actually resize
-/// any existing buffers. A call to TfLiteSignatureRunnerAllocateTensors() is
-/// required to change the tensor input buffer.
-///
-/// NOTE: This function is similar to TfLiteInterpreterResizeInputTensorStrict()
-/// and not TfLiteInterpreterResizeInputTensor().
-///
-/// NOTE: `input_name` must match the name of an input in the signature.
-///
-/// NOTE: This function makes a copy of the input dimensions, so the caller can
-/// safely deallocate `input_dims` immediately after this function returns.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerResizeInputTensor(
-    TfLiteSignatureRunner* signature_runner, const char* input_name,
-    const int* input_dims, int32_t input_dims_size);
-
-/// Updates allocations for tensors associated with a signature and resizes
-/// dependent tensors using the specified input tensor dimensionality.
-/// This is a relatively expensive operation and hence should only be called
-/// after initializing the signature runner object and/or resizing any inputs.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerAllocateTensors(
-    TfLiteSignatureRunner* signature_runner);
-
-/// Returns the input tensor identified by `input_name` in the given signature.
-/// Returns nullptr if the given name is not valid.
-///
-/// NOTE: The lifetime of the returned tensor is the same as (and depends on)
-/// the lifetime of `signature_runner`.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern TfLiteTensor* TfLiteSignatureRunnerGetInputTensor(
-    TfLiteSignatureRunner* signature_runner, const char* input_name);
-
-/// Runs inference on a given signature.
-///
-/// Before calling this function, the caller should first invoke
-/// TfLiteSignatureRunnerAllocateTensors() and should also set the values for
-/// the input tensors. After successfully calling this function, the values for
-/// the output tensors will be set.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerInvoke(
-    TfLiteSignatureRunner* signature_runner);
-
-/// Returns the number of output tensors associated with the signature.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern size_t TfLiteSignatureRunnerGetOutputCount(
-    const TfLiteSignatureRunner* signature_runner);
-
-/// Returns the (null-terminated) name of the Nth output in a signature, where
-/// N is specified as `output_index`.
-///
-/// NOTE: The lifetime of the returned name is the same as (and depends on) the
-/// lifetime of `signature_runner`.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern const char* TfLiteSignatureRunnerGetOutputName(
-    const TfLiteSignatureRunner* signature_runner, int32_t output_index);
-
-/// Returns the output tensor identified by `output_name` in the given
-/// signature. Returns nullptr if the given name is not valid.
-///
-/// NOTE: The lifetime of the returned tensor is the same as (and depends on)
-/// the lifetime of `signature_runner`.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern const TfLiteTensor* TfLiteSignatureRunnerGetOutputTensor(
-    const TfLiteSignatureRunner* signature_runner, const char* output_name);
 
 /// Attempts to cancel in flight invocation if any.
 /// This will not affect calls to `Invoke` that happend after this.
@@ -488,12 +382,6 @@ TFL_CAPI_EXPORT extern const TfLiteTensor* TfLiteSignatureRunnerGetOutputTensor(
 ///
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerCancel(
-    TfLiteSignatureRunner* signature_runner);
-
-/// Destroys the signature runner.
-///
-/// WARNING: This is an experimental API and subject to change.
-TFL_CAPI_EXPORT extern void TfLiteSignatureRunnerDelete(
     TfLiteSignatureRunner* signature_runner);
 
 // Forward declaration, to avoid need for dependency on
@@ -509,6 +397,16 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetTelemetryProfiler(
     TfLiteInterpreterOptions* options,
     struct TfLiteTelemetryProfilerStruct* profiler);
 
+/// Ensures the data of the tensor at the given index is readable.
+/// Note: If a delegate has been used, and `SetAllowBufferHandleOutput(true)`
+/// has been called, tensor outputs may be stored as delegate buffer handles
+/// whose data is not directly readable until this method has been called. In
+/// such cases, this method will copy the data from the delegate buffer handle
+/// to CPU memory.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterEnsureTensorDataIsReadable(
+    TfLiteInterpreter* interpreter, int tensor_index);
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

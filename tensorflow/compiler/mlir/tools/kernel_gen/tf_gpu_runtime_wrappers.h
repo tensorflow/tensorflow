@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/ExecutionEngine/RunnerUtils.h"  // from @llvm-project
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/tsl/platform/hash.h"
+#include "tsl/platform/hash.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"

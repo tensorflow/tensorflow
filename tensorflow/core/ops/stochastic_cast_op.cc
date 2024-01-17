@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
@@ -74,7 +75,8 @@ class TflToStablehloPass
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 4> ReadAttr(const flexbuffers::Map& m,
-                                                      Builder* builder) {
+                                                      Builder* builder,
+                                                      std::string op_name) {
     llvm::SmallVector<mlir::NamedAttribute, 4> attrs;
     const auto& keys = m.Keys();
     for (size_t i = 0; i < keys.size(); ++i) {
@@ -101,10 +103,19 @@ class TflToStablehloPass
           } else {
             shape.push_back(vec.size());
           }
-          RankedTensorType ty = tensorflow::GetTypeFromTFTensorShape(
-              shape, builder->getIntegerType(64));
-          auto named_attr =
-              builder->getNamedAttr(key, DenseIntElementsAttr::get(ty, vec));
+          Attribute value;
+          if (op_name == "stablehlo.broadcast" ||
+              op_name == "stablehlo.dynamic_slice" ||
+              op_name == "stablehlo.fft" || op_name == "stablehlo.pad" ||
+              op_name == "stablehlo.reverse" || op_name == "stablehlo.slice" ||
+              op_name == "stablehlo.transpose") {
+            value = builder->getDenseI64ArrayAttr(vec);
+          } else {
+            RankedTensorType ty = tensorflow::GetTypeFromTFTensorShape(
+                shape, builder->getIntegerType(64));
+            value = DenseIntElementsAttr::get(ty, vec);
+          }
+          auto named_attr = builder->getNamedAttr(key, value);
           attrs.push_back(named_attr);
           break;
         }
@@ -180,7 +191,8 @@ void TflToStablehloPass::runOnOperation() {
         flexbuffers::GetRoot(option_buf,
                              custom_op.getCustomOption().getValue().size())
             .AsMap();
-    auto attr = ReadAttr(flex_buffer_map, &builder);
+    auto attr =
+        ReadAttr(flex_buffer_map, &builder, custom_op.getCustomCode().str());
     OperationState op_state(custom_op.getLoc(),
                             custom_op.getCustomCode().str());
     op_state.addOperands(custom_op.getOperands());

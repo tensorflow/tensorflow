@@ -18,7 +18,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -257,14 +257,14 @@ struct LaunchLRN<GPUDevice, T> {
                                                    transformed_output_shape,
                                                    &transformed_output));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    stream_executor::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(stream_executor::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    stream_executor::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -579,14 +579,14 @@ struct LaunchLRNGrad<GPUDevice, T> {
                                                    transformed_output_shape,
                                                    &transformed_output));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    stream_executor::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(stream_executor::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    stream_executor::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)

@@ -32,5 +32,5 @@ cc_library(
 
 alias(
     name = "compile_mlir_util",
-    actual = "//tensorflow/compiler/mlir/tf2xla/api/v0:compile_mlir_util_no_tf_dialect_passes",
+    actual = "//tensorflow/compiler/mlir/tf2xla/api/v1:compile_mlir_util_no_tf_dialect_passes",
 )

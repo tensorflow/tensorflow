@@ -13,39 +13,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-source "${BASH_SOURCE%/*}/utilities/setup.sh"
-
-# Parse options and build targets into arrays, so that shelllint doesn't yell
-# about readability. We can't pipe into 'read -ra' to create an array because
-# piped commands run in subshells, which can't store variables outside of the
-# subshell environment.
-# Ignore grep failures since we're using it for basic filtering
-set +e
-filtered_build_targets=( $(echo "$BUILD_TARGETS" | tr ' ' '\n' | grep .) )
-nonpip_targets=( $(echo "$TEST_TARGETS" | tr ' ' '\n' | grep -E "^//tensorflow/" ) )
-config=( $(echo "$CONFIG_OPTIONS" ) )
-test_flags=( $(echo "$TEST_FLAGS" ) )
-set -e
-
-if [[ "$TFCI_NVIDIA_SMI_ENABLE" == 1 ]]; then
-  tfrun nvidia-smi
+# any.sh has two run modes.
+#
+# 1. RUN, TEST, OR BUILD BAZEL TARGET(S) WITHIN A TFCI ENVIRONMENT
+#    To use:
+#       export TFCI=ci/official/envs/env_goes_here
+#       export TF_ANY_TARGETS="quoted list of targets, like on the command line"
+#       export TF_ANY_MODE="test" or "build" or "run" (default: "test")
+#       ./any.sh
+#
+# 2. RUN ANY OTHER SCRIPT AND ENV WITH NO SIDE EFFECTS (NO UPLOADS)
+#    To use:
+#       export TFCI=ci/official/envs/env_goes_here
+#       export TF_ANY_SCRIPT=ci/official/wheel.sh
+#       ./any.sh
+#
+# 3. DO THE SAME WITH A LOCAL CACHE OR RBE:
+#       export TF_ANY_EXTRA_ENV=ci/official/envs/local_multicache
+#       ...
+#       ./any.sh
+#     or
+#       export TF_ANY_EXTRA_ENV=ci/official/envs/local_rbe
+#       ./any.sh
+#       ...
+set -euxo pipefail
+cd "$(dirname "$0")/../../"  # tensorflow/
+# Any request that includes "nightly_upload" should just use the
+# local multi-cache instead.
+export TFCI="$(echo $TFCI | sed 's/,nightly_upload/,multicache/')"
+if [[ -n "${TF_ANY_EXTRA_ENV:-}" ]]; then
+  export TFCI="$TFCI,$TF_ANY_EXTRA_ENV"
 fi
-
-if [[ "${#filtered_build_targets[@]}" -ne 0 ]]; then
-  tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" "${config[@]}" "${filtered_build_targets[@]}"
-fi
-
-if [[ "${PIP_WHEEL}" -eq "1" ]]; then
-  # Update the version numbers to build a "nightly" package
-  if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
-    tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
-  fi
-
-  tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_COMMON_ARGS[@]}" tensorflow/tools/pip_package:build_pip_package
-  tfrun ./bazel-bin/tensorflow/tools/pip_package/build_pip_package build "${TFCI_BUILD_PIP_PACKAGE_ARGS[@]}"
-  tfrun ./ci/official/utilities/rename_and_verify_wheels.sh "$TFCI_GIT_DIR"
-fi
-
-if [[ "${#nonpip_targets[@]}" -ne 0 ]]; then
-  tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" test "${config[@]}" "${test_flags[@]}" "${nonpip_targets[@]}"
+if [[ -n "${TF_ANY_SCRIPT:-}" ]]; then
+  "$TF_ANY_SCRIPT"
+elif [[ -n "${TF_ANY_TARGETS:-}" ]]; then
+  source "${BASH_SOURCE%/*}/utilities/setup.sh"
+  tfrun bazel "${TF_ANY_MODE:-test}" $TFCI_BAZEL_COMMON_ARGS $TF_ANY_TARGETS
+else
+  echo 'Looks like $TF_ANY_TARGETS are $TF_ANY_SCRIPT are both empty. That is an error.'
+  exit 1
 fi

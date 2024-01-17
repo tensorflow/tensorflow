@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace data {

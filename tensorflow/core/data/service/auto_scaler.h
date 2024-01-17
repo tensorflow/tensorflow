@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {

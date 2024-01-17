@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 
-// TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
@@ -1619,8 +1618,6 @@ class TensorFlowUnsupported : public BaseOperator {
       const BuiltinOptions* builtin_options,
       const CustomOptions* custom_options) const override {
     // Deserializing Flex ops doesn't work now.
-    // TODO(ycling): Revisit and decide if we should fix the flow for importing
-    // TFLite models with Flex ops.
     auto op = std::make_unique<TensorFlowUnsupportedOperator>();
     if (custom_options) {
       auto flexbuffer_map =
@@ -1781,8 +1778,6 @@ class TensorFlowUnsupported : public BaseOperator {
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
-    // TODO(ycling): Design and implement a way to plumb the version of
-    // custom ops.
     return 1;
   }
 

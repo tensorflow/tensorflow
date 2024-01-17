@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -88,7 +88,8 @@ class XlaDevice : public LocalDevice {
     PaddedShapeFn padded_shape_fn_;
     const bool use_multiple_streams_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
+    Metadata(const Metadata&) = delete;
+    void operator=(const Metadata&) = delete;
   };
 
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.

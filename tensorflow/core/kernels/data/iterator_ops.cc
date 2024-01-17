@@ -30,10 +30,12 @@ limitations under the License.
 #include "tensorflow/core/data/finalization_utils.h"
 #include "tensorflow/core/data/metric_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/tf_data_memory_logger.h"
 #include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -126,7 +128,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
   params.id_registry = captured_state->id_registry();
-  params.warm_start = dataset->options().optimization_options().warm_start();
+  params.warm_start = dataset->options().warm_start();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -163,8 +165,11 @@ Status IteratorResource::Save(OpKernelContext* ctx,
   if (SymbolicCheckpointEnabled(dataset->options())) {
     const auto& checkpoint = captured_state->checkpoint();
     if (!checkpoint.GetStatus().ok()) {
+      LOG(WARNING) << "Symbolic checkpointing failed: "
+                   << checkpoint.GetStatus();
       return checkpoint.GetStatus();
     }
+    LOG(INFO) << "Saving symbolic checkpoint";
     TF_RETURN_IF_ERROR(checkpoint.Save(writer));
     return OkStatus();
   }
@@ -210,6 +215,7 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
   params.id_registry = new_state->id_registry();
+  params.warm_start = dataset->options().warm_start();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -249,7 +255,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
   params.id_registry = new_state->id_registry();
-  params.warm_start = dataset->options().optimization_options().warm_start();
+  params.warm_start = dataset->options().warm_start();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -279,6 +285,7 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   std::swap(iterator_state_, new_state);
   tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
       env_, iterator_state_->iterator());
+  EnsureIteratorMemoryLoggerStarted();
   TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
   return OkStatus();
 }

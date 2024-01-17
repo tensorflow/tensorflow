@@ -15,6 +15,7 @@
 """A Python interface for creating dataset servers."""
 
 import collections
+from typing import Iterable
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
 from tensorflow.core.protobuf import service_config_pb2
@@ -24,7 +25,7 @@ from tensorflow.python.data.experimental.service import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
-def _get_time_or_placeholder(value):
+def _get_time_or_placeholder(value) -> int:
   """Modifies time-based config values to account for special behaviors."""
 
   # Servers interpret time values of 0 to mean "choose a reasonable
@@ -217,7 +218,7 @@ class DispatchServer:
     """
     self._server.start()
 
-  def join(self):
+  def join(self) -> None:
     """Blocks until the server has shut down.
 
     This is useful when starting a dedicated dispatch process.
@@ -234,7 +235,7 @@ class DispatchServer:
     """
     self._server.join()
 
-  def stop(self):
+  def stop(self) -> None:
     """Stops the server.
 
     Raises:
@@ -244,7 +245,7 @@ class DispatchServer:
     self._stop()
 
   @property
-  def target(self):
+  def target(self) -> str:
     """Returns a target that can be used to connect to the server.
 
     >>> dispatcher = tf.data.experimental.service.DispatchServer()
@@ -258,7 +259,7 @@ class DispatchServer:
     return "{0}://localhost:{1}".format(self._config.protocol,
                                         self._server.bound_port())
 
-  def _stop(self):
+  def _stop(self) -> None:
     """Stops the server.
 
     Raises:
@@ -267,22 +268,23 @@ class DispatchServer:
     """
     self._server.stop()
 
-  def __del__(self):
+  def __del__(self) -> None:
     self._stop()
 
   @property
-  def _address(self):
+  def _address(self) -> str:
     """Returns the address of the server.
 
     The returned string will be in the form address:port, e.g. "localhost:1000".
     """
     return "localhost:{0}".format(self._server.bound_port())
 
-  def _num_workers(self):
+  def _num_workers(self) -> int:
     """Returns the number of workers registered with the dispatcher."""
     return self._server.num_workers()
 
-  def _snapshot_streams(self, path):
+  def _snapshot_streams(
+      self, path) -> Iterable[_pywrap_server_lib.SnapshotStreamInfoWrapper]:
     """Returns information about all the streams for a snapshot."""
     return self._server.snapshot_streams(path)
 
@@ -405,7 +407,7 @@ class WorkerServer:
     if start:
       self._server.start()
 
-  def start(self):
+  def start(self) -> None:
     """Starts this server.
 
     Raises:
@@ -414,7 +416,7 @@ class WorkerServer:
     """
     self._server.start()
 
-  def join(self):
+  def join(self) -> None:
     """Blocks until the server has shut down.
 
     This is useful when starting a dedicated worker process.
@@ -433,7 +435,7 @@ class WorkerServer:
     """
     self._server.join()
 
-  def stop(self):
+  def stop(self) -> None:
     """Stops the server.
 
     Raises:
@@ -442,7 +444,7 @@ class WorkerServer:
     """
     self._stop()
 
-  def _stop(self):
+  def _stop(self) -> None:
     """Stops the server.
 
     Raises:
@@ -451,22 +453,23 @@ class WorkerServer:
     """
     self._server.stop()
 
-  def __del__(self):
+  def __del__(self) -> None:
     self._stop()
 
   @property
-  def _address(self):
+  def _address(self) -> str:
     """Returns the address of the server.
 
     The returned string will be in the form address:port, e.g. "localhost:1000".
     """
     return "localhost:{0}".format(self._server.bound_port())
 
-  def _num_tasks(self):
+  def _num_tasks(self) -> int:
     """Returns the number of tasks currently being executed on the worker."""
     return self._server.num_tasks()
 
-  def _snapshot_task_progresses(self):
+  def _snapshot_task_progresses(
+      self) -> Iterable[_pywrap_server_lib.SnapshotTaskProgressWrapper]:
     """Returns the progresses of the snapshot tasks currently being executed.
 
     Returns:

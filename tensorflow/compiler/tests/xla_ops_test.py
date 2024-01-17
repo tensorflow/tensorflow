@@ -22,7 +22,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.compiler.tf2xla.python import xla
-from tensorflow.compiler.xla import xla_data_pb2
+from local_xla.xla import xla_data_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1270,13 +1270,13 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     ):
       reduce_with_shapes((None, 4, 5), (3, None, 5), (13, 4, 5))
 
-  @parameterized.parameters(
-      random_ops_util.Algorithm.THREEFRY,
-      random_ops_util.Algorithm.PHILOX,
-      random_ops_util.Algorithm.AUTO_SELECT,
+  @parameterized.product(
+      algorithm=[random_ops_util.Algorithm.THREEFRY,
+                 random_ops_util.Algorithm.PHILOX,
+                 random_ops_util.Algorithm.AUTO_SELECT],
+      dtype=[np.uint8, np.uint64],
   )
-  def testRngBitGenerator(self, algorithm):
-    dtype = np.uint64
+  def testRngBitGenerator(self, algorithm, dtype):
     initial_state = array_ops.placeholder(np.uint64, shape=(2,))
     shape = (2, 3)
     res = xla.rng_bit_generator(algorithm, initial_state, shape, dtype=dtype)

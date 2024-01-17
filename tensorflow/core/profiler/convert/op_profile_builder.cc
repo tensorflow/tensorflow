@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
+#include "tsl/profiler/convert/xla_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -150,18 +150,13 @@ void FinalizeDeduplicatedNodes(bool by_program, Node* root) {
 // This is only for convolutions, not other HLOs, categories or whole programs.
 // TODO(b/243596435) Find a permanent fix to this problem.
 int64_t GetComputationSize(Node node) {
-  int64_t computation_size = 0;
-  for (const auto& child : node.children()) {
-    if (GetComputationSize(child) != 0) {
-      computation_size = GetComputationSize(child);
-    }
+  if (node.has_xla() && node.xla().computation_primitive_size() > 0) {
+    return node.xla().computation_primitive_size();
   }
-  if (node.has_xla()) {
-    if (node.xla().computation_primitive_size() > 0) {
-      return node.xla().computation_primitive_size();
-    } else {
+  for (auto child_iter = node.children().rbegin();
+       child_iter != node.children().rend(); ++child_iter) {
+    if (const int64_t computation_size = GetComputationSize(*child_iter))
       return computation_size;
-    }
   }
   return 0;
 }
@@ -190,9 +185,12 @@ void PopulateOpMetricsNode(
   // https://github.com/tensorflow/profiler/blob/master/frontend/app/common/utils/utils.ts
   metrics->set_raw_time(op_metrics.time_ps());
   metrics->set_raw_flops(op_metrics.flops());
+  metrics->set_occurrences(op_metrics.occurrences());
+  metrics->set_avg_time_ps(
+      SafeDivide(op_metrics.time_ps(), op_metrics.occurrences()));
 
   // Hack to approximate utilization for INT8/4 convolution HLOs:
-  // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor detemrined
+  // Since MXU BW is 2x/4x for INT8/4, multiply peak BW by the factor determined
   // by the computation size
   if (GetComputationSize(*node) == 8) {
     peak_gigaflops_per_second_per_core *= 2;
@@ -241,14 +239,6 @@ void PopulateOpMetricsNode(
   double sram_wr_bytes = GibiToGiga(sram_wr_gibibytes_per_second) *
                          PicoToNano(op_metrics.time_ps());
 
-  // Check if number of bytes is consistent.
-  const auto total_bytes = op_metrics.bytes_accessed();
-  if ((hbm_bytes + sram_rd_bytes + sram_wr_bytes) < (0.99 * total_bytes)) {
-    // If inconsistent, assume total_bytes are all off-chip.
-    hbm_bytes = total_bytes;
-    sram_rd_bytes = 0;
-    sram_wr_bytes = 0;
-  }
   metrics->add_raw_bytes_accessed_array(hbm_bytes);
   metrics->add_raw_bytes_accessed_array(sram_rd_bytes);
   metrics->add_raw_bytes_accessed_array(sram_wr_bytes);

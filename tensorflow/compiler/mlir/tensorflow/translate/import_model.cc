@@ -94,7 +94,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -135,7 +135,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -368,7 +368,7 @@ class ImporterBase {
   // Converts the given function-call AttrValue to MLIR Attributes and pushes
   // them to the given attributes list. For example, if there is a kFunc
   // AttrValue {name : foo, attrs : {k1 : bar, k2 : rfc}}, it will convert it to
-  // a list of MLIR Attributes: [{base_name : foo}, {base_name.k1 : bar},
+  // a list of MLIR Attributes: {{base_name : foo}, {base_name.k1 : bar},
   // {base_name.k2 : rfc}}.
   Status ConvertFunctionCallAttribute(const std::string& base_name,
                                       const AttrValue& value,
@@ -3604,9 +3604,9 @@ SavedModelObjectGraphImporter::Convert(SavedModelV2Bundle* saved_model,
   // examples quite a bit nicer.
   for (auto func :
        llvm::make_early_inc_range(module->getOps<mlir::func::FuncOp>())) {
-    if (func.getName().startswith("__inference__traced_save_") ||
-        func.getName().startswith("__inference__traced_restore_") ||
-        func.getName().startswith("__inference_signature_wrapper_")) {
+    if (func.getName().starts_with("__inference__traced_save_") ||
+        func.getName().starts_with("__inference__traced_restore_") ||
+        func.getName().starts_with("__inference_signature_wrapper_")) {
       func.erase();
     }
   }
@@ -4326,7 +4326,7 @@ tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertFunctionToMlir(
     mlir::MLIRContext* context) {
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
-  specs.graph_func_name = fbody->fdef.signature().name();
+  specs.graph_func_name = fbody->record->fdef().signature().name();
   specs.enable_shape_inference = false;
   specs.graph_as_function = true;
   for (const auto* control_ret_node : fbody->control_ret_nodes)

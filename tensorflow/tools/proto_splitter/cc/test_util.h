@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {

@@ -31,7 +31,7 @@
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/function/runtime_client/runtime_client.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace fuzzing {

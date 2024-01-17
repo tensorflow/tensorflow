@@ -79,12 +79,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
-#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
@@ -290,8 +291,7 @@ Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
   const auto& node_def = op->MutableAttrs()->BuildNodeDef();
   const OpDef* op_def = nullptr;
 
-  const FunctionDef* function_def =
-      op->EagerContext().FuncLibDef()->Find(op->Name());
+  const FunctionDef* function_def = op->GetFunctionDef();
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
@@ -419,8 +419,7 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
     return OkStatus();
   }
 
-  const FunctionDef* function_def =
-      ctx.pflr()->GetFunctionLibraryDefinition()->Find(op->Name());
+  const FunctionDef* function_def = op->GetFunctionDef();
   if (function_def == nullptr) {
     return errors::NotFound("Failed to find function '", op->Name(), "'");
   }
@@ -444,8 +443,7 @@ Status HasTPUReplication(const EagerOperation& op, const EagerContext& ctx,
     return OkStatus();
   }
 
-  const FunctionDef* function_def =
-      ctx.pflr()->GetFunctionLibraryDefinition()->Find(op.Name());
+  const FunctionDef* function_def = op.GetFunctionDef();
   if (function_def == nullptr) {
     return errors::NotFound("Failed to find function '", op.Name(), "'");
   }
@@ -512,11 +510,12 @@ Status HasNestedJitCompile(const EagerOperation& op, const EagerContext& ctx,
   std::queue<std::string> function_names;
   function_names.push(op.Name());
 
+  const FunctionLibraryDefinition* func_lib_def = op.FuncLibDef();
+
   while (!function_names.empty()) {
     const string& function_name = function_names.front();
 
-    const FunctionDef* function_def =
-        ctx.pflr()->GetFunctionLibraryDefinition()->Find(function_name);
+    const FunctionDef* function_def = func_lib_def->Find(function_name);
     if (function_def == nullptr) {
       return errors::NotFound("Failed to find function '", function_name, "'");
     }
@@ -1063,11 +1062,13 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
 
 using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
 
-// Removes boolean tensor inputs from the EagerOperation and returns them.
-// Currently this is only useful to invoke when small_constants_optimizer is
-// enabled because the runtime will have equivalent FunctionDefs of the original
-// tf.function without the boolean tensor input.
-StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
+// Identifies boolean tensor inputs from the EagerOperation and returns them. If
+// delete_inputs is set to true then it will also delete them from the
+// function's input signature. Currently this is only useful to invoke when
+// small_constants_optimizer is enabled because the runtime will have equivalent
+// FunctionDefs of the original tf.function without the boolean tensor input.
+StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
+                                         bool delete_inputs) {
   BoolTensorInputs result;
   if (!op->is_function()) return result;
   // Extract tensor inputs.
@@ -1108,6 +1109,7 @@ StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
     result.emplace_back(input_arg.name(), input_value);
   }
 
+  if (!delete_inputs) return result;
   // If we were able to identify all boolean inputs, update the op's inputs.
   op->Clear();
   for (auto* input : stripped_inputs) {
@@ -1327,7 +1329,8 @@ Status GetOrCreateKernelAndDevice(
   // Update the EagerOperation with information about the boolean input tensors
   // when small constant optimization is enabled.
   if (IsSmallConstantOptimizationEnabled(*op)) {
-    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs, RemoveBoolInputs(op));
+    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs,
+                        GetBoolInputs(op, /*delete_inputs=*/false));
     string folded_name = op->Name();
     for (const auto& [input_name, input_value] : bool_inputs) {
       folded_name = small_constants_optimizer::FoldedFunctionName(
@@ -1532,23 +1535,33 @@ Status GetOrCreateKernelAndDevice(
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU()));
     }
 
-    TF_RETURN_IF_ERROR(
-        kernel->Init(ctx.LogDevicePlacement(), ndef, graph_collector));
+    TF_RETURN_IF_ERROR(kernel->Init(ctx.LogDevicePlacement(), ndef,
+                                    graph_collector, op->eager_func_params()));
 
+    // Exclude tf.data op kernels from being cached. The reason for this is
+    // that tf.data op kernels that accept a user-defined function will have a
+    // unique cache key every time they are executed (because the user-defined
+    // function is traced every time). Caching such kernels provides no
+    // benefit and in some cases results in linear memory growth of use
+    // programs that build input pipeline graphs in a loop.
+    const OpDef* op_def;
     if (op->is_function()) {
-      ctx.AddKernelToCache(cache_key, kernel.get());
-    } else {
-      // Exclude tf.data op kernels from being cached. The reason for this is
-      // that tf.data op kernels that accept a user-defined function will have a
-      // unique cache key every time they are executed (because the user-defined
-      // function is traced every time). Caching such kernels provides no
-      // benefit and in some cases results in linear memory growth of use
-      // programs that build input pipeline graphs in a loop.
-      const OpDef* op_def;
-      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
-      if (KernelCacheEnabled(*op_def)) {
-        ctx.AddKernelToCache(cache_key, kernel.get());
+      const FunctionDef* function_def = op->GetFunctionDef();
+      if (function_def != nullptr) {
+        op_def = &(function_def->signature());
+      } else {
+        TF_RETURN_IF_ERROR(OpDefForOp(op->Name().c_str(), &op_def));
       }
+    } else {
+      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
+    }
+    if (op_def != nullptr && KernelCacheEnabled(*op_def)) {
+      // TODO(intel-tf): Implement an eviction policy to prevent potential
+      // memory growth (https://github.com/tensorflow/tensorflow/issues/58676)
+      VLOG(2) << "Caching op " << op->Name();
+      // If the kernel is already in the cache, this discards the passed-in
+      // kernel and returns the cached kernel.
+      kernel = ctx.AddKernelToCache(cache_key, std::move(kernel));
     }
   }
 
@@ -1573,7 +1586,7 @@ Status CreateUnshapedOutput(
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   int64_t op_id;
   if (eager_func_params.has_value()) {
     op_id = eager_func_params.value().op_id;
@@ -1616,7 +1629,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
     const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     eager_func_params = EagerFunctionParams{
         op_id, /* is_component_function= */ false, /* step_id= */ std::nullopt};
@@ -1962,8 +1975,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
       &op->EagerContext(), std::move(request), op_device,
       ctx.GetContextViewId(), eager_client.get(), op->GetCancellationManager(),
-      op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
-      *inputs, {retvals, num_outputs}));
+      op->MutableAttrs()->BuildNodeDef(), op->FuncLibDef(), *inputs,
+      {retvals, num_outputs}));
 
   if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
     string msg = strings::StrCat(
@@ -2038,7 +2051,7 @@ Status GetKernelOutputs(
 #if defined(IS_MOBILE_PLATFORM)
         return errors::Unimplemented(
             "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
         TF_RETURN_IF_ERROR(retvals[i]->SetRemoteShape(
             std::get<TensorShape>(ret), retvals[i]->device(),
             ctx->GetContextViewId()));

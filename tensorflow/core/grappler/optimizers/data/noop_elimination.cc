@@ -106,7 +106,8 @@ bool IsOutputIdentityOfInput(const FunctionDef& fdef, const string& output_arg,
   return input.node_name == input_arg;
 }
 
-bool IsMapIdentity(const NodeDef& map_node, const MutableGraphView& graph) {
+bool IsMapIdentity(const NodeDef& map_node, const MutableGraphView& graph,
+                   const FunctionLibraryDefinition& function_library) {
   if (map_node.op() != "MapDataset" && map_node.op() != "ParallelMapDataset" &&
       map_node.op() != "ParallelMapDatasetV2") {
     return false;
@@ -117,13 +118,13 @@ bool IsMapIdentity(const NodeDef& map_node, const MutableGraphView& graph) {
   // Don't eliminate map nodes with captured arguments.
   if (map_node.attr().at("Targuments").list().type_size() != 0) return false;
 
-  FunctionLibraryDefinition function_library(OpRegistry::Global(),
-                                             graph.graph()->library());
   const FunctionDef* fdef =
       function_library.Find(map_node.attr().at("f").func().name());
 
   // Don't eliminate map nodes with stateful functions.
-  if (function_utils::IsFunctionStateful(function_library, *fdef)) return false;
+  if (function_utils::IsFunctionStateful(function_library, *fdef)) {
+    return false;
+  }
 
   const auto& sig = fdef->signature();
   if (sig.input_arg_size() != sig.output_arg_size()) return false;
@@ -138,10 +139,12 @@ bool IsMapIdentity(const NodeDef& map_node, const MutableGraphView& graph) {
   return true;
 }
 
-bool IsNoOp(const NodeDef& node, const MutableGraphView& graph) {
+bool IsNoOp(const NodeDef& node, const MutableGraphView& graph,
+            const FunctionLibraryDefinition& function_library) {
   return IsTakeAll(node, graph) || IsSkipNone(node, graph) ||
          IsRepeatOne(node, graph) || IsPrefetchZero(node, graph) ||
-         IsShardOne(node, graph) || IsMapIdentity(node, graph);
+         IsShardOne(node, graph) ||
+         IsMapIdentity(node, graph, function_library);
 }
 
 }  // namespace
@@ -153,8 +156,10 @@ Status NoOpElimination::OptimizeAndCollectStats(Cluster* cluster,
   *output = item.graph;
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;
+  FunctionLibraryDefinition function_library(OpRegistry::Global(),
+                                             graph.graph()->library());
   for (const NodeDef& node : item.graph.node()) {
-    if (!IsNoOp(node, graph)) continue;
+    if (!IsNoOp(node, graph, function_library)) continue;
 
     NodeDef* const parent = graph_utils::GetInputNode(node, graph);
     TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), parent->name()));

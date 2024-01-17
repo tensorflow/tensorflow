@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/util/dump_graph.h"

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
+#include "tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

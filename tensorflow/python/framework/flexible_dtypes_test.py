@@ -818,14 +818,39 @@ class DtypesUtilTest(tf_test.TestCase, parameterized.TestCase):
           (dtypes.float64, False),
       )
 
-  # Test Dtypes type inference.
-  def testResultTypeDtype(self):
+  # Test TF Dtypes type inference.
+  def testResultTypeTFDtype(self):
     with DtypeConversionTestEnv('all'):
       d1 = dtypes.float32
       d2 = dtypes.float16
       self.assertEqual(
           flexible_dtypes.result_type(d1, d2),
           (dtypes.float32, False),
+      )
+
+  # Test NP dtype class type inference.
+  def testResultTypeNPDtype(self):
+    with DtypeConversionTestEnv('all'):
+      d = np.dtype(np.float32)
+      self.assertEqual(
+          flexible_dtypes.result_type(d),
+          (dtypes.float32, False),
+      )
+
+      d = np.dtype([('f1', np.int16)])
+      with self.assertRaises(NotImplementedError):
+        _ = flexible_dtypes.result_type(d)
+
+      d = np.dtype([('a', 'f8'), ('b', 'S10')])
+      with self.assertRaises(NotImplementedError):
+        _ = flexible_dtypes.result_type(d)
+
+  # Test bool type inference.
+  def testResultTypeBool(self):
+    with DtypeConversionTestEnv('all'):
+      self.assertEqual(
+          flexible_dtypes.result_type(True, False),
+          (dtypes.bool, False),
       )
 
   # Test Tensor shape type inference.

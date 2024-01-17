@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler_client.h"
 #include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
+#include "xla/client/client_library.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"

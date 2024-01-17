@@ -594,7 +594,7 @@ class _DumpingCallback(object):
       tensor: The graph tensor to look up the name for.
 
     Returns:
-      Name of the orignal instrumented tensor as known to the debugger.
+      Name of the original instrumented tensor as known to the debugger.
     """
     return self._tensor_aliases.get(tensor.name, tensor.name)
 

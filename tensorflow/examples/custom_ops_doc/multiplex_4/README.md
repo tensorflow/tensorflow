@@ -519,7 +519,6 @@ py_strict_library(
 tf_py_test(
     name = "multiplex_4_test",
     size = "medium",  # This test blocks because it writes and reads a file,
-    timeout = "short",  # but it still runs quickly.
     srcs = ["multiplex_4_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",

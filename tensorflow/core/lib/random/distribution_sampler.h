@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/random/distribution_sampler.h"
+#include "tsl/lib/random/distribution_sampler.h"
 
 namespace tensorflow {
 namespace random {

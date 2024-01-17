@@ -43,13 +43,13 @@ limitations under the License.
     }                                                                     \
   }
 
-#define BINARY_INPUT_OP_FUZZER(dtype, opName)                                  \
+#define BINARY_INPUT_OP_FUZZER(dtype1, dtype2, opName)                         \
   class Fuzz##opName : public FuzzSession<Tensor, Tensor> {                    \
     void BuildGraph(const Scope& scope) override {                             \
       auto op_node1 =                                                          \
-          tensorflow::ops::Placeholder(scope.WithOpName("input1"), dtype);     \
+          tensorflow::ops::Placeholder(scope.WithOpName("input1"), dtype1);    \
       auto op_node2 =                                                          \
-          tensorflow::ops::Placeholder(scope.WithOpName("input2"), dtype);     \
+          tensorflow::ops::Placeholder(scope.WithOpName("input2"), dtype2);    \
       tensorflow::ops::opName(scope.WithOpName("output"), op_node1, op_node2); \
     }                                                                          \
     void FuzzImpl(const Tensor& input_tensor1,                                 \

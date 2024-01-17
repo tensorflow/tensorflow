@@ -295,18 +295,24 @@ service EagerService {
   // This initializes the worker, informing it about the other workers in the
   // cluster and exchanging authentication tokens which will be used in all
   // other RPCs to detect whether the worker has restarted.
-  rpc CreateContext(CreateContextRequest) returns (CreateContextResponse);
+  rpc CreateContext(CreateContextRequest) returns (CreateContextResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // This updates the eager context on an existing worker when updating the set
   // of servers in a distributed eager cluster.
-  rpc UpdateContext(UpdateContextRequest) returns (UpdateContextResponse);
+  rpc UpdateContext(UpdateContextRequest) returns (UpdateContextResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // This takes a list of Execute and DeleteTensorHandle operations and enqueues
   // (in async mode) or executes (in sync mode) them on the remote server.
   // All outputs of ops which were not explicitly deleted with
   // DeleteTensorHandle entries will be assumed to be alive and are usable by
   // future calls to Enqueue.
-  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // A streaming version of Enqueue.
   // Current server implementation sends one response per received request.
@@ -314,11 +320,15 @@ service EagerService {
   // can be sent without waiting for a response to the previous request. This
   // synchronization is required in the regular Enqueue call because gRPC does
   // not guarantee to preserve request order.
-  rpc StreamingEnqueue(stream EnqueueRequest) returns (stream EnqueueResponse);
+  rpc StreamingEnqueue(stream EnqueueRequest) returns (stream EnqueueResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Takes a set of op IDs and waits until those ops are done. Returns any error
   // in the stream so far.
-  rpc WaitQueueDone(WaitQueueDoneRequest) returns (WaitQueueDoneResponse);
+  rpc WaitQueueDone(WaitQueueDoneRequest) returns (WaitQueueDoneResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // This takes an Eager operation and executes it in async mode on the remote
   // server. Different from EnqueueRequest, ops/functions sent through this
@@ -334,7 +344,9 @@ service EagerService {
   // For executing ops/main functions, use Enqueue or StreamingEnqueue instead
   // for correct ordering.
   rpc RunComponentFunction(RunComponentFunctionRequest)
-      returns (RunComponentFunctionResponse);
+      returns (RunComponentFunctionResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Contexts are always created with a deadline and no RPCs within a deadline
   // will trigger a context garbage collection. KeepAlive calls can be used to
@@ -343,9 +355,13 @@ service EagerService {
   // ID and the current context view ID. This is useful for checking if the
   // remote worker (potentially with the same task name and hostname / port) is
   // replaced with a new process.
-  rpc KeepAlive(KeepAliveRequest) returns (KeepAliveResponse);
+  rpc KeepAlive(KeepAliveRequest) returns (KeepAliveResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 
   // Closes the context. No calls to other methods using the existing context ID
   // are valid after this.
-  rpc CloseContext(CloseContextRequest) returns (CloseContextResponse);
+  rpc CloseContext(CloseContextRequest) returns (CloseContextResponse) {
+    // [AUTOMATION]: Internal rpc option goes here.
+  }
 }

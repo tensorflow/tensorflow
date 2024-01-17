@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
 namespace quantization {
@@ -38,10 +37,8 @@ inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepName =
 inline constexpr absl::string_view kTfQuantQatStepName = "tf_quant_qat";
 inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
     "tf_quant_ptq_dynamic_range";
-inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
-    "tf_quant_constant_unfreezing";
-inline constexpr absl::string_view kTfQuantInsertRestoreOpStepName =
-    "tf_quant_insert_restore_op";
+inline constexpr absl::string_view kTfQuantWeightOnlyStepName =
+    "tf_quant_weight_only";
 
 absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path,
@@ -55,6 +52,11 @@ absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
+
+absl::StatusOr<ExportedModel> QuantizeWeightOnly(
+    absl::string_view saved_model_path,
     const QuantizationOptions& quantization_options,
     const absl::flat_hash_map<std::string, std::string>& function_aliases);
 

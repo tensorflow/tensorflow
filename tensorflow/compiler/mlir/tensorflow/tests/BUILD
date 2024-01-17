@@ -52,9 +52,9 @@ tf_cc_test(
     srcs = ["xla_sharding_util_test.cc"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:Support",
+        "@local_xla//xla:xla_data_proto_cc",
     ],
 )

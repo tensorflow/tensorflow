@@ -54,6 +54,13 @@ class DataServiceContext {
   // Returns 0 if there are not sufficient recorded iterator gap times to
   // produce a good estimate, or the tf.data Model instance is null.
   virtual double GetTargetProcessingTimeNsec() const = 0;
+  // Updates the `max_outstanding_requests` with
+  // `requested_outstanding_requests`.
+  // Returns the new max outstanding requests which may be different from the
+  // requested one depending on available ram.
+  virtual int64_t UpdateMaxOutstandingRequests(
+      int64_t max_outstanding_requests,
+      int64_t requested_outstanding_requests) = 0;
 };
 
 using DataServiceContextFactory =

@@ -780,6 +780,11 @@ class AstToCfg(gast.NodeVisitor):
   def visit_Expr(self, node):
     self._process_basic_statement(node)
 
+  def visit_NamedExpr(self, node):
+    # TODO(yileiyang): Add a test case once we have a newer astunparse version.
+    # NamedExpr was introduced in Python 3.8 and supported in gast 0.5.1+.
+    self._process_basic_statement(node)
+
   def visit_Assign(self, node):
     self._process_basic_statement(node)
 

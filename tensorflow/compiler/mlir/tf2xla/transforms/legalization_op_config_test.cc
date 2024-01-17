@@ -20,23 +20,24 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
-#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace mhlo {
@@ -129,9 +130,9 @@ TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
   // If an op moves from one lowering implementation to a different one (e.g.
   // from MLIR to TF2XLA), these numbers should change. Or if TF Dialect adds
   // a new op, we should expect these to change too.
-  EXPECT_EQ(mlir_lowering_count, 71);
-  EXPECT_EQ(tf2xla_fallback_count, 297);
-  EXPECT_EQ(non_categorized_count, 418);
+  EXPECT_EQ(mlir_lowering_count, 67);
+  EXPECT_EQ(tf2xla_fallback_count, 316);
+  EXPECT_EQ(non_categorized_count, 421);
 }
 
 // Just a counter test to see which ops have duplicate lowerings. This isn't a
@@ -154,7 +155,7 @@ TEST_F(LegalizationOpConfigTest, CountTypesWhichHaveBothMlirAndTf2xlaFallback) {
   }
 
   // TODO(b/288876609): This should get to zero.
-  EXPECT_EQ(double_lowering_count, 3);
+  EXPECT_EQ(double_lowering_count, 1);
 }
 
 // Counts which ops have MLIR only lowerings. This isn't a
@@ -182,7 +183,7 @@ TEST_F(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
     }
   }
 
-  EXPECT_EQ(mlir_only_patterns, 66);
+  EXPECT_EQ(mlir_only_patterns, 64);
 }
 
 // Counts which ops have lowerings without XlaOpKernels. This isn't a

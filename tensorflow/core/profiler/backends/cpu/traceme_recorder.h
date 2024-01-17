@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/profiler/backends/cpu/traceme_recorder.h"
+#include "tsl/profiler/backends/cpu/traceme_recorder.h"
 
 namespace tensorflow {
 namespace profiler {

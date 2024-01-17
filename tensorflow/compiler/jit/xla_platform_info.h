@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/pjrt_base_device.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -96,7 +96,8 @@ class XlaPlatformInfo {
   // set an artificial refcount of one.
   std::shared_ptr<se::DeviceMemoryAllocator> device_allocator_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaPlatformInfo);
+  XlaPlatformInfo(const XlaPlatformInfo&) = delete;
+  void operator=(const XlaPlatformInfo&) = delete;
 };
 
 // Returns a set containing the device ids contained in visible_device_list or
@@ -105,13 +106,19 @@ class XlaPlatformInfo {
 StatusOr<std::optional<std::set<int>>> ParseVisibleDeviceList(
     absl::string_view visible_device_list);
 
+// Returns the device type for building a DeviceCompiler from the given platform
+// type.
+StatusOr<DeviceType> GetCompilationDeviceType(
+    const DeviceType& platform_device_type);
+
 // Builds a DeviceCompiler that uses xla::LocalClient using `platform_info` and
-// sets *xla_device_compiler to point to it. Uses flags from
-// `MarkForCompilationPassFlags` for configuring the persistor used in the
-// DeviceCompiler.
+// `compilation_device_type` (in non-TPU case) and sets *xla_device_compiler to
+// point to it. Uses flags from `MarkForCompilationPassFlags` for configuring
+// the persistor used in the DeviceCompiler. The platform ID from
+// `platform_info` must not be null in CPU case.
 Status BuildXlaDeviceCompiler(
     DeviceBase* dev, FunctionLibraryRuntime* flr,
-    const XlaPlatformInfo& platform_info,
+    const XlaPlatformInfo& platform_info, DeviceType compilation_device_type,
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>**
         xla_device_compiler);
 
@@ -132,8 +139,22 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
         pjrt_device_compiler,
     DeviceCompilationProfiler** profiler);
 
+// Same as the above function but takes the resource manager `rm` instead of an
+// OpKernelContext.
+Status GetOrCreatePjRtDeviceCompilerAndProfiler(
+    const XlaPlatformInfo& platform_info, ResourceMgr* rm,
+    FunctionLibraryRuntime* flr,
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>**
+        pjrt_device_compiler,
+    DeviceCompilationProfiler** profiler);
+
 // Returns information about the platform from kernel context.
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
+
+// Obtains persistent cache directory for executables that target a given device
+// based off xla flags. If you shouldn't use persistent caching, returns "".
+std::string GetPersistentCacheDirectory(
+    const DeviceType& compilation_device_type);
 
 // Returns allocator from platform info if non-null, or populate and return a
 // pointer to the allocator adapter with allocator from context.

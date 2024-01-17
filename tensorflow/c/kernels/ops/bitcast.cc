@@ -125,7 +125,7 @@ void RegisterBitcastOp() {
 }
 
 TF_ATTRIBUTE_UNUSED static bool IsBitcastOpRegistered = []() {
-  if (SHOULD_REGISTER_OP("Bitcast")) {
+  if ((&TF_NewStatus != nullptr) && SHOULD_REGISTER_OP("Bitcast")) {
     RegisterBitcastOp();
   }
   return true;

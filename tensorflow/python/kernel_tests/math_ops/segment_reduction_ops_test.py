@@ -23,10 +23,12 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -1109,6 +1111,32 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
           )
           self.assertAllClose(tf_xgrad, np_xgrad)
           self.assertAllClose(tf_unique_indices, np_unique_indices)
+
+  @test_util.run_deprecated_v1
+  def testSparseGradient(self):
+    shape = [10, 4]
+
+    segment_indices = [0, 1, 2, 2]
+    num_indices = len(segment_indices)
+    for tf_op in [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]:
+      with self.cached_session():
+        tf_indices, _, tf_x, np_x = self._sparse_input(
+            shape, num_indices, dtype=dtypes_lib.float64
+        )
+        with gradients.GradientTape() as g:
+          g.watch(tf_x)
+          s = tf_op(
+              data=tf_x,
+              indices=tf_indices,
+              segment_ids=segment_indices,
+              sparse_gradient=True,
+          )
+        tf_dx = g.gradient(s, tf_x)
+        self.assertIsInstance(tf_dx, indexed_slices.IndexedSlices)
+        jacob_t, jacob_n = gradient_checker.compute_gradient(
+            tf_x, shape, s, [3, 4], x_init_value=np_x.astype(np.double), delta=1
+        )
+      self.assertAllClose(jacob_t, jacob_n)
 
   def testGradientValid(self):
     # Baseline for the testGradient*Invalid* methods below.

@@ -75,14 +75,16 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/interpreter/execute.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/runtime/step_id.h"
 #include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/refcount.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -108,6 +110,11 @@ constexpr char kTensorNameJoiningDelimiter[] = "-";
 constexpr char kArgumentTypeJoiningDelimiter[] = "^";
 constexpr char kFallbackInitFunction[] = "_tfrt_fallback_init";
 constexpr char kResourceInitFunction[] = "_tfrt_resource_init";
+
+StepId GetNextStepId() {
+  static StepIdGenerator gen;
+  return gen.GetNextStepId();
+}
 
 }  // namespace
 
@@ -189,7 +196,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
-    const tensorflow::tfrt_stub::FallbackState& fallback_state,
+    tensorflow::tfrt_stub::FallbackState& fallback_state,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
     CostRecorder* cost_recorder) {
@@ -206,11 +213,11 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
     // If the user provides a work_queue, we use it for inter-op tasks.
     request_id = work_queue->id();
     // If the user does not provide a valid id, we need to generate one.
-    if (request_id == 0) request_id = tfrt::GetUniqueInt();
+    if (request_id == 0) request_id = GetNextStepId().id;
     request_info->request_queue = work_queue;
   } else {
+    request_id = GetNextStepId().id;
     // Otherwise we use the global queue in `runtime`.
-    request_id = tfrt::GetUniqueInt();
     TF_ASSIGN_OR_RETURN(request_info->request_queue_owner,
                         runtime.CreateRequestQueue(request_id));
     request_info->request_queue = request_info->request_queue_owner.get();
@@ -272,7 +279,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
     tfrt::ResourceContext* client_graph_resource_context,
     OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array, const Runtime& runtime,
-    const FallbackState& fallback_state,
+    FallbackState& fallback_state,
     const tensorflow::ProcessFunctionLibraryRuntime&
         process_function_library_runtime,
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
@@ -286,8 +293,9 @@ tensorflow::Status GraphExecutionRunOnFunction(
                         process_function_library_runtime, cost_recorder));
 
   int64_t request_id = request_info->tfrt_request_context->id();
-  tensorflow::profiler::TraceMeProducer traceme(
-      // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
+  // The top level traceme root for this request. The thread pool used later
+  // will add TraceMeProducer and TraceMeConsumer to connect async tasks.
+  tsl::profiler::TraceMe traceme(
       [request_id, signature_name, &options, symbol_uids] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
@@ -298,8 +306,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
                                        options.model_metadata.version())},
              {"tf_symbol_uid", symbol_uids.tf_symbol_uid},
              {"tfrt_symbol_uid", symbol_uids.tfrt_symbol_uid}});
-      },
-      tensorflow::profiler::ContextType::kTfrtExecutor, request_id);
+      });
 
   // Only configure timer when the deadline is set.
   if (run_options.deadline.has_value()) {
@@ -317,10 +324,17 @@ tensorflow::Status GraphExecutionRunOnFunction(
 
   ScopedStreamCallback scoped_stream_callback;
 
+  if (run_options.streamed_output_callback && !stream_callback_id.has_value()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Signature '", signature_name, "' does not support streaming."));
+  }
+
   if (stream_callback_id.has_value()) {
     if (!run_options.streamed_output_callback) {
       return absl::InvalidArgumentError(
-          "streamed_output_callback is not provided for a streaming model.");
+          absl::StrCat("Signature '", signature_name,
+                       "' contains streaming ops but is called using Predict "
+                       "without the streamed callback."));
     }
   }
 
@@ -439,13 +453,13 @@ tensorflow::Status GraphExecutionRunOnFunction(
 }
 
 GraphExecutor::GraphExecutor(
-    Options options, const FallbackState& fallback_state,
+    Options options, std::unique_ptr<FallbackState> fallback_state,
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
         graph_execution_state,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry)
     : options_(std::move(options)),
-      fallback_state_(fallback_state),
+      fallback_state_(std::move(fallback_state)),
       graph_execution_state_(std::move(graph_execution_state)),
       req_deadline_tracker_(options_.runtime->core_runtime()->GetHostContext()),
       kernel_registry_(std::move(kernel_registry)),
@@ -455,7 +469,7 @@ GraphExecutor::GraphExecutor(
 }
 
 StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
-    Options options, const FallbackState& fallback_state,
+    Options options, std::unique_ptr<FallbackState> fallback_state,
     std::unique_ptr<tfrt::ResourceContext> resource_context,
     tensorflow::GraphDef graph_def,
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry) {
@@ -477,10 +491,11 @@ StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
   TF_ASSIGN_OR_RETURN(
       auto graph_execution_state,
       TfrtGraphExecutionState::Create(graph_execution_state_options,
-                                      std::move(graph_def), fallback_state));
+                                      std::move(graph_def), *fallback_state));
   return std::make_unique<GraphExecutor>(
-      std::move(options), fallback_state, std::move(resource_context),
-      std::move(graph_execution_state), std::move(kernel_registry));
+      std::move(options), std::move(fallback_state),
+      std::move(resource_context), std::move(graph_execution_state),
+      std::move(kernel_registry));
 }
 
 namespace {
@@ -591,7 +606,7 @@ tensorflow::Status GraphExecutor::Run(
       &flat_outputs, resource_context_.get(),
       &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
-      &loaded_client_graph.resource_array(), runtime(), fallback_state_,
+      &loaded_client_graph.resource_array(), runtime(), fallback_state(),
       loaded_client_graph.process_function_library_runtime(),
       &req_deadline_tracker_, loaded_client_graph.stream_callback_id(),
       cost_recorder));

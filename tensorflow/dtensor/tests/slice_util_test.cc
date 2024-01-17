@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace dtensor {

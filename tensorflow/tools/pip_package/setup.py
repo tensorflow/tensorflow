@@ -29,6 +29,7 @@ across many other scientific domains. TensorFlow is licensed under [Apache
 2.0](https://github.com/tensorflow/tensorflow/blob/master/LICENSE).
 """
 
+import datetime
 import fnmatch
 import os
 import platform
@@ -36,7 +37,7 @@ import re
 import sys
 
 from setuptools import Command
-from setuptools import find_packages
+from setuptools import find_namespace_packages
 from setuptools import setup
 from setuptools.command.install import install as InstallCommandBase
 from setuptools.dist import Distribution
@@ -47,7 +48,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.15.0'
+_VERSION = '2.16.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -87,47 +88,42 @@ REQUIRED_PACKAGES = [
     'flatbuffers >= 23.5.26',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
-    'h5py >= 2.9.0',
+    'h5py >= 3.10.0',
     'libclang >= 13.0.0',
-    'ml_dtypes >= 0.2.0',
-    'numpy >= 1.23.5',
+    'ml_dtypes ~= 0.3.1',
+    # TODO(b/304751256): Adjust the numpy pin to a single version, when ready
+    'numpy >= 1.23.5, < 2.0.0 ; python_version <= "3.11"',
+    'numpy >= 1.26.0, < 2.0.0 ; python_version >= "3.12"',
     'opt_einsum >= 2.3.2',
     'packaging',
     # pylint:disable=line-too-long
     (
         'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
     ),
+    'requests >= 2.21.0, < 3',
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0, < 1.15',
-    # This looks worse as a wrapped line. pylint:disable=line-too-long
-    (
-        'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or'
-        ' platform_system!="Darwin"'
-    ),
+    # TODO(b/305196096): Remove the <3.12 condition once the pkg is updated
+    'tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
     'grpcio >= 1.24.3, < 2.0' if sys.byteorder == 'little' else None,
     # TensorFlow exposes the TF API for certain TF ecosystem packages like
-    # keras.  When TF depends on those packages, the package version needs to
+    # keras. When TF depends on those packages, the package version needs to
     # match the current TF version. For tf_nightly, we install the nightly
     # variant of each package instead, which must be one version ahead of the
     # current release version. These also usually have "alpha" or "dev" in their
-    # version name.
-    # These are all updated during the TF release process.
-    standard_or_nightly(
-        'tensorboard >= 2.13, < 2.14', 'tb-nightly ~= 2.14.0.a'
-    ),
-    standard_or_nightly(
-        'tensorflow_estimator >= 2.13.0rc0, < 2.14',
-        'tf-estimator-nightly ~= 2.14.0.dev',
-    ),
-    standard_or_nightly(
-        'keras >= 2.13.1rc0, < 2.14', 'keras-nightly ~= 2.14.0.dev'
-    ),
+    # version name. During the TF release process the version of these
+    # dependencies on the release branch is updated to the stable releases (RC
+    # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
+    # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
+    'tb-nightly ~= 2.16.0.a',
+    'tf-estimator-nightly ~= 2.14.0.dev',
+    'keras-nightly ~= 3.0.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -172,17 +168,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cuda-runtime-cu11 == 11.8.89',
-    'nvidia-cublas-cu11 == 11.11.3.6',
-    'nvidia-cufft-cu11 == 10.9.0.58',
-    'nvidia-cudnn-cu11 == 8.7.0.84',
-    'nvidia-curand-cu11 == 10.3.0.86',
-    'nvidia-cusolver-cu11 == 11.4.1.48',
-    'nvidia-cusparse-cu11 == 11.7.5.86',
-    'nvidia-nccl-cu11 == 2.16.5',
-    'nvidia-cuda-cupti-cu11 == 11.8.87',
-    'nvidia-cuda-nvcc-cu11 == 11.8.89',
-    'tensorrt == 8.5.3.1',
+    'nvidia-cublas-cu12 == 12.3.4.1',
+    'nvidia-cuda-cupti-cu12 == 12.3.101',
+    'nvidia-cuda-nvcc-cu12 == 12.3.107',
+    'nvidia-cuda-nvrtc-cu12 == 12.3.107',
+    'nvidia-cuda-runtime-cu12 == 12.3.101',
+    'nvidia-cudnn-cu12 == 8.9.7.29',
+    'nvidia-cufft-cu12 == 11.0.12.1',
+    'nvidia-curand-cu12 == 10.3.4.107',
+    'nvidia-cusolver-cu12 == 11.5.4.101',
+    'nvidia-cusparse-cu12 == 12.2.0.103',
+    'nvidia-nccl-cu12 == 2.19.3',
+    'nvidia-nvjitlink-cu12 == 12.3.101',
 ]
 
 DOCLINES = __doc__.split('\n')
@@ -266,13 +263,23 @@ class InstallHeaders(Command):
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    external_header_locations = [
-        'tensorflow/include/external/eigen_archive/',
-        'tensorflow/include/external/com_google_absl/',
-    ]
+    # pylint: disable=line-too-long
+    external_header_locations = {
+        '/tensorflow/include/external/com_google_absl': '',
+        '/tensorflow/include/external/ducc': '/ducc',
+        '/tensorflow/include/external/eigen_archive': '',
+        '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
+        '/tensorflow/include/tensorflow/compiler/xla': (
+            '/tensorflow/include/xla'
+        ),
+        '/tensorflow/include/tensorflow/tsl': '/tensorflow/include/tsl',
+    }
+    # pylint: enable=line-too-long
+
     for location in external_header_locations:
       if location in install_dir:
-        extra_dir = install_dir.replace(location, '')
+        extra_dir = install_dir.replace(location,
+                                        external_header_locations[location])
         if not os.path.exists(extra_dir):
           self.mkpath(extra_dir)
         self.copy_file(header, extra_dir)
@@ -314,37 +321,57 @@ matches = []
 for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
+# If building a tpu package, LibTPU for Cloud TPU VM can be installed via:
+# $ pip install <tf-tpu project> -f https://storage.googleapis.com/libtpu-releases/index.html
+# libtpu is built and uploaded to this link every night (PST).
+if '_tpu' in project_name:
+  # For tensorflow-tpu releases, use a set libtpu-nightly version;
+  # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
+  # timing of these tests, the UTC date from eight hours ago is expected to be a
+  # valid version.
+  _libtpu_version = standard_or_nightly(
+      '0.1.dev20231018',
+      '0.1.dev'
+      + (
+          datetime.datetime.now(tz=datetime.timezone.utc)
+          - datetime.timedelta(hours=8)
+      ).strftime('%Y%m%d'),
+  )
+  REQUIRED_PACKAGES.append([f'libtpu-nightly=={_libtpu_version}'])
+
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
 else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
 headers = (
-    list(find_files('*.proto', 'tensorflow/compiler')) +
-    list(find_files('*.proto', 'tensorflow/core')) +
-    list(find_files('*.proto', 'tensorflow/python')) +
-    list(find_files('*.proto', 'tensorflow/python/framework')) +
-    list(find_files('*.proto', 'tensorflow/tsl')) +
-    list(find_files('*.def', 'tensorflow/compiler')) +
-    list(find_files('*.h', 'tensorflow/c')) +
-    list(find_files('*.h', 'tensorflow/cc')) +
-    list(find_files('*.h', 'tensorflow/compiler')) +
-    list(find_files('*.h.inc', 'tensorflow/compiler')) +
-    list(find_files('*.h', 'tensorflow/core')) +
-    list(find_files('*.h', 'tensorflow/lite/kernels/shim')) +
-    list(find_files('*.h', 'tensorflow/python')) +
-    list(find_files('*.h', 'tensorflow/python/client')) +
-    list(find_files('*.h', 'tensorflow/python/framework')) +
-    list(find_files('*.h', 'tensorflow/stream_executor')) +
-    list(find_files('*.h', 'tensorflow/compiler/xla/stream_executor')) +
-    list(find_files('*.h', 'tensorflow/tsl')) +
-    list(find_files('*.h', 'google/com_google_protobuf/src')) +
-    list(find_files('*.inc', 'google/com_google_protobuf/src')) +
-    list(find_files('*', 'third_party/eigen3')) +
-    list(find_files('*', 'third_party/gpus')) +
-    list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*.proto', 'tensorflow/compiler'))
+    + list(find_files('*.proto', 'tensorflow/core'))
+    + list(find_files('*.proto', 'tensorflow/python'))
+    + list(find_files('*.proto', 'tensorflow/python/framework'))
+    + list(find_files('*.proto', 'tensorflow/tsl'))
+    + list(find_files('*.def', 'tensorflow/compiler'))
+    + list(find_files('*.h', 'tensorflow/c'))
+    + list(find_files('*.h', 'tensorflow/cc'))
+    + list(find_files('*.h', 'tensorflow/compiler'))
+    + list(find_files('*.h.inc', 'tensorflow/compiler'))
+    + list(find_files('*.h', 'tensorflow/core'))
+    + list(find_files('*.h', 'tensorflow/lite/kernels/shim'))
+    + list(find_files('*.h', 'tensorflow/python'))
+    + list(find_files('*.h', 'tensorflow/python/client'))
+    + list(find_files('*.h', 'tensorflow/python/framework'))
+    + list(find_files('*.h', 'tensorflow/stream_executor'))
+    + list(find_files('*.h', 'tensorflow/compiler/xla/stream_executor'))
+    + list(find_files('*.h', 'tensorflow/tsl'))
+    + list(find_files('*.h', 'google/com_google_protobuf/src'))
+    + list(find_files('*.inc', 'google/com_google_protobuf/src'))
+    + list(find_files('*', 'third_party/gpus'))
+    + list(find_files('*.h', 'tensorflow/include/external/com_google_absl'))
+    + list(find_files('*.inc', 'tensorflow/include/external/com_google_absl'))
+    + list(find_files('*.h', 'tensorflow/include/external/ducc/google'))
+    + list(find_files('*', 'tensorflow/include/external/eigen_archive'))
+    + list(find_files('*.h', 'tensorflow/include/external/ml_dtypes'))
+)
 
 # Quite a lot of setup() options are different if this is a collaborator package
 # build. We explicitly list the differences here, then unpack the dict as
@@ -372,7 +399,7 @@ else:
       },
       'headers': headers,
       'include_package_data': True,
-      'packages': find_packages(),
+      'packages': find_namespace_packages(),
       'package_data': {
           'tensorflow': [EXTENSION_NAME] + matches,
       },
@@ -398,7 +425,8 @@ setup(
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 11.8',
+        'Environment :: GPU :: NVIDIA CUDA :: 12',
+        'Environment :: GPU :: NVIDIA CUDA :: 12 :: 12.2',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
@@ -407,6 +435,7 @@ setup(
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',

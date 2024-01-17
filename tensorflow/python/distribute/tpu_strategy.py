@@ -67,11 +67,8 @@ from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_export as tf_export_lib
+from tensorflow.python.util import tf_export
 from tensorflow.python.util import tf_inspect
-
-
-tf_export = tf_export_lib.tf_export
 
 _XLA_OP_BY_OP_INPUTS_LIMIT = 200
 
@@ -242,7 +239,7 @@ def _maybe_partial_apply_variables(fn, args, kwargs):
   return fn, args, kwargs
 
 
-@tf_export("distribute.TPUStrategy", v1=[])
+@tf_export.tf_export("distribute.TPUStrategy", v1=[])
 class TPUStrategyV2(distribute_lib.Strategy):
   """Synchronous training on TPUs and TPU Pods.
 
@@ -372,7 +369,6 @@ class TPUStrategyV2(distribute_lib.Strategy):
             tpu_cluster_resolver,
             device_assignment=experimental_device_assignment,
             use_spmd_for_xla_partitioning=experimental_spmd_xla_partitioning,
-            enable_data_reorder=experimental_device_assignment is not None,
         )
     )
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
@@ -667,7 +663,7 @@ class TPUStrategyV2(distribute_lib.Strategy):
     return xla_sharding.replicate(tensor, use_sharding_op=True)
 
 
-@tf_export("distribute.experimental.TPUStrategy", v1=[])
+@tf_export.tf_export("distribute.experimental.TPUStrategy", v1=[])
 @deprecation.deprecated_endpoints("distribute.experimental.TPUStrategy")
 class TPUStrategy(distribute_lib.Strategy):
   """Synchronous training on TPUs and TPU Pods.
@@ -713,7 +709,6 @@ class TPUStrategy(distribute_lib.Strategy):
             self,
             tpu_cluster_resolver,
             device_assignment=device_assignment,
-            enable_data_reorder=device_assignment is not None,
         )
     )
     distribute_lib.distribution_strategy_gauge.get_cell("V2").set("TPUStrategy")
@@ -754,7 +749,7 @@ class TPUStrategy(distribute_lib.Strategy):
     return self.extended._tpu_cluster_resolver  # pylint: disable=protected-access
 
 
-@tf_export(v1=["distribute.experimental.TPUStrategy"])
+@tf_export.tf_export(v1=["distribute.experimental.TPUStrategy"])
 class TPUStrategyV1(distribute_lib.StrategyV1):
   """TPU distribution strategy implementation."""
 
@@ -867,7 +862,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       steps_per_run=None,
       device_assignment=None,
       use_spmd_for_xla_partitioning=False,
-      enable_data_reorder=False,
   ):
     super().__init__(container_strategy)
 
@@ -929,15 +923,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       self._host_input_worker_devices.setdefault(host_device, [])
       self._host_input_worker_devices[host_device].append(host_device)
 
-    # Create the replica order based on the assigned device order.
-    # This replica order will be used to match the IteratorGetNext ops
-    # with the device assigment.
-    self._replica_order = (
-        self._get_replica_order(self._tpu_devices[:, 0])
-        if enable_data_reorder
-        else None
-    )
-
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
     self.steps_per_run = steps_per_run
@@ -968,7 +953,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         self._using_custom_device = True
         break
 
-  def _get_replica_order(self, tpu_devices):
+    # This is a flag to enable data reorder which is used
+    # to match IteratorGetNext's device with the TPUExecute device.
+    self._enable_data_reorder = False
+
+  def _get_replica_order(self):
     """Get the replica order based on the tpu device order.
 
     For example, if the tpu_devices are:
@@ -988,13 +977,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     iterators,
     so that they can be placed on the same node as their computation graphs.
 
-    Args:
-      tpu_devices (List[str]): A list of tpu device names in the order of
-        replicas.
-
     Returns:
       A list containing the order ids of corresponding TPU devices.
     """
+    if not self._enable_data_reorder:
+      return None
+
+    tpu_devices = self._tpu_devices[:, 0]
+
     devices_with_ids = []
     for i, tpu_device in enumerate(tpu_devices):
       spec = tf_device.DeviceSpec.from_string(tpu_device)
@@ -1086,7 +1076,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         self._container_strategy(),
         num_replicas_in_sync=self._num_replicas_in_sync,
         options=options,
-        replica_order=self._replica_order,
+        replica_order=self._get_replica_order(),
     )
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
@@ -1112,7 +1102,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         input_contexts,
         self._container_strategy(),
         options=options,
-        replica_order=self._replica_order,
+        replica_order=self._get_replica_order(),
     )
 
     # We can only check after the dataset_fn is called.

@@ -39,6 +39,10 @@ pybind_extension(
         "//tensorflow:windows": [],
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
     }),
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_tac_wrapper.pyi",
+    ],
     static_deps = [
         "@arm_neon_2_x86_sse//:__subpackages__",
         "@bazel_tools//:__subpackages__",
@@ -96,6 +100,8 @@ pybind_extension(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
+        "@local_xla//xla:__subpackages__",
     ],
     deps = [
         ":tac_wrapper_lib",

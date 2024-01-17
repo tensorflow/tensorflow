@@ -347,6 +347,16 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_ones_like(self):
+    x = random_ops.random_uniform([3, 2, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      z = array_ops.ones_like(x1),
+      return z, z + x1
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_concat_v2(self):
     x = random_ops.random_uniform([3, 2, 3])
     y = random_ops.random_uniform([2, 3])

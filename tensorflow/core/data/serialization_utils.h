@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -46,6 +46,15 @@ Status ReadElementsFromCheckpoint(IteratorContext* ctx,
 Status WriteElementsToCheckpoint(
     IteratorStateWriter* writer, StringPiece key_prefix,
     const std::vector<std::vector<Tensor>>& elements);
+
+// Updates the dataset elements in the checkpoint for given `checkpoint_indices`
+// using the given key prefix, assuming that vector of elements have
+// checkpointed these before. The elements can be read back by passing the same
+// key prefix to ReadElementsFromCheckpoint.
+Status UpdateCheckpointElements(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements,
+    const absl::flat_hash_set<int64_t>& checkpoint_indices);
 
 // Helper class for reading data from a vector of VariantTensorData objects.
 class VariantTensorDataReader : public IteratorStateReader {

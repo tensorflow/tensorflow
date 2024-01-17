@@ -26,7 +26,7 @@ void ReferencePackInner(const int8_t* src, uint8_t* box, int src_rows,
                         int outer_rows, int outer_cols, int inner_rows,
                         int inner_cols);
 
-void ReferencePrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
+void ReferencePrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                       int layout_cols, int src_rows, int src_cols, int width,
                       int depth);
 

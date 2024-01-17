@@ -18,13 +18,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -285,7 +285,9 @@ Status CreateZerosTensorListWithShape(
     xla::XlaOp zeros = xla::Broadcast(zero, shape.dimensions());
     TF_RET_CHECK(dynamic_dims[i].size() == shape.dimensions_size());
     for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
-      zeros = xla::SetDimensionSize(zeros, dynamic_dims[i][dim], dim);
+      if (shape.is_dynamic_dimension(dim)) {
+        zeros = xla::SetDimensionSize(zeros, dynamic_dims[i][dim], dim);
+      }
     }
     elements.push_back(zeros);
   }

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# LINT.IfChange
 """Utilities for creating SavedModels."""
 
 import collections
@@ -410,4 +409,3 @@ def _maybe_add_default_serving_output(export_outputs):
           'specify a default.')
 
   return export_outputs
-# LINT.ThenChange(//keras/saving/utils_v1/export_utils.py)

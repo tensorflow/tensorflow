@@ -62,7 +62,7 @@ func.func @main(%arg0: tensor<i1>) {
 func.func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
-  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
+  // CHECK: %[[CONST:.*]] = "tf.Const"() <{value = dense<4.200000e+01> : tensor<f32>}>
   // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg1, %[[CONST]])
   // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %arg1)
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD2]])
@@ -133,7 +133,7 @@ func.func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
 // CHECK-LABEL: func @main(%arg0: tensor<i1>) -> (tensor<2xf32>, tensor<f32> {tf.resource_name = "x"})
 func.func @main(%arg0: tensor<i1>) -> tensor<2xf32> {
   // CHECK-NOT: "tf.AssignVariableOp"
-  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
+  // CHECK: %[[CONST:.*]] = "tf.Const"() <{value = dense<4.200000e+01> : tensor<f32>}>
   // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%[[CONST]], %[[CONST]])
   // CHECK: %[[ADD2:[0-9]*]] = "tf.AddV2"(%[[ADD1]], %[[ADD1]])
   // CHECK: %[[PACK:[0-9]*]] = "tf.Pack"(%[[CONST]], %[[ADD2]])
@@ -222,7 +222,7 @@ func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>
 func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>) {
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
-  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
+  // CHECK: %[[CONST:.*]] = "tf.Const"() <{value = dense<1.050000e+03> : tensor<f32>}>
   %1 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[CONST]] : tensor<f32>
@@ -241,7 +241,7 @@ func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>
 func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<f32> {
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
-  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
+  // CHECK: %[[CONST:.*]] = "tf.Const"() <{value = dense<1.050000e+03> : tensor<f32>}>
   %1 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %1) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[CONST]], %[[CONST]] : tensor<f32>, tensor<f32>
@@ -257,13 +257,13 @@ func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>
 // CHECK-SAME: %arg1: tensor<i1>
 // CHECK-SAME: -> (tensor<f32>, tensor<f32>)
 func.func @main(%arg0: tensor<!tf_type.resource<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<f32> {
-  // CHECK-NEXT: %[[CONST_0:.*]] = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>}
+  // CHECK-NEXT: %[[CONST_0:.*]] = "tf.Const"() <{value = dense<4.200000e+01> : tensor<f32>}>
   %0 = "tf.Const"() {value = dense<4.200000e+01> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %0) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   %1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
   // CHECK-NEXT: %[[ADD:[a-z0-9]+]] = "tf.AddV2"(%[[CONST_0]], %[[CONST_0]])
   %2 = "tf.AddV2"(%1, %1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-  // CHECK-NEXT: %[[CONST_1:.*]] = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>}
+  // CHECK-NEXT: %[[CONST_1:.*]] = "tf.Const"() <{value = dense<1.050000e+03> : tensor<f32>}>
   %3 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   "tf.AssignVariableOp"(%arg0, %3) : (tensor<!tf_type.resource<tensor<f32>>>, tensor<f32>) -> ()
   // CHECK-NEXT: return %[[ADD]], %[[CONST_1]] : tensor<f32>, tensor<f32>

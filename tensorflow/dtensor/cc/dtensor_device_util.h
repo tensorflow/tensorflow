@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/fingerprint.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 namespace dtensor {

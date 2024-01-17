@@ -2,6 +2,10 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_python_pybind_extension")
+load(
+    "//tensorflow/tools/test:performance.bzl",
+    "cuda_py_benchmark_test",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,7 +15,11 @@ package(
 tf_python_pybind_extension(
     name = "_unified_api",
     srcs = ["unified_api.cc"],
+    enable_stub_generation = True,
     features = ["-layering_check"],
+    pytype_srcs = [
+        "_unified_api.pyi",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
@@ -41,6 +49,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_math_ops",
     srcs = ["math_ops.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_math_ops.pyi",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
@@ -57,6 +69,10 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_nn_ops",
     srcs = ["nn_ops.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_nn_ops.pyi",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
@@ -166,7 +182,7 @@ cuda_py_strict_test(
     ],
 )
 
-cuda_py_strict_test(
+cuda_py_benchmark_test(
     name = "graph_building_test",
     size = "small",
     srcs = ["graph_building_test.py"],

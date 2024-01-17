@@ -25,7 +25,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/backends/profiler/gpu/cupti_error_manager.h"
+#include "xla/backends/profiler/gpu/cupti_error_manager.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/backends/gpu/cupti_interface.h"

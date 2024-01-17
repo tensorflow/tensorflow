@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
 
 namespace tflite {

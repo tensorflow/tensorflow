@@ -61,7 +61,7 @@ from tensorflow.python.util.protobuf import compare_test_pb2
 @dataclasses.dataclass
 class MaskedTensor:
   mask: bool
-  value: ops.Tensor
+  value: tensor.Tensor
 
   def __tf_flatten__(self):
     metadata = (self.mask,)
@@ -1196,11 +1196,11 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
         self.accumulation = []
 
       @unittest.expectedFailure
-      @test_util.assert_no_new_pyobjects_executing_eagerly
+      @test_util.assert_no_new_pyobjects_executing_eagerly()
       def test_has_leak(self):
         self.accumulation.append([1.])
 
-      @test_util.assert_no_new_pyobjects_executing_eagerly
+      @test_util.assert_no_new_pyobjects_executing_eagerly()
       def test_has_no_leak(self):
         self.not_accumulating = [1.]
 

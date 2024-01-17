@@ -179,7 +179,8 @@ class CTCDecodeHelper {
 
  private:
   int top_paths_;
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCDecodeHelper);
+  CTCDecodeHelper(const CTCDecodeHelper&) = delete;
+  void operator=(const CTCDecodeHelper&) = delete;
 };
 
 template <typename T>
@@ -270,7 +271,8 @@ class CTCGreedyDecoderOp : public OpKernel {
   bool merge_repeated_;
   int blank_index_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCGreedyDecoderOp);
+  CTCGreedyDecoderOp(const CTCGreedyDecoderOp&) = delete;
+  void operator=(const CTCGreedyDecoderOp&) = delete;
 };
 
 #define REGISTER_CPU(T)                                                   \
@@ -370,7 +372,8 @@ class CTCBeamSearchDecoderOp : public OpKernel {
   typename ctc::CTCBeamSearchDecoder<T>::DefaultBeamScorer beam_scorer_;
   bool merge_repeated_;
   int beam_width_;
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoderOp<T>);
+  CTCBeamSearchDecoderOp<T>(const CTCBeamSearchDecoderOp<T>&) = delete;
+  void operator=(const CTCBeamSearchDecoderOp<T>&) = delete;
 };
 
 #define REGISTER_CPU(T)                                                       \

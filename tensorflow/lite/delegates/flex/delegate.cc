@@ -41,13 +41,6 @@ TfLiteDelegateUniquePtr FlexDelegate::Create(
     base_delegate.reset(new FlexDelegate());
   }
   auto flex_delegate = TfLiteDelegateFactory::Create(std::move(base_delegate));
-  flex_delegate->CopyFromBufferHandle =
-      [](TfLiteContext* context, TfLiteDelegate* delegate,
-         TfLiteBufferHandle buffer_handle,
-         TfLiteTensor* tensor) -> TfLiteStatus {
-    return reinterpret_cast<FlexDelegate*>(delegate->data_)
-        ->CopyFromBufferHandle(context, buffer_handle, tensor);
-  };
   flex_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
   // NOMUTANTS -- this flag has effects in profiler that disable the profiling
   // of the macro operator "TfLiteFlexDelegate", which only shows in profiler

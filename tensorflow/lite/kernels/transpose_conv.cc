@@ -90,6 +90,8 @@ struct OpData {
 
   bool has_col2im = false;
   bool weights_are_transposed = false;
+
+  TfLiteType quantized_bias_type = kTfLiteNoType;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -240,6 +242,8 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
 template <KernelType kernel_type>
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  auto* params =
+      reinterpret_cast<TfLiteTransposeConvParams*>(node->builtin_data);
 
   bool has_bias = NumInputs(node) == 4;
 
@@ -295,6 +299,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, weights->type, kTfLiteInt8);
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
+    // Check quantized_bias_type is either kTfLiteInt64 or kTfLiteInt32.
+    if (params->quantized_bias_type != kTfLiteFloat32) {
+      TF_LITE_ENSURE(context, params->quantized_bias_type == kTfLiteInt32 ||
+                                  params->quantized_bias_type == kTfLiteInt64);
+      TF_LITE_ENSURE(context, (bias == nullptr) ||
+                                  bias->type == params->quantized_bias_type);
+      data->quantized_bias_type = params->quantized_bias_type;
+    }
   } else {
     TF_LITE_ENSURE_TYPES_EQ(context, weights->type, input->type);
   }
@@ -354,7 +367,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, data->scratch_tensor_index,
                                   &scratch_buffer));
-    if (input->type == kTfLiteInt16 && bias && bias->type == kTfLiteInt64) {
+
+    if (data->quantized_bias_type != kTfLiteNoType) {
+      scratch_buffer->type = data->quantized_bias_type;
+    } else if (input->type == kTfLiteInt16) {
       scratch_buffer->type = kTfLiteInt64;
     } else {
       scratch_buffer->type = kTfLiteInt32;
@@ -565,9 +581,31 @@ void EvalQuantizedPerChannel16x8(
                             weights->params.zero_point ||
                             output->params.zero_point;
 
-  // Fallback to reference kernel when bias_type is int64 as
-  // there is no optimized kernel for int64 bias yet.
-  if (bias && bias->type == kTfLiteInt64) {
+  if (data->quantized_bias_type == kTfLiteInt32) {
+    if (kernel_type == kReference || has_non_zero_point) {
+      reference_integer_ops::TransposeConv(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int16>(input), GetTensorShape(weights),
+          GetTensorData<int8>(weights), GetTensorShape(bias),
+          GetTensorData<int32_t>(bias), GetTensorShape(output),
+          GetTensorData<int16>(output), GetTensorShape(col2im),
+          GetTensorData<int8>(col2im), GetTensorData<int32_t>(scratch_buffer));
+    } else {
+      optimized_integer_ops::TransposeConvV2(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int16>(input), GetTensorShape(transposed_weights),
+          GetTensorData<int8>(transposed_weights), GetTensorShape(bias),
+          GetTensorData<int32_t>(bias), GetTensorShape(output),
+          GetTensorData<int16>(output), GetTensorShape(col2im),
+          GetTensorData<int32>(col2im), GetTensorData<int32>(scratch_buffer),
+          CpuBackendContext::GetFromContext(context));
+    }
+  } else {
+    TFLITE_DCHECK(!has_non_zero_point);
+    // Fallback to reference kernel when bias_type is int64 as
+    // there is no optimized kernel for int64 bias yet.
     reference_integer_ops::TransposeConv(
         op_params, data->per_channel_output_multiplier.data(),
         data->per_channel_output_shift.data(), GetTensorShape(input),
@@ -576,25 +614,6 @@ void EvalQuantizedPerChannel16x8(
         GetTensorData<int64_t>(bias), GetTensorShape(output),
         GetTensorData<int16>(output), GetTensorShape(col2im),
         GetTensorData<int8>(col2im), GetTensorData<int64_t>(scratch_buffer));
-  } else if (kernel_type == kReference || has_non_zero_point) {
-    reference_integer_ops::TransposeConv(
-        op_params, data->per_channel_output_multiplier.data(),
-        data->per_channel_output_shift.data(), GetTensorShape(input),
-        GetTensorData<int16>(input), GetTensorShape(weights),
-        GetTensorData<int8>(weights), GetTensorShape(bias),
-        GetTensorData<int32_t>(bias), GetTensorShape(output),
-        GetTensorData<int16>(output), GetTensorShape(col2im),
-        GetTensorData<int8>(col2im), GetTensorData<int32_t>(scratch_buffer));
-  } else {
-    optimized_integer_ops::TransposeConvV2(
-        op_params, data->per_channel_output_multiplier.data(),
-        data->per_channel_output_shift.data(), GetTensorShape(input),
-        GetTensorData<int16>(input), GetTensorShape(transposed_weights),
-        GetTensorData<int8>(transposed_weights), GetTensorShape(bias),
-        GetTensorData<int32>(bias), GetTensorShape(output),
-        GetTensorData<int16>(output), GetTensorShape(col2im),
-        GetTensorData<int32>(col2im), GetTensorData<int32>(scratch_buffer),
-        CpuBackendContext::GetFromContext(context));
   }
 }
 

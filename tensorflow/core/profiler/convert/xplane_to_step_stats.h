@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_STEP_STATS_H_
 
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

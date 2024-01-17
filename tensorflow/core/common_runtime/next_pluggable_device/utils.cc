@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/next_pluggable_device/utils.h"
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/c/c_api_decl.h"
+#include "xla/c/c_api_decl.h"
 
 namespace tensorflow {
 

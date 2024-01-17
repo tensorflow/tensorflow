@@ -82,7 +82,7 @@ OpsTestBase::OpsTestBase() : device_type_(DEVICE_CPU) {
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 
   flib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
-                                                          FunctionDefLibrary{});
+                                                          FunctionDefLibrary());
   pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());

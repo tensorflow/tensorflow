@@ -17,7 +17,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -481,7 +481,7 @@ class MklConcatOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     try {
       auto cpu_engine = engine(engine::kind::cpu, 0);
-      OpInputList input_tensors;
+      OpInputList input_tensors(context, 0, 0);
       GetMklInputList(context, "values", &input_tensors);
       const int N = input_tensors.size();
       // Get Tensor shapes.
@@ -563,7 +563,8 @@ class MklConcatOp : public OpKernel {
       // That is due to an incorrect output results in DNNL 1.2 path.
       if (expected_dims == 2) invoke_eigen = true;
 
-      OpInputList input_mins, input_maxes;
+      OpInputList input_mins(context, 0, 0);
+      OpInputList input_maxes(context, 0, 0);
       bool quantized_input =
           std::is_same<T, qint8>::value || std::is_same<T, quint8>::value;
       if (quantized_input) {

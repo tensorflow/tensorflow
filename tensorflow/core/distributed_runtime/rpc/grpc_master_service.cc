@@ -42,8 +42,8 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tsl/distributed_runtime/rpc/async_service_interface.h"
+#include "tsl/distributed_runtime/rpc/grpc_call.h"
 
 namespace tensorflow {
 
@@ -303,7 +303,8 @@ class GrpcMasterService : public tsl::AsyncServiceInterface {
                                  profiler::TraceMeLevel::kInfo);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
+  GrpcMasterService(const GrpcMasterService&) = delete;
+  void operator=(const GrpcMasterService&) = delete;
 };
 
 tsl::AsyncServiceInterface* NewGrpcMasterService(

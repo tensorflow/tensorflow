@@ -176,6 +176,8 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
     case DT_QINT8:
     case DT_QUINT8:
     case DT_UINT8:
+    case DT_FLOAT8_E5M2:
+    case DT_FLOAT8_E4M3FN:
       Transpose<Device, uint8>::run(d, in, perm, out);
       break;
 

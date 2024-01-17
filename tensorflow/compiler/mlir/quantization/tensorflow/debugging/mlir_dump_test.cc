@@ -27,8 +27,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace quantization {

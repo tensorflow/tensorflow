@@ -74,7 +74,7 @@ tf_cuda_library(
     srcs = ["devices.cc"],
     hdrs = ["devices.h"],
     cuda_deps = [
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_init",
+        "@local_xla//xla/stream_executor/gpu:gpu_init",
         "//tensorflow/core/platform:stream_executor",
     ],
     visibility = ["//visibility:public"],
@@ -163,9 +163,9 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/utils:transitive_fanin",
-        "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 

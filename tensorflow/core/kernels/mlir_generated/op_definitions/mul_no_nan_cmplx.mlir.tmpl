@@ -1,0 +1,8 @@
+func.func @MulNoNan_platform_elem_type_output_type(%arg0: tensor<*xelem_type>, %arg1: tensor<*xelem_type>)
+    -> tensor<*xoutput_type> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = mhlo.constant dense<(0.000000e+00,0.000000e+00)> : tensor<output_type>
+  %1 = chlo.broadcast_compare %arg1, %0 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<*xelem_type>, tensor<elem_type>) -> tensor<*xi1>
+  %2 = chlo.broadcast_multiply %arg0, %arg1 : (tensor<*xelem_type>, tensor<*xelem_type>) -> tensor<*xelem_type>
+  %3 = chlo.broadcast_select %1, %0, %2 : (tensor<*xi1>, tensor<elem_type>, tensor<*xelem_type>) -> tensor<*xelem_type>
+  func.return %3 : tensor<*xoutput_type>
+}

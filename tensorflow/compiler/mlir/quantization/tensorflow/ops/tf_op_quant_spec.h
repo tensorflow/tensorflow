@@ -18,14 +18,35 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_OPS_TF_OP_QUANT_SPEC_H_
 
 #include <memory>
+#include <optional>
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace mlir {
 namespace quant {
+
+// Check if the op has data movement trait. Ops with this trait do not perform
+// any computations but just move data and has one result operand.
+bool IsOpWithDataMovementTrait(Operation* op);
+
+// Check if the op is quantizable. Currently, the scope of quantizable op is
+// limited to compute intense operations and the ops that supports integer
+// operands.
+bool IsOpWithQuantizableTrait(Operation* op);
+
+// Check if the op's operand accepts int8 type.
+bool IsOpWithInt8TypeOperand(Operation* op);
+
+// Check if the data is in quantizable precision. Currently, a value in f32 or
+// bf16 is quantizable.
+bool IsValueWithQuantizablePrecision(Value val);
+
+std::optional<tensorflow::quantization::QuantizationComponentSpec>
+GetWeightComponentSpec(
+    const tensorflow::quantization::QuantizationOptions& quantization_options);
 
 // Returns the spec for the given operation that can be used for both of
 // dynamic and static range quantization.

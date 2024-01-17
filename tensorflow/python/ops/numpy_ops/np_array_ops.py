@@ -39,6 +39,7 @@ from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_utils
+from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_export
 
@@ -1495,7 +1496,8 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
   x = asarray(x)
 
   x_shape = array_ops.shape(x)
-  N = N or x_shape[0]
+  if N is None:
+    N = x_shape[0]
 
   N_temp = np_utils.get_static_value(N)  # pylint: disable=invalid-name
   if N_temp is not None:
@@ -1683,7 +1685,7 @@ def round(a, decimals=0):
 # pylint: enable=redefined-builtin,undefined-variable
 
 
-_SLICE_ERORR = (
+_SLICE_ERROR = (
     'only integers, slices (`:`), ellipsis (`...`), '
     'numpy.newaxis (`None`) and integer or boolean arrays are valid indices'
 )
@@ -1713,10 +1715,10 @@ def _as_index(idx, need_scalar=True):
     data = array_ops.where_v2(data)
     data = array_ops.reshape(data, [-1])
   if need_scalar and data.shape.rank not in (None, 0):
-    raise IndexError(_SLICE_ERORR + ', got {!r}'.format(idx))
+    raise IndexError(_SLICE_ERROR + ', got {!r}'.format(idx))
   np_dtype = data.dtype.as_numpy_dtype
   if not np.issubdtype(np_dtype, np.integer):
-    raise IndexError(_SLICE_ERORR + ', got {!r}'.format(idx))
+    raise IndexError(_SLICE_ERROR + ', got {!r}'.format(idx))
   if data.dtype not in (dtypes.int64, dtypes.int32):
     # TF slicing can only handle int32/int64. So we need to cast.
     promoted_dtype = np.promote_types(np.int32, np_dtype)
@@ -1725,7 +1727,7 @@ def _as_index(idx, need_scalar=True):
     elif promoted_dtype == np.int64:
       data = math_ops.cast(data, dtypes.int64)
     else:
-      raise IndexError(_SLICE_ERORR + ', got {!r}'.format(idx))
+      raise IndexError(_SLICE_ERROR + ', got {!r}'.format(idx))
   return data, data.shape.rank == 0
 
 
@@ -2045,7 +2047,7 @@ def _getitem(self, slice_spec):
   if (
       isinstance(slice_spec, bool)
       or (
-          isinstance(slice_spec, tensor_lib.Tensor)
+          isinstance(slice_spec, core_tf_types.Tensor)
           and slice_spec.dtype == dtypes.bool
       )
       or (
@@ -2067,7 +2069,7 @@ def _with_index_update_helper(update_method, a, slice_spec, updates):
   if (
       isinstance(slice_spec, bool)
       or (
-          isinstance(slice_spec, tensor_lib.Tensor)
+          isinstance(slice_spec, core_tf_types.Tensor)
           and slice_spec.dtype == dtypes.bool
       )
       or (

@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/service/stream_pool.h"
+#include "xla/client/client_library.h"
+#include "xla/service/stream_pool.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -102,7 +102,8 @@ class XlaDeviceAllocatorState {
                      hash<std::pair<const xla::Backend*, int>>>
       allocators_ TF_GUARDED_BY(allocator_mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaDeviceAllocatorState);
+  XlaDeviceAllocatorState(const XlaDeviceAllocatorState&) = delete;
+  void operator=(const XlaDeviceAllocatorState&) = delete;
 };
 
 /* static */ XlaDeviceAllocatorState& XlaDeviceAllocatorState::Singleton() {

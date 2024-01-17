@@ -20,6 +20,7 @@ func.func @xla_must_compile_true(%arg0: tensor<i32>) -> tensor<i32> attributes {
 func.func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
   func.return %arg0 : tensor<i32>
 }
+
 // -----
 
 // Check that we don't outline the partitioned call without

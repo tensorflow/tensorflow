@@ -55,10 +55,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/lib/io:buffered_file",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/lib/io:buffered_file",
+        "@local_tsl//tsl/util:byte_swap_array",
     ],
 )
 
@@ -82,7 +84,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/util:byte_swap_array",
+        "@local_tsl//tsl/util:byte_swap_array",
     ],
 )
 
@@ -96,6 +98,12 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -109,6 +117,7 @@ tf_cc_test(
     ],
     deps = [
         ":byteswaptensor",
+        ":naming",
         ":tensor_bundle",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

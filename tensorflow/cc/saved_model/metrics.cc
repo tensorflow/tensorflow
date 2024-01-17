@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/metrics.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "json/config.h"
 #include "json/json.h"
 #include "json/writer.h"
@@ -59,13 +65,13 @@ auto* saved_model_read_api = monitoring::Counter<1>::New(
 
 // Gauge that contains the fingerprint (saved_model_checksum) of the newly
 // written SavedModel.
-auto* saved_model_write_fingerprint = monitoring::Gauge<string, 0>::New(
+auto* saved_model_write_fingerprint = monitoring::Gauge<std::string, 0>::New(
     "/tensorflow/core/saved_model/write/fingerprint",
     "The fingerprint (saved_model_checksum) of the exported SavedModel.");
 
 // Gauge that contains the path (saved_model_path) of the newly written
 // SavedModel.
-auto* saved_model_write_path = monitoring::Gauge<string, 0>::New(
+auto* saved_model_write_path = monitoring::Gauge<std::string, 0>::New(
     "/tensorflow/core/saved_model/write/path",
     "The path (saved_model_path) of the exported SavedModel.");
 
@@ -74,7 +80,7 @@ auto* saved_model_write_path = monitoring::Gauge<string, 0>::New(
 // saved_object_graph_hash, and checkpoint_hash) of the newly written
 // SavedModel.
 auto* saved_model_write_path_and_singleprint =
-    monitoring::Gauge<string, 0>::New(
+    monitoring::Gauge<std::string, 0>::New(
         "/tensorflow/core/saved_model/write/path_and_singleprint",
         "The path (saved_model_path) and singleprint (concatenation of "
         "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
@@ -82,23 +88,36 @@ auto* saved_model_write_path_and_singleprint =
 
 // Gauge that contains the fingerprint (saved_model_checksum) of the loaded
 // SavedModel.
-auto* saved_model_read_fingerprint = monitoring::Gauge<string, 0>::New(
+auto* saved_model_read_fingerprint = monitoring::Gauge<std::string, 0>::New(
     "/tensorflow/core/saved_model/read/fingerprint",
     "The fingerprint (saved_model_checksum) of the loaded SavedModel.");
 
 // Gauge that contains the path (saved_model_path) of the loaded SavedModel.
-auto* saved_model_read_path = monitoring::Gauge<string, 0>::New(
+auto* saved_model_read_path = monitoring::Gauge<std::string, 0>::New(
     "/tensorflow/core/saved_model/read/path",
     "The path (saved_model_path) of the loaded SavedModel.");
 
 // Gauge that contains the path (saved_model_path) and the singleprint
 // (concatenation of graph_def_program_hash, signature_def_hash,
 // saved_object_graph_hash, and checkpoint_hash) of the loaded SavedModel.
-auto* saved_model_read_path_and_singleprint = monitoring::Gauge<string, 0>::New(
-    "/tensorflow/core/saved_model/read/path_and_singleprint",
-    "The path (saved_model_path) and singleprint (concatenation of "
-    "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
-    "and checkpoint_hash) of the loaded SavedModel.");
+auto* saved_model_read_path_and_singleprint =
+    monitoring::Gauge<std::string, 0>::New(
+        "/tensorflow/core/saved_model/read/path_and_singleprint",
+        "The path (saved_model_path) and singleprint (concatenation of "
+        "graph_def_program_hash, signature_def_hash, saved_object_graph_hash, "
+        "and checkpoint_hash) of the loaded SavedModel.");
+
+// Gauge that marks whether or not the fingerprint.pb file was found when
+// loading the SavedModel.
+// Can hold one of the following string values:
+//  - "FOUND"
+//  - "NOT_FOUND"
+//  - "ERROR"
+auto* saved_model_found_fingerprint_on_load =
+    monitoring::Gauge<std::string, 0>::New(
+        "/tensorflow/core/saved_model/found_fingerprint_on_load",
+        "Whether or not the fingerprint.pb file was found when loading the "
+        "SavedModel.");
 
 // Distribution of checkpoint write durations.
 auto* checkpoint_write_durations = monitoring::Sampler<1>::New(
@@ -135,7 +154,7 @@ auto* async_checkpoint_write_durations = monitoring::Sampler<1>::New(
     monitoring::Buckets::Exponential(1000, 1.5, 41));
 
 // Counter that accumulates total time elapsed between module import time and
-// the last successful Checkpoint write prior to job pre-emption or completion.
+// the last successful Checkpoint write prior to job preemption or completion.
 auto* checkpoint_training_time_saved = monitoring::Counter<1>::New(
     "/tensorflow/core/checkpoint/write/training_time_saved",
     "Total time in microseconds elapsed between two consecutive write "
@@ -170,59 +189,82 @@ monitoring::CounterCell& SavedModelReadApi(absl::string_view api_label) {
   return *saved_model_read_api->GetCell(std::string(api_label));
 }
 
-monitoring::GaugeCell<string>& SavedModelReadFingerprint() {
+monitoring::GaugeCell<std::string>& SavedModelReadFingerprint() {
   return *saved_model_read_fingerprint->GetCell();
 }
 
-monitoring::GaugeCell<string>& SavedModelReadPath() {
+monitoring::GaugeCell<std::string>& SavedModelReadPath() {
   return *saved_model_read_path->GetCell();
 }
 
-monitoring::GaugeCell<string>& SavedModelReadPathAndSingleprint() {
+monitoring::GaugeCell<std::string>& SavedModelReadPathAndSingleprint() {
   return *saved_model_read_path_and_singleprint->GetCell();
 }
 
-monitoring::GaugeCell<string>& SavedModelWriteFingerprint() {
+monitoring::GaugeCell<std::string>& SavedModelWriteFingerprint() {
   return *saved_model_write_fingerprint->GetCell();
 }
 
-monitoring::GaugeCell<string>& SavedModelWritePath() {
+monitoring::GaugeCell<std::string>& SavedModelWritePath() {
   return *saved_model_write_path->GetCell();
 }
 
-monitoring::GaugeCell<string>& SavedModelWritePathAndSingleprint() {
+monitoring::GaugeCell<std::string>& SavedModelWritePathAndSingleprint() {
   return *saved_model_write_path_and_singleprint->GetCell();
 }
 
-string MakeFingerprintJson(FingerprintDef fingerprint_serialized) {
+std::string MakeFingerprintJson(FingerprintDef fingerprint_def) {
   Json::Value fingerprint = Json::objectValue;
   fingerprint["saved_model_checksum"] =
-      Json::UInt64(fingerprint_serialized.saved_model_checksum());
+      Json::UInt64(fingerprint_def.saved_model_checksum());
   fingerprint["graph_def_program_hash"] =
-      Json::UInt64(fingerprint_serialized.graph_def_program_hash());
+      Json::UInt64(fingerprint_def.graph_def_program_hash());
   fingerprint["signature_def_hash"] =
-      Json::UInt64(fingerprint_serialized.signature_def_hash());
+      Json::UInt64(fingerprint_def.signature_def_hash());
   fingerprint["saved_object_graph_hash"] =
-      Json::UInt64(fingerprint_serialized.saved_object_graph_hash());
+      Json::UInt64(fingerprint_def.saved_object_graph_hash());
   fingerprint["checkpoint_hash"] =
-      Json::UInt64(fingerprint_serialized.checkpoint_hash());
+      Json::UInt64(fingerprint_def.checkpoint_hash());
 
   Json::StreamWriterBuilder json_factory;
   return Json::writeString(json_factory, fingerprint);
 }
 
-string MakeSavedModelPathAndSingleprint(string path, string singleprint) {
+absl::StatusOr<std::string> MakeSavedModelPathAndSingleprint(
+    std::string path, std::string singleprint) {
+  if (path.empty()) {
+    return absl::InvalidArgumentError(
+        "Invalid path_and_singleprint argument. Empty path.");
+  }
+  if (singleprint.empty()) {
+    return absl::InvalidArgumentError(
+        "Invalid path_and_singleprint argument. Empty singleprint.");
+  }
   return absl::StrCat(path, ":", singleprint);
 }
 
-std::pair<string, string> ParseSavedModelPathAndSingleprint(
-    string path_and_singleprint) {
+absl::StatusOr<std::pair<std::string, std::string>>
+ParseSavedModelPathAndSingleprint(std::string path_and_singleprint) {
   size_t delimiter = path_and_singleprint.rfind(':');
   if (delimiter == std::string::npos) {
-    return std::pair<string, string>("", "");
+    return absl::InvalidArgumentError(
+        "Invalid path_and_singleprint argument. Found no delimeter.");
   }
-  return std::pair<string, string>(path_and_singleprint.substr(0, delimiter),
-                                   path_and_singleprint.substr(delimiter + 1));
+  std::string path = path_and_singleprint.substr(0, delimiter);
+  if (path.empty()) {
+    return absl::InvalidArgumentError(
+        "Invalid path_and_singleprint argument. Empty path.");
+  }
+  std::string singleprint = path_and_singleprint.substr(delimiter + 1);
+  if (singleprint.empty()) {
+    return absl::InvalidArgumentError(
+        "Invalid path_and_singleprint argument. Empty singleprint.");
+  }
+  return std::pair<std::string, std::string>(path, singleprint);
+}
+
+monitoring::GaugeCell<std::string>& SavedModelFoundFingerprintOnLoad() {
+  return *saved_model_found_fingerprint_on_load->GetCell();
 }
 
 monitoring::SamplerCell& CheckpointReadDuration(absl::string_view api_label) {

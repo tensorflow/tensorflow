@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/random/weighted_picker.h"
+#include "tsl/lib/random/weighted_picker.h"
 
 namespace tensorflow {
 namespace random {

@@ -20,11 +20,8 @@ on:
     branches:
       - master
       - r2.**
-  pull_request:
-    types: [labeled, opened, synchronize, reopened]
-    branches:
-      - master
-      - r2.**
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -55,4 +52,4 @@ jobs:
         shell: bash
         run: |
           CI_DOCKER_BUILD_EXTRA_PARAMS="--pull --build-arg py_major_minor_version=${{ matrix.pyver }} --build-arg is_nightly=1 --build-arg tf_project_name=tf_nightly_ci" \
-          ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_nonpip.sh
+          ./tensorflow/tools/ci_build/ci_build.sh cpu.arm64 bash tensorflow/tools/ci_build/rel/ubuntu/cpu_arm64_test.sh

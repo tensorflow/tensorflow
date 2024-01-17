@@ -16,7 +16,5 @@
 set -x
 
 ARM_SKIP_TESTS="-//tensorflow/lite/... \
--//tensorflow/compiler/xla/service/gpu:fusion_merger_test \
--//tensorflow/python/kernel_tests/nn_ops:atrous_conv2d_test \
--//tensorflow/python/kernel_tests/nn_ops:conv_ops_test \
+-//tensorflow/core/kernels/image:resize_bicubic_op_test \
 "

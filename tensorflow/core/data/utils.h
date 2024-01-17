@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_UTILS_H_
 #define TENSORFLOW_CORE_DATA_UTILS_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -43,17 +44,16 @@ std::string DefaultDataTransferProtocol();
 // optimization.
 std::string LocalityOptimizedPath(const std::string& path);
 
-// Returns a `DisableCompressionAtRuntimeRequest.trainer_compression_info` for
-// the calling trainer. Returns null if the trainer is ineligible.
-absl::StatusOr<std::optional<std::string>> TrainerCompressionInfo(
+// Returns `true` if tf.data service compression should be disabled at runtime
+// based on (1) the inputs or (2) the properties of the calling trainer.
+absl::StatusOr<bool> DisableCompressionAtRuntime(
     const std::string& data_transfer_protocol, DeploymentMode deployment_mode);
 
-// Returns `true` if compression should be disabled at runtime based on the
-// properties of the given trainer-worker pair.
-absl::StatusOr<bool> DisableCompressionAtRuntime(
-    const std::string& trainer_compression_info,
-    const absl::flat_hash_map<std::string, std::string>&
-        worker_compression_info_by_protocol);
+// Log filenames into TfDataLogger. Uses the same  TfDataFileLoggerClient at
+// every call. Thread safe.
+// TODO (shushanik) Implement streamz error reporting in case the logging is not
+// successful
+void LogFilenames(const std::vector<std::string>& files);
 
 }  // namespace data
 }  // namespace tensorflow

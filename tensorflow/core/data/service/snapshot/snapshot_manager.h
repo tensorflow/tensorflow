@@ -24,21 +24,24 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/protobuf/status.pb.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/protobuf/status.pb.h"
 
 namespace tensorflow {
 namespace data {
 
 // A helper shared among `SnapshotManager`s to limit workers' stream assignments
-// across ongoing snapshots.
+// across ongoing snapshots. This class is thread-safe.
 class SnapshotAssignmentManager {
  public:
   explicit SnapshotAssignmentManager(int64_t worker_max_concurrent_snapshots)
@@ -47,9 +50,9 @@ class SnapshotAssignmentManager {
   // Tries to record the event of a worker being assigned a stream. Returns
   // `false` if the worker has too many assignments. Returns an error if the
   // worker is already known to have been assigned this stream.
-  tsl::StatusOr<bool> TryAddAssignment(absl::string_view snapshot_path,
-                                       absl::string_view worker_address,
-                                       int64_t stream_index);
+  absl::StatusOr<bool> TryAddAssignment(absl::string_view snapshot_path,
+                                        absl::string_view worker_address,
+                                        int64_t stream_index);
 
   // Records the event of a worker stopping work on a stream.
   void RemoveAssignment(absl::string_view snapshot_path,
@@ -83,14 +86,16 @@ class SnapshotAssignmentManager {
   };
 
   // A mapping of worker address to ongoing assignments.
-  absl::flat_hash_map<std::string, absl::flat_hash_set<Assignment>>
-      assignments_;
+  absl::flat_hash_map<std::string, absl::flat_hash_set<Assignment>> assignments_
+      TF_GUARDED_BY(mu_);
 
   // The maximum number of snapshots that a worker can concurrently process at a
   // given point in time. This is a tradeoff between worker resource usage and
   // snapshot wall time. A value of 0 indicates that the decision should be left
   // up to the runtime.
   const int64_t worker_max_concurrent_snapshots_;
+
+  mutable tsl::mutex mu_;
 };
 
 // A helper used by `DataServiceDispatcherImpl` to manage a call to `Snapshot`.
@@ -125,13 +130,13 @@ class SnapshotManager {
   // Initiates a new snapshot process, creating a fresh in-memory state and
   // writing an on-disk state to `path`. Returns an error if `path` already
   // exists in the filesystem.
-  static tsl::StatusOr<std::unique_ptr<SnapshotManager>> Start(
+  static absl::StatusOr<std::unique_ptr<SnapshotManager>> Start(
       const SnapshotRequest& request,
       SnapshotAssignmentManager& assignment_manager, Env* env);
   // Resumes an existing snapshot process, reading from the on-disk state in
   // `path` to derive an in-memory state. Returns an error if `path` is in a bad
   // state.
-  static tsl::StatusOr<std::unique_ptr<SnapshotManager>> Resume(
+  static absl::StatusOr<std::unique_ptr<SnapshotManager>> Resume(
       absl::string_view path, SnapshotAssignmentManager& assignment_manager,
       Env* env);
 
@@ -140,11 +145,11 @@ class SnapshotManager {
   // - `WorkerHeartbeat`: Returns a stream assignment for the worker.
   // - `GetSnapshotSplit`: Returns a split assignment for the worker.
   // - `GetSnapshotStreams`: Returns information about all streams.
-  tsl::Status WorkerHeartbeat(const WorkerHeartbeatRequest& request,
-                              WorkerHeartbeatResponse& response);
-  tsl::Status GetSnapshotSplit(const GetSnapshotSplitRequest& request,
-                               GetSnapshotSplitResponse& response);
-  tsl::Status GetSnapshotStreams(GetSnapshotStreamsResponse& response);
+  absl::Status WorkerHeartbeat(const WorkerHeartbeatRequest& request,
+                               WorkerHeartbeatResponse& response);
+  absl::Status GetSnapshotSplit(const GetSnapshotSplitRequest& request,
+                                GetSnapshotSplitResponse& response);
+  absl::Status GetSnapshotStreams(GetSnapshotStreamsResponse& response);
 
  private:
   SnapshotManager(absl::string_view path,
@@ -155,53 +160,45 @@ class SnapshotManager {
         assignment_manager_(assignment_manager) {}
 
   // Helpers for `Start` above. These update the on-disk state.
-  tsl::Status Start(const SnapshotRequest& request);
-  tsl::Status WriteOnDiskSkeleton();
-  tsl::Status WriteOnDiskMetadata(const SnapshotRequest& request);
+  absl::Status Start(const SnapshotRequest& request);
+  absl::Status WriteOnDiskSkeleton();
+  absl::Status WriteOnDiskMetadata(const SnapshotRequest& request);
 
   // Helpers for `Resume` above. These update the in-memory state.
-  tsl::Status Resume();
-  tsl::Status ReadOnDiskMetadata();
-  tsl::Status ReadOnDiskStreams();
-  tsl::Status ReadOnDiskStream(
-      int64_t stream_index, absl::flat_hash_set<int64_t>& global_split_indices);
-  tsl::Status ReadOnDiskSource(
-      int64_t stream_index, int64_t source_index,
-      absl::flat_hash_set<int64_t>& global_split_indices);
-  tsl::Status ReadOnDiskSplit(
-      int64_t source_index, const std::vector<std::string>& split_files,
-      const std::string& split_file,
-      absl::flat_hash_set<int64_t>& global_split_indices);
-  tsl::Status SkipSplit(SplitProvider& split_provider);
+  absl::Status Resume();
+  absl::Status ReadOnDiskMetadata();
+  absl::Status ReadOnDiskStreams();
 
   // Helpers for `WorkerHeartbeat` above. These may update the in-memory and
   // on-disk states.
-  tsl::StatusOr<std::optional<int64_t>> MaybeGetOrCreateStreamAssignment(
+  absl::StatusOr<std::optional<int64_t>> MaybeGetOrCreateStreamAssignment(
       absl::string_view worker_address,
       const SnapshotTaskProgress* snapshot_progress);
-  tsl::Status HandleStreamCompletion(int64_t stream_index,
-                                     absl::string_view worker_address);
+  absl::Status HandleStreamCompletion(int64_t stream_index,
+                                      absl::string_view worker_address);
   void ReassignPreviouslyAssignedStream(int64_t stream_index,
                                         absl::string_view worker_address);
   std::optional<int64_t> MaybeAssignOrphanStream(
       absl::string_view worker_address);
-  tsl::StatusOr<std::optional<int64_t>> MaybeCreateAndAssignNewStream(
+  absl::StatusOr<std::optional<int64_t>> MaybeCreateAndAssignNewStream(
       absl::string_view worker_address);
-  Status HandleStreamError(absl::string_view worker_address,
-                           const StatusProto& status_proto);
+  absl::Status HandleStreamError(absl::string_view worker_address,
+                                 const StatusProto& status_proto);
+
+  mutable tsl::mutex mu_;
 
   // The filepath of the on-disk state.
   const std::string path_;
   // A tensorflow environment interface used to write to and read from `path_`.
   tsl::Env* const env_;
   // Distributed snapshot metadata.
-  experimental::DistributedSnapshotMetadata metadata_;
+  experimental::DistributedSnapshotMetadata metadata_ TF_GUARDED_BY(mu_);
   // The last time progress was logged.
-  absl::Time last_progress_log_time_;
+  absl::Time last_progress_log_time_ TF_GUARDED_BY(mu_);
 
   // The addresses of all workers considered to be dead based on heartbeat
   // timeout.
-  absl::flat_hash_set<std::string> dead_workers_;
+  absl::flat_hash_set<std::string> dead_workers_ TF_GUARDED_BY(mu_);
 
   struct Stream {
     explicit Stream(int64_t num_sources)
@@ -231,31 +228,95 @@ class SnapshotManager {
     int64_t repetition_index = 0;
   };
 
-  std::vector<Source> sources_;
+  // Helper class to restore a stream. Multiple stream restorers are safe to run
+  // in parallel. After it reads the on-disk stream, the client is responsible
+  // to apply the data to actually restore its internal states.
+  class StreamRestorer {
+   public:
+    explicit StreamRestorer(tsl::Env* env, absl::string_view path,
+                            int64_t stream_index, std::vector<Source>& sources,
+                            SnapshotAssignmentManager& assignment_manager)
+        : env_(env),
+          path_(path),
+          stream_index_(stream_index),
+          sources_(sources),
+          assignment_manager_(assignment_manager),
+          repetition_indices_(sources_.size()) {}
+
+    // Reads snapshot stream from the files and collects data for restoration.
+    absl::Status ReadOnDiskStream();
+
+    // Accessors for collected data. Should be called *after* `ReadOnDiskStream`
+    // is called.
+    const std::optional<Stream>& GetStream() const { return restored_stream_; }
+    int64_t StreamIndex() const { return stream_index_; }
+    const std::string& WorkerAddress() const { return worker_address_; }
+    const std::vector<int64_t>& RepetitionIndices() const {
+      return repetition_indices_;
+    }
+    const absl::flat_hash_set<int64_t>& GlobalSplitIndices() const {
+      return global_split_indices_;
+    }
+
+   private:
+    int64_t num_sources() const { return sources_.size(); }
+    absl::StatusOr<std::string> OwnerWorkerAddress() const;
+    absl::Status ReadOnDiskSource(int64_t source_index);
+    absl::Status ReadOnDiskSplit(int64_t source_index,
+                                 const std::vector<std::string>& split_files,
+                                 const std::string& split_file);
+    absl::Status SkipSplit(SplitProvider& split_provider);
+
+    tsl::Env* const env_;
+    const std::string path_;
+    const int64_t stream_index_;
+    std::vector<Source>& sources_;
+    SnapshotAssignmentManager& assignment_manager_;
+
+    std::string worker_address_;
+    std::optional<Stream> restored_stream_;
+    std::vector<int64_t> repetition_indices_;
+    absl::flat_hash_set<int64_t> global_split_indices_;
+  };
+
+  // Applies the data collected by `stream_restorer` to actually restore the
+  // snapshot manager.
+  absl::Status RestoreFrom(const StreamRestorer& stream_restorer,
+                           const std::vector<std::string>& stream_directories,
+                           absl::flat_hash_set<int64_t>& global_split_indices);
+
+  std::vector<Source> sources_ TF_GUARDED_BY(mu_);
   // Creates sources for the specified dataset.
-  StatusOr<std::vector<Source>> CreateSources(
+  absl::StatusOr<std::vector<Source>> CreateSources(
       const DatasetDef& dataset_def) const;
+  // Returns the total number of splits.
+  absl::StatusOr<int64> GetSplitsCardinality();
+  // Returns true if we need to count the total number of splits for progress
+  // reporting.
+  bool ShouldCountSplits() const;
   // Counts the number of splits for a single repetition of the data in
   // `sources_`.
-  StatusOr<int64_t> CountSplits();
+  absl::StatusOr<int64_t> CountSplits();
   // Resets a source when it runs out of splits, to support repetitions.
-  Status ResetSource(Source& source, int64_t source_index);
-  int64_t num_sources() const { return sources_.size(); }
+  absl::Status ResetSource(Source& source, int64_t source_index);
+  int64_t num_sources() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return sources_.size();
+  }
 
   // All streams for this snapshot.
-  std::vector<Stream> streams_;
+  std::vector<Stream> streams_ TF_GUARDED_BY(mu_);
   // A counter of completed streams for this snapshot.
-  int64_t num_completed_streams_ = 0;
+  int64_t num_completed_streams_ TF_GUARDED_BY(mu_) = 0;
 
   // A mapping of worker to assigned stream index for this snapshot.
-  absl::flat_hash_map<std::string, int64_t> assignments_;
+  absl::flat_hash_map<std::string, int64_t> assignments_ TF_GUARDED_BY(mu_);
   // A mapping of worker to assigned streams for all snapshots.
-  SnapshotAssignmentManager& assignment_manager_;
+  SnapshotAssignmentManager& assignment_manager_ TF_GUARDED_BY(mu_);
 
   // A counter of assigned splits for this snapshot.
-  int64_t num_assigned_splits_ = 0;
+  int64_t num_assigned_splits_ TF_GUARDED_BY(mu_) = 0;
   // The number of splits in a single repetition of the data in `sources_`.
-  int64_t num_total_splits_ = 0;
+  int64_t num_total_splits_ TF_GUARDED_BY(mu_) = 0;
 
   enum class Mode {
     // No streams are done.
@@ -271,10 +332,10 @@ class SnapshotManager {
 
   // If not `kActive`, at least one source has finished processing and no new
   // streams are created or assigned.
-  Mode mode_ = Mode::kActive;
+  Mode mode_ TF_GUARDED_BY(mu_) = Mode::kActive;
 
   // If `mode_` is in an error state, `status_` will contain the error status.
-  Status status_;
+  absl::Status status_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace data

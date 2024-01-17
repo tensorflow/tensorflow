@@ -57,7 +57,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -76,10 +76,10 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
-        "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
         "@tf_runtime//:hostcontext",
     ],
 )

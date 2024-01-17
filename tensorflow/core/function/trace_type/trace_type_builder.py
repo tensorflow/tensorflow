@@ -15,12 +15,14 @@
 """Utitiles for Cache Key generation based on Function Trace Type."""
 
 import collections.abc
-from typing import Any, Hashable, Optional, Dict
+from typing import Any, Dict, Hashable, Optional
 import weakref
 
+from tensorflow.core.function.trace_type import custom_nest_trace_type
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.core.function.trace_type import util
 from tensorflow.python.types import trace
+from tensorflow.python.util import custom_nest_protocol
 
 
 class InternalTracingContext(trace.TracingContext):
@@ -182,6 +184,12 @@ def from_value(value: Any,
   if util.is_np_ndarray(value):
     ndarray = value.__array__()
     return default_types.TENSOR(ndarray.shape, ndarray.dtype)
+
+  if isinstance(value, custom_nest_protocol.CustomNestProtocol):
+    metadata, components = value.__tf_flatten__()
+    return custom_nest_trace_type.CustomNestTraceType(
+        type(value), metadata, tuple(from_value(c, context) for c in components)
+    )
 
   try:
     ref = weakref.ref(value)

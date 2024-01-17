@@ -6,6 +6,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_compatible_with = get_compatible_with_portable(),
     default_visibility = [
+        "//learning/brain/contrib/tpu_modeling/inference_converter_v2:__subpackages__",
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],

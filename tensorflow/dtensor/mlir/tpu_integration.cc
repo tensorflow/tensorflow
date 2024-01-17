@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "xla/client/sharding_builder.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
@@ -111,7 +111,7 @@ mlir::LogicalResult CreateTPUCluster(
   builder->setInsertionPointToStart(&function_block);
 
   auto cluster = builder->create<mlir::tf_device::ClusterOp>(
-      tpu_call.getLoc(), function->getCallableResults());
+      tpu_call.getLoc(), function->getResultTypes());
   cluster.getBody().push_back(new mlir::Block);
 
   auto& function_body = function_block.getOperations();

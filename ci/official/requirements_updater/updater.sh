@@ -18,10 +18,12 @@
 # if there is a change in requirements.in then all lock files will be updated
 # accordingly
 
+# All commands run relative to this directory
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 mv BUILD.bazel BUILD
 
-SUPPORTED_VERSIONS=("3_9" "3_10" "3_11")
+SUPPORTED_VERSIONS=("3_9" "3_10" "3_11" "3_12")
 
 for VERSION in "${SUPPORTED_VERSIONS[@]}"
 do

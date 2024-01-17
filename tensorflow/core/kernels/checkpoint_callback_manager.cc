@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/tsl/platform/regexp.h"
+#include "tsl/platform/regexp.h"
 
 namespace tensorflow {
 namespace checkpoint {

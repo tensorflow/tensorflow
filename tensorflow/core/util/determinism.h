@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DETERMINISM_H_
 #define TENSORFLOW_CORE_UTIL_DETERMINISM_H_
 
-#include "tensorflow/tsl/util/determinism.h"
+#include "tsl/util/determinism.h"
 
 namespace tensorflow {
 

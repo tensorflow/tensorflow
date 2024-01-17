@@ -14,6 +14,7 @@
 # ==============================================================================
 """Base test class for quantize_model Tests."""
 import os
+import re
 from typing import Collection, Iterable, Mapping, Sequence, Tuple, Optional, Union, List
 
 from absl.testing import parameterized
@@ -40,6 +41,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop as while_loop_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -168,6 +170,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: str,
       attr_name: str,
       attr_val: _AttrValType,
+      node_name: str = '',
   ) -> bool:
     """Determine whether there is a node whose operation name matches `op_name`.
 
@@ -179,15 +182,24 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: Name of the op to match.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
+      node_name: Name of the node to match. Accepts regex2 format.
 
     Returns:
       True if there exists a node whose name matches `op_name` and 'attr_val' if
       'attr_name' is given.
     """
+
+    def match_node_name(name):
+      if not node_name:
+        return True
+      compiled_regex = re.compile(node_name)
+      match = re.fullmatch(compiled_regex, name)
+      return match is not None
+
     return any(
         node.attr.get(attr_name) == attr_val
         for node in nodes
-        if node.op == op_name
+        if node.op == op_name and match_node_name(node.name)
     )
 
   def _contains_quantized_function_call(
@@ -222,6 +234,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: str,
       attr_name: str = '',
       attr_val: _AttrValType = None,
+      node_name: str = '',
   ) -> bool:
     """Determines if the graph def contains the given op.
 
@@ -230,6 +243,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       op_name: Name of the operation to find within the graph.
       attr_name: Name of the attribute of the op to match.
       attr_val: Value of the attr_name to check.
+      node_name: Name of the node to match. Accepts regex2 format.
 
     Returns:
       True if and only if the graph def contains an op named `op_name`. If
@@ -242,6 +256,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         op_name=op_name,
         attr_name=attr_name,
         attr_val=attr_val,
+        node_name=node_name,
     ):
       return True
 
@@ -252,6 +267,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           op_name=op_name,
           attr_name=attr_name,
           attr_val=attr_val,
+          node_name=node_name,
       ):
         return True
     return False
@@ -949,6 +965,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       def __init__(self):
         """Initializes a SimpleGatherAndConvModel."""
         self.embedding_w = np.random.randn(1024, 3, 4, 3).astype('f4')
+        self.embedding_w = np.minimum(np.maximum(self.embedding_w, -4), 4)
 
         self.conv_filters = np.random.uniform(
             low=-10, high=10, size=filter_shape
@@ -962,7 +979,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       @def_function.function(
           input_signature=[
               tensor_spec.TensorSpec(
-                  shape=[1], dtype=input_type, name='input_tensor'
+                  shape=[None], dtype=input_type, name='input_tensor'
               )
           ]
       )
@@ -1224,9 +1241,9 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         out = nn_ops.conv2d(
             input_tensor,
             self.filters,
-            strides=[1, 1, 2, 1],
-            dilations=[1, 1, 1, 1],
-            padding='SAME',
+            strides=strides,
+            dilations=dilations,
+            padding=padding,
             data_format='NHWC',
         )
         if has_bias:
@@ -1302,7 +1319,7 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
         Returns:
           A map of: output key -> output result.
         """
-        out = math_ops.matmul(input_tensor, self.filters)
+        out = math_ops.matmul(input_tensor, self.filters, name='sample/matmul')
 
         if self.has_reshape():
           input_shape = input_tensor.shape
@@ -1535,3 +1552,37 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       )
 
     return in_placeholder
+
+  def _create_while_model(self, input_shape: Sequence[int] = (1, 32, 32, 512)):
+    class WhileModel(module.Module):
+      """A model with a while op."""
+
+      def __init__(self):
+        w_shape = [3, 3] + [input_shape[-1], input_shape[-1]]
+        self.w = np.random.uniform(low=-2, high=2, size=w_shape).astype('f4')
+
+      @def_function.function
+      def condition(self, x, w):
+        return math_ops.reduce_sum(x, keepdims=False) < 100
+
+      @def_function.function
+      def body(self, x, w):
+        z = nn_ops.conv2d(x, w, padding='SAME')
+        return z, w
+
+      @def_function.function(
+          input_signature=[
+              tensor_spec.TensorSpec(
+                  shape=input_shape, dtype=dtypes.float32, name='input_tensor'
+              )
+          ]
+      )
+      def main(self, x):
+        x1 = nn_ops.conv2d(x, self.w, padding='SAME')
+        x2, _ = while_loop_ops.while_loop(
+            self.condition, self.body, [x, self.w]
+        )
+        result = x1 + x2
+        return {'output': result}
+
+    return WhileModel()

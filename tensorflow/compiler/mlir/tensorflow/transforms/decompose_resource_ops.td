@@ -55,6 +55,9 @@ def Clamp: NativeCodeCall<
     "  $0.getLoc(),"
     "  $2.getType(), $2, $1, $3)">;
 
+def CopyAttrs: NativeCodeCallVoid<
+    "CopyDeviceAndUnderscoredAttributesAdaptor($0, $1)">;
+
 def DecomposeAssignAddVariableOp :
   Pat<
     (TF_AssignAddVariableOp:$src_op $resource, $value),
@@ -338,12 +341,12 @@ def DecomposeResourceApplyAdamNesterov :
 def DecomposeResourceGather : Pat<
   (TF_ResourceGatherOp:$old_result
     $resource, $indices, $batch_dims, $validate_indices),
-  (TF_GatherV2Op
+  (TF_GatherV2Op:$dest
     (CreateTFReadVariableOp $old_result, $old_result, $resource),
     $indices,
     (TF_ConstOp $batch_dims), // axis
     $batch_dims
-  )>;
+  ), [], [(CopyAttrs $old_result, $dest)]>;
 
 // Pattern to decompose tf.ResourceScatterAdd into tf.ReadVariable,
 // tf.TensorScatterAdd, and tf.AssignVariable.
@@ -616,12 +619,12 @@ def DecomposeCollectiveReduceV2 :
     (TF_CollectiveReduceV2Op:$src_op
        $input, $group_size, $group_key, $instance_key, $ordering_token,
        $merge_op, $final_op, $communication_hint, $timeout_seconds,
-       $max_subdivs_per_device
+       $is_stateless, $max_subdivs_per_device
     ),
     [(TF_CollectiveReduceV2Op
        $input, $group_size, $group_key, $instance_key, (EmptyList),
        $merge_op, $final_op, $communication_hint, $timeout_seconds,
-       $max_subdivs_per_device
+       $is_stateless, $max_subdivs_per_device
     )],
     [(HasSingleElement $ordering_token)]
    >;

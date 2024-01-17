@@ -26,10 +26,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -38,7 +38,7 @@ namespace quant {
 namespace {
 
 using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+    ::tensorflow::quantization::QuantizationMethod::PresetMethod;
 
 class LiftQuantizableSpotsAsFunctionsDRQPass
     : public PassWrapper<LiftQuantizableSpotsAsFunctionsDRQPass,
@@ -102,14 +102,15 @@ class LiftQuantizableSpotsAsFunctionsDRQPass
 
   Option<QuantMethod> quantization_method_{
       *this, "quantization-method",
-      llvm::cl::init(
-          tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE),
+      llvm::cl::init(tensorflow::quantization::QuantizationMethod::
+                         METHOD_DYNAMIC_RANGE_INT8),
       llvm::cl::desc("Choose quantization method."),
       llvm::cl::values(
-          clEnumValN(
-              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE,
-              "drq", "Post-training dynamic-range quantizaiton"),
-          clEnumValN(tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY,
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_DYNAMIC_RANGE_INT8,
+                     "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8,
                      "weight_only", "Post-training weight_only quantizaiton"))};
 };
 
@@ -148,8 +149,8 @@ class CheckQuantizableOps
 
     StringRef function_name =
         call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
-    if ((quantization_method_ ==
-         tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) &&
+    if ((quantization_method_ == tensorflow::quantization::QuantizationMethod::
+                                     METHOD_DYNAMIC_RANGE_INT8) &&
         (function_name.contains("batch_matmul") ||
          function_name.contains("conv3d"))) {
       call_op->removeAttr(kQuantTraitAttrName);

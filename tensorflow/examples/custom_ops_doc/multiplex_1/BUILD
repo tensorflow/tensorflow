@@ -26,7 +26,7 @@ py_strict_library(
 
 tf_py_test(
     name = "multiplex_1_test",
-    size = "small",
+    size = "medium",
     srcs = ["multiplex_1_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",

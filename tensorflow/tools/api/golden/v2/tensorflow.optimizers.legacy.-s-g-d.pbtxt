@@ -1,7 +1,7 @@
 path: "tensorflow.optimizers.legacy.SGD"
 tf_class {
-  is_instance: "<class \'keras.optimizers.legacy.gradient_descent.SGD\'>"
-  is_instance: "<class \'keras.optimizers.legacy.optimizer_v2.OptimizerV2\'>"
+  is_instance: "<class \'tf_keras.optimizers.legacy.gradient_descent.SGD\'>"
+  is_instance: "<class \'tf_keras.optimizers.legacy.optimizer_v2.OptimizerV2\'>"
   is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {

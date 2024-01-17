@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,7 +48,8 @@ Status ShapeAnnotationsMatch(
 
 // A helper object to create GraphOptimizationPassOptions.
 struct GraphOptimizationPassWrapper {
-  explicit GraphOptimizationPassWrapper() : library(OpRegistry::Global(), {}) {
+  explicit GraphOptimizationPassWrapper()
+      : library(OpRegistry::Global(), FunctionDefLibrary()) {
     session_options.env = Env::Default();
   }
 
@@ -69,7 +71,9 @@ struct GraphOptimizationPassWrapper {
 // Helps set up devices for unit tests.
 class DeviceSetup {
  public:
-  void AddDevicesAndSetUp(const std::vector<std::string>& device_names);
+  void AddDevicesAndSetUp(
+      const std::vector<std::string>& device_names,
+      const std::optional<FunctionDef>& fdef = std::nullopt);
   Device* GetDevice(const string& device_name);
   FunctionLibraryRuntime* flr() { return flr_; }
 

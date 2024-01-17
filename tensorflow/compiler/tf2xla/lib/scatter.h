@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {

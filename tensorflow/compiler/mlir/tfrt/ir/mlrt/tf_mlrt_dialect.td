@@ -29,6 +29,7 @@ def TensorflowMlrt_Dialect : Dialect {
   }];
 
   let cppNamespace = "::tensorflow::tf_mlrt";
+  let usePropertiesForAttributes = 0;
 }
 
 class TensorflowMlrt_Op<string mnemonic, list<Trait> traits = []> :

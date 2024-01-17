@@ -11,13 +11,10 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 // CHECK-LABEL: HloModule main
 // CHECK:       ENTRY %main.{{[0-9]+}} ([[ARG0:.*]]: f32[]) -> (f32[]) {
 // CHECK:         %[[DIV:.*]] = f32[] divide(f32[] %[[ARG0]],
-// CHECK:         %[[ADD:.*]] = f32[] add(f32[] %[[DIV]],
-// CHECK:         %[[FLOOR:.*]] = f32[] floor(f32[] %[[ADD]])
-// CHECK:         %[[CONVERT:.*]] = s32[] convert(f32[] %[[FLOOR]])
-// CHECK:         %[[ADD_0:.*]] = s32[] add(s32[] %[[CONVERT]],
-// CHECK:         %[[MAXIMUM:.*]] = s32[] maximum(s32[] %[[ADD_0]],
-// CHECK:         %[[MINIMUM:.*]] = s32[] minimum(s32[] %[[MAXIMUM]],
-// CHECK:         %[[CONVERT_0:.*]] = u8[] convert(s32[] %[[MINIMUM]])
+// CHECK:         %[[ADD:.*]] = f32[] add(f32[] %[[DIV]], f32[]
+// CHECK:         %[[CLAMP:.*]] = f32[] clamp(f32[] %[[MIN:.*]], f32[] %[[ADD]],
+// CHECK:         %[[ROUND:.*]] = f32[] round-nearest-even(f32[] %[[CLAMP]])
+// CHECK:         %[[CONVERT_0:.*]] = u8[] convert(f32[] %[[ROUND]])
 // CHECK:         %[[CONVERT_1:.*]] = s32[] convert(u8[] %[[CONVERT_0]])
 // CHECK:         %[[SUB:.*]] = s32[] subtract(s32[] %[[CONVERT_1]],
 // CHECK:         %[[CONVERT_2:.*]] = f32[] convert(s32[] %[[SUB]])

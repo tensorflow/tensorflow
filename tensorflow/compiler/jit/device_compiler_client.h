@@ -21,7 +21,7 @@ limitations under the License.
 #include <variant>
 
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "xla/client/executable_build_options.h"
 
 namespace tensorflow {
 
@@ -62,7 +62,8 @@ class DeviceCompilerClient {
   virtual ClientType* client() const = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompilerClient);
+  DeviceCompilerClient(const DeviceCompilerClient&) = delete;
+  void operator=(const DeviceCompilerClient&) = delete;
 };
 
 // Generates the ExecutableBuildOptions for compilation from HLO to

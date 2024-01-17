@@ -29,7 +29,8 @@ inline TfLiteStatus Gather(const tflite::GatherParams& op_params,
                            const RuntimeShape& input_shape, const T* input_data,
                            const RuntimeShape& coords_shape,
                            const CoordsT* coords_data,
-                           const RuntimeShape& output_shape, T* output_data) {
+                           const RuntimeShape& output_shape, T* output_data,
+                           bool int4_input = false) {
   ruy::profiler::ScopeLabel label("Gather");
   int axis = op_params.axis;
   if (axis < 0) {
@@ -67,6 +68,13 @@ inline TfLiteStatus Gather(const tflite::GatherParams& op_params,
     inner_size *= input_shape.Dims(i);
   }
 
+  if (int4_input) {
+    // TODO(b/298210669) It doesn't handle the case that inner_size is not
+    // divisible by 2.
+    TFLITE_DCHECK_EQ(inner_size % 2, 0);
+    inner_size /= 2;
+  }
+
   int coord_size = 1;
   for (int i = batch_dims; i < coords_shape.DimensionsCount(); ++i) {
     coord_size *= coords_shape.Dims(i);
@@ -83,6 +91,7 @@ inline TfLiteStatus Gather(const tflite::GatherParams& op_params,
         if (from_pos < 0 || from_pos + inner_size > flat_size) {
           return kTfLiteError;
         }
+
         std::memcpy(
             output_data +
                 (((batch * outer_size) + outer) * coord_size + i) * inner_size,

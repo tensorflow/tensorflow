@@ -13,9 +13,3 @@
 # limitations under the License.
 # ==============================================================================
 """Ops for pfor, for_loop, jacobian."""
-
-from tensorflow.python.ops.parallel_for import *  # pylint: disable=wildcard-import
-from tensorflow.python.ops.parallel_for.control_flow_ops import for_loop
-from tensorflow.python.ops.parallel_for.control_flow_ops import pfor
-from tensorflow.python.ops.parallel_for.gradients import batch_jacobian
-from tensorflow.python.ops.parallel_for.gradients import jacobian

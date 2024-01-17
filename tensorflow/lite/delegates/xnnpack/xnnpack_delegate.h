@@ -32,6 +32,16 @@ extern "C" {
 // Enable XNNPACK acceleration for FULLY_CONNECTED operator with dynamic
 // weights.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED 0x00000008
+// Enable XNNPACK acceleration for VAR_HANDLE, READ_VARIABLE, and
+// ASSIGN_VARIABLE operators.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS 0x00000010
+// Enable transient indirection buffer to reduce memory usage in selected
+// operators. Indirection buffer initialization will take place on every
+// inference run, instead of only once during initialization of the operators.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER 0x00000020
+// Enable the latest XNNPACK operators and features in the delegate which have
+// not yet been enabled by default.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS 0x00000040
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -44,13 +54,18 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QU8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16
   // - TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
   struct TfLiteXNNPackDelegateWeightsCache* weights_cache;
-  // Whether READ_VARIABLE, ASSIGN_VARIABLE, and VARIABLE_HANDLE operations
-  // should be handled by XNNPACK.
+  // Deprecated. Use the flags bitfield with the
+  // TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS mask.
   bool handle_variable_ops;
+  // Enable adaptive optimization for AVX CPUs.
+  bool experimental_adaptive_avx_optimization;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.

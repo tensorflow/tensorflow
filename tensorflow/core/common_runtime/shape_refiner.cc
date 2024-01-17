@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -435,7 +435,7 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(
     }
 
     // Look up in the cache.
-    auto it = const_tensor_map_.find({node.name(), index});
+    auto it = const_tensor_map_.find({node.id(), index});
     if (it != const_tensor_map_.end()) {
       return it->second;
     }
@@ -458,8 +458,7 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(
   if (tensor.has_value()) {
     // Add small tensors to the cache.
     if (tensor->TotalBytes() <= kMaxTensorSize) {
-      const_tensor_map_.emplace(std::make_pair(src.name(), src_output),
-                                *tensor);
+      const_tensor_map_.emplace(std::make_pair(src.id(), src_output), *tensor);
     }
     *result = *std::move(tensor);
   }

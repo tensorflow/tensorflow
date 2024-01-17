@@ -29,7 +29,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/strided_slice_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "absl/base/prefetch.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
@@ -65,8 +65,8 @@ struct MemCpyFunctor {
       for (int row_in = begin[0], row_out = 0; row_in < end[0];
            ++row_in, ++row_out) {
         if (row_in + 1 < end[0]) {
-          port::prefetch<port::PREFETCH_HINT_T0>(&output(row_in + 1, 0));
-          port::prefetch<port::PREFETCH_HINT_T0>(&in(row_in + 1, begin[1]));
+          absl::PrefetchToLocalCache(&output(row_in + 1, 0));
+          absl::PrefetchToLocalCache(&in(row_in + 1, begin[1]));
         }
         memcpy(&output(row_out, 0), &in(row_in, begin[1]),
                (end[1] - begin[1]) * sizeof(T));
@@ -456,6 +456,8 @@ class StridedSliceAssignOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_STRIDED_SLICE);
+TF_CALL_float8_e5m2(REGISTER_STRIDED_SLICE);
+TF_CALL_float8_e4m3fn(REGISTER_STRIDED_SLICE);
 
 #undef REGISTER_STRIDED_SLICE
 

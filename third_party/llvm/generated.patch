@@ -1,1 +1,25 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/test/MC/ARM/pcrel-ldrd-same-section.s b/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
+--- a/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
++++ b/llvm/test/MC/ARM/pcrel-ldrd-same-section.s
+@@ -10,7 +10,7 @@
+ @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
+ @ RUN: llvm-objdump -d --triple=thumbv7  %t | FileCheck %s --check-prefix=THUMB_OFFSET
+ 
+-@ RUN: llvm-mc -filetype=obj -o %y %s -triple=thumbebv7
++@ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbebv7
+ @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
+ @ RUN: llvm-objdump -d --triple=thumbebv7 %t | FileCheck %s --check-prefix=THUMB_OFFSET
+ 
+diff -ruN --strip-trailing-cr a/llvm/test/MC/ARM/pcrel-vldr-same-section.s b/llvm/test/MC/ARM/pcrel-vldr-same-section.s
+--- a/llvm/test/MC/ARM/pcrel-vldr-same-section.s
++++ b/llvm/test/MC/ARM/pcrel-vldr-same-section.s
+@@ -7,7 +7,7 @@
+ @ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbv8.2a-eabi
+ @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
+ @ RUN: llvm-objdump -d --triple=thumbv8.2a-eabi    --mattr=+fullfp16 %t | FileCheck %s --check-prefix=THUMB_OFFSET
+-@ RUN: llvm-mc -filetype=obj -o %y %s -triple=thumbebv8.2a-eabi
++@ RUN: llvm-mc -filetype=obj -o %t %s -triple=thumbebv8.2a-eabi
+ @ RUN: llvm-readelf -r %t | FileCheck %s --check-prefix=RELOC
+ @ RUN: llvm-objdump -d --triple=thumbebv8.2a-eabi  --mattr=+fullfp16 %t | FileCheck %s --check-prefix=THUMB_OFFSET
+ 

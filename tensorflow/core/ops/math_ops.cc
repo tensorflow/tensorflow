@@ -20,6 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
+// TODO(intel-tf): Move all MKL ops in this file to a separate file,
+// mkl_math_ops.cc.
+
 namespace tensorflow {
 
 using shape_inference::DimensionHandle;
@@ -126,6 +129,8 @@ REGISTER_OP("BatchMatMul")
         "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
+    .Attr("grad_x: bool = false")
+    .Attr("grad_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulShape);
 
 REGISTER_OP("BatchMatMulV2")
@@ -137,6 +142,8 @@ REGISTER_OP("BatchMatMulV2")
         "uint16, uint32, uint64, complex64, complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
+    .Attr("grad_x: bool = false")
+    .Attr("grad_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 
 REGISTER_OP("BatchMatMulV3")
@@ -154,6 +161,8 @@ REGISTER_OP("BatchMatMulV3")
         "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
+    .Attr("grad_x: bool = false")
+    .Attr("grad_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 
 #ifdef INTEL_MKL
@@ -161,18 +170,22 @@ REGISTER_OP("_MklBatchMatMul")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
+    .Attr("grad_x: bool = false")
+    .Attr("grad_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulShape);
 
 REGISTER_OP("_MklBatchMatMulV2")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
+    .Attr("grad_x: bool = false")
+    .Attr("grad_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
 #endif  // INTEL_MKL
 
@@ -953,6 +966,8 @@ REGISTER_OP("MatMul")
     .Attr(
         "T: {bfloat16, half, float, double, int32, int64, uint8, "
         "uint16, uint32, uint64, complex64, complex128}")
+    .Attr("grad_a: bool = false")
+    .Attr("grad_b: bool = false")
     .SetShapeFn(shape_inference::MatMulShape);
 
 #ifdef INTEL_MKL
@@ -962,7 +977,9 @@ REGISTER_OP("_MklMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {bfloat16, float, half}")
+    .Attr("grad_a: bool = false")
+    .Attr("grad_b: bool = false")
     .SetShapeFn(shape_inference::MatMulShape);
 #endif  // INTEL_MKL
 
@@ -1417,6 +1434,7 @@ REGISTER_OP("SparseSegmentSum")
     .Attr("T: realnumbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .Attr("sparse_gradient: bool = false")
     .SetShapeFn(SparseSegmentReductionShapeFn);
 
 REGISTER_OP("SparseSegmentSumWithNumSegments")
@@ -1429,6 +1447,7 @@ REGISTER_OP("SparseSegmentSumWithNumSegments")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .Attr("sparse_gradient: bool = false")
     .SetShapeFn(SparseSegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SparseSegmentSumGrad")
@@ -1464,6 +1483,7 @@ REGISTER_OP("SparseSegmentMean")
     .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .Attr("sparse_gradient: bool = false")
     .SetShapeFn(SparseSegmentReductionShapeFn);
 
 REGISTER_OP("SparseSegmentMeanWithNumSegments")
@@ -1476,6 +1496,7 @@ REGISTER_OP("SparseSegmentMeanWithNumSegments")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .Attr("sparse_gradient: bool = false")
     .SetShapeFn(SparseSegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SparseSegmentMeanGrad")
@@ -1509,6 +1530,7 @@ REGISTER_OP("SparseSegmentSqrtN")
     .Attr("T: {bfloat16, half, float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .Attr("sparse_gradient: bool = false")
     .SetShapeFn(SparseSegmentReductionShapeFn);
 
 REGISTER_OP("SparseSegmentSqrtNWithNumSegments")
@@ -1521,6 +1543,7 @@ REGISTER_OP("SparseSegmentSqrtNWithNumSegments")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .Attr("sparse_gradient: bool = false")
     .SetShapeFn(SparseSegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SparseSegmentSqrtNGrad")
@@ -1843,13 +1866,10 @@ REGISTER_OP("DenseBincount")
 
       const Tensor* size_tensor = c->input_tensor(1);
       if (size_tensor == nullptr) {
-        if (c->Rank(c->input(0)) == 2) {
-          // Return "matrix with unknown shape" if size is not known.
-          c->set_output(0, c->UnknownShapeOfRank(2));
-        } else {
-          // Return "vector with unknown shape" if size is not known.
-          c->set_output(0, c->UnknownShapeOfRank(1));
-        }
+        // Return "vector of unknown size", "matrix of unknown size" or
+        // "unknown shape" if size is unknown, based on whether the rank of the
+        // input is 1, 2 or unknown respectively.
+        c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
         return OkStatus();
       }
       if (size_tensor->dims() != 0) {

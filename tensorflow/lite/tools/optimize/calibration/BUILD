@@ -149,9 +149,9 @@ cc_library(
         ":calibration_logger",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:c_api_types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
     ],
 )
 

@@ -21,7 +21,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.util import tf_export
-from tensorflow.tsl.protobuf import histogram_pb2
+from tsl.protobuf import histogram_pb2
 
 AttrValue = tf_export.tf_export(v1=['AttrValue'])(attr_value_pb2.AttrValue)
 ConfigProto = tf_export.tf_export(v1=['ConfigProto'])(config_pb2.ConfigProto)

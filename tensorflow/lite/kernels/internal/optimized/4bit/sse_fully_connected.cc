@@ -84,55 +84,38 @@ void SsePackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
       _mm_store_si128((__m128i*)(box + k), v);
       k += 16;
     }
-    // handle remaining 16 values
-    for (; i < (real_src_depth & (~7)); i += 8) {
-      __m128i values_128i = _mm_loadu_si128((__m128i*)(src_data + i));
-      __m128i uv1 = _mm_srai_epi16(values_128i, 4);
-      uv1 = _mm_add_epi8(uv1, seven);
-      uv1 = _mm_and_si128(uv1, bitmask_upper);
-      __m128i uv2 = _mm_slli_epi16(values_128i, 8);
-      uv2 = _mm_srai_epi16(uv2, 12);
-      uv2 = _mm_add_epi8(uv2, seven);
-      uv2 = _mm_and_si128(uv2, bitmask_lower);
-      uv1 = _mm_or_si128(uv1, uv2);
-
-      __m128i lv1 = _mm_slli_epi16(values_128i, 4);
-      lv1 = _mm_srai_epi16(lv1, 4);
-      lv1 = _mm_add_epi8(lv1, seven);
-      lv1 = _mm_and_si128(lv1, bitmask_upper);
-      __m128i lv2 = _mm_slli_epi16(values_128i, 12);
-      lv2 = _mm_srai_epi16(lv2, 12);
-      lv2 = _mm_add_epi8(lv2, seven);
-      lv2 = _mm_and_si128(lv2, bitmask_lower);
-      lv1 = _mm_or_si128(lv1, lv2);
-      __m128i u = _mm_or_si128(_mm_slli_epi16(uv1, 4), _mm_setzero_si128());
-      __m128i l = _mm_or_si128(_mm_slli_epi16(lv1, 4), _mm_setzero_si128());
-      __m128i v = _mm_unpacklo_epi8(l, u);
-      _mm_store_si128((__m128i*)(box + k), v);
-      k += 16;
-    }
-    for (; i < real_src_depth; i++) {
-      const int8_t v1 = (int8_t)src_data[i];
-      int8_t uv1 = upper(v1);
-      int8_t lv1 = lower(v1);
-      box[k] = merge(lv1, 0);
-      box[k + 1] = merge(uv1, 0);
-      k += 2;
+    // Handle remaining values -- if greater than or equal to
+    // 16 values remaining, do the shuffle.
+    if (i < real_src_depth) {
+      int remaining = 8;
+      remaining =
+          remaining < (real_src_depth - i) ? remaining : real_src_depth - i;
+      for (int j = 0; j < remaining; j++) {
+        const int8_t v1 = (int8_t)src_data[i + j];
+        int8_t uv1 = upper(v1);
+        int8_t lv1 = lower(v1);
+        int8_t uv2 = 0;
+        int8_t lv2 = 0;
+        if ((i + j + 8) < real_src_depth) {
+          const int8_t v2 = (int8_t)src_data[i + j + 8];
+          uv2 = upper(v2);
+          lv2 = lower(v2);
+        }
+        box[k] = merge(lv1, lv2);
+        box[k + 1] = merge(uv1, uv2);
+        k += 2;
+      }
     }
     box += real_depth;
     src_data += real_src_cols;
   }
 }
 
-void SsePrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
+void SsePrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                 int layout_cols, int src_rows, int src_cols, int width,
                 int depth) {
   size_t size = layout_rows * layout_cols / 2;
-  int res =
-      posix_memalign(reinterpret_cast<void**>(dest), EIGEN_MAX_ALIGN_BYTES,
-                     size + (EIGEN_MAX_ALIGN_BYTES));
-  (void)res;
-  memset(*dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
+  memset(dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
   int outer_cols = layout_cols / depth;
   int outer_rows = layout_rows / width;
   int inner_cols = depth;
@@ -141,7 +124,7 @@ void SsePrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
     for (int outer_col = 0; outer_col < outer_cols; ++outer_col) {
       const int cluster_index = outer_row * outer_cols + outer_col;
       const int real_depth = inner_cols / 2;
-      uint8_t* box = *dest + cluster_index * real_depth * inner_rows;
+      uint8_t* box = dest + cluster_index * real_depth * inner_rows;
       SsePackInner(tensor, box, src_rows, src_cols, outer_row, outer_col,
                    outer_rows, outer_cols, inner_rows, inner_cols);
     }
@@ -343,18 +326,17 @@ void SseRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
   const int outer_cols = (clamped_end_col + RowsRight - 1) / RowsRight;
   const int depth = std::min(lhs_layout_cols / Cols, rhs_layout_cols / Cols);
   const __m128i bitmask = _mm_set1_epi8(15);
-  uint8_t* lhs_vec = nullptr;
+  const uintptr_t padding = 15;
+  std::vector<uint8_t> lhs_vec_data((RowsLeft * lhs_layout_cols / 2) + padding);
+  uint8_t* lhs_vec = lhs_vec_data.data();
   for (int i = start_row; i < outer_rows; ++i) {
     int left_index = i * RowsLeft * lhs_layout_cols / 2;
     const uint8_t* lhs_val_data = lhs + left_index;
     if (!is_aligned(lhs_val_data, 16)) {
       size_t size = RowsLeft * lhs_layout_cols / 2;
-      if (!lhs_vec) {
-        int res = posix_memalign(reinterpret_cast<void**>(&lhs_vec),
-                                 EIGEN_MAX_ALIGN_BYTES,
-                                 size + (EIGEN_MAX_ALIGN_BYTES));
-        (void)res;
-      }
+      uintptr_t aligned =
+          (reinterpret_cast<uintptr_t>(lhs_vec) + padding) & ~(padding);
+      lhs_vec = reinterpret_cast<uint8_t*>(aligned);
       memcpy(lhs_vec, lhs_val_data, size);
       lhs_val_data = lhs_vec;
     }
@@ -404,9 +386,6 @@ void SseRunKernel(const uint8_t* lhs, const int8_t* rhs, int32_t* dst,
         elementPtr += 4;
       }
     }
-  }
-  if (lhs_vec != nullptr) {
-    free(lhs_vec);
   }
 }
 // NOLINTEND

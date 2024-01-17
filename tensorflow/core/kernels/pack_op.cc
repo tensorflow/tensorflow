@@ -18,7 +18,7 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -134,6 +134,8 @@ TF_CALL_ALL_TYPES(REGISTER_PACK);
 TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
 TF_CALL_qint16(REGISTER_PACK);
 TF_CALL_quint16(REGISTER_PACK);
+TF_CALL_float8_e5m2(REGISTER_PACK);
+TF_CALL_float8_e4m3fn(REGISTER_PACK);
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Primarily used for SavedModel support on mobile.
@@ -155,6 +157,8 @@ TF_CALL_int16(REGISTER_GPU);
 TF_CALL_uint32(REGISTER_GPU);
 TF_CALL_uint64(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
+TF_CALL_float8_e5m2(REGISTER_GPU);
+TF_CALL_float8_e4m3fn(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.

@@ -50,14 +50,19 @@ limitations under the License.
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
 using ::tensorflow::data::experimental::AutoShardDatasetOp;
+
+// Don't apply general grappler optimizations when performing these rewrites.
+// Sometimes there is a conflict among multiple applications of these general
+// optimizations to the same graph (see b/303524867).
+constexpr bool kApplyGeneralGrapplerOptimizations = false;
 
 // A dynamic port has form %port% or %port_foo% that is to be replaced with the
 // actual port.
@@ -98,7 +103,8 @@ RemoveCompressionMapRewriter::ApplyRemoveCompressionMapRewrite(
   GraphDef input_graph = graph_def;
   TF_ASSIGN_OR_RETURN(std::string dataset_node, GetDatasetNode(input_graph));
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
-      GetGrapplerItem(&input_graph, &dataset_node, /*add_fake_sinks=*/false);
+      GetGrapplerItem(&input_graph, &dataset_node, /*add_fake_sinks=*/false,
+                      kApplyGeneralGrapplerOptimizations);
 
   GraphDef rewritten_graph;
   std::unordered_map<std::string, tensorflow::DeviceProperties> device_map;
@@ -141,7 +147,8 @@ StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
   GraphDef input_graph = graph_def;
   TF_ASSIGN_OR_RETURN(std::string dataset_node, GetDatasetNode(input_graph));
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
-      GetGrapplerItem(&input_graph, &dataset_node, /*add_fake_sinks=*/false);
+      GetGrapplerItem(&input_graph, &dataset_node, /*add_fake_sinks=*/false,
+                      kApplyGeneralGrapplerOptimizations);
 
   GraphDef rewritten_graph;
   std::unordered_map<std::string, tensorflow::DeviceProperties> device_map;

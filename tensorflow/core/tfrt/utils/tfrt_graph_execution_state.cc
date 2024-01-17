@@ -174,7 +174,9 @@ tensorflow::GraphDef CreateGraphDefFromGraphAndFlibDef(
 // Creates a pruned graph from `graph_def` according to `callable_options`.
 StatusOr<std::unique_ptr<tensorflow::Graph>> CreatePrunedGraph(
     tensorflow::GraphDef graph_def, const CallableOptions& callable_options) {
+  // clang-tidy off
   VLOG(1) << "Creating pruned graph: " << callable_options.DebugString();
+  // clang-tidy on
 
   // Prune the graph with `callable_options`. Although
   // grappler has model_pruner stage, it may leave v1 control flows in an

@@ -44,13 +44,13 @@ inline void PackInner(const int8_t* src, uint8_t* box, int src_rows,
                      outer_rows, outer_cols, inner_rows, inner_cols);
 }
 
-/* Prepack lhs matrix, and allocate destination pointer.
+/* Prepack lhs matrix into dest.
  * Transform tensor from (src_rows, src_cols) to
  * (layout_rows / width, layout_cols / depth, width, depth) with possibly
  * padding, and interleaving values along depth / 2 dimensions.
- * dest will be allocated and aligned.
+ * dest should be aligned and allocated before prepack.
  */
-inline void Prepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
+inline void Prepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                     int layout_cols, int src_rows, int src_cols, int width,
                     int depth) {
   ReferencePrepack(dest, tensor, layout_rows, layout_cols, src_rows, src_cols,
@@ -79,7 +79,7 @@ inline void BatchQuantizeFloats4Bit(const float* float_data_ptr, int n_batch,
  */
 inline void AssignBiasAndComputeOffsets(const int32_t* input_offsets,
                                         const float* batch_scales,
-                                        const float* filter_scales,
+                                        float* filter_scales,
                                         const float* bias_ptr,
                                         float* output_ptr, int output_depth,
                                         int batch_size) {

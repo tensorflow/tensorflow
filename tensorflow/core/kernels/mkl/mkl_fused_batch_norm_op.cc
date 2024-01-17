@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -651,7 +651,8 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     std::vector<std::unordered_map<int, memory>> net_args;
 
     BatchNormBwdContext()
-        : src_mem(nullptr),
+        : flags(0),
+          src_mem(nullptr),
           mean_mem(nullptr),
           variance_mem(nullptr),
           diff_dst_mem(nullptr),
@@ -1749,6 +1750,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
 TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_CPU);
 TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_CPU);
+TF_CALL_half(REGISTER_MKL_FUSED_BATCHNORM_CPU);
 #undef REGISTER_MKL_FUSED_BATCHNORM_CPU
 
 #define REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(T, U)              \
@@ -1769,6 +1771,7 @@ TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_CPU);
 
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(bfloat16, float);
+REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(Eigen::half, float);
 #undef REGISTER_MKL_FUSED_BATCHNORM_V2_CPU
 
 #define REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU(T)               \
@@ -1807,6 +1810,7 @@ TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
 
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(bfloat16, float);
+REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(Eigen::half, float);
 #undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU
 
 // TODO(intel-tf): FusedBatchNormV3 has an additional output that
@@ -1844,6 +1848,7 @@ REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(bfloat16, float);
 
 REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(float, float);
 REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(bfloat16, float);
+REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(Eigen::half, float);
 #undef REGISTER_MKL_FUSED_BATCHNORM_V3_CPU
 
 REGISTER_KERNEL_BUILDER(Name("_FusedBatchNormEx")

@@ -15,50 +15,58 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_FILE_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_FILE_UTILS_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace data {
 
 // Atomically writes `str` to `filename`. Overwrites existing contents if the
 // file already exists.
-tsl::Status AtomicallyWriteStringToFile(absl::string_view filename,
-                                        absl::string_view str, tsl::Env* env);
+absl::Status AtomicallyWriteStringToFile(absl::string_view filename,
+                                         absl::string_view str, tsl::Env* env);
 
 // Atomically writes the binary representation of `proto` to `filename`.
 // Overwrites existing contents if the file already exists.
-tsl::Status AtomicallyWriteBinaryProto(absl::string_view filename,
-                                       const tsl::protobuf::Message& proto,
-                                       tsl::Env* env);
+absl::Status AtomicallyWriteBinaryProto(absl::string_view filename,
+                                        const tsl::protobuf::Message& proto,
+                                        tsl::Env* env);
 
 // Atomically writes the text representation of `proto` to `filename`.
 // Overwrites existing contents if the file already exists.
-tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
-                                     const tsl::protobuf::Message& proto,
-                                     tsl::Env* env);
+absl::Status AtomicallyWriteTextProto(absl::string_view filename,
+                                      const tsl::protobuf::Message& proto,
+                                      tsl::Env* env);
 
 // Atomically writes `tensor` to `filename` in TFRecord format. Overwrites
 // existing contents if the file already exists.
-tsl::Status AtomicallyWriteTFRecords(absl::string_view filename,
-                                     const std::vector<Tensor>& tensors,
-                                     absl::string_view compression,
-                                     tsl::Env* env);
+absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
+                                      const std::vector<Tensor>& tensors,
+                                      absl::string_view compression,
+                                      tsl::Env* env);
 
 // Returns the relative paths of the children of `directory`, ignoring temporary
 // files. Returns an empty vector if the directory does not have any children.
-tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
-                                                    tsl::Env* env);
+absl::StatusOr<std::vector<std::string>> GetChildren(
+    absl::string_view directory, tsl::Env* env);
 
 // Returns true if `filename` is a temporary file and should be ignored in
 // normal data processing.
 bool IsTemporaryFile(absl::string_view filename);
+
+// Returns the total number of chunks for a distributed snapshot:
+// - If the snapshot is finished, returns the number of committed chunks.
+// - If the snapshot is unfinished or has failed, returns kUnknownCardinality.
+int64_t SnapshotChunksCardinality(absl::string_view snapshot_path,
+                                  tsl::Env* env);
 
 }  // namespace data
 }  // namespace tensorflow

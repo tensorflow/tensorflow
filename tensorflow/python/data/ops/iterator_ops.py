@@ -39,7 +39,6 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saver import BaseSaverBuilder
-from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
@@ -696,6 +695,7 @@ class OwnedIterator(IteratorBase):
           self._element_spec)
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
+      self._components = components
       self._iterator_resource, = components
     else:
       if (components is not None or element_spec is not None):
@@ -890,6 +890,21 @@ class OwnedIterator(IteratorBase):
       return [gen_dataset_ops.deserialize_iterator(
           self._iterator_resource, restored_tensors["_STATE"])]
 
+  def _copy_trackable_to_cpu(self, object_map):
+    """Implements checkpointing protocols for `Trackable`."""
+    # Generate values to copy over
+    if self not in object_map:
+      # If self is not populated in object_map yet, instantiate the copy
+      if self._dataset is None:
+        object_map[self] = OwnedIterator(components=self._components,
+                                         element_spec=self._element_spec)
+      else:
+        object_map[self] = OwnedIterator(dataset=self._dataset)
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
+
   def __tf_tracing_type__(self, _):
     return self._type_spec
 
@@ -997,5 +1012,4 @@ def get_next_as_optional(iterator):
   return iterator.get_next_as_optional()
 
 
-_pywrap_utils.RegisterType("OwnedIterator", OwnedIterator)
 iterator_autograph.register_overrides()

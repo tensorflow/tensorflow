@@ -51,24 +51,6 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %0 : tensor<2xf32>
   }
 
-  // CHECK-LABEL: strided_slice_uses_mlir
-  func.func @strided_slice_uses_mlir(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
-    %begin = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-    %end = "tf.Const"() {value = dense<[3, 7]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-    %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-
-    // CHECK-NOT: tf.StridedSlice
-    %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
-        : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
-    func.return %output : tensor<3x2xf32>
-  }
-
-  // CHECK-LABEL: func @random_uniform_uses_mlir
-  func.func @random_uniform_uses_mlir(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
-    // CHECK-NOT: tf.RandomUniform
-    %0 = "tf.RandomUniform"(%arg0) : (tensor<3xi32>) -> tensor<12x?x64xf32>
-    func.return %0 : tensor<12x?x64xf32>
-  }
 
   // CHECK-LABEL: unknown_op
   func.func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
@@ -196,7 +178,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   }
 
   func.func @non_const_inputs(%arg0: tensor<2x2xf64>, %arg1: tensor<f64>, %arg2: tensor<2xi32>, %arg3: tensor<2xi32>, %arg4: tensor<2xi32>) -> tensor<6x5xf64> {
-    // expected-remark@+1 {{lowering requires operand #2 to be a constant}}
+    // expected-remark@+1 {{compilation to HLO failed: INVALID_ARGUMENT: Input 2 to node `tf.XlaPad` with op XlaPad must be a compile-time constant.}}
     %0 = "tf.XlaPad"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<2x2xf64>, tensor<f64>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<6x5xf64>
     func.return %0 : tensor<6x5xf64>
   }
@@ -542,7 +524,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: mhlo.reduce
     // CHECK: mhlo.dot_general
     // CHECK: mhlo.transpose
-    %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<1x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+    %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, grad_x = false, grad_y = false, device = ""} : (tensor<1x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
     func.return %0 : tensor<3x4x4xf32>
   }
 

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -47,8 +49,9 @@ class PrintOpStatsPass : public PassWrapper<PrintOpStatsPass, OperationPass<>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrintOpStatsPass)
 
-  explicit PrintOpStatsPass(raw_ostream *os = &llvm::errs())
-      : accepted_dialects_(GetAcceptedDialects()), os_(os), total_ops_(0) {}
+  explicit PrintOpStatsPass(raw_ostream *os = &llvm::errs(),
+                            std::vector<std::string> accepted_dialects = {})
+      : accepted_dialects_(accepted_dialects), os_(os), total_ops_(0) {}
 
   // Prints the resultant operation statistics pos_t iterating over the module.
   void runOnOperation() override;
@@ -208,6 +211,8 @@ void PrintOpStatsPass::PrintSummary() {
 }  // namespace odml
 }  // namespace mlir
 
-std::unique_ptr<mlir::Pass> mlir::odml::createPrintOpStatsPass() {
-  return std::make_unique<mlir::odml::PrintOpStatsPass>();
+std::unique_ptr<mlir::Pass> mlir::odml::createPrintOpStatsPass(
+    std::vector<std::string> accepted_dialects) {
+  return std::make_unique<mlir::odml::PrintOpStatsPass>(&llvm::errs(),
+                                                        accepted_dialects);
 }

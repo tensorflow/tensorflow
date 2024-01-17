@@ -19,7 +19,7 @@ limitations under the License.
 #include <stack>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/backends/profiler/gpu/nvtx_utils.h"
+#include "xla/backends/profiler/gpu/nvtx_utils.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {

@@ -16,9 +16,9 @@ limitations under the License.
 #if defined(FC_4BIT_NEON) && (defined(__ARM_NEON__) || defined(__ARM_NEON))
 #include <arm_neon.h>
 #include <stdint.h>
-#include <sys/auxv.h>
 
 #include <algorithm>
+#include <cstring>
 #include <vector>
 
 #include "include/cpuinfo.h"
@@ -245,44 +245,56 @@ void NeonPackInner(const int8_t* src, uint8_t* box, int src_rows, int src_cols,
       vst1q_u8(box + k, combined);
       k += 16;
     }
-    // handle remaining 16 values
-    for (; i < (real_src_depth & (~7)); i += 8) {
-      int8x8_t values_8x8 = vld1_s8(src_data + i);
-      int8x8_t uv1 = vshr_n_s8(values_8x8, 4);
-      int8x8_t lv1 = vshl_n_s8(values_8x8, 4);
-      uv1 = vadd_s8(uv1, seven8);
-      lv1 = vshr_n_s8(lv1, 4);
-      lv1 = vadd_s8(lv1, seven8);
-      uint8x8_t uvl = vshl_n_u8(vreinterpret_u8_s8(uv1), 4);
-      uint8x8_t lvl = vshl_n_u8(vreinterpret_u8_s8(lv1), 4);
-      uint8x8x2_t zipped = vzip_u8(lvl, uvl);
-      uint8x16_t combined = vcombine_u8(zipped.val[0], zipped.val[1]);
-      vst1q_u8(box + k, combined);
-      k += 16;
+    // If exactly 16 values remaining, use fast path
+    if (real_src_depth == (real_src_depth & (~7))) {
+      for (; i < (real_src_depth & (~7)); i += 8) {
+        int8x8_t values_8x8 = vld1_s8(src_data + i);
+        int8x8_t uv1 = vshr_n_s8(values_8x8, 4);
+        int8x8_t lv1 = vshl_n_s8(values_8x8, 4);
+        uv1 = vadd_s8(uv1, seven8);
+        lv1 = vshr_n_s8(lv1, 4);
+        lv1 = vadd_s8(lv1, seven8);
+        uint8x8_t uvl = vshl_n_u8(vreinterpret_u8_s8(uv1), 4);
+        uint8x8_t lvl = vshl_n_u8(vreinterpret_u8_s8(lv1), 4);
+        uint8x8x2_t zipped = vzip_u8(lvl, uvl);
+        uint8x16_t combined = vcombine_u8(zipped.val[0], zipped.val[1]);
+        vst1q_u8(box + k, combined);
+        k += 16;
+      }
     }
-    for (; i < real_src_depth; i++) {
-      const int8_t v1 = (int8_t)src_data[i];
-      int8_t uv1 = upper(v1);
-      int8_t lv1 = lower(v1);
-      box[k] = merge(lv1, 0);
-      box[k + 1] = merge(uv1, 0);
-      k += 2;
+    // Handle remaining values -- if greater than 16 values,
+    // shuffle.
+    if (i < real_src_depth) {
+      int remaining = 8;
+      remaining =
+          remaining < (real_src_depth - i) ? remaining : real_src_depth - i;
+      for (int j = 0; j < remaining; ++j) {
+        const int8_t v1 = (int8_t)src_data[i + j];
+        int8_t uv1 = upper(v1);
+        int8_t lv1 = lower(v1);
+        int8_t uv2 = 0;
+        int8_t lv2 = 0;
+        if ((i + j + 8) < real_src_depth) {
+          const int8_t v2 = (int8_t)src_data[i + j + 8];
+          uv2 = upper(v2);
+          lv2 = lower(v2);
+        }
+        box[k] = merge(lv1, lv2);
+        box[k + 1] = merge(uv1, uv2);
+        k += 2;
+      }
     }
     box += real_depth;
     src_data += real_src_cols;
   }
 }
 
-void NeonPrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
+void NeonPrepack(uint8_t* dest, const int8_t* tensor, int layout_rows,
                  int layout_cols, int src_rows, int src_cols, int width,
                  int depth) {
   // depth is always cols
   size_t size = layout_rows * layout_cols / 2;
-  int res =
-      posix_memalign(reinterpret_cast<void**>(dest), EIGEN_MAX_ALIGN_BYTES,
-                     size + (EIGEN_MAX_ALIGN_BYTES));
-  (void)res;
-  memset(*dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
+  memset(dest, static_cast<uint8_t>(119), sizeof(uint8_t) * size);
   // basically, we need to make a new 4D matrix
   // [rows / width, cols / depth, width, depth] in depth-first
   int outer_cols = layout_cols / depth;
@@ -293,7 +305,7 @@ void NeonPrepack(uint8_t** dest, const int8_t* tensor, int layout_rows,
     for (int outer_col = 0; outer_col < outer_cols; ++outer_col) {
       const int cluster_index = outer_row * outer_cols + outer_col;
       const int real_depth = inner_cols / 2;
-      uint8_t* box = *dest + cluster_index * real_depth * inner_rows;
+      uint8_t* box = dest + cluster_index * real_depth * inner_rows;
       NeonPackInner(tensor, box, src_rows, src_cols, outer_row, outer_col,
                     outer_rows, outer_cols, inner_rows, inner_cols);
     }

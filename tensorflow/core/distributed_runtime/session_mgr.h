@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"
+#include "tsl/distributed_runtime/coordination/coordination_service.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_rpc_handler.h"
 
 namespace tensorflow {
 

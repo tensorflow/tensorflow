@@ -21,10 +21,6 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 
-struct TF_DeviceContext {
-  tensorflow::DeviceContext* device_context;  // not owned
-};
-
 struct TF_CancellationManager {
   tensorflow::CancellationManager* cancellation_manager;  // not owned
 };

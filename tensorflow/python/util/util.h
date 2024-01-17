@@ -152,6 +152,24 @@ bool IsTensorSpec(PyObject* o);
 //   True if the object is an eager tensor (or mimicking as one).
 bool IsEagerTensorSlow(PyObject* o);
 
+// Returns a true if its input subclasses TensorProtocol.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object implements TensorProtocol.
+bool IsTensorProtocol(PyObject* o);
+
+// Returns a true if its input is a core.Value type.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a core.Value type.
+bool IsCoreTypeValue(PyObject* o);
+
 // Returns a true if its input is a ResourceVariable.
 //
 // Args:
@@ -225,9 +243,6 @@ PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
 // valid names, and the expected values for those names, are listed in
 // the documentation for `RegisteredPyObjects`.  Returns PyNone.
 PyObject* RegisterPyObject(PyObject* name, PyObject* value);
-
-// Variant of RegisterPyObject that requires the object's value to be a type.
-PyObject* RegisterType(PyObject* type_name, PyObject* type);
 
 // Returns a borrowed reference to an object that was registered with
 // RegisterPyObject.  (Do not call Py_DECREF on the result).

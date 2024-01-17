@@ -64,10 +64,13 @@ cuda_py_strict_test(
     name = "resource_variable_ops_test",
     size = "medium",
     srcs = ["resource_variable_ops_test.py"],
-    # TODO(kkb): CppMemoryChecker is flaky without these two flags, investigate.
+    # TODO(kkb): CppMemoryChecker is flaky without this flag, investigate.
     #
     # TODO(b/128347673): Re-enable.
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nozapfhahn",
+    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/compat",
@@ -146,8 +149,9 @@ tf_py_strict_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
@@ -155,13 +159,14 @@ tf_py_strict_test(
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:resource_variables_toggle",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_inspect",
         "//third_party/py/numpy",
     ],
 )

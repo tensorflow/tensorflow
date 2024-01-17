@@ -1,8 +1,8 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,6 +11,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_lit_tests",
     data = [":filecheck_test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
@@ -130,7 +131,6 @@ genrule(
 tfcompile_test_dep_configs = [
     ("", "None"),
     ("_mlir_bridge", "Bridge"),
-    ("_mhlo_lowering", "HloLowering"),
 ]
 
 [
@@ -459,52 +459,16 @@ tf_cc_test(
         ":test_graph_tfvariable",
         ":test_graph_tfvariable_readonly",
         ":test_graph_tfvariable_sequential_updates",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:regexp",
-        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "tfcompile_test_mhlo_lowering",
-    srcs = ["tfcompile_test.cc"],
-    extra_copts = ["-DMHLO_LOWERING_TEST"],
-    tags = [
-        "manual",
-        "no_mac",  # TODO(b/228273415)
-    ],
-    deps = [
-        ":test_graph_tfadd_mhlo_lowering",
-        ":test_graph_tfadd_with_ckpt_mhlo_lowering",
-        ":test_graph_tfadd_with_ckpt_saver_mhlo_lowering",
-        ":test_graph_tfassert_eq_mhlo_lowering",
-        ":test_graph_tfcond_mhlo_lowering",
-        ":test_graph_tffunction_mhlo_lowering",
-        ":test_graph_tfgather_mhlo_lowering",
-        ":test_graph_tfmatmul_mhlo_lowering",
-        ":test_graph_tfmatmulandadd_mhlo_lowering",
-        ":test_graph_tfsplits_mhlo_lowering",
-        ":test_graph_tftop_k_mhlo_lowering",
-        ":test_graph_tfvariable_mhlo_lowering",
-        ":test_graph_tfvariable_readonly_mhlo_lowering",
-        ":test_graph_tfvariable_sequential_updates_mhlo_lowering",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_profile_printer",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:regexp",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:test",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/service:hlo_profile_printer",
     ],
 )
 
@@ -533,15 +497,15 @@ tf_cc_test(
         ":test_graph_tfvariable_mlir_bridge",
         ":test_graph_tfvariable_readonly_mlir_bridge",
         ":test_graph_tfvariable_sequential_updates_mlir_bridge",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo_profile_printer",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:regexp",
-        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:test",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/service:hlo_profile_printer",
     ],
 )

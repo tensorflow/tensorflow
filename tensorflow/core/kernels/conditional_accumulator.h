@@ -127,7 +127,8 @@ class ConditionalAccumulator
     // do nothing
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ConditionalAccumulator);
+  ConditionalAccumulator(const ConditionalAccumulator&) = delete;
+  void operator=(const ConditionalAccumulator&) = delete;
 };
 
 }  // namespace tensorflow

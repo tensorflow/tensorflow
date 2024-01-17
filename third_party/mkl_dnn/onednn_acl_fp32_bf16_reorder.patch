@@ -1,0 +1,111 @@
+ *******************************************************************************
+ Copyright 2023 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+diff --git a/src/cpu/aarch64/cpu_isa_traits.hpp b/src/cpu/aarch64/cpu_isa_traits.hpp
+index 4a43b24c5..1a5cfe590 100644
+--- a/src/cpu/aarch64/cpu_isa_traits.hpp
++++ b/src/cpu/aarch64/cpu_isa_traits.hpp
+@@ -1,6 +1,7 @@
+ /*******************************************************************************
+ * Copyright 2018-2023 Intel Corporation
+ * Copyright 2020-2023 FUJITSU LIMITED
++* Copyright 2023 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -211,10 +212,10 @@ static inline bool mayiuse_atomic() {
+     return cpu().isAtomicSupported();
+ }
+ 
+-inline bool isa_has_bf16(cpu_isa_t isa) {
+-    return false;
++static inline bool mayiuse_bf16() {
++    using namespace Xbyak_aarch64::util;
++    return cpu().isBf16Supported();
+ }
+-
+ } // namespace
+ 
+ /* whatever is required to generate string literals... */
+diff --git a/src/cpu/aarch64/jit_uni_reorder.cpp b/src/cpu/aarch64/jit_uni_reorder.cpp
+index 6bd259ec2..5541bb702 100644
+--- a/src/cpu/aarch64/jit_uni_reorder.cpp
++++ b/src/cpu/aarch64/jit_uni_reorder.cpp
+@@ -1,7 +1,7 @@
+ /*******************************************************************************
+ * Copyright 2018-2023 Intel Corporation
+ * Copyright 2020-2023 FUJITSU LIMITED
+-* Copyright 2022 Arm Ltd. and affiliates
++* Copyright 2022-2023 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -163,11 +163,11 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
+ 
+         bool ok = true && p.ndims > 0
+                 && utils::one_of(p.itype, f32, s32, data_type::s8, u8)
+-                && utils::one_of(p.otype, f32, s32, data_type::s8, u8)
++                && utils::one_of(p.otype, f32, bf16, s32, data_type::s8, u8)
+                 && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
+                 && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
+-                && simple_impl_desc_init(p, nullptr)
+-                && prb_has_small_strides(p);
++                && simple_impl_desc_init(p, nullptr) && prb_has_small_strides(p)
++                && ((p.otype != bf16) || (p.itype == f32 && mayiuse_bf16()));
+ 
+         return ok;
+     }
+@@ -648,6 +648,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
+                         cvt_v_s32_u8(startIdx, regNum);
+                     if (idt == data_type::s8) cvt_v_s8_u8(startIdx, regNum);
+                     break;
++                case bf16:
++                    if (idt == f32) cvt_v_f32_bf16(startIdx, regNum);
++                    break;
+                 default: assert(!"unreachable");
+             }
+         };
+@@ -1677,6 +1680,10 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
+         UNROLL_INST(fcvtzs, VReg4S, tmp, tmp);
+     }
+ 
++    void cvt_v_f32_bf16(const size_t startIdx, const size_t regNum) {
++        UNROLL_INST2(bfcvtn, VReg4H(i), VReg4S(i));
++    }
++
+     void cvt_z_s8_s32(const size_t startIdx, const size_t regNum) {
+         cvt_z_b_s(startIdx, regNum);
+         UNROLL_INST(sxtb, ZRegS, tmp, P_ALL_ONE / T_m, tmp);
+diff --git a/src/cpu/reorder/cpu_reorder_regular_f32_bf16.cpp b/src/cpu/reorder/cpu_reorder_regular_f32_bf16.cpp
+index ba5499ba9..d4e21d316 100644
+--- a/src/cpu/reorder/cpu_reorder_regular_f32_bf16.cpp
++++ b/src/cpu/reorder/cpu_reorder_regular_f32_bf16.cpp
+@@ -1,5 +1,6 @@
+ /*******************************************************************************
+ * Copyright 2020-2022 Intel Corporation
++* Copyright 2023 Arm Ltd. and affiliates
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+@@ -34,6 +35,8 @@ const impl_list_map_t &regular_f32_bf16_impl_list_map() {
+             DNNL_NON_X64_ONLY(REG_SR_BIDIR(f32, any, bf16, nChw16c))
+             DNNL_NON_X64_ONLY(REG_SR_BIDIR(f32, any, bf16, nCdhw16c))
+ 
++            DNNL_AARCH64_ONLY(CPU_REORDER_INSTANCE(aarch64::jit_uni_reorder_t))
++
+             DNNL_NON_X64_ONLY(REG_SR(f32, oihw, bf16, OIhw8i16o2i, fmt_order::keep))
+             DNNL_NON_X64_ONLY(REG_SR(f32, goihw, bf16, gOIhw8i16o2i, fmt_order::keep))
+             DNNL_NON_X64_ONLY(REG_SR(f32, oihw, bf16, OIhw8o16i2o, fmt_order::keep))

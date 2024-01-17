@@ -277,7 +277,7 @@ void RandomDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   ResourceHandle handle;
   bool owns_resource = true;
   if (op_version_ == 2) {
-    handle = HandleFromInput(ctx, 2);
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 2, &handle));
     Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
     owns_resource = false;

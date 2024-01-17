@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_FLOAT8_H_
 #define TENSORFLOW_CORE_PLATFORM_FLOAT8_H_
 
-#include "tensorflow/tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace tensorflow {
 typedef tsl::float8_e4m3fn float8_e4m3fn;

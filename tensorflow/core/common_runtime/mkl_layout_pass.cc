@@ -1070,6 +1070,19 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       reason = "User has assigned a device that is not CPU.";
     }
 
+    const string& type_attr = "T";
+    if (HasNodeAttr(n->def(), type_attr)) {
+      const auto& attr = n->def().attr().at(type_attr);
+      DataType dtype = attr.type();
+      if ((dtype == DT_BFLOAT16 || dtype == DT_HALF) &&
+          !IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+        DataTypeUnsupportedWarning(dtype);
+        result = false;
+        reason =
+            "Intel oneDNN with " + DataType_Name(dtype) + " is not supported.";
+      }
+    }
+
     if (result == false) {
       VLOG(1) << "MklLayoutRewritePass: Skipping rewriting of the node "
               << n->type_string() << ", reason: " << reason;
@@ -1117,8 +1130,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DataType T_m;
     TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
 
-    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16
-    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16) return n;
+    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16 or DT_HALF
+    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16 && T_m != DT_HALF) return n;
 
     if (m->type_string() == csinfo_.bias_add) {
       // If a is BiasAdd, then Conv2D is 0th input of BiasAdd.
@@ -1157,8 +1170,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DataType T_m;
     TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
 
-    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16
-    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16) return n;
+    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16 or DT_HALF
+    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16 && T_m != DT_HALF) return n;
 
     const Node* conv_node;
     if (m->type_string() == csinfo_.pad) {
@@ -1297,8 +1310,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DataType T_m;
     TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
 
-    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16
-    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16) return n;
+    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16 or DT_HALF
+    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16 && T_m != DT_HALF) return n;
 
     if (m->type_string() == csinfo_.bias_add_grad) {
       // Get 1st input 'g' of BiasAddGrad.
@@ -1518,7 +1531,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static bool MatMulRewrite(const Node* n) {
     DataType T;
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
-    if ((T == DT_FLOAT) || (T == DT_BFLOAT16)) {
+    if ((T == DT_FLOAT) || (T == DT_BFLOAT16) || (T == DT_HALF)) {
       VLOG(2) << "Rewriting MatMul to _MklMatMul";
 #ifdef DNNL_AARCH64_USE_ACL
       return MatMulHeuristic(n);
@@ -1575,7 +1588,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // impact.
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &trans_a));
 
-    return !trans_a;
+    // Only rewrite float, bfloat16 and half.
+    DataType T_m;
+    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T_m));
+
+    return !trans_a &&
+           (T_m == DT_FLOAT || T_m == DT_BFLOAT16 || T_m == DT_HALF);
   }
 
   // Check if we are performing pooling on depth or batch. If it is, then we
@@ -1672,24 +1690,23 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DCHECK(n);
     Node* filter_node = nullptr;
     TF_CHECK_OK(n->input_node(0, &filter_node));
-    bool narrow_range = false;
-    int axis = -1;
     string mode_string;
     string round_mode_string;
     DataType type;
-    TryGetNodeAttr(n->def(), "narrow_range", &narrow_range);
-    TryGetNodeAttr(n->def(), "axis", &axis);
     TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &type));
 
-    if (narrow_range) {
+    bool narrow_range;
+    if (TryGetNodeAttr(n->def(), "narrow_range", &narrow_range) &&
+        narrow_range) {
       VLOG(1) << "QuantizeOpRewrite: narrow range is enabled for quantization."
               << "This case is not optimized by Intel MKL, "
               << "thus using Eigen op for Quantize op ";
       return false;
     }
-    if (axis != -1) {
+    int axis;
+    if (TryGetNodeAttr(n->def(), "axis", &axis) && axis != -1) {
       VLOG(1) << "QuantizeOpRewrite: dimension is specified for "
               << "per slice quantization."
               << "This case is not optimized by Intel MKL, "
@@ -1854,6 +1871,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             fused_ops == std::vector<string>{"BiasAdd", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu6"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Elu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "_FusedHardSwish"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu6"} ||
@@ -1889,7 +1907,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return (fused_ops == std::vector<string>{"BiasAdd"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu"} ||
             fused_ops == std::vector<string>{"BiasAdd", "Relu6"} ||
-            fused_ops == std::vector<string>{"BiasAdd", "Elu"});
+            fused_ops == std::vector<string>{"BiasAdd", "Elu"} ||
+            fused_ops == std::vector<string>{"BiasAdd", "_FusedHardSwish"});
   }
 
   // Rewrites input node to a new node specified by its matching rewrite info.

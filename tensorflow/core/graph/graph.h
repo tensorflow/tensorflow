@@ -375,7 +375,8 @@ class Node {
   // this set.)
   WhileContext* while_ctx_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Node);
+  Node(const Node&) = delete;
+  void operator=(const Node&) = delete;
 };
 
 // Stores debug information associated with the Node.
@@ -918,7 +919,8 @@ class Graph {
   // Indicates the context that this Graph instance is constructed.
   ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Graph);
+  Graph(const Graph&) = delete;
+  void operator=(const Graph&) = delete;
 };
 
 // TODO(josh11b): We may want to support keeping an index on various

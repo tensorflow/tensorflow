@@ -24,12 +24,21 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
+
+TEST(CallGraphUtilTest, GetEntryFunctionAttributeNames) {
+  auto attr_names = mlir::GetEntryFunctionAttributeNames();
+  EXPECT_EQ(attr_names.size(), 2);
+  EXPECT_EQ(attr_names[0], "tf.entry_function");
+  EXPECT_EQ(attr_names[1],
+            mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr);
+}
 
 TEST(CallGraphUtilTest, GetEntryFunctions) {
   const char *const code = R"mlir(
@@ -221,6 +230,51 @@ func.func @func(%arg0: tensor<i32>) -> tensor<i32> {
       llvm::dyn_cast<mlir::func::FuncOp>(outermost_pcall_ops[0]->getParentOp());
   ASSERT_TRUE(func);
   EXPECT_EQ(func.getSymName(), "inner_stateful_pcall_func");
+}
+
+TEST(CallGraphUtilTest, SingleBlockEntryFunction) {
+  const char *const code = R"mlir(
+func.func @entry_func(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
+  func.return %arg0 : tensor<i32>
+}
+)mlir";
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::func::FuncDialect, mlir::TF::TensorFlowDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  llvm::errs() << "module:\n";
+  ASSERT_TRUE(module);
+  mlir::SymbolTable symtab(*module);
+  llvm::SmallVector<mlir::func::FuncOp> entry_funcs =
+      GetEntryFunctions(*module);
+  EXPECT_EQ(entry_funcs.size(), 1);
+  EXPECT_EQ(entry_funcs[0].getSymName(), "entry_func");
+  EXPECT_TRUE(HasSingleBlock(entry_funcs[0]));
+}
+
+TEST(CallGraphUtilTest, MultipleBlocksEntryFunction) {
+  const char *const code = R"mlir(
+func.func @entry_func(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
+  cf.br ^bb1
+^bb1:
+  func.return %arg0 : tensor<i32>
+}
+)mlir";
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::cf::ControlFlowDialect, mlir::func::FuncDialect,
+                      mlir::TF::TensorFlowDialect>();
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
+  llvm::errs() << "module:\n";
+  ASSERT_TRUE(module);
+  mlir::SymbolTable symtab(*module);
+  llvm::SmallVector<mlir::func::FuncOp> entry_funcs =
+      GetEntryFunctions(*module);
+  EXPECT_EQ(entry_funcs.size(), 1);
+  EXPECT_EQ(entry_funcs[0].getSymName(), "entry_func");
+  EXPECT_FALSE(HasSingleBlock(entry_funcs[0]));
 }
 
 }  // namespace

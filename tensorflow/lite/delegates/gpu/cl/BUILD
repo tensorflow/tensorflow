@@ -1,9 +1,9 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -126,6 +126,7 @@ cc_test(
     deps = [
         ":buffer",
         ":cl_arguments",
+        ":cl_test",
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/strings",
@@ -427,18 +428,9 @@ cc_library(
     srcs = ["opencl_wrapper.cc"],
     hdrs = ["opencl_wrapper.h"],
     linkopts = select({
-        "//tensorflow:android": [
-            "-ldl",  # opencl_wrapper calls dlopen()
-            "-lm",
-        ],
-        # copybara:uncomment_begin(google-only)
-        # "//tools/cc_target_os:linux-google": [
-        # "-ldl",
-        # "-rdynamic",
-        # ],
-        # copybara:uncomment_end
-        "//conditions:default": ["-ldl"],  # opencl_wrapper calls dlopen()
-    }),
+        "//tensorflow:android": ["-lm"],
+        "//conditions:default": [],
+    }) + ["-ldl"],  # opencl_wrapper calls dlopen()
     deps = [
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",

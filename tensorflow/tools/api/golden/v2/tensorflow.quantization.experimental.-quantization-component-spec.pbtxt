@@ -1,0 +1,58 @@
+path: "tensorflow.quantization.experimental.QuantizationComponentSpec"
+tf_proto {
+  descriptor {
+    name: "QuantizationComponentSpec"
+    field {
+      name: "quantization_component"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.quantization.QuantizationComponentSpec.QuantizationComponent"
+    }
+    field {
+      name: "tensor_type"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.quantization.QuantizationComponentSpec.TensorType"
+    }
+    enum_type {
+      name: "QuantizationComponent"
+      value {
+        name: "COMPONENT_UNSPECIFIED"
+        number: 0
+      }
+      value {
+        name: "COMPONENT_ACTIVATION"
+        number: 1
+      }
+      value {
+        name: "COMPONENT_WEIGHT"
+        number: 2
+      }
+      value {
+        name: "COMPONENT_BIAS"
+        number: 3
+      }
+    }
+    enum_type {
+      name: "TensorType"
+      value {
+        name: "TENSORTYPE_UNSPECIFIED"
+        number: 0
+      }
+      value {
+        name: "TENSORTYPE_INT_4"
+        number: 1
+      }
+      value {
+        name: "TENSORTYPE_INT_8"
+        number: 2
+      }
+      value {
+        name: "TENSORTYPE_INT_32"
+        number: 3
+      }
+    }
+  }
+}

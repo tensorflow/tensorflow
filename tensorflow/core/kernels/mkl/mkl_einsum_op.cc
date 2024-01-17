@@ -200,7 +200,7 @@ class MklEinsum : public OpKernel {
   virtual ~MklEinsum() {}
 
   void Compute(OpKernelContext* ctx) override {
-    OpInputList inputs;
+    OpInputList inputs(ctx, 0, 0);
     OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &inputs));
 
     if (std::is_same<T, float>::value) {
@@ -335,5 +335,7 @@ class MklEinsum : public OpKernel {
                           MklEinsum<CPUDevice, TYPE>)
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
+TF_CALL_half(REGISTER_EINSUM_MKL);
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

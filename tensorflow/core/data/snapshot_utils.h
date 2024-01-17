@@ -267,6 +267,9 @@ class TFRecordReaderImpl {
   // Reads all Tensors in the input file.
   StatusOr<std::vector<Tensor>> GetTensors();
 
+  // Returns the number of bytes read.
+  uint64_t BytesRead() const { return bytes_read_; }
+
  private:
   // Parses `record` into a Tensor.
   StatusOr<Tensor> Parse(const tstring& record);
@@ -274,7 +277,8 @@ class TFRecordReaderImpl {
   std::string filename_;
   std::unique_ptr<RandomAccessFile> file_;
   std::unique_ptr<io::RecordReader> record_reader_;
-  uint64_t offset_;
+  uint64_t offset_ = 0;
+  uint64_t bytes_read_ = 0;
 
   const string compression_;
   const std::optional<int64_t> output_buffer_size_;
@@ -296,6 +300,9 @@ class TFRecordReader : public Reader {
   // Reads Tensors into `read_tensors`. Returns OK on success, OutOfRange for
   // end of file, or an error status if there is an error.
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
+
+  // Returns the number of bytes read.
+  uint64_t BytesRead() const { return reader_impl_.BytesRead(); }
 
  private:
   TFRecordReaderImpl reader_impl_;

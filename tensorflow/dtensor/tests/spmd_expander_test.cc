@@ -21,8 +21,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace dtensor {

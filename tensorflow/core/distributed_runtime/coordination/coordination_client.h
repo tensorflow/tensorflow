@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tsl/distributed_runtime/coordination/coordination_client.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

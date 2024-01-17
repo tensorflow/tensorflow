@@ -28,17 +28,17 @@ module {
   }
 
 // CHECK-LABEL: func @conv
-// CHECK-DAG: %[[w_float:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}1.600000e-01
-// CHECK-DAG: %[[b_float:.*]] = "tf.Const"() {value = dense<[-2.000000e+00, 3.000000e+00]> : tensor<2xf32>
-// CHECK-DAG: %[[in_scale:.*]] = "tf.Const"() {value = dense<8.000000e-03> : tensor<f32>} : () -> tensor<f32>
-// CHECK-DAG: %[[in_zp:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-// CHECK-DAG: %[[w_scale:.*]] = "tf.Const"() {value = dense<[4.000000e-03
-// CHECK-DAG: %[[w_zp:.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>}
-// CHECK-DAG: %[[b_scale:.*]] = "tf.Const"() {value = dense<[3.200000e-05, 4.000000e-05]> : tensor<2xf32>}
-// CHECK-DAG: %[[out_scale:.*]] = "tf.Const"() {value = dense<5.000000e-02> : tensor<f32>}
-// CHECK-DAG: %[[out_zp:.*]] = "tf.Const"() {value = dense<-1> : tensor<i32>}
-// CHECK-DAG: %[[b_quant:.*]] = "tf.Const"() {value = dense<[-62500, 75000]> : tensor<2xi32>}
-// CHECK-DAG: %[[w_quant:.*]] = "tf.Const"() {value = dense<{{\[\[\[\[}}40, 20]
+// CHECK-DAG: %[[w_float:.*]] = "tf.Const"() <{value = dense<{{\[\[\[\[}}1.600000e-01
+// CHECK-DAG: %[[b_float:.*]] = "tf.Const"() <{value = dense<[-2.000000e+00, 3.000000e+00]> : tensor<2xf32>
+// CHECK-DAG: %[[in_scale:.*]] = "tf.Const"() <{value = dense<8.000000e-03> : tensor<f32>}> : () -> tensor<f32>
+// CHECK-DAG: %[[in_zp:.*]] = "tf.Const"() <{value = dense<0> : tensor<i32>}>
+// CHECK-DAG: %[[w_scale:.*]] = "tf.Const"() <{value = dense<[4.000000e-03
+// CHECK-DAG: %[[w_zp:.*]] = "tf.Const"() <{value = dense<0> : tensor<2xi32>}>
+// CHECK-DAG: %[[b_scale:.*]] = "tf.Const"() <{value = dense<[3.200000e-05, 4.000000e-05]> : tensor<2xf32>}
+// CHECK-DAG: %[[out_scale:.*]] = "tf.Const"() <{value = dense<5.000000e-02> : tensor<f32>}>
+// CHECK-DAG: %[[out_zp:.*]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}>
+// CHECK-DAG: %[[b_quant:.*]] = "tf.Const"() <{value = dense<[-62500, 75000]> : tensor<2xi32>}>
+// CHECK-DAG: %[[w_quant:.*]] = "tf.Const"() <{value = dense<{{\[\[\[\[}}40, 20]
 // CHECK-DAG: {{\[\[\[}}-87, -42]
 
 // CHECK: %[[quantize:.*]] = "tf.PartitionedCall"(%arg0, %[[in_scale]], %[[in_zp]])
@@ -58,7 +58,8 @@ module {
 
 // CHECK-LABEL: func private @composite_conv2d_with_bias_and_relu6_fn_1
 // CHECK:      %[[CONV2D_0:.*]] = "tf.Conv2D"
-// CHECK-SAME: data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+// CHECK-SAME: data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 1, 2, 1], use_cudnn_on_gpu = true
+// CHECK-SAME: device = ""
 // CHECK:      %[[BIASADD_0:.*]] = "tf.BiasAdd"
 // CHECK:      %[[RELU6_0:.*]] = "tf.Relu6"
 
@@ -158,10 +159,10 @@ module {
 // CHECK: %[[conv_quant:.*]] = "tf.PartitionedCall"(%[[quantize]]
 // CHECK-SAME: f = @quantized_conv2d_with_bias_and_relu6_fn_0
 // CHECK-SAME: (tensor<1x2x2x3xi8>, tensor<2x2x3x2xi8>, tensor<2xi32>, tensor<f32>, tensor<i32>, tensor<2xf32>, tensor<2xi32>, tensor<2xf32>, tensor<2xi32>, tensor<f32>, tensor<i32>) -> tensor<*xi8>
-// CHECK: %[[cast_1:.*]] = "tf.Cast"(%[[conv_quant]]) {Truncate = false} : (tensor<*xi8>) -> tensor<*xf32>
-// CHECK: %[[avgpool:.*]] = "tf.AvgPool"(%[[cast_1]]) {data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: %[[cast_1:.*]] = "tf.Cast"(%[[conv_quant]]) <{Truncate = false}> : (tensor<*xi8>) -> tensor<*xf32>
+// CHECK: %[[avgpool:.*]] = "tf.AvgPool"(%[[cast_1]]) <{data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "VALID", strides = [1, 1, 1, 1]}> : (tensor<*xf32>) -> tensor<*xf32>
 // CHECK: %[[round:.*]] = "tf.Round"(%[[avgpool]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK: %[[cast_2:.*]] = "tf.Cast"(%[[round]]) {Truncate = false} : (tensor<*xf32>) -> tensor<*xi8>
+// CHECK: %[[cast_2:.*]] = "tf.Cast"(%[[round]]) <{Truncate = false}> : (tensor<*xf32>) -> tensor<*xi8>
 // CHECK: %[[dequantize:.*]] = "tf.PartitionedCall"(%[[cast_2]]
 // CHECK-SAME: f = @dequantize_i8
 // CHECK: return %[[dequantize]]

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/monitoring/metric_def.h"
+#include "tsl/lib/monitoring/metric_def.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {

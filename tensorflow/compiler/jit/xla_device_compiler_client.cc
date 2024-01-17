@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 
 namespace tensorflow {
 namespace {
