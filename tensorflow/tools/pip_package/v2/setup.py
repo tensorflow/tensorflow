@@ -93,6 +93,7 @@ REQUIRED_PACKAGES = [
     (
         'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5'
     ),
+    'requests >= 2.21.0, < 3',
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
@@ -160,18 +161,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cublas-cu12 == 12.2.5.6',
-    'nvidia-cuda-cupti-cu12 == 12.2.142',
-    'nvidia-cuda-nvcc-cu12 == 12.2.140',
-    'nvidia-cuda-nvrtc-cu12 == 12.2.140',
-    'nvidia-cuda-runtime-cu12 == 12.2.140',
-    'nvidia-cudnn-cu12 == 8.9.4.25',
-    'nvidia-cufft-cu12 == 11.0.8.103',
-    'nvidia-curand-cu12 == 10.3.3.141',
-    'nvidia-cusolver-cu12 == 11.5.2.141',
-    'nvidia-cusparse-cu12 == 12.1.2.141',
-    'nvidia-nccl-cu12 == 2.18.3',
-    'nvidia-nvjitlink-cu12 == 12.2.140',
+    'nvidia-cublas-cu12 == 12.3.4.1',
+    'nvidia-cuda-cupti-cu12 == 12.3.101',
+    'nvidia-cuda-nvcc-cu12 == 12.3.107',
+    'nvidia-cuda-nvrtc-cu12 == 12.3.107',
+    'nvidia-cuda-runtime-cu12 == 12.3.101',
+    'nvidia-cudnn-cu12 == 8.9.7.29',
+    'nvidia-cufft-cu12 == 11.0.12.1',
+    'nvidia-curand-cu12 == 10.3.4.107',
+    'nvidia-cusolver-cu12 == 11.5.4.101',
+    'nvidia-cusparse-cu12 == 12.2.0.103',
+    'nvidia-nccl-cu12 == 2.19.3',
+    'nvidia-nvjitlink-cu12 == 12.3.101',
 ]
 
 DOCLINES = __doc__.split('\n')

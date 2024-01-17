@@ -28,7 +28,7 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
 fi
 
 tfrun bazel build $TFCI_BAZEL_COMMON_ARGS //tensorflow/tools/pip_package/v2:wheel $TFCI_BUILD_PIP_PACKAGE_ARGS
-cp bazel-bin/tensorflow/tools/pip_package/v2/wheel_house/* "$TFCI_OUTPUT_DIR"
+tfrun cp -a "./bazel-bin/tensorflow/tools/pip_package/v2/wheel_house/." "$TFCI_OUTPUT_DIR"
 tfrun ./ci/official/utilities/rename_and_verify_wheels.sh
 
 if [[ "$TFCI_UPLOAD_WHL_PYPI_ENABLE" == 1 ]]; then
