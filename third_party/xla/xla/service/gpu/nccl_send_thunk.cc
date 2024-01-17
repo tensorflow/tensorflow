@@ -15,20 +15,18 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_send_thunk.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/stream_executor/stream.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -102,10 +100,8 @@ absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
                      ncclComm_t comm, absl::string_view device_string,
                      int64_t current_id) {
-#if XLA_ENABLE_XCCL
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
-
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing collective permute from device ordinal: "
           << device_ordinal << "current_id " << current_id;
@@ -116,30 +112,14 @@ absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
   VLOG(3) << absl::StreamFormat("%s : id = %d, target_id = %d", device_string,
                                 current_id, target_id.value_or(-1));
 
-  TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                      ToNcclDataTypeAndCountMultiplier(
-                          buffer.element_type, Thunk::kNcclCollectivePermute));
-  ncclDataType_t dtype = dtype_and_multiplier.first;
-  int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
-
   // Send source buffer to target peer if needed.
   if (target_id) {
-    VLOG(3) << absl::StreamFormat(
-        "%s : Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
-        "comm=%p, stream=%p)",
-        device_string, src_addr.opaque(), element_count, *target_id,
-        static_cast<const void*>(comm), gpu_stream);
-    XLA_NCCL_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
-                                      *target_id, comm, gpu_stream));
+    TF_RETURN_IF_ERROR(NcclApi::Send(
+        src_addr, buffer.element_type, buffer.element_type, *target_id,
+        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
   }
+
   return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
 }
 
 }  // namespace gpu
