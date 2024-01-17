@@ -198,7 +198,17 @@ class NativeInterpreterWrapper implements AutoCloseable {
       TensorImpl tensor = getInputTensor(input.getKey(), signatureKey);
       int[] newShape = tensor.getInputShapeIfDifferent(input.getValue());
       if (newShape != null) {
-        signatureRunnerWrapper.resizeInput(input.getKey(), newShape);
+        try {
+          signatureRunnerWrapper.resizeInput(input.getKey(), newShape);
+        } catch (IllegalArgumentException e) {
+          throw (IllegalArgumentException)
+              new IllegalArgumentException(
+                      String.format(
+                          "Tensor passed for input '%s' of signature '%s' has different "
+                              + "shape than expected",
+                          input.getKey(), signatureKey))
+                  .initCause(e);
+        }
       }
     }
 
