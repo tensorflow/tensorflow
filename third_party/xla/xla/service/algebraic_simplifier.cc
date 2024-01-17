@@ -6282,15 +6282,21 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
                                         transpose->dimensions()));
   }
 
-  // Convert a dynamic slice into a slice if all offsets are constant and the
-  // operand is not constant.
+  // Convert a dynamic slice into a slice if all offsets are constant, the
+  // operand is not constant, and the input and output memory spaces are the
+  // same.
   if (operand->opcode() != HloOpcode::kConstant &&
       absl::c_all_of(absl::MakeSpan(dynamic_slice->operands().begin() + 1,
                                     dynamic_slice->operands().end()),
                      [](HloInstruction* operand) {
                        return operand->opcode() == HloOpcode::kConstant &&
                               ShapeUtil::ElementIsIntegral(operand->shape());
-                     })) {
+                     }) &&
+      (!options_.is_layout_sensitive() ||
+       (dynamic_slice->shape().has_layout() &&
+        dynamic_slice->operand(0)->shape().has_layout() &&
+        dynamic_slice->shape().layout().memory_space() ==
+            dynamic_slice->operand(0)->shape().layout().memory_space()))) {
     const int64_t rank = operand->shape().rank();
     std::vector<int64_t> slice_starts(rank);
     std::vector<int64_t> slice_limits(rank);
