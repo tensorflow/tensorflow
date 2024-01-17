@@ -74,12 +74,7 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
 };
 
 absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, ncclComm_t comm);
-
-inline absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
-                                 se::Stream& stream, NcclCommHandle comm) {
-  return RunAllGather(buffers, stream, reinterpret_cast<ncclComm_t>(comm));
-}
+                          se::Stream& stream, NcclApi::NcclCommHandle comm);
 
 }  // namespace gpu
 }  // namespace xla

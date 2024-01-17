@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/nccl_api.h"
 
+#include <cstddef>
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
@@ -24,8 +25,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "third_party/nccl/nccl.h"
+#include "xla/primitive_util.h"
 #include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -63,6 +70,60 @@ static absl::Status ToStatus(ncclResult_t s, const char* file, int64_t line,
   } while (0)
 
 //==-----------------------------------------------------------------------===//
+// Conversions between XLA and NCCL data types
+//==-----------------------------------------------------------------------===//
+
+static size_t ToNcclCount(PrimitiveType dtype, size_t count) {
+  return primitive_util::IsComplexType(dtype) ? count * 2 : count;
+}
+
+static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
+                                                     bool is_reduction_op) {
+  switch (dtype) {
+    case S8:
+    case F8E5M2:
+    case F8E4M3FN:
+      return ncclInt8;
+    case PRED:
+    case U8:
+      return ncclUint8;
+    case S32:
+      return ncclInt32;
+    case U32:
+      return ncclUint32;
+    case S64:
+      return ncclInt64;
+    case U64:
+      return ncclUint64;
+    case F16:
+      return ncclFloat16;
+    case F32:
+    case C64:
+      return ncclFloat32;
+    case F64:
+    case C128:
+      return ncclFloat64;
+    case S16:
+    case U16:
+      // For reductions we expect 16 bit integer types to be promoted to 32-bit.
+      if (is_reduction_op) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Unsupported data type for reduction operation: %s",
+                            primitive_util::LowercasePrimitiveTypeName(dtype)));
+      }
+      // For collectives that just move data around, we can use ncclFloat16 for
+      // 16-bit integer data types.
+      return ncclFloat16;
+    case BF16:
+      return ncclBfloat16;
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Unsupported data type: %s",
+                          primitive_util::LowercasePrimitiveTypeName(dtype)));
+  }
+}
+
+//==-----------------------------------------------------------------------===//
 // NcclApi
 //==-----------------------------------------------------------------------===//
 
@@ -92,7 +153,7 @@ absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
 
 absl::StatusOr<NcclCommHandle> NcclApi::CommInitRank(
     int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) {
-  VLOG(3) << "Initialize NCCL communicator for rank #" << rank << " of "
+  VLOG(1) << "Initialize NCCL communicator for rank #" << rank << " of "
           << nranks << "; hash(id)=" << absl::HashOf(clique_id.data());
 
   if (rank < 0 || rank >= nranks)
@@ -107,19 +168,19 @@ absl::StatusOr<NcclCommHandle> NcclApi::CommInitRank(
 }
 
 absl::Status NcclApi::CommAbort(NcclCommHandle comm) {
-  VLOG(3) << "Abort NCCL communicator: " << comm;
+  VLOG(1) << "Abort NCCL communicator: " << comm;
   return XLA_NCCL_STATUS(ncclCommAbort(Cast(comm)));
 }
 
 absl::StatusOr<int32_t> NcclApi::CommCount(NcclCommHandle comm) {
-  VLOG(3) << "Get the number of ranks in NCCL communicator: " << comm;
+  VLOG(5) << "Get the number of ranks in NCCL communicator: " << comm;
   int32_t count;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(Cast(comm), &count));
   return count;
 }
 
 absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {
-  VLOG(3) << "Get last async error for NCCL communicator: " << comm;
+  VLOG(5) << "Get last async error for NCCL communicator: " << comm;
 
   ncclResult_t async_err;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommGetAsyncError(Cast(comm), &async_err));
@@ -131,13 +192,31 @@ absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {
 }
 
 absl::Status NcclApi::GroupStart() {
-  VLOG(3) << "Start NCCL group";
+  VLOG(5) << "Start NCCL group";
   return XLA_NCCL_STATUS(ncclGroupStart());
 }
 
 absl::Status NcclApi::GroupEnd() {
-  VLOG(3) << "End NCCL group";
+  VLOG(5) << "End NCCL group";
   return XLA_NCCL_STATUS(ncclGroupEnd());
+}
+
+absl::Status NcclApi::AllGather(se::DeviceMemoryBase send_buffer,
+                                se::DeviceMemoryBase recv_buffer,
+                                PrimitiveType dtype, size_t count,
+                                NcclCommHandle comm, se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL AllGather operation on device #%d; send_buffer=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(),
+      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
+      count, comm, stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  return XLA_NCCL_STATUS(ncclAllGather(
+      send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+      nccl_dtype, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
 }  // namespace xla::gpu

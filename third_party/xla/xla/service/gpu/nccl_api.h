@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_API_H_
 #define XLA_SERVICE_GPU_NCCL_API_H_
 
+#include <cstddef>
 #include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
@@ -76,6 +80,15 @@ struct NcclApi {
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupend
   static absl::Status GroupEnd();
+
+  // Gather `count` values from all GPUs into recv_buffer, receiving data from
+  // rank `i` at offset `i * sendcount`.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclallgather
+  static absl::Status AllGather(se::DeviceMemoryBase send_buffer,
+                                se::DeviceMemoryBase recv_buffer,
+                                PrimitiveType dtype, size_t count,
+                                NcclCommHandle comm, se::Stream* stream);
 };
 
 //===----------------------------------------------------------------------===//

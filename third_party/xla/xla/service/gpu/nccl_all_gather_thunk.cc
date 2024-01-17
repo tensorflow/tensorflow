@@ -16,10 +16,10 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -31,13 +31,10 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -145,49 +142,30 @@ absl::Status NcclAllGatherStartThunk::RunNcclCollective(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return xla::gpu::RunAllGather(device_buffers, stream, comm);
+  return xla::gpu::RunAllGather(
+      device_buffers, stream, reinterpret_cast<NcclApi::NcclCommHandle>(comm));
 }
 
 absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, ncclComm_t comm) {
-#if XLA_ENABLE_XCCL
+                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
-
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers,
+                                          reinterpret_cast<ncclComm_t>(comm)));
 
   TF_RETURN_IF_ERROR(NcclApi::GroupStart());
-  for (size_t i = 0; i < buffers.size(); ++i) {
-    DeviceBufferPair& buffer = buffers[i];
-    const void* send_buffer = buffer.source_buffer.opaque();
-    void* recv_buffer = buffer.destination_buffer.opaque();
 
-    PrimitiveType element_type = buffer.element_type;
-    TF_ASSIGN_OR_RETURN(
-        auto dtype_and_multiplier,
-        ToNcclDataTypeAndCountMultiplier(element_type, Thunk::kNcclAllGather));
-    ncclDataType_t dtype = dtype_and_multiplier.first;
-    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
-    VLOG(3) << absl::StreamFormat(
-        "Calling ncclAllGather(send_buffer=%p, recv_buffer=%p, sendcount=%d, "
-        "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
-        gpu_stream);
-
-    XLA_NCCL_RETURN_IF_ERROR(ncclAllGather(
-        send_buffer, recv_buffer, element_count, dtype, comm, gpu_stream));
+  for (DeviceBufferPair& buffer : buffers) {
+    TF_RETURN_IF_ERROR(NcclApi::AllGather(
+        buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+        buffer.element_count, reinterpret_cast<NcclApi::NcclCommHandle>(comm),
+        &stream));
   }
+
   TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
   return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
 }
 
 }  // namespace gpu

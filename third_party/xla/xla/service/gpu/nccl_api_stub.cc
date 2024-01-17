@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla::gpu {
 
@@ -32,15 +35,15 @@ absl::StatusOr<NcclCommHandle> NcclApi::CommInitRank(int32_t,
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
-absl::Status NcclApi::CommAbort(NcclCommHandle comm) {
+absl::Status NcclApi::CommAbort(NcclCommHandle) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
-absl::StatusOr<int32_t> NcclApi::CommCount(NcclCommHandle comm) {
+absl::StatusOr<int32_t> NcclApi::CommCount(NcclCommHandle) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
-absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {
+absl::Status NcclApi::CommGetAsyncError(NcclCommHandle) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
@@ -49,6 +52,12 @@ absl::Status NcclApi::GroupStart() {
 }
 
 absl::Status NcclApi::GroupEnd() {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::Status NcclApi::AllGather(se::DeviceMemoryBase, se::DeviceMemoryBase,
+                                PrimitiveType, size_t, NcclCommHandle,
+                                se::Stream*) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
