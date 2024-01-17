@@ -17,14 +17,12 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <cstdlib>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,16 +33,14 @@ limitations under the License.
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -352,58 +348,31 @@ absl::Status NcclReduceScatterStartThunk::RunNcclCollective(
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
                               se::Stream& stream, ncclComm_t comm) {
-#if XLA_ENABLE_XCCL
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
-
-  TF_ASSIGN_OR_RETURN(ncclRedOp_t reduce_op, ToNcclReduction(reduction_kind));
-
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   TF_ASSIGN_OR_RETURN(
       int32_t num_participants,
       NcclApi::CommCount(reinterpret_cast<NcclApi::NcclCommHandle>(comm)));
 
   TF_RETURN_IF_ERROR(NcclApi::GroupStart());
-  for (size_t i = 0; i < buffers.size(); ++i) {
-    DeviceBufferPair& buffer = buffers[i];
-    const void* send_buffer = buffer.source_buffer.opaque();
-    void* recv_buffer = buffer.destination_buffer.opaque();
 
-    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(
-                            buffer.element_type, Thunk::kNcclReduceScatter));
-    ncclDataType_t dtype = dtype_and_multiplier.first;
-    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
+  for (DeviceBufferPair& buffer : buffers) {
     // buffer.element_count is the source buffers element count. For
     // ncclReduceScatter, we need the destination buffers element count.
-    TF_RET_CHECK(element_count % num_participants == 0)
+    TF_RET_CHECK(buffer.element_count % num_participants == 0)
         << "Source buffer was not an exact multiple of the number of "
            "participants.";
 
-    int64_t recv_count = element_count / num_participants;
-    VLOG(3) << absl::StreamFormat(
-        "Calling ncclReduceScatter(send_buffer=%p, recv_buffer=%p, "
-        "recvcount=%d, "
-        "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, recv_count, static_cast<const void*>(comm),
-        gpu_stream);
-    XLA_NCCL_RETURN_IF_ERROR(ncclReduceScatter(send_buffer, recv_buffer,
-                                               recv_count, dtype, reduce_op,
-                                               comm, gpu_stream));
+    TF_RETURN_IF_ERROR(NcclApi::ReduceScatter(
+        buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+        buffer.element_count / num_participants, reduction_kind,
+        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
   }
-  TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
 
-  VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
-  return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
+  return NcclApi::GroupEnd();
 }
 
 }  // namespace gpu

@@ -92,6 +92,17 @@ struct NcclApi {
                                 ReductionKind reduction_kind,
                                 NcclCommHandle comm, se::Stream* stream);
 
+  // Reduce data in `send_buff` from all GPUs using the `reduction_kind`
+  // operation and leave the reduced result scattered over the devices so that
+  // the `recv_buff` on rank `i` will contain the i-th block of the result.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclreducescatter
+  static absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                    se::DeviceMemoryBase recv_buffer,
+                                    PrimitiveType dtype, size_t count,
+                                    ReductionKind reduction_kind,
+                                    NcclCommHandle comm, se::Stream* stream);
+
   // Gather `count` values from all GPUs into recv_buffer, receiving data from
   // rank `i` at offset `i * sendcount`.
   //

@@ -250,6 +250,27 @@ absl::Status NcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
       se::gpu::AsGpuStreamValue(stream)));
 }
 
+absl::Status NcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                    se::DeviceMemoryBase recv_buffer,
+                                    PrimitiveType dtype, size_t count,
+                                    ReductionKind reduction_kind,
+                                    NcclCommHandle comm, se::Stream* stream) {
+  VLOG(3) << absl::StreamFormat(
+      "Launch NCCL ReduceScatter operation on device #%d; send_buffer=%p; "
+      "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
+      "stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(),
+      recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
+      count, ToString(reduction_kind), comm, stream);
+
+  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+
+  return XLA_NCCL_STATUS(ncclReduceScatter(
+      send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
+      nccl_dtype, ToNcclReduction(reduction_kind), Cast(comm),
+      se::gpu::AsGpuStreamValue(stream)));
+}
+
 absl::Status NcclApi::AllGather(se::DeviceMemoryBase send_buffer,
                                 se::DeviceMemoryBase recv_buffer,
                                 PrimitiveType dtype, size_t count,
