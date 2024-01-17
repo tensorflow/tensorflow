@@ -1001,6 +1001,51 @@ TEST_F(GpuFusibleTest, ProducerConsumerFusionElementwiseAndReduce) {
   EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*producer, *consumer));
 }
 
+TEST_F(GpuFusibleTest, ProducerConsumerFusionTransposeAndLoopFusion) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_add {
+      p0.1 = f32[32,31,30]{2,1,0} parameter(0)
+      p1.1 = f32[32,31,30]{2,1,0} parameter(1)
+      neg = f32[32,31,30]{2,1,0} negate(p0.1)
+      ROOT add = f32[32,31,30]{2,1,0} add(neg, p1.1)
+    }
+
+    ENTRY reduce {
+      p0 = f32[32,31,30]{2,1,0} parameter(0)
+      p1 = f32[32,30,31]{2,1,0} parameter(1)
+      transpose =  f32[32,31,30]{2,1,0} transpose(p1), dimensions={0,2,1}
+      ROOT add = f32[32,31,30]{2,1,0} fusion(p0, transpose), kind=kLoop, calls=fused_add
+    })"))
+                    .value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* consumer = root;
+  const HloInstruction* producer = root->operand(1);
+  EXPECT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
+}
+
+TEST_F(GpuFusibleTest, ProducerConsumerFusionReduceAndLoopFusion) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_add {
+      p0.1 = f32[32,31,30]{2,1,0} parameter(0)
+      p1.1 = f32[32,31,30]{2,1,0} parameter(1)
+      neg = f32[32,31,30]{2,1,0} negate(p0.1)
+      ROOT add = f32[32,31,30]{2,1,0} add(neg, p1.1)
+    }
+
+    ENTRY reduce {
+      p0 = f32[32,31,30]{2,1,0} parameter(0)
+      p1 = f32[32,31,30,29]{3,2,1,0} parameter(1)
+      c0 = f32[] constant(0.0)
+      reduce =  f32[32,31,30]{2,1,0} reduce(p1, c0), dimensions={3}, to_apply=scalar_add
+      ROOT add = f32[32,31,30]{2,1,0} fusion(p0, reduce), kind=kLoop, calls=fused_add
+    })"))
+                    .value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* consumer = root;
+  const HloInstruction* producer = root->operand(1);
+  EXPECT_TRUE(IsProducerConsumerFusible(*producer, *consumer));
+}
+
 TEST_F(GpuFusibleTest, ProducerConsumerFusionLoopFusionAndReduce) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_add {
@@ -1401,6 +1446,23 @@ TEST_F(GpuFusibleTest, DoesNotCreateHeavyComputation_FusionInstr) {
   const HloInstruction* producer = root->operand(0);
   const HloInstruction* consumer = root->operand(1);
   EXPECT_FALSE(CreatesHeavyComputation(*producer, *consumer));
+}
+
+TEST_F(GpuFusibleTest, ChooseFusionKind) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY computation {
+    p = f32[5000,6000]{1,0} parameter(0)
+    c = f32[6000,5000] transpose(p), dimensions={1,0}
+    ROOT r = f32[300,20,5000] reshape(c)
+}
+)")
+                    .value();
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* producer = root->operand(0);
+  EXPECT_EQ(ChooseFusionKind(*producer, *root),
+            HloInstruction::FusionKind::kInput);
 }
 
 }  // namespace gpu
