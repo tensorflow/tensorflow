@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/service/byte_size.h"
@@ -134,7 +136,18 @@ bool ParallelTFRecordWriter::ShouldWriteFile(const std::string& filename) const
 }
 
 absl::Status ParallelTFRecordWriter::WriteRecord(
-    const std::string& filename, snapshot_util::TFRecordWriter& writer)
+    const std::string& filename, snapshot_util::TFRecordWriter& writer) {
+  TF_ASSIGN_OR_RETURN(std::optional<std::vector<Tensor>> record,
+                      GetNextRecord(filename));
+  if (!record.has_value()) {
+    return absl::OkStatus();
+  }
+  TF_RETURN_IF_ERROR(writer.WriteTensors(*std::move(record)));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::optional<std::vector<Tensor>>>
+ParallelTFRecordWriter::GetNextRecord(const std::string& filename)
     ABSL_LOCKS_EXCLUDED(mu_) {
   absl::MutexLock l(&mu_);
   while (status_.ok() && !finalized_ && buffer_.empty()) {
@@ -142,16 +155,15 @@ absl::Status ParallelTFRecordWriter::WriteRecord(
   }
   TF_RETURN_IF_ERROR(status_);
   if (buffer_.empty()) {
-    return absl::OkStatus();
+    return std::nullopt;
   }
 
   std::vector<Tensor> record = std::move(buffer_.front());
-  TF_RETURN_IF_ERROR(writer.WriteTensors(record));
   ++file_stats_[filename].num_records;
   file_stats_[filename].estimated_size += EstimatedSize(record);
   buffer_.pop_front();
   ready_to_push_.SignalAll();
-  return absl::OkStatus();
+  return record;
 }
 
 absl::Status ParallelTFRecordWriter::DeleteEmptyFile(

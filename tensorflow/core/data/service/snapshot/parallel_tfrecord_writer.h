@@ -18,12 +18,14 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/snapshot_utils.h"
@@ -98,6 +100,11 @@ class ParallelTFRecordWriter {
   // Writes one record to file.
   absl::Status WriteRecord(const std::string& filename,
                            snapshot_util::TFRecordWriter& writer);
+
+  // Gets the next record from the buffer to write. Returns `std::nullopt` if
+  // there are no more records to write.
+  absl::StatusOr<std::optional<std::vector<Tensor>>> GetNextRecord(
+      const std::string& filename);
 
   // Deletes the file if it's empty.
   absl::Status DeleteEmptyFile(const std::string& filename);
