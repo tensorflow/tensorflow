@@ -42,7 +42,6 @@ cc_library(
         ":gpu_helpers",
         ":gpu_metrics",
         ":gpu_topology",
-        ":nccl_id_store",
         "//xla:literal",
         "//xla:shape_util",
         "//xla:status",
@@ -113,6 +112,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/util:env_var",
     ] + if_cuda_or_rocm([
+        ":nccl_id_store",
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -225,7 +225,6 @@ cc_library(
     defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//visibility:public"],
     deps = [
-        ":nccl_id_store",
         ":se_gpu_pjrt_client",
         "//xla:status_macros",
         "//xla/client:local_client",
@@ -250,6 +249,7 @@ cc_library(
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
     ] + if_cuda_or_rocm([
+        ":nccl_id_store",
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
