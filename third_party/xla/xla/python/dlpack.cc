@@ -100,7 +100,7 @@ StatusOr<DLDataType> PrimitiveTypeToDLDataType(PrimitiveType type) {
     case BF16:
       return DLDataType{kDLBfloat, 16, 1};
     case PRED:
-      return DLDataType{kDLUInt, 8, 1};
+      return DLDataType{kDLBool, 8, 1};
     case C64:
       return DLDataType{kDLComplex, 64, 1};
     case C128:
@@ -117,6 +117,15 @@ StatusOr<PrimitiveType> DLDataTypeToPrimitiveType(DLDataType type) {
                          type.lanes);
   }
   switch (type.code) {
+    case kDLBool:
+      switch (type.bits) {
+        case 8:
+          return PRED;
+        default:
+          return Unimplemented(
+              "Only 8-bit DLPack booleans are supported, got %d bits",
+              type.bits);
+      }
     case kDLInt:
       switch (type.bits) {
         case 8:
