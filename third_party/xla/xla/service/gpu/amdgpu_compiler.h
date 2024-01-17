@@ -57,9 +57,6 @@ class AMDGPUCompiler : public GpuCompiler {
       const HloModule* debug_module, const CompileOptions& options) override;
 
  private:
-  // The parent directory of ROCm-Device-Libs IR libraries.
-  std::string rocdl_dir_;
-
   AMDGPUCompiler(const AMDGPUCompiler&) = delete;
   AMDGPUCompiler& operator=(const AMDGPUCompiler&) = delete;
 };

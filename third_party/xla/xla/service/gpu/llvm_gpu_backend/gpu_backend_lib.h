@@ -62,7 +62,7 @@ namespace amdgpu {
 // The contents of the module may be changed.
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
+    const DebugOptions& debug_options,
     const std::string& module_config_cache_key);
 }  // namespace amdgpu
 

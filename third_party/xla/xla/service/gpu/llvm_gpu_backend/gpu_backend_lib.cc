@@ -68,6 +68,7 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/random.h"
+#include "tsl/platform/rocm_rocdl_path.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/util/env_var.h"
 
@@ -911,7 +912,32 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
                           arch.second);
 }
 
-void AMDGPUBackendInit(const DebugOptions& debug_options) {
+// Returns the directory containing ROCm-Device-Libs files.
+std::string GetROCDLDir(const DebugOptions& debug_options) {
+  std::vector<std::string> potential_rocdl_dirs;
+  const std::string datadir = debug_options.xla_gpu_cuda_data_dir();
+  if (!datadir.empty()) {
+    potential_rocdl_dirs.push_back(datadir);
+  }
+  potential_rocdl_dirs.push_back(tsl::RocdlRoot());
+
+  // Tries all potential ROCDL directories in the order they are inserted.
+  // Returns the first directory that exists in the file system.
+  for (const std::string& potential_rocdl_dir : potential_rocdl_dirs) {
+    if (tsl::Env::Default()->IsDirectory(potential_rocdl_dir).ok()) {
+      VLOG(2) << "Found ROCm-Device-Libs dir " << potential_rocdl_dir;
+      return potential_rocdl_dir;
+    }
+    VLOG(2) << "Unable to find potential ROCm-Device-Libs dir "
+            << potential_rocdl_dir;
+  }
+
+  // Last resort: maybe in the current folder.
+  return ".";
+}
+
+void AMDGPUBackendInit(const DebugOptions& debug_options,
+                       std::string& rocdl_dir_path) {
   llvm_ir::InitializeLLVMCommandLineOptions(
       debug_options.xla_backend_extra_options());
 
@@ -923,9 +949,9 @@ void AMDGPUBackendInit(const DebugOptions& debug_options) {
   LLVMInitializeAMDGPUTargetInfo();
   LLVMInitializeAMDGPUTargetMC();
   LLVMInitializeAMDGPUAsmPrinter();
-
 #endif
 
+  rocdl_dir_path = GetROCDLDir(debug_options);
   llvm::PassRegistry* registry = llvm::PassRegistry::getPassRegistry();
   InitializePasses(registry);
 }
@@ -935,10 +961,14 @@ void AMDGPUBackendInit(const DebugOptions& debug_options) {
 namespace amdgpu {
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
-    const DebugOptions& debug_options, const std::string& rocdl_dir_path,
+    const DebugOptions& debug_options,
     const std::string& module_config_cache_key) {
   static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options);
+  // TODO(rocm) Ideally this would be refreshed if xla_gpu_cuda_data_dir
+  // changes.
+  static std::string rocdl_dir_path;
+  absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options,
+                  rocdl_dir_path);
 
   std::vector<uint8_t> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;

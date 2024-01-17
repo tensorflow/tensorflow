@@ -3924,7 +3924,6 @@ cc_library(
         "//xla/service/gpu/llvm_gpu_backend",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor/rocm:rocm_platform_id",
-        "@local_tsl//tsl/platform:rocm_rocdl_path",
     ],
 )
 
