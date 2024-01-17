@@ -26,6 +26,10 @@ func.func private @composite_dot_general_fn_1(%arg0: tensor<1x1024xf32>, %arg1: 
 // Note: Argument quantization sequence omitted.
 // CHECK: stablehlo.dot_general %{{.+}}, %{{.+}}, contracting_dims = [1] x [0] : (tensor<1x1024xi8>, tensor<1024x3xi8>) -> tensor<1x3xi32>
 
+// Verify that the OptimizeGraphPass has merged requantization and
+// dequantization, so that there's no more clamp in the graph.
+// CHECK-NOT: stablehlo.clamp %{{.+}}, %{{.+}}, %{{.+}} : (tensor<f32>, tensor<1x3xf32>, tensor<f32>) -> tensor<1x3xf32>
+
 // Note: Result dequantization sequence omitted.
 // CHECK: return %{{.+}} : tensor<1x3xf32>
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project  // IWYU: keep
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -50,6 +51,9 @@ void PostCalibrationComponent::AddPasses(OpPassManager& pm) const {
   pm.addNestedPass<func::FuncOp>(
       CreateConvertCustomAggregationOpToQuantStatsPass());
   pm.addPass(createQuantizeCompositeFunctionsPass());
+  // Put InlinerPass before OptimizeGraphPass so that the optimize pass can
+  // match the sub-optimal patterns.
+  pm.addPass(createInlinerPass());
   pm.addPass(createOptimizeGraphPass());
   AddStablehloQuantToIntPasses(pm);
   AddCallModuleSerializationPasses(pm);
