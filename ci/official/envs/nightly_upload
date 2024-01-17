@@ -31,13 +31,10 @@ TFCI_UPLOAD_WHL_GCS_URI=
 TFCI_UPLOAD_WHL_PYPI_ARGS="--config-file=$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token --repository pypi-warehouse"
 TFCI_UPLOAD_WHL_PYPI_ENABLE=1
 
-# 2. build_pip_package gets --nightly_flag in addition to its other flags
-TFCI_BUILD_PIP_PACKAGE_ARGS="$TFCI_BUILD_PIP_PACKAGE_ARGS --nightly_flag"
-
-# 3. The internal version numbers get changed
+# 2. The internal version numbers get changed
 TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
 
-# 4. Push results to public build cache (unique cache for MacOS)
+# 3. Push results to public build cache (unique cache for MacOS)
 if [[ $(uname -s) == "Darwin" ]]; then
   TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config tf_public_macos_cache_push"
 else
