@@ -21,19 +21,23 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_clique.h"
-#include "xla/service/gpu/nccl_types.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
 
+#if XLA_ENABLE_XCCL
+#include "third_party/nccl/nccl.h"
+#endif  // XLA_ENABLE_XCCL
+
 namespace xla {
 namespace gpu {
 
-absl::StatusOr<std::pair<NcclDataType, int>> ToNcclDataTypeAndCountMultiplier(
+#if XLA_ENABLE_XCCL
+absl::StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op);
+#endif  // XLA_ENABLE_XCCL
 
 size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,

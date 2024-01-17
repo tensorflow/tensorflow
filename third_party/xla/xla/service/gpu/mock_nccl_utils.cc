@@ -65,7 +65,6 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/service/gpu/nccl_errors.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/nccl_utils.h"
 #include "xla/service/gpu/thunk.h"
@@ -84,6 +83,41 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+//==-----------------------------------------------------------------------===//
+// Macros to return or warn on NCCL errors.
+//==-----------------------------------------------------------------------===//
+
+static absl::Status ToStatus(ncclResult_t s, const char* file, int64_t line,
+                             const char* expr) {
+  if (s == ncclSuccess) return absl::OkStatus();
+
+  return absl::InternalError(absl::StrFormat(
+      "%s:%d: NCCL operation %s failed: %s."
+      " Last NCCL warning(error) log entry (may be unrelated) '%s'.",
+      file, line, expr, ncclGetErrorString(s), ncclGetLastError(nullptr)));
+}
+
+#define XLA_NCCL_STATUS(expr) \
+  xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
+
+#define XLA_NCCL_RETURN_IF_ERROR(expr)      \
+  do {                                      \
+    absl::Status s = XLA_NCCL_STATUS(expr); \
+    if (!s.ok()) {                          \
+      return s;                             \
+    }                                       \
+  } while (0)
+
+#define XLA_NCCL_LOG_IF_ERROR(expr)         \
+  do {                                      \
+    absl::Status s = XLA_NCCL_STATUS(expr); \
+    if (!s.ok()) {                          \
+      LOG(ERROR) << s.ToString();           \
+    }                                       \
+  } while (0)
+
+//==-----------------------------------------------------------------------===//
 
 using ncclInfo_t = ncclInfo*;
 

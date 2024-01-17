@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
-#include "xla/service/gpu/nccl_errors.h"
 #include "xla/service/gpu/nccl_utils.h"
 #endif  // XLA_ENABLE_XCCL
 

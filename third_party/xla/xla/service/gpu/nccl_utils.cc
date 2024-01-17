@@ -24,10 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_clique.h"
-#include "xla/service/gpu/nccl_types.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -35,11 +33,15 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
+#if XLA_ENABLE_XCCL
+#include "third_party/nccl/nccl.h"
+#endif  // XLA_ENABLE_XCCL
+
 namespace xla::gpu {
 
-static absl::StatusOr<NcclDataType> ToNcclDataType(PrimitiveType element_type,
-                                                   Thunk::Kind reduction_op) {
 #if XLA_ENABLE_XCCL
+static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType element_type,
+                                                     Thunk::Kind reduction_op) {
   switch (element_type) {
     case S8:
     case F8E5M2:
@@ -85,18 +87,16 @@ static absl::StatusOr<NcclDataType> ToNcclDataType(PrimitiveType element_type,
       return tsl::errors::InvalidArgument(absl::StrFormat(
           "Unsupported data type: %s", PrimitiveType_Name(element_type)));
   }
-#endif  // XLA_ENABLE_XCCL
-
-  return absl::InternalError("XLA compiled without NCCL");
 }
 
-absl::StatusOr<std::pair<NcclDataType, int>> ToNcclDataTypeAndCountMultiplier(
+absl::StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op) {
-  TF_ASSIGN_OR_RETURN(NcclDataType dtype,
+  TF_ASSIGN_OR_RETURN(ncclDataType_t dtype,
                       ToNcclDataType(element_type, reduction_op));
   bool is_complex = primitive_util::IsComplexType(element_type);
   return std::make_pair(dtype, is_complex ? 2 : 1);
 }
+#endif  // XLA_ENABLE_XCCL
 
 size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
