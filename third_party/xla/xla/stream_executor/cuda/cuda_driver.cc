@@ -56,9 +56,6 @@ limitations under the License.
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/threadpool.h"
 
-#ifdef XLA_ENABLE_XCCL
-#include "third_party/nccl/nccl.h"
-#endif  // XLA_ENABLE_XCCL
 
 static constexpr bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
 static constexpr bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
@@ -1620,56 +1617,6 @@ struct BitPatternToValue {
     VLOG(2) << "deallocated unified memory at " << location << " for context "
             << context->context();
   }
-}
-
-/* static */ absl::StatusOr<void*> GpuDriver::CollectiveMemoryAllocate(
-    GpuContext* context, uint64_t bytes) {
-  if (bytes == 0) {
-    return nullptr;
-  }
-
-  ScopedActivateContext activated{context};
-  void* ptr = nullptr;
-
-#ifdef XLA_ENABLE_XCCL
-  ncclResult_t res = ncclMemAlloc(&ptr, bytes);
-  if (res != ncclSuccess) {
-    return absl::InternalError(absl::StrFormat(
-        "failed to allocate %s (%llu bytes) from device collective memory: %s, "
-        "Last NCCL warning(error) log entry (may be unrelated): %s",
-        tsl::strings::HumanReadableNumBytes(bytes), bytes,
-        ncclGetErrorString(res), ncclGetLastError(nullptr)));
-  }
-#else
-  return absl::FailedPreconditionError(
-      "NCCL support was not built into XLA binary.");
-#endif
-
-  VLOG(2) << "allocated collective memory " << ptr << " for context "
-          << context->context() << " of " << bytes << " bytes";
-  return ptr;
-}
-
-/* static */ absl::Status GpuDriver::CollectiveMemoryDeallocate(
-    GpuContext* context, void* location) {
-  ScopedActivateContext activation(context);
-
-#ifdef XLA_ENABLE_XCCL
-  ncclResult_t res = ncclMemFree(location);
-  if (res != ncclSuccess) {
-    return absl::InternalError(absl::StrFormat(
-        "failed to free device collective memory at %p; result: %s, Last NCCL "
-        "warning(error) log entry (may be unrelated): %s",
-        location, ncclGetErrorString(res), ncclGetLastError(nullptr)));
-  }
-#else
-  return absl::FailedPreconditionError(
-      "NCCL support was not built into XLA binary.");
-#endif
-
-  VLOG(2) << "deallocated collective memory " << location << " for context "
-          << context->context();
-  return tsl::OkStatus();
 }
 
 /* static */ void* GpuDriver::HostAllocate(GpuContext* context,

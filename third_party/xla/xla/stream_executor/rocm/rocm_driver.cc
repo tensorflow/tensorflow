@@ -1316,19 +1316,6 @@ struct BitPatternToValue {
       << "Feature not supported on ROCm platform (UnifiedMemoryDeallocate)";
 }
 
-/* static */ absl::StatusOr<void*> GpuDriver::CollectiveMemoryAllocate(
-    GpuContext* context, uint64_t bytes) {
-  ScopedActivateContext activated{context};
-  return absl::UnimplementedError(
-      "Feature not supported on ROCm platform (CollectiveMemoryAllocate)");
-}
-
-/* static */ absl::Status GpuDriver::CollectiveMemoryDeallocate(
-    GpuContext* context, void* location) {
-  return absl::UnimplementedError(
-      "Feature not supported on ROCm platform (CollectiveMemoryDeallocate)");
-}
-
 /* static */ void* GpuDriver::HostAllocate(GpuContext* context,
                                            uint64_t bytes) {
   ScopedActivateContext activation{context};

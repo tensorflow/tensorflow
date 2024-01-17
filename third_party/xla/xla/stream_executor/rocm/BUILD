@@ -97,6 +97,17 @@ cc_library(
 )
 
 cc_library(
+    name = "rocm_collectives",
+    srcs = if_rocm_is_configured(["rocm_collectives.cc"]),
+    visibility = ["//visibility:public"],
+    deps = if_rocm_is_configured([
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "//xla/stream_executor/gpu:gpu_driver_header",
+    ]),
+)
+
+cc_library(
     name = "rocm_activation",
     srcs = [],
     hdrs = if_rocm_is_configured(["rocm_activation.h"]),
@@ -135,6 +146,7 @@ cc_library(
         ":rocm_kernel",
         ":rocm_platform_id",
         ":rocm_runtime",
+        ":rocm_collectives",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
         "//xla/stream_executor",
@@ -179,6 +191,7 @@ cc_library(
         ":rocm_executor",
         ":rocm_platform_id",
         ":rocm_runtime",
+        ":rocm_collectives",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "//xla/stream_executor",  # buildcleaner: keep
