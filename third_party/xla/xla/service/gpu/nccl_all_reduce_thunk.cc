@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/stream.h"
@@ -63,7 +64,7 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  TF_RETURN_IF_ERROR(NcclApi::GroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
     DeviceBufferPair& buffer = buffers[i];
     const void* send_buffer = buffer.source_buffer.opaque();
@@ -85,7 +86,7 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
                                            element_count, dtype, reduce_op,
                                            comm, gpu_stream));
   }
-  return XLA_NCCL_STATUS(ncclGroupEnd());
+  return NcclApi::GroupEnd();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
@@ -388,7 +389,7 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
   int num_participants = 0;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
 
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  TF_RETURN_IF_ERROR(NcclApi::GroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
     DeviceBufferPair& buffer = buffers[i];
     const void* send_buffer = buffer.source_buffer.opaque();
@@ -417,7 +418,7 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
                                                recv_count, dtype, reduce_op,
                                                comm, gpu_stream));
   }
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
 
   VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
   return absl::OkStatus();

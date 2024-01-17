@@ -61,6 +61,16 @@ struct NcclApi {
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommgetasyncerror
   static absl::Status CommGetAsyncError(NcclCommHandle comm);
+
+  // Starts a group call.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupstart
+  static absl::Status GroupStart();
+
+  // Ends a group call.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupend
+  static absl::Status GroupEnd();
 };
 
 //===----------------------------------------------------------------------===//

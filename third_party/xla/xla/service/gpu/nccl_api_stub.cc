@@ -40,4 +40,12 @@ absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
+absl::Status NcclApi::GroupStart() {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
+absl::Status NcclApi::GroupEnd() {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
 }  // namespace xla::gpu

@@ -122,4 +122,14 @@ absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {
       ". Last NCCL error (maybe unrelated): ", ncclGetLastError(Cast(comm))));
 }
 
+absl::Status NcclApi::GroupStart() {
+  VLOG(3) << "Start NCCL group";
+  return XLA_NCCL_STATUS(ncclGroupStart());
+}
+
+absl::Status NcclApi::GroupEnd() {
+  VLOG(3) << "End NCCL group";
+  return XLA_NCCL_STATUS(ncclGroupEnd());
+}
+
 }  // namespace xla::gpu

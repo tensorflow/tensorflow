@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
@@ -156,7 +157,7 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  TF_RETURN_IF_ERROR(NcclApi::GroupStart());
   for (size_t i = 0; i < buffers.size(); ++i) {
     DeviceBufferPair& buffer = buffers[i];
     const void* send_buffer = buffer.source_buffer.opaque();
@@ -178,7 +179,7 @@ absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
     XLA_NCCL_RETURN_IF_ERROR(ncclAllGather(
         send_buffer, recv_buffer, element_count, dtype, comm, gpu_stream));
   }
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
   return absl::OkStatus();

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/thunk.h"
@@ -274,11 +275,10 @@ absl::Status RunCollectivePermute(
                                 device_string, current_id,
                                 source_id.value_or(-1), target_id.value_or(-1));
 
-  // ncclGroupStart/end API is needed only if we will issue both ncclSend and
-  // ncclRecv API calls.
+  // GroupStart/End API is needed only if we will issue both send & recv calls.
   const bool is_nccl_group_needed = (target_id && source_id);
   if (is_nccl_group_needed) {
-    XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+    TF_RETURN_IF_ERROR(NcclApi::GroupStart());
   }
 
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
@@ -311,7 +311,7 @@ absl::Status RunCollectivePermute(
                                       *source_id, comm, gpu_stream));
   }
   if (is_nccl_group_needed) {
-    XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+    TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
   }
 
   if (!source_id) {

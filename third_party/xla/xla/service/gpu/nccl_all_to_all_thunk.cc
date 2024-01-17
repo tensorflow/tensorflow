@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -159,7 +160,7 @@ absl::Status RunAllToAll(bool has_split_dimension,
   int num_participants;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
 
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+  TF_RETURN_IF_ERROR(NcclApi::GroupStart());
   // AllToAll can operate in two modes. Either it specifies a split dimension,
   // in which case inputs are split and outputs concatenated in that dimension
   // (here, we only support dimension 0), or it takes a list of inputs
@@ -241,7 +242,7 @@ absl::Status RunAllToAll(bool has_split_dimension,
                                         /*rank=*/i, comm, gpu_stream));
     }
   }
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+  TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
 
   VLOG(3) << "Done performing all-to-all for ordinal: " << device_ordinal;
   return absl::OkStatus();
