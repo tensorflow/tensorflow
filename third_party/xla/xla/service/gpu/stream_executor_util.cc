@@ -569,6 +569,22 @@ absl::Status AllAlgorithmsFailedInternalError(
   return InternalError("%s", msg.str());
 }
 
+absl::Status NoAlgorithmSuppliedInternalError(
+    std::optional<std::string_view> instr_str) {
+  std::ostringstream msg;
+  if (instr_str.has_value()) {
+    msg << "The are no algorithm candiates for computing: \n  "
+        << instr_str.value()
+        << "\nThis likely means that the instruction shape is not supported by "
+           "the target GPU library.";
+  } else {
+    msg << "The are no algorithm candiates for computing the instruction.\n"
+           "This likely means that the instruction shape is not supported by "
+           "the target GPU library.";
+  }
+  return InternalError("%s", msg.str());
+}
+
 void SortAutotuningResultsByRunTime(std::vector<AutotuneResult>& results) {
   absl::c_sort(results,
                [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
@@ -600,6 +616,10 @@ absl::StatusOr<AutotuneResult> PickBestResult(
     absl::Span<AutotuneResult const> profile_results,
     std::optional<std::string_view> instr_str,
     HloModuleConfig hlo_module_config) {
+  if (profile_results.empty()) {
+    return NoAlgorithmSuppliedInternalError(instr_str);
+  }
+
   std::vector<AutotuneResult> filtered_results =
       KeepNonFailures(profile_results);
 
