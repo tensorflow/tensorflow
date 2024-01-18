@@ -264,7 +264,7 @@ HloInstruction* HloComputation::ReplaceParameter(
   TF_CHECK_OK(
       old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
   param_instructions_[param_no] = new_instruction;
-  TF_CHECK_OK(RemoveInstruction(old_instruction));
+  TF_CHECK_OK(ForceRemoveInstruction(old_instruction));
   return new_instruction;
 }
 
