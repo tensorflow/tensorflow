@@ -303,10 +303,10 @@ cc_library(
     hdrs = ["dnn.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":data_type",
         ":device_description_proto_cc",
         ":device_memory",
         ":numeric_options",
-        ":stream_executor_headers",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
