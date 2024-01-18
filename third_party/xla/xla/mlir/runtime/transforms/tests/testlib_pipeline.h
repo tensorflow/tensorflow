@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_MLIR_RUNTIME_TRANSFORMS_TESTS_TESTLIB_PIPELINE_H_
 #define XLA_MLIR_RUNTIME_TRANSFORMS_TESTS_TESTLIB_PIPELINE_H_
 
+#include "absl/status/status.h"
 #include "xla/runtime/compiler.h"
 
 namespace xla {
@@ -25,7 +26,7 @@ namespace runtime {
 void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects);
 
 // Populates passes for compiling Xla runtime tests.
-void CreateXlaRuntimeTestlibPipeline(PassManager& passes);
+absl::Status CreateXlaRuntimeTestlibPipeline(PassManager& passes);
 
 }  // namespace runtime
 }  // namespace xla

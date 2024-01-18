@@ -84,6 +84,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
@@ -399,6 +400,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
   runtime::JitExecutable::Options opts;
   copts.xla_cpu_sparse_cuda_threads =
       GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
+  std::optional<std::string> maybeOverriddenPipeline =
+      options::ExperimentalOverriddenPipeline(module.config());
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
       [](xla::runtime::DialectRegistry& dialects) {
@@ -416,7 +419,25 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
         PopulateXlaXfeedCall(registry);
       });
   opts.compiler.create_compilation_pipeline =
-      [copts](xla::runtime::PassManager& passes) {
+      [copts, maybeOverriddenPipeline = std::move(maybeOverriddenPipeline)](
+          xla::runtime::PassManager& passes) {
+        if (maybeOverriddenPipeline.has_value()) {
+          std::string error_message;
+          llvm::raw_string_ostream error_stream(error_message);
+          mlir::LogicalResult result = mlir::parsePassPipeline(
+              maybeOverriddenPipeline.value(), *passes, error_stream);
+          if (mlir::failed(result)) {
+            LOG(ERROR)
+                << "Failed to parse experimental CPU compilation pipeline: "
+                << error_stream.str();
+            return absl::InternalError(
+                "Failed to parse experimental CPU compilation pipeline.");
+          }
+          LOG(INFO) << "Experimental CPU compilation pipeline: "
+                    << maybeOverriddenPipeline.value();
+          return absl::OkStatus();
+        }
+
         HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
             llvm::Triple(llvm::sys::getProcessTriple()),
             llvm::sys::getHostCPUName());
@@ -425,10 +446,12 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
 
         Status status = CreateHloXlaRuntimePipeline(passes, options);
         if (!status.ok()) {
-          LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
+          LOG(ERROR) << "HLO-XLA Runtime pipeline failed with: "
                      << status.message();
+          return status;
         }
         runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
+        return absl::OkStatus();
       };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());

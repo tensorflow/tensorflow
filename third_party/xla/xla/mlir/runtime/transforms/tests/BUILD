@@ -36,6 +36,7 @@ cc_library(
         "//xla/mlir/runtime/transforms:compiler",
         "//xla/mlir/runtime/transforms:passes",
         "//xla/runtime:compiler",
+        "@com_google_absl//absl/status",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:AsyncToLLVM",

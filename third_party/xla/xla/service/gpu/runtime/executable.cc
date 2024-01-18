@@ -219,6 +219,7 @@ GpuRuntimeExecutable::Create(std::string module_name,
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
         runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+        return absl::OkStatus();
       };
 
   // Do not run expensive optimization passes because we do not expect any

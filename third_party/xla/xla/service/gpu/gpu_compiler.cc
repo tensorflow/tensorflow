@@ -2007,6 +2007,7 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     opts.compiler.create_compilation_pipeline =
         [copts](xla::runtime::PassManager& passes) {
           runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+          return absl::OkStatus();
         };
 
     // Instantiate new JitExecutable from the MLIR source.

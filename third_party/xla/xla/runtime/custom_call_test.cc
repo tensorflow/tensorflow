@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/mlir/runtime/ir/tests/testlib.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/mlir/runtime/transforms/custom_call_encoding.h"
@@ -75,6 +76,7 @@ static absl::StatusOr<JitExecutable> Compile(
   opts.compiler.create_compilation_pipeline = [=](PassManager& passes) {
     CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts,
                                                   /*add_async_passes=*/true);
+    return absl::OkStatus();
   };
 
   return JitExecutable::Instantiate(source, opts, exported);
