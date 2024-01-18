@@ -93,9 +93,10 @@ def custom_gradient(f=None):
   dx_i/dx_i-1 * ... * dx_1/dx_0`.
 
   In this case the gradient of our current function defined as
-  `dx_i/dx_i-1 = (1 - 1 / (1 + e))`. The upstream gradient `upstream` would be
-  `dx_n/dx_n-1 * dx_n-1/dx_n-2 * ... * dx_i+1/dx_i`. The upstream gradient
-  multiplied by the current gradient is then passed downstream.
+  `dx_i/dx_i-1 = (exp(x_i) / (1 + exp(x_i))) = (1 - 1 / (1 + exp(x_i)))`. The
+  upstream gradient `upstream` would be `dx_n/dx_n-1 * dx_n-1/dx_n-2 * ... *
+  dx_i+1/dx_i`. The upstream gradient multiplied by the current gradient is
+  then passed downstream.
 
   In case the function takes multiple variables as input, the `grad`
   function must also return  the same number of variables.
