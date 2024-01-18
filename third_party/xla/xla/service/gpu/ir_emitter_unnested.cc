@@ -1529,9 +1529,8 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
 absl::StatusOr<BufferAllocation::Slice>
 IrEmitterUnnested::GetAllocationSliceForHlo(const HloInstruction* instr,
                                             const ShapeIndex& index) const {
-  const BufferAssignment& buffer_assignment =
-      ir_emitter_context_->buffer_assignment();
-  return buffer_assignment.GetUniqueSlice(instr, index);
+  return xla::gpu::GetAllocationSlice(ir_emitter_context_->buffer_assignment(),
+                                      instr, index);
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
