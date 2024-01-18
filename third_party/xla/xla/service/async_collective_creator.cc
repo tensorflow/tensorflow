@@ -187,12 +187,8 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
       }
 
       // Update control dependencies if present.
-      for (HloInstruction* pred : instruction->control_predecessors()) {
-        TF_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_pair->start));
-      }
-      for (HloInstruction* succ : instruction->control_successors()) {
-        TF_RETURN_IF_ERROR(async_pair->done->AddControlDependencyTo(succ));
-      }
+      TF_RETURN_IF_ERROR(instruction->CopyAllControlDepsTo(async_pair->start,
+                                                           async_pair->done));
       TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
 
       TF_RETURN_WITH_CONTEXT_IF_ERROR(

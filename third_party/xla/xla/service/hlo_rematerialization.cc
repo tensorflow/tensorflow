@@ -2032,12 +2032,7 @@ StatusOr<int64_t> RematerializeInstructions(
     }
 
     // Add control dependencies to the new operation.
-    for (auto successor : best->control_successors()) {
-      TF_RETURN_IF_ERROR(remat->AddControlDependencyTo(successor));
-    }
-    for (auto predecessor : best->control_predecessors()) {
-      TF_RETURN_IF_ERROR(predecessor->AddControlDependencyTo(remat));
-    }
+    TF_RETURN_IF_ERROR(remat->CopyAllControlDepsFrom(best));
 
     Item* remat_item = instruction_list->CreateItem(remat);
 
