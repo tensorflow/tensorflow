@@ -71,7 +71,7 @@ NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, SendOp op,
 
 absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
                                               se::Stream& stream,
-                                              ncclComm_t comm) {
+                                              NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -98,8 +98,8 @@ absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
 
 absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
-                     ncclComm_t comm, absl::string_view device_string,
-                     int64_t current_id) {
+                     NcclApi::NcclCommHandle comm,
+                     absl::string_view device_string, int64_t current_id) {
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
   int device_ordinal = stream.parent()->device_ordinal();
@@ -114,9 +114,9 @@ absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
 
   // Send source buffer to target peer if needed.
   if (target_id) {
-    TF_RETURN_IF_ERROR(NcclApi::Send(
-        src_addr, buffer.element_type, buffer.element_type, *target_id,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+    TF_RETURN_IF_ERROR(NcclApi::Send(src_addr, buffer.element_type,
+                                     buffer.element_type, *target_id, comm,
+                                     &stream));
   }
 
   return absl::OkStatus();

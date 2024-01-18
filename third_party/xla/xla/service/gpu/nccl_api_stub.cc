@@ -70,9 +70,8 @@ absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
-absl::StatusOr<NcclCommHandle> NcclApi::CommInitRank(int32_t,
-                                                     const NcclCliqueId&,
-                                                     int32_t) {
+absl::StatusOr<NcclApi::NcclCommHandle> NcclApi::CommInitRank(
+    int32_t, const NcclCliqueId&, int32_t) {
   return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 

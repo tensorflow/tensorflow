@@ -24,27 +24,36 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
 #include "xla/service/gpu/nccl_clique.h"
 #endif  // XLA_ENABLE_XCCL
-
-struct ncclComm;
-using ncclComm_t = ncclComm*;
 
 namespace xla {
 namespace gpu {
@@ -120,9 +129,10 @@ class NcclCollectiveThunk : public Thunk {
     // Executes the function on the async communications stream and records a
     // completion event.
     absl::Status Execute(
-        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
+        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&,
+                                 NcclApi::NcclCommHandle)>
             fn,
-        const ExecuteParams& params, ncclComm_t comm,
+        const ExecuteParams& params, NcclApi::NcclCommHandle comm,
         AsyncStreamKind stream_kind);
     // Blocks the compute stream until async communication is complete.
     absl::Status Await(const ExecuteParams& params);
@@ -151,7 +161,7 @@ class NcclCollectiveThunk : public Thunk {
  protected:
   virtual absl::Status RunNcclCollective(const ExecuteParams& params,
                                          se::Stream& stream,
-                                         ncclComm_t comm) = 0;
+                                         NcclApi::NcclCommHandle comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
     return AsyncStreamKind::kCollective;
@@ -253,7 +263,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
 Status MaybeRegisterBuffers(int device_ordinal,
                             const std::vector<DeviceBufferPair>& buffers,
-                            ncclComm_t comm);
+                            NcclApi::NcclCommHandle comm);
 
 }  // namespace gpu
 }  // namespace xla

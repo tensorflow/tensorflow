@@ -79,6 +79,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:global_device_id",
         "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",

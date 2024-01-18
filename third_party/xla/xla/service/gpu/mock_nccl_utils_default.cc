@@ -18,18 +18,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/mock_nccl_utils.h"
+#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 
@@ -54,22 +55,20 @@ absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
   return Unimplemented("LockMockNcclComm is not implemented.");
 }
 
-absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, ncclComm_t mock_comm,
-                                    Thunk::Kind reduce_op) {
+absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>&, se::Stream&,
+                                    NcclApi::NcclCommHandle, Thunk::Kind) {
   return Unimplemented("Mock nccl collectives is not implemented.");
 }
 
-absl::Status RunMockNcclAllToAll(bool has_split_dimension,
-                                 std::vector<DeviceBufferPair>& buffers,
-                                 se::Stream& stream, ncclComm_t mock_comm) {
+absl::Status RunMockNcclAllToAll(bool, std::vector<DeviceBufferPair>&,
+                                 se::Stream&, NcclApi::NcclCommHandle) {
   return Unimplemented("Mock nccl AllToAll is not implemented.");
 }
 
-absl::Status RunMockCollectivePermute(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, ncclComm_t mock_comm, absl::string_view device_string,
-    int64_t current_id) {
+absl::Status RunMockCollectivePermute(NcclP2PConfig::SourceTargetMapEntry,
+                                      DeviceBufferPair&, se::Stream&,
+                                      NcclApi::NcclCommHandle,
+                                      absl::string_view, int64_t) {
   return Unimplemented("Mock collective permute is not implemented.");
 }
 

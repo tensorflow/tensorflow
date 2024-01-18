@@ -169,7 +169,7 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
   // state. It will free resources that are allocated to a communicator and
   // abort any uncompleted operations before destroying the communicator.
   auto check_nccl_async_error = [](NcclComm* lockable_comm) -> absl::Status {
-    NcclCommHandle comm = *lockable_comm->Acquire();
+    NcclApi::NcclCommHandle comm = *lockable_comm->Acquire();
     if (comm == nullptr) return absl::OkStatus();
 
     absl::Status async_err = NcclApi::CommGetAsyncError(comm);
@@ -231,7 +231,7 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
   if (!state.ready.HasBeenNotified()) {
     int nranks = clique_key.devices().size();
 
-    absl::StatusOr<NcclCommHandle> comm =
+    absl::StatusOr<NcclApi::NcclCommHandle> comm =
         NcclApi::CommInitRank(nranks, state.clique_id, rank);
 
     size_t num_initialized = [&] {

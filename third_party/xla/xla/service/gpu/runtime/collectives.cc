@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_recv_thunk.h"
@@ -242,8 +242,8 @@ absl::Status MockNcclImplCommon(
 #if XLA_ENABLE_XCCL
 using NcclP2PRunner = absl::FunctionRef<absl::Status(
     NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
-    int64_t current_id)>;
+    se::Stream& stream, NcclApi::NcclCommHandle comm,
+    absl::string_view device_string, int64_t current_id)>;
 
 using DeviceBuffersGetter =
     absl::FunctionRef<absl::StatusOr<std::vector<DeviceBufferPair>>(
@@ -297,9 +297,8 @@ absl::Status MockNcclP2PImplCommon(
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
 
-  return runner(source_target, (*device_buffers)[0], *stream,
-                reinterpret_cast<ncclComm_t>(**comm), device_string,
-                current_id);
+  return runner(source_target, (*device_buffers)[0], *stream, **comm,
+                device_string, current_id);
 }
 
 absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
@@ -354,9 +353,8 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
   return RunRepeated(debug_options->xla_gpu_collective_inflation_factor(),
                      [&]() -> absl::Status {
                        return runner(source_target, (*device_buffers)[0],
-                                     *stream,
-                                     reinterpret_cast<ncclComm_t>(**comm),
-                                     device_string, current_id);
+                                     *stream, **comm, device_string,
+                                     current_id);
                      });
 }
 #endif  // XLA_ENABLE_XCCL

@@ -879,6 +879,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:global_device_id",
         "//xla/service:hlo_parser",
+        "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_activation_header",

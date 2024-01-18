@@ -137,29 +137,27 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 }
 
 absl::Status NcclAllGatherStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return xla::gpu::RunAllGather(
-      device_buffers, stream, reinterpret_cast<NcclApi::NcclCommHandle>(comm));
+  return xla::gpu::RunAllGather(device_buffers, stream, comm);
 }
 
 absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers,
-                                          reinterpret_cast<ncclComm_t>(comm)));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
 
   TF_RETURN_IF_ERROR(NcclApi::GroupStart());
 
   for (DeviceBufferPair& buffer : buffers) {
     TF_RETURN_IF_ERROR(NcclApi::AllGather(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count, reinterpret_cast<NcclApi::NcclCommHandle>(comm),
-        &stream));
+        buffer.element_count, comm, &stream));
   }
 
   TF_RETURN_IF_ERROR(NcclApi::GroupEnd());

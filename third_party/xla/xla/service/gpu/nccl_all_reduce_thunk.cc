@@ -50,7 +50,7 @@ using mlir::lmhlo_gpu::ReduceScatterStartOp;
 
 absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, ncclComm_t comm) {
+                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
@@ -59,8 +59,7 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
   for (DeviceBufferPair& buffer : buffers) {
     TF_RETURN_IF_ERROR(NcclApi::AllReduce(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count, reduction_kind,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+        buffer.element_count, reduction_kind, comm, &stream));
   }
 
   return NcclApi::GroupEnd();
@@ -283,7 +282,8 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
 }
 
 absl::Status NcclAllReduceStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -336,7 +336,8 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
 }
 
 absl::Status NcclReduceScatterStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -347,15 +348,14 @@ absl::Status NcclReduceScatterStartThunk::RunNcclCollective(
 
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, ncclComm_t comm) {
+                              se::Stream& stream,
+                              NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
   TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(
-      int32_t num_participants,
-      NcclApi::CommCount(reinterpret_cast<NcclApi::NcclCommHandle>(comm)));
+  TF_ASSIGN_OR_RETURN(int32_t num_participants, NcclApi::CommCount(comm));
 
   TF_RETURN_IF_ERROR(NcclApi::GroupStart());
 
@@ -368,8 +368,8 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
 
     TF_RETURN_IF_ERROR(NcclApi::ReduceScatter(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count / num_participants, reduction_kind,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+        buffer.element_count / num_participants, reduction_kind, comm,
+        &stream));
   }
 
   return NcclApi::GroupEnd();

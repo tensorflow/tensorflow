@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -336,14 +338,14 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 
 Status MaybeRegisterBuffers(int device_ordinal,
                             const std::vector<DeviceBufferPair>& buffers,
-                            ncclComm_t comm) {
+                            NcclApi::NcclCommHandle comm) {
   // Keep track of which communicators we have registered for already.
   // Each device has one NCCL buffer which only needs to be registered once per
   // each comm.
   struct RegisteredBuffers {
     absl::Mutex mu;
-    absl::flat_hash_map<int, absl::flat_hash_set<ncclComm_t>> per_device_comms
-        ABSL_GUARDED_BY(mu);
+    absl::flat_hash_map<int, absl::flat_hash_set<NcclApi::NcclCommHandle>>
+        per_device_comms ABSL_GUARDED_BY(mu);
     // Buffers could be deregistered with ncclCommDeregister.
     std::vector<NcclApi::NcclRegisteredBufferHandle> handles
         ABSL_GUARDED_BY(mu);
@@ -354,18 +356,16 @@ Status MaybeRegisterBuffers(int device_ordinal,
   for (int i = 0; i < buffers.size(); ++i) {
     if (!all_registered.per_device_comms[device_ordinal].contains(comm)) {
       if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
-        TF_ASSIGN_OR_RETURN(NcclApi::NcclRegisteredBufferHandle handle,
-                            NcclApi::RegisterBuffer(
-                                reinterpret_cast<NcclApi::NcclCommHandle>(comm),
-                                buffers[i].source_buffer));
+        TF_ASSIGN_OR_RETURN(
+            NcclApi::NcclRegisteredBufferHandle handle,
+            NcclApi::RegisterBuffer(comm, buffers[i].source_buffer));
         all_registered.handles.push_back(handle);
         all_registered.per_device_comms[device_ordinal].insert(comm);
       }
       if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
-        TF_ASSIGN_OR_RETURN(NcclApi::NcclRegisteredBufferHandle handle,
-                            NcclApi::RegisterBuffer(
-                                reinterpret_cast<NcclApi::NcclCommHandle>(comm),
-                                buffers[i].destination_buffer));
+        TF_ASSIGN_OR_RETURN(
+            NcclApi::NcclRegisteredBufferHandle handle,
+            NcclApi::RegisterBuffer(comm, buffers[i].destination_buffer));
         all_registered.handles.push_back(handle);
         all_registered.per_device_comms[device_ordinal].insert(comm);
       }
@@ -388,15 +388,14 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Run the collective on main stream or using the async executor.
   absl::Status status = [&]() {
     if (!IsAsync()) {
-      return RunNcclCollective(params, *params.stream,
-                               reinterpret_cast<ncclComm_t>(*comm));
+      return RunNcclCollective(params, *params.stream, *comm);
     }
     return async_->Execute(
         [this](const ExecuteParams& params, se::Stream& stream,
-               ncclComm_t comm) {
+               NcclApi::NcclCommHandle comm) {
           return RunNcclCollective(params, stream, comm);
         },
-        params, reinterpret_cast<ncclComm_t>(*comm), GetAsyncStreamKind());
+        params, *comm, GetAsyncStreamKind());
   }();
   TF_RETURN_IF_ERROR(status);
 
@@ -432,8 +431,11 @@ std::string NcclCollectiveThunk::GetDeviceString(
 }
 
 absl::Status NcclCollectiveThunk::AsyncExecutor::Execute(
-    absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)> fn,
-    const ExecuteParams& params, ncclComm_t comm, AsyncStreamKind stream_kind) {
+    absl::FunctionRef<Status(const ExecuteParams&, se::Stream&,
+                             NcclApi::NcclCommHandle)>
+        fn,
+    const ExecuteParams& params, NcclApi::NcclCommHandle comm,
+    AsyncStreamKind stream_kind) {
   se::Stream& async_comms_stream =
       *params.async_comms_streams[static_cast<int64_t>(stream_kind)];
   // Wait until compute inputs are ready.

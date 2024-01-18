@@ -92,7 +92,8 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
 
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream, ncclComm_t comm) override;
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm) override;
 };
 
 // -----------------------------------------------------------------------------
@@ -126,32 +127,19 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
 
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream, ncclComm_t comm) override;
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm) override;
 };
 
 // -----------------------------------------------------------------------------
 
 absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, ncclComm_t comm);
-
-inline absl::Status RunAllReduce(ReductionKind reduction_kind,
-                                 std::vector<DeviceBufferPair>& buffers,
-                                 se::Stream& stream, NcclCommHandle comm) {
-  return RunAllReduce(reduction_kind, buffers, stream,
-                      reinterpret_cast<ncclComm_t>(comm));
-}
+                          se::Stream& stream, NcclApi::NcclCommHandle comm);
 
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, ncclComm_t comm);
-
-inline absl::Status RunReduceScatter(ReductionKind reduction_kind,
-                                     std::vector<DeviceBufferPair>& buffers,
-                                     se::Stream& stream, NcclCommHandle comm) {
-  return RunReduceScatter(reduction_kind, buffers, stream,
-                          reinterpret_cast<ncclComm_t>(comm));
-}
+                              se::Stream& stream, NcclApi::NcclCommHandle comm);
 
 }  // namespace gpu
 }  // namespace xla

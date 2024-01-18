@@ -71,7 +71,7 @@ NcclRecvThunk::NcclRecvThunk(ThunkInfo thunk_info, RecvOp op,
 
 absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
                                               se::Stream& stream,
-                                              ncclComm_t comm) {
+                                              NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -98,8 +98,8 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
 
 absl::Status RunRecv(NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
-                     ncclComm_t comm, absl::string_view device_string,
-                     int64_t current_id) {
+                     NcclApi::NcclCommHandle comm,
+                     absl::string_view device_string, int64_t current_id) {
   // Determine the source IDs for this instance. The source ID is the ID for
   // the peer that will copy its data to this instance. If there is no source,
   // just memzero() the destination buffer.
@@ -115,9 +115,9 @@ absl::Status RunRecv(NcclP2PConfig::SourceTargetMapEntry source_target,
 
   // Receive data from the source peer to the destination buffer.
   if (source_id) {
-    TF_RETURN_IF_ERROR(NcclApi::Recv(
-        dest_addr, buffer.element_type, buffer.element_count, *source_id,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+    TF_RETURN_IF_ERROR(NcclApi::Recv(dest_addr, buffer.element_type,
+                                     buffer.element_count, *source_id, comm,
+                                     &stream));
 
   } else {
     // If there is no source peer, i.e. no sender to this instance, zero out

@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
-#include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -54,34 +53,21 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
 // Mock a Nccl collective op including all-reduce, all-gather, and
 // reduce-scatter.
 absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
-                                    se::Stream& stream, ncclComm_t comm,
+                                    se::Stream& stream,
+                                    NcclApi::NcclCommHandle comm,
                                     Thunk::Kind reduce_op);
-
-inline absl::Status RunMockNcclCollectives(
-    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    NcclCommHandle comm, Thunk::Kind reduce_op) {
-  return RunMockNcclCollectives(buffers, stream,
-                                reinterpret_cast<ncclComm_t>(comm), reduce_op);
-}
 
 // Mock a NCCL-based All-To-All op.
 absl::Status RunMockNcclAllToAll(bool has_split_dimension,
                                  std::vector<DeviceBufferPair>& buffers,
-                                 se::Stream& stream, ncclComm_t comm);
-
-inline absl::Status RunMockNcclAllToAll(bool has_split_dimension,
-                                        std::vector<DeviceBufferPair>& buffers,
-                                        se::Stream& stream,
-                                        NcclCommHandle comm) {
-  return RunMockNcclAllToAll(has_split_dimension, buffers, stream,
-                             reinterpret_cast<ncclComm_t>(comm));
-}
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm);
 
 // Mock a collective permute op.
 absl::Status RunMockCollectivePermute(
     NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
-    int64_t current_id);
+    se::Stream& stream, NcclApi::NcclCommHandle comm,
+    absl::string_view device_string, int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

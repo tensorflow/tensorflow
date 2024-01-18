@@ -161,7 +161,7 @@ static std::string_view ToString(ReductionKind reduction_kind) {
 //==-----------------------------------------------------------------------===//
 
 static NcclApi::NcclCommHandle Cast(ncclComm_t comm) {
-  return reinterpret_cast<NcclCommHandle>(comm);
+  return reinterpret_cast<NcclApi::NcclCommHandle>(comm);
 }
 
 static ncclComm_t Cast(NcclApi::NcclCommHandle comm) {
@@ -296,7 +296,7 @@ absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
   return NcclCliqueId(id.internal);
 }
 
-absl::StatusOr<NcclCommHandle> NcclApi::CommInitRank(
+absl::StatusOr<NcclApi::NcclCommHandle> NcclApi::CommInitRank(
     int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) {
   VLOG(1) << "Initialize NCCL communicator for rank #" << rank << " of "
           << nranks << "; hash(id)=" << absl::HashOf(clique_id.data());

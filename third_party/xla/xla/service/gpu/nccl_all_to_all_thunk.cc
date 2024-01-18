@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -138,7 +139,8 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
 }
 
 absl::Status NcclAllToAllStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -149,13 +151,11 @@ absl::Status NcclAllToAllStartThunk::RunNcclCollective(
 
 absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, ncclComm_t comm) {
+                         se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
 
-  TF_ASSIGN_OR_RETURN(
-      int32_t num_participants,
-      NcclApi::CommCount(reinterpret_cast<NcclApi::NcclCommHandle>(comm)));
+  TF_ASSIGN_OR_RETURN(int32_t num_participants, NcclApi::CommCount(comm));
 
   TF_RETURN_IF_ERROR(NcclApi::GroupStart());
 
@@ -181,13 +181,11 @@ absl::Status RunAllToAll(bool has_split_dimension,
             NcclApi::Slice(buffer.destination_buffer, buffer.element_type,
                            peer * chunk_elements, chunk_elements));
 
-        TF_RETURN_IF_ERROR(NcclApi::Send(
-            send_slice, buffer.element_type, chunk_elements, peer,
-            reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+        TF_RETURN_IF_ERROR(NcclApi::Send(send_slice, buffer.element_type,
+                                         chunk_elements, peer, comm, &stream));
 
-        TF_RETURN_IF_ERROR(NcclApi::Recv(
-            recv_slice, buffer.element_type, chunk_elements, peer,
-            reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+        TF_RETURN_IF_ERROR(NcclApi::Recv(recv_slice, buffer.element_type,
+                                         chunk_elements, peer, comm, &stream));
       }
     }
   } else {
@@ -197,13 +195,13 @@ absl::Status RunAllToAll(bool has_split_dimension,
     for (size_t i = 0; i < buffers.size(); ++i) {
       DeviceBufferPair& buffer = buffers[i];
 
-      TF_RETURN_IF_ERROR(NcclApi::Send(
-          buffer.source_buffer, buffer.element_type, buffer.element_count, i,
-          reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+      TF_RETURN_IF_ERROR(NcclApi::Send(buffer.source_buffer,
+                                       buffer.element_type,
+                                       buffer.element_count, i, comm, &stream));
 
-      TF_RETURN_IF_ERROR(NcclApi::Recv(
-          buffer.destination_buffer, buffer.element_type, buffer.element_count,
-          i, reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+      TF_RETURN_IF_ERROR(NcclApi::Recv(buffer.destination_buffer,
+                                       buffer.element_type,
+                                       buffer.element_count, i, comm, &stream));
     }
   }
 

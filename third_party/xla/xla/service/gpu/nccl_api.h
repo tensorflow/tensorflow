@@ -194,13 +194,6 @@ struct NcclApi {
       NcclCommHandle comm, NcclRegisteredBufferHandle handle);
 };
 
-//===----------------------------------------------------------------------===//
-// NcclApi Handles
-//===----------------------------------------------------------------------===//
-
-// TODO(ezhulenev): Remove these aliases once all users migrated to new API.
-using NcclCommHandle = NcclApi::NcclCommHandle;  // NOLINT
-
 }  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_NCCL_API_H_

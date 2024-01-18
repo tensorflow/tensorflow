@@ -67,8 +67,8 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
 
 TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
 
-struct NcclComm : public Lockable<NcclCommHandle> {
-  explicit NcclComm(NcclCommHandle comm) : Lockable(comm) {}
+struct NcclComm : public Lockable<NcclApi::NcclCommHandle> {
+  explicit NcclComm(NcclApi::NcclCommHandle comm) : Lockable(comm) {}
 };
 
 // Acquires an exclusive access to NCCL communicator owned by a NCCL clique.

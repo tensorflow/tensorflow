@@ -46,7 +46,8 @@ class NcclRecvThunk : public NcclCollectiveThunk {
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream, ncclComm_t comm) override;
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm) override;
   AsyncStreamKind GetAsyncStreamKind() const override {
     return AsyncStreamKind::kP2P;
   }
@@ -58,8 +59,8 @@ class NcclRecvThunk : public NcclCollectiveThunk {
 
 absl::Status RunRecv(NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
-                     ncclComm_t comm, absl::string_view device_string,
-                     int64_t current_id);
+                     NcclApi::NcclCommHandle comm,
+                     absl::string_view device_string, int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

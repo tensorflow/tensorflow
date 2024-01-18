@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -202,7 +203,8 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
 }
 
 absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -230,8 +232,8 @@ absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
 
 absl::Status RunCollectivePermute(
     NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
-    int64_t current_id) {
+    se::Stream& stream, NcclApi::NcclCommHandle comm,
+    absl::string_view device_string, int64_t current_id) {
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID
   // to which this instance will copy its data. Either are optional.
@@ -278,16 +280,16 @@ absl::Status RunCollectivePermute(
 
   // Send source buffer to target peer if needed.
   if (target_id) {
-    TF_RETURN_IF_ERROR(NcclApi::Send(
-        src_addr, buffer.element_type, buffer.element_count, *target_id,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+    TF_RETURN_IF_ERROR(NcclApi::Send(src_addr, buffer.element_type,
+                                     buffer.element_count, *target_id, comm,
+                                     &stream));
   }
 
   // Receive data from the source peer to the destination buffer.
   if (source_id) {
-    TF_RETURN_IF_ERROR(NcclApi::Recv(
-        dest_addr, buffer.element_type, buffer.element_count, *source_id,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+    TF_RETURN_IF_ERROR(NcclApi::Recv(dest_addr, buffer.element_type,
+                                     buffer.element_count, *source_id, comm,
+                                     &stream));
   }
 
   if (is_nccl_group_needed) {

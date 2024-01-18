@@ -59,7 +59,8 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream, ncclComm_t comm) override;
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm) override;
 
  private:
   const NcclAllToAllConfig config_;
@@ -68,14 +69,7 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
 
 absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, ncclComm_t comm);
-
-inline absl::Status RunAllToAll(bool has_split_dimension,
-                                std::vector<DeviceBufferPair>& buffers,
-                                se::Stream& stream, NcclCommHandle comm) {
-  return RunAllToAll(has_split_dimension, buffers, stream,
-                     reinterpret_cast<ncclComm_t>(comm));
-}
+                         se::Stream& stream, NcclApi::NcclCommHandle comm);
 
 }  // namespace gpu
 }  // namespace xla
