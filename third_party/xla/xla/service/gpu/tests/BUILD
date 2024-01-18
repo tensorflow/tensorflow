@@ -819,6 +819,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    shard_count = 2,
     deps = [
         ":gpu_codegen_test",
         "//xla:array4d",
