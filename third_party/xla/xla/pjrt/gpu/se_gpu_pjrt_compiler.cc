@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/platform/initialize.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 

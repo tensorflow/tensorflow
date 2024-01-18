@@ -245,6 +245,7 @@ cc_library(
         "//xla/service:local_service_utils",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/platform",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",

@@ -70,7 +70,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/initialize.h"
 
 namespace stream_executor {
 
@@ -138,12 +137,5 @@ class MultiPlatformManager {
 };
 
 }  // namespace stream_executor
-
-// multi_platform_manager.cc will define these instances.
-//
-// Registering a platform:
-// REGISTER_MODULE_INITIALIZER_SEQUENCE(my_platform, multi_platform_manager);
-//
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 
 #endif  // XLA_STREAM_EXECUTOR_MULTI_PLATFORM_MANAGER_H_

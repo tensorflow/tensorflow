@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/initialize.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -281,12 +280,3 @@ MultiPlatformManager::PlatformsWithFilter(
 }
 
 }  // namespace stream_executor
-
-REGISTER_MODULE_INITIALIZER(
-    multi_platform_manager,
-    {
-        // Nothing -- this is just a module initializer
-        // definition to reference for sequencing
-        // purposes from Platform subclasses that register
-        // themselves with the MultiPlatformManager.
-    });

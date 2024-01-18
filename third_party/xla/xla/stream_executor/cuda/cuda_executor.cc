@@ -1164,7 +1164,4 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 }
 
 }  // namespace gpu
-
 }  // namespace stream_executor
-
-REGISTER_MODULE_INITIALIZER(cuda_executor, {});

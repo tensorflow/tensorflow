@@ -20,9 +20,4 @@ limitations under the License.
 REGISTER_MODULE_INITIALIZER(tpu_platform,
                             tensorflow::tpu::RegisterTpuPlatform());
 
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
-
-// Note that module initialization sequencing is not supported in the
-// open-source project, so this will be a no-op there.
-REGISTER_MODULE_INITIALIZER_SEQUENCE(tpu_platform, multi_platform_manager);
 #endif
