@@ -18,12 +18,21 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 namespace tf_saved_model {
+
+// Helper function that sets up a module for an AssetSinkingPass. The sole
+// argument of the main function of `module` is prepared to be inlined with
+// the value `checkpoint_path`.
+// Also adds SessionInitializer op.
+absl::Status AddSessionInitializerAndInlineCheckpoint(
+    ModuleOp module, absl::string_view checkpoint_path);
 
 // Creates a pass that sinks SavedModel asset filenames to constants.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateAssetSinkingPass(

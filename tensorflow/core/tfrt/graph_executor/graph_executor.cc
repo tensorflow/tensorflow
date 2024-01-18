@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -36,12 +37,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
@@ -57,7 +60,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -565,11 +568,12 @@ tensorflow::Status GraphExecutor::Run(
   std::sort(sorted_target_node_names.begin(), sorted_target_node_names.end());
 
   // Load the client graph.
-  TF_ASSIGN_OR_RETURN(LoadedClientGraph & loaded_client_graph,
-                      GetOrCreateLoadedClientGraph(
-                          run_options, sorted_input_names, sorted_input_dtypes,
-                          sorted_output_names, sorted_target_node_names,
-                          run_options.work_queue));
+  TF_ASSIGN_OR_RETURN(
+      LoadedClientGraph & loaded_client_graph,
+      GetOrCreateLoadedClientGraph(
+          run_options, sorted_input_names, sorted_input_dtypes,
+          sorted_output_names, sorted_target_node_names, run_options.work_queue,
+          /*graph_name=*/{}, inputs));
 
   // Get a shared_ptr of the executable so that during the current request the
   // executable to use is guaranteed to be alive.
@@ -587,9 +591,11 @@ tensorflow::Status GraphExecutor::Run(
   // Create the actual arguments to the compiled function, which are sorted
   // according to the input tensor names.
   std::vector<tensorflow::Tensor> flat_inputs;
-  flat_inputs.reserve(inputs.size());
-  for (int original_index : input_original_indices) {
-    flat_inputs.push_back(inputs.at(original_index).second);
+  if (!loaded_client_graph.is_restore()) {
+    flat_inputs.reserve(inputs.size());
+    for (int original_index : input_original_indices) {
+      flat_inputs.push_back(inputs.at(original_index).second);
+    }
   }
 
   // Possibly record costs, depending on the particular setting of
@@ -638,7 +644,8 @@ tensorflow::Status GraphExecutor::Extend(const GraphDef& graph) {
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
 GraphExecutor::ImportAndCompileClientGraph(
-    const GraphExecutor::ClientGraph& client_graph) {
+    const GraphExecutor::ClientGraph& client_graph,
+    absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs) {
   // Step 1 of loading: Import the client graph from proto to an MLIR module.
   auto import_start_time = absl::Now();
   mlir::DialectRegistry registry;
@@ -654,6 +661,23 @@ GraphExecutor::ImportAndCompileClientGraph(
       auto flib_def_and_module,
       ImportClientGraphToMlirModule(client_graph, context.get()));
   auto& [flib_def, module] = flib_def_and_module;
+
+  // If the module contains a Restore op, then there should be one input,
+  // and it should specify the checkpoint for variable restore.
+  std::string checkpoint_path;
+  if (mlir::tf_saved_model::IsRestoreGraph(module.get())) {
+    if (inputs.size() != 1) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Expected 1 input for restore graph, but got ", inputs.size(), "."));
+    }
+    const tensorflow::Tensor& input = inputs[0].second;
+    if (input.dtype() != tensorflow::DT_STRING) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected string input for restore graph, but got ",
+                       input.dtype(), "."));
+    }
+    checkpoint_path = input.scalar<tstring>()();
+  }
 
   TF_ASSIGN_OR_RETURN(
       auto stream_callback_id,
@@ -679,7 +703,12 @@ GraphExecutor::ImportAndCompileClientGraph(
   ModelRuntimeContext model_context(&options_,
                                     options_.compile_options.saved_model_dir,
                                     resource_context_.get());
-  model_context.set_function_library_definition(&flib_def);
+  // Do not export to flib_def; restore graph may contain non-TF mlir ops.
+  // TODO: Make restore graph compatible with flib, remove if statement.
+  if (checkpoint_path.empty()) {
+    model_context.set_function_library_definition(&flib_def);
+  }
+  model_context.set_checkpoint_path(checkpoint_path);
 
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
     if (kernel_registry_ == nullptr) {
@@ -723,18 +752,19 @@ GraphExecutor::ImportAndCompileClientGraph(
   return std::make_unique<LoadedClientGraph>(
       client_graph.name, std::move(symbol_uids), this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
-      std::move(executable_context), stream_callback_id, std::move(flib_def));
+      std::move(executable_context), stream_callback_id,
+      !checkpoint_path.empty(), std::move(flib_def));
 }
 
 StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>>
 GraphExecutor::LoadClientGraph(
     const GraphExecutor::ClientGraph& client_graph,
-    tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
+    absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs) {
   LOG(INFO) << "TFRT loading client graph (" << &client_graph << ") "
             << client_graph.name;
   TF_ASSIGN_OR_RETURN(auto loaded_client_graph,
-                      ImportAndCompileClientGraph(client_graph));
-
+                      ImportAndCompileClientGraph(client_graph, inputs));
   // Step 3 of loading: Initialize runtime states using special BEF functions.
   auto init_start_time = absl::Now();
   if (loaded_client_graph->executable_context()->IsForMlrt()) {
@@ -861,12 +891,13 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
-    std::optional<const std::string> graph_name) {
+    absl::string_view graph_name,
+    absl::Span<const std::pair<std::string, tensorflow::Tensor>> inputs) {
   // The format of the joined name is illustrated as in the following example:
   // input1-input2^output1-output2^target1-target2
-  const auto joined_name =
-      graph_name
-          ? *graph_name
+  const std::string joined_name =
+      !graph_name.empty()
+          ? std::string(graph_name)
           : absl::StrCat(
                 absl::StrJoin(input_tensor_names, kTensorNameJoiningDelimiter),
                 kArgumentTypeJoiningDelimiter,
@@ -906,7 +937,7 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
       {output_tensor_names.begin(), output_tensor_names.end()},
       {target_tensor_names.begin(), target_tensor_names.end()}};
   TF_ASSIGN_OR_RETURN(auto loaded_client_graph,
-                      LoadClientGraph(client_graph, work_queue));
+                      LoadClientGraph(client_graph, work_queue, inputs));
 
   // Store the new loaded client graph in cache and return.
   auto* loaded_client_graph_ptr = loaded_client_graph.get();
@@ -1040,7 +1071,7 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
     mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
     mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
     std::shared_ptr<ExecutableContext> executable_context,
-    std::optional<StreamCallbackId> stream_callback_id,
+    std::optional<StreamCallbackId> stream_callback_id, bool is_restore,
     FunctionLibraryDefinition flib_def)
     : name_(std::move(name)),
       symbol_uids_(std::move(symbol_uids)),
@@ -1048,6 +1079,7 @@ GraphExecutor::LoadedClientGraph::LoadedClientGraph(
       mlir_context_(std::move(mlir_context)),
       executable_context_(std::move(executable_context)),
       stream_callback_id_(stream_callback_id),
+      is_restore_(is_restore),
       flib_def_(std::move(flib_def)),
       pflr_(&graph_executor->fallback_state().device_manager(),
             graph_executor->fallback_state().session_options().env,
