@@ -480,5 +480,28 @@ XLA_TEST_F(MultiOutputFusionTest,
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
+XLA_TEST_F(MultiOutputFusionTest,
+           MultiOutputTransposeFusionHeroWithMultipleRootUsers) {
+  const std::string testcase = R"(
+    HloModule test
+    fused_transpose {
+      p0 = f32[128,64]{1,0} parameter(0)
+      p1 = f32[64,128]{1,0} parameter(1)
+      tr = f32[64,128]{1,0} transpose(p0), dimensions={1,0}
+      add = f32[64,128]{1,0} add(tr, p1)
+      neg = f32[64,128]{1,0} negate(add)
+      ROOT tuple = (f32[64,128]{1,0}, f32[64,128]{1,0}, f32[64,128]{1,0}) tuple(tr, add, neg)
+    }
+
+    ENTRY main {
+      p = f32[128,64]{1,0} parameter(0)
+      p2 = f32[64,128]{1,0} parameter(1)
+      ROOT fusion = (f32[64,128]{1,0}, f32[64,128]{1,0}, f32[64,128]{1,0}) fusion(p, p2),
+                    kind=kInput, calls=fused_transpose
+    })";
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
+}
+
 }  // namespace
 }  // namespace xla
