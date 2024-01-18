@@ -15,6 +15,7 @@
 """Tests for `tf.data.Dataset.interleave()`."""
 import multiprocessing
 import os
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -451,6 +452,44 @@ class InterleaveCheckpointTest(
           _interleave_fn, cycle_length=1)
 
     verify_fn(self, _build_dataset, num_outputs=20)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(num_parallel_calls=[None, 2]),
+      )
+  )
+  def testSymbolicUnimplemented(self, verify_fn, num_parallel_calls):
+    if sys.platform == "darwin":
+      self.skipTest(
+          "MacOS does not support symbolic checkpointing."
+      )  # b/284304023
+
+    def fn(x):
+      del x
+      dataset = dataset_ops.Dataset.range(7)
+      dataset = dataset.window(3, shift=1, drop_remainder=True)
+      dataset = dataset.flat_map(lambda x: x)
+      return dataset
+
+    def build_ds():
+      dataset = dataset_ops.Dataset.range(2)
+      dataset = dataset.interleave(
+          fn,
+          cycle_length=3,
+          num_parallel_calls=num_parallel_calls,
+      )
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = True
+      dataset = dataset.with_options(options)
+      return dataset
+
+    with self.assertRaisesRegex(
+        errors.UnimplementedError,
+        "WindowOp does not support symbolic checkpointing.",
+    ):
+      verify_fn(self, build_ds, num_outputs=30)
 
 
 if __name__ == "__main__":
