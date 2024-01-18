@@ -209,12 +209,12 @@ struct AnnotateExpandingDimensionsInDynamicBroadcastInDim
     }
 
     // Annotate op in place.
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     op.setKnownExpandingDimensionsAttr(
         rewriter.getI64TensorAttr(knownExpandingDims.takeVector()));
     op.setKnownNonexpandingDimensionsAttr(
         rewriter.getI64TensorAttr(knownNonexpandingDims.takeVector()));
-    rewriter.finalizeRootUpdate(op);
+    rewriter.finalizeOpModification(op);
     return success();
   }
 };

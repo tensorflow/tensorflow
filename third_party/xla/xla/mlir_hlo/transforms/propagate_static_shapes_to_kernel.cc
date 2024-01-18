@@ -198,7 +198,7 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
   if (argsToDrop.none()) {
     return rewriter.notifyMatchFailure(funcOp, "no static shapes");
   }
-  rewriter.updateRootInPlace(funcOp, [&] {
+  rewriter.modifyOpInPlace(funcOp, [&] {
     SmallVector<Type> argTypes;
     for (unsigned idx = 0; idx < argsToDrop.size(); ++idx)
       if (!argsToDrop[idx])
