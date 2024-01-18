@@ -61,10 +61,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_ortools",
-        sha256 = "bc4b07dc9c23f0cca43b1f5c889f08a59c8f2515836b03d4cc7e0f8f2c879234",
-        strip_prefix = "or-tools-9.6",
-        patch_file = ["//third_party/ortools:ortools.patch"],
-        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.6.tar.gz"),
+        sha256 = "8c17b1b5b05d925ed03685522172ca87c2912891d57a5e0d5dcaeff8f06a4698",
+        strip_prefix = "or-tools-9.9",
+        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.9.tar.gz"),
         repo_mapping = {
             "@com_google_protobuf_cc": "@com_google_protobuf",
             "@eigen": "@eigen_archive",

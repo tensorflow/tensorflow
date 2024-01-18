@@ -14,7 +14,6 @@ third_party/llvm_openmp/expand_cmake_vars:.py
 third_party/llvm_openmp/openmp.bzl:
 third_party/ortools/BUILD:
 third_party/ortools/glpk.BUILD:
-third_party/ortools/ortools.patch:
 third_party/py/non_hermetic/BUILD.tpl:
 third_party/py/non_hermetic/BUILD:
 third_party/py/non_hermetic/README:
