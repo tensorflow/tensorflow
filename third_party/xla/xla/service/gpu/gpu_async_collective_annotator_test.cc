@@ -107,7 +107,7 @@ XLA_TEST_P(GpuAsyncCollectiveAnnotatorTest, Test) {
   // Assert that all async collectives are annotated with the backend config.
   for (const HloInstruction* hlo :
        module->entry_computation()->instructions()) {
-    if (!hlo_query::IsAsyncCollectiveStartOp(hlo->opcode())) {
+    if (!hlo_query::IsAsyncCollectiveStartOp(hlo)) {
       continue;
     }
     auto gpu_config = hlo->backend_config<GpuBackendConfig>();

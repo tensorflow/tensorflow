@@ -71,11 +71,9 @@ bool IsCollectiveOp(const HloInstruction* op) {
     return true;
   }
 
-  return hlo_query::IsAsyncCollectiveDoneOp(opcode,
-                                            /*include_send_recv=*/true) ||
+  return hlo_query::IsAsyncCollectiveDoneOp(op, /*include_send_recv=*/true) ||
          (hlo_query::IsCollectiveCommunicationOp(opcode) &&
-          !hlo_query::IsAsyncCollectiveStartOp(opcode,
-                                               /*include_send_recv=*/true));
+          !hlo_query::IsAsyncCollectiveStartOp(op, /*include_send_recv=*/true));
 }
 
 // Returns the corresponding Done op if the input is a Start op. Otherwise,

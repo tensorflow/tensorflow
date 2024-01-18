@@ -54,9 +54,8 @@ LatencyEstimator::TimeCost AnalyticalLatencyEstimator::GetLatencyBetween(
 
 LatencyEstimator::TimeCost AnalyticalLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  const HloOpcode opcode = instr->opcode();
-  if (hlo_query::IsAsyncCollectiveStartOp(opcode, /*include_send_recv=*/true) ||
-      hlo_query::IsAsyncCollectiveDoneOp(opcode, /*include_send_recv=*/true)) {
+  if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||
+      hlo_query::IsAsyncCollectiveDoneOp(instr, /*include_send_recv=*/true)) {
     return kLowCost;
   }
 

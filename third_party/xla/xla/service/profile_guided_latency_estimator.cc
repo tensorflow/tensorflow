@@ -61,9 +61,8 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
 
 LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  const HloOpcode opcode = instr->opcode();
-  if (hlo_query::IsAsyncCollectiveStartOp(opcode, /*include_send_recv=*/true) ||
-      hlo_query::IsAsyncCollectiveDoneOp(opcode, /*include_send_recv=*/true)) {
+  if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||
+      hlo_query::IsAsyncCollectiveDoneOp(instr, /*include_send_recv=*/true)) {
     static constexpr TimeCost kLowCost = 1.0;
     return kLowCost;
   }

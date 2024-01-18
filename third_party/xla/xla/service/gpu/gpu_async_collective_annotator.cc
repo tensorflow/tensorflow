@@ -29,7 +29,7 @@ absl::StatusOr<bool> GpuAsyncCollectiveAnnotator::Run(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (!hlo_query::IsAsyncCollectiveStartOp(instruction->opcode())) {
+      if (!hlo_query::IsAsyncCollectiveStartOp(instruction)) {
         continue;
       }
       CollectiveBackendConfig config;

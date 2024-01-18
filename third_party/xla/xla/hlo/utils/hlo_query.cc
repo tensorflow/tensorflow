@@ -36,18 +36,26 @@ bool IsCollectiveCommunicationOp(HloOpcode op) {
          op == HloOpcode::kCollectivePermuteStart;
 }
 
-bool IsAsyncCollectiveStartOp(HloOpcode op, bool include_send_recv) {
+bool IsAsyncCollectiveStartOp(const HloInstruction* instruction,
+                              bool include_send_recv) {
+  HloOpcode op = instruction->opcode();
+  if (op == HloOpcode::kAsyncStart) {
+    return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+  }
   return op == HloOpcode::kAllReduceStart || op == HloOpcode::kAllGatherStart ||
          op == HloOpcode::kCollectivePermuteStart ||
-         op == HloOpcode::kAsyncStart ||
          (include_send_recv &&
           (op == HloOpcode::kSend || op == HloOpcode::kRecv));
 }
 
-bool IsAsyncCollectiveDoneOp(HloOpcode op, bool include_send_recv) {
+bool IsAsyncCollectiveDoneOp(const HloInstruction* instruction,
+                             bool include_send_recv) {
+  HloOpcode op = instruction->opcode();
+  if (op == HloOpcode::kAsyncDone) {
+    return IsCollectiveCommunicationOp(instruction->async_wrapped_opcode());
+  }
   return op == HloOpcode::kAllReduceDone || op == HloOpcode::kAllGatherDone ||
          op == HloOpcode::kCollectivePermuteDone ||
-         op == HloOpcode::kAsyncDone ||
          (include_send_recv &&
           (op == HloOpcode::kSendDone || op == HloOpcode::kRecvDone));
 }

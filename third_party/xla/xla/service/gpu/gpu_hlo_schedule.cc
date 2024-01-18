@@ -203,7 +203,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
     const HloInstructionSequence& input) {
   HloInstructionSequence result;
   auto is_synchronous_op = [](const HloInstruction* instr) {
-    return hlo_query::IsAsyncCollectiveStartOp(instr->opcode(),
+    return hlo_query::IsAsyncCollectiveStartOp(instr,
                                                /*include_send_recv=*/true) &&
            IsSyncCollective(instr);
   };
@@ -211,7 +211,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
     if (is_synchronous_op(instr)) {
       continue;
     }
-    if (hlo_query::IsAsyncCollectiveDoneOp(instr->opcode(),
+    if (hlo_query::IsAsyncCollectiveDoneOp(instr,
                                            /*include_send_recv=*/true)) {
       // Place the start op just before the done op if its synchronous.
       HloInstruction* start = instr->mutable_operand(0);
@@ -288,14 +288,14 @@ class GpuAsyncTrackerBase : public AsyncTracker {
       : AsyncTracker(config, func) {}
 
   bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode(),
+    return hlo_query::IsAsyncCollectiveDoneOp(&hlo,
                                               /*include_send_recv=*/true) &&
            !IsSyncCollective(hlo.operand(0));
   }
 
   // Returns if this is an Async op start that the scheduler supports.
   bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode(),
+    return hlo_query::IsAsyncCollectiveStartOp(&hlo,
                                                /*include_send_recv=*/true) &&
            !IsSyncCollective(&hlo);
   }

@@ -1071,11 +1071,10 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
   uint32_t max_in_flight = 0;
   for (const HloInstruction* inst :
        order.SequentialOrder(*module->entry_computation())->instructions()) {
-    HloOpcode op = inst->opcode();
-    if (hlo_query::IsAsyncCollectiveStartOp(op)) {
+    if (hlo_query::IsAsyncCollectiveStartOp(inst)) {
       in_flight++;
       max_in_flight = std::max(max_in_flight, in_flight);
-    } else if (hlo_query::IsAsyncCollectiveDoneOp(op)) {
+    } else if (hlo_query::IsAsyncCollectiveDoneOp(inst)) {
       in_flight--;
     }
   }
