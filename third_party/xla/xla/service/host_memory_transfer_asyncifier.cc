@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -175,10 +176,23 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
         << "Copy \"" << copy->name()
         << "\" is between device and host memory space. Converting to async.";
     const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
-    TF_ASSIGN_OR_RETURN(
-        HloInstruction * async_done,
-        copy->parent()->CreateAsyncInstructions(copy, {context_shape}));
-    (void)async_done;
+    {
+      // TODO(b/319466176): CreateAsyncInstructions does not work for `copy`.
+      // Once it does, replace this block with that.
+      Shape instruction_shape_source = copy->operand(0)->shape();
+      Shape instruction_shape_destination = copy->shape();
+      HloInstruction* copy_start_to_device =
+          copy->parent()->AddInstruction(HloInstruction::CreateCopyStart(
+              ShapeUtil::MakeTupleShape({instruction_shape_destination,
+                                         instruction_shape_source,
+                                         context_shape}),
+              copy->mutable_operand(0)));
+      HloInstruction* copy_done_to_device =
+          copy->parent()->AddInstruction(HloInstruction::CreateUnary(
+              instruction_shape_destination, HloOpcode::kCopyDone,
+              copy_start_to_device));
+      TF_RETURN_IF_ERROR(copy->ReplaceAllUsesWith(copy_done_to_device));
+    }
     MarkAsChanged();
     return OkStatus();
   }
