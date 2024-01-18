@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -50,10 +51,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/service/gpu/nccl_clique.h"
-#endif  // XLA_ENABLE_XCCL
 
 namespace xla {
 namespace gpu {

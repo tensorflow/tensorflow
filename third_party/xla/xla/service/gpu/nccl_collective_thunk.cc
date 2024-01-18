@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
@@ -51,11 +52,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
-
-#if XLA_ENABLE_XCCL
-#include "third_party/nccl/nccl.h"
-#include "xla/service/gpu/nccl_clique.h"
-#endif  // XLA_ENABLE_XCCL
 
 namespace xla {
 namespace gpu {
