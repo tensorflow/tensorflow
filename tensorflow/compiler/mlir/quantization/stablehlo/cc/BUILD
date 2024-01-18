@@ -283,13 +283,18 @@ cc_library(
     # Must be header-only or unique (i.e. the same target is not a dependency of
     # tensorflow_framework, tensorflow_cc, or pywrap_tensorflow_internal) dependencies.
     deps = [
+        ":component",
+        ":saved_model_import",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -303,6 +308,7 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
+        ":component",
         ":context",
         ":io",
         ":post_calibration",
@@ -311,9 +317,7 @@ cc_library(
         ":saved_model_import",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:assign_ids",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:statistics",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -329,13 +333,13 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
