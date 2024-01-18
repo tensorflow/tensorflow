@@ -940,35 +940,60 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
     absl::string_view async_execution_thread, bool replace,
     bool override_names) {
-  Builder builder("async_computation");
-  std::vector<HloInstruction*> parameters(instruction->operand_count());
-  std::vector<Shape> parameter_shapes(instruction->operand_count());
-  for (int i = 0; i < instruction->operand_count(); ++i) {
-    const Shape& parameter_shape = instruction->operand(i)->shape();
-    parameters[i] = builder.AddInstruction(HloInstruction::CreateParameter(
-        i, parameter_shape, absl::StrCat("param_", i)));
-    parameter_shapes[i] = parameter_shape;
-  }
-  HloInstruction* root = builder.AddInstruction(
-      instruction->CloneWithNewOperands(instruction->shape(), parameters));
-  if (override_names) {
-    root->SetAndSanitizeName(absl::StrCat(instruction->name(), ".cloned"));
-  }
-  HloComputation* async_computation =
-      parent_->AddEmbeddedComputation(builder.Build(root));
-  std::vector<Shape> start_shapes = {
-      ShapeUtil::MakeTupleShape(parameter_shapes), root->shape()};
-  for (const Shape& context_shape : context_shapes) {
-    start_shapes.push_back(context_shape);
-  }
-  HloInstruction* async_start = AddInstruction(HloInstruction::CreateAsyncStart(
-      ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
-      async_computation, async_execution_thread));
-  HloInstruction* async_done = AddInstruction(
-      HloInstruction::CreateAsyncDone(root->shape(), async_start));
-  if (override_names) {
-    async_start->SetAndSanitizeName(absl::StrCat(root->name(), ".call-start"));
-    async_done->SetAndSanitizeName(absl::StrCat(root->name(), ".call-done"));
+  HloInstruction* async_start;
+  HloInstruction* async_done;
+  if (instruction->opcode() == HloOpcode::kCopy) {
+    // Until the async ops are unified, add specialized support for copy here.
+    // TODO(b/319466176): Remove this special case once this bug is complete.
+    // Note that CopyStart/CopyDone uses (dest_shape, src_shape, context)
+    // convention while async-start/async-done uses ((src_shapes), dest_shape,
+    // context).
+    std::vector<Shape> context_shapes_tuple;
+    context_shapes_tuple.reserve(context_shapes.size() + 2);
+    Shape instruction_shape_destination = instruction->shape();
+    context_shapes_tuple.push_back(instruction_shape_destination);
+    Shape instruction_shape_source = instruction->operand(0)->shape();
+    context_shapes_tuple.push_back(instruction_shape_source);
+    context_shapes_tuple.insert(context_shapes_tuple.end(),
+                                context_shapes.begin(), context_shapes.end());
+
+    async_start = AddInstruction(HloInstruction::CreateCopyStart(
+        ShapeUtil::MakeTupleShape(context_shapes_tuple),
+        instruction->mutable_operand(0)));
+    async_done = AddInstruction(HloInstruction::CreateUnary(
+        instruction_shape_destination, HloOpcode::kCopyDone, async_start));
+  } else {
+    Builder builder("async_computation");
+    std::vector<HloInstruction*> parameters(instruction->operand_count());
+    std::vector<Shape> parameter_shapes(instruction->operand_count());
+    for (int i = 0; i < instruction->operand_count(); ++i) {
+      const Shape& parameter_shape = instruction->operand(i)->shape();
+      parameters[i] = builder.AddInstruction(HloInstruction::CreateParameter(
+          i, parameter_shape, absl::StrCat("param_", i)));
+      parameter_shapes[i] = parameter_shape;
+    }
+    HloInstruction* root = builder.AddInstruction(
+        instruction->CloneWithNewOperands(instruction->shape(), parameters));
+    if (override_names) {
+      root->SetAndSanitizeName(absl::StrCat(instruction->name(), ".cloned"));
+    }
+    HloComputation* async_computation =
+        parent_->AddEmbeddedComputation(builder.Build(root));
+    std::vector<Shape> start_shapes = {
+        ShapeUtil::MakeTupleShape(parameter_shapes), root->shape()};
+    for (const Shape& context_shape : context_shapes) {
+      start_shapes.push_back(context_shape);
+    }
+    async_start = AddInstruction(HloInstruction::CreateAsyncStart(
+        ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
+        async_computation, async_execution_thread));
+    async_done = AddInstruction(
+        HloInstruction::CreateAsyncDone(root->shape(), async_start));
+    if (override_names) {
+      async_start->SetAndSanitizeName(
+          absl::StrCat(root->name(), ".call-start"));
+      async_done->SetAndSanitizeName(absl::StrCat(root->name(), ".call-done"));
+    }
   }
   async_start->set_metadata(instruction->metadata());
   async_start->CopyBackendConfigFrom(instruction);
