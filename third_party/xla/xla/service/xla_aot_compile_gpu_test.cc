@@ -194,7 +194,7 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Check that GpuConvAlgorithmPicker successfully loaded autotune results.
-  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "\"algo_id\":\"3\""))
+  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "\"algo_id\":\"28\""))
       << serialized_aot_result;
 
   // Get a LocalClient
