@@ -50,11 +50,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
-#endif  // GOOGLE_CUDA
-
 #if XLA_ENABLE_XCCL
 #include "third_party/nccl/nccl.h"
 #include "xla/service/gpu/nccl_clique.h"
@@ -63,6 +58,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+static constexpr int64_t kCollectiveMemorySpaceColor = 1;
 
 //==-----------------------------------------------------------------------===//
 // Macros to return on NCCL errors.
@@ -331,51 +328,10 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     device_buffers.emplace_back(DeviceBufferPair{
         element_types[i], buffers[i].element_count,
         buffer_allocations->GetDeviceAddress(buffers[i].source_buffer),
-        buffer_allocations->GetDeviceAddress(buffers[i].destination_buffer)});
+        buffer_allocations->GetDeviceAddress(buffers[i].destination_buffer),
+        buffers[i].source_memory_space, buffers[i].destination_memory_space});
   }
   return device_buffers;
-}
-
-// This function is used to determine if a buffer resides in memory that was
-// allocated using ncclMemAlloc.
-StatusOr<bool> IsBufferInCollectiveMemory(int device_ordinal,
-                                          const void* buffer) {
-#if defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
-  // Get base address, size.
-  CUdeviceptr base_ptr;
-  size_t base_size;
-  XLA_NCCL_RETURN_IF_ERROR(cuMemGetAddressRange(
-      &base_ptr, &base_size, reinterpret_cast<CUdeviceptr>(buffer)));
-
-  // Get required granularity.
-  size_t granularity;
-  CUmemAllocationProp req_prop;
-  memset(&req_prop, 0, sizeof(req_prop));
-  req_prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  req_prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  req_prop.location.id = device_ordinal;
-  req_prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
-  XLA_NCCL_RETURN_IF_ERROR(cuMemGetAllocationGranularity(
-      &granularity, &req_prop, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
-
-  // Get properties of allocation.
-  CUmemGenericAllocationHandle handle;
-  if (cuMemRetainAllocationHandle(&handle, const_cast<void*>(buffer)) !=
-      CUDA_SUCCESS) {
-    // If cuMem* api wasn't used to allocate this buffer (used in ncclMemAlloc),
-    // cuMemRetainAllocationHandle will fail.
-    return false;
-  }
-  CUmemAllocationProp prop;
-  XLA_NCCL_RETURN_IF_ERROR(
-      cuMemGetAllocationPropertiesFromHandle(&prop, handle));
-
-  // Check granularity and property requirements are met.
-  return base_ptr % granularity == 0 && base_size % granularity == 0 &&
-         prop.requestedHandleTypes & CU_MEM_HANDLE_TYPE_POSIX_FILE_DESCRIPTOR;
-#else   // defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
-  return absl::InternalError("XLA compiled without NCCL");
-#endif  // defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
 }
 
 Status MaybeRegisterBuffers(int device_ordinal,
@@ -397,24 +353,15 @@ Status MaybeRegisterBuffers(int device_ordinal,
   absl::MutexLock lock(&all_registered.mu);
   for (int i = 0; i < buffers.size(); ++i) {
     if (!all_registered.per_device_comms[device_ordinal].contains(comm)) {
-      TF_ASSIGN_OR_RETURN(
-          bool send_buff_in_collective_mem,
-          IsBufferInCollectiveMemory(device_ordinal,
-                                     buffers[i].source_buffer.opaque()));
-      if (send_buff_in_collective_mem) {
+      if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
         TF_ASSIGN_OR_RETURN(NcclApi::NcclRegisteredBufferHandle handle,
                             NcclApi::RegisterBuffer(
                                 reinterpret_cast<NcclApi::NcclCommHandle>(comm),
                                 buffers[i].source_buffer));
         all_registered.handles.push_back(handle);
         all_registered.per_device_comms[device_ordinal].insert(comm);
-        continue;
       }
-      TF_ASSIGN_OR_RETURN(
-          bool dest_buff_in_collective_mem,
-          IsBufferInCollectiveMemory(device_ordinal,
-                                     buffers[i].source_buffer.opaque()));
-      if (dest_buff_in_collective_mem) {
+      if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
         TF_ASSIGN_OR_RETURN(NcclApi::NcclRegisteredBufferHandle handle,
                             NcclApi::RegisterBuffer(
                                 reinterpret_cast<NcclApi::NcclCommHandle>(comm),

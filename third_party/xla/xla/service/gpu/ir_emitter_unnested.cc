@@ -3313,6 +3313,8 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/dest_slice,
+        /*source_memory_space=*/0,       // always 0 for LMHLO
+        /*destination_memory_space=*/0,  // always 0 for LMHLO
         /*source_value=*/operand,
         /*destination_value=*/result});
   }
@@ -3400,15 +3402,20 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
   // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
-  buffers.reserve(inst->operand_count());
+
+  int64_t operand_count = inst->operand_count();
+  buffers.reserve(operand_count);
 
   // Adds a source and destination buffers pair to `buffers`.
-  auto add_buffer = [&](const Shape& shape, BufferAllocation::Slice src,
-                        BufferAllocation::Slice dst) {
+  auto add_buffer = [&](int64_t element_count, BufferAllocation::Slice src,
+                        int64_t src_memory_space, BufferAllocation::Slice dst,
+                        int64_t dst_memory_space) {
     buffers.push_back(NcclCollectiveThunk::Buffer{
-        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*element_count=*/element_count,
         /*source_buffer=*/src,
         /*destination_buffer=*/dst,
+        /*source_memory_space=*/src_memory_space,
+        /*destination_memory_space=*/dst_memory_space,
         /*source_value=*/nullptr,
         /*destination_value=*/nullptr});
   };
@@ -3416,24 +3423,28 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   if (kind == Thunk::Kind::kNcclAllGatherStart) {
     // Start operations return a tuple of (<<inputs>>, <<outputs>>) where
     // outputs can be a tuple itself (if operation has multiple operands).
-    for (int64_t i = 0; i < inst->operand_count(); i++) {
+    for (int64_t i = 0; i < operand_count; i++) {
+      ShapeIndex idx = operand_count > 1 ? ShapeIndex({1, i}) : ShapeIndex({1});
+      const Shape& src_shape = inst->operand(i)->shape();
+      const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
       TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-      TF_ASSIGN_OR_RETURN(
-          auto dst, GetAllocationSliceForHlo(inst, inst->operand_count() > 1
-                                                       ? ShapeIndex({1, i})
-                                                       : ShapeIndex({1})));
-      add_buffer(inst->operand(i)->shape(), src, dst);
+      TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+      add_buffer(ShapeUtil::ElementsIn(src_shape), src,
+                 src_shape.layout().memory_space(), dst,
+                 dst_shape.layout().memory_space());
     }
 
   } else {
     // For other operations simply zip operands with results.
-    for (int64_t i = 0; i < inst->operand_count(); i++) {
+    for (int64_t i = 0; i < operand_count; i++) {
+      ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
+      const Shape& src_shape = inst->operand(i)->shape();
+      const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
       TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-      TF_ASSIGN_OR_RETURN(
-          auto dst, GetAllocationSliceForHlo(inst, inst->operand_count() > 1
-                                                       ? ShapeIndex({i})
-                                                       : ShapeIndex({})));
-      add_buffer(inst->operand(i)->shape(), src, dst);
+      TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+      add_buffer(ShapeUtil::ElementsIn(src_shape), src,
+                 src_shape.layout().memory_space(), dst,
+                 dst_shape.layout().memory_space());
     }
   }
 

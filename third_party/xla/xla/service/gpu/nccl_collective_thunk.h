@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -108,6 +109,8 @@ class NcclCollectiveThunk : public Thunk {
     int64_t element_count;
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
+    int64_t source_memory_space;
+    int64_t destination_memory_space;
     mlir::Value source_value;
     mlir::Value destination_value;
   };
@@ -229,6 +232,9 @@ struct DeviceBufferPair {
   int64_t element_count;
   se::DeviceMemoryBase source_buffer;
   se::DeviceMemoryBase destination_buffer;
+  // TODO(b/320767790): Remove once memory space added to DeviceMemoryBase.
+  int64_t source_memory_space;
+  int64_t destination_memory_space;
 };
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
@@ -241,11 +247,9 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
 
-// When using ncclMemAlloc, register buffers with the communicator to enable
-// copyless collectives.
-// Registration is only needed when not using cudaGraphs. Remove this function
-// when cudagraphs + nccl is enabled.
-// See
+// Registers buffers allocated in collective memory (see ncclMemAlloc) with a
+// communicator to enable zero-copy collectives.
+//
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
 Status MaybeRegisterBuffers(int device_ordinal,
                             const std::vector<DeviceBufferPair>& buffers,
