@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_MOCK_NCCL_SLEEP_KERNEL_H_
-#define XLA_SERVICE_GPU_MOCK_NCCL_SLEEP_KERNEL_H_
+#ifndef XLA_SERVICE_GPU_SLEEP_KERNEL_H_
+#define XLA_SERVICE_GPU_SLEEP_KERNEL_H_
 
 namespace xla::gpu {
 
+// Returns a pointer to CUDA kernel that does sleep operation on device.
 void* GetSleepKernel();
 
 }  // namespace xla::gpu
 
-#endif  // XLA_SERVICE_GPU_MOCK_NCCL_SLEEP_KERNEL_H_
+#endif  // XLA_SERVICE_GPU_SLEEP_KERNEL_H_

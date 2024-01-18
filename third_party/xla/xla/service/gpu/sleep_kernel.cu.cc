@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/mock_nccl_sleep_kernel.h"
+#include "xla/service/gpu/sleep_kernel.h"
 
 namespace xla::gpu {
 namespace {
 
 // Use busy waiting instead of __nanosleep() to make the code more portable
 // (__nanosleep requires __CUDA_ARCH__ >= 700)
-__global__ void mock_nccl_call(int64_t num_clocks) {
+__global__ void sleep(int64_t num_clocks) {
   int64_t start = clock64();
   while (clock64() - start < num_clocks) continue;
 }
 
 }  // namespace
 
-void* GetSleepKernel() { return reinterpret_cast<void*>(&mock_nccl_call); }
+void* GetSleepKernel() { return reinterpret_cast<void*>(&sleep); }
 
 }  // namespace xla::gpu
