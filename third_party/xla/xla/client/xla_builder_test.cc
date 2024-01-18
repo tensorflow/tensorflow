@@ -2226,16 +2226,31 @@ TEST(XlaBuilderTest, UnboundedTranspose) {
       << " expected: " << ShapeUtil::HumanStringWithLayout(expected);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
-    ::testing::ValuesIn<UnaryOpTestCase>({{"f32[?]", "f32[?]", &Abs},
-                                          {"f32[?]", "f32[?]", &Cos},
-                                          {"f32[?]", "f32[?]", &Exp},
-                                          {"f32[?]", "f32[?]", &Logistic},
-                                          {"f32[?]", "f32[?]", &Neg},
-                                          {"f32[?]", "f32[?]", &Rsqrt},
-                                          {"f32[?]", "f32[?]", &Sin},
-                                          {"f32[?]", "f32[?]", &Sqrt}}));
+INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, XlaBuilderUnboundedUnaryOpTest,
+                         ::testing::ValuesIn<UnaryOpTestCase>(
+                             {{"f32[?]", "f32[?]", &Abs},
+                              {"f32[?]", "f32[?]", &Cbrt},
+                              {"f32[?]", "f32[?]", &Ceil},
+                              {"u32[?]", "u32[?]", &Clz},
+                              {"f32[?]", "f32[?]", &Cos},
+                              {"f32[?]", "f32[?]", &Exp},
+                              {"f32[?]", "f32[?]", &Expm1},
+                              {"f32[?]", "f32[?]", &Floor},
+                              {"f32[?]", "f32[?]", &Imag},
+                              {"f32[?]", "pred[?]", &IsFinite},
+                              {"f32[?]", "f32[?]", &Log},
+                              {"f32[?]", "f32[?]", &Log1p},
+                              {"f32[?]", "f32[?]", &Logistic},
+                              {"f32[?]", "f32[?]", &Neg},
+                              {"u32[?]", "u32[?]", &PopulationCount},
+                              {"f32[?]", "f32[?]", &Real},
+                              {"f32[?]", "f32[?]", &Round},
+                              {"f32[?]", "f32[?]", &RoundNearestEven},
+                              {"f32[?]", "f32[?]", &Rsqrt},
+                              {"f32[?]", "f32[?]", &Sign},
+                              {"f32[?]", "f32[?]", &Sin},
+                              {"f32[?]", "f32[?]", &Sqrt},
+                              {"f32[?]", "f32[?]", &Tanh}}));
 
 }  // namespace
 }  // namespace xla

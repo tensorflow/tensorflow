@@ -4378,13 +4378,29 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
                          ::testing::ValuesIn<UnaryOpTestCase>(
                              {{"f32[?]", "f32[?]", HloOpcode::kAbs},
+                              {"f32[?]", "f32[?]", HloOpcode::kCbrt},
+                              {"f32[?]", "f32[?]", HloOpcode::kCeil},
+                              {"u32[?]", "u32[?]", HloOpcode::kClz},
                               {"f32[?]", "f32[?]", HloOpcode::kCos},
                               {"f32[?]", "f32[?]", HloOpcode::kExp},
+                              {"f32[?]", "f32[?]", HloOpcode::kExpm1},
+                              {"f32[?]", "f32[?]", HloOpcode::kFloor},
+                              {"f32[?]", "f32[?]", HloOpcode::kImag},
+                              {"f32[?]", "pred[?]", HloOpcode::kIsFinite},
+                              {"f32[?]", "f32[?]", HloOpcode::kLog},
+                              {"f32[?]", "f32[?]", HloOpcode::kLog1p},
                               {"f32[?]", "f32[?]", HloOpcode::kLogistic},
                               {"f32[?]", "f32[?]", HloOpcode::kNegate},
+                              {"u32[?]", "u32[?]", HloOpcode::kPopulationCount},
+                              {"f32[?]", "f32[?]", HloOpcode::kReal},
+                              {"f32[?]", "f32[?]", HloOpcode::kRoundNearestAfz},
+                              {"f32[?]", "f32[?]",
+                               HloOpcode::kRoundNearestEven},
                               {"f32[?]", "f32[?]", HloOpcode::kRsqrt},
+                              {"f32[?]", "f32[?]", HloOpcode::kSign},
                               {"f32[?]", "f32[?]", HloOpcode::kSin},
-                              {"f32[?]", "f32[?]", HloOpcode::kSqrt}}));
+                              {"f32[?]", "f32[?]", HloOpcode::kSqrt},
+                              {"f32[?]", "f32[?]", HloOpcode::kTanh}}));
 
 }  // namespace
 }  // namespace xla
