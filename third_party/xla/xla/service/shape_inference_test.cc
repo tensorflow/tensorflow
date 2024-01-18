@@ -121,9 +121,15 @@ class UnboundedBinaryOpShapeInferenceTest
 class UnboundedConcatenateOpShapeInferenceTest
     : public ::testing::TestWithParam<std::vector<std::string>> {};
 
+struct UnaryOpTestCase {
+  std::string operand;
+  std::string expected;
+  HloOpcode opcode;
+};
+
 // Subclass for testing unbounded dynamic unary ops
 class UnboundedUnaryOpShapeInferenceTest
-    : public ::testing::TestWithParam<std::vector<std::string>> {};
+    : public ::testing::TestWithParam<UnaryOpTestCase> {};
 
 // Subclass for testing unbounded dynamic clamp op
 class UnboundedClampOpShapeInferenceTest
@@ -3761,13 +3767,14 @@ INSTANTIATE_TEST_SUITE_P(All, ScatterShapeInferenceTest,
                                                                       BF16}),
                          ScatterTestName());
 
-TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedAbs) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferUnaryOpShape(
-                                                  HloOpcode::kExp, operand));
-  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
-      << "inferred: " << ShapeUtil::HumanString(result_shape)
+TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedUnaryOps) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam().operand));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam().expected));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape inferred,
+      ShapeInference::InferUnaryOpShape(GetParam().opcode, operand));
+  EXPECT_TRUE(ShapeUtil::Equal(inferred, expected))
+      << "inferred: " << ShapeUtil::HumanString(inferred)
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
@@ -3945,16 +3952,6 @@ TEST_F(ShapeInferenceTest, UnboundedConvolution) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
-TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedCos) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferUnaryOpShape(
-                                                  HloOpcode::kCos, operand));
-  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
-      << "inferred: " << ShapeUtil::HumanString(result_shape)
-      << " expected: " << ShapeUtil::HumanString(expected);
-}
-
 TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedDiv) {
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam()[0]));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam()[1]));
@@ -4010,16 +4007,6 @@ TEST_F(ShapeInferenceTest, UnboundedDotGeneral) {
       << " expected: " << ShapeUtil::HumanString(expected);
 }
 
-TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedExp) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferUnaryOpShape(
-                                                  HloOpcode::kExp, operand));
-  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
-      << "inferred: " << ShapeUtil::HumanString(result_shape)
-      << " expected: " << ShapeUtil::HumanString(expected);
-}
-
 TEST_F(ShapeInferenceTest, UnboundedGather) {
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[3, 4, 2]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape start_indices, ParseShape("s32[?, ?, ?]"));
@@ -4037,17 +4024,6 @@ TEST_F(ShapeInferenceTest, UnboundedGather) {
                           ShapeInference::InferGatherShape(
                               operand, start_indices, dimension_numbers,
                               /*slice_sizes=*/{1, 2, 2}));
-  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
-      << "inferred: " << ShapeUtil::HumanString(result_shape)
-      << " expected: " << ShapeUtil::HumanString(expected);
-}
-
-TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedLogistic) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
-  TF_ASSERT_OK_AND_ASSIGN(
-      Shape result_shape,
-      ShapeInference::InferUnaryOpShape(HloOpcode::kLogistic, operand));
   EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
       << "inferred: " << ShapeUtil::HumanString(result_shape)
       << " expected: " << ShapeUtil::HumanString(expected);
@@ -4085,16 +4061,6 @@ TEST_P(UnboundedBinaryOpShapeInferenceTest, UnboundedMul) {
     EXPECT_THAT(inferred_status.status().message(),
                 HasSubstr("Binary op multiply with incompatible shapes"));
   }
-}
-
-TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedNegate) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferUnaryOpShape(
-                                                  HloOpcode::kNegate, operand));
-  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
-      << "inferred: " << ShapeUtil::HumanString(result_shape)
-      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(ShapeInferenceTest, UnboundedPad) {
@@ -4216,16 +4182,6 @@ TEST_F(ShapeInferenceTest, UnboundedReshapeUnsupported2) {
       HasSubstr("Reshaping with unbounded dimensions is not supported."));
 }
 
-TEST_P(UnboundedUnaryOpShapeInferenceTest, UnounbdedRsqrt) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferUnaryOpShape(
-                                                  HloOpcode::kRsqrt, operand));
-  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
-      << "inferred: " << ShapeUtil::HumanString(result_shape)
-      << " expected: " << ShapeUtil::HumanString(expected);
-}
-
 TEST_P(UnboundedSelectOpShapeInferenceTest, UnboundedSelect) {
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape(GetParam()[0]));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape(GetParam()[1]));
@@ -4252,16 +4208,6 @@ TEST_F(ShapeInferenceTest, UnboundedSelectWithTupleUnsupported) {
   EXPECT_THAT(inferred_status.status().message(),
               HasSubstr("Expected array argument for select pred, but got "
                         "(pred[2], pred[?])."));
-}
-
-TEST_P(UnboundedUnaryOpShapeInferenceTest, UnboundedSin) {
-  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape(GetParam()[0]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape(GetParam()[1]));
-  TF_ASSERT_OK_AND_ASSIGN(Shape result_shape, ShapeInference::InferUnaryOpShape(
-                                                  HloOpcode::kSin, operand));
-  EXPECT_TRUE(ShapeUtil::Equal(result_shape, expected))
-      << "inferred: " << ShapeUtil::HumanString(result_shape)
-      << " expected: " << ShapeUtil::HumanString(expected);
 }
 
 TEST_F(ShapeInferenceTest, UnboundedSlice) {
@@ -4430,19 +4376,15 @@ INSTANTIATE_TEST_SUITE_P(
                                   "got f32[?] and f32[]."})));
 
 INSTANTIATE_TEST_SUITE_P(UnboundedDynamism, UnboundedUnaryOpShapeInferenceTest,
-                         ::testing::Values(
-                             // OPERAND | Result
-                             // 1       | 1
-                             std::vector<std::string>({"f32[1]", "f32[1]"}),
-                             // 2       | 2
-                             std::vector<std::string>({"f32[2]", "f32[2]"}),
-                             // <=2     | <=2
-                             std::vector<std::string>({"f32[<=2]", "f32[<=2]"}),
-                             // ?       | ?
-                             std::vector<std::string>({"f32[?]", "f32[?]"}),
-                             // ?,3     | ?,3
-                             std::vector<std::string>({"f32[?,3]",
-                                                       "f32[?,3]"})));
+                         ::testing::ValuesIn<UnaryOpTestCase>(
+                             {{"f32[?]", "f32[?]", HloOpcode::kAbs},
+                              {"f32[?]", "f32[?]", HloOpcode::kCos},
+                              {"f32[?]", "f32[?]", HloOpcode::kExp},
+                              {"f32[?]", "f32[?]", HloOpcode::kLogistic},
+                              {"f32[?]", "f32[?]", HloOpcode::kNegate},
+                              {"f32[?]", "f32[?]", HloOpcode::kRsqrt},
+                              {"f32[?]", "f32[?]", HloOpcode::kSin},
+                              {"f32[?]", "f32[?]", HloOpcode::kSqrt}}));
 
 }  // namespace
 }  // namespace xla
