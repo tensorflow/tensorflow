@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_sanitize_constant_names.h"
 
+#include <cstdint>
+#include <memory>
 #include <utility>
 
-#include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -59,6 +62,29 @@ TEST_F(SanitizeConstantNamesTest, InstructionNameWithDotSanitized) {
   EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
   HloInstruction *root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->name(), "equal_to");
+}
+
+TEST_F(SanitizeConstantNamesTest, NewInstructionNameRegisteredWithModule) {
+  const char *const kHloString = R"(
+    HloModule HyphenInInstructionName
+      ENTRY kernelEntry {
+        ROOT equal.to = s32[2]{0} constant({42, 73})
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+
+  EXPECT_TRUE(GpuSanitizeConstantNames().Run(module.get()).value());
+  HloInstruction *root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->name(), "equal_to");
+
+  auto constant_instr =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1));
+  constant_instr->SetAndSanitizeName("equal_to");
+  module->entry_computation()->AddInstruction(std::move(constant_instr));
+
+  EXPECT_THAT(FindInstruction(module.get(), "equal_to.1"),
+              GmockMatch(m::Constant()));
 }
 
 TEST_F(SanitizeConstantNamesTest, BufferSanitizedNameCollisionResolved) {

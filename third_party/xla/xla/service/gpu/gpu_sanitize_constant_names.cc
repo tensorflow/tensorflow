@@ -57,6 +57,9 @@ absl::StatusOr<bool> GpuSanitizeConstantNames::Run(
       std::string sanitized_name = llvm_ir::SanitizeConstantName(*instr);
       instr->SetAndSanitizeName(sanitized_name);
       instr->UniquifyName(&instr_name_uniquer);
+      // Register this new name with the module's instruction_name_uniquer to
+      // avoid name collision that might happen in future.
+      module->instruction_name_uniquer().GetUniqueName(instr->name());
       changed = true;
     }
   }
