@@ -96,6 +96,9 @@ extern const char* const kCusolverCholeskyCallTarget;
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
                           bool verify_no_strides);
 
+// Returns true if `instr` is a non-strided slice.
+bool IsSliceWithUnitStrides(const HloInstruction* instr);
+
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
                         absl::Span<llvm::Value* const> arguments,

@@ -45,13 +45,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-// Returns true if `instr` is a non-strided slice.
-bool IsSliceWithUnitStrides(const HloInstruction* instr) {
-  auto slice = DynCast<HloSliceInstruction>(instr);
-  return slice && absl::c_all_of(slice->slice_strides(),
-                                 [](int64_t stride) { return stride == 1; });
-}
-
 // Returns true if the fusion output contains non-strided slices only.
 bool IsInputFusibleNonStridedSlices(
     const std::vector<const HloInstruction*>& fusion_roots) {
