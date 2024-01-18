@@ -3,7 +3,7 @@
 
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla:xla.bzl",
     "xla_cc_binary",
@@ -693,14 +693,40 @@ xla_cc_binary(
     ]),
 )
 
-glob_lit_tests(
+lit_test_suite(
     name = "all_tests",
-    data = [":test_utilities"],
-    default_tags = tf_cuda_tests_tags() + [
-    ],
-    driver = "//xla:run_lit.sh",
-    exclude = ["execute_memzero_thunk.mlir"],
-    features = if_cuda_is_configured([
+    srcs = enforce_glob(
+        [
+            "add_preds.hlo",
+            "calling_convention.hlo",
+            "concat.hlo",
+            "constant.hlo",
+            "copy.hlo",
+            "copy_nested.hlo",
+            "dynamic_update_slice_inplace.hlo",
+            "element_wise_row_vectorization.hlo",
+            "fused_scatter.hlo",
+            "fused_slice_different_operands.hlo",
+            "fused_slice.hlo",
+            "fusion.hlo",
+            "kernel_reuse.hlo",
+            "launch_dimensions.hlo",
+            "pad_to_static.hlo",
+            "reduce_unnested.hlo",
+            "reduction_vectorization_sm_all.hlo",
+            "rng_get_and_update_state.hlo",
+            "scatter.hlo",
+            "select_and_scatter.hlo",
+            "single_instruction.hlo",
+            "slice_to_dynamic.hlo",
+            "sorting.hlo",
+            "triton_naming.hlo",
+        ],
+        include = [
+            "*.hlo",
+        ],
+    ),
+    args = if_cuda_is_configured([
         "--param=PTX=PTX",
         "--param=SUBST_TIDX=@llvm.nvvm.read.ptx.sreg.tid.x",
         "--param=SUBST_CTAIDX=@llvm.nvvm.read.ptx.sreg.ctaid.x",
@@ -715,25 +741,18 @@ glob_lit_tests(
         "--param=SUBST_KERNEL_ANNOTATION=amdgpu_kernel[SPACE]",
         "--param=SUBST_ADDRSPACE_ANNOTATION='addrspace(5)[SPACE]'",
     ]),
+    cfg = "//xla:lit.cfg.py",
+    default_tags = tf_cuda_tests_tags(),
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
         "single_instruction.hlo": ["no_rocm"],
         "reduce_unnested.hlo": ["no_rocm"],
     },
-    test_file_exts = ["hlo"],
-)
-
-# Bundle together all of the test utilities that are used by tests.
-filegroup(
-    name = "test_utilities",
-    testonly = True,
-    data = [
+    tools = [
         ":hlo_to_llvm_ir",
         "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
     ],
-    visibility = ["//visibility:public"],
 )
 
 xla_cc_test(

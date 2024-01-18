@@ -1,4 +1,4 @@
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -128,21 +128,35 @@ cc_library(
     ]),
 )
 
-glob_lit_tests(
+lit_test_suite(
     name = "hlo_opt_tests",
-    data = [":test_utilities"],
-    default_tags = tf_cuda_tests_tags() + [
-    ],
-    driver = "//xla:run_lit.sh",
-    features = if_cuda_is_configured([
+    srcs = enforce_glob(
+        [
+            "cpu_hlo.hlo",
+            "gpu_hlo.hlo",
+            "gpu_hlo_buffers.hlo",
+            "gpu_hlo_llvm.hlo",
+            "gpu_hlo_ptx.hlo",
+        ],
+        include = [
+            "*.hlo",
+        ],
+    ),
+    args = if_cuda_is_configured([
         "--param=GPU=a100",
     ]) + if_rocm_is_configured([
         "--param=GPU=mi200",
     ]),
+    cfg = "//xla:lit.cfg.py",
+    data = [":test_utilities"],
+    default_tags = tf_cuda_tests_tags(),
     tags_override = {
         "gpu_hlo_ptx.hlo": ["no_rocm"],
     },
-    test_file_exts = ["hlo"],
+    tools = [
+        "//xla/tools:hlo-opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
 )
 
 # Bundle together all of the test utilities that are used by tests.
@@ -154,7 +168,6 @@ filegroup(
         "gpu_specs/mi200.txtpb",
         "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
     ],
     visibility = ["//visibility:public"],
 )
