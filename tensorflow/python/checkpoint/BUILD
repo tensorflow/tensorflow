@@ -393,6 +393,7 @@ py_strict_library(
     srcs = ["checkpoint_options.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python/checkpoint/sharding:sharding_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -405,10 +406,12 @@ py_strict_library(
     deps = [
         ":checkpoint_options",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/checkpoint/sharding:sharding_policies",
         "//tensorflow/python/checkpoint/sharding:sharding_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
@@ -426,7 +429,6 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
-        "@absl_py//absl/logging",
     ],
 )
 
