@@ -15,7 +15,11 @@
 """Saves and restore variables inside traced @tf.functions."""
 
 import dataclasses
+import math
+import time
 from typing import Callable, Mapping, MutableMapping, MutableSequence, Sequence
+
+from absl import logging
 
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.checkpoint import checkpoint_options
@@ -35,6 +39,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.saved_model import registration
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
@@ -420,9 +425,18 @@ class MultiDeviceSaver:
 
     sharding_callback = (
         sharding_callback or sharding_policies.ShardByTaskPolicy())
+    metrics.SetShardingCallbackDescription(
+        description=sharding_callback.description)
+
+    start_time = time.time() * 1e6
     shards_by_task = [
         (task, sharding_callback(shardable_tensors))
         for task, shardable_tensors in shardable_tensors_by_task.items()]
+    callback_duration = math.ceil(time.time() * 1e6 - start_time)
+    metrics.AddShardingCallbackDuration(
+        callback_duration=max(1, callback_duration))  # in microseconds
+    logging.info("Sharding callback duration: %s", callback_duration)
+
     return shards_by_task
 
   def save(
@@ -499,8 +513,9 @@ class MultiDeviceSaver:
 
       shards_by_task = self._get_shards_by_task(
           options.experimental_sharding_callback)
-      num_shards_tensor = constant_op.constant(
-          sum([len(shards) for _, shards in shards_by_task]), name="num_shards")
+      num_shards = sum([len(shards) for _, shards in shards_by_task])
+      metrics.AddNumCheckpointShardsWritten(num_shards=num_shards)
+      num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
       sharded_saves = []
 
       shard_idx = 0

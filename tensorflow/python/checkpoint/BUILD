@@ -421,6 +421,7 @@ py_strict_library(
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:io_ops_gen",
         "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:trackable_utils",
@@ -429,6 +430,7 @@ py_strict_library(
         "//tensorflow/python/types:core",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:object_identity",
+        "@absl_py//absl/logging",
     ],
 )
 
