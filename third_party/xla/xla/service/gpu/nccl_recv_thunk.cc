@@ -79,11 +79,11 @@ absl::Status NcclRecvThunk::RunNcclCollective(const ExecuteParams& params,
                              config_.config.operand_element_type));
   TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 
-  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
-                      params.nccl_params.GetGlobalDeviceId());
+  GlobalDeviceId global_device_id = params.nccl_params.global_device_id();
+
   TF_ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID current_logical_id,
-      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
+      params.nccl_params.device_assn()->LogicalIdForDevice(global_device_id));
   const int64_t current_id =
       config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? current_logical_id.replica_id

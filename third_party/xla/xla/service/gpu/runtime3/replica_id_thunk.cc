@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/replica_id_thunk.h"
 
 #include "absl/status/status.h"
+#include "xla/service/global_device_id.h"
 
 namespace xla {
 namespace gpu {
@@ -24,11 +25,10 @@ absl::Status ReplicaOrPartitionIdThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto dest_addr = params.buffer_allocations->GetDeviceAddress(dest_);
 
-  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
-                      params.nccl_params.GetGlobalDeviceId());
+  GlobalDeviceId global_device_id = params.nccl_params.global_device_id();
   TF_ASSIGN_OR_RETURN(
       const DeviceAssignment::LogicalID logical_id,
-      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
+      params.nccl_params.device_assn()->LogicalIdForDevice(global_device_id));
   int id = kind() == Kind::kReplicaId ? logical_id.replica_id
                                       : logical_id.computation_id;
   params.stream->ThenMemset32(&dest_addr, id, /*size=*/4);

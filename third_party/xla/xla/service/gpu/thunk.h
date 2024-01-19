@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -150,10 +151,13 @@ class Thunk {
   // launching "work" on device, i.e. it launches kernels, executes command
   // buffers and calls into libraries (cuBLAS, cuDNN etc.).
   struct ExecuteParams {
-    ExecuteParams(const ServiceExecutableRunOptions& run_options,
-                  const BufferAllocations& buffer_allocations,
-                  se::Stream* stream, se::Stream* command_buffer_trace_stream,
-                  absl::Span<se::Stream* const> async_streams);
+    // Constructs execute parameters from an executable run options. Return
+    // error if run options are misconfigured.
+    static absl::StatusOr<ExecuteParams> Create(
+        const ServiceExecutableRunOptions& run_options,
+        const BufferAllocations& buffer_allocations, se::Stream* stream,
+        se::Stream* command_buffer_trace_stream,
+        absl::Span<se::Stream* const> async_streams = {});
 
     const BufferAllocations* buffer_allocations;  // never null
 
@@ -167,6 +171,7 @@ class Thunk {
     // Streams for asynchronous collective communications.
     absl::InlinedVector<se::Stream*, 4> async_comms_streams;
 
+    // Parameters for executing collective operations.
     NcclExecuteParams nccl_params;
 
     // Streams for moving data between host and device.
@@ -176,6 +181,16 @@ class Thunk {
     // Send/Recv callbacks passed to XLA from PjRt.
     SendDeviceMemoryFunction* send_device_memory_function;
     RecvDeviceMemoryFunction* recv_device_memory_function;
+
+   private:
+    ExecuteParams(const BufferAllocations* buffer_allocations,
+                  se::Stream* stream, se::Stream* command_buffer_trace_stream,
+                  absl::InlinedVector<se::Stream*, 4> async_comms_streams,
+                  NcclExecuteParams nccl_params,
+                  se::Stream* device_to_host_stream,
+                  se::Stream* host_to_device_stream,
+                  SendDeviceMemoryFunction* send_device_memory_function,
+                  RecvDeviceMemoryFunction* recv_device_memory_function);
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was

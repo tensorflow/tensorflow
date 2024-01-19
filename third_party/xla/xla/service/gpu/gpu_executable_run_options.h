@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_RUN_OPTIONS_H_
 
+#include <cstdint>
 #include <map>
 #include <optional>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
@@ -88,17 +92,43 @@ class GpuExecutableRunOptions {
 };
 
 // NCCL-related execution parameters.
-struct NcclExecuteParams {
-  NcclExecuteParams(const ServiceExecutableRunOptions& run_options,
-                    se::StreamExecutor* stream_executor);
+class NcclExecuteParams {
+ public:
+  // A mapping from local device ordinals to global device IDs.
+  using GlobalDeviceIdMap = std::map<int32_t, GlobalDeviceId>;
 
-  se::StreamExecutor* stream_executor;
-  RunId run_id;
-  const DeviceAssignment* device_assn;                         // never null
-  const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null
-  const NcclCliqueIdCallback* nccl_clique_id_callback;         // may be null
+  // Creates NCCL execution parameters from the run options for the given local
+  // device. Returns an error if run options are misconfigured (i.e. missing a
+  // global device mapping for a local device ordinal).
+  static absl::StatusOr<NcclExecuteParams> Create(
+      const ServiceExecutableRunOptions& run_options,
+      int64_t local_device_ordinal);
 
-  absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
+  RunId run_id() const;
+
+  int64_t local_device_ordinal() const;
+
+  GlobalDeviceId global_device_id() const;
+
+  const GlobalDeviceIdMap* global_device_id_map() const;
+
+  const DeviceAssignment* device_assn() const;
+
+  const NcclCliqueIdCallback* nccl_clique_id_callback() const;
+
+ private:
+  NcclExecuteParams(RunId run_id, int64_t local_device_ordinal,
+                    GlobalDeviceId global_device_id,
+                    const DeviceAssignment* device_assn,
+                    const GlobalDeviceIdMap* global_device_id_map,
+                    const NcclCliqueIdCallback* nccl_clique_id_callback);
+
+  RunId run_id_;
+  int64_t local_device_ordinal_;
+  GlobalDeviceId global_device_id_;
+  const DeviceAssignment* device_assn_;
+  const GlobalDeviceIdMap* global_device_id_map_;
+  const NcclCliqueIdCallback* nccl_clique_id_callback_;
 };
 
 }  // namespace gpu

@@ -264,9 +264,11 @@ absl::Status ExecuteThunks(const std::string& module_name,
   }
 #endif
 
-  Thunk::ExecuteParams execute_params{*run_options, buffer_allocations,
-                                      main_stream, command_buffer_trace_stream,
-                                      async_comms_streams};
+  // Prepare parameters for thunks execution.
+  TF_ASSIGN_OR_RETURN(Thunk::ExecuteParams execute_params,
+                      Thunk::ExecuteParams::Create(
+                          *run_options, buffer_allocations, main_stream,
+                          command_buffer_trace_stream, async_comms_streams));
 
   // Initialize thunks to prepare them for execution.
   Thunk::InitializeParams initialize_params{

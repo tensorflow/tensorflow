@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_GLOBAL_DEVICE_ID_H_
 #define XLA_SERVICE_GLOBAL_DEVICE_ID_H_
 
+#include <cstdint>
 #include <string>
 
 #include "absl/types/span.h"
-#include "xla/types.h"
 #include "tsl/lib/gtl/int_type.h"
 
 namespace xla {

@@ -101,7 +101,7 @@ bool ShouldEnableCliqueOptimization(const NcclExecuteParams& params,
   // by the absence of nccl_clique_id_callback. For multiple-host, only enable
   // when a debug flag is set for now, due to some divergent compilation issues.
   return no_parallel_custom_call &&
-         (!params.nccl_clique_id_callback ||
+         (!params.nccl_clique_id_callback() ||
           debug_options->xla_gpu_enable_nccl_clique_optimization());
 }
 
@@ -219,7 +219,9 @@ absl::Status MockNcclImplCommon(
     absl::Span<const int64_t> replica_group_values, bool is_async,
     Thunk::Kind reduce_op,
     GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
 
   auto comm =
       GetMockNcclComm(params, group_mode, op_id, replica_group_offsets,
@@ -260,7 +262,9 @@ absl::Status MockNcclP2PImplCommon(
     absl::Span<const int64_t> target_peers, NcclP2PRunner runner,
     DeviceBuffersGetter device_buffers_getter, uint64_t stream_id,
     GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
 
   const std::string device_string =
       NcclCollectiveThunk::GetDeviceString(params);
@@ -279,11 +283,11 @@ absl::Status MockNcclP2PImplCommon(
         "Expected device buffer size: 1, got %d", device_buffers->size()));
   }
 
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
+  GlobalDeviceId global_device_id = params.global_device_id();
 
-  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID current_logical_id,
-                      params.device_assn->LogicalIdForDevice(global_device_id));
+  TF_ASSIGN_OR_RETURN(
+      DeviceAssignment::LogicalID current_logical_id,
+      params.device_assn()->LogicalIdForDevice(global_device_id));
 
   const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
                                      CollectiveOpGroupMode::kCrossReplica
@@ -315,7 +319,9 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
                            DeviceBuffersGetter device_buffers_getter,
                            uint64_t stream_id) {
   (void)no_parallel_custom_call;
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
 
@@ -332,11 +338,11 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
         "Expected device buffer size: 1, got %d", device_buffers->size()));
   }
 
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
+  GlobalDeviceId global_device_id = params.global_device_id();
 
-  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID current_logical_id,
-                      params.device_assn->LogicalIdForDevice(global_device_id));
+  TF_ASSIGN_OR_RETURN(
+      DeviceAssignment::LogicalID current_logical_id,
+      params.device_assn()->LogicalIdForDevice(global_device_id));
 
   const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
                                      CollectiveOpGroupMode::kCrossReplica
@@ -534,7 +540,9 @@ absl::Status AllGatherImplCommon(
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, bool is_async,
     bool no_parallel_custom_call) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
   TF_ASSIGN_OR_RETURN(
@@ -612,7 +620,9 @@ absl::Status AllReduceImplCommon(
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, bool is_async,
     bool no_parallel_custom_call) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
 
@@ -696,7 +706,9 @@ absl::Status MockAllToAllImplCommon(
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, bool is_async,
     GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
 
   auto comm = GetMockNcclComm(
       params, group_mode, op_id, replica_group_offsets, replica_group_values,
@@ -724,7 +736,9 @@ absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
                                 absl::Span<const int64_t> replica_group_offsets,
                                 absl::Span<const int64_t> replica_group_values,
                                 bool is_async, bool no_parallel_custom_call) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
 
@@ -806,7 +820,9 @@ absl::Status ReduceScatterImplCommon(
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, bool is_async,
     bool no_parallel_custom_call) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
 
@@ -898,13 +914,15 @@ absl::Status ReplicaPartitionIdImpl(
     bool is_replica_id) {
   VLOG(3) << "Running " << (is_replica_id ? "ReplicaId" : "PartitionId");
   se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(NcclExecuteParams params,
+                      NcclExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
+  GlobalDeviceId global_device_id = params.global_device_id();
 
-  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
-                      params.device_assn->LogicalIdForDevice(global_device_id));
+  TF_ASSIGN_OR_RETURN(
+      DeviceAssignment::LogicalID logical_id,
+      params.device_assn()->LogicalIdForDevice(global_device_id));
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   const uint32_t id =
