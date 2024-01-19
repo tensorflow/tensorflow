@@ -856,5 +856,7 @@ build:cross_compile_macos_x86 --platform_mappings=tensorflow/tools/toolchains/cr
 build:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86
 build:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
 test:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
+# Increase the test timeout as tests often take longer on mac.
+test:rbe_cross_compile_macos_x86 --test_timeout=300,450,1200,3600
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS
