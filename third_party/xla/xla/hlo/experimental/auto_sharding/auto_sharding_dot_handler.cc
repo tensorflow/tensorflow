@@ -602,7 +602,8 @@ void DotHandler::SplitBatchDimBothContract() {
                         absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[1]);
     const DimMap lhs_dim_map = {{lhs_con_dims_[e.i], e.mesh_dims[1]},
                                 {lhs_batch_dims_[e.j], e.mesh_dims[0]}};
-    const DimMap rhs_dim_map = {{rhs_batch_dims_[e.j], e.mesh_dims[0]}};
+    const DimMap rhs_dim_map = {{rhs_con_dims_[e.i], e.mesh_dims[1]},
+                                {rhs_batch_dims_[e.j], e.mesh_dims[0]}};
     std::optional<DimMap> out_dim_map = std::nullopt;
     if (is_dot_) {
       out_dim_map = DimMap{{e.j, e.mesh_dims[0]}};
