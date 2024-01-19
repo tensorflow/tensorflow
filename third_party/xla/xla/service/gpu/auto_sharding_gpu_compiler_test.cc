@@ -61,7 +61,8 @@ ENTRY matmul {
 
 TEST_F(AutoShardingTest, MatMulWithAutosharding) {
   auto compiled_module = CompileMatMul(true, 4);
-  auto* instruction = FindInstruction(compiled_module.get(), "param");
+  auto* instruction =
+      compiled_module->entry_computation()->parameter_instruction(0);
   VLOG(2) << instruction->ToString();
   EXPECT_THAT(
       instruction,
@@ -71,7 +72,8 @@ TEST_F(AutoShardingTest, MatMulWithAutosharding) {
 
 TEST_F(AutoShardingTest, MatMulWithoutAutosharding) {
   auto compiled_module = CompileMatMul(false, 4);
-  auto* instruction = FindInstruction(compiled_module.get(), "param");
+  auto* instruction =
+      compiled_module->entry_computation()->parameter_instruction(0);
   VLOG(2) << instruction->ToString();
   EXPECT_THAT(instruction, GmockMatch(m::Op().WithSharding("{replicated}")));
 }
