@@ -66,7 +66,7 @@ absl::StatusOr<AutotuneResult> GetBestAlgorithm(
     const std::function<absl::StatusOr<se::blas::ProfileResult>(const AlgoT&)>&
         run_benchmark) {
   if (!stream->parent()->SynchronizeAllActivity()) {
-    return InternalError("Failed to synchronize GPU for autotuning.");
+    return Internal("Failed to synchronize GPU for autotuning.");
   }
 
   se::DeviceMemoryBase reference_buffer;
@@ -155,7 +155,7 @@ absl::StatusOr<AutotuneResult> GetBestAlgorithm(
         return best;
       }
     }
-    return InternalError("unknown best algorithm");
+    return Internal("unknown best algorithm");
   }
 
   LOG(WARNING) << "Failed to find best cuBLAS algorithm, GEMM performance "
@@ -206,7 +206,7 @@ absl::StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
     case GemmBackendConfig::BIAS_GELU_AUX:
       return BlasLt::Epilogue::kBiasThenGELUWithAux;
     default:
-      return InternalError("Unsupported Epilogue.");
+      return Internal("Unsupported Epilogue.");
   }
 }
 

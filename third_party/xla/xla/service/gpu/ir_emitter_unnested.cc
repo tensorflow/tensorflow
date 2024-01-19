@@ -236,7 +236,7 @@ absl::StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnfMHAKind(
     case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmaxDropout:
       return xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout;
     default:
-      return xla::InternalError("Unsupported fused_mha_dag_signature");
+      return xla::Internal("Unsupported fused_mha_dag_signature");
   }
 }
 
@@ -264,7 +264,7 @@ absl::StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
       return xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout;
       break;
     default:
-      return xla::InternalError("Unsupported fused_mha_backward_dag_signature");
+      return xla::Internal("Unsupported fused_mha_backward_dag_signature");
   }
 }
 
@@ -945,7 +945,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     descriptor.backend_config.set_side_input_scale(
         conv.getSideInputScale().convertToDouble());
   } else {
-    return InternalError("EmitConvolutionThunk: Unexpected operation");
+    return Internal("EmitConvolutionThunk: Unexpected operation");
   }
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(descriptor, ""));
   AddThunkToThunkSequence(std::make_unique<ConvolutionThunk>(
@@ -1120,7 +1120,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
   } else if (auto reorder = dyn_cast<CudnnConvReorderFilterOp>(op)) {
     TF_RETURN_IF_ERROR(set_filter_data(reorder));
   } else {
-    return InternalError("Unexpected operation");
+    return Internal("Unexpected operation");
   }
 
   auto thunk = std::make_unique<ConvolutionReorderThunk>(
@@ -1303,7 +1303,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
     descriptor.kind = kind;
     TF_RETURN_IF_ERROR(populate_common(fmha_op));
   } else {
-    return InternalError("Unexpected operation");
+    return Internal("Unexpected operation");
   }
   TF_ASSIGN_OR_RETURN(GpufMHAConfig config, GpufMHAConfig::For(descriptor));
   AddThunkToThunkSequence(std::make_unique<FusedMHAThunk>(
@@ -1510,7 +1510,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
     descriptor.kind = kind;
     TF_RETURN_IF_ERROR(populate_common(fmha_backward_op));
   } else {
-    return InternalError("Unexpected operation");
+    return Internal("Unexpected operation");
   }
   TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig config,
                       GpufMHABackwardConfig::For(descriptor));
@@ -1540,7 +1540,7 @@ absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(mlir::Operation* op) {
   auto radix_sort_op = mlir::cast<mlir::lmhlo_gpu::RadixSortOp>(op);
   if (radix_sort_op.getInputs().size() != 1 &&
       radix_sort_op.getInputs().size() != 2) {
-    return InternalError("Invalid number of operands for radix sort");
+    return Internal("Invalid number of operands for radix sort");
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> operands,
@@ -1842,8 +1842,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
       // We already checked `handler` above.
       break;
     default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           custom_call.getApiVersion());
+      return Internal("Unknown custom-call API version enum value: %d",
+                      custom_call.getApiVersion());
   }
 
   auto backend_config =
@@ -1869,8 +1869,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
           "Unsupported backend config. Expected a dictionary attribute");
 
     default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           custom_call.getApiVersion());
+      return Internal("Unknown custom-call API version enum value: %d",
+                      custom_call.getApiVersion());
   }
 
   auto ffi_thunk = [&] {
@@ -2006,8 +2006,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
       // We already checked `handler` above.
       break;
     default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           instr->api_version());
+      return Internal("Unknown custom-call API version enum value: %d",
+                      instr->api_version());
   }
 
   auto& backend_config_str = instr->raw_backend_config_string();
@@ -2035,8 +2035,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
       break;
 
     default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           instr->api_version());
+      return Internal("Unknown custom-call API version enum value: %d",
+                      instr->api_version());
   }
 
   auto ffi_thunk = [&] {
@@ -3539,8 +3539,8 @@ absl::Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
           shaped_slices.push_back(shaped_slice);
           return absl::OkStatus();
         }
-        return InternalError("Unexpected shape kind for %s and shape index %s",
-                             instr->ToString(), index.ToString());
+        return Internal("Unexpected shape kind for %s and shape index %s",
+                        instr->ToString(), index.ToString());
       }));
 
   auto thunk = std::make_unique<InfeedThunk>(
@@ -3576,8 +3576,8 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
           shaped_slices.push_back(shaped_slice);
           return absl::OkStatus();
         }
-        return InternalError("Unexpected shape kind for %s and shape index %s",
-                             source->ToString(), index.ToString());
+        return Internal("Unexpected shape kind for %s and shape index %s",
+                        source->ToString(), index.ToString());
       }));
 
   auto thunk = std::make_unique<OutfeedThunk>(
@@ -3788,7 +3788,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
 
 absl::Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter) {
-  return InternalError("This should be unreachable");
+  return Internal("This should be unreachable");
 }
 
 static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
@@ -3973,7 +3973,7 @@ absl::Status IrEmitterUnnested::EmitOp(
   }
 
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
-    return InternalError(
+    return Internal(
         "TriangularSolve is implemented as a custom-call; we do not expect to "
         "lower a true HLO TriangularSolve op.");
   }
@@ -4189,7 +4189,7 @@ absl::Status IrEmitterUnnested::EmitOp(
         Cast<HloRecvDoneInstruction>(hlo_for_lmhlo.at(op)));
   }
 
-  return InternalError("Unrecognized op: %s", llvm_ir::DumpToString(op));
+  return Internal("Unrecognized op: %s", llvm_ir::DumpToString(op));
 }
 
 absl::Status IrEmitterUnnested::EmitLmhloRegion(
@@ -4232,8 +4232,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         case HloOpcode::kAllToAll:
           return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
         default:
-          return InternalError("Unsupported async done wrapped instruction: %s",
-                               HloOpcodeString(wrapped->opcode()));
+          return Internal("Unsupported async done wrapped instruction: %s",
+                          HloOpcodeString(wrapped->opcode()));
       }
     }
     case HloOpcode::kAsyncStart: {
@@ -4252,9 +4252,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               Thunk::kNcclAllToAll, instr, all_to_all, std::nullopt);
         }
         default:
-          return InternalError(
-              "Unsupported async start wrapped instruction: %s",
-              HloOpcodeString(wrapped->opcode()));
+          return Internal("Unsupported async start wrapped instruction: %s",
+                          HloOpcodeString(wrapped->opcode()));
       }
     }
 
@@ -4340,19 +4339,19 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kTuple:
       return absl::OkStatus();
     default:
-      return InternalError("Unsupported instruction opcode: %s",
-                           HloOpcodeString(instr->opcode()));
+      return Internal("Unsupported instruction opcode: %s",
+                      HloOpcodeString(instr->opcode()));
   }
 
-  return InternalError("Unhandled HLO instruction");
+  return Internal("Unhandled HLO instruction");
 }
 
 absl::Status IrEmitterUnnested::EmitHloComputation(
     const HloComputation* computation) {
   const HloSchedule& schedule = computation->parent()->schedule();
   if (!schedule.is_computation_scheduled(computation))
-    return InternalError("Sequence not found for computation: %s",
-                         computation->name());
+    return Internal("Sequence not found for computation: %s",
+                    computation->name());
 
   const HloInstructionSequence& sequence = schedule.sequence(computation);
   for (HloInstruction* instr : sequence.instructions()) {

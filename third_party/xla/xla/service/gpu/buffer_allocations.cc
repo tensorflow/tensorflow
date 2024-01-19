@@ -104,7 +104,7 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
 absl::Status BufferAllocations::AddExternalAllocation(
     BufferAllocation::Index index, se::DeviceMemoryBase memory) const {
   if (external_allocations_ == nullptr) {
-    return InternalError(
+    return Internal(
         "Calling external allocations, but no allocation tracker is provided"
         "for allocation %d",
         index);
@@ -115,7 +115,7 @@ absl::Status BufferAllocations::AddExternalAllocation(
 absl::Status BufferAllocations::EraseExternalAllocation(
     BufferAllocation::Index index) const {
   if (external_allocations_ == nullptr) {
-    return InternalError(
+    return Internal(
         "Calling external allocations, but no allocation tracker is provided"
         "for allocation %d",
         index);

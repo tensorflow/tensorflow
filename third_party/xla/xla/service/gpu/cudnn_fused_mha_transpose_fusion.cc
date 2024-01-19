@@ -98,7 +98,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
         new_bmm_dot_dims = config.bmm2_grad_gemm2_dot_dimension_numbers();
         break;
       default:
-        return InternalError("Invalid operand index.");
+        return Internal("Invalid operand index.");
     }
   }
   absl::Span<const int64_t> checked_dims;
@@ -130,7 +130,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
     auto itr =
         std::find(inverse_perm.begin(), inverse_perm.end(), checked_dims[i]);
     if (itr == inverse_perm.end()) {
-      return InternalError("Invalid inverse perm");
+      return Internal("Invalid inverse perm");
     }
     new_bmm_checked_dims[i] = std::distance(inverse_perm.begin(), itr);
   }
@@ -164,7 +164,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
     auto itr =
         std::find(inverse_perm.begin(), inverse_perm.end(), batch_dims[i]);
     if (itr == inverse_perm.end()) {
-      return InternalError("Invalid inverse perm");
+      return Internal("Invalid inverse perm");
     }
     new_bmm_batch_dims[i] = std::distance(inverse_perm.begin(), itr);
   }
@@ -244,7 +244,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
                              transpose_permutation.end(),
                              bmm2_grad_gemm1_contracting_dims[0]);
         if (itr == transpose_permutation.end()) {
-          return InternalError(
+          return Internal(
               "bmm2 gradident gemm1 contracting dimension not found.");
         }
         int64_t index = std::distance(transpose_permutation.begin(), itr);
@@ -272,7 +272,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
         break;
       }
       default:
-        return InternalError("Invalid operand index.");
+        return Internal("Invalid operand index.");
     }
   }
 

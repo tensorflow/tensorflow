@@ -624,7 +624,7 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   }
 
   if (output_buffers.empty()) {
-    return InternalError("Output buffers should not be empty");
+    return Internal("Output buffers should not be empty");
   }
 
   Shape update_shape = dus_instrs[0]->operand(1)->shape();

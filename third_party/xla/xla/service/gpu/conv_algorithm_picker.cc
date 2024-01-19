@@ -149,10 +149,10 @@ absl::StatusOr<std::vector<GenericConvRunner>> GetAlgorithms(
 
   switch (kind) {
     default:
-      return InternalError("Unknown ConvolutionKind %d", kind);
+      return Internal("Unknown ConvolutionKind %d", kind);
     case se::dnn::ConvolutionKind::FORWARD_BIAS_ACTIVATION: {
       if (!config.fusion) {
-        return InternalError(
+        return Internal(
             "GpuConvConfig had fusion ConvolutionKind but no FusionConfig.");
       }
       std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
@@ -395,7 +395,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   // Make sure any previous activity on this executor is done. We don't want
   // other work still running on the GPU to interfere with autotuning.
   if (!stream_exec->SynchronizeAllActivity()) {
-    return InternalError(
+    return Internal(
         "Failed to synchronize GPU for autotuning conv instruction");
   }
 
@@ -404,7 +404,7 @@ absl::StatusOr<AutotuneResult> GpuConvAlgorithmPicker::PickBestAlgorithmNoCache(
   se::DeviceMemoryAllocator* allocator = config_.GetAllocator();
 
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config_.GetStream());
-  absl::StatusOr<AutotuneResult> result_or(InternalError("Unknown platform."));
+  StatusOr<AutotuneResult> result_or(Internal("Unknown platform."));
   // Check StreamExecutor on which platform it is. ROCm and Cuda implementation
   // have diverged. Specifically, we need to make sure redzone allocator related
   // utilities are not used in ROCm routine
@@ -924,7 +924,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmWithAllocatedBuffer(
       /*instr=*/nullptr, stream,
       /*instruction_info=*/std::nullopt, autotune_runtime_arguments);
 #else
-  return InternalError("CUDA is not enabled");
+  return Internal("CUDA is not enabled");
 #endif
 }
 
@@ -1124,6 +1124,7 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   *backend_config.mutable_algorithm() = best_algo.algorithm();
   backend_config.mutable_algorithm()->mutable_workspace_size()->set_value(
       best_algo.scratch_bytes());
+
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));
 

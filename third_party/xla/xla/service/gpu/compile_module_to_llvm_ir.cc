@@ -154,7 +154,7 @@ static absl::Status LowerToXlaGpuRuntime(
     llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
     const HloModule* hlo_module, se::GpuComputeCapability compute_capability) {
   if (!module) {
-    return InternalError("No MLIR module to lower.");
+    return Internal("No MLIR module to lower.");
   }
 
   const DebugOptions& debug_options = hlo_module->config().debug_options();
@@ -173,7 +173,7 @@ static absl::Status LowerToXlaGpuRuntime(
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
   for (int command_type_num : debug_options.xla_gpu_enable_command_buffer()) {
     if (!DebugOptions::CommandBufferCmdType_IsValid(command_type_num)) {
-      return InternalError("Invalid command buffer command type");
+      return Internal("Invalid command buffer command type");
     }
     DebugOptions::CommandBufferCmdType command_type =
         static_cast<DebugOptions::CommandBufferCmdType>(command_type_num);
@@ -189,7 +189,7 @@ static absl::Status LowerToXlaGpuRuntime(
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
-    return InternalError("Failed to lower LMHLO to Gpu runtime custom calls.");
+    return Internal("Failed to lower LMHLO to Gpu runtime custom calls.");
   }
 
   return absl::OkStatus();

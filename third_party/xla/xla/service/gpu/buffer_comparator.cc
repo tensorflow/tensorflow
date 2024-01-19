@@ -66,8 +66,8 @@ static absl::StatusOr<bool> DeviceCompare(se::Stream* stream,
 
   stream->ThenMemZero(out_param.ptr(), sizeof(uint64_t));
   if (current.size() != expected.size()) {
-    return InternalError("Mismatched buffer size: %d bytes vs. %d bytes",
-                         current.size(), expected.size());
+    return Internal("Mismatched buffer size: %d bytes vs. %d bytes",
+                    current.size(), expected.size());
   }
 
   se::DeviceMemory<ElementT> current_typed(current);

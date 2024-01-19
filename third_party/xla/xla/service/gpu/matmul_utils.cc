@@ -395,7 +395,7 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       TF_RET_CHECK(alpha_imag == 0);
       if (lhs_layout.dtype != PrimitiveType::S8 ||
           rhs_layout.dtype != PrimitiveType::S8) {
-        return InternalError(
+        return Internal(
             "For int32 gemm output only int8 input is supported, got input: "
             "%s, %s",
             primitive_util::LowercasePrimitiveTypeName(lhs_layout.dtype),
@@ -403,9 +403,9 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       }
       break;
     default:
-      return InternalError("Unexpected GEMM datatype: %s",
-                           primitive_util::LowercasePrimitiveTypeName(
-                               output_shape.element_type()));
+      return Internal("Unexpected GEMM datatype: %s",
+                      primitive_util::LowercasePrimitiveTypeName(
+                          output_shape.element_type()));
   }
 
   return GemmConfig{lhs_layout,
@@ -712,7 +712,7 @@ absl::Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
 #undef TYPED_GEMM
 #undef TYPED_GEMM_COMPLEX
-  return InternalError(
+  return Internal(
       "Unexpected GEMM dtype: %s %s %s",
       primitive_util::LowercasePrimitiveTypeName(config.lhs_layout.dtype),
       primitive_util::LowercasePrimitiveTypeName(config.rhs_layout.dtype),
@@ -735,7 +735,7 @@ absl::StatusOr<bool> EpilogueAddsVectorBias(
     case GemmBackendConfig::BIAS_GELU_AUX:
       return true;
     default:
-      return InternalError("Unknown Epilogue.");
+      return Internal("Unknown Epilogue.");
   }
 }
 
@@ -753,7 +753,7 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
     case GemmBackendConfig::BIAS_GELU_AUX:
       return true;
     default:
-      return InternalError("Unknown Epilogue.");
+      return Internal("Unknown Epilogue.");
   }
 }
 
@@ -778,7 +778,7 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     case CublasLtMatmulEpilogue::BiasGeluAux:
       return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
   }
-  return InternalError("unexpected epilogue value");
+  return Internal("unexpected epilogue value");
 }
 
 }  // namespace gpublas_lt

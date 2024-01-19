@@ -96,7 +96,7 @@ absl::StatusOr<Layout> DataLayoutToXlaLayout(
       layout.push_back(feature_dimension);
       break;
     default:
-      return InternalError("Invalid layout %s", DataLayoutString(data_layout));
+      return Internal("Invalid layout %s", DataLayoutString(data_layout));
   }
   return LayoutUtil::MakeLayoutFromMajorToMinor(layout);
 }
@@ -143,9 +143,9 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       break;
     default:
-      return InternalError("Invalid filter layout %s for conv with dnums %s,",
-                           FilterLayoutString(filter),
-                           ConvolutionDimensionNumbersToString(dnums));
+      return Internal("Invalid filter layout %s for conv with dnums %s,",
+                      FilterLayoutString(filter),
+                      ConvolutionDimensionNumbersToString(dnums));
   }
 
   return std::make_tuple(input_layout,
@@ -194,7 +194,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
     } else if (vect_size == 32) {
       input_layout = DataLayout::kBatchDepthYX32;
     } else {
-      return InternalError(
+      return Internal(
           "Invalid input shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
           ShapeUtil::HumanStringWithLayout(input),
@@ -203,7 +203,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(input.layout(), nhwc_input)) {
     input_layout = DataLayout::kBatchYXDepth;
   } else {
-    return InternalError(
+    return Internal(
         "Invalid input layout %s for conv with dnums %s; expected one of (%s, "
         "%s, %s)",
         LayoutUtil::HumanString(input.layout()),
@@ -221,7 +221,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
     } else if (vect_size == 32) {
       filter_layout = FilterLayout::kOutputInputYX32;
     } else {
-      return InternalError(
+      return Internal(
           "Invalid filter shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
           ShapeUtil::HumanStringWithLayout(filter),
@@ -230,7 +230,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(filter.layout(), nhwc_filter)) {
     filter_layout = FilterLayout::kOutputYXInput;
   } else {
-    return InternalError(
+    return Internal(
         "Invalid filter layout %s for conv with dnums %s, expected one of (%s, "
         "%s, %s)",
         LayoutUtil::HumanString(filter.layout()),
@@ -248,7 +248,7 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
     } else if (vect_size == 32) {
       output_layout = DataLayout::kBatchDepthYX32;
     } else {
-      return InternalError(
+      return Internal(
           "Invalid output shape %s for conv with dnums %s.  Most-minor dim "
           "should be 4 or 32, but was %d.",
           ShapeUtil::HumanStringWithLayout(output),
@@ -257,9 +257,9 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(output.layout(), nhwc_output)) {
     output_layout = DataLayout::kBatchYXDepth;
   } else {
-    return InternalError("Invalid output layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(output.layout()),
-                         ConvolutionDimensionNumbersToString(dnums));
+    return Internal("Invalid output layout %s for conv with dnums %s",
+                    LayoutUtil::HumanString(output.layout()),
+                    ConvolutionDimensionNumbersToString(dnums));
   }
 
   return std::make_tuple(input_layout, filter_layout, output_layout);
@@ -465,7 +465,7 @@ absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
     default:
       break;
   }
-  return InternalError("Unexpected convolution kind");
+  return Internal("Unexpected convolution kind");
 }
 
 absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
@@ -494,7 +494,7 @@ absl::StatusOr<se::dnn::FusedMHAKind> GetDNNFusedMHAKindFromCudnnfMHAKind(
     case CudnnfMHAKind::kBackwardSoftmax:
       return se::dnn::FusedMHAKind::BMM1_OUTPUT_INPUT_TYPE;
   }
-  return InternalError("Unexpected fMHA kind");
+  return Internal("Unexpected fMHA kind");
 }
 
 absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
@@ -519,7 +519,7 @@ absl::StatusOr<se::dnn::DataType> GetDNNDataTypeFromPrimitiveType(
     default:
       break;
   }
-  return InternalError("Unsupported convolution datatype");
+  return Internal("Unsupported convolution datatype");
 }
 
 bool RequireDeterminism(const HloModuleConfig& config) {
@@ -566,7 +566,7 @@ absl::Status AllAlgorithmsFailedInternalError(
   for (const auto& result : profile_results) {
     msg << "\n  " << result.failure().msg();
   }
-  return InternalError("%s", msg.str());
+  return Internal("%s", msg.str());
 }
 
 absl::Status NoAlgorithmSuppliedInternalError(

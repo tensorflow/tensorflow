@@ -711,7 +711,7 @@ absl::StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
 
   se::StreamExecutor* stream_exec = config.GetExecutor();
   if (!stream_exec->SynchronizeAllActivity()) {
-    return InternalError("Failed to synchronize GPU for autotuning.");
+    return Internal("Failed to synchronize GPU for autotuning.");
   }
   se::DeviceMemoryAllocator* allocator = config.GetAllocator();
   if (allocator == nullptr) {

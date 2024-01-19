@@ -1849,7 +1849,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return gemm_config.output_layout.order ==
              MatrixLayout::Order::kColumnMajor;
     } else {
-      return InternalError("Invalid matrix name.");
+      return Internal("Invalid matrix name.");
     }
   }
 

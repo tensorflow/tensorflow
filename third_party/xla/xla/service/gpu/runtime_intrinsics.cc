@@ -58,7 +58,7 @@ absl::Status AssertOnGpu(void* stream_handle, void* buffer,
                       platform->GetExecutor(config));
   se::Stream* stream = executor->FindAllocatedStream(stream_handle);
   if (!stream) {
-    return InternalError("Stream not found for: %p", stream_handle);
+    return Internal("Stream not found for: %p", stream_handle);
   }
 
   int8_t expected = false;
@@ -69,7 +69,7 @@ absl::Status AssertOnGpu(void* stream_handle, void* buffer,
       byte_size);
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   if (!static_cast<bool>(expected)) {
-    return InternalError("%s", error_msg);
+    return Internal("%s", error_msg);
   }
 
   return absl::OkStatus();

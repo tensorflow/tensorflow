@@ -131,7 +131,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     return result;
   }
 
-  return InternalError("No XLA gpu executable was provided");
+  return Internal("No XLA gpu executable was provided");
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -195,7 +195,7 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "}, but was {" << std::get<se::CudaComputeCapability>(cc).ToString()
         << "}";
   } else {
-    return InternalError("Unknown platform");
+    return Internal("Unknown platform");
   }
 
   return absl::OkStatus();
@@ -407,7 +407,7 @@ absl::Status MaybeSyncAndProfile(
   if (stream_to_sync) {
     absl::Status block_status = stream_to_sync->BlockHostUntilDone();
     if (!block_status.ok()) {
-      return InternalError(
+      return Internal(
           "Failed to complete all kernels launched on stream %p: %s",
           stream_to_sync, block_status.message());
     }
@@ -574,7 +574,7 @@ static absl::Status CheckAlignment(const BufferAllocation& allocation,
   }();
   if (!buffer.is_null() &&
       reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment != 0) {
-    return InternalError(
+    return Internal(
         "Address of buffer %d must be a multiple of %x, but "
         "was %p",
         arg_idx, expected_alignment, buffer.opaque());
@@ -1075,8 +1075,8 @@ GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
   auto convert = [&](mlir::func::FuncOp func) -> absl::Status {
     auto signature = type_converter.Convert(func.getFunctionType());
     if (!signature.ok())
-      return InternalError("Failed to convert entry function type: %s",
-                           signature.status().message());
+      return Internal("Failed to convert entry function type: %s",
+                      signature.status().message());
 
     // TODO(ezhulenev): Copy `signature` once FunctionType is copyable.
     auto rt_signature = type_converter.Convert(func.getFunctionType());
@@ -1119,8 +1119,8 @@ static absl::StatusOr<std::vector<int64_t>> GetBufferSizes(
     // Entry function argument must be a statically shaped 1d I8 memref.
     if (memref == nullptr || memref->element_type() != PrimitiveType::S8 ||
         memref->rank() != 1 || runtime::MemrefType::IsDynamic(memref->size(0)))
-      return InternalError("Illegal buffer argument type: %s",
-                           f.operand(0)->ToString());
+      return Internal("Illegal buffer argument type: %s",
+                      f.operand(0)->ToString());
 
     buffer_sizes.push_back(memref->size(0));
   }
@@ -1170,7 +1170,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   runtime::AppendXlaGpuDialectRegistry(context);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);
-  if (!module) return InternalError("Failed to parse AOT compiled module");
+  if (!module) return Internal("Failed to parse AOT compiled module");
 
   // Get the list of functions to be loaded from the object file.
   TF_ASSIGN_OR_RETURN(std::vector<runtime::Executable::LoadFunction> functions,
@@ -1207,8 +1207,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
       hlo_module->name(), std::move(buffer), std::move(functions), symbol_map);
 
   if (!executable.ok())
-    return InternalError("Failed to load XLA Runtime executable: %s",
-                         executable.status().message());
+    return Internal("Failed to load XLA Runtime executable: %s",
+                    executable.status().message());
 
   // Move runtime::Executable ownership to the GpuRuntimeExecutable.
   TF_ASSIGN_OR_RETURN(auto gpu_runtime_executable,

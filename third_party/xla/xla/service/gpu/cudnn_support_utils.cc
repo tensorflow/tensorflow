@@ -130,7 +130,7 @@ CudnnInferTransposeForFilterReordering(
   // A normal filter should have four dimensions: [O, I, H, W]
   // An already vectorized filter will have five: [O, I/k, H, W, k]; k=4|32
   if (shape.rank() != 4 && shape.rank() != 5) {
-    return InternalError("Filter shape has unexpected rank.");
+    return Internal("Filter shape has unexpected rank.");
   }
 
   // Get convolution dimension numbers.
@@ -148,7 +148,7 @@ CudnnInferTransposeForFilterReordering(
   if (shape.dimensions(dO) % 32 != 0 ||
       shape.dimensions(dI) % (32 / vsize) != 0 ||
       (revectorize && vsize != 4 && vsize != 32)) {
-    return InternalError("Filter shape is not vectorizable.");
+    return Internal("Filter shape is not vectorizable.");
   }
 
   // Build the resulting shape: [O, I/32, H, W, 32]
@@ -197,10 +197,10 @@ absl::StatusOr<CudnnReorderTransposeConfig>
 CudnnInferTransposeForBiasReordering(const Shape& shape) {
   // Expected bias has one dimension: [O]
   if (shape.rank() != 1) {
-    return InternalError("Bias shape has unexpected rank.");
+    return Internal("Bias shape has unexpected rank.");
   }
   if (shape.dimensions(0) % 32 != 0) {
-    return InternalError("Bias shape is not vectorizable.");
+    return Internal("Bias shape is not vectorizable.");
   }
 
   // Build the transposable shape: [O/32, 4, 2, 4]

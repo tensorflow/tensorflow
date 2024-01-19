@@ -214,7 +214,7 @@ absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
   if (target == kCudnnConvBiasActivationForwardCallTarget) {
     return CudnnConvKind::kForwardActivation;
   }
-  return InternalError("Unexpected call target: %s", target);
+  return Internal("Unexpected call target: %s", target);
 }
 
 std::string CudnnConvKindToString(CudnnConvKind kind) {
@@ -270,7 +270,7 @@ absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
     return CudnnfMHAKind::kBackwardScaleBiasSoftmax;
   if (target == kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget)
     return CudnnfMHAKind::kBackwardScaleBiasSoftmaxDropout;
-  return InternalError("Unexpected call target: %s", target);
+  return Internal("Unexpected call target: %s", target);
 }
 
 std::string CudnnfMHAKindToString(CudnnfMHAKind kind) {
@@ -376,7 +376,7 @@ absl::StatusOr<std::string> GetFMHAInstructionPrefix(
       kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget) {
     return "fmha-bmm-scale-bias-softmax-dropout-bmm-backward";
   }
-  return InternalError("Unexpected call target: %s", custom_call_target);
+  return Internal("Unexpected call target: %s", custom_call_target);
 }
 
 // Give fmha instruction a more useful name than "custom-call.42".

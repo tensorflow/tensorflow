@@ -243,7 +243,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
 
   if (instr->operand_count() > 2 && kind != CudnnConvKind::kForwardActivation &&
       kind != CudnnConvKind::kForwardGraph) {
-    return InternalError(
+    return Internal(
         "Invalid convolution. Conv has a side input, but kind is not fused "
         "conv forward or graph conv foward: %s",
         instr->ToString());
