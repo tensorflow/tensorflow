@@ -46,7 +46,7 @@ namespace gpu {
 using mlir::lmhlo_gpu::CollectivePermuteStartOp;
 
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, const NcclApi* nccl_api, CollectivePermuteStartOp op,
+    ThunkInfo thunk_info, NcclApi* nccl_api, CollectivePermuteStartOp op,
     int64_t replica_count, int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
                           nccl_api, op.getIsSync()),
@@ -54,7 +54,7 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
       buffer_(buffer) {}
 
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, const NcclApi* nccl_api,
+    ThunkInfo thunk_info, NcclApi* nccl_api,
     const HloCollectivePermuteInstruction* instr, int64_t replica_count,
     int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
@@ -225,14 +225,14 @@ absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
-  return ::xla::gpu::RunCollectivePermute(source_target, device_buffers[0],
-                                          stream, comm, device_string,
-                                          current_id);
+  return ::xla::gpu::RunCollectivePermute(nccl_api(), source_target,
+                                          device_buffers[0], stream, comm,
+                                          device_string, current_id);
 }
 
 absl::Status RunCollectivePermute(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, NcclApi::NcclCommHandle comm,
+    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
     absl::string_view device_string, int64_t current_id) {
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID
@@ -275,25 +275,25 @@ absl::Status RunCollectivePermute(
   // GroupStart/End API is needed only if we will issue both send & recv calls.
   const bool is_nccl_group_needed = (target_id && source_id);
   if (is_nccl_group_needed) {
-    TF_RETURN_IF_ERROR(NcclApi::GroupStart());
+    TF_RETURN_IF_ERROR(nccl_api->GroupStart());
   }
 
   // Send source buffer to target peer if needed.
   if (target_id) {
-    TF_RETURN_IF_ERROR(NcclApi::Send(src_addr, buffer.element_type,
-                                     buffer.element_count, *target_id, comm,
-                                     &stream));
+    TF_RETURN_IF_ERROR(nccl_api->Send(src_addr, buffer.element_type,
+                                      buffer.element_count, *target_id, comm,
+                                      &stream));
   }
 
   // Receive data from the source peer to the destination buffer.
   if (source_id) {
-    TF_RETURN_IF_ERROR(NcclApi::Recv(dest_addr, buffer.element_type,
-                                     buffer.element_count, *source_id, comm,
-                                     &stream));
+    TF_RETURN_IF_ERROR(nccl_api->Recv(dest_addr, buffer.element_type,
+                                      buffer.element_count, *source_id, comm,
+                                      &stream));
   }
 
   if (is_nccl_group_needed) {
-    TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
+    TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
   }
 
   if (!source_id) {

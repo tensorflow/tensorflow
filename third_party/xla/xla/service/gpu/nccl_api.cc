@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
@@ -276,9 +275,53 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
 // itself. It is available only if NCCL + CUDA are configured at compile time.
 class DefaultNcclApi final : public NcclApi {
  public:
+  absl::StatusOr<NcclCliqueId> GetUniqueId() final;
+
+  absl::StatusOr<NcclCommHandle> CommInitRank(int32_t nranks,
+                                              const NcclCliqueId& clique_id,
+                                              int32_t rank) final;
+
+  absl::Status CommAbort(NcclCommHandle comm) final;
+
+  absl::StatusOr<int32_t> CommCount(NcclCommHandle comm) final;
+
+  absl::Status CommGetAsyncError(NcclCommHandle comm) final;
+
+  absl::Status GroupStart() final;
+  absl::Status GroupEnd() final;
+
+  absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, ReductionKind reduction_kind,
+                         NcclCommHandle comm, se::Stream* stream) final;
+
+  absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
+                             se::DeviceMemoryBase recv_buffer,
+                             PrimitiveType dtype, size_t count,
+                             ReductionKind reduction_kind, NcclCommHandle comm,
+                             se::Stream* stream) final;
+
+  absl::Status AllGather(se::DeviceMemoryBase send_buffer,
+                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                         size_t count, NcclCommHandle comm,
+                         se::Stream* stream) final;
+
+  absl::Status Send(se::DeviceMemoryBase send_buffer, PrimitiveType dtype,
+                    size_t count, int32_t peer, NcclCommHandle comm,
+                    se::Stream* stream) final;
+
+  absl::Status Recv(se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
+                    size_t count, int32_t peer, NcclCommHandle comm,
+                    se::Stream* stream) final;
+
+  absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
+      NcclCommHandle comm, se::DeviceMemoryBase buffer) final;
+
+  absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
+      NcclCommHandle comm, NcclRegisteredBufferHandle handle) final;
 };
 
-const NcclApi* NcclApi::Default() {
+NcclApi* NcclApi::Default() {
   static auto* nccl_api = new DefaultNcclApi();
   return nccl_api;
 }
@@ -292,22 +335,14 @@ static ncclUniqueId AsNcclUniqueId(const NcclCliqueId& clique_id) {
   return id;
 }
 
-absl::StatusOr<se::DeviceMemoryBase> NcclApi::Slice(se::DeviceMemoryBase buff,
-                                                    PrimitiveType dtype,
-                                                    size_t offset,
-                                                    size_t count) {
-  size_t multiplier = ShapeUtil::ByteSizeOfPrimitiveType(dtype);
-  return buff.GetByteSlice(offset * multiplier, count * multiplier);
-}
-
-absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
+absl::StatusOr<NcclCliqueId> DefaultNcclApi::GetUniqueId() {
   VLOG(3) << "Get NCCL unique id";
   ncclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
   return NcclCliqueId(id.internal);
 }
 
-absl::StatusOr<NcclApi::NcclCommHandle> NcclApi::CommInitRank(
+absl::StatusOr<NcclApi::NcclCommHandle> DefaultNcclApi::CommInitRank(
     int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) {
   VLOG(1) << "Initialize NCCL communicator for rank #" << rank << " of "
           << nranks << "; hash(id)=" << absl::HashOf(clique_id.data());
@@ -323,19 +358,19 @@ absl::StatusOr<NcclApi::NcclCommHandle> NcclApi::CommInitRank(
   return Cast(comm);
 }
 
-absl::Status NcclApi::CommAbort(NcclCommHandle comm) {
+absl::Status DefaultNcclApi::CommAbort(NcclCommHandle comm) {
   VLOG(1) << "Abort NCCL communicator: " << comm;
   return XLA_NCCL_STATUS(ncclCommAbort(Cast(comm)));
 }
 
-absl::StatusOr<int32_t> NcclApi::CommCount(NcclCommHandle comm) {
+absl::StatusOr<int32_t> DefaultNcclApi::CommCount(NcclCommHandle comm) {
   VLOG(5) << "Get the number of ranks in NCCL communicator: " << comm;
   int32_t count;
   XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(Cast(comm), &count));
   return count;
 }
 
-absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {
+absl::Status DefaultNcclApi::CommGetAsyncError(NcclCommHandle comm) {
   VLOG(5) << "Get last async error for NCCL communicator: " << comm;
 
   ncclResult_t async_err;
@@ -347,21 +382,22 @@ absl::Status NcclApi::CommGetAsyncError(NcclCommHandle comm) {
       ". Last NCCL error (maybe unrelated): ", ncclGetLastError(Cast(comm))));
 }
 
-absl::Status NcclApi::GroupStart() {
+absl::Status DefaultNcclApi::GroupStart() {
   VLOG(5) << "Start NCCL group";
   return XLA_NCCL_STATUS(ncclGroupStart());
 }
 
-absl::Status NcclApi::GroupEnd() {
+absl::Status DefaultNcclApi::GroupEnd() {
   VLOG(5) << "End NCCL group";
   return XLA_NCCL_STATUS(ncclGroupEnd());
 }
 
-absl::Status NcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
-                                se::DeviceMemoryBase recv_buffer,
-                                PrimitiveType dtype, size_t count,
-                                ReductionKind reduction_kind,
-                                NcclCommHandle comm, se::Stream* stream) {
+absl::Status DefaultNcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
+                                       se::DeviceMemoryBase recv_buffer,
+                                       PrimitiveType dtype, size_t count,
+                                       ReductionKind reduction_kind,
+                                       NcclCommHandle comm,
+                                       se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL AllReduce operation on device #%d; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
@@ -378,11 +414,12 @@ absl::Status NcclApi::AllReduce(se::DeviceMemoryBase send_buffer,
       se::gpu::AsGpuStreamValue(stream)));
 }
 
-absl::Status NcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                    se::DeviceMemoryBase recv_buffer,
-                                    PrimitiveType dtype, size_t count,
-                                    ReductionKind reduction_kind,
-                                    NcclCommHandle comm, se::Stream* stream) {
+absl::Status DefaultNcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                           se::DeviceMemoryBase recv_buffer,
+                                           PrimitiveType dtype, size_t count,
+                                           ReductionKind reduction_kind,
+                                           NcclCommHandle comm,
+                                           se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL ReduceScatter operation on device #%d; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; reduction_kind=%s; comm=%p; "
@@ -399,10 +436,11 @@ absl::Status NcclApi::ReduceScatter(se::DeviceMemoryBase send_buffer,
       se::gpu::AsGpuStreamValue(stream)));
 }
 
-absl::Status NcclApi::AllGather(se::DeviceMemoryBase send_buffer,
-                                se::DeviceMemoryBase recv_buffer,
-                                PrimitiveType dtype, size_t count,
-                                NcclCommHandle comm, se::Stream* stream) {
+absl::Status DefaultNcclApi::AllGather(se::DeviceMemoryBase send_buffer,
+                                       se::DeviceMemoryBase recv_buffer,
+                                       PrimitiveType dtype, size_t count,
+                                       NcclCommHandle comm,
+                                       se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL AllGather operation on device #%d; send_buffer=%p; "
       "recv_buffer=%p; dtype=%s; count=%d; comm=%p; stream=%p",
@@ -417,9 +455,10 @@ absl::Status NcclApi::AllGather(se::DeviceMemoryBase send_buffer,
       nccl_dtype, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
-absl::Status NcclApi::Send(se::DeviceMemoryBase send_buffer,
-                           PrimitiveType dtype, size_t count, int32_t peer,
-                           NcclCommHandle comm, se::Stream* stream) {
+absl::Status DefaultNcclApi::Send(se::DeviceMemoryBase send_buffer,
+                                  PrimitiveType dtype, size_t count,
+                                  int32_t peer, NcclCommHandle comm,
+                                  se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Send operation on device #%d; send_buffer=%p; dtype=%s; "
       "count=%d; peer=%d; comm=%p; stream=%p",
@@ -434,9 +473,10 @@ absl::Status NcclApi::Send(se::DeviceMemoryBase send_buffer,
                peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
-absl::Status NcclApi::Recv(se::DeviceMemoryBase recv_buffer,
-                           PrimitiveType dtype, size_t count, int32_t peer,
-                           NcclCommHandle comm, se::Stream* stream) {
+absl::Status DefaultNcclApi::Recv(se::DeviceMemoryBase recv_buffer,
+                                  PrimitiveType dtype, size_t count,
+                                  int32_t peer, NcclCommHandle comm,
+                                  se::Stream* stream) {
   VLOG(3) << absl::StreamFormat(
       "Launch NCCL Recv operation on device #%d; recv_buffer=%p; dtype=%s; "
       "count=%d; peer=%d; comm=%p; stream=%p",
@@ -451,8 +491,9 @@ absl::Status NcclApi::Recv(se::DeviceMemoryBase recv_buffer,
                peer, Cast(comm), se::gpu::AsGpuStreamValue(stream)));
 }
 
-absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::RegisterBuffer(
-    NcclCommHandle comm, se::DeviceMemoryBase buffer) {
+absl::StatusOr<NcclApi::NcclRegisteredBufferHandle>
+DefaultNcclApi::RegisterBuffer(NcclCommHandle comm,
+                               se::DeviceMemoryBase buffer) {
   VLOG(3) << absl::StreamFormat(
       "Register buffer for NCCL communicator; buffer=%p; size=%d; comm=%p",
       buffer.opaque(), buffer.size(), comm);
@@ -463,8 +504,9 @@ absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::RegisterBuffer(
   return reinterpret_cast<NcclRegisteredBufferHandle>(handle);
 }
 
-absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::DeregisterBuffer(
-    NcclCommHandle comm, NcclRegisteredBufferHandle handle) {
+absl::StatusOr<NcclApi::NcclRegisteredBufferHandle>
+DefaultNcclApi::DeregisterBuffer(NcclCommHandle comm,
+                                 NcclRegisteredBufferHandle handle) {
   VLOG(3) << absl::StreamFormat(
       "Deregister buffer for NCCL communicator; handle=%p; comm=%p", handle,
       comm);

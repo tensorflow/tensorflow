@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
@@ -823,9 +822,11 @@ CommandBufferCmd::BufferUsageVector CustomCallCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 AllReduceCmd::AllReduceCmd(
-    NcclCollectiveConfig config, ReductionKind reduction_kind,
+    NcclApi* nccl_api, NcclCollectiveConfig config,
+    ReductionKind reduction_kind,
     absl::Span<const NcclCollectiveThunk::Buffer> buffers)
-    : config_(std::move(config)),
+    : nccl_api_(nccl_api),
+      config_(std::move(config)),
       reduction_kind_(reduction_kind),
       buffers_(buffers.begin(), buffers.end()) {}
 
@@ -867,8 +868,8 @@ absl::Status AllReduceCmd::Record(const RecordParams& params,
       auto nested_buffer,
       se::CommandBuffer::Trace(
           params.executor, params.trace_stream, [&](se::Stream* stream) {
-            return RunAllReduce(reduction_kind_, device_buffers, *stream,
-                                *comm);
+            return RunAllReduce(nccl_api_, reduction_kind_, device_buffers,
+                                *stream, *comm);
           }));
 
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
@@ -888,9 +889,11 @@ CommandBufferCmd::BufferUsageVector AllReduceCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 ReduceScatterCmd::ReduceScatterCmd(
-    NcclCollectiveConfig config, ReductionKind reduction_kind,
+    NcclApi* nccl_api, NcclCollectiveConfig config,
+    ReductionKind reduction_kind,
     absl::Span<const NcclCollectiveThunk::Buffer> buffers)
-    : config_(std::move(config)),
+    : nccl_api_(nccl_api),
+      config_(std::move(config)),
       reduction_kind_(reduction_kind),
       buffers_(buffers.begin(), buffers.end()) {}
 
@@ -933,8 +936,8 @@ absl::Status ReduceScatterCmd::Record(const RecordParams& params,
       auto nested_buffer,
       se::CommandBuffer::Trace(
           params.executor, params.trace_stream, [&](se::Stream* stream) {
-            return RunReduceScatter(reduction_kind_, device_buffers, *stream,
-                                    *comm);
+            return RunReduceScatter(nccl_api_, reduction_kind_, device_buffers,
+                                    *stream, *comm);
           }));
 
   return command_buffer->AddNestedCommandBuffer(nested_buffer);
@@ -954,9 +957,11 @@ CommandBufferCmd::BufferUsageVector ReduceScatterCmd::buffers() {
 //===----------------------------------------------------------------------===//
 
 AllGatherCmd::AllGatherCmd(
-    NcclCollectiveConfig config,
+    NcclApi* nccl_api, NcclCollectiveConfig config,
     absl::Span<const NcclCollectiveThunk::Buffer> buffers)
-    : config_(std::move(config)), buffers_(buffers.begin(), buffers.end()) {}
+    : nccl_api_(nccl_api),
+      config_(std::move(config)),
+      buffers_(buffers.begin(), buffers.end()) {}
 
 absl::Status AllGatherCmd::Record(const RecordParams& params,
                                   se::CommandBuffer* command_buffer) {
@@ -996,7 +1001,7 @@ absl::Status AllGatherCmd::Record(const RecordParams& params,
       auto nested_buffer,
       se::CommandBuffer::Trace(
           params.executor, params.trace_stream, [&](se::Stream* stream) {
-            return RunAllGather(device_buffers, *stream, *comm);
+            return RunAllGather(nccl_api_, device_buffers, *stream, *comm);
           }));
 
   return command_buffer->AddNestedCommandBuffer(nested_buffer);

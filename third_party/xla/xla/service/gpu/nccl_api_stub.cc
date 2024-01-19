@@ -73,86 +73,77 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() = default;
 // NcclApiStub
 //===----------------------------------------------------------------------===//
 
+static absl::Status UnimplementedError() {
+  return absl::UnimplementedError("XLA compiled without NCCL support");
+}
+
 class NcclApiStub final : public NcclApi {
  public:
+  absl::StatusOr<NcclCliqueId> GetUniqueId() final {
+    return UnimplementedError();
+  }
+
+  absl::StatusOr<NcclCommHandle> CommInitRank(int32_t nranks,
+                                              const NcclCliqueId& clique_id,
+                                              int32_t rank) final {
+    return UnimplementedError();
+  }
+
+  absl::Status CommAbort(NcclCommHandle) final { return UnimplementedError(); }
+
+  absl::StatusOr<int32_t> CommCount(NcclCommHandle) final {
+    return UnimplementedError();
+  }
+
+  absl::Status CommGetAsyncError(NcclCommHandle) final {
+    return UnimplementedError();
+  }
+
+  absl::Status GroupStart() final { return UnimplementedError(); }
+  absl::Status GroupEnd() final { return UnimplementedError(); }
+
+  absl::Status AllReduce(se::DeviceMemoryBase, se::DeviceMemoryBase,
+                         PrimitiveType, size_t, ReductionKind, NcclCommHandle,
+                         se::Stream*) final {
+    return UnimplementedError();
+  }
+
+  absl::Status ReduceScatter(se::DeviceMemoryBase, se::DeviceMemoryBase,
+                             PrimitiveType, size_t, ReductionKind,
+                             NcclCommHandle, se::Stream*) final {
+    return UnimplementedError();
+  }
+
+  absl::Status AllGather(se::DeviceMemoryBase, se::DeviceMemoryBase,
+                         PrimitiveType, size_t, NcclCommHandle,
+                         se::Stream*) final {
+    return UnimplementedError();
+  }
+
+  absl::Status Send(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
+                    NcclCommHandle, se::Stream*) final {
+    return UnimplementedError();
+  }
+
+  absl::Status Recv(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
+                    NcclCommHandle, se::Stream*) final {
+    return UnimplementedError();
+  }
+
+  absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
+      NcclCommHandle, se::DeviceMemoryBase) final {
+    return UnimplementedError();
+  }
+
+  absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
+      NcclCommHandle, NcclRegisteredBufferHandle) final {
+    return UnimplementedError();
+  }
 };
 
-const NcclApi* NcclApi::Default() {
+NcclApi* NcclApi::Default() {
   static auto* nccl_api = new NcclApiStub();
   return nccl_api;
-}
-
-absl::StatusOr<se::DeviceMemoryBase> NcclApi::Slice(se::DeviceMemoryBase,
-                                                    PrimitiveType, size_t,
-                                                    size_t) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::StatusOr<NcclCliqueId> NcclApi::GetUniqueId() {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::StatusOr<NcclApi::NcclCommHandle> NcclApi::CommInitRank(
-    int32_t, const NcclCliqueId&, int32_t) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::CommAbort(NcclCommHandle) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::StatusOr<int32_t> NcclApi::CommCount(NcclCommHandle) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::CommGetAsyncError(NcclCommHandle) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::GroupStart() {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::GroupEnd() {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::AllReduce(se::DeviceMemoryBase, se::DeviceMemoryBase,
-                                PrimitiveType, size_t, ReductionKind,
-                                NcclCommHandle, se::Stream*) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::ReduceScatter(se::DeviceMemoryBase, se::DeviceMemoryBase,
-                                    PrimitiveType, size_t, ReductionKind,
-                                    NcclCommHandle, se::Stream*) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::AllGather(se::DeviceMemoryBase, se::DeviceMemoryBase,
-                                PrimitiveType, size_t, NcclCommHandle,
-                                se::Stream*) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::Send(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
-                           NcclCommHandle, se::Stream*) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::Status NcclApi::Recv(se::DeviceMemoryBase, PrimitiveType, size_t, int32_t,
-                           NcclCommHandle, se::Stream*) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::RegisterBuffer(
-    NcclCommHandle, se::DeviceMemoryBase) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
-}
-
-absl::StatusOr<NcclApi::NcclRegisteredBufferHandle> NcclApi::DeregisterBuffer(
-    NcclCommHandle, NcclRegisteredBufferHandle) {
-  return absl::UnimplementedError("XLA compiled without NCCL support");
 }
 
 }  // namespace xla::gpu

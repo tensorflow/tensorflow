@@ -347,7 +347,8 @@ absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
                              global_rank, stream_id, false, topo_model);
 }
 
-absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
+absl::Status RunMockNcclCollectives(NcclApi* nccl_api,
+                                    std::vector<DeviceBufferPair>& buffers,
                                     se::Stream& stream,
                                     NcclApi::NcclCommHandle comm,
                                     Thunk::Kind reduce_op) {
@@ -402,7 +403,7 @@ absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
   return absl::OkStatus();
 }
 
-absl::Status RunMockNcclAllToAll(bool has_split_dimension,
+absl::Status RunMockNcclAllToAll(NcclApi* nccl_api, bool has_split_dimension,
                                  std::vector<DeviceBufferPair>& buffers,
                                  se::Stream& stream,
                                  NcclApi::NcclCommHandle comm) {
@@ -519,8 +520,8 @@ absl::Status RunMockNcclAllToAll(bool has_split_dimension,
 }
 
 absl::Status RunMockCollectivePermute(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, NcclApi::NcclCommHandle comm,
+    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
     absl::string_view device_string, int64_t current_id) {
   ncclComm_t mock_comm = reinterpret_cast<ncclComm_t>(comm);
 
@@ -600,7 +601,7 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
   NcclApi::NcclCommHandle comm = *lockable_comm.Acquire();
   if (comm == nullptr) return;
 
-  absl::Status status = NcclApi::CommGetAsyncError(comm);
+  absl::Status status = NcclApi::Default()->CommGetAsyncError(comm);
   if (!status.ok()) LOG(ERROR) << status;
 }
 

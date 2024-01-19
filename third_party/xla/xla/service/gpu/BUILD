@@ -969,6 +969,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":nccl_clique_key",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/service:collective_ops_utils",
         "//xla/stream_executor",

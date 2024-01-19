@@ -45,12 +45,12 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectivePermuteInstruction* instr);
 
-  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
+  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                                   mlir::lmhlo_gpu::CollectivePermuteStartOp op,
                                   int64_t replica_count,
                                   int64_t partition_count,
                                   const Buffer& buffer);
-  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
+  NcclCollectivePermuteStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                                   const HloCollectivePermuteInstruction* instr,
                                   int64_t replica_count,
                                   int64_t partition_count,
@@ -74,8 +74,8 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 };
 
 absl::Status RunCollectivePermute(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, NcclApi::NcclCommHandle comm,
+    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
     absl::string_view device_string, int64_t current_id);
 
 }  // namespace gpu

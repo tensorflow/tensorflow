@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
@@ -568,7 +570,8 @@ class CustomCallCmd : public CommandBufferCmd {
 
 class AllReduceCmd : public CommandBufferCmd {
  public:
-  AllReduceCmd(NcclCollectiveConfig config, ReductionKind reduction_kind,
+  AllReduceCmd(NcclApi* nccl_api, NcclCollectiveConfig config,
+               ReductionKind reduction_kind,
                absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const RecordParams& params,
@@ -579,6 +582,7 @@ class AllReduceCmd : public CommandBufferCmd {
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
+  NcclApi* nccl_api_;
   NcclCollectiveConfig config_;
   ReductionKind reduction_kind_;
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
@@ -590,7 +594,8 @@ class AllReduceCmd : public CommandBufferCmd {
 
 class ReduceScatterCmd : public CommandBufferCmd {
  public:
-  ReduceScatterCmd(NcclCollectiveConfig config, ReductionKind reduction_kind,
+  ReduceScatterCmd(NcclApi* nccl_api, NcclCollectiveConfig config,
+                   ReductionKind reduction_kind,
                    absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const RecordParams& params,
@@ -601,6 +606,7 @@ class ReduceScatterCmd : public CommandBufferCmd {
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
+  NcclApi* nccl_api_;
   NcclCollectiveConfig config_;
   ReductionKind reduction_kind_;
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
@@ -612,7 +618,7 @@ class ReduceScatterCmd : public CommandBufferCmd {
 
 class AllGatherCmd : public CommandBufferCmd {
  public:
-  AllGatherCmd(NcclCollectiveConfig config,
+  AllGatherCmd(NcclApi* nccl_api, NcclCollectiveConfig config,
                absl::Span<const NcclCollectiveThunk::Buffer> buffers);
 
   absl::Status Record(const RecordParams& params,
@@ -623,6 +629,7 @@ class AllGatherCmd : public CommandBufferCmd {
   bool IsNestedCommandBuffer() const final { return true; }
 
  private:
+  NcclApi* nccl_api_;
   NcclCollectiveConfig config_;
   std::vector<NcclCollectiveThunk::Buffer> buffers_;
 };

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/service/gpu/gemm_thunk.h"
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
@@ -34,8 +35,6 @@ limitations under the License.
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/runtime3/while_thunk.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -129,18 +128,21 @@ static absl::StatusOr<Command> Convert(const ConditionalThunk& thunk,
 }
 
 static absl::StatusOr<Command> Convert(const NcclAllReduceStartThunk& thunk) {
-  return std::make_unique<AllReduceCmd>(thunk.config(), thunk.reduction_kind(),
+  return std::make_unique<AllReduceCmd>(thunk.nccl_api(), thunk.config(),
+                                        thunk.reduction_kind(),
                                         thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(
     const NcclReduceScatterStartThunk& thunk) {
-  return std::make_unique<ReduceScatterCmd>(
-      thunk.config(), thunk.reduction_kind(), thunk.buffers());
+  return std::make_unique<ReduceScatterCmd>(thunk.nccl_api(), thunk.config(),
+                                            thunk.reduction_kind(),
+                                            thunk.buffers());
 }
 
 static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
-  return std::make_unique<AllGatherCmd>(thunk.config(), thunk.buffers());
+  return std::make_unique<AllGatherCmd>(thunk.nccl_api(), thunk.config(),
+                                        thunk.buffers());
 }
 
 static StatusOr<Command> Convert(const CustomCallThunk& thunk) {
@@ -230,7 +232,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
 
     default:
       return Internal("Unsupported thunk kind: %s",
-                           Thunk::KindToString(thunk.kind()));
+                      Thunk::KindToString(thunk.kind()));
   }
 }
 

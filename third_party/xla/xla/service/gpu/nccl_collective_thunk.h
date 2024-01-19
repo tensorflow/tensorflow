@@ -113,7 +113,7 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
-  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, const NcclApi* nccl_api,
+  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, NcclApi* nccl_api,
                       bool is_sync);
 
   struct Buffer {
@@ -151,6 +151,8 @@ class NcclCollectiveThunk : public Thunk {
   AsyncExecutor* async_executor() { return async_.get(); }
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  NcclApi* nccl_api() const { return nccl_api_; }
+
  protected:
   virtual absl::Status RunNcclCollective(const ExecuteParams& params,
                                          se::Stream& stream,
@@ -166,7 +168,7 @@ class NcclCollectiveThunk : public Thunk {
     return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
-  const NcclApi* nccl_api_;
+  NcclApi* nccl_api_;
 
   bool first_call_to_execute_ = true;
   std::unique_ptr<AsyncExecutor> async_;  // null if not async.
@@ -257,7 +259,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 // communicator to enable zero-copy collectives.
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-Status MaybeRegisterBuffers(int device_ordinal,
+Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
                             const std::vector<DeviceBufferPair>& buffers,
                             NcclApi::NcclCommHandle comm);
 

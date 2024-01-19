@@ -43,7 +43,7 @@ StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
   gpu::NcclCliqueId clique_id;
   int primary_node_id = device_to_node_.at(key.devices()[0]);
   if (node_id_ == primary_node_id) {
-    TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclApi::GetUniqueId());
+    TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclApi::Default()->GetUniqueId());
     TF_RETURN_IF_ERROR(kv_store_->Set(key.ToString(), clique_id.ToString()));
   } else {
     TF_ASSIGN_OR_RETURN(std::string id_str,

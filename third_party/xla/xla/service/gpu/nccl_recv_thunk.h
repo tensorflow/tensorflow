@@ -39,9 +39,9 @@ class NcclRecvThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::RecvOp op);
   static const char* GetHloOpName() { return "recv"; }
 
-  NcclRecvThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
-                mlir::lmhlo::RecvOp op, int64_t replica_count,
-                int64_t partition_count, const Buffer& buffer);
+  NcclRecvThunk(ThunkInfo thunk_info, NcclApi* nccl_api, mlir::lmhlo::RecvOp op,
+                int64_t replica_count, int64_t partition_count,
+                const Buffer& buffer);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
@@ -57,7 +57,8 @@ class NcclRecvThunk : public NcclCollectiveThunk {
   const Buffer buffer_;
 };
 
-absl::Status RunRecv(NcclP2PConfig::SourceTargetMapEntry source_target,
+absl::Status RunRecv(NcclApi* nccl_api,
+                     NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
                      NcclApi::NcclCommHandle comm,
                      absl::string_view device_string, int64_t current_id);

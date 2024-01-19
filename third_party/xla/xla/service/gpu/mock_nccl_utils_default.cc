@@ -55,17 +55,19 @@ absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
   return Unimplemented("LockMockNcclComm is not implemented.");
 }
 
-absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>&, se::Stream&,
-                                    NcclApi::NcclCommHandle, Thunk::Kind) {
+absl::Status RunMockNcclCollectives(NcclApi*, std::vector<DeviceBufferPair>&,
+                                    se::Stream&, NcclApi::NcclCommHandle,
+                                    Thunk::Kind) {
   return Unimplemented("Mock nccl collectives is not implemented.");
 }
 
-absl::Status RunMockNcclAllToAll(bool, std::vector<DeviceBufferPair>&,
+absl::Status RunMockNcclAllToAll(NcclApi*, bool, std::vector<DeviceBufferPair>&,
                                  se::Stream&, NcclApi::NcclCommHandle) {
   return Unimplemented("Mock nccl AllToAll is not implemented.");
 }
 
-absl::Status RunMockCollectivePermute(NcclP2PConfig::SourceTargetMapEntry,
+absl::Status RunMockCollectivePermute(NcclApi*,
+                                      NcclP2PConfig::SourceTargetMapEntry,
                                       DeviceBufferPair&, se::Stream&,
                                       NcclApi::NcclCommHandle,
                                       absl::string_view, int64_t) {

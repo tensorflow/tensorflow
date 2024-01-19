@@ -89,7 +89,7 @@ absl::Status CheckImplementable(AllGatherStartOp op) {
 }  // namespace impl
 
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
-    ThunkInfo thunk_info, const NcclApi* nccl_api, AllGatherStartOp op,
+    ThunkInfo thunk_info, NcclApi* nccl_api, AllGatherStartOp op,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info, nccl_api,
                           op.getIsSync()),
@@ -99,7 +99,7 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 }
 
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
-    ThunkInfo thunk_info, const NcclApi* nccl_api,
+    ThunkInfo thunk_info, NcclApi* nccl_api,
     const HloAllGatherInstruction* inst, std::vector<Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info, nccl_api,
                           inst->backend_config<GpuBackendConfig>()
@@ -140,24 +140,26 @@ absl::Status NcclAllGatherStartThunk::RunNcclCollective(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return xla::gpu::RunAllGather(device_buffers, stream, comm);
+  return xla::gpu::RunAllGather(nccl_api(), device_buffers, stream, comm);
 }
 
-absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
+absl::Status RunAllGather(NcclApi* nccl_api,
+                          std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
 
-  TF_RETURN_IF_ERROR(NcclApi::GroupStart());
+  TF_RETURN_IF_ERROR(nccl_api->GroupStart());
 
   for (DeviceBufferPair& buffer : buffers) {
-    TF_RETURN_IF_ERROR(NcclApi::AllGather(
+    TF_RETURN_IF_ERROR(nccl_api->AllGather(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
         buffer.element_count, comm, &stream));
   }
 
-  TF_RETURN_IF_ERROR(NcclApi::GroupEnd());
+  TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
 
   VLOG(3) << "Done performing all-gather for ordinal: " << device_ordinal;
   return absl::OkStatus();

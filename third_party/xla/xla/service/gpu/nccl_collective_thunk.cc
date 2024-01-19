@@ -190,7 +190,7 @@ NcclCollectiveConfig GetNcclCollectiveConfig(
 }
 
 NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                                         const NcclApi* nccl_api, bool is_sync)
+                                         NcclApi* nccl_api, bool is_sync)
     : Thunk(kind, thunk_info),
       nccl_api_(nccl_api),
       async_(is_sync ? std::make_unique<AsyncExecutor>() : nullptr) {}
@@ -270,7 +270,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
-Status MaybeRegisterBuffers(int device_ordinal,
+Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
                             const std::vector<DeviceBufferPair>& buffers,
                             NcclApi::NcclCommHandle comm) {
   // Keep track of which communicators we have registered for already.
@@ -292,14 +292,14 @@ Status MaybeRegisterBuffers(int device_ordinal,
       if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
         TF_ASSIGN_OR_RETURN(
             NcclApi::NcclRegisteredBufferHandle handle,
-            NcclApi::RegisterBuffer(comm, buffers[i].source_buffer));
+            nccl_api->RegisterBuffer(comm, buffers[i].source_buffer));
         all_registered.handles.push_back(handle);
         all_registered.per_device_comms[device_ordinal].insert(comm);
       }
       if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
         TF_ASSIGN_OR_RETURN(
             NcclApi::NcclRegisteredBufferHandle handle,
-            NcclApi::RegisterBuffer(comm, buffers[i].destination_buffer));
+            nccl_api->RegisterBuffer(comm, buffers[i].destination_buffer));
         all_registered.handles.push_back(handle);
         all_registered.per_device_comms[device_ordinal].insert(comm);
       }

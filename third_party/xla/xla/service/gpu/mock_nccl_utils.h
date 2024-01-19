@@ -52,21 +52,22 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
 
 // Mock a Nccl collective op including all-reduce, all-gather, and
 // reduce-scatter.
-absl::Status RunMockNcclCollectives(std::vector<DeviceBufferPair>& buffers,
+absl::Status RunMockNcclCollectives(NcclApi* nccl_api,
+                                    std::vector<DeviceBufferPair>& buffers,
                                     se::Stream& stream,
                                     NcclApi::NcclCommHandle comm,
                                     Thunk::Kind reduce_op);
 
 // Mock a NCCL-based All-To-All op.
-absl::Status RunMockNcclAllToAll(bool has_split_dimension,
+absl::Status RunMockNcclAllToAll(NcclApi* nccl_api, bool has_split_dimension,
                                  std::vector<DeviceBufferPair>& buffers,
                                  se::Stream& stream,
                                  NcclApi::NcclCommHandle comm);
 
 // Mock a collective permute op.
 absl::Status RunMockCollectivePermute(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, NcclApi::NcclCommHandle comm,
+    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
     absl::string_view device_string, int64_t current_id);
 
 }  // namespace gpu

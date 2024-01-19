@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -44,7 +45,7 @@ class NcclApi {
 
   // Returns a default NcclApi for a current process. Can be a real one based on
   // NCCL or a stub if XLA compiled without NCCL or CUDA support.
-  static const NcclApi* Default();
+  static NcclApi* Default();
 
   // Forward declarations of opaque structs corresponding to underlying platform
   // types (also defined as opaque structs).
@@ -101,104 +102,107 @@ class NcclApi {
 
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
-  static absl::StatusOr<se::DeviceMemoryBase> Slice(se::DeviceMemoryBase buff,
-                                                    PrimitiveType dtype,
-                                                    size_t offset,
-                                                    size_t count);
+  static se::DeviceMemoryBase Slice(se::DeviceMemoryBase buff,
+                                    PrimitiveType dtype, size_t offset,
+                                    size_t count) {
+    size_t multiplier = ShapeUtil::ByteSizeOfPrimitiveType(dtype);
+    return buff.GetByteSlice(offset * multiplier, count * multiplier);
+  }
 
   // Creates a new unique clique id.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclgetuniqueid
-  static absl::StatusOr<NcclCliqueId> GetUniqueId();
+  virtual absl::StatusOr<NcclCliqueId> GetUniqueId() = 0;
 
   // Creates a new communicator.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcomminitrank
-  static absl::StatusOr<NcclCommHandle> CommInitRank(
-      int32_t nranks, const NcclCliqueId& clique_id, int32_t rank);
+  virtual absl::StatusOr<NcclCommHandle> CommInitRank(
+      int32_t nranks, const NcclCliqueId& clique_id, int32_t rank) = 0;
 
   // Abort any uncompleted operations and destroys the communicator. Frees
   // resources that are allocated to a communicator object comm.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommabort
-  static absl::Status CommAbort(NcclCommHandle comm);
+  virtual absl::Status CommAbort(NcclCommHandle comm) = 0;
 
   // Returns the number of ranks in the NCCL communicator comm.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommcount
-  static absl::StatusOr<int32_t> CommCount(NcclCommHandle comm);
+  virtual absl::StatusOr<int32_t> CommCount(NcclCommHandle comm) = 0;
 
   // Queries the progress and potential errors of asynchronous operations
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommgetasyncerror
-  static absl::Status CommGetAsyncError(NcclCommHandle comm);
+  virtual absl::Status CommGetAsyncError(NcclCommHandle comm) = 0;
 
   // Starts a group call.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupstart
-  static absl::Status GroupStart();
+  virtual absl::Status GroupStart() = 0;
 
   // Ends a group call.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/group.html#ncclgroupend
-  static absl::Status GroupEnd();
+  virtual absl::Status GroupEnd() = 0;
 
   // Reduce buffers of length `count` in `send_buff` using `reduction_kind`
   // reduction and leaves identical copies of the result on each `recv_buff`.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclallreduce
-  static absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
-                                se::DeviceMemoryBase recv_buffer,
-                                PrimitiveType dtype, size_t count,
-                                ReductionKind reduction_kind,
-                                NcclCommHandle comm, se::Stream* stream);
+  virtual absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 ReductionKind reduction_kind,
+                                 NcclCommHandle comm, se::Stream* stream) = 0;
 
   // Reduce data in `send_buff` from all GPUs using the `reduction_kind`
   // operation and leave the reduced result scattered over the devices so that
   // the `recv_buff` on rank `i` will contain the i-th block of the result.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclreducescatter
-  static absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                    se::DeviceMemoryBase recv_buffer,
-                                    PrimitiveType dtype, size_t count,
-                                    ReductionKind reduction_kind,
-                                    NcclCommHandle comm, se::Stream* stream);
+  virtual absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                     se::DeviceMemoryBase recv_buffer,
+                                     PrimitiveType dtype, size_t count,
+                                     ReductionKind reduction_kind,
+                                     NcclCommHandle comm,
+                                     se::Stream* stream) = 0;
 
   // Gather `count` values from all GPUs into recv_buffer, receiving data from
   // rank `i` at offset `i * sendcount`.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/colls.html#ncclallgather
-  static absl::Status AllGather(se::DeviceMemoryBase send_buffer,
-                                se::DeviceMemoryBase recv_buffer,
-                                PrimitiveType dtype, size_t count,
-                                NcclCommHandle comm, se::Stream* stream);
+  virtual absl::Status AllGather(se::DeviceMemoryBase send_buffer,
+                                 se::DeviceMemoryBase recv_buffer,
+                                 PrimitiveType dtype, size_t count,
+                                 NcclCommHandle comm, se::Stream* stream) = 0;
 
   // Send data from `send_buff` to rank `peer`.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/p2p.html#ncclsend
-  static absl::Status Send(se::DeviceMemoryBase send_buffer,
-                           PrimitiveType dtype, size_t count, int32_t peer,
-                           NcclCommHandle comm, se::Stream* stream);
+  virtual absl::Status Send(se::DeviceMemoryBase send_buffer,
+                            PrimitiveType dtype, size_t count, int32_t peer,
+                            NcclCommHandle comm, se::Stream* stream) = 0;
 
   // Receive data from rank `peer` into `recv_buff`.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/p2p.html#ncclrecv
-  static absl::Status Recv(se::DeviceMemoryBase recv_buffer,
-                           PrimitiveType dtype, size_t count, int32_t peer,
-                           NcclCommHandle comm, se::Stream* stream);
+  virtual absl::Status Recv(se::DeviceMemoryBase recv_buffer,
+                            PrimitiveType dtype, size_t count, int32_t peer,
+                            NcclCommHandle comm, se::Stream* stream) = 0;
 
   // Register `buffer` with communicator `comm` for zero-copy communication.
   // Returned handle can be used for future unregistration.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommregister
-  static absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
-      NcclCommHandle comm, se::DeviceMemoryBase buffer);
+  virtual absl::StatusOr<NcclRegisteredBufferHandle> RegisterBuffer(
+      NcclCommHandle comm, se::DeviceMemoryBase buffer) = 0;
 
   // Deregister buffer represented by `handle` from communicator `comm`.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclcommderegister
-  static absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
-      NcclCommHandle comm, NcclRegisteredBufferHandle handle);
+  virtual absl::StatusOr<NcclRegisteredBufferHandle> DeregisterBuffer(
+      NcclCommHandle comm, NcclRegisteredBufferHandle handle) = 0;
 };
 
 }  // namespace xla::gpu

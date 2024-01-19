@@ -67,7 +67,7 @@ NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
 }  // namespace
 
 NcclAllToAllStartThunk::NcclAllToAllStartThunk(
-    ThunkInfo thunk_info, const NcclApi* nccl_api, AllToAllStartOp op,
+    ThunkInfo thunk_info, NcclApi* nccl_api, AllToAllStartOp op,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info, nccl_api,
                           op.getIsSync()),
@@ -77,7 +77,7 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
 }
 
 NcclAllToAllStartThunk::NcclAllToAllStartThunk(
-    ThunkInfo thunk_info, const NcclApi* nccl_api,
+    ThunkInfo thunk_info, NcclApi* nccl_api,
     const HloAllToAllInstruction* instr,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
     : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info, nccl_api,
@@ -144,19 +144,19 @@ absl::Status NcclAllToAllStartThunk::RunNcclCollective(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers,
-                               stream, comm);
+  return xla::gpu::RunAllToAll(nccl_api(), config_.has_split_dimension,
+                               device_buffers, stream, comm);
 }
 
-absl::Status RunAllToAll(bool has_split_dimension,
+absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-to-all from device ordinal: " << device_ordinal;
 
-  TF_ASSIGN_OR_RETURN(int32_t num_participants, NcclApi::CommCount(comm));
+  TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 
-  TF_RETURN_IF_ERROR(NcclApi::GroupStart());
+  TF_RETURN_IF_ERROR(nccl_api->GroupStart());
 
   // AllToAll can operate in two modes. Either it specifies a split dimension,
   // in which case inputs are split and outputs concatenated in that dimension
@@ -170,21 +170,19 @@ absl::Status RunAllToAll(bool has_split_dimension,
       size_t chunk_elements = buffer.element_count / num_participants;
 
       for (int peer = 0; peer < num_participants; ++peer) {
-        TF_ASSIGN_OR_RETURN(
-            se::DeviceMemoryBase send_slice,
+        se::DeviceMemoryBase send_slice =
             NcclApi::Slice(buffer.source_buffer, buffer.element_type,
-                           peer * chunk_elements, chunk_elements));
+                           peer * chunk_elements, chunk_elements);
 
-        TF_ASSIGN_OR_RETURN(
-            se::DeviceMemoryBase recv_slice,
+        se::DeviceMemoryBase recv_slice =
             NcclApi::Slice(buffer.destination_buffer, buffer.element_type,
-                           peer * chunk_elements, chunk_elements));
+                           peer * chunk_elements, chunk_elements);
 
-        TF_RETURN_IF_ERROR(NcclApi::Send(send_slice, buffer.element_type,
-                                         chunk_elements, peer, comm, &stream));
+        TF_RETURN_IF_ERROR(nccl_api->Send(send_slice, buffer.element_type,
+                                          chunk_elements, peer, comm, &stream));
 
-        TF_RETURN_IF_ERROR(NcclApi::Recv(recv_slice, buffer.element_type,
-                                         chunk_elements, peer, comm, &stream));
+        TF_RETURN_IF_ERROR(nccl_api->Recv(recv_slice, buffer.element_type,
+                                          chunk_elements, peer, comm, &stream));
       }
     }
   } else {
@@ -194,17 +192,17 @@ absl::Status RunAllToAll(bool has_split_dimension,
     for (size_t i = 0; i < buffers.size(); ++i) {
       DeviceBufferPair& buffer = buffers[i];
 
-      TF_RETURN_IF_ERROR(NcclApi::Send(buffer.source_buffer,
-                                       buffer.element_type,
-                                       buffer.element_count, i, comm, &stream));
+      TF_RETURN_IF_ERROR(
+          nccl_api->Send(buffer.source_buffer, buffer.element_type,
+                         buffer.element_count, i, comm, &stream));
 
-      TF_RETURN_IF_ERROR(NcclApi::Recv(buffer.destination_buffer,
-                                       buffer.element_type,
-                                       buffer.element_count, i, comm, &stream));
+      TF_RETURN_IF_ERROR(
+          nccl_api->Recv(buffer.destination_buffer, buffer.element_type,
+                         buffer.element_count, i, comm, &stream));
     }
   }
 
-  return NcclApi::GroupEnd();
+  return nccl_api->GroupEnd();
 }
 
 }  // namespace gpu

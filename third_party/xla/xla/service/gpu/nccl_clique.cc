@@ -65,7 +65,7 @@ absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
          "GPU, the nccl_clique_id_callback must be provided by the client.";
 
   static auto* local_callback = new NcclCliqueIdCallback(
-      [](const NcclCliqueKey&) { return NcclApi::GetUniqueId(); });
+      [](const NcclCliqueKey&) { return NcclApi::Default()->GetUniqueId(); });
   return local_callback;
 }
 
@@ -172,11 +172,11 @@ void TrackNcclCommunicatorHealth(NcclComm* comm) {
     NcclApi::NcclCommHandle comm = *lockable_comm->Acquire();
     if (comm == nullptr) return absl::OkStatus();
 
-    absl::Status async_err = NcclApi::CommGetAsyncError(comm);
+    absl::Status async_err = NcclApi::Default()->CommGetAsyncError(comm);
     if (!async_err.ok()) {
       LOG(ERROR) << "Aborting communicator: " << comm
                  << " due to async NCCL error: " << async_err;
-      TF_RETURN_IF_ERROR(NcclApi::CommAbort(comm));
+      TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(comm));
     }
 
     return async_err;
@@ -232,7 +232,7 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     int nranks = clique_key.devices().size();
 
     absl::StatusOr<NcclApi::NcclCommHandle> comm =
-        NcclApi::CommInitRank(nranks, state.clique_id, rank);
+        NcclApi::Default()->CommInitRank(nranks, state.clique_id, rank);
 
     size_t num_initialized = [&] {
       absl::MutexLock lock(&state.mu);

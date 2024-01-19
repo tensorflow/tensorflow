@@ -231,7 +231,8 @@ absl::Status MockNcclImplCommon(
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
-  return RunMockNcclCollectives(device_buffers, *stream, **comm, reduce_op);
+  return RunMockNcclCollectives(NcclApi::Default(), device_buffers, *stream,
+                                **comm, reduce_op);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -241,8 +242,8 @@ absl::Status MockNcclImplCommon(
 
 #if XLA_ENABLE_XCCL
 using NcclP2PRunner = absl::FunctionRef<absl::Status(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, NcclApi::NcclCommHandle comm,
+    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
     absl::string_view device_string, int64_t current_id)>;
 
 using DeviceBuffersGetter =
@@ -297,8 +298,8 @@ absl::Status MockNcclP2PImplCommon(
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
 
-  return runner(source_target, (*device_buffers)[0], *stream, **comm,
-                device_string, current_id);
+  return runner(NcclApi::Default(), source_target, (*device_buffers)[0],
+                *stream, **comm, device_string, current_id);
 }
 
 absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
@@ -352,9 +353,9 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
 
   return RunRepeated(debug_options->xla_gpu_collective_inflation_factor(),
                      [&]() -> absl::Status {
-                       return runner(source_target, (*device_buffers)[0],
-                                     *stream, **comm, device_string,
-                                     current_id);
+                       return runner(NcclApi::Default(), source_target,
+                                     (*device_buffers)[0], *stream, **comm,
+                                     device_string, current_id);
                      });
 }
 #endif  // XLA_ENABLE_XCCL
@@ -544,8 +545,9 @@ absl::Status AllGatherImplCommon(
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
   return RunRepeated(
-      debug_options->xla_gpu_collective_inflation_factor(),
-      [&]() { return RunAllGather(device_buffers, *stream, *comm); });
+      debug_options->xla_gpu_collective_inflation_factor(), [&]() {
+        return RunAllGather(NcclApi::Default(), device_buffers, *stream, *comm);
+      });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -623,7 +625,8 @@ absl::Status AllReduceImplCommon(
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunAllReduce(static_cast<ReductionKind>(reduction_kind),
+        return RunAllReduce(NcclApi::Default(),
+                            static_cast<ReductionKind>(reduction_kind),
                             device_buffers, *stream, *comm);
       });
 }
@@ -708,8 +711,8 @@ absl::Status MockAllToAllImplCommon(
 
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
-  return RunMockNcclAllToAll(has_split_dimension, device_buffers, *stream,
-                             **comm);
+  return RunMockNcclAllToAll(NcclApi::Default(), has_split_dimension,
+                             device_buffers, *stream, **comm);
 }
 
 absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
@@ -734,7 +737,8 @@ absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunAllToAll(has_split_dimension, device_buffers, *stream, *comm);
+        return RunAllToAll(NcclApi::Default(), has_split_dimension,
+                           device_buffers, *stream, *comm);
       });
 }
 #endif  // XLA_ENABLE_XCCL
@@ -815,7 +819,8 @@ absl::Status ReduceScatterImplCommon(
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
+        return RunReduceScatter(NcclApi::Default(),
+                                static_cast<ReductionKind>(reduction_kind),
                                 device_buffers, *stream, *comm);
       });
 }

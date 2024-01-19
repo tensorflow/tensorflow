@@ -47,9 +47,9 @@ absl::Status CheckImplementable(SendOp op) {
 
 }  // namespace impl
 
-NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
-                             SendOp op, int64_t replica_count,
-                             int64_t partition_count, const Buffer& buffer)
+NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api, SendOp op,
+                             int64_t replica_count, int64_t partition_count,
+                             const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
                           /*is_sync=*/false),
       config_(GetNcclP2PConfig(op, replica_count, partition_count)),
@@ -93,11 +93,12 @@ absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
-  return ::xla::gpu::RunSend(source_target, device_buffers[0], stream, comm,
-                             device_string, current_id);
+  return ::xla::gpu::RunSend(nccl_api(), source_target, device_buffers[0],
+                             stream, comm, device_string, current_id);
 }
 
-absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
+absl::Status RunSend(NcclApi* nccl_api,
+                     NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
                      NcclApi::NcclCommHandle comm,
                      absl::string_view device_string, int64_t current_id) {
@@ -115,9 +116,9 @@ absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
 
   // Send source buffer to target peer if needed.
   if (target_id) {
-    TF_RETURN_IF_ERROR(NcclApi::Send(src_addr, buffer.element_type,
-                                     buffer.element_type, *target_id, comm,
-                                     &stream));
+    TF_RETURN_IF_ERROR(nccl_api->Send(src_addr, buffer.element_type,
+                                      buffer.element_type, *target_id, comm,
+                                      &stream));
   }
 
   return absl::OkStatus();
