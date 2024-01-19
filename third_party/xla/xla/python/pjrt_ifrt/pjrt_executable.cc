@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
@@ -265,6 +265,7 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtLoadedExecutable::Create(
   TF_ASSIGN_OR_RETURN(
       auto pjrt_loaded_executable,
       client->pjrt_client()->Compile(module, std::move(compile_options)));
+  TF_RETURN_IF_ERROR(UpgradeVersionedStablehlo(module));
 
   if (auto_spmd_partitioning) {
     // TODO(hyeontaek): Use a full shape and a sharding rather than a per-shard

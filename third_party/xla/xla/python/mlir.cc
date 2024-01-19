@@ -178,26 +178,11 @@ StatusOr<py::bytes> PySerializePortableArtifact(std::string mlir_module,
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       ParseModule(&context, mlir_module));
 
-  // Legalize CHLO -> [MHLO+Shape] -> StableHLO
-  mlir::PassManager pm(&context);
-  if (VLOG_IS_ON(3)) EnablePrintBeforeAndAfter(pm);
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createChloLegalizeToHloPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::mhlo::createShapeLegalizeToHloPass());
-  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  if (!mlir::succeeded(pm.run(*module))) {
-    return tsl::errors::InvalidArgument(
-        "CHLO => [MHLO+Shape] => StableHLO failed");
-  }
-
   // Serialize portable artifact
-  std::string buffer;
-  llvm::raw_string_ostream os(buffer);
-  if (failed(mlir::stablehlo::serializePortableArtifact(*module, target, os)))
-    return tsl::errors::InvalidArgument("Failed to serialize StableHLO");
-  return py::bytes(buffer);
+  TF_ASSIGN_OR_RETURN(
+      std::string bytecode,
+      SerializeUsingVersionedStablehlo(*module, target, /*inplace=*/true));
+  return py::bytes(bytecode);
 }
 
 StatusOr<std::string> PyDeserializePortableArtifact(std::string bytecode_str) {

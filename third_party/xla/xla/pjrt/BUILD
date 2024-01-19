@@ -545,6 +545,7 @@ cc_library(
     deps = [
         "//xla:status",
         "//xla:statusor",
+        "//xla:util",
         "//xla/client:xla_computation",
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo",
@@ -561,12 +562,17 @@ cc_library(
         "@llvm-project//mlir:MLProgramDialect",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_serialization",
     ],
 )
 

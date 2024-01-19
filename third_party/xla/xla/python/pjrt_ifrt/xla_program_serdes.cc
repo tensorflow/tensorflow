@@ -21,8 +21,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -30,8 +28,10 @@ limitations under the License.
 #include "stablehlo/api/PortableApi.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace ifrt {
@@ -72,25 +72,10 @@ class XlaProgramSerDes : public llvm::RTTIExtends<XlaProgramSerDes, SerDes> {
     mlir::OwningOpRef<mlir::ModuleOp> module(
         llvm::cast<mlir::ModuleOp>(program.mlir_module->clone()));
 
-    mlir::PassManager pm(module->getContext());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createChloLegalizeToHloPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::mhlo::createShapeLegalizeToHloPass());
-    pm.addPass(mlir::createReconcileUnrealizedCastsPass());
-    pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-    if (!mlir::succeeded(pm.run(*module))) {
-      return absl::InvalidArgumentError(
-          "CHLO => [MHLO+Shape] => StableHLO failed");
-    }
-
     // Serialize portable artifact.
-    std::string serialized;
-    llvm::raw_string_ostream os(serialized);
-    if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
-            *module, mlir::stablehlo::getCurrentVersion(), os))) {
-      return absl::InvalidArgumentError("Failed to serialize StableHLO");
-    }
+    TF_ASSIGN_OR_RETURN(std::string serialized,
+                        xla::SerializeUsingVersionedStablehlo(
+                            *module, mlir::stablehlo::getCurrentVersion()));
     return serialized;
   }
 

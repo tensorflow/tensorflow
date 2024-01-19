@@ -23,10 +23,6 @@ limitations under the License.
 
 namespace xla {
 
-// Converts an mlir::Module to MLIR Bytecode Format, with StableHLO attribute
-// downgrades for limited forward/backward compatibility.
-StatusOr<std::string> SerializeModule(mlir::ModuleOp);
-
 // Converts an MHLO/CHLO module string to an mlir::Module.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
     absl::string_view mlir_module_str, mlir::MLIRContext& context);
@@ -42,27 +38,29 @@ Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple);
 
-// Downgrades stablehlo ops in the module that are using DenseArrays but need to
-// use DenseElements when serialized for backward compatibility. Context: in
-// https://github.com/google/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
-// fields on some ops were changed to use DenseI64ArrayAttr instead of
-// I64DenseElementsAttr (DenseIntElementsAttr). Some clients still expect
-// dense elements, not dense arrays, so convert the arrays to elements before
-// serializing. The elements need to be converted back to arrays when
-// deserializing.
-// TODO: b/320507168 - Delete this function.
-void DowngradeStablehlo(mlir::ModuleOp);
+// Serialize using MLIR Bytecode Format which does not guarantee forward or
+// backward compatiblity of the dialects used. If passing StableHLO with forward
+// or backward compatibility requirements, use SerializeUsingVersionedStablehlo.
+StatusOr<std::string> SerializeUsingNativeBytecode(mlir::ModuleOp mlir_module);
 
-// Upgrades stablehlo ops in the module that are using DenseElements but should
-// be using DenseArrays. Context: in
-// https://github.com/google/jax/commit/184e3a88004680dbf34328b05c5fc0d869cc4a93,
-// fields on some ops were changed to use DenseI64ArrayAttr instead of
-// I64DenseElementsAttr (DenseIntElementsAttr). Some clients still expect
-// dense elements, not dense arrays, so when serializing we always convert the
-// arrays to elements. The elements need to be converted back to arrays when
-// deserializing.
-// TODO: b/320507168 - Delete this function.
-void UpgradeStablehlo(mlir::ModuleOp);
+// Serializes an MLIR module to a portable artifact with forward and backward
+// compatibility. Supports modules using StableHLO/MHLO/CHLO/Func dialects.
+// Target parameter is a StableHLO version string ("0.9.0") which can be used
+// for forward compatibility to specify the target downgrade version.
+// Most commonly should use:
+//   `mlir::stablehlo::getCurrentVersion()` for backward compat but not forward.
+//   `mlir::stablehlo::getMinimumVersion()` for maximum forward compatibility.
+// Ideally should be the `mlir::stablehlo::getCurrentVersion()` of the plugin.
+// If program contains dialects that aren't supposed in StableHLO portable
+// artifacts, use SerializeUsingNativeBytecode.
+StatusOr<std::string> SerializeUsingVersionedStablehlo(
+    mlir::ModuleOp mlir_module, absl::string_view target, bool inplace = false);
+
+// Given a module that might be a portable artifact, deserialize and upgrade it
+// back to StableHLO.
+// If module is not a portable artifact, this method is identity. Only fails
+// on portable artifacts that are outside of the compatibility window.
+Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module);
 
 }  // namespace xla
 

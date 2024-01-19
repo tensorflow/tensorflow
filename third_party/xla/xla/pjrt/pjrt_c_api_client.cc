@@ -38,7 +38,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
@@ -384,11 +383,12 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
-  TF_ASSIGN_OR_RETURN(  // NOLINT(clang-diagnostic-pre-c++20-compat)
-      const std::string module_bytecode, SerializeModule(module));
+  // TODO: Once plugins are ready, use SerializeUsingVersionedStablehlo.
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      xla::SerializeUsingNativeBytecode(module));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
-                                  module_bytecode, format);
+                                  serialized, format);
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -2168,11 +2168,12 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  TF_ASSIGN_OR_RETURN(  // NOLINT(clang-diagnostic-pre-c++20-compat)
-      const std::string module_bytecode, SerializeModule(module));
+  // TODO: Once plugins are ready, use SerializeUsingVersionedStablehlo.
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      xla::SerializeUsingNativeBytecode(module));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
-                                     module_bytecode, format);
+                                     serialized, format);
 }
 
 // -------------------------------- API access ---------------------------------
