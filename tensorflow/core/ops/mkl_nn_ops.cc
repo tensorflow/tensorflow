@@ -474,12 +474,8 @@ REGISTER_OP("_MklNativePadWithFusedConv2D")
     .Input("args: TArgs")
     .Input("paddings: Tpaddings")
     .Output("output: T")
-<<<<<<< HEAD
-    .Attr("T: {bfloat16, float}")
-    .Attr("TArgs: list(type)")
-=======
     .Attr("T: {bfloat16, float, half}")
->>>>>>> master
+    .Attr("TArgs: list(type)")
     .Attr("num_args: int >= 0")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
