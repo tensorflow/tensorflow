@@ -12,24 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# IMPORTANT: trailing slash is required on GCS URIs, as it tells gcloud to
+# pretend the path is a directory.
 # 1. Upload nightlies
 TFCI_ARTIFACT_FINAL_GCS_ENABLE=1
+TFCI_ARTIFACT_FINAL_GCS_SA_PATH="${KOKORO_KEYSTORE_DIR}/73361_tensorflow_release_binary_uploader_service_account"
+TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow/nightly/"
+TFCI_ARTIFACT_FINAL_PYPI_ARGS="--config-file=$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token --repository pypi-warehouse"
 TFCI_ARTIFACT_FINAL_PYPI_ENABLE=1
-# Note: trailing slash is required, as it tells gcloud to pretend the path is a directory.
-# TODO(angerson) Change final URI to gs://tensorflow/ci once fully tested.
-TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_nightly/"
-TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_nightly_latest/"
-TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-artifact-staging/nightly/$(git rev-parse HEAD)/"
+TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow/nightly/latest/"
 TFCI_ARTIFACT_STAGING_GCS_ENABLE=1
-# TODO(angerson) Disable these manual uploads once the artifact staging method is finalized
-TFCI_UPLOAD_LIB_ENABLE=1
-TFCI_UPLOAD_LIB_GCS_URI="gs://libtensorflow-nightly/$(date +%Y-%m-%d)"
-TFCI_UPLOAD_LIB_LATEST_ENABLE=1
-TFCI_UPLOAD_LIB_LATEST_GCS_URI="gs://libtensorflow-nightly/latest"
-TFCI_UPLOAD_WHL_GCS_ENABLE=0
-TFCI_UPLOAD_WHL_GCS_URI=
-TFCI_UPLOAD_WHL_PYPI_ARGS="--config-file=$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token --repository pypi-warehouse"
-TFCI_UPLOAD_WHL_PYPI_ENABLE=1
+TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-artifact-staging/staging/nightly/$(git rev-parse HEAD)/"
 
 # 2. The internal version numbers get changed
 TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1

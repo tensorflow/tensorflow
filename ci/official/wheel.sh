@@ -31,15 +31,6 @@ tfrun bazel build $TFCI_BAZEL_COMMON_ARGS //tensorflow/tools/pip_package/v2:whee
 tfrun cp -a "./bazel-bin/tensorflow/tools/pip_package/v2/wheel_house/." "$TFCI_OUTPUT_DIR"
 tfrun ./ci/official/utilities/rename_and_verify_wheels.sh
 
-if [[ "$TFCI_UPLOAD_WHL_PYPI_ENABLE" == 1 ]]; then
-  twine upload $TFCI_UPLOAD_WHL_PYPI_ARGS "$TFCI_OUTPUT_DIR"/*.whl
-fi
-if [[ "$TFCI_UPLOAD_WHL_GCS_ENABLE" == 1 ]]; then
-  gsutil cp "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_UPLOAD_WHL_GCS_URI"
-fi
-
-# TODO(angerson): Replace individual uploads (above) with this
-# shared output bucket
 if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
   # Note: -n disables overwriting previously created files.
   gsutil cp -n "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_ARTIFACT_STAGING_GCS_URI"

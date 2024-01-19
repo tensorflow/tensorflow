@@ -14,15 +14,15 @@
 # ==============================================================================
 # Release jobs are very basic. They don't use any caching or RBE,
 # but they do upload logs to resultstore.
-
-# Release artifacts are only uploaded into the artifact staging bucket.
+# IMPORTANT: trailing slash is required on GCS URIs, as it tells gcloud to
+# pretend the path is a directory.
 TFCI_ARTIFACT_FINAL_GCS_ENABLE=1
+TFCI_ARTIFACT_FINAL_GCS_SA_PATH="${KOKORO_KEYSTORE_DIR}/73361_tensorflow_release_binary_uploader_service_account"
+TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow/versions/"
+TFCI_ARTIFACT_FINAL_PYPI_ARGS="--config-file=$KOKORO_KEYSTORE_DIR/73361_tensorflow_pypirc_using_global_api_token --repository pypi-warehouse"
 TFCI_ARTIFACT_FINAL_PYPI_ENABLE=1
-# Note: trailing slash is required, as it tells gcloud to pretend the path is a directory.
-# TODO(angerson) Change final URI to gs://tensorflow/ci once fully tested.
-TFCI_ARTIFACT_FINAL_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci/"
-TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow-ci-artifact-staging/_wip_ci_latest/"
-TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-artifact-staging/release/${_LOUHI_EXECUTION_ID:-$(git rev-parse HEAD)}/"
+TFCI_ARTIFACT_LATEST_GCS_URI="gs://tensorflow/versions/latest/"
 TFCI_ARTIFACT_STAGING_GCS_ENABLE=1
+TFCI_ARTIFACT_STAGING_GCS_URI="gs://tensorflow-ci-artifact-staging/staging/versions/${_LOUHI_EXECUTION_ID:-$(git rev-parse HEAD)}/"
 
 TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config resultstore"
