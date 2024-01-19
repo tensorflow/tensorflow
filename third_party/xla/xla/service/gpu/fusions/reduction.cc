@@ -1424,18 +1424,10 @@ ReductionFusion::ComputeReductionCodegenInfo(
   TilingScheme::IndexingOrder indexing_order =
       reduction_dimensions.is_row_reduction ? TilingScheme::StridedIndexingX
                                             : TilingScheme::LinearIndexingX;
-  auto instr_index_groups = GroupDisjointReductions(analysis);
-  int64_t shmem_usage = ReductionProjectedShmemUsageBytes(reduction_dimensions,
-                                                          instr_index_groups);
-  const int64_t shmem_budget = analysis.device_info().shared_memory_per_block();
-  bool reduction_is_race_free = ReductionIsRaceFree(
-      hero_reduction->GetModule()->config(), reduction_dimensions);
-  bool vectorize =
-      // Vectorization might cause us to run out of budget.
-      (shmem_usage * 2 <= shmem_budget) &&
-      CanVectorizeReduction(analysis, reduction_dimensions, num_threads_x,
-                            reduction_tiling);
-  int vector_size = vectorize ? 2 : 1;
+  int vector_size = CanVectorizeReduction(analysis, reduction_dimensions,
+                                          num_threads_x, reduction_tiling)
+                        ? 2
+                        : 1;
 
   Vector3 num_threads = {1, num_threads_y, num_threads_x};
   int virtual_thread_scaling_factor =
@@ -1446,9 +1438,12 @@ ReductionFusion::ComputeReductionCodegenInfo(
   TilingScheme tiling_scheme(reduction_dimensions.dimensions, reduction_tiling,
                              num_threads, indexing_order, vector_size,
                              virtual_thread_scaling_factor);
+  bool reduction_is_race_free = ReductionIsRaceFree(
+      hero_reduction->GetModule()->config(), reduction_dimensions);
   return ReductionCodegenInfo(
       tiling_scheme, reduction_dimensions.is_row_reduction,
-      reduction_is_race_free, std::move(instr_index_groups), hero_reduction);
+      reduction_is_race_free, GroupDisjointReductions(analysis),
+      hero_reduction);
 }
 
 }  // namespace gpu
