@@ -24,22 +24,20 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 
-#ifdef XLA_ENABLE_XCCL
+#ifdef STREAM_EXECUTOR_GPU_ENABLE_XCCL
 #include "third_party/nccl/nccl.h"
-#endif  // XLA_ENABLE_XCCL
+#endif  // STREAM_EXECUTOR_GPU_ENABLE_XCCL
 
 namespace stream_executor::gpu {
 
 /* static */ absl::StatusOr<void*> GpuCollectives::CollectiveMemoryAllocate(
     GpuContext* context, uint64_t bytes) {
-  if (bytes == 0) {
-    return nullptr;
-  }
+  if (bytes == 0) return nullptr;
 
   ScopedActivateContext activated(context);
-  void* ptr = nullptr;
 
-#ifdef XLA_ENABLE_XCCL
+#ifdef STREAM_EXECUTOR_GPU_ENABLE_XCCL
+  void* ptr = nullptr;
   ncclResult_t res = ncclMemAlloc(&ptr, bytes);
   if (res != ncclSuccess) {
     return absl::InternalError(absl::StrFormat(
@@ -48,21 +46,19 @@ namespace stream_executor::gpu {
         tsl::strings::HumanReadableNumBytes(bytes), bytes,
         ncclGetErrorString(res), ncclGetLastError(nullptr)));
   }
-#else
-  return absl::FailedPreconditionError(
-      "NCCL support was not built into XLA binary.");
-#endif
-
   VLOG(2) << "Allocated collective memory " << ptr << " for context "
           << context->context() << " of " << bytes << " bytes";
   return ptr;
+#else
+  return absl::FailedPreconditionError("XLA was compiled without NCCL support");
+#endif
 }
 
 /* static */ absl::Status GpuCollectives::CollectiveMemoryDeallocate(
     GpuContext* context, void* location) {
   ScopedActivateContext activation(context);
 
-#ifdef XLA_ENABLE_XCCL
+#ifdef STREAM_EXECUTOR_GPU_ENABLE_XCCL
   ncclResult_t res = ncclMemFree(location);
   if (res != ncclSuccess) {
     return absl::InternalError(absl::StrFormat(
@@ -70,14 +66,13 @@ namespace stream_executor::gpu {
         "warning(error) log entry (may be unrelated): %s",
         location, ncclGetErrorString(res), ncclGetLastError(nullptr)));
   }
-#else
-  return absl::FailedPreconditionError(
-      "NCCL support was not built into XLA binary.");
-#endif
 
   VLOG(2) << "Deallocated collective memory " << location << " for context "
           << context->context();
   return absl::OkStatus();
+#else
+  return absl::FailedPreconditionError("XLA was compiled without NCCL support");
+#endif
 }
 
 }  // namespace stream_executor::gpu
