@@ -71,7 +71,8 @@ std::string ToString(
     if (i > 0) {
       os << ", ";
     }
-    if constexpr (std::is_same<T, int8_t>::value || std::is_same<T, uint8_t>::value) {
+    if constexpr (std::is_same<T, int8_t>::value ||
+                  std::is_same<T, uint8_t>::value) {
       os << "0x" << std::hex << static_cast<uint32_t>(ptr[i]);
     } else {
       os << ptr[i];
@@ -85,14 +86,13 @@ std::string ToString(
 }
 
 template <typename T, typename... Types>
-inline
-std::string ToString(const std::vector<T, Types...>& vec) {
+inline std::string ToString(const std::vector<T, Types...>& vec) {
   return ToString(vec.data(), vec.size());
 }
 
 template <typename T, typename... Types>
-inline
-std::ostream& operator<<(std::ostream& os, const std::vector<T, Types...>& vec) {
+inline std::ostream& operator<<(std::ostream& os,
+                                const std::vector<T, Types...>& vec) {
   return os << ToString(vec.data(), vec.size());
 }
 

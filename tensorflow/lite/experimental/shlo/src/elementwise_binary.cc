@@ -471,7 +471,7 @@ namespace {
 
 DEFINE_ELEMENTWISE_BINARY_OP_INT(Remainder, x % y);
 DEFINE_ELEMENTWISE_BINARY_OP_FLOAT(Remainder, std::fmod(static_cast<float>(x),
-                                                       static_cast<float>(y)));
+                                                        static_cast<float>(y)));
 
 }  // namespace
 

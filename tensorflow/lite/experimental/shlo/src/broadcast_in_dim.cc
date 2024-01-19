@@ -36,7 +36,6 @@ bool IsUnique(absl::Span<const DimensionSize> span) {
   return std::distance(temp.begin(), i) == span.size();
 }
 
-
 template <typename Value>
 absl::Status CheckParameters(
     const Value& operand, absl::Span<const DimensionSize> broadcast_dimensions,
@@ -115,12 +114,12 @@ absl::Status CheckParameters(
   return absl::OkStatus();
 }
 
-
 template <ElementType storage_type, ElementType expressed_type, typename Value>
 absl::Status BroadcastInDim(
     const Value& operand, absl::Span<const DimensionSize> broadcast_dimensions,
     Value& result) {
-  if (auto check = CheckParameters(operand, broadcast_dimensions, result); !check.ok()) {
+  if (auto check = CheckParameters(operand, broadcast_dimensions, result);
+      !check.ok()) {
     return check;
   }
 
@@ -160,7 +159,8 @@ absl::Status BroadcastInDim(
 
     if (!(operand.is_per_tensor_quantized() and
           result.is_per_tensor_quantized())) {
-      return absl::InvalidArgumentError("Only per-tensor quantization is currently supported");
+      return absl::InvalidArgumentError(
+          "Only per-tensor quantization is currently supported");
     }
 
     using ET = typename Storage<expressed_type>::Type;

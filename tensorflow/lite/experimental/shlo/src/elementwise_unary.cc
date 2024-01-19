@@ -365,8 +365,7 @@ absl::Status Cosine(const QuantizedTensor& operand, QuantizedTensor& result) {
 namespace {
 
 template <typename Int>
-inline
-Int CountLeadingZeros(Int x) {
+inline Int CountLeadingZeros(Int x) {
   using UInt = typename std::make_unsigned<Int>::type;
 #if __cpp_lib_bitops >= 201907L
   return std::countl_zero(static_cast<UInt>(x));
