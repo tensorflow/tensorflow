@@ -193,6 +193,7 @@ class RewriteClusterToIfrtCallPass
       // TODO(b/304839793): populate variable names after adding a variable
       // hoisting pass.
       ifrt_call_op.setVariableNamesAttr(builder.getArrayAttr({}));
+      ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
       ifrt_call_op.setProgramId(program_id);
 
       cluster_func->replaceAllUsesWith(ifrt_call_op.getResults());
@@ -241,6 +242,7 @@ class RewriteClusterToIfrtCallPass
     // TODO(b/304839793): populate variable names after adding a variable
     // hoisting pass.
     ifrt_call_op.setVariableNamesAttr(builder.getArrayAttr({}));
+    ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
     ifrt_call_op.setProgramId(program_id);
 
     cluster_func->replaceAllUsesWith(ifrt_call_op.getResults());

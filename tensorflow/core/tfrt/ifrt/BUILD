@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -12,6 +13,15 @@ package(
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/mlrt:__subpackages__",
     ],
+)
+
+tf_proto_library(
+    name = "ifrt_config_proto",
+    srcs = ["ifrt_config.proto"],
+    protodeps = [
+        "@local_xla//xla:xla_data_proto",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
