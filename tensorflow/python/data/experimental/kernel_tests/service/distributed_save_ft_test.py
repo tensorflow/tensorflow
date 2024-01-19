@@ -473,7 +473,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.load(snapshot_path1)
     self.assertDatasetProduces(
-        dataset, list(range(1000)), assert_items_equal=(num_workers > 1))
+        dataset, list(range(1000)), assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
