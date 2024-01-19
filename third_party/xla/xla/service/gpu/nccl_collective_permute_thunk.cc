@@ -46,18 +46,19 @@ namespace gpu {
 using mlir::lmhlo_gpu::CollectivePermuteStartOp;
 
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, CollectivePermuteStartOp op, int64_t replica_count,
-    int64_t partition_count, const Buffer& buffer)
+    ThunkInfo thunk_info, const NcclApi* nccl_api, CollectivePermuteStartOp op,
+    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
-                          op.getIsSync()),
+                          nccl_api, op.getIsSync()),
       config_(GetNcclP2PConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
 
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
-    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
+    ThunkInfo thunk_info, const NcclApi* nccl_api,
+    const HloCollectivePermuteInstruction* instr, int64_t replica_count,
+    int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
-                          IsSyncCollective(instr)),
+                          nccl_api, IsSyncCollective(instr)),
       config_(GetNcclP2PConfig(instr, replica_count, partition_count)),
       buffer_(buffer) {}
 

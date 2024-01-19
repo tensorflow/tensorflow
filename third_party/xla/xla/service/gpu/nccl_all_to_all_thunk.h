@@ -33,10 +33,10 @@ struct NcclAllToAllConfig {
 // Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
 class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  public:
-  NcclAllToAllStartThunk(ThunkInfo thunk_info,
+  NcclAllToAllStartThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
                          mlir::lmhlo_gpu::AllToAllStartOp op,
                          std::vector<Buffer> buffers);
-  NcclAllToAllStartThunk(ThunkInfo thunk_info,
+  NcclAllToAllStartThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
                          const HloAllToAllInstruction* instr,
                          std::vector<Buffer> buffers);
 

@@ -120,6 +120,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
@@ -3221,8 +3222,8 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/result_slice};
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(op), collective_permute_op,
-        replica_count, partition_count, buffer);
+        Thunk::ThunkInfo::WithProfileAnnotation(op), NcclApi::Default(),
+        collective_permute_op, replica_count, partition_count, buffer);
     async_executor = thunk->async_executor();
     AddThunkToThunkSequence(std::move(thunk));
   }
@@ -3267,8 +3268,8 @@ Status IrEmitterUnnested::EmitCollectivePermute(
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/result_slice};
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
-        partition_count, buffer);
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
+        instr, replica_count, partition_count, buffer);
     async_executor = thunk->async_executor();
     AddThunkToThunkSequence(std::move(thunk));
   }
@@ -3320,7 +3321,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
 
   if (should_use_nccl_thunk) {
     auto thunk = std::make_unique<NcclThunkType>(
-        Thunk::ThunkInfo::WithProfileAnnotation(op), op,
+        Thunk::ThunkInfo::WithProfileAnnotation(op), NcclApi::Default(), op,
         /*buffers=*/std::move(buffers));
     async_executors_.insert({untyped_op, thunk->async_executor()});
     AddThunkToThunkSequence(std::move(thunk));
@@ -3449,7 +3450,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
 
   if (should_use_nccl_thunk) {
     auto thunk = std::make_unique<NcclThunkType>(
-        Thunk::ThunkInfo::WithProfileAnnotation(inst), inst,
+        Thunk::ThunkInfo::WithProfileAnnotation(inst), NcclApi::Default(), inst,
         /*buffers=*/std::move(buffers));
     async_executors_.insert({async_start, thunk->async_executor()});
     AddThunkToThunkSequence(std::move(thunk));

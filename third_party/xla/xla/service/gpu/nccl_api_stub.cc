@@ -27,6 +27,15 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// This is a NCCL API stub that is linked into the process when XLA compiled
+// without NCCL or CUDA support. It returns errors from all API calls. This stub
+// makes it always safe to include NCCL API headers everywhere in XLA without
+// #ifdefs or complex build rules magic. All magic handled by `:nccl_api`.
+
+//==-----------------------------------------------------------------------===//
+// NcclApi::PersistentPlanAllocator
+//==-----------------------------------------------------------------------===//
+
 using PersistentPlanAllocator = NcclApi::PersistentPlanAllocator;
 using ScopedPersistentPlanAllocator = NcclApi::ScopedPersistentPlanAllocator;
 
@@ -59,6 +68,19 @@ ScopedPersistentPlanAllocator::ScopedPersistentPlanAllocator(
 }
 
 ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() = default;
+
+//===----------------------------------------------------------------------===//
+// NcclApiStub
+//===----------------------------------------------------------------------===//
+
+class NcclApiStub final : public NcclApi {
+ public:
+};
+
+const NcclApi* NcclApi::Default() {
+  static auto* nccl_api = new NcclApiStub();
+  return nccl_api;
+}
 
 absl::StatusOr<se::DeviceMemoryBase> NcclApi::Slice(se::DeviceMemoryBase,
                                                     PrimitiveType, size_t,

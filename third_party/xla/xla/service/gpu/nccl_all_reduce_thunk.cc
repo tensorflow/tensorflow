@@ -230,27 +230,28 @@ NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
 }
 
 NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
-    Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
-    std::vector<Buffer> buffers, bool is_sync)
-    : NcclCollectiveThunk(kind, thunk_info, is_sync),
+    Thunk::Kind kind, ThunkInfo thunk_info, const NcclApi* nccl_api,
+    NcclAllReduceConfig config, std::vector<Buffer> buffers, bool is_sync)
+    : NcclCollectiveThunk(kind, thunk_info, nccl_api, is_sync),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(ThunkInfo thunk_info,
+                                                 const NcclApi* nccl_api,
                                                  AllReduceStartOp op,
                                                  std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclAllReduceStart,
-                                          thunk_info,
+                                          thunk_info, nccl_api,
                                           impl::GetNcclAllReduceConfig(op),
                                           std::move(buffers), op.getIsSync()) {}
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
-    ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
-    std::vector<Buffer> buffers)
+    ThunkInfo thunk_info, const NcclApi* nccl_api,
+    const HloAllReduceInstruction* inst, std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclAllReduceStart, thunk_info,
+          Thunk::kNcclAllReduceStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<GpuBackendConfig>()
               ->collective_backend_config()
@@ -293,18 +294,18 @@ absl::Status NcclAllReduceStartThunk::RunNcclCollective(
 }
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
-    ThunkInfo thunk_info, ReduceScatterStartOp op,
+    ThunkInfo thunk_info, const NcclApi* nccl_api, ReduceScatterStartOp op,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclReduceScatterStart,
-                                          thunk_info,
+                                          thunk_info, nccl_api,
                                           impl::GetNcclAllReduceConfig(op),
                                           std::move(buffers), op.getIsSync()) {}
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
-    ThunkInfo thunk_info, const HloReduceScatterInstruction* inst,
-    std::vector<Buffer> buffers)
+    ThunkInfo thunk_info, const NcclApi* nccl_api,
+    const HloReduceScatterInstruction* inst, std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclReduceScatterStart, thunk_info,
+          Thunk::kNcclReduceScatterStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<GpuBackendConfig>()
               ->collective_backend_config()

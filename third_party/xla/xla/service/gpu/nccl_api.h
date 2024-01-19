@@ -38,7 +38,14 @@ namespace xla::gpu {
 // NCCL library so that no other parts of XLA should include nccl.h header
 // directly (or indirectly).
 
-struct NcclApi {
+class NcclApi {
+ public:
+  virtual ~NcclApi() = default;
+
+  // Returns a default NcclApi for a current process. Can be a real one based on
+  // NCCL or a stub if XLA compiled without NCCL or CUDA support.
+  static const NcclApi* Default();
+
   // Forward declarations of opaque structs corresponding to underlying platform
   // types (also defined as opaque structs).
   struct NcclComm;

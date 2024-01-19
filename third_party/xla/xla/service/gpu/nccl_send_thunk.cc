@@ -47,10 +47,11 @@ absl::Status CheckImplementable(SendOp op) {
 
 }  // namespace impl
 
-NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, SendOp op,
-                             int64_t replica_count, int64_t partition_count,
-                             const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, /*is_sync=*/false),
+NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
+                             SendOp op, int64_t replica_count,
+                             int64_t partition_count, const Buffer& buffer)
+    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
+                          /*is_sync=*/false),
       config_(GetNcclP2PConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
 

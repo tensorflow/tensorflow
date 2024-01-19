@@ -233,12 +233,10 @@ NcclCollectiveConfig GetNcclCollectiveConfig(
 }
 
 NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                                         bool is_sync)
-    : Thunk(kind, thunk_info) {
-  if (!is_sync) {
-    async_ = std::make_unique<AsyncExecutor>();
-  }
-}
+                                         const NcclApi* nccl_api, bool is_sync)
+    : Thunk(kind, thunk_info),
+      nccl_api_(nccl_api),
+      async_(is_sync ? std::make_unique<AsyncExecutor>() : nullptr) {}
 
 /* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
 #if XLA_ENABLE_XCCL

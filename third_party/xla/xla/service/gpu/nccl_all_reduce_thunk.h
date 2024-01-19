@@ -46,6 +46,7 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
       mlir::Region& computation);
 
   NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
+                                      const NcclApi* nccl_api,
                                       NcclAllReduceConfig config,
                                       std::vector<Buffer> buffers,
                                       bool is_sync);
@@ -66,11 +67,11 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
 
 class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
-  NcclAllReduceStartThunk(ThunkInfo thunk_info,
+  NcclAllReduceStartThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
                           mlir::lmhlo_gpu::AllReduceStartOp op,
                           std::vector<Buffer> buffers);
 
-  NcclAllReduceStartThunk(ThunkInfo thunk_info,
+  NcclAllReduceStartThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
                           const HloAllReduceInstruction* inst,
                           std::vector<Buffer> buffers);
 
@@ -101,11 +102,11 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
 // -----------------------------------------------------------------------------
 class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
-  NcclReduceScatterStartThunk(ThunkInfo thunk_info,
+  NcclReduceScatterStartThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
                               mlir::lmhlo_gpu::ReduceScatterStartOp op,
                               std::vector<Buffer> buffers);
 
-  NcclReduceScatterStartThunk(ThunkInfo thunk_info,
+  NcclReduceScatterStartThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
                               const HloReduceScatterInstruction* inst,
                               std::vector<Buffer> buffers);
 

@@ -106,10 +106,15 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
   return config;
 }
 
+//===----------------------------------------------------------------------===//
+// NcclCollectiveThunk
+//===----------------------------------------------------------------------===//
+
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
-  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
+  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, const NcclApi* nccl_api,
+                      bool is_sync);
 
   struct Buffer {
     int64_t element_count;
@@ -170,11 +175,17 @@ class NcclCollectiveThunk : public Thunk {
     return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
+  const NcclApi* nccl_api_;
+
 #if XLA_ENABLE_XCCL
   bool first_call_to_execute_ = true;
 #endif                                    // XLA_ENABLE_XCCL
   std::unique_ptr<AsyncExecutor> async_;  // null if not async.
 };
+
+//===----------------------------------------------------------------------===//
+// NcclCollectiveDoneThunk
+//===----------------------------------------------------------------------===//
 
 class NcclCollectiveDoneThunk : public Thunk {
  public:
@@ -220,6 +231,8 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
           partition_count, CollectiveOpGroupModeToString(group_mode),
           operand_count, str));
 }
+
+//===----------------------------------------------------------------------===//
 
 size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,

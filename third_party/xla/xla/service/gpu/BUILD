@@ -322,6 +322,7 @@ cc_library(
         ":kernel_reuse_cache",
         ":launch_dimensions",
         ":matmul_utils",
+        ":nccl_api",
         ":nccl_collective_thunks",
         ":parallel_loop_emitter",
         ":reduction_utils",

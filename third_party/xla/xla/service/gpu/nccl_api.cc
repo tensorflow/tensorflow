@@ -272,6 +272,17 @@ ScopedPersistentPlanAllocator::~ScopedPersistentPlanAllocator() {
 // NcclApi
 //==-----------------------------------------------------------------------===//
 
+// This a default NCCL API implementation that forwards all API calls to NCCL
+// itself. It is available only if NCCL + CUDA are configured at compile time.
+class DefaultNcclApi final : public NcclApi {
+ public:
+};
+
+const NcclApi* NcclApi::Default() {
+  static auto* nccl_api = new DefaultNcclApi();
+  return nccl_api;
+}
+
 static_assert(NCCL_UNIQUE_ID_BYTES == NcclCliqueId::kSize,
               "size of nccl unique id must match the clique id size");
 

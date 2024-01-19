@@ -38,9 +38,9 @@ class NcclSendThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::SendOp op);
   static const char* GetHloOpName() { return "send"; }
 
-  NcclSendThunk(ThunkInfo thunk_info, mlir::lmhlo::SendOp op,
-                int64_t replica_count, int64_t partition_count,
-                const Buffer& buffer);
+  NcclSendThunk(ThunkInfo thunk_info, const NcclApi* nccl_api,
+                mlir::lmhlo::SendOp op, int64_t replica_count,
+                int64_t partition_count, const Buffer& buffer);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }

@@ -67,9 +67,9 @@ NcclAllToAllConfig GetNcclAllToAllConfig(const HloAllToAllInstruction* instr) {
 }  // namespace
 
 NcclAllToAllStartThunk::NcclAllToAllStartThunk(
-    ThunkInfo thunk_info, AllToAllStartOp op,
+    ThunkInfo thunk_info, const NcclApi* nccl_api, AllToAllStartOp op,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
-    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
+    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info, nccl_api,
                           op.getIsSync()),
       config_(GetNcclAllToAllConfig(op)),
       buffers_(std::move(buffers)) {
@@ -77,9 +77,10 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
 }
 
 NcclAllToAllStartThunk::NcclAllToAllStartThunk(
-    ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
+    ThunkInfo thunk_info, const NcclApi* nccl_api,
+    const HloAllToAllInstruction* instr,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
-    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info,
+    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info, nccl_api,
                           IsSyncCollective(instr)),
       config_(GetNcclAllToAllConfig(instr)),
       buffers_(std::move(buffers)) {
