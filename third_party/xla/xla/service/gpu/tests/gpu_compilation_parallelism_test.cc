@@ -29,6 +29,7 @@ class CompilationParallelismTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // Use multiple threads for compilation
     debug_options.set_xla_gpu_force_compilation_parallelism(4);
+    debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);
     return debug_options;
   }
 };

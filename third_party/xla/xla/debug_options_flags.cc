@@ -212,6 +212,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_triton_hopper(false);
 
+  // We disable this until b/319271534 is fixed due to errors during linking.
+  //
+  // TODO(b/319271534): Re-enable once we use libnvjitlink.
+  opts.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
+
   return opts;
 }
 
@@ -858,6 +863,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_force_compilation_parallelism(),
       "Overrides normal multi-threaded compilation setting to use this many "
       "threads. Setting to 0 (the default value) means no enforcement."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_llvm_module_compilation_parallelism",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_enable_llvm_module_compilation_parallelism),
+      debug_options->xla_gpu_enable_llvm_module_compilation_parallelism(),
+      "Decides whether we can do LLVM module compilation in a parallelised "
+      "way. If set to false, then it will be single threaded, otherwise the "
+      "number of threads depends on the "
+      "--xla_gpu_force_compilation_parallelism flag and the thread pool "
+      "supplied to GpuCompiler."));
+
   flag_list->push_back(
       tsl::Flag("xla_gpu_deterministic_ops",
                 bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
