@@ -46,17 +46,27 @@ class MemorySpaceAssignmentBestFitRepacker
     BufferIntervalCompare buffer_interval_compare = nullptr;
   };
 
-  MemorySpaceAssignmentBestFitRepacker(int64_t max_size, int64_t alignment)
+  MemorySpaceAssignmentBestFitRepacker(
+      int64_t max_size, int64_t alignment,
+      SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type)
       : MemorySpaceAssignmentRepacker(max_size, alignment),
-        options_(BestFitRepackOptions()) {}
-  MemorySpaceAssignmentBestFitRepacker(int64_t max_size, int64_t alignment,
-                                       BestFitRepackOptions options)
-      : MemorySpaceAssignmentRepacker(max_size, alignment), options_(options) {}
+        options_(BestFitRepackOptions()),
+        slice_time_permutation_iterator_type_(
+            slice_time_permutation_iterator_type) {}
+  MemorySpaceAssignmentBestFitRepacker(
+      int64_t max_size, int64_t alignment,
+      SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type,
+      BestFitRepackOptions options)
+      : MemorySpaceAssignmentRepacker(max_size, alignment),
+        options_(std::move(options)),
+        slice_time_permutation_iterator_type_(
+            slice_time_permutation_iterator_type) {}
 
   StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override;
 
  private:
   BestFitRepackOptions options_;
+  SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type_;
 };
 
 }  // namespace memory_space_assignment

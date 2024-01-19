@@ -19,17 +19,21 @@ limitations under the License.
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/heap_simulator/allocation_block.h"
 #include "xla/service/hlo_ordering.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
@@ -37,6 +41,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -2166,6 +2171,20 @@ class SlicedAllocationFinderTest : public ::testing::Test {
   using FreeChunks = typename HeapTy::FreeChunks;
   using Chunk = HeapSimulator::Chunk;
   using Finder = typename HeapTy::SlicedAllocationFinder;
+
+ protected:
+  std::unique_ptr<SliceTimePermutationIterator> NewPermutationIterator(
+      int64_t num_slices) {
+    // For these tests, map each slice time to a unique incrementing start time.
+    std::vector<int64_t> inclusive_start_times;
+    inclusive_start_times.reserve(num_slices);
+    for (int64_t start_time = 0; start_time < num_slices; ++start_time) {
+      inclusive_start_times.push_back(start_time);
+    }
+
+    return SliceTimePermutationIterator::CreateForNewAllocation(
+        SliceTimePermutationIterator::Ty::kAll, inclusive_start_times);
+  }
 };
 
 TEST_F(SlicedAllocationFinderTest, NoSlices) {
@@ -2194,10 +2213,9 @@ The full buffer goes in the smallest chunk that fits.
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(45, 3),
@@ -2230,10 +2248,9 @@ The max colocation size does not fit in the smallest free chunk.
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(60, 3),
@@ -2267,10 +2284,9 @@ Multiple free chunks have size 3. We pick the one with the smallest offset.
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(10, 3),
@@ -2317,10 +2333,9 @@ t0 |xxxxx  xxx                              xxxxx000xxxxxxxxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2368,10 +2383,9 @@ t0 |xxxxx  xxx                              xxxxxxxxxxx222xxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2419,10 +2433,9 @@ t0 |xxxxx  xxx                              xxxxxxxx111xxxxxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2475,10 +2488,9 @@ subsliced by MSA.)
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2523,10 +2535,9 @@ t0 |xxxxxx                                          111                 xxx
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2574,10 +2585,9 @@ t0 |xxxxx  xxx                              xxxxxx 111 xxxxxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2625,10 +2635,9 @@ t0 |xxxxx  xxx00000                         xxxxxx   xxxxxxxxxxx          x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2676,10 +2685,9 @@ t0 |xxxxxxxxxx                              xxxxxxxxxxxxxxxxxxxx000       x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2727,10 +2735,9 @@ t0 |xxxxx  xxx                              xxxxxxxx   xxxxxxxxx000       x
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2778,10 +2785,9 @@ t0 |xxxxx  xxx          000                 xxxxxxxx   xxxxxxxxx          x
   int64_t preferred_offset = 20;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2831,10 +2837,9 @@ The sliced allocation does not fit at the preferred offset.
   int64_t preferred_offset = 35;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2885,10 +2890,9 @@ on spatial boundaries of 2.
   int64_t preferred_offset = -1;
   int64_t alignment = 2;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2939,10 +2943,9 @@ on spatial boundaries of 2.
   int64_t preferred_offset = 21;
   int64_t alignment = 2;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(
@@ -2978,10 +2981,9 @@ t0 |xxxxx000   xxxx      xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(5, 3),
@@ -3019,10 +3021,9 @@ t0 |xxxxx000        xxxx      xxxxxxxxxxxxxx   xxxxxxxxxxxxxxxxxxxxxxxxxxxx
   int64_t preferred_offset = -1;
   int64_t alignment = 1;
 
-  Finder finder(
-      free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
-      preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()));
+  Finder finder(free_chunks_per_slice_time, sorted_slice_sizes,
+                max_colocation_size, preferred_offset, alignment,
+                NewPermutationIterator(sorted_slice_sizes.size()));
 
   EXPECT_THAT(finder.Find(),
               ::testing::ElementsAre(Chunk::FromOffsetSize(5, 3),
@@ -3073,7 +3074,7 @@ t0 |xxxxx  xxx                              xxxxx 000xxxxxxxxxxx          x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
+      NewPermutationIterator(sorted_slice_sizes.size()),
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
 
   EXPECT_THAT(finder.Find(),
@@ -3125,7 +3126,7 @@ t0 |xxxxx  xxx                              xxxxx000xxxxxxxxxxxx          x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
+      NewPermutationIterator(sorted_slice_sizes.size()),
       // We're not allowed to start at offset 46, but we can include it.
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 46; });
 
@@ -3178,7 +3179,7 @@ t0 |xxxxx  xxx                              xxxxxxxxxxx 222xxxxx          x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
+      NewPermutationIterator(sorted_slice_sizes.size()),
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
 
   EXPECT_THAT(finder.Find(),
@@ -3230,7 +3231,7 @@ t0 |xxxxx  xxx                              xxxxxxxxxxx   xxxxxx000       x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
+      NewPermutationIterator(sorted_slice_sizes.size()),
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
 
   EXPECT_THAT(finder.Find(),
@@ -3282,7 +3283,7 @@ t0 |xxxxx  xxx                              xxxxx    xxxxxxxxxxx          x
   Finder finder(
       free_chunks_per_slice_time, sorted_slice_sizes, max_colocation_size,
       preferred_offset, alignment,
-      SliceTimePermutationIterator::Create(sorted_slice_sizes.size()),
+      NewPermutationIterator(sorted_slice_sizes.size()),
       /*is_offset_allowed=*/[](int64_t offset) { return offset != 45; });
 
   EXPECT_THAT(finder.FindForOffset(10),
@@ -3307,6 +3308,240 @@ t0 |xxxxx  xxx                              xxxxx    xxxxxxxxxxx          x
               ::testing::ElementsAre(
                   Chunk::FromOffsetSize(61, 3), Chunk::FromOffsetSize(64, 3),
                   Chunk::FromOffsetSize(67, 3), Chunk::FromOffsetSize(70, 0)));
+}
+
+class SliceTimePermutationIteratorTest : public ::testing::Test {
+ protected:
+  struct NewAllocationTestCase {
+    void Test() const {
+      auto iterator = SliceTimePermutationIterator::CreateForNewAllocation(
+          ty, inclusive_start_times);
+
+      // Run the iterator multiple times to make sure it can be reused.
+      for (int i = 0; i < 5; ++i) {
+        VLOG(2) << "Test case try #" << i << ": NewAllocation, " << name;
+        EXPECT_THAT(GetPermutations(iterator.get()),
+                    ::testing::ElementsAreArray(expected_permutations))
+            << "Failed NewAllocation, " << name;
+      }
+    }
+
+    std::string name;
+    SliceTimePermutationIterator::Ty ty;
+    std::vector<int64_t> inclusive_start_times;
+    std::vector<std::vector<int64_t>> expected_permutations;
+  };
+
+  struct RepackTestCase {
+    void Test() const {
+      auto iterator = SliceTimePermutationIterator::CreateForRepack(
+          ty, (original_slice_data.has_value() ? &(*original_slice_data)
+                                               : nullptr));
+
+      // Run the iterator multiple times to make sure it can be reused.
+      for (int i = 0; i < 5; ++i) {
+        VLOG(2) << "Test case try #" << i << ": Repack, " << name;
+        EXPECT_THAT(GetPermutations(iterator.get()),
+                    ::testing::ElementsAreArray(expected_permutations))
+            << "Failed Repack, " << name;
+      }
+    }
+
+    std::string name;
+    SliceTimePermutationIterator::Ty ty;
+    std::optional<SlicedAllocationData> original_slice_data;
+    std::vector<std::vector<int64_t>> expected_permutations;
+  };
+
+  static std::vector<std::vector<int64_t>> GetPermutations(
+      SliceTimePermutationIterator* it) {
+    std::vector<std::vector<int64_t>> results;
+    for (it->Begin(); !it->Done(); it->Next()) {
+      absl::Span<const int64_t> permutation = it->Get();
+      results.push_back(
+          std::vector<int64_t>(permutation.begin(), permutation.end()));
+    }
+
+    return results;
+  }
+};
+
+TEST_F(SliceTimePermutationIteratorTest, NewAllocations) {
+  std::vector<NewAllocationTestCase> test_cases = {
+      {
+          "0 slices, all permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*inclusive_start_times=*/{},
+          /*expected_permutations=*/{},
+      },
+      {
+          "1 slice, all permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*inclusive_start_times=*/{0},
+          /*expected_permutations=*/{{0}},
+      },
+      {
+          "2 slices, all permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*inclusive_start_times=*/{10, 20},
+          /*expected_permutations=*/{{0, 1}, {1, 0}},
+      },
+      {
+          "many slices, all permutations, unique start times",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*inclusive_start_times=*/{40, 10, 450},
+          /*expected_permutations=*/
+          {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}},
+      },
+      {
+          "many slices, all permutations, non-unique start times",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*inclusive_start_times=*/{40, 10, 450, 10},
+          /*expected_permutations=*/
+          {
+              // The two smallest start times are the same. Thus, when we
+              // compare permutations for equivalence, if index i is assigned
+              // slice time 0, and index j is assigned slice time 1, its
+              // equivalent to i being assigned 1, and j being assigned 0.
+              //
+              // Note, the order of inclusive start times is irrelevant. The ith
+              // earliest slice time is associated with the ith earliest
+              // inclusive start time.
+              {0, 1, 2, 3},
+              {0, 1, 3, 2},
+              {0, 2, 1, 3},
+              {0, 2, 3, 1},
+              {0, 3, 1, 2},
+              {0, 3, 2, 1},
+              // {1, 0, 2, 3}, equivalent emitted
+              // {1, 0, 3, 2}, equivalent emitted
+              // {1, 2, 0, 3}, equivalent emitted
+              // {1, 2, 3, 0}, equivalent emitted
+              // {1, 3, 0, 2}, equivalent emitted
+              // {1, 3, 2, 0}, equivalent emitted
+              {2, 0, 1, 3},
+              {2, 0, 3, 1},
+              // {2, 1, 0, 3}, equivalent emitted
+              // {2, 1, 3, 0}, equivalent emitted
+              {2, 3, 0, 1},
+              // {2, 3, 1, 0}, equivalent emitted
+              {3, 0, 1, 2},
+              {3, 0, 2, 1},
+              // {3, 1, 0, 2}, equivalent emitted
+              // {3, 1, 2, 0}, equivalent emitted
+              {3, 2, 0, 1},
+              // {3, 2, 1, 0}, equivalent emitted
+          },
+      },
+  };
+
+  for (const NewAllocationTestCase& test_case : test_cases) {
+    test_case.Test();
+  }
+}
+
+TEST_F(SliceTimePermutationIteratorTest, Repacks) {
+  std::vector<RepackTestCase> test_cases = {
+      {
+          "no slice data, all permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*original_slice_data=*/std::nullopt,
+          /*expected_permutations=*/{{0}},
+      },
+      {
+          "0 slices, all permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*original_slice_data=*/SlicedAllocationData{},
+          /*expected_permutations=*/{},
+      },
+      {
+          "1 slice, all permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+          }},
+          /*expected_permutations=*/{{0}},
+      },
+      {
+          "2 slices, uniform slice size, all permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+              {/*size=*/1, /*offset=*/2, /*inclusive_start_time=*/2},
+          }},
+          /*expected_permutations=*/{{0, 1}, {1, 0}},
+      },
+      {
+          "many slices, uniform slice size, unique start times, all "
+          "permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+              {/*size=*/1, /*offset=*/2, /*inclusive_start_time=*/2},
+              {/*size=*/1, /*offset=*/3, /*inclusive_start_time=*/3},
+          }},
+          /*expected_permutations=*/
+          {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}},
+      },
+      {
+          "many slices, non-uniform slice size, unique start times, all "
+          "permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+              {/*size=*/2, /*offset=*/2, /*inclusive_start_time=*/3},
+              {/*size=*/1, /*offset=*/3, /*inclusive_start_time=*/2},
+          }},
+          /*expected_permutations=*/
+          {
+              // The slice at index 0 has a different size than any other slice,
+              // so it's invalid to give it any slice time other than its
+              // original slice time of 2.
+              {0, 2, 1},
+              {1, 2, 0},
+          },
+      },
+      {
+          "many slices, non-uniform slice size, non-unique start times, all "
+          "permutations",
+          SliceTimePermutationIterator::Ty::kAll,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+              {/*size=*/1, /*offset=*/2, /*inclusive_start_time=*/2},
+              {/*size=*/2, /*offset=*/3, /*inclusive_start_time=*/1},
+              {/*size=*/1, /*offset=*/5, /*inclusive_start_time=*/1},
+              {/*size=*/2, /*offset=*/6, /*inclusive_start_time=*/3},
+              {/*size=*/3, /*offset=*/8, /*inclusive_start_time=*/4},
+          }},
+          /*expected_permutations=*/
+          {
+              // All permutations such that:
+              // * The first 3 slice times hold 2 slices with size 1, and 1
+              //   slice with size 2.
+              // * Slice time 3 holds a slice with size 1.
+              // * Slice time 4 holds a slice with size 2.
+              // * Slice time 5 holds a slice with size 3, which can only be the
+              //   slice at index 5.
+              // * We throw away permutations where the first 3 slice times are
+              //   given to the same slice offsets.
+              {0, 1, 2, 3, 4, 5},
+              {0, 1, 4, 3, 2, 5},
+              {0, 3, 1, 2, 4, 5},
+              {0, 3, 4, 1, 2, 5},
+              {3, 0, 1, 2, 4, 5},
+              {3, 0, 4, 1, 2, 5},
+          },
+      },
+  };
+
+  for (const RepackTestCase& test_case : test_cases) {
+    test_case.Test();
+  }
 }
 
 }  // namespace

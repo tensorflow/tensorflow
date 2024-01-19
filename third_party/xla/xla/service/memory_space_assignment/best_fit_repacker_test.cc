@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/service/heap_simulator/allocation_block.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/memory_space_assignment/repacking.h"
 #include "tsl/platform/test.h"
 
@@ -28,7 +29,8 @@ namespace xla {
 
 class MemorySpaceAssignmentBestFitRepackerTest : public ::testing::Test {
  protected:
-  MemorySpaceAssignmentBestFitRepackerTest() : repacker_(100, 1, options_) {}
+  MemorySpaceAssignmentBestFitRepackerTest()
+      : repacker_(100, 1, SliceTimePermutationIterator::Ty::kAll, options_) {}
 
   AllocationBlock* MakeAllocationBlock(int64_t start_time, int64_t end_time,
                                        int64_t size,
@@ -160,7 +162,7 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, RepackedSlicesFit) {
         return sort_keys.at(x.buffer);
       });
   repacker_ = memory_space_assignment::MemorySpaceAssignmentBestFitRepacker(
-      100, 1, options_);
+      100, 1, SliceTimePermutationIterator::Ty::kAll, options_);
 
   EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
 
@@ -238,7 +240,7 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
         return sort_keys.at(x.buffer);
       });
   repacker_ = memory_space_assignment::MemorySpaceAssignmentBestFitRepacker(
-      100, 1, options_);
+      100, 1, SliceTimePermutationIterator::Ty::kAll, options_);
 
   // The repacker returns true as long as the result fits in the max size,
   // regardless of whether it has actually changed anything.
@@ -308,7 +310,7 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
         return sort_keys.at(x.buffer);
       });
   repacker_ = memory_space_assignment::MemorySpaceAssignmentBestFitRepacker(
-      100, 1, options_);
+      100, 1, SliceTimePermutationIterator::Ty::kAll, options_);
 
   // The repacker returns true as long as the result fits in the max size,
   // regardless of whether it has actually changed anything.
@@ -390,7 +392,7 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest, SlicedColocationsFit) {
         return sort_keys.at(x.buffer);
       });
   repacker_ = memory_space_assignment::MemorySpaceAssignmentBestFitRepacker(
-      100, 1, options_);
+      100, 1, SliceTimePermutationIterator::Ty::kAll, options_);
 
   EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
 
@@ -472,7 +474,7 @@ TEST_F(MemorySpaceAssignmentBestFitRepackerTest,
         return sort_keys.at(x.buffer);
       });
   repacker_ = memory_space_assignment::MemorySpaceAssignmentBestFitRepacker(
-      100, 1, options_);
+      100, 1, SliceTimePermutationIterator::Ty::kAll, options_);
 
   EXPECT_TRUE(*repacker_.Repack(absl::MakeSpan(allocation_blocks)));
 

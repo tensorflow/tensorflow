@@ -1621,7 +1621,10 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
     MemorySpaceAssignment::AllocationSequence* allocations,
     const Options& options, const HloAliasAnalysis& alias_analysis,
     const HloLiveRange& hlo_live_range)
-    : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes),
+    : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes,
+                                      /*type=*/kSpatial,
+                                      /*buffer_interval_compare=*/nullptr,
+                                      SliceTimePermutationIterator::Ty::kAll),
       allocations_(allocations),
       options_(options),
       alias_analysis_(alias_analysis),
