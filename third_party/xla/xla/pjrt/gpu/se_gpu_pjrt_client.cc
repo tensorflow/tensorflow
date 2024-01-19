@@ -903,12 +903,15 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
         "GetAllocatorStats() is allowed only for addressable devices");
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto allocator,
-      tensorflow::down_cast<se::MultiDeviceAdapter*>(
-          tensorflow::down_cast<PjRtStreamExecutorClient*>(client())
-              ->allocator())
-          ->GetAllocator(local_device_id().value()));
+  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(client())->allocator());
+  if (!allocator_adapter) {
+    return FailedPrecondition(
+        "GetAllocatorStats() only works with MultiDeviceAdapter allocator");
+  }
+
+  TF_ASSIGN_OR_RETURN(auto allocator, allocator_adapter->GetAllocator(
+                                          local_device_id().value()));
 
   auto stats = allocator->GetStats();
   TF_RET_CHECK(stats.has_value());
