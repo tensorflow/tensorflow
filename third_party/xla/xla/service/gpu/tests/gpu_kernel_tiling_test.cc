@@ -665,9 +665,9 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   absl::Status status = CompileToExecutable(std::move(hlo_module)).status();
   EXPECT_THAT(status.message(),
-              ::testing::HasSubstr(
-                  "Kernel 'wrapped_reduce' launch needs more blocks "
-                  "(4294967296) than allowed by hardware (2147483647)"));
+              ::testing::ContainsRegex(
+                  "Kernel '.*' launch needs more blocks [(]4294967296[)] than "
+                  "allowed by hardware [(]2147483647[)]"));
 }
 
 }  // namespace

@@ -190,9 +190,7 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
-        "//xla:statusor",
-        "//xla/tests:hlo_test_base",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],

@@ -15,10 +15,8 @@ limitations under the License.
 
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/statusor.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -29,9 +27,10 @@ namespace {
 class TooManyBlocksTest : public GpuCodegenTest {};
 
 TEST_F(TooManyBlocksTest, FailsWithInvalidStatus) {
-  // This test ensures that invalid inputs due to too large launch grids are
-  // caught somewhere in the pipeline. The practical relevance is low, since
-  // as of 2024, the inputs are way too large to fit on any GPU anyway.
+  // This test ensures that invalid (too large) launch grids are caught
+  // somewhere in the pipeline. The practical relevance is low, since as of
+  // 2024, the inputs or outputs have to be way too large to fit on any GPU
+  // anyway.
   const char* hlo_text = R"(
 HloModule primitive_computation_mul.8
 
@@ -54,8 +53,9 @@ ENTRY primitive_computation_mul.8 {
           backend().default_stream_executor()->GetAllocator());
 
   EXPECT_FALSE(failed_executable.ok());
-  EXPECT_THAT(failed_executable.status().ToString(),
-              ::testing::HasSubstr("Kernel 'fusion' launch needs more blocks"));
+  EXPECT_THAT(
+      failed_executable.status().ToString(),
+      ::testing::ContainsRegex("Kernel 'fusion.*' launch needs more blocks"));
 }
 
 }  // namespace
