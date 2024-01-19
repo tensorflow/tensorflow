@@ -412,7 +412,29 @@ class BufferIntervalTree {
 class SliceTimePermutationIterator {
  public:
   enum class Ty : std::int8_t {
-    kAll,  // Include all valid permutations
+    // Include all valid permutations
+    kAll,
+    // Only include perferred valid permutations. Heap simulator is trying to
+    // optimize fitting allocations into a grid of (heap) space by time. The
+    // preferred permutation iterator only allows the following triagular
+    // shapes:
+    //
+    //     Smaller offsets      Smaller offsets      Slice times are
+    //    get smaller slice     get larger slice   distributed around
+    //         times                  times         the middle offset
+    //
+    // space                space                space
+    //   ^                    ^                    ^
+    //   |             +--+   | +--------------+   |             +--+
+    //   |          +--+  |   | +--+           |   |       +-----+  |
+    //   |       +--+     |   |    +--+        |   | +-----+        |
+    //   |    +--+        |   |       +--+     |   | +--+           |
+    //   | +--+           |   |          +--+  |   |    +-----+     |
+    //   | +--------------+   |             +--+   |          +-----+
+    //   +------------------> +------------------> +------------------> time
+    //
+    // We deviate from those shapes as needed to make valid permutations.
+    kPreferred,
   };
 
   // A new iterator is typically created for each buffer to be placed.

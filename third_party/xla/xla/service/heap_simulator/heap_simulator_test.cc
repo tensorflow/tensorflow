@@ -3433,6 +3433,56 @@ TEST_F(SliceTimePermutationIteratorTest, NewAllocations) {
               // {3, 2, 1, 0}, equivalent emitted
           },
       },
+      {
+          "0 slices, preferred permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*inclusive_start_times=*/{},
+          /*expected_permutations=*/{},
+      },
+      {
+          "1 slice, preferred permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*inclusive_start_times=*/{0},
+          /*expected_permutations=*/{{0}},
+      },
+      {
+          "2 slices, preferred permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*inclusive_start_times=*/{10, 20},
+          /*expected_permutations=*/{{0, 1}, {1, 0}},
+      },
+      {
+          "many slices, preferred permutations, unique start times",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*inclusive_start_times=*/{40, 10, 450, 12, 14},
+          /*expected_permutations=*/
+          {{0, 1, 2, 3, 4}, {4, 3, 2, 1, 0}, {3, 1, 0, 2, 4}},
+      },
+      {
+          "many slices, preferred permutations, non-unique start times 1",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*inclusive_start_times=*/{40, 10, 450, 10},
+          /*expected_permutations=*/
+          {// This case is not impacted by non-unique start times.
+           {0, 1, 2, 3},
+           {3, 2, 1, 0},
+           {3, 1, 0, 2}},
+      },
+      {
+          "many slices, preferred permutations, non-unique start times 2",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*inclusive_start_times=*/{40, 40},
+          /*expected_permutations=*/
+          {
+              // The two smallest start times are the same. Thus, we must ignore
+              // duplicate permutations, when we ignore the order of slice times
+              // 0 and 1.
+              {0, 1},
+              // This is a duplicate of {0, 1}, when ignoring the order of 0 and
+              // 1.
+              // {1, 0},
+          },
+      },
   };
 
   for (const NewAllocationTestCase& test_case : test_cases) {
@@ -3535,6 +3585,105 @@ TEST_F(SliceTimePermutationIteratorTest, Repacks) {
               {0, 3, 4, 1, 2, 5},
               {3, 0, 1, 2, 4, 5},
               {3, 0, 4, 1, 2, 5},
+          },
+      },
+      {
+          "no slice data, preferred permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*original_slice_data=*/std::nullopt,
+          /*expected_permutations=*/{{0}},
+      },
+      {
+          "0 slices, preferred permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*original_slice_data=*/SlicedAllocationData{},
+          /*expected_permutations=*/{},
+      },
+      {
+          "1 slice, preferred permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+          }},
+          /*expected_permutations=*/{{0}},
+      },
+      {
+          "2 slices, uniform slice size, preferred permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+              {/*size=*/1, /*offset=*/2, /*inclusive_start_time=*/2},
+          }},
+          /*expected_permutations=*/{{0, 1}, {1, 0}},
+      },
+      {
+          "many slices, uniform slice size, unique start times, preferred "
+          "permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+              {/*size=*/1, /*offset=*/2, /*inclusive_start_time=*/2},
+              {/*size=*/1, /*offset=*/3, /*inclusive_start_time=*/3},
+          }},
+          /*expected_permutations=*/
+          {{0, 1, 2}, {2, 1, 0}, {1, 0, 2}},
+      },
+      {
+          "many slices, non-uniform slice size, unique start times, preferred "
+          "permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+              {/*size=*/2, /*offset=*/2, /*inclusive_start_time=*/3},
+              {/*size=*/1, /*offset=*/3, /*inclusive_start_time=*/2},
+          }},
+          /*expected_permutations=*/
+          {
+              // The 2nd slice has a different size than the first, so we must
+              // fix it to its original slice time, i.e., slice time 2.
+              {0, 2, 1},
+              {1, 2, 0},
+          },
+      },
+      {
+          "many slices, non-uniform slice size, non-unique start times, "
+          "preferred permutations",
+          SliceTimePermutationIterator::Ty::kPreferred,
+          /*original_slice_data=*/
+          SlicedAllocationData{/*slices_sorted_by_offset=*/{
+              {/*size=*/1, /*offset=*/1, /*inclusive_start_time=*/1},
+              {/*size=*/1, /*offset=*/2, /*inclusive_start_time=*/2},
+              {/*size=*/2, /*offset=*/3, /*inclusive_start_time=*/1},
+              {/*size=*/1, /*offset=*/5, /*inclusive_start_time=*/1},
+              {/*size=*/2, /*offset=*/6, /*inclusive_start_time=*/3},
+              {/*size=*/3, /*offset=*/8, /*inclusive_start_time=*/4},
+          }},
+          /*expected_permutations=*/
+          {
+              // First we fix the slice times of slices that have different
+              // sizes than the first slice, i.e., slices 3, 5, and 6. If we
+              // sort the slices by <inclusive_start_time, offset>, the fixed
+              // slice time for those slices will be their index in the sorted
+              // order. Thus, slice 3 is fixed to slice time 1. Slice 5 is fixed
+              // to slice time 4. And, slice 6 is fixed to slice time 5.
+              //
+              // The remaining slices are given preferred slice times, throwing
+              // out any equivalent permutations. Two permutations are
+              // equivalent if they are equal, after ignoring permutations of
+              // the slice times that map to the same inclusive start time. In
+              // our case, slice times 0, 1, and 2 map to inclusive start
+              // time 1. Thus, if indices i, j, and k are given slice times 0,
+              // 1, and 2, it doesn't matter which of i, j, and k maps to 0, 1,
+              // and 2 (for the purposes of equivalence).
+              {0, 2, 1, 3, 4, 5},
+              {3, 2, 1, 0, 4, 5},
+              // The next permutation is the same as the previous, except slice
+              // times 0 and 2 are permuted, so we throw it out.
+              // {3, 0, 1, 2, 4, 5},
           },
       },
   };
