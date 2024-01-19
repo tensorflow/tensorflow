@@ -21,11 +21,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -42,17 +42,16 @@ namespace xla {
 // the the group. When all threads have arrived at the rendezvous, one thread
 // executes the given function with the values supplied by each thread, and
 // all threads receive the result.
-template <typename R, typename K, typename V>
+template <typename R, typename K, typename V, typename Fn>
 std::shared_ptr<R> RendezvousSingle(
-    const K& key, const V& value, size_t num_threads,
-    absl::FunctionRef<R(absl::Span<const V* const>)> fn,
+    const K& key, const V& value, size_t num_threads, Fn fn,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
 
 // A rendezvous for a group of threads that do not have any value arguments.
-template <typename R, typename K>
+template <typename R, typename K, typename Fn>
 std::shared_ptr<R> RendezvousSingle(
-    const K& key, size_t num_threads, absl::FunctionRef<R()> fn,
+    const K& key, size_t num_threads, Fn fn,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
 
@@ -76,9 +75,10 @@ namespace internal {
 template <typename R, typename V>
 struct RendezvousState {
   explicit RendezvousState(size_t num_threads)
-      : id(0), values(num_threads, nullptr), result(nullptr) {}
+      : ack(0), rel(0), values(num_threads, nullptr), result(nullptr) {}
 
-  std::atomic<int32_t> id;
+  std::atomic<int32_t> ack;
+  std::atomic<int32_t> rel;
   std::vector<const V*> values;
 
   absl::Notification ready;  // signals availability of `result`
@@ -153,13 +153,20 @@ void AwaitAndLogIfStuck(absl::Notification& ready,
 // Rendezvous implemenetation.
 //===----------------------------------------------------------------------===//
 
-template <typename R, typename K, typename V>
-std::shared_ptr<R> RendezvousSingle(
-    const K& key, const V& value, size_t num_threads,
-    absl::FunctionRef<R(absl::Span<const V* const>)> fn,
-    absl::Duration warn_stuck_timeout, absl::Duration terminate_timeout) {
+template <typename R, typename K, typename V, typename Fn>
+std::shared_ptr<R> RendezvousSingle(const K& key, const V& value,
+                                    size_t num_threads, Fn fn,
+                                    absl::Duration warn_stuck_timeout,
+                                    absl::Duration terminate_timeout) {
+  // Check that `fn` is callable with a span of values and returns `R`.
+  static_assert(std::is_invocable_r_v<R, Fn, absl::Span<const V*>>,
+                "invalid rendezvous function signature");
+
   // Fast-path (DO NOT REMOVE: the logic below doesn't work for single thread).
-  if (num_threads == 1) return std::make_shared<R>(fn({&value}));
+  if (num_threads == 1) {
+    const V* ptr = &value;
+    return std::make_shared<R>(fn(absl::MakeSpan(&ptr, 1)));
+  }
 
   using State = internal::RendezvousState<R, V>;
   static auto& rendezvous = *new internal::RendezvousMap<K, R, V>;
@@ -167,12 +174,17 @@ std::shared_ptr<R> RendezvousSingle(
 
   // If we got an id larger than `num_threads` it means that we have multiple
   // rendezvous sharing the same key running concurrently.
-  int64_t id = state->id.fetch_add(1, std::memory_order_relaxed);
+  int64_t id = state->ack.fetch_add(1);
   CHECK_LT(id, num_threads)  // NOLINT
       << "Id can't be larger than the number of participating threads"
       << "; id=" << id << "; num_threads=" << num_threads;
 
   state->values[id] = &value;
+
+  // Use a second atomic to safely publish values without data races.
+  if constexpr (!std::is_same_v<R, std::nullopt_t>) {
+    id = state->rel.fetch_add(1);
+  }
 
   if (id < num_threads - 1) {
     // Threads arriving before the last one wait for a result to be computed by
@@ -191,9 +203,8 @@ std::shared_ptr<R> RendezvousSingle(
   return state->result;
 }
 
-template <typename R, typename K>
-std::shared_ptr<R> RendezvousSingle(const K& key, size_t num_threads,
-                                    absl::FunctionRef<R()> fn,
+template <typename R, typename K, typename Fn>
+std::shared_ptr<R> RendezvousSingle(const K& key, size_t num_threads, Fn fn,
                                     absl::Duration warn_stuck_timeout,
                                     absl::Duration terminate_timeout) {
   return RendezvousSingle<R, K, std::nullopt_t>(
