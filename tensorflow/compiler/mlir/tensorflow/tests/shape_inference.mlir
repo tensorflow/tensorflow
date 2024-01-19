@@ -2223,4 +2223,37 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %6 = "tf.TensorListSetItem"(%if49, %4, %5) {device = ""} : (!tf_variant, tensor<i32>, tensor<2x2xf32>)-> tensor<*x!tf_type.variant>
     func.return
   }
+
+  // CHECK-LABEL: func @xla_host_compute_shape_inferred
+  func.func @xla_host_compute_shape_inferred() -> (tensor<1x1120x8xi32>, tensor<1x1120x8xi32>, tensor<1120x8xi32>, tensor<2xi32>) {
+    %2335 = "tf.OpA"() : () -> tensor<3360x8xi32>
+    %cst_2 = "tf.Const"() <{value = dense<[3, 1120, -1]> : tensor<3xi32>}> : () -> tensor<3xi32>
+    %cst_68 = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+    %cst_1 = "tf.Const"() <{value = dense<[1120, -1]> : tensor<2xi32>}> : () -> tensor<2xi32>
+    %2336:4 = "tf.XlaHostCompute"(%2335, %cst_2, %cst_68, %cst_1) <{ancestors = [], cost_estimate_ns = 1000000 : i64, key = "", recv_key = "host_compute_channel_0_retvals", send_key = "host_compute_channel_0_args", shape_inference_graph = @host_func_0, shapes = [#tf_type.shape<1x1120x8>, #tf_type.shape<1x1120x8>, #tf_type.shape<1120x8>, #tf_type.shape<2>], tpu_core = 0 : i64}> {_xla_original_oc_node_name = "Shape_4", _xla_token_input_nodes = ["_xla_token_arg_node"]} : (tensor<3360x8xi32>, tensor<3xi32>, tensor<i32>, tensor<2xi32>) -> (tensor<1x1120x8xi32>, tensor<1x1120x8xi32>, tensor<1120x8xi32>, tensor<2xi32>)
+    func.return %2336#0, %2336#1, %2336#2, %2336#3: tensor<1x1120x8xi32>, tensor<1x1120x8xi32>, tensor<1120x8xi32>, tensor<2xi32>
+  }
+
+  func.func @host_func_0(%arg0: tensor<3360x?xi32>, %arg1: tensor<3xi32>, %arg2: tensor<i32>, %arg3: tensor<2xi32>) -> (tensor<1x1120x?xi32>, tensor<1x1120x?xi32>, tensor<1120x?xi32>, tensor<2xi32>) {
+    // CHECK: %cst = "tf.Const"() <{value = dense<[3, 1120, -1]> : tensor<3xi32>}> : () -> tensor<3xi32>
+    // CHECK-NEXT: %cst_0 = "tf.Const"() <{value = dense<0> : tensor<i32>}> : () -> tensor<i32>
+    // CHECK-NEXT: %cst_1 = "tf.Const"() <{value = dense<[1120, -1]> : tensor<2xi32>}> : () -> tensor<2xi32>
+    // CHECK: %0 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+    // CHECK: %1:4 = "tf._XlaRecvAtHost"(%0) <{device_ordinal = 0 : i64, device_type = "TPU", key = "host_compute_channel_0_args"}> : (tensor<3x!tf_type.string>) -> (tensor<3360x8xi32>, tensor<3xi32>, tensor<i32>, tensor<2xi32>)
+    // CHECK: %2 = "tf.Reshape"(%1#0, %cst) {_xla_outside_compilation = "0"} : (tensor<3360x8xi32>, tensor<3xi32>) -> tensor<3x1120x8xi32>
+    // CHECK: %3:3 = "tf.Split"(%cst_0, %2) {_xla_outside_compilation = "0"} : (tensor<i32>, tensor<3x1120x8xi32>) -> (tensor<1x1120x8xi32>, tensor<1x1120x8xi32>, tensor<1x1120x8xi32>)
+    // CHECK: %4 = "tf.Reshape"(%3#0, %cst_1) {_xla_outside_compilation = "0"} : (tensor<1x1120x8xi32>, tensor<2xi32>) -> tensor<1120x8xi32>
+    // CHECK: %5 = "tf.Shape"(%4) {_xla_outside_compilation = "0"} : (tensor<1120x8xi32>) -> tensor<2xi32>
+    // CHECK: "tf._XlaSendFromHost"(%3#1, %3#2, %4, %5, %0) <{device_ordinal = 0 : i64, device_type = "TPU", key = "host_compute_channel_0_retvals"}> : (tensor<1x1120x8xi32>, tensor<1x1120x8xi32>, tensor<1120x8xi32>, tensor<2xi32>, tensor<3x!tf_type.string>) -> ()
+    // CHECK: return %3#1, %3#2, %4, %5 : tensor<1x1120x8xi32>, tensor<1x1120x8xi32>, tensor<1120x8xi32>, tensor<2xi32>
+    %0 = "tf._XlaCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+    %1:4 = "tf._XlaRecvAtHost"(%0) <{device_ordinal = 0 : i64, device_type = "TPU", key = "host_compute_channel_0_args"}> : (tensor<3x!tf_type.string>) -> (tensor<3360x8xi32>, tensor<3xi32>, tensor<i32>, tensor<2xi32>)
+    %2 = "tf.Reshape"(%1#0, %1#1) {_xla_outside_compilation = "0"} : (tensor<3360x8xi32>, tensor<3xi32>) -> tensor<3x1120x?xi32>
+    %3:3 = "tf.Split"(%1#2, %2) {_xla_outside_compilation = "0"} : (tensor<i32>, tensor<3x1120x?xi32>) -> (tensor<1x1120x?xi32>, tensor<1x1120x?xi32>, tensor<1x1120x?xi32>)
+    %4 = "tf.Reshape"(%3#0, %1#3) {_xla_outside_compilation = "0"} : (tensor<1x1120x?xi32>, tensor<2xi32>) -> tensor<1120x?xi32>
+    %5 = "tf.Shape"(%4) {_xla_outside_compilation = "0"} : (tensor<1120x?xi32>) -> tensor<2xi32>
+    "tf._XlaSendFromHost"(%3#1, %3#2, %4, %5, %0) <{device_ordinal = 0 : i64, device_type = "TPU", key = "host_compute_channel_0_retvals"}> : (tensor<1x1120x?xi32>, tensor<1x1120x?xi32>, tensor<1120x?xi32>, tensor<2xi32>, tensor<3x!tf_type.string>) -> ()
+    return %3#1, %3#2, %4, %5 : tensor<1x1120x?xi32>, tensor<1x1120x?xi32>, tensor<1120x?xi32>, tensor<2xi32>
+  }
+
 }
