@@ -1380,11 +1380,11 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   return absl::OkStatus();
 }
 
-// Get the target config for compilation. Returns std::nullopt if no deviceless
-// target config is specified: in this case, device is used.
-static absl::StatusOr<std::optional<Compiler::TargetConfig>>
-GetDevicelessTargetConfig(const Compiler::CompileOptions& options,
-                          const DebugOptions& debug_opts) {
+// Returns the TargetConfig, either from the module debug options, or from the
+// CompilationOptions, or if both of those are absent, from the attached GPU.
+absl::StatusOr<Compiler::TargetConfig> GetTargetConfig(
+    const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
+    se::StreamExecutor* executor) {
   if (options.target_config.has_value()) {
     return *options.target_config;
   }
@@ -1396,27 +1396,30 @@ GetDevicelessTargetConfig(const Compiler::CompileOptions& options,
     stream_executor::GpuTargetConfigProto gpu_target_config_proto;
     if (!tsl::protobuf::TextFormat::ParseFromString(gpu_target_config_string,
                                                     &gpu_target_config_proto)) {
-      return FailedPrecondition("Failed to parse GpuTargetConfigProto");
+      return absl::FailedPreconditionError(
+          "Failed to parse GpuTargetConfigProto");
     }
 
     return Compiler::TargetConfig{gpu_target_config_proto};
   }
-  return std::nullopt;
+  if (executor) {
+    return Compiler::TargetConfig{executor};
+  }
+  return absl::InternalError(
+      "Either GPU has to be attached, or --xla_gpu_target_config_filename "
+      "has to be specified to specify the target to compile for.");
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-  TF_RETURN_IF_ERROR(
-      LoadAutotuneResultsFromFile(module->config().debug_options()));
+  const DebugOptions& debug_opts = module->config().debug_options();
+  TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
+  bool is_deviceless = options.target_config.has_value() ||
+                       !debug_opts.xla_gpu_target_config_filename().empty();
 
-  TF_ASSIGN_OR_RETURN(
-      std::optional<TargetConfig> forced_target_config,
-      GetDevicelessTargetConfig(options, module->config().debug_options()));
-
-  bool is_deviceless = forced_target_config.has_value();
-  TargetConfig gpu_target_config =
-      is_deviceless ? *forced_target_config : TargetConfig{stream_exec};
+  TF_ASSIGN_OR_RETURN(TargetConfig gpu_target_config,
+                      GetTargetConfig(options, debug_opts, stream_exec));
   const std::optional<std::string> unoptimized_fingerprint =
       MaybeUploadUnoptimizedGpuSymbols(module.get(),
                                        gpu_target_config.ToProto());
@@ -1506,10 +1509,9 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> GpuCompiler::AssignBuffers(
     HloModule* hlo_module, const se::StreamExecutor* stream_exec) {
   const se::DeviceDescription& gpu_device_info =
       stream_exec->GetDeviceDescription();
-  const int64_t scheduler_mem_limit =
-      GetSchedulerMemoryLimit(hlo_module, gpu_device_info, pointer_size_);
-  TF_RETURN_IF_ERROR(ScheduleGpuModule(hlo_module, pointer_size_,
-                                       scheduler_mem_limit, gpu_device_info));
+  TF_RETURN_IF_ERROR(
+      ScheduleGpuModule(hlo_module, pointer_size_, gpu_device_info).status());
+
   TF_RETURN_IF_ERROR(
       RunPostSchedulingCopyInsertion(hlo_module, GetCanShareBuffer()));
 
@@ -1781,13 +1783,11 @@ GpuCompiler::CompileToBackendResult(
     HloModule* module, llvm::LLVMContext* llvm_context,
     se::StreamExecutor* executor, const CompileOptions& options,
     const se::DeviceDescription& gpu_device_info) {
-  const int64_t scheduler_mem_limit =
-      GetSchedulerMemoryLimit(module, gpu_device_info, pointer_size_);
-  TF_RETURN_IF_ERROR(ScheduleGpuModule(module, pointer_size_,
-                                       scheduler_mem_limit, gpu_device_info));
-
-  TF_RETURN_IF_ERROR(
-      RunPostSchedulingPipelines(module, scheduler_mem_limit, gpu_device_info));
+  TF_ASSIGN_OR_RETURN(
+      ScheduleMetadata schedule_metadata,
+      ScheduleGpuModule(module, pointer_size_, gpu_device_info));
+  TF_RETURN_IF_ERROR(RunPostSchedulingPipelines(
+      module, schedule_metadata.scheduler_mem_limit, gpu_device_info));
 
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::MultiPlatformManager::PlatformWithId(PlatformId()));
@@ -1829,12 +1829,9 @@ GpuCompiler::CompileToBackendResult(
 absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-  TF_ASSIGN_OR_RETURN(
-      std::optional<TargetConfig> forced_target_config,
-      GetDevicelessTargetConfig(options, module->config().debug_options()));
-  bool is_deviceless = forced_target_config.has_value();
-  TargetConfig gpu_target_config =
-      is_deviceless ? *forced_target_config : TargetConfig{stream_exec};
+  const DebugOptions& debug_opts = module->config().debug_options();
+  TF_ASSIGN_OR_RETURN(TargetConfig gpu_target_config,
+                      GetTargetConfig(options, debug_opts, stream_exec));
 
   if (!options.is_autotuning_compilation) {
     VLOG(1) << "Starting to compile HLO module " << module->name();

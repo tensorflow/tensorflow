@@ -24,15 +24,16 @@ namespace gpu {
 
 int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 
-// Determines the schedule of HLO instructions for a module run on the GPU.
-absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                               int64_t memory_limit,
-                               const se::DeviceDescription& gpu_device_info);
-HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
+struct ScheduleMetadata {
+  int64_t scheduler_mem_limit;
+};
 
-int64_t GetSchedulerMemoryLimit(const HloModule* module,
-                                const se::DeviceDescription& gpu_device_info,
-                                int pointer_size);
+// Determines the schedule of HLO instructions for a module run on the GPU.
+StatusOr<ScheduleMetadata> ScheduleGpuModule(
+    HloModule* module, int64_t pointer_size,
+    const se::DeviceDescription& gpu_device_info);
+
+HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 
 constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";
 

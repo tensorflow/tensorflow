@@ -632,12 +632,19 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   return size + metadata_size;
 }
 
-absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                               int64_t memory_limit,
-                               const se::DeviceDescription& gpu_device_info) {
+static int64_t GetSchedulerMemoryLimit(
+    const HloModule* module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size);
+
+StatusOr<ScheduleMetadata> ScheduleGpuModule(
+    HloModule* module, int64_t pointer_size,
+    const se::DeviceDescription& gpu_device_info) {
+  int64_t memory_limit =
+      GetSchedulerMemoryLimit(module, gpu_device_info, pointer_size);
   if (module->has_schedule()) {
-    return absl::OkStatus();
+    return ScheduleMetadata{memory_limit};
   }
+
   HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
   prepare_pipeline.AddPass<P2PSchedulePreparation>();
   TF_RETURN_IF_ERROR(prepare_pipeline.Run(module).status());
@@ -664,7 +671,7 @@ absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
           .xla_gpu_enable_latency_hiding_scheduler();
 
   if (!enable_latency_hiding_scheduler) {
-    return absl::OkStatus();
+    return ScheduleMetadata{memory_limit};
   }
 
   SchedulerConfig config = GetSchedulerConfig(memory_limit);
@@ -725,7 +732,7 @@ absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   postprocessing_pipeline.AddPass<GpuSchedulePostprocessing>();
   TF_RETURN_IF_ERROR(postprocessing_pipeline.Run(module).status());
 
-  return absl::OkStatus();
+  return ScheduleMetadata{memory_limit};
 }
 
 HloInstructionSequence PostProcessSchedule(
@@ -736,9 +743,9 @@ HloInstructionSequence PostProcessSchedule(
 
 // Compute the device memory limit to be used by passes like scheduler and
 // HLO rematerialization.
-int64_t GetSchedulerMemoryLimit(const HloModule* module,
-                                const se::DeviceDescription& gpu_device_info,
-                                int pointer_size) {
+static int64_t GetSchedulerMemoryLimit(
+    const HloModule* module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size) {
   // There is a "base" value which is either specified in HloModuleConfig (this
   // value should take into account the fact that we need to leave some memory
   // free for allocations that happen outside of XLA's allocator) or
