@@ -301,22 +301,27 @@ void FindFusionArguments(
 
 bool HloAnyOf(absl::Span<const HloInstructionAdaptor> roots,
               const HloFusionAdaptor& fusion,
-              const std::function<bool(HloInstructionAdaptor node)>& visit) {
-  return HloFindIf(roots, fusion, visit).has_value();
+              const std::function<bool(HloInstructionAdaptor node)>& visit,
+              bool visit_operands) {
+  return HloFindIf(roots, fusion, visit, visit_operands).has_value();
 }
 
 std::optional<HloInstructionAdaptor> HloFindIf(
     absl::Span<const HloInstructionAdaptor> roots,
     const HloFusionAdaptor& fusion,
-    const std::function<bool(HloInstructionAdaptor node)>& visit) {
+    const std::function<bool(HloInstructionAdaptor node)>& visit,
+    bool visit_operands) {
   std::optional<HloInstructionAdaptor> result = std::nullopt;
-  HloBfsConsumersFirstTraversal(roots, fusion, [&](HloInstructionAdaptor node) {
-    if (visit(node)) {
-      result = node;
-      return TraversalResult::kInterrupt;
-    }
-    return TraversalResult::kAdvance;
-  });
+  HloBfsTraversal(
+      roots, fusion,
+      [&](HloInstructionAdaptor node) {
+        if (visit(node)) {
+          result = node;
+          return TraversalResult::kInterrupt;
+        }
+        return TraversalResult::kAdvance;
+      },
+      [](HloInstructionAdaptor) {}, visit_operands);
   return result;
 }
 

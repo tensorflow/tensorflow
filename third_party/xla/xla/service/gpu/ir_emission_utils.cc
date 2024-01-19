@@ -983,19 +983,6 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
     return false;
   }
 
-  // Intermediate `instr` can't have multiple users.
-  // If we have a boundary function, only consider users within the
-  // boundary.
-  // TODO(jreiffers): Figure out the point of this check.
-  int64_t num_users =
-      fusion ? absl::c_count_if(
-                   HloInstructionAdaptor{*instr}.GetUsers(),
-                   [&](auto user) { return fusion->ContainsInstruction(user); })
-             : instr->user_count();
-  if (num_users > 1) {
-    return false;
-  }
-
   if (instr->IsElementwise()) {
     // All elementwise ops are considered intermediate, except for copies that
     // modify the layout. Copies that do not modify the layout are used in
@@ -1025,11 +1012,10 @@ static bool IsParameter(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kParameter;
 }
 
-std::optional<HloInstructionAdaptor> FindTransposeHero(
+static std::optional<HloInstructionAdaptor> FindTransposeHero(
     HloInstructionAdaptor root, const HloFusionAdaptor& fusion) {
   std::optional<HloInstructionAdaptor> transpose = std::nullopt;
-  std::vector<HloInstructionAdaptor> non_trivial;
-  auto visit = [&transpose, &non_trivial](HloInstructionAdaptor node) {
+  auto visit = [&transpose](HloInstructionAdaptor node) {
     if (FindTiledLogicalTranspose(node.instruction())) {
       // If we do not find a unique transpose op, use the original non-trivial
       // hero.
@@ -1042,27 +1028,11 @@ std::optional<HloInstructionAdaptor> FindTransposeHero(
     }
 
     if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
-      non_trivial.push_back(node);
       return TraversalResult::kSkip;
     }
     return TraversalResult::kAdvance;
   };
   HloBfsConsumersFirstTraversal({root}, fusion, visit);
-
-  if (transpose) {
-    // There is a single transpose instruction that is a hero candidate.
-    // However, the transpose must be unreachable from any of the non-trivial
-    // instructions that were encountered, because that would mean that its
-    // output is accessed with different access patterns.
-    auto visit_nt = [&transpose](HloInstructionAdaptor node) {
-      if (node == transpose) {
-        transpose = std::nullopt;
-        return TraversalResult::kInterrupt;
-      }
-      return TraversalResult::kAdvance;
-    };
-    HloBfsConsumersFirstTraversal(non_trivial, fusion, visit_nt);
-  }
   return transpose;
 }
 
@@ -1092,7 +1062,19 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
   // that each op on the path is elementwise and has only 1 user.
   std::optional<HloInstructionAdaptor> transpose =
       FindTransposeHero(idx, fusion);
-  return transpose ? transpose->instruction() : idx.instruction();
+  HloInstructionAdaptor hero = transpose ? *transpose : idx;
+  auto visit = [](HloInstructionAdaptor node) {
+    return node.instruction().opcode() != HloOpcode::kTuple &&
+           node.instruction().opcode() != HloOpcode::kParameter &&
+           !IsIntermediate(&node.instruction(),
+                           /*allowed_operand_count=*/3);
+  };
+  bool has_nontrivial_user =
+      HloAnyOf(hero.GetUsers(), fusion, visit, /*visit_operands=*/false);
+  if (has_nontrivial_user) {
+    return instr;
+  }
+  return hero.instruction();
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {

@@ -149,18 +149,22 @@ void HloBfsProducersFirstTraversal(
 
 // Visit the HLO nodes starting from `roots`, returning true if the return value
 // of `visit` for any of nodes is true. Uses the same order as
-// `HloBfsConsumersFirstTraversal`.
+// `HloBfsConsumersFirstTraversal` if `visit_operands` is true. Otherwise the
+// same order as `HloBfsProducersFirstTraversal` is used.
 bool HloAnyOf(absl::Span<const HloInstructionAdaptor> roots,
               const HloFusionAdaptor& fusion,
-              const std::function<bool(HloInstructionAdaptor node)>& visit);
+              const std::function<bool(HloInstructionAdaptor node)>& visit,
+              bool visit_operands = true);
 
 // Visit the HLO nodes stating from `roots`, returning the first
 // node for which `visit` returns true, or `nullptr` if no node matches. Uses
-// the same order as `HloBfsConsumersFirstTraversal`.
+// the same order as `HloBfsConsumersFirstTraversal` if `visit_operands` is
+// true. Otherwise the same order as `HloBfsProducersFirstTraversal` is used.
 std::optional<HloInstructionAdaptor> HloFindIf(
     absl::Span<const HloInstructionAdaptor> roots,
     const HloFusionAdaptor& fusion,
-    const std::function<bool(HloInstructionAdaptor node)>& visit);
+    const std::function<bool(HloInstructionAdaptor node)>& visit,
+    bool visit_operands = true);
 
 // Visit the producers of all parameters that are needed by the fusion.
 void FindFusionArguments(
