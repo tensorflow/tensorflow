@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "xla/service/gpu/gpu_conv_rewriter.h"
 #include "xla/service/gpu/gpu_layout_assignment.h"
+#include "xla/service/gpu/gpu_sort_rewriter.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/gpu/reduction_degenerate_dim_remover.h"
 #include "xla/service/gpu/reduction_dimension_grouper.h"
@@ -145,6 +146,14 @@ absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  return absl::OkStatus();
+}
+
+absl::Status AMDGPUCompiler::AddCustomKernelReplacementPasses(
+    HloPassPipeline* pipeline, const DebugOptions& debug_options) {
+  if (debug_options.xla_gpu_enable_cub_radix_sort()) {
+    pipeline->AddPass<GpuSortRewriter>();
+  }
   return absl::OkStatus();
 }
 
