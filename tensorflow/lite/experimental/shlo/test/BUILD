@@ -131,6 +131,25 @@ shlo_cc_test(
 )
 
 shlo_cc_test(
+    name = "iota",
+    srcs = [
+        "iota_test.cc",
+    ],
+    data = [
+    ],
+    deps = [
+        ":util",
+        "//base",
+        "//tensorflow/lite/experimental/shlo",
+        "//tensorflow/lite/experimental/shlo:debug",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+shlo_cc_test(
     name = "is_finite",
     srcs = [
         "is_finite_test.cc",

@@ -13,6 +13,7 @@ shlo_cc_library(
         "src/concatenate.cc",
         "src/elementwise_binary.cc",
         "src/elementwise_unary.cc",
+        "src/iota.cc",
         "src/is_finite.cc",
         "src/select.cc",
         "src/shlo.cc",

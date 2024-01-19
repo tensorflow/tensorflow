@@ -351,6 +351,8 @@ absl::Status ExponentialMinusOne(const QuantizedTensor& operand,
                                  QuantizedTensor& result);
 absl::Status Floor(const Tensor& operand, Tensor& result);
 absl::Status Floor(const QuantizedTensor& operand, QuantizedTensor& result);
+absl::Status Iota(DimensionSize iota_dimension, Tensor& result);
+absl::Status Iota(DimensionSize iota_dimension, QuantizedTensor& result);
 absl::Status IsFinite(const Tensor& operand, Tensor& result);
 absl::Status IsFinite(const QuantizedTensor& operand, QuantizedTensor& result);
 absl::Status Log(const Tensor& operand, Tensor& result);
