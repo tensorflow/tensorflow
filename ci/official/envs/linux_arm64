@@ -17,7 +17,7 @@ TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_arm64
 # Note: this is not set to "--cpu", because that changes the package name
 # to tensorflow_cpu. These ARM builds are supposed to have the name "tensorflow"
 # despite lacking Nvidia CUDA support.
-TFCI_BUILD_PIP_PACKAGE_ARGS=
+TFCI_BUILD_PIP_PACKAGE_ARGS="--repo_env=WHEEL_NAME=tensorflow"
 TFCI_DOCKER_ENABLE=1
 TFCI_DOCKER_IMAGE=gcr.io/tensorflow-sigs/build-arm64:tf-latest-multi-python
 TFCI_DOCKER_PULL_ENABLE=1
