@@ -184,6 +184,55 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "prefetched_split_provider",
+    srcs = ["prefetched_split_provider.cc"],
+    hdrs = ["prefetched_split_provider.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":file_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+tf_cc_test(
+    name = "prefetched_split_provider_test",
+    srcs = ["prefetched_split_provider_test.cc"],
+    deps = [
+        ":prefetched_split_provider",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:common_proto_cc",
+        "//tensorflow/core/data/service:split_provider",
+        "//tensorflow/core/data/service:test_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:path",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "snapshot_split_provider",
     srcs = ["snapshot_split_provider.cc"],
     hdrs = ["snapshot_split_provider.h"],
