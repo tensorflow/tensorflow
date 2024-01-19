@@ -59,49 +59,6 @@ namespace {
 
 static constexpr int64_t kCollectiveMemorySpaceColor = 1;
 
-//==-----------------------------------------------------------------------===//
-// Macros to return on NCCL errors.
-//==-----------------------------------------------------------------------===//
-
-#if defined(GOOGLE_CUDA) && defined(XLA_ENABLE_XCCL)
-static absl::Status ToStatus(ncclResult_t s, const char* file, int64_t line,
-                             const char* expr) {
-  if (s == ncclSuccess) return absl::OkStatus();
-
-  return absl::InternalError(absl::StrFormat(
-      "%s:%d: NCCL operation %s failed: %s."
-      " Last NCCL warning(error) log entry (may be unrelated) '%s'.",
-      file, line, expr, ncclGetErrorString(s), ncclGetLastError(nullptr)));
-}
-
-static absl::Status ToStatus(CUresult s, const char* file, int64_t line,
-                             const char* expr) {
-  if (s == CUDA_SUCCESS) {
-    return OkStatus();
-  }
-  const char* name;
-  cuGetErrorName(s, &name);
-  const char* message;
-  cuGetErrorString(s, &message);
-  return absl::AbortedError(
-      absl::StrFormat("%s:%d: CUDA operation %s failed: %s, %s", file, line,
-                      expr, name, message));
-}
-#endif
-
-#define XLA_NCCL_STATUS(expr) \
-  xla::gpu::ToStatus(expr, __FILE__, __LINE__, #expr)
-
-#define XLA_NCCL_RETURN_IF_ERROR(expr)      \
-  do {                                      \
-    absl::Status s = XLA_NCCL_STATUS(expr); \
-    if (!s.ok()) {                          \
-      return s;                             \
-    }                                       \
-  } while (0)
-
-//==-----------------------------------------------------------------------===//
-
 bool IsTypeSupportedByNccl(PrimitiveType element_type,
                            Thunk::Kind reduction_op) {
   switch (element_type) {
@@ -238,22 +195,6 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
       nccl_api_(nccl_api),
       async_(is_sync ? std::make_unique<AsyncExecutor>() : nullptr) {}
 
-/* static */ bool NcclCollectiveThunk::NcclIsEnabled() {
-#if XLA_ENABLE_XCCL
-  return true;
-#else
-  return false;
-#endif
-}
-
-/* static */ absl::Status NcclCollectiveThunk::CheckImplementable() {
-  if (!NcclIsEnabled()) {
-    return tsl::errors::Unimplemented("NCCL is not enabled");
-  }
-  return absl::OkStatus();
-}
-
-#if XLA_ENABLE_XCCL
 absl::StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -293,13 +234,14 @@ absl::StatusOr<NcclComm::Lock> LockNcclComm(
       const NcclCliqueIdCallback* clique_id_callback,
       GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
 
+#ifdef GOOGLE_CUDA
   se::gpu::ScopedActivateExecutorContext scoped_context(params.stream_executor);
+#endif  // GOOGLE_CUDA
 
   return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
                          num_local_participants, *clique_id_callback, rank,
                          stream_id, enable_clique_optimization);
 }
-#endif  // XLA_ENABLE_XCCL
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const Thunk::ExecuteParams& params,
@@ -367,7 +309,6 @@ Status MaybeRegisterBuffers(int device_ordinal,
 }
 
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
-#if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));
   const int64_t stream_id = GetStreamId();
@@ -404,11 +345,6 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     first_call_to_execute_ = false;
   }
   return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
 }
 
 std::string NcclCollectiveThunk::GetDeviceString(

@@ -146,7 +146,6 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
   auto status = [&]() -> absl::Status {
-    TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
     return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
   };
   return AddOpDescription<NcclCollectivePermuteStartThunk>(

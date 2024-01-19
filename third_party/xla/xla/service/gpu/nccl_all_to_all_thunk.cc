@@ -90,7 +90,6 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
 /*static*/ absl::Status NcclAllToAllStartThunk::CheckImplementable(
     AllToAllStartOp op, int64_t replica_count, int64_t partition_count) {
   auto status = [&]() -> absl::Status {
-    TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
     std::optional<uint64_t> split_dim = op.getSplitDimension();
     for (mlir::Value operand : op.getInputs()) {
       TF_RETURN_IF_ERROR(IsValidOperand(operand, Thunk::kNcclAllToAll));
@@ -112,7 +111,6 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
     const HloAllToAllInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
   auto status = [&instr]() -> absl::Status {
-    TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
     std::optional<uint64_t> split_dim = instr->split_dimension();
     for (HloInstruction* operand : instr->operands()) {
       Shape shape = operand->shape();

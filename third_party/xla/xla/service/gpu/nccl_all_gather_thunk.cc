@@ -57,8 +57,6 @@ NcclAllGatherConfig GetNcclAllGatherConfig(AllGatherStartOp op) {
 }
 
 absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
-
   for (HloInstruction* operand : inst->operands()) {
     const Shape& shape = operand->shape();
 
@@ -76,7 +74,6 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
 }
 
 absl::Status CheckImplementable(AllGatherStartOp op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   for (mlir::Value operand : op.getInputs()) {
     TF_RETURN_IF_ERROR(IsValidOperand(operand, Thunk::kNcclAllGather));
     Shape shape = GetShape(operand);

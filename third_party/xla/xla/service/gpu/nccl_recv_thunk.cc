@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
 
@@ -41,7 +42,6 @@ NcclP2PConfig GetNcclP2PConfig(RecvOp op, int64_t replica_count,
 }
 
 absl::Status CheckImplementable(RecvOp op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   return IsValidOperand(op.getOutputs()[0], Thunk::kNcclSend);
 }
 

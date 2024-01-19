@@ -119,8 +119,6 @@ namespace impl {
 
 absl::Status CheckImplementableInst(const HloInstruction* inst,
                                     Thunk::Kind reduction_op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
-
   for (HloInstruction* operand : inst->operands()) {
     TF_RETURN_IF_ERROR(IsValidOperand(operand->shape(), reduction_op));
   }
@@ -135,7 +133,6 @@ absl::Status CheckImplementableInst(const HloInstruction* inst,
 
 template <typename OpT>
 absl::Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   for (mlir::Value operand : op.getInputs()) {
     TF_RETURN_IF_ERROR(IsValidOperand(operand, reduction_op));
   }
