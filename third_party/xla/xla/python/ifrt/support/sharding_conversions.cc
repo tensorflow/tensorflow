@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <cstdint>
 #include <utility>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/shape.h"
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -70,33 +70,104 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
   return op_sharding;
 }
 
-StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        absl::Span<const int64_t> shape,
-                                        absl::Span<const int> axis_sizes) {
-  // Dim shards matches the rank of the tensor, with each entry representing
-  // the number of shards for the corresponding dimension.
-  llvm::SmallVector<int64_t> dim_shards;
-  dim_shards.reserve(shape.size());
-  // `axis_sizes` with the sizes of the mesh dimensions
-  // `permutation` of the same length as `axis_sizes` telling how the shards
-  // are mapped over the axis in `minor_to_major` order.
-  ShardingParam::MinorToMajor minor_to_major;
-  minor_to_major.axis_sizes.reserve(axis_sizes.size());
-  minor_to_major.permutation.reserve(axis_sizes.size());
-  for (auto axis_size : axis_sizes) {
-    minor_to_major.axis_sizes.push_back(axis_size);
+StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
+  auto axis_sizes = sharding_param.minor_to_major().axis_sizes;
+  llvm::SmallVector<int64_t> reshape_dims;
+  reshape_dims.reserve(axis_sizes.size());
+  int device_count = 1;
+  for (auto axis_size : llvm::reverse(axis_sizes)) {
+    reshape_dims.push_back(axis_size);
+    device_count *= axis_size;
   }
-  if (hlo_sharding.IsReplicated()) {
-    for (int i = 0; i < shape.size(); ++i) {
-      dim_shards.push_back(1);
+  if (device_count == 1) {
+    // Generate single-device sharding as TileMaximal.
+    return HloSharding::AssignDevice(0);
+  }
+  int64_t cum_size = 1;
+  llvm::SmallVector<int64_t> dims;
+  dims.reserve(sharding_param.dim_shards().size());
+  for (const int64_t dim_shard : sharding_param.dim_shards()) {
+    cum_size *= dim_shard;
+    dims.push_back(dim_shard);
+  }
+  if (device_count != cum_size) {
+    // Add the replicated dimension.
+    dims.push_back(device_count / cum_size);
+    return HloSharding::PartialTile(TileAssignment(
+        dims, reshape_dims, sharding_param.minor_to_major().permutation));
+  } else {
+    return HloSharding::IotaTile(dims, reshape_dims,
+                                 sharding_param.minor_to_major().permutation);
+  }
+}
+
+StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
+                                        int rank, int num_devices) {
+  // `dim_shards` has size equal to the rank of the array, with each entry
+  // representing the number of shards for the corresponding dimension.
+  // `minor_to_major.permutation` and `minor_to_major.axis_sizes` must be
+  // of the same size, and specify how the shards are mapped over the axis in
+  // `minor_to_major` order.
+  ShardingParam::MinorToMajor minor_to_major;
+
+  if (hlo_sharding.IsReplicated() ||
+      (hlo_sharding.IsTileMaximal() && hlo_sharding.HasUniqueDevice() &&
+       num_devices == 1)) {
+    // Convert replicated or TileMaximal. Only single-device TileMaximal
+    // conversion is supported.
+    llvm::SmallVector<int64_t> dim_shards(rank, 1);
+    minor_to_major.permutation.push_back(0);
+    minor_to_major.axis_sizes.push_back(num_devices);
+    return ShardingParam(dim_shards, std::move(minor_to_major));
+  } else if (hlo_sharding.IsTiled()) {
+    const xla::TileAssignment& tile_assignment = hlo_sharding.tile_assignment();
+    if (!tile_assignment.iota()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Conversion from `HloSharding` without `IotaTileAssignment` is not "
+          "supported; sharding=",
+          hlo_sharding.ToString()));
     }
-    for (int axis_idx = 0; axis_idx < axis_sizes.size(); ++axis_idx) {
-      minor_to_major.permutation.push_back(axis_idx);
+    if (rank != hlo_sharding.TiledDataRank()) {
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "`TiledData` expected to have have %d dimensions, but has %d "
+          "dimensions; sharding=%s",
+          rank, hlo_sharding.TiledDataRank(), hlo_sharding.ToString()));
+    }
+    if (hlo_sharding.subgroup_types().size() > 1 ||
+        (hlo_sharding.subgroup_types().size() == 1 &&
+         hlo_sharding.subgroup_types()[0] != xla::OpSharding::REPLICATED)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported conversion to `ShardingParam` from `HloSharding` that "
+          "has more than a subgroup or a subgroup that is not REPLICATED; "
+          "sharding=",
+          hlo_sharding.ToString()));
+    }
+    // Get the `dim_shards` from the tile assignment.
+    llvm::SmallVector<int64_t> dim_shards(tile_assignment.dimensions().begin(),
+                                          tile_assignment.dimensions().end());
+    if (hlo_sharding.ReplicateOnLastTileDim() ||
+        (hlo_sharding.subgroup_types().size() == 1 &&
+         hlo_sharding.subgroup_types()[0] == xla::OpSharding::REPLICATED)) {
+      dim_shards.pop_back();
+    }
+    if (tile_assignment.iota()->reshape_dims().empty()) {
+      // If there are no reshape_dims, then the array is replicated.
+      minor_to_major.permutation.push_back(0);
+      minor_to_major.axis_sizes.push_back(num_devices);
+    } else {
+      for (auto reshape_dim :
+           llvm::reverse(tile_assignment.iota()->reshape_dims())) {
+        minor_to_major.axis_sizes.push_back(reshape_dim);
+      }
+      for (int axis_id : tile_assignment.iota()->transpose_perm()) {
+        minor_to_major.permutation.push_back(axis_id);
+      }
     }
     return ShardingParam(dim_shards, std::move(minor_to_major));
   }
   return absl::UnimplementedError(
-      absl::StrCat("Only converting from replicated HloSharding is supported.",
+      absl::StrCat("Unsupported conversion to `ShardingParam` from "
+                   "`HloSharding`; sharding=",
                    hlo_sharding.ToString()));
 }
 

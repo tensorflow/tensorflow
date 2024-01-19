@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/shape.h"
 #include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -27,23 +26,33 @@ namespace xla {
 namespace ifrt {
 namespace support {
 
-// Converts ShardingParam to OpSharding.
+// Converts ShardingParam and a device_mapping to OpSharding.
 //
-// This assumes that `sharding_param` is valid.
+// The function assumes that `sharding_param` is valid. The logical device
+// ids from `sharding_param` are used as indices into the device_mapping.
 //
 // Returns error when `device_mapping` can't map the logical devices in
 // `sharding_param`.
 StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
                                   absl::Span<const int> device_mapping);
 
-// Converts HloSharding to OpSharding.
+// Converts ShardingParam to HloSharding.
+//
+// This assumes that `sharding_param` is valid.
+// The returned HloSharding uses the same logical device ids as the
+// given ShardingParam.
+StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param);
+
+// Converts HloSharding to ShardingParam.
 //
 // It assumes that `hlo_sharding` is valid.
 //
 // Returns error when `hlo_sharding` cannot be converted to sharding param.
+// Only a subset of HloShardings are supported: REPLICATED (including MAXIMAL
+// on single-device), partially replicated, fully partitioned shardings.
+// (Non-fully-replicated) MAXIMAL and MANUAL shardings are not supported.
 StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        absl::Span<const int64_t> shape,
-                                        absl::Span<const int> axis_sizes);
+                                        int rank, int num_devices);
 
 }  // namespace support
 }  // namespace ifrt
