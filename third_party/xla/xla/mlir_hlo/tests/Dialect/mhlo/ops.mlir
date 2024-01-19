@@ -53,6 +53,41 @@ func.func @all_reduce_tuple(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> tensor
 
 // -----
 
+// CHECK-LABEL: func @all_reduce_with_promotable_types
+func.func @all_reduce_with_promotable_types(%operand: tensor<f32>) -> tensor<f64> {
+
+  %result = "mhlo.all_reduce"(%operand) ({
+    ^bb0(%arg0: tensor<f64>, %arg1: tensor<f64>):
+      %0 = "mhlo.add"(%arg0, %arg1) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+      "mhlo.return"(%0) : (tensor<f64>) -> ()
+  }) {
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
+  } : (tensor<f32>) -> tensor<f64>
+
+  func.return %result : tensor<f64>
+}
+
+// -----
+
+// CHECK-LABEL: func @all_reduce_with_promotable_quantized_types
+func.func @all_reduce_with_promotable_quantized_types(%operand: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>)
+    -> tensor<!quant.uniform<i32:f32, 2.000000e+00:15>> {
+
+  %result = "mhlo.all_reduce"(%operand) ({
+    ^bb0(%arg0: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg1: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+      %0 = mhlo.add %arg0, %arg1 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+      "mhlo.return"(%0) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+  }) {
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
+  } : (tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+
+  func.return %result : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+}
+
+// -----
+
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
   // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{Reduction-region must take 2 parameters, but takes 3 parameter(s)}}
@@ -200,7 +235,8 @@ func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10
 // -----
 
 func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10xi32> {
-  // expected-error@+1 {{'mhlo.all_reduce' op requires the same element type for all operands and results}}
+  // expected-error@+2 {{'mhlo.all_reduce' op inferred type(s) 'tensor<10xf32>' are incompatible with return type(s) of operation 'tensor<10xi32>'}}
+  // expected-error@+1 {{'mhlo.all_reduce' op failed to infer returned types}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
     %max = mhlo.maximum %arg0, %arg1 : tensor<f32>
@@ -305,6 +341,38 @@ func.func @reduce_scatter_dynamic(%data: tensor<?x?xf32>) -> tensor<?x?xf32> {
       channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
       use_global_device_ids} : (tensor<?x?xf32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_scatter_with_promotable_types
+func.func @reduce_scatter_with_promotable_types(%data: tensor<4x16xf32>) -> tensor<4x4xf64> {
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    ^bb0(%arg2: tensor<f64>, %arg3: tensor<f64>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<f64>
+    "mhlo.return"(%1) : (tensor<f64>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64,
+      channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+      use_global_device_ids} : (tensor<4x16xf32>) -> tensor<4x4xf64>
+  func.return %0 : tensor<4x4xf64>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_scatter_with_promotable_quantized_types
+func.func @reduce_scatter_with_promotable_quantized_types(
+    %data: tensor<4x16x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+    tensor<4x4x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+  %0 = "mhlo.reduce_scatter"(%data) ({
+    ^bb0(%arg2: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+    %1 = mhlo.add %arg2, %arg3 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+    "mhlo.return"(%1) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+  }) {replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
+      scatter_dimension = 1 : i64,
+      channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+      use_global_device_ids} : (tensor<4x16x!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x4x!quant.uniform<i32:f32, 2.000000e+00:15>>
+  func.return %0 : tensor<4x4x!quant.uniform<i32:f32, 2.000000e+00:15>>
 }
 
 // -----

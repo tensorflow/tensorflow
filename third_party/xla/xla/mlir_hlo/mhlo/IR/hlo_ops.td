@@ -1490,7 +1490,6 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
 }
 
 def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
-    SameOperandsAndResultElementType,
     SingleBlockImplicitTerminator<"ReturnOp">,
     InferTensorType
   ]> {
@@ -1544,8 +1543,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
   let hasCustomHLOConverter = 1;
 }
 
-def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",
-    [SameOperandsAndResultElementType]> {
+def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter", []> {
   let summary = "ReduceScatter operation";
   let description = [{
      Within each process group in the process grid, performs reduction, using
@@ -1690,6 +1688,12 @@ def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
+
+  // Builder
+  let builders = [
+    OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
+      "DenseIntElementsAttr":$dimensions, "TypeRange":$element_types)>,
+  ];
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;

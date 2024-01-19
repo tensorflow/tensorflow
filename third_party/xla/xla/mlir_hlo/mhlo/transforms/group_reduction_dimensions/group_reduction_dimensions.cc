@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
@@ -224,8 +225,11 @@ LogicalResult tryLowerTo1DOr2DReduction(
   int64_t reductionDim = leadingReduction ? 0 : 1;
   auto reductionDimAttr = rewriter.getI64VectorAttr({reductionDim});
   Value initVal = op.getInitValues().front();
-  auto reductionOp =
-      rewriter.create<ReduceOp>(loc, intermResult, initVal, reductionDimAttr);
+  SmallVector<Type> elementTypes{llvm::map_range(
+      op.getBody().front().getTerminator()->getOperands(),
+      [](Value v) { return v.getType().cast<ShapedType>().getElementType(); })};
+  auto reductionOp = rewriter.create<ReduceOp>(loc, intermResult, initVal,
+                                               reductionDimAttr, elementTypes);
   rewriter.inlineRegionBefore(op.getBody(), reductionOp.getBody(),
                               reductionOp.getBody().begin());
   intermResult = reductionOp->getResults().front();

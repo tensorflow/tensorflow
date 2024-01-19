@@ -2089,15 +2089,8 @@ LogicalResult AllReduceOp::inferReturnTypeComponents(
   }
 
   // Populate inferred return shapes
-  for (auto resultType : adaptor.getOperands().getTypes()) {
-    auto rankedResult = resultType.dyn_cast<RankedTensorType>();
-    if (rankedResult)
-      inferredReturnShapes.emplace_back(rankedResult.getShape(),
-                                        rankedResult.getElementType(),
-                                        rankedResult.getEncoding());
-    else
-      inferredReturnShapes.emplace_back(resultType.cast<ShapedType>());
-  }
+  return hlo::inferAllReduceOp(location, adaptor.getOperands(),
+                               adaptor.getComputation(), inferredReturnShapes);
   return success();
 }
 
@@ -3266,157 +3259,24 @@ OpFoldResult CopyOp::fold(FoldAdaptor) { return getOperand(); }
 // ReduceWindowOp
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-// TODO(@sdasgup): Reuse the same function from hlo namespace.
-FailureOr<SmallVector<int64_t>> convert1DAttribute(
-    std::optional<DenseIntElementsAttr> optionalAttr,
-    std::optional<Location> loc, StringRef attrName) {
-  if (!optionalAttr.has_value()) return SmallVector<int64_t>{};
-
-  DenseIntElementsAttr attr = *optionalAttr;
-  auto attrType = attr.getType().cast<RankedTensorType>();
-  if (attrType.getRank() != 1)
-    return emitOptionalError(loc, "expects the shape of ", attrName,
-                             " attribute to be 1-D, but got {",
-                             attrType.getShape(), "}.");
-  auto values = attr.getValues<int64_t>();
-  return SmallVector<int64_t>{values.begin(), values.end()};
-}
-
-LogicalResult verifyReduceWindowOpInputsAndInferWindow(
-    std::optional<Location> location, SmallVector<ShapedType> inputTypes,
-    DenseIntElementsAttr windowDimensions,
-    std::optional<DenseIntElementsAttr> windowStrides,
-    std::optional<DenseIntElementsAttr> baseDilations,
-    std::optional<DenseIntElementsAttr> windowDilations,
-    std::optional<DenseIntElementsAttr> padding,
-    SmallVector<int64_t>& windowDims,
-    SmallVector<hlo::WindowDimension>& inferredWindow) {
-  // reduce_window_c1
-  if (inputTypes.empty())
-    return emitOptionalError(location, "requires at least 1 input value");
-
-  // Check for unranked tensors in input operands.
-  uint64_t numInputs = inputTypes.size();
-  int64_t rankedInputIdx = -1;
-  for (uint64_t inputIdx = 0; inputIdx < numInputs; ++inputIdx) {
-    if (inputTypes[inputIdx].hasRank()) {
-      rankedInputIdx = inputIdx;
-      break;
-    }
-  }
-  bool allInputsUnranked = (rankedInputIdx == -1);
-
-  // reduce_window_c2
-  if (!allInputsUnranked) {
-    for (uint64_t inputIdx = 0; inputIdx < numInputs; ++inputIdx)
-      if (failed(mlir::verifyCompatibleShape(inputTypes[rankedInputIdx],
-                                             inputTypes[inputIdx])))
-        return emitOptionalError(
-            location, "expects all inputs to have compatible shapes. Shape at",
-            " input-index ", inputIdx,
-            " is not compatible with shape at input-index ", rankedInputIdx);
-  }
-
-  // reduce_window_i3
-  auto windowDimsOrErr =
-      convert1DAttribute(windowDimensions, location, "window_dimensions");
-  if (failed(windowDimsOrErr)) return failure();
-  // reduce_window_i4
-  auto windowStridesOrErr =
-      convert1DAttribute(windowStrides, location, "window_strides");
-  if (failed(windowStridesOrErr)) return failure();
-  // reduce_window_i5
-  auto baseDilationsOrErr =
-      convert1DAttribute(baseDilations, location, "base_dilations");
-  if (failed(baseDilationsOrErr)) return failure();
-  // reduce_window_i6
-  auto windowDilationsOrErr =
-      convert1DAttribute(windowDilations, location, "window_dilations");
-  if (failed(windowDilationsOrErr)) return failure();
-  // reduce_window_c12, reduce_window_i7
-  auto paddingOrErr = hlo::convertPaddingAttribute(padding, location);
-  if (failed(paddingOrErr)) return failure();
-
-  // reduce_window_c4
-  for (const auto inputType : inputTypes) {
-    if (!inputType.hasRank()) continue;
-    if (inputType.getRank() != static_cast<int64_t>((*windowDimsOrErr).size()))
-      return emitOptionalError(
-          location, "expects window-dimensions size == input rank, but got ",
-          "window-dimensions size: ", (*windowDimsOrErr).size(),
-          " and input: ", inputType, " with rank = ", inputType.getRank(), ".");
-  }
-
-  // reduce_window_c5...reduce_window_c12
-  auto windowOrErr = hlo::verifyWindowAttributesAndInferWindowDimensions(
-      *windowDimsOrErr, *windowStridesOrErr, *paddingOrErr,
-      /*lhsDilation=*/*baseDilationsOrErr,
-      /*rhsDilation=*/*windowDilationsOrErr, /*windowReversal=*/std::nullopt,
-      location);
-  if (failed(windowOrErr)) return failure();
-
-  windowDims.append(*windowDimsOrErr);
-  inferredWindow.append(*windowOrErr);
-  return success();
-}
-
-LogicalResult inferReduceWindowOp(
-    std::optional<Location> location, ValueRange inputs,
-    DenseIntElementsAttr windowDimensions,
-    std::optional<DenseIntElementsAttr> windowStrides,
-    std::optional<DenseIntElementsAttr> baseDilations,
-    std::optional<DenseIntElementsAttr> windowDilations,
-    std::optional<DenseIntElementsAttr> padding,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  SmallVector<ShapedType> inputTypes{llvm::map_range(
-      inputs.getTypes(), [](Type t) { return t.cast<ShapedType>(); })};
-
-  SmallVector<int64_t> windowDims;
-  SmallVector<hlo::WindowDimension> inferredWindow;
-  // reduce_window_c1, reduce_window_c2, reduce_window_c4...reduce_window_c12,
-  // reduce_window_i4...reduce_window_i7
-  if (failed(verifyReduceWindowOpInputsAndInferWindow(
-          location, inputTypes, windowDimensions, windowStrides, baseDilations,
-          windowDilations, padding, windowDims, inferredWindow)))
-    return failure();
-
-  // reduce_window_c1, reduce_window_c14...reduce_window_c16
-  for (size_t i = 0; i < inputTypes.size(); ++i) {
-    auto inputRankedType = inputs[i].getType().dyn_cast<RankedTensorType>();
-    if (!inputRankedType) {
-      inferredReturnShapes.emplace_back(inputTypes[i].getElementType());
-    } else {
-      auto resultShape =
-          inferWindowOutputShape(inputTypes[i].getShape(), inferredWindow);
-      auto inputBounds = hlo::encodingToBounds(inputRankedType.getEncoding());
-      if (inputBounds.empty()) {
-        inferredReturnShapes.emplace_back(resultShape,
-                                          inputTypes[i].getElementType());
-      } else {
-        auto resultBounds = inferWindowOutputShape(inputBounds, inferredWindow);
-        inferredReturnShapes.emplace_back(
-            resultShape, inputTypes[i].getElementType(),
-            hlo::boundsToEncoding(inputRankedType.getEncoding(), resultBounds));
-      }
-    }
-  }
-
-  return success();
-}
-
-}  // namespace
-
 LogicalResult ReduceWindowOp::inferReturnTypeComponents(
     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   ReduceWindowOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return inferReduceWindowOp(
-      location, adaptor.getInputs(), adaptor.getWindowDimensions(),
-      adaptor.getWindowStrides(), adaptor.getBaseDilations(),
-      adaptor.getWindowDilations(), adaptor.getPadding(), inferredReturnShapes);
+  return hlo::inferReduceWindowOp(
+      location, adaptor.getInputs(), adaptor.getInitValues(),
+      llvm::to_vector(adaptor.getWindowDimensions().getValues<int64_t>()),
+      adaptor.getWindowStrides()
+          ? llvm::to_vector(adaptor.getWindowStrides()->getValues<int64_t>())
+          : ArrayRef<int64_t>{},
+      adaptor.getBaseDilations()
+          ? llvm::to_vector(adaptor.getBaseDilations()->getValues<int64_t>())
+          : ArrayRef<int64_t>{},
+      adaptor.getWindowDilations()
+          ? llvm::to_vector(adaptor.getWindowDilations()->getValues<int64_t>())
+          : ArrayRef<int64_t>{},
+      adaptor.getPadding(), adaptor.getBody(), inferredReturnShapes);
 }
 
 LogicalResult ReduceWindowOp::verify() {
@@ -4043,112 +3903,60 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
   return success();
 }
 
-namespace {
-
-// TODO(@sdasgup): Reuse the same functions from hlo namespace.
-LogicalResult verifyReduceOpInputsAndInferShape(
-    std::optional<Location> location, SmallVector<ShapedType> inputTypes,
-    DenseIntElementsAttr dimensions, SmallVector<int64_t>& newDimensions,
-    Attribute& encoding) {
-  // reduce_i3
-  if (dimensions.getType().getRank() != 1)
-    return emitOptionalError(location, "dimensions must be rank 1");
-
-  // Check for unranked tensors in input operands.
-  uint64_t numInputs = inputTypes.size();
-  int64_t rankedInputIdx = -1;
-  for (uint64_t inputIdx = 0; inputIdx < numInputs; ++inputIdx) {
-    if (inputTypes[inputIdx].hasRank()) {
-      rankedInputIdx = inputIdx;
-      break;
-    }
-  }
-  bool allInputsUnranked = (rankedInputIdx == -1);
-  // reduce_c1
-  if (!allInputsUnranked) {
-    for (uint64_t inputIdx = 0; inputIdx < numInputs; ++inputIdx)
-      if (failed(mlir::verifyCompatibleShape(inputTypes[rankedInputIdx],
-                                             inputTypes[inputIdx])))
-        return emitOptionalError(
-            location, "expects all inputs to have compatible shapes. Shape at",
-            " input-index ", inputIdx,
-            " is not compatible with shape at input-index ", rankedInputIdx);
-  }
-
-  DenseSet<int64_t> dimensionsToReduceSet;
-  for (int64_t dimension : dimensions.getValues<int64_t>()) {
-    // reduce_c4
-    if ((!allInputsUnranked &&
-         dimension >= inputTypes[rankedInputIdx].getRank()) ||
-        dimension < 0)
-      return emitOptionalError(
-          location, "Out-of-bounds dimension ", dimension, ", expected to be ",
-          allInputsUnranked
-              ? "> 0"
-              : "less than the input-tensor rank " +
-                    std::to_string(inputTypes[rankedInputIdx].getRank()));
-
-    // reduce_c5
-    if (!dimensionsToReduceSet.insert(dimension).second)
-      return emitOptionalError(location,
-                               "Duplicate reduction dimension: ", dimension);
-  }
-
-  if (!allInputsUnranked) {
-    auto rankedInput = inputTypes[rankedInputIdx].cast<RankedTensorType>();
-    ArrayRef<int64_t> inputBounds =
-        hlo::encodingToBounds(rankedInput.getEncoding());
-    SmallVector<int64_t> newBounds;
-    for (int inputIdx = 0; inputIdx < rankedInput.getRank(); ++inputIdx) {
-      if (!dimensionsToReduceSet.count(inputIdx)) {
-        newDimensions.push_back(rankedInput.getDimSize(inputIdx));
-        if (!inputBounds.empty()) newBounds.push_back(inputBounds[inputIdx]);
-      }
-    }
-
-    // Set encoding based on the bounds only if the bounds is not empty.
-    encoding = nullptr;
-    if (!newBounds.empty())
-      encoding = hlo::boundsToEncoding(rankedInput.getEncoding(), newBounds);
-  }
-  return success();
-}
-
-LogicalResult inferReduceOp(
-    std::optional<Location> location, TypeRange inputTypes,
-    DenseIntElementsAttr dimensions,
-    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
-  SmallVector<ShapedType> inputArgTensorTypes{
-      llvm::map_range(inputTypes, [](Type t) { return t.cast<ShapedType>(); })};
-
-  SmallVector<int64_t> newDimensions;
-  Attribute encoding;
-  // reduce_c1, reduce_c4, reduce_c5, reduce_i3
-  if (failed(verifyReduceOpInputsAndInferShape(
-          location, inputArgTensorTypes, dimensions, newDimensions, encoding)))
-    return failure();
-  // reduce_c2, reduce_c3, reduce_c7
-  for (uint64_t inputIdx = 0; inputIdx < inputTypes.size(); ++inputIdx) {
-    ShapedType inputType = inputArgTensorTypes[inputIdx];
-    Type elementType = inputType.getElementType();
-    if (inputType.hasRank())
-      inferredReturnShapes.emplace_back(newDimensions, elementType, encoding);
-    else
-      inferredReturnShapes.emplace_back(elementType);
-  }
-
-  return success();
-}
-
-}  // namespace
-
 LogicalResult ReduceOp::inferReturnTypeComponents(
     MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   ReduceOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return inferReduceOp(location, adaptor.getInputs().getTypes(),
-                       adaptor.getDimensions(), inferredReturnShapes);
+  return hlo::inferReduceOp(
+      location, adaptor.getInputs().getTypes(),
+      llvm::to_vector(adaptor.getDimensions().getValues<int64_t>()),
+      adaptor.getBody(), inferredReturnShapes);
+}
+
+void ReduceOp::build(OpBuilder&, OperationState& odsState, ValueRange inputs,
+                     ValueRange initValues, DenseIntElementsAttr dimensions,
+                     TypeRange elementTypes) {
+  odsState.addOperands(inputs);
+  odsState.addOperands(initValues);
+  odsState.addAttribute(getDimensionsAttrName(odsState.name), dimensions);
+  (void)odsState.addRegion();
+
+  SmallVector<int64_t> newDimensions;
+  Attribute encoding;
+  ReduceOp::Adaptor adaptor(
+      odsState.operands,
+      odsState.attributes.getDictionary(odsState.getContext()), {},
+      odsState.regions);
+
+  SmallVector<ShapedType> inputArgTensorTypes{
+      llvm::map_range(adaptor.getInputs().getTypes(),
+                      [](Type t) { return t.cast<ShapedType>(); })};
+  SmallVector<ShapedType> initValueTensorTypes{
+      llvm::map_range(adaptor.getInitValues().getTypes(),
+                      [](Type t) { return t.cast<ShapedType>(); })};
+
+  if (succeeded(hlo::verifyReduceOpInputsAndInferShape(
+          odsState.location, inputArgTensorTypes,
+          llvm::to_vector(dimensions.getValues<int64_t>()), newDimensions,
+          encoding))) {
+    SmallVector<Type> inferredReturnTypes;
+    for (uint64_t inputIdx = 0; inputIdx < inputArgTensorTypes.size();
+         ++inputIdx) {
+      Type elementTy = elementTypes[inputIdx];
+      ShapedType inputType = inputArgTensorTypes[inputIdx];
+      if (inputType.hasRank()) {
+        inferredReturnTypes.push_back(
+            RankedTensorType::get(newDimensions, elementTy, encoding));
+      } else {
+        assert(encoding == nullptr && "attribute not supported");
+        inferredReturnTypes.push_back(UnrankedTensorType::get(elementTy));
+      }
+    }
+    odsState.addTypes(inferredReturnTypes);
+  } else {
+    llvm::report_fatal_error("Failed to infer result type(s).");
+  }
 }
 
 LogicalResult ReduceOp::verify() {
@@ -6146,24 +5954,14 @@ OpFoldResult CompareOp::fold(FoldAdaptor adaptor) {
 // SelectAndScatterOp
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-// TODO(@sdasgup): Reuse the same function from hlo namespace.
-LogicalResult inferSelectAndScatterOp(
-    Value operand, SmallVectorImpl<Type>& inferredReturnTypes) {
-  // select_and_scatter_c11
-  inferredReturnTypes.push_back(operand.getType());
-  return success();
-}
-
-}  // namespace
-
 LogicalResult SelectAndScatterOp::inferReturnTypes(
-    MLIRContext*, std::optional<Location>, ValueRange operands,
+    MLIRContext*, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   SelectAndScatterOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return inferSelectAndScatterOp(adaptor.getOperand(), inferredReturnTypes);
+  return hlo::inferSelectAndScatterOp(location, adaptor.getOperand(),
+                                      adaptor.getScatter(),
+                                      inferredReturnTypes);
 }
 
 LogicalResult SelectAndScatterOp::verify() {
@@ -6190,23 +5988,14 @@ LogicalResult SelectAndScatterOp::verify() {
 // ScatterOp
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-// TODO(@sdasgup): Reuse the same function from hlo namespace.
-LogicalResult inferScatterOp(std::optional<Location>, ValueRange inputs,
-                             SmallVectorImpl<Type>& inferredReturnTypes) {
-  llvm::append_range(inferredReturnTypes, inputs.getTypes());
-  return success();
-}
-
-}  // namespace
-
 LogicalResult ScatterOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   ScatterOp::Adaptor adaptor(operands, attributes, {}, regions);
-  return inferScatterOp(location, adaptor.getInputs(), inferredReturnTypes);
+  return hlo::inferScatterOp(location, adaptor.getInputs(),
+                             adaptor.getUpdateComputation(),
+                             inferredReturnTypes);
 }
 
 LogicalResult ScatterOp::verify() {

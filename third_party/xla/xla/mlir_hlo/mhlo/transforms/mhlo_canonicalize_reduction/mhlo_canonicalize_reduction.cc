@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/STLExtras.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -219,8 +220,12 @@ struct HloCanonicalizeReductionPass
                                   elemTy),
             operand, newOperandShape));
       }
-      auto newOp =
-          b.create<ReduceOp>(loc, newOperands, op.getInitValues(), attr);
+      SmallVector<Type> elementTypes{llvm::map_range(
+          op.getBody().front().getTerminator()->getOperands(), [](Value v) {
+            return v.getType().cast<ShapedType>().getElementType();
+          })};
+      auto newOp = b.create<ReduceOp>(loc, newOperands, op.getInitValues(),
+                                      attr, elementTypes);
       newOp.getBody().takeBody(op.getBody());
 
       SmallVector<Value, 4> newResults;
