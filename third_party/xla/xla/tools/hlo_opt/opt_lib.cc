@@ -104,6 +104,9 @@ StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
     TF_ASSIGN_OR_RETURN(std::string cmps,
                         RenderAllComputationsToHtml(*optimized_module));
     return cmps;
+  } else if (stage == "hlo-backend") {
+    TF_ASSIGN_OR_RETURN(auto executable, GetExecutable(std::move(module)));
+    return executable->module().ToString();
   }
 
   return std::nullopt;
@@ -147,6 +150,8 @@ StatusOr<std::unique_ptr<Executable>> OptProvider::GetExecutable(
   return executable;
 }
 
-std::set<std::string> OptProvider::SupportedStages() { return {"hlo", "html"}; }
+std::set<std::string> OptProvider::SupportedStages() {
+  return {"hlo", "html", "hlo-backend"};
+}
 
 }  // namespace xla

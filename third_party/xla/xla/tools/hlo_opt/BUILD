@@ -134,6 +134,7 @@ lit_test_suite(
         [
             "cpu_hlo.hlo",
             "gpu_hlo.hlo",
+            "gpu_hlo_backend.hlo",
             "gpu_hlo_buffers.hlo",
             "gpu_hlo_llvm.hlo",
             "gpu_hlo_ptx.hlo",
