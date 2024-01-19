@@ -43,23 +43,8 @@ config.substitutions.extend([
     ("%PYTHON", os.getenv("PYTHON", sys.executable)),
 ])
 
-subst_marker = "SUBST_"
-subst_marker_len = len(subst_marker)
-
-# Include aditional substitutions that may be defined via params
+# Include additional substitutions that may be defined via params
 config.substitutions.extend(
     ("%%{%s}" % key, val)
     for key, val in lit_config.params.items()
-    if not key.startswith(subst_marker)
 )
-
-# Include ir substitutions for FileCheck
-config.substitutions.append((
-    "%{IR_SUBST}",
-    " ".join(
-        "-D{}='{}'".format(key[subst_marker_len:], val.replace("[SPACE]", " "))
-        for key, val in lit_config.params.items()
-        if key.startswith(subst_marker)
-    )
-    + " --enable-var-scope=false",
-))

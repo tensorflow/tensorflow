@@ -728,18 +728,8 @@ lit_test_suite(
     ),
     args = if_cuda_is_configured([
         "--param=PTX=PTX",
-        "--param=SUBST_TIDX=@llvm.nvvm.read.ptx.sreg.tid.x",
-        "--param=SUBST_CTAIDX=@llvm.nvvm.read.ptx.sreg.ctaid.x",
-        "--param=SUBST_BARRIER=@llvm.nvvm.barrier0",
-        "--param=SUBST_KERNEL_ANNOTATION=''",
-        "--param=SUBST_ADDRSPACE_ANNOTATION=''",
     ]) + if_rocm_is_configured([
         "--param=PTX=GCN",
-        "--param=SUBST_TIDX=@llvm.amdgcn.workitem.id.x",
-        "--param=SUBST_CTAIDX=@llvm.amdgcn.workgroup.id.x",
-        "--param=SUBST_BARRIER=@llvm.amdgcn.s.barrier",
-        "--param=SUBST_KERNEL_ANNOTATION=amdgpu_kernel[SPACE]",
-        "--param=SUBST_ADDRSPACE_ANNOTATION='addrspace(5)[SPACE]'",
     ]),
     cfg = "//xla:lit.cfg.py",
     default_tags = tf_cuda_tests_tags(),
