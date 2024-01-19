@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -38,19 +39,44 @@ namespace xla {
 // A rendezvous for a group of threads.
 //===----------------------------------------------------------------------===//
 
+// A little bit of compile time metaprogramming to simplify the rendezvous
+// return type for functions returning `absl::StatusOr`. If we detect that
+// rendezvous callback returns `absl::StatusOr` we swap the order of a shared
+// pointer and status container.
+
+template <typename R>
+struct RendezvousResult {
+  using Type = std::shared_ptr<R>;
+
+  static Type Wrap(R result) { return std::make_shared<R>(std::move(result)); }
+};
+
+template <typename R>
+struct RendezvousResult<absl::StatusOr<R>> {
+  using Type = absl::StatusOr<std::shared_ptr<R>>;
+
+  static Type Wrap(absl::StatusOr<R> result) {
+    if (!result.ok()) return result.status();
+    return std::make_shared<R>(std::move(*result));
+  }
+};
+
+template <typename R>
+using RendezvousResultType = typename RendezvousResult<R>::Type;
+
 // The group of threads identifies itself with a key that must be unique to
 // the the group. When all threads have arrived at the rendezvous, one thread
 // executes the given function with the values supplied by each thread, and
 // all threads receive the result.
 template <typename R, typename K, typename V, typename Fn>
-std::shared_ptr<R> RendezvousSingle(
+RendezvousResultType<R> RendezvousSingle(
     const K& key, const V& value, size_t num_threads, Fn fn,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
 
 // A rendezvous for a group of threads that do not have any value arguments.
 template <typename R, typename K, typename Fn>
-std::shared_ptr<R> RendezvousSingle(
+RendezvousResultType<R> RendezvousSingle(
     const K& key, size_t num_threads, Fn fn,
     absl::Duration warn_stuck_timeout = absl::InfiniteDuration(),
     absl::Duration terminate_timeout = absl::InfiniteDuration());
@@ -82,7 +108,7 @@ struct RendezvousState {
   std::vector<const V*> values;
 
   absl::Notification ready;  // signals availability of `result`
-  std::shared_ptr<R> result;
+  RendezvousResultType<R> result;
 };
 
 // A container for in-progress rendezvous.
@@ -118,7 +144,7 @@ class RendezvousMap {
     return state = std::make_shared<State>(num_threads);
   }
 
-  void Complete(const K& key, std::shared_ptr<R> result) {
+  void Complete(const K& key, RendezvousResultType<R> result) {
     std::shared_ptr<State> state = [&] {
       absl::MutexLock lock(&mutex_);
 
@@ -154,10 +180,10 @@ void AwaitAndLogIfStuck(absl::Notification& ready,
 //===----------------------------------------------------------------------===//
 
 template <typename R, typename K, typename V, typename Fn>
-std::shared_ptr<R> RendezvousSingle(const K& key, const V& value,
-                                    size_t num_threads, Fn fn,
-                                    absl::Duration warn_stuck_timeout,
-                                    absl::Duration terminate_timeout) {
+RendezvousResultType<R> RendezvousSingle(const K& key, const V& value,
+                                         size_t num_threads, Fn fn,
+                                         absl::Duration warn_stuck_timeout,
+                                         absl::Duration terminate_timeout) {
   // Check that `fn` is callable with a span of values and returns `R`.
   static_assert(std::is_invocable_r_v<R, Fn, absl::Span<const V*>>,
                 "invalid rendezvous function signature");
@@ -165,7 +191,7 @@ std::shared_ptr<R> RendezvousSingle(const K& key, const V& value,
   // Fast-path (DO NOT REMOVE: the logic below doesn't work for single thread).
   if (num_threads == 1) {
     const V* ptr = &value;
-    return std::make_shared<R>(fn(absl::MakeSpan(&ptr, 1)));
+    return RendezvousResult<R>::Wrap(fn(absl::MakeSpan(&ptr, 1)));
   }
 
   using State = internal::RendezvousState<R, V>;
@@ -197,16 +223,17 @@ std::shared_ptr<R> RendezvousSingle(const K& key, const V& value,
     // be notified via `state->ready` notification when result is ready, and we
     // rely on the notification to create a memory barrier that makes access to
     // `state->result` safe without any extra synchronization.
-    rendezvous.Complete(key, std::make_shared<R>(fn(state->values)));
+    rendezvous.Complete(key, RendezvousResult<R>::Wrap(fn(state->values)));
   }
 
   return state->result;
 }
 
 template <typename R, typename K, typename Fn>
-std::shared_ptr<R> RendezvousSingle(const K& key, size_t num_threads, Fn fn,
-                                    absl::Duration warn_stuck_timeout,
-                                    absl::Duration terminate_timeout) {
+RendezvousResultType<R> RendezvousSingle(const K& key, size_t num_threads,
+                                         Fn fn,
+                                         absl::Duration warn_stuck_timeout,
+                                         absl::Duration terminate_timeout) {
   return RendezvousSingle<R, K, std::nullopt_t>(
       key, std::nullopt, num_threads, [fn](auto) { return fn(); },
       warn_stuck_timeout, terminate_timeout);

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "tsl/platform/env.h"
@@ -100,6 +101,28 @@ TEST(RendezvousTest, RepeatRendezvous) {
     thread_pool.Schedule(task);
     counter.Wait();
   }
+}
+
+TEST(RendezvousTest, ReturningStatusOr) {
+  absl::BlockingCounter counter(2);
+  std::vector<absl::StatusOr<std::shared_ptr<int32_t>>> results(2);
+
+  auto task = [&](int32_t id) {
+    return [&, id] {
+      results[id] =
+          RendezvousSingle<absl::StatusOr<int32_t>>(0, 2, [] { return 42; });
+      counter.DecrementCount();
+    };
+  };
+
+  auto thread_pool = CreateThreadPool(2);
+  thread_pool.Schedule(task(0));
+  thread_pool.Schedule(task(1));
+  counter.Wait();
+
+  ASSERT_EQ(results.size(), 2);
+  ASSERT_EQ(**results[0], 42);
+  ASSERT_EQ(**results[1], 42);
 }
 
 //===----------------------------------------------------------------------===//

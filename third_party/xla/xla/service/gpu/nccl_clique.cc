@@ -100,7 +100,7 @@ struct NcclCliques {
   absl::node_hash_map<NcclCliqueKey, NcclClique> cliques ABSL_GUARDED_BY(mu);
 };
 
-std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
+absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback,
     size_t num_local_participants, bool may_skip_rendezvous) {
@@ -119,8 +119,7 @@ std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
     // Destruct clique if it hasn't been notified.
     NcclClique::Lock clique = cliques[clique_key].Acquire();
     if (clique->ready.HasBeenNotified() && clique->run_id == run_id.ToInt()) {
-      return std::make_shared<absl::StatusOr<NcclClique::Lock>>(
-          std::move(clique));
+      return std::make_shared<NcclClique::Lock>(std::move(clique));
     }
   }
 
@@ -219,14 +218,15 @@ absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
   // workaround an NCCL bug related to P2P operations.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
 
-  std::shared_ptr<absl::StatusOr<NcclClique::Lock>> clique = AcquireNcclClique(
-      run_id, op_id, clique_key, clique_id_callback, num_local_participants,
-      enable_clique_optimization ||
-          stream_id !=
-              GetStreamId(/*is_async=*/true, AsyncStreamKind::kCollective));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<NcclClique::Lock> clique,
+      AcquireNcclClique(
+          run_id, op_id, clique_key, clique_id_callback, num_local_participants,
+          enable_clique_optimization ||
+              stream_id != GetStreamId(/*is_async=*/true,
+                                       AsyncStreamKind::kCollective)));
 
-  TF_RETURN_IF_ERROR(clique->status());
-  NcclCliqueState& state = *clique->value();
+  NcclCliqueState& state = **clique;
 
   if (!state.ready.HasBeenNotified()) {
     int nranks = clique_key.devices().size();

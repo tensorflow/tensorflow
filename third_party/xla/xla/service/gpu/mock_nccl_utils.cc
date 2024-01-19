@@ -640,7 +640,7 @@ absl::StatusOr<ncclUniqueId> ToNcclUniqueId(const std::string& id_str) {
   return id;
 }
 
-std::shared_ptr<absl::StatusOr<NcclClique::Lock>> AcquireNcclClique(
+absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback,
     size_t num_local_participants, bool may_skip_rendezvous) {
@@ -779,12 +779,12 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
   // Ensure that this group of threads have exclusive access to the clique to
   // prevent threads from different groups locking communicators in the clique.
   NcclCliqueKey clique_key(std::move(participants), stream_id);
-  auto clique = AcquireNcclClique(
-      run_id, op_id, clique_key, clique_id_callback, 1,
-      enable_clique_optimization ||
-          stream_id == GetStreamId(true, AsyncStreamKind::kP2P));
-
-  if (!clique->ok()) return clique->status();
+  TF_ASSIGN_OR_RETURN(
+      auto clique,
+      AcquireNcclClique(
+          run_id, op_id, clique_key, clique_id_callback, 1,
+          enable_clique_optimization ||
+              stream_id == GetStreamId(true, AsyncStreamKind::kP2P)));
 
   struct AllCommunicators {
     absl::Mutex mu;
@@ -807,7 +807,7 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
       });
   (void)check_async_error_thread;  // Silence unused variable warning.
 
-  NcclCliqueState& state = ***clique;
+  NcclCliqueState& state = **clique;
 
   if (!state.ready.HasBeenNotified()) {
     ncclComm_t comm = nullptr;
