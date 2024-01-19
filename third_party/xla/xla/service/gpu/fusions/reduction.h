@@ -134,21 +134,14 @@ class ReductionFusion : public KernelFusionEmitterBase {
    public:
     using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
 
-    ReductionCodegenInfo(TilingScheme mapping_scheme, int num_partial_results,
-                         bool is_row_reduction, bool is_race_free,
-                         IndexGroups index_groups,
+    ReductionCodegenInfo(TilingScheme mapping_scheme, bool is_row_reduction,
+                         bool is_race_free, IndexGroups index_groups,
                          const HloInstruction* first_reduce)
         : tiling_scheme_(mapping_scheme),
-          num_partial_results_(num_partial_results),
           is_row_reduction_(is_row_reduction),
           is_race_free_(is_race_free),
           index_groups_(std::move(index_groups)),
-          first_reduce_(first_reduce) {
-      if (!is_row_reduction && num_partial_results > 1) {
-        CHECK_EQ(num_partial_results,
-                 mapping_scheme.GetThreadTileSize()[TilingScheme::DimX]);
-      }
-    }
+          first_reduce_(first_reduce) {}
 
     const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
     const IndexGroups& GetIndexGroups() const { return index_groups_; }
@@ -156,13 +149,11 @@ class ReductionFusion : public KernelFusionEmitterBase {
       return first_reduce_->operand(0)->shape();
     }
 
-    int GetNumPartialResults() const { return num_partial_results_; }
     bool IsRowReduction() const { return is_row_reduction_; }
     bool IsRaceFree() const { return is_race_free_; }
 
    private:
     TilingScheme tiling_scheme_;
-    int num_partial_results_;
     bool is_row_reduction_;
     bool is_race_free_;
     IndexGroups index_groups_;
