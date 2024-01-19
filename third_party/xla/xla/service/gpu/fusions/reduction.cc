@@ -243,110 +243,6 @@ std::vector<std::vector<const HloInstruction*>> GroupDisjointReductions(
   return ret;
 }
 
-int64_t MaxBeneficialColumnReductionUnrollBasedOnBlockSize(
-    const HloFusionAnalysis& analysis) {
-  // Some callers use HloFusionAnalysis with an invalid device info.
-  // TODO(jreiffers): Fix that.
-  if (analysis.device_info().core_count() == 0) return 1;
-
-  int64_t num_reduce_output_elems = 0;
-  for (const HloInstruction* root : analysis.fusion_roots()) {
-    if (!IsReductionFromOrToContiguousDimensions(*root)) {
-      continue;
-    }
-    const Shape* output_shape = &root->shape();
-    // Unwrap multi-output reduction.  All outputs should be the same shape.
-    if (output_shape->IsTuple()) {
-      output_shape = &output_shape->tuple_shapes()[0];
-    }
-    num_reduce_output_elems =
-        std::max(num_reduce_output_elems, ShapeUtil::ElementsIn(*output_shape));
-  }
-
-  // A column reduction that's unrolled N times uses one warp to generate N
-  // output elements.  The block size is always 32 warps = 1024 threads.
-  int64_t num_blocks = CeilOfRatio(num_reduce_output_elems, int64_t{32});
-  int64_t num_threads = num_blocks * 1024;
-  // Number of SMs we can saturate with this work.
-  int num_cores = CeilOfRatio<int64_t>(
-      num_threads, analysis.device_info().threads_per_core_limit());
-  return static_cast<int>(
-      CeilOfRatio(num_cores, analysis.device_info().core_count()));
-}
-
-bool IsUnrollingColumnReductionBeneficial(const HloFusionAnalysis& analysis,
-                                          const Shape& input_shape,
-                                          int64_t num_kept_minor,
-                                          bool reduction_is_race_free) {
-  if (num_kept_minor % (WarpSize() * 2) != 0) {
-    return false;
-  }
-  if (input_shape.dimensions(input_shape.rank() - 1) < 64) {
-    return false;
-  }
-
-  int64_t can_be_vectorized = 0;
-  int64_t cannot_be_vectorized = 0;
-  absl::flat_hash_set<const HloInstruction*> use_chain_endings;
-
-  for (const HloInstruction* fusion_root : analysis.fusion_roots()) {
-    if (!reduction_is_race_free &&
-        IsReductionFromOrToContiguousDimensions(*fusion_root)) {
-      // Atomics cannot be vectorized.
-      cannot_be_vectorized++;
-    } else {
-      can_be_vectorized++;
-    }
-    use_chain_endings.insert(fusion_root);
-  }
-
-  // Fusion inputs that have the same dimension as the reduce input and
-  // only involve in element-wise operations can be vectorized.
-  absl::flat_hash_set<HloInstructionAdaptor> reachable_through_non_elementwise;
-  HloBfsConsumersFirstTraversal(
-      analysis.fusion().GetRoots(), analysis.fusion(), [&](auto consumer) {
-        // We check if the consumer is elementwise, unless this edge is a
-        // virtual edge that only exists in partially fused HLO. There are two
-        // types of such edges:
-        // 1. Edges from producers outside a fusion to a parameter instruction
-        //    within a fusion. Here, the producer is a parameter of the fusion
-        //    instruction.
-        // 2. Edges from fusion roots to fusion nodes.
-        if (reachable_through_non_elementwise.contains(consumer) ||
-            (!consumer.instruction().IsElementwise() &&
-             !use_chain_endings.contains(&consumer.instruction()))) {
-          for (auto producer : consumer.GetOperands()) {
-            reachable_through_non_elementwise.insert(producer);
-          }
-        }
-        return TraversalResult::kAdvance;
-      });
-
-  int64_t num_elements = ShapeUtil::ElementsIn(input_shape);
-  FindFusionArguments(analysis.fusion(), [&](auto arg) {
-    if (!reachable_through_non_elementwise.contains(arg) &&
-        ShapeUtil::SameDimensions(input_shape, arg.shape())) {
-      ++can_be_vectorized;
-    }
-
-    // Fusion inputs with more elements than the reduce op input must
-    // participate in non-elementwise operations and we assume that they are
-    // not vectorizable for the purpose of estimating the benefit of
-    // unrolling. If the kernel is unrolled even with such an assumption,
-    // and the accesses to those inputs turn out to be vectorizable, the
-    // compiler will still vectorize them.
-    if (ShapeUtil::ElementsIn(arg.shape()) > num_elements) {
-      ++cannot_be_vectorized;
-    }
-  });
-
-  if (can_be_vectorized < cannot_be_vectorized) {
-    return false;
-  }
-
-  return MaxBeneficialColumnReductionUnrollBasedOnBlockSize(analysis) > 1;
-}
-
 // Experimentally determined values to achieve optimal number of
 // bytes-in-flight. With a bound of #warps/SM which can be concurrently
 // scheduled, for small reduced values it can be hard to achieve optimal
@@ -372,14 +268,9 @@ int CalculateVirtualThreadScalingFactorForReduction(
 
 bool CanVectorizeReduction(const HloFusionAnalysis& analysis,
                            const ReductionDimensions& reduction_dimensions,
-                           int num_threads_x, Vector3 reduction_tiling,
-                           const Shape& input_shape,
-                           bool reduction_is_race_free) {
+                           int num_threads_x, Vector3 reduction_tiling) {
   if (!reduction_dimensions.is_row_reduction) {
-    return IsUnrollingColumnReductionBeneficial(
-        analysis, input_shape,
-        reduction_dimensions.dimensions[TilingScheme::DimX],
-        reduction_is_race_free);
+    return false;
   }
 
   if (reduction_dimensions.dimensions[TilingScheme::DimX] % 2 != 0 ||
@@ -389,7 +280,7 @@ bool CanVectorizeReduction(const HloFusionAnalysis& analysis,
 
   // Enabling vectorization if number of threads is <= warpsize leads to half or
   // more of the threads not doing any work.
-  if (reduction_dimensions.is_row_reduction && num_threads_x <= WarpSize()) {
+  if (num_threads_x <= WarpSize()) {
     return false;
   }
 
@@ -1605,8 +1496,7 @@ ReductionFusion::ComputeReductionCodegenInfo(
       // Vectorization might cause us to run out of budget.
       (shmem_usage * 2 <= shmem_budget) &&
       CanVectorizeReduction(analysis, reduction_dimensions, num_threads_x,
-                            reduction_tiling, input_shape,
-                            reduction_is_race_free);
+                            reduction_tiling);
   int vector_size = vectorize ? 2 : 1;
 
   // TODO(b/283542954): Autotune num_partial_results?  This can make a big
