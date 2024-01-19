@@ -46,6 +46,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "passes/convert_func_to_bfloat16.cc",
         "passes/lift_quantizable_spots_as_functions.cc",
         "passes/lift_quantizable_spots_as_functions_fusion.inc",
         "passes/lift_quantizable_spots_as_functions_simple.inc",
@@ -66,6 +67,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":bfloat16_type",
         ":bridge_passes",
         ":fill_quantization_options",
         ":lift_quantizable_spots_as_functions_fusion_inc_gen",
@@ -94,6 +96,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:path",
@@ -127,6 +130,8 @@ cc_library(
         "@local_xla//xla/mlir_hlo:unfuse_batch_norm",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_serialization",
     ],
 )
 
@@ -587,6 +592,55 @@ tf_cc_test(
     deps = [
         ":bridge_passes",
         ":tf_type_utils",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:path",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SparseTensorDialect",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/framework:numeric_types",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "bfloat16_type",
+    srcs = ["utils/bfloat16_type.cc"],
+    hdrs = ["utils/bfloat16_type.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+tf_cc_test(
+    name = "bfloat16_type_test",
+    srcs = [
+        "utils/bfloat16_type_test.cc",
+    ],
+    deps = [
+        ":bfloat16_type",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
