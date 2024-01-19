@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#define EIGEN_USE_THREADS
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 
@@ -54,25 +53,12 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tsl/concurrency/ref_count.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
-// TODO(b/316252308): Pass in threadpool so that runtime can tune threading.
-Eigen::ThreadPoolDevice GetThreadPoolDevice() {
-  constexpr int kMaxParallelism = 16;
-  static tsl::thread::ThreadPool* thread_pool = []() {
-    return new tsl::thread::ThreadPool(tsl::Env::Default(),
-                                       tsl::ThreadOptions(), "IfrtSharding",
-                                       kMaxParallelism);
-  }();
-  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
-}
 
 absl::StatusOr<xla::DeviceAssignment> GetXlaDeviceAssignment(
     const xla::ifrt::Client& ifrt_client,
@@ -197,7 +183,7 @@ IfrtServingExecutable::ConvertTensorToArray(
 
   return MakeAssembledArrayFromHostBuffer(*ifrt_client_, tensor,
                                           std::move(hlo_sharding), device_list,
-                                          GetThreadPoolDevice());
+                                          thread_pool_device_);
 }
 
 absl::StatusOr<IfrtServingExecutable::CachedExecutableBundle>
