@@ -143,7 +143,7 @@ func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<2x4xi32> {
 func.func @call_requires_non_negative_devices_attr(
     %arg0: !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.Call' Device list has negative id -1}}
+  // expected-error@+1 {{'ifrt.Call' Device list has negative logical id -1}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1,-1]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 2, [0,1]>
@@ -160,7 +160,7 @@ func.func @callee(%arg0: tensor<2x2xi32>) -> tensor<4x4xi32> {
 func.func @call_requires_unique_devices_attr(
     %arg0: !ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.Call' Device list has duplicate id 0}}
+  // expected-error@+1 {{'ifrt.Call' Device list has duplicate logical id 0}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,0]
     : (!ifrt.array<tensor<2x2xi32>, 1x1 to [0] on 2, [0,1]>)
     -> !ifrt.array<tensor<4x4xi32>, 1x2 to [0] on 2, [0,1]>

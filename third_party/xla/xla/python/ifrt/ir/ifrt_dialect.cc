@@ -124,6 +124,7 @@ mlir::LogicalResult IfrtShardingAttr::verify(
   return sharding.verify(emitError);
 }
 
+// Returns an array of logical device ids.
 llvm::ArrayRef<int> IfrtArrayType::getDevices() const {
   return getDevicesAttr().getIds();
 }
@@ -165,10 +166,10 @@ mlir::LogicalResult IfrtDevicesAttr::verify(
   llvm::SmallSet<int, 4> device_set;
   for (int id : ids) {
     if (id < 0) {
-      return emitError() << "Device list has negative id " << id;
+      return emitError() << "Device list has negative logical id " << id;
     }
     if (auto [unused_it, inserted] = device_set.insert(id); !inserted) {
-      return emitError() << "Device list has duplicate id " << id;
+      return emitError() << "Device list has duplicate logical id " << id;
     }
   }
 
