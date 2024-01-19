@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/inspect_sharding.h"
 #include "xla/service/call_inliner.h"
@@ -124,17 +125,29 @@ class PyCustomCallPartitioner : public CustomCallPartitioner {
                      instruction->shape(), instruction->sharding(),
                      py::bytes(instruction->raw_backend_config_string()));
 
-      const XlaComputation* computation = nullptr;  // Kept alive by py_result.
+      XlaComputation computation_scratch;
+      const XlaComputation* computation;
       std::vector<HloSharding> arg_shardings;
       std::optional<HloSharding> result_sharding;
       try {
-        std::tie(computation, arg_shardings, result_sharding) =
-            py::cast<std::tuple<const XlaComputation*, std::vector<HloSharding>,
-                                HloSharding>>(py_result);
+        py::object m;
+        std::tie(m, arg_shardings, result_sharding) = py::cast<
+            std::tuple<py::object, std::vector<HloSharding>, HloSharding>>(
+            py_result);
+        if (py::isinstance<py::bytes>(m)) {
+          std::string mlir_module = py::cast<std::string>(m);
+          TF_RETURN_IF_ERROR(ParseMlirModuleStringAndConvertToXlaComputation(
+              mlir_module, computation_scratch, /*use_tuple_args=*/false,
+              /*return_tuple=*/false));
+          computation = &computation_scratch;
+        } else {
+          // TODO(parkers): Remove fallback.
+          computation = py::cast<const XlaComputation*>(m);
+        }
       } catch (const py::cast_error& e) {
         return xla::Internal(
             "Shardings returned from partitioning %s: expected "
-            "Tuple[XlaComputation, List[HloSharding], HloSharding] got: %s",
+            "Tuple[bytes, List[HloSharding], HloSharding] got: %s",
             instruction->ToString(), py::repr(py_result));
       }
       auto hlo_module_config =
