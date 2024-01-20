@@ -281,8 +281,6 @@ absl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
 absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                  const BlockDim& block_dims,
                                  const Kernel& kernel, const KernelArgs& args) {
-  CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
-           args.number_of_arguments());
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);
   const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
   hipFunction_t hipfunc = rocm_kernel->AsGpuFunctionHandle();
@@ -306,17 +304,35 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
         hipfunc, rocm_kernel->GetGpuCacheConfig()));
   }
 
+  auto launch = [&](const KernelArgsPackedArrayBase& packed) {
+    CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
+             packed.number_of_arguments());
+
+    void** kernel_params =
+        const_cast<void**>(packed.argument_addresses().data());
+
+    return GpuDriver::LaunchKernel(
+        GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x,
+        block_dims.y, block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+        args.number_of_shared_bytes(), hipstream, kernel_params, nullptr);
+  };
+
   auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
-  if (!packed_args)
-    return absl::InternalError("Unsupported kernel arguments type");
+  if (packed_args) return launch(*packed_args);
 
-  void** kernel_params =
-      const_cast<void**>(packed_args->argument_addresses().data());
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.kernel_args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
 
-  return GpuDriver::LaunchKernel(
-      GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
-      block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-      args.number_of_shared_bytes(), hipstream, kernel_params, nullptr);
+    TF_ASSIGN_OR_RETURN(auto packed_args, pack(kernel, *device_mem));
+    return launch(*packed_args);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
