@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -430,11 +431,20 @@ StatusOr<std::string> GetCompilerIr(
     TF_ASSIGN_OR_RETURN(compilation_device_type,
                         GetCompilationDeviceType(platform_info.device_type()));
   }
-  XlaDeviceCompiler* xla_device_compiler = nullptr;
-  // TODO(b/306753579): Cache the compiler.
-  TF_RETURN_IF_ERROR(BuildXlaDeviceCompiler(
-      /*dev=*/nullptr, flr, platform_info, compilation_device_type,
-      &xla_device_compiler));
+  XlaDeviceCompiler* xla_device_compiler;
+  const std::string xla_device_compiler_name = absl::StrCat(
+      absl::AsciiStrToLower(platform_name), "_xla_device_compiler");
+  TF_RETURN_IF_ERROR(
+      context->HostCPU()->resource_manager()->LookupOrCreate<XlaDeviceCompiler>(
+          context->HostCPU()->resource_manager()->default_container(),
+          xla_device_compiler_name, &xla_device_compiler,
+          [&](XlaDeviceCompiler** xla_device_compiler) {
+            return BuildXlaDeviceCompiler(/*dev=*/nullptr, flr, platform_info,
+                                          compilation_device_type,
+                                          xla_device_compiler);
+          }));
+  core::ScopedUnref xla_device_compiler_ref(xla_device_compiler);
+
   XlaCompiler::Options options;
   if (platform_info.device_type() == DEVICE_TPU) {
     options = GenerateCompilerOptionsForTfrtTpu(*xla_device_compiler, *flr);
