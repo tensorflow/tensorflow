@@ -105,9 +105,6 @@ typedef struct TpuSystemInfo*(PrototypeTpuDriver_QuerySystemInfo)(
 
 typedef void(PrototypeTpuDriver_FreeSystemInfo)(struct TpuSystemInfo* info);
 
-// TODO(frankchn): Make this not a hard-coded constant.
-const int32_t MemoryRegion_HBM = 1;
-
 typedef int64_t(PrototypeTpuDriver_ComputeLinearizedBytesFromShape)(
     struct TpuDriver* driver, const struct TpuAllocationShape shape);
 
