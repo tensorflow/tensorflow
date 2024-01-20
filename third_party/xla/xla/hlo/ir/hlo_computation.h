@@ -64,7 +64,7 @@ class HloModule;
 class HloComputation {
  public:
   // Used by instructions_.
-  using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
+  using InstructionList = std::vector<HloInstructionInfo>;
 
   // Builder class for HloComputation.
   class Builder {
@@ -359,10 +359,10 @@ class HloComputation {
   }
 
   using InstructionSequence = tsl::gtl::iterator_range<
-      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
+      UnwrappingIterator<HloInstructionList::iterator>>;
 
-  using ConstInstructionSequence = tsl::gtl::iterator_range<UnwrappingIterator<
-      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
+  using ConstInstructionSequence = tsl::gtl::iterator_range<
+      UnwrappingIterator<HloInstructionList::const_iterator>>;
 
   // Gets the instructions in this computation.
   //
@@ -371,13 +371,33 @@ class HloComputation {
   //
   //   for (HloInstruction* instr : computation->instructions()) { ... }
   //
-  ConstInstructionSequence instructions() const {
-    return {MakeUnwrappingIterator(instructions_.begin()),
-            MakeUnwrappingIterator(instructions_.end())};
+
+  tsl::gtl::iterator_range<xla::HloInstructionUnwrappingConstIterator>
+  instructions() const {
+    const int end = instructions_.size();
+    return {HloInstructionUnwrappingConstIterator(
+                HloInstructionConstIterator(&instructions_, 0, end)),
+            HloInstructionUnwrappingConstIterator(
+                HloInstructionConstIterator(&instructions_, end, end))};
   }
-  InstructionSequence instructions() {
-    return {MakeUnwrappingIterator(instructions_.begin()),
-            MakeUnwrappingIterator(instructions_.end())};
+  tsl::gtl::iterator_range<xla::HloInstructionUnwrappingIterator>
+  instructions() {
+    const int end = instructions_.size();
+    return {HloInstructionUnwrappingIterator(
+                HloInstructionIterator(&instructions_, 0, end)),
+            HloInstructionUnwrappingIterator(
+                HloInstructionIterator(&instructions_, end, end))};
+  }
+  tsl::gtl::iterator_range<HloInstructionIterator> instructions_with_info() {
+    const int end = instructions_.size();
+    return {HloInstructionIterator(&instructions_, 0, end),
+            HloInstructionIterator(&instructions_, end, end)};
+  }
+  tsl::gtl::iterator_range<HloInstructionConstIterator> instructions_with_info()
+      const {
+    const int end = instructions_.size();
+    return {HloInstructionConstIterator(&instructions_, 0, end),
+            HloInstructionConstIterator(&instructions_, end, end)};
   }
 
   using ChannelDependencies =
@@ -402,7 +422,7 @@ class HloComputation {
   void ForEachInstructionPostOrder(
       absl::FunctionRef<void(HloInstruction*)> func) const;
 
-  int64_t instruction_count() const { return instruction_iterators_.size(); }
+  int64_t instruction_count() const { return instruction_indices_.size(); }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -939,12 +959,11 @@ class HloComputation {
   // Module containing this computation.
   HloModule* parent_ = nullptr;
 
-  // Store instructions in std::list as they can be added and removed
+  // Store instructions in std::vector as they can be added and removed
   // arbitrarily and we want a stable iteration order. Keep a map from
-  // instruction pointer to location in the list for fast lookup.
-  InstructionList instructions_;
-  absl::flat_hash_map<const HloInstruction*, InstructionList::iterator>
-      instruction_iterators_;
+  // instruction pointer to index in the vector for fast lookup.
+  HloInstructionList instructions_;
+  absl::flat_hash_map<const HloInstruction*, int> instruction_indices_;
 
   // Removed instructions are moved into to_be_deleted_ first and then
   // deallocated when Cleanup is called.
@@ -987,7 +1006,7 @@ Status HloComputation::AcceptOrdered(
   absl::flat_hash_set<const HloInstruction*> visited;
   for (const HloInstruction* instruction : order) {
     VLOG(3) << "Visiting ordered: " << instruction->ToString();
-    TF_RET_CHECK(instruction_iterators_.contains(instruction))
+    TF_RET_CHECK(instruction_indices_.contains(instruction))
         << "Instruction " << instruction->name() << " is not in computation "
         << name();
     TF_RET_CHECK(!visited.contains(instruction))

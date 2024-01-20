@@ -2265,15 +2265,13 @@ HloFusionInstruction::fused_parameters() const {
   return fused_instructions_computation()->parameter_instructions();
 }
 
-tsl::gtl::iterator_range<UnwrappingIterator<
-    std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+tsl::gtl::iterator_range<HloInstructionUnwrappingConstIterator>
 HloFusionInstruction::fused_instructions() const {
   const HloComputation* subcomp = fused_instructions_computation();
   return subcomp->instructions();
 }
 
-tsl::gtl::iterator_range<
-    UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+tsl::gtl::iterator_range<HloInstructionUnwrappingIterator>
 HloFusionInstruction::fused_instructions() {
   return fused_instructions_computation()->instructions();
 }

@@ -57,29 +57,7 @@ namespace m = match;
 namespace {
 
 bool IsCallerInstruction(HloInstruction* hlo) {
-  switch (hlo->opcode()) {
-    case HloOpcode::kAsyncStart:
-    case HloOpcode::kAsyncUpdate:
-    case HloOpcode::kAsyncDone:
-    case HloOpcode::kCall:
-    case HloOpcode::kConditional:
-    case HloOpcode::kWhile:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduce:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kScatter:
-    case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kSort:
-    case HloOpcode::kTopK:
-    case HloOpcode::kFusion:
-    case HloOpcode::kCustomCall:
-      return true;
-    default:
-      return false;
-  }
+  return HloInstruction::MightHaveCalledComputations(hlo->opcode());
 }
 
 Status CheckOperandCount(const HloInstruction* hlo, int expected) {
