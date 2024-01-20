@@ -25,7 +25,14 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
 fi
 source ci/official/utilities/get_versions.sh
 
+# $TF_VER_FULL will resolve to e.g. "2.15.0-rc2". When given a directory path,
+# gsutil copies the basename of the directory into the provided path. Uploading
+# /tmp/$TF_VER_FULL to gs://bucket/ will create gs://bucket/$TF_VER_FULL/files.
+# Since $TF_VER_FULL comes from get_versions.sh, which must be run *after*
+# update_version.py, this can't be set inside the rest of the _upload envs.
 DOWNLOADS="$(mktemp -d)/$TF_VER_FULL"
+mkdir -p "$DOWNLOADS"
+# -r is needed to copy a whole folder.
 gsutil -m cp -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
 ls "$DOWNLOADS"
 
