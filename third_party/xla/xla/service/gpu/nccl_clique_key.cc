@@ -43,8 +43,8 @@ absl::Span<const GlobalDeviceId> NcclCliqueKey::devices() const {
 }
 
 std::string NcclCliqueKey::ToString() const {
-  return absl::StrCat("stream[", stream_id_, "]",
-                      GlobalDeviceIdsToString(devices_));
+  return absl::StrCat("devices=", GlobalDeviceIdsToString(devices_),
+                      "; stream=", stream_id_);
 }
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {

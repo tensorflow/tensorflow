@@ -120,9 +120,17 @@ class NcclCliqueId {
   absl::Span<const char> data() const;
   std::string ToString() const;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const NcclCliqueId& id);
+
  private:
   std::array<char, kSize> data_;
 };
+
+template <typename H>
+H AbslHashValue(H h, const NcclCliqueId& id) {
+  return H::combine(std::move(h), id.data());
+}
 
 // A callback to get a unique clique id (see `ncclUniqueId` documentation).
 using NcclCliqueIdCallback =  // NOLINT
