@@ -16,29 +16,72 @@ limitations under the License.
 #ifndef XLA_SERVICE_LOCKABLE_H_
 #define XLA_SERVICE_LOCKABLE_H_
 
-#include <functional>
-#include <memory>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 
-// An RAII helper for a value of type `T` that requires exclusive access.
+// A template that can be specialized to give a human readable name to lockable
+// of type `T`.
 template <typename T>
+struct LockableName {
+  static std::string ToString(const T& value) {
+    return absl::StrFormat("lockable %p", &value);
+  }
+};
+
+// An RAII helper for a value of type `T` that requires exclusive access.
+template <typename T, typename LockableName = LockableName<T>>
 class Lockable {
  public:
   // RAII type that will release the exclusive lock when it is destroyed.
-  using Lock = std::unique_ptr<T, std::function<void(T*)>>;
+  class Lock {
+   public:
+    Lock() = default;
+
+    Lock(Lock&& other) {
+      lockable_ = other.lockable_;
+      other.lockable_ = nullptr;
+    }
+
+    Lock& operator=(Lock&& other) {
+      lockable_ = other.lockable_;
+      other.lockable_ = nullptr;
+      return *this;
+    }
+
+    ~Lock() {
+      if (lockable_) lockable_->Release();
+    }
+
+    T& operator*() const { return lockable_->value_; }
+    T* operator->() const { return &lockable_->value_; }
+    operator bool() const { return lockable_ != nullptr; }  // NOLINT
+
+    std::string ToString() const {
+      return lockable_ ? lockable_->ToString() : "<empty lock>";
+    }
+
+   private:
+    friend class Lockable;
+    explicit Lock(Lockable* lockable) : lockable_(lockable) {}
+    Lockable* lockable_ = nullptr;
+  };
 
   Lockable() = default;
-  explicit Lockable(T value) : value_(std::move(value)) {}
+  explicit Lockable(T value) : value_(std::move(value)) {
+    VLOG(2) << "Constructed " << LockableName::ToString(value_);
+  }
 
   Lockable(const Lockable&) = delete;
   Lockable& operator=(const Lockable&) = delete;
 
   ~Lockable() {
+    VLOG(2) << "Destroy " << LockableName::ToString(value_);
     absl::MutexLock lock(&mutex_);
     CHECK_EQ(is_unlocked_, true);  // NOLINT
   }
@@ -46,16 +89,24 @@ class Lockable {
   Lock Acquire() {
     absl::MutexLock lock(&mutex_);
     mutex_.Await(absl::Condition(&is_unlocked_));
+    VLOG(2) << "Acquired " << LockableName::ToString(value_);
     is_unlocked_ = false;
 
-    return {&value_, [this](T*) {
-              absl::MutexLock lock(&mutex_);
-              CHECK(!is_unlocked_);  // NOLINT
-              is_unlocked_ = true;
-            }};
+    return Lock(this);
   }
 
+  std::string ToString() const { return LockableName::ToString(value_); }
+
  private:
+  friend class Lock;
+
+  void Release() {
+    absl::MutexLock lock(&mutex_);
+    VLOG(2) << "Released " << LockableName::ToString(value_);
+    CHECK(!is_unlocked_);  // NOLINT
+    is_unlocked_ = true;
+  }
+
   T value_;
   absl::Mutex mutex_;
   bool is_unlocked_ ABSL_GUARDED_BY(mutex_) = true;

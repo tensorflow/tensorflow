@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 #include "absl/synchronization/blocking_counter.h"
 #include "tsl/platform/env.h"
@@ -25,17 +26,49 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
-namespace {
 
 tsl::thread::ThreadPool CreateThreadPool(int32_t size) {
   return tsl::thread::ThreadPool(tsl::Env::Default(), "lockable_test", size);
+}
+
+template <>
+struct LockableName<std::string> {
+  static std::string ToString(const std::string& str) {
+    return "lockable string " + str;
+  }
+};
+
+class LockableString : public Lockable<std::string> {
+  using Lockable::Lockable;
+};
+
+TEST(LockableTest, LockProperties) {
+  // Lock can be default constructed and implicitly casted to bool.
+  LockableString::Lock lock0;
+  EXPECT_FALSE(lock0);
+
+  // Lock can be locked from a lockable object.
+  LockableString str("foo");
+  LockableString::Lock lock1 = str.Acquire();
+  EXPECT_TRUE(lock1);
+
+  // Lock can be moved.
+  LockableString::Lock lock2 = std::move(lock1);
+  EXPECT_FALSE(lock1);
+  EXPECT_TRUE(lock2);
+
+  // Locks have human readable names.
+  EXPECT_EQ(lock1.ToString(), "<empty lock>");
+  EXPECT_EQ(lock2.ToString(), "lockable string foo");
+
+  // Lockable has human readable name.
+  EXPECT_EQ(str.ToString(), "lockable string foo");
 }
 
 TEST(LockableTest, ExclusiveAccess) {
   absl::BlockingCounter counter(100);
   auto thread_pool = CreateThreadPool(10);
 
-  using LockableString = Lockable<std::string>;
   LockableString str("foo");
 
   for (size_t i = 0; i < 100; ++i) {
@@ -49,5 +82,4 @@ TEST(LockableTest, ExclusiveAccess) {
   counter.Wait();
 }
 
-}  // namespace
 }  // namespace xla
