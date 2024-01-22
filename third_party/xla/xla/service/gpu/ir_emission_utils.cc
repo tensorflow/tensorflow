@@ -203,6 +203,24 @@ bool IsSliceWithUnitStrides(const HloInstruction* instr) {
                                  [](int64_t stride) { return stride == 1; });
 }
 
+bool IsContiguousSlice(const HloInstruction& instr) {
+  auto slice = DynCast<HloSliceInstruction>(&instr);
+  if (!slice) return false;
+  // No need to check for strides because if stride != 1 there's no way
+  // src and dst dimensions match.
+  const Shape& src_shape = slice->operand(0)->shape();
+  const Shape& dst_shape = slice->shape();
+  bool sliced_dim_found = false;
+  for (auto dim : src_shape.layout().minor_to_major()) {
+    if (!sliced_dim_found) {
+      sliced_dim_found = dst_shape.dimensions(dim) < src_shape.dimensions(dim);
+      continue;
+    }
+    if (dst_shape.dimensions(dim) != 1) return false;
+  }
+  return true;
+}
+
 // This emits a device-side call to
 // "i32 vprintf(i8* fmt, arguments_type* arguments)" in the driver; see
 // http://docs.nvidia.com/cuda/ptx-writers-guide-to-interoperability/index.html#system-calls

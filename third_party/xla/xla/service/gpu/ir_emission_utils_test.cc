@@ -505,6 +505,66 @@ ENTRY entry {
   EXPECT_EQ(result->permutation, Vector3({2, 1, 0}));
 }
 
+TEST_F(IrEmissionUtilsTest, IsContiguousSlice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[8,12,100,11]{3,2,1,0} parameter(0)
+  slice.1 = f32[2,12,100,11]{3,2,1,0} slice(p), slice={[1:3], [0:12], [0:100], [0:11]}
+  slice.2 = f32[1,1,1,11]{3,2,1,0} slice(p), slice={[1:2], [0:1], [0:1], [0:11]}
+  slice.3 = f32[1,1,10,11]{3,2,1,0} slice(p), slice={[1:2], [0:1], [0:10], [0:11]}
+  slice.4 = f32[1,2,10,11]{3,2,1,0} slice(p), slice={[1:2], [0:2], [0:10], [0:11]}
+  slice.5 = f32[8,2,100,11]{3,2,1,0} slice(p), slice={[0:8], [10:12], [0:100], [0:11]}
+  c = f32[8,12,100,11]{0,1,3,2} copy(p)
+  slice.6 = f32[8,12,40,11]{0,1,3,2} slice(c), slice={[0:8], [0:12], [10:50], [0:11]}
+  slice.7 = f32[8,12,1,2]{0,1,3,2} slice(c), slice={[0:8], [0:12], [0:1], [0:2]}
+  slice.8 = f32[8,2,100,11]{0,1,3,2} slice(c), slice={[0:8], [0:2], [0:100], [0:11]}
+  slice.9 = f32[8,2,40,11]{0,1,3,2} slice(c), slice={[0:8], [10:12], [10:50], [0:11]}
+  ROOT t = (f32[2,12,100,11]{3,2,1,0},
+            f32[1,1,1,11]{3,2,1,0},
+            f32[1,1,10,11]{3,2,1,0},
+            f32[1,2,10,11]{3,2,1,0},
+            f32[8,2,100,11]{3,2,1,0},
+            f32[8,12,40,11]{0,1,3,2},
+            f32[8,12,1,2]{0,1,3,2},
+            f32[8,2,100,11]{0,1,3,2},
+            f32[8,2,40,11]{0,1,3,2}) tuple(slice.1, slice.2, slice.3, slice.4, slice.5, slice.6, slice.7, slice.8, slice.9)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* slice1 =
+      module->entry_computation()->GetInstructionWithName("slice.1");
+  HloInstruction* slice2 =
+      module->entry_computation()->GetInstructionWithName("slice.2");
+  HloInstruction* slice3 =
+      module->entry_computation()->GetInstructionWithName("slice.3");
+  HloInstruction* slice4 =
+      module->entry_computation()->GetInstructionWithName("slice.4");
+  HloInstruction* slice5 =
+      module->entry_computation()->GetInstructionWithName("slice.5");
+  HloInstruction* slice6 =
+      module->entry_computation()->GetInstructionWithName("slice.6");
+  HloInstruction* slice7 =
+      module->entry_computation()->GetInstructionWithName("slice.7");
+  HloInstruction* slice8 =
+      module->entry_computation()->GetInstructionWithName("slice.8");
+  HloInstruction* slice9 =
+      module->entry_computation()->GetInstructionWithName("slice.9");
+  EXPECT_TRUE(IsContiguousSlice(*slice1));
+  EXPECT_TRUE(IsContiguousSlice(*slice2));
+  EXPECT_TRUE(IsContiguousSlice(*slice3));
+  EXPECT_TRUE(!IsContiguousSlice(*slice4));
+  EXPECT_TRUE(!IsContiguousSlice(*slice5));
+  EXPECT_TRUE(IsContiguousSlice(*slice6));
+  EXPECT_TRUE(IsContiguousSlice(*slice7));
+  EXPECT_TRUE(!IsContiguousSlice(*slice8));
+  EXPECT_TRUE(!IsContiguousSlice(*slice9));
+}
+
 TEST_F(IrEmissionUtilsTest, LiteralToAttrToXlaFormat) {
   // int16, should be aliased.
   {

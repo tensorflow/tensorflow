@@ -99,6 +99,10 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
 // Returns true if `instr` is a non-strided slice.
 bool IsSliceWithUnitStrides(const HloInstruction* instr);
 
+// Returns true if `instr` is a slice instruction and produces a contiguous
+// slice.
+bool IsContiguousSlice(const HloInstruction& instr);
+
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
                         absl::Span<llvm::Value* const> arguments,
