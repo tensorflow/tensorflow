@@ -81,8 +81,8 @@ $ python
 
 ```python
 >>> import tensorflow as tf
->>> tf.add(1, 2).numpy()
-3
+>>> tf.add(1, 3).numpy()
+4
 >>> hello = tf.constant('Hello, TensorFlow!')
 >>> hello.numpy()
 b'Hello, TensorFlow!'
