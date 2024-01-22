@@ -127,6 +127,11 @@ StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   Compiler::CompileOptions opts;
   TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
+  if (input_module->has_schedule()) {
+    return input_module;
+  }
+
+  // But run-hlo-passes does not actually run the scheduling.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> optimized_module,
       compiler->RunHloPasses(std::move(input_module), executor, opts));

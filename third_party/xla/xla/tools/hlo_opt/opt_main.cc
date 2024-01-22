@@ -47,6 +47,9 @@ const char* const kUsage = R"(
 This tool lets you run a given HloModule from a file (or stdin) and convert it
 to expanded HLO, fully optimized HLO, or a binary depending on options.
 
+HLO passes are always run, unless the HLO module is already scheduled (has
+is_scheduled=True).
+
 You can also pass in debug option flags for the HloModule.
 
 Usage:

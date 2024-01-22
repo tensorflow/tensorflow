@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace xla {
 
-// Platform-specific provider of `hlo_translate` functionality.
+// Platform-specific provider of `hlo-opt` functionality.
 class OptProvider {
  public:
   // Generates textual output for a given stage on a given platform, returns

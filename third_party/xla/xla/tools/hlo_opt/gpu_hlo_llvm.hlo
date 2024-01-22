@@ -9,7 +9,7 @@ add {
 }
 
 
-// CHECK: load half
+// CHECK: load <2 x half>
 ENTRY e {
  p1 = f16[1048576] parameter(0)
  i = f16[] constant(0)

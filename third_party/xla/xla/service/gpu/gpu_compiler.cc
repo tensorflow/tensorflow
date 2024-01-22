@@ -1382,7 +1382,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
 // Returns the TargetConfig, either from the module debug options, or from the
 // CompilationOptions, or if both of those are absent, from the attached GPU.
-absl::StatusOr<Compiler::TargetConfig> GetTargetConfig(
+/*static*/ absl::StatusOr<Compiler::TargetConfig> GpuCompiler::GetTargetConfig(
     const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
     se::StreamExecutor* executor) {
   if (options.target_config.has_value()) {
