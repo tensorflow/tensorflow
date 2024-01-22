@@ -103,6 +103,7 @@ cc_library(
     deps = if_rocm_is_configured([
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "//xla/stream_executor/gpu:gpu_collectives_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
     ]),
 )

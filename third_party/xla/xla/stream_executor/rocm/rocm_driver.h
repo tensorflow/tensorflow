@@ -29,42 +29,7 @@ namespace stream_executor {
 namespace gpu {
 // Formats hipError_t to output prettified values into a log stream.
 // Error summaries taken from:
-string ToString(hipError_t result) {
-#define OSTREAM_ROCM_ERROR(__name) \
-  case hipError##__name:           \
-    return "HIP_ERROR_" #__name;
-
-  switch (result) {
-    OSTREAM_ROCM_ERROR(InvalidValue)
-    OSTREAM_ROCM_ERROR(OutOfMemory)
-    OSTREAM_ROCM_ERROR(NotInitialized)
-    OSTREAM_ROCM_ERROR(Deinitialized)
-    OSTREAM_ROCM_ERROR(NoDevice)
-    OSTREAM_ROCM_ERROR(InvalidDevice)
-    OSTREAM_ROCM_ERROR(InvalidImage)
-    OSTREAM_ROCM_ERROR(InvalidContext)
-    OSTREAM_ROCM_ERROR(InvalidHandle)
-    OSTREAM_ROCM_ERROR(NotFound)
-    OSTREAM_ROCM_ERROR(NotReady)
-    OSTREAM_ROCM_ERROR(NoBinaryForGpu)
-
-    // Encountered an uncorrectable ECC error during execution.
-    OSTREAM_ROCM_ERROR(ECCNotCorrectable)
-
-    // Load/store on an invalid address. Must reboot all context.
-    case 700:
-      return "ROCM_ERROR_ILLEGAL_ADDRESS";
-    // Passed too many / wrong arguments, too many threads for register count.
-    case 701:
-      return "ROCM_ERROR_LAUNCH_OUT_OF_RESOURCES";
-
-      OSTREAM_ROCM_ERROR(ContextAlreadyInUse)
-      OSTREAM_ROCM_ERROR(PeerAccessUnsupported)
-      OSTREAM_ROCM_ERROR(Unknown)  // Unknown internal error to ROCM.
-    default:
-      return absl::StrCat("hipError_t(", static_cast<int>(result), ")");
-  }
-}
+string ToString(hipError_t result);
 
 // GpuContext wraps the device_ordinal and hipCtx_t handle.
 class GpuContext {
