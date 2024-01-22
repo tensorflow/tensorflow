@@ -6,14 +6,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        # TODO(jpienaar): Make the visibility more restrictive.
-        ":friends",
-        "//learning/brain/mobile/programmability:__subpackages__",
-        "//tensorflow/lite/experimental/tf_runtime:__subpackages__",
-        "//tensorflow/lite/testing:__subpackages__",
-        "//third_party/odml/infra/genai/conversion/per_layer:__subpackages__",
-    ],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
