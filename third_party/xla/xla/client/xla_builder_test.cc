@@ -1630,6 +1630,19 @@ TEST(XlaBuilderTest, UnboundedAddUnsupportedImplicitBroadcast) {
               StatusIs(_, HasSubstr("Unbounded dynamic shapes not supported")));
 }
 
+TEST(XlaBuilderTest, UnboundedAnd) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("s32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("s32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("s32[?, ?, 2, 2, <=2, <=2, ?]"));
+  And(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+      /*broadcast_dimensions=*/absl::Span<const int64_t>{});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedBatchNormGrad) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?, ?, 7]"));
@@ -1808,6 +1821,19 @@ TEST(XlaBuilderTest, UnboundedClampUnsupportedImplicitBroadcast4) {
       StatusIs(_,
                HasSubstr(
                    "!is_unbounded_dynamic Unimplemented implicit broadcast.")));
+}
+
+TEST(XlaBuilderTest, UnboundedCompare) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[1, ?, 2, ?, <=2, ?, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[?, 1, ?, 2, ?, <=2, ?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected,
+                          ParseShape("pred[?, ?, 2, 2, <=2, <=2, ?]"));
+  Compare(Parameter(&b, 0, lhs, "lhs"), Parameter(&b, 1, rhs, "rhs"),
+          /*direction=*/{});
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
 TEST(XlaBuilderTest, UnboundedConcatenate) {
@@ -2023,24 +2049,27 @@ TEST(XlaBuilderTest, UnboundedReduce) {
   Shape shape = ShapeUtil::MakeShape(F32, {7}, {false});
   Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
-  XlaOp input0 = Parameter(&b, 0, ParseShape("f32[7, 5]").value(), "input0");
-  XlaOp input1 = Parameter(&b, 1, ParseShape("f32[?, 5]").value(), "input1");
-  XlaOp input2 = Parameter(&b, 2, ParseShape("f32[7, ?]").value(), "input2");
-  XlaOp init = Parameter(&b, 3, ShapeUtil::MakeShape(F32, {}), "init");
+  TF_ASSERT_OK_AND_ASSIGN(Shape input0, ParseShape("f32[7, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape input1, ParseShape("f32[?, 5]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape input2, ParseShape("f32[7, ?]"));
+  Shape scalar_f32 = ShapeUtil::MakeShape(F32, {});
+  XlaOp init = Parameter(&b, 3, scalar_f32, "init");
 
   XlaBuilder bsum(TestName());
-  XlaOp arg0 = Parameter(&bsum, 0, ShapeUtil::MakeShape(F32, {}), "arg0");
-  XlaOp arg1 = Parameter(&bsum, 1, ShapeUtil::MakeShape(F32, {}), "arg1");
-  XlaOp arg2 = Parameter(&bsum, 2, ShapeUtil::MakeShape(F32, {}), "arg2");
-  XlaOp arg3 = Parameter(&bsum, 3, ShapeUtil::MakeShape(F32, {}), "arg3");
-  XlaOp arg4 = Parameter(&bsum, 4, ShapeUtil::MakeShape(F32, {}), "arg4");
-  XlaOp arg5 = Parameter(&bsum, 5, ShapeUtil::MakeShape(F32, {}), "arg5");
-
-  std::vector<XlaOp> output_operands = {Add(arg0, arg1), Add(arg2, arg3),
-                                        Add(arg4, arg5)};
+  std::vector<XlaOp> output_operands = {
+      Add(Parameter(&bsum, 0, scalar_f32, "arg0"),
+          Parameter(&bsum, 1, scalar_f32, "arg1")),
+      Add(Parameter(&bsum, 2, scalar_f32, "arg2"),
+          Parameter(&bsum, 3, scalar_f32, "arg3")),
+      Add(Parameter(&bsum, 4, scalar_f32, "arg4"),
+          Parameter(&bsum, 5, scalar_f32, "arg5"))};
   Tuple(&bsum, absl::MakeSpan(output_operands));
-  TF_ASSERT_OK_AND_ASSIGN(auto sum, bsum.Build());
-  Reduce(&b, {input0, input1, input2}, {init, init, init}, sum, {1});
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation sum, bsum.Build());
+  Reduce(
+      &b,
+      {Parameter(&b, 0, input0, "input0"), Parameter(&b, 1, input1, "input1"),
+       Parameter(&b, 2, input2, "input2")},
+      {init, init, init}, sum, {1});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
