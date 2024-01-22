@@ -709,7 +709,6 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
   // Derive kInput/kLoop fusion kinds from fusion analysis. This shouldn't
   // matter but some passes downstream still query these instead of fusion
   // analysis.
-  // TODO: Don't recompute this all the time.
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   if (!analysis) return HloInstruction::FusionKind::kLoop;
   switch (analysis->GetEmitterFusionKind()) {
