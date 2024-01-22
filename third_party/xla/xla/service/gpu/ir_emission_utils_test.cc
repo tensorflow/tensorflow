@@ -260,6 +260,46 @@ TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionTwoRootUsers) {
   EXPECT_EQ(result2.name(), "reduce.1");
 }
 
+TEST_F(IrEmissionUtilsTest, FindReduceHeroEpilogueFusionHeroAlsoUsedAsNonHero) {
+  const char* hlo = R"(
+    HloModule module
+
+    Add {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT add = f32[] add(x, y)
+    }
+
+    fused_computation {
+      p0 = f32[4]{0} parameter(0)
+      zero = f32[] constant(0.0)
+      reduce.0 = f32[] reduce(f32[4]{0} p0, f32[] zero), dimensions={0}, to_apply=Add
+      broadcast = f32[4]{0} broadcast(f32[] reduce.0), dimensions={}
+      reduce.1 = f32[] reduce(f32[4]{0} broadcast, f32[] zero), dimensions={0}, to_apply=Add
+      bitcast = f32[1]{0} bitcast(f32[] reduce.0)
+      ROOT tuple.1 = (f32[], f32[4]{0}, f32[1]{0}) tuple(f32[] reduce.1, f32[4]{0} broadcast, f32[1]{0} bitcast)
+    }
+
+    ENTRY main {
+      Arg0 = f32[4]{0} parameter(0)
+      ROOT fusion = (f32[], f32[4]{0}, f32[1]{0}) fusion(Arg0), kind=kInput, calls=fused_computation
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  auto fusion = HloFusionAdaptor::ForInstruction(r);
+  const auto& result =
+      FindNonTrivialHero(fusion->GetRoots()[1].instruction(), *fusion);
+  // reduce.0 is also an operand of broadcast, but it is not a hero for that
+  // root.
+  EXPECT_EQ(result.name(), "broadcast");
+  const auto& result2 =
+      FindNonTrivialHero(fusion->GetRoots()[2].instruction(), *fusion);
+  EXPECT_EQ(result2.name(), "reduce.0");
+}
+
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateBinaryOp) {
   const char* hlo = R"(
 HloModule module

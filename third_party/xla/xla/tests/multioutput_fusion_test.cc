@@ -495,6 +495,30 @@ ENTRY main.7749 {
 }
 
 XLA_TEST_F(MultiOutputFusionTest,
+           MultiOutputReduceWithEpilogueHeroAlsoUsedAsNonHero) {
+  // reduce.8 is used by bitcast as reduce hero and by broadcast as non-hero.
+  const std::string testcase = absl::StrCat(kScalarOps, R"(
+fused_computation {
+  %param_0.6 = f32[4]{0} parameter(0)
+  %zero = f32[] constant(0.0)
+  %reduce.8 = f32[] reduce(f32[4]{0} %param_0.6, f32[] %zero), dimensions={0}, to_apply=Add
+  %broadcast = f32[4]{0} broadcast(f32[] %reduce.8), dimensions={}
+  %compare = pred[4]{0} compare(f32[4]{0} %param_0.6, f32[4]{0} %broadcast), direction=EQ
+  %convert = f32[4]{0} convert(pred[4]{0} %compare)
+  %reduce.19.1 = f32[] reduce(f32[4]{0} %convert, f32[] %zero), dimensions={0}, to_apply=Add
+  %bitcast = f32[1]{0} bitcast(f32[] %reduce.8)
+  ROOT %tuple.1 = (f32[], f32[4]{0}, f32[1]{0}) tuple(f32[] %reduce.19.1, f32[4]{0} %convert, f32[1]{0} %bitcast)
+}
+
+ENTRY main {
+  Arg0 = f32[4]{0} parameter(0)
+  ROOT fusion = (f32[], f32[4]{0}, f32[1]{0}) fusion(Arg0), kind=kInput, calls=fused_computation
+})");
+  auto module = ParseAndReturnVerifiedModule(testcase).value();
+  EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
+}
+
+XLA_TEST_F(MultiOutputFusionTest,
            MultiOutputTransposeFusionHeroWithMultipleRootUsers) {
   const std::string testcase = R"(
     HloModule test

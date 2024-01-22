@@ -1051,6 +1051,20 @@ static std::optional<HloInstructionAdaptor> FindTransposeHero(
     return TraversalResult::kAdvance;
   };
   HloBfsConsumersFirstTraversal({root}, fusion, visit);
+  if (transpose) {
+    // Make sure that no non-elementwise op is reachable from the transpose.
+    auto visit = [](HloInstructionAdaptor node) {
+      return node.instruction().opcode() != HloOpcode::kTuple &&
+             node.instruction().opcode() != HloOpcode::kParameter &&
+             !IsIntermediate(&node.instruction(),
+                             /*allowed_operand_count=*/3);
+    };
+    bool has_nontrivial_user = HloAnyOf(transpose->GetUsers(), fusion, visit,
+                                        /*visit_operands=*/false);
+    if (has_nontrivial_user) {
+      return std::nullopt;
+    }
+  }
   return transpose;
 }
 
@@ -1058,13 +1072,13 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
                                          const HloFusionAdaptor& fusion) {
   HloInstructionAdaptor idx{instr};
 
-  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Such
-  // chains are bound to be quite small, as we restrict the number of users as
-  // well. Note that no memoization is needed due to user number constraints: we
+  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
+  // that no memoization is needed due to number of operands constraints: we
   // never have to revisit same nodes.
   auto get_intermediate_arg =
       [&](HloInstructionAdaptor node) -> std::optional<HloInstructionAdaptor> {
-    if (IsIntermediate(&node.instruction(), 1, &fusion) &&
+    if (IsIntermediate(&node.instruction(), /*allowed_operand_count=*/1,
+                       &fusion) &&
         fusion.ContainsInstruction(node.GetOperand(0))) {
       return node.GetOperand(0);
     }
@@ -1075,24 +1089,11 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
   }
 
   // Try a bit harder to find a transpose hero. The shared memory transpose
-  // emitter also works if there are ops with more than 1 operand on the path
-  // between root and the transpose op, we still want the restriction though
-  // that each op on the path is elementwise and has only 1 user.
+  // emitter also works if there are elementwise ops with more than 1 operand on
+  // the path between root and the transpose op.
   std::optional<HloInstructionAdaptor> transpose =
       FindTransposeHero(idx, fusion);
-  HloInstructionAdaptor hero = transpose ? *transpose : idx;
-  auto visit = [](HloInstructionAdaptor node) {
-    return node.instruction().opcode() != HloOpcode::kTuple &&
-           node.instruction().opcode() != HloOpcode::kParameter &&
-           !IsIntermediate(&node.instruction(),
-                           /*allowed_operand_count=*/3);
-  };
-  bool has_nontrivial_user =
-      HloAnyOf(hero.GetUsers(), fusion, visit, /*visit_operands=*/false);
-  if (has_nontrivial_user) {
-    return instr;
-  }
-  return hero.instruction();
+  return transpose ? transpose->instruction() : idx.instruction();
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
