@@ -4726,6 +4726,9 @@ class NumpyIterator(tracking_base.Trackable):
     self._iterator = iter(dataset)
     self._dataset = dataset
 
+  def __repr__(self):
+    return f"NumpyIterator(iterator={self._iterator})"
+
   def __iter__(self):
     return self
 
