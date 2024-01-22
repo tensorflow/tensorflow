@@ -419,7 +419,7 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
         Index j = internal::SubtleMustCopy(segment_ids(i));
         // If `j` is in work scope of this worker, do the reduction.
         if (j >= begin && j < end) {
-            reduction(data_ptr[i], out_ptr[j]);
+          reduction(data_ptr[i], out_ptr[j]);
         }
       }
     };
@@ -430,13 +430,11 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     const int64_t input_bytes = sizeof(T) * inner_dim * kAverTaskSize;
     const int64_t output_bytes = sizeof(T) * inner_dim * kAverTaskSize;
     const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
-    if(is_inner_dim_1d) {
-        cpu_device.parallelFor(num_segments, cost, reductionWorker1D);
+    if (is_inner_dim_1d) {
+      cpu_device.parallelFor(num_segments, cost, reductionWorker1D);
+    } else {
+      cpu_device.parallelFor(num_segments, cost, reductionWorker);
     }
-    else {
-        cpu_device.parallelFor(num_segments, cost, reductionWorker);
-    }
-    
   }
 };
 
