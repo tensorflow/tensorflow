@@ -242,11 +242,6 @@ DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unknown);
 
 #undef DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE
 
-template <typename... Args>
-Status InternalErrorStrCat(Args&&... concat) {
-  return WithLogBacktrace(tsl::errors::Internal(std::forward<Args>(concat)...));
-}
-
 // The following three macros define a common set of code for creating
 // absl::Status errors with the given error_type, with the addition of adding
 // absl::SourceLocation if it's available (PLATFORM_GOOGLE).  They're a
@@ -311,6 +306,7 @@ Status InternalErrorStrCat(Args&&... concat) {
 XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(ResourceExhausted);
 XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(InvalidArgument);
 XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Unimplemented);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Internal);
 
 #undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE
 #undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX

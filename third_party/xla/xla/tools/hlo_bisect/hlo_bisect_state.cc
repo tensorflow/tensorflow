@@ -337,9 +337,8 @@ Status HloBisectState::ExpectModuleIsBuggy() {
     }
   }
   if (bug_count != 0) {
-    return InternalErrorStrCat("The checker is non deterministic! (only ",
-                               bug_count, " failures seen in ",
-                               (retry_count + 1), " runs)");
+    return InternalStrCat("The checker is non deterministic! (only ", bug_count,
+                          " failures seen in ", (retry_count + 1), " runs)");
   }
   return Internal("We \"lost\" the bug while bisecting!");
 }

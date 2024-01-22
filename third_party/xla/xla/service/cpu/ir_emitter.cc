@@ -2216,7 +2216,7 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   for (auto& padding_dimension : pad->padding_config().dimensions()) {
     if (padding_dimension.edge_padding_low() < 0 ||
         padding_dimension.edge_padding_high() < 0) {
-      return InternalErrorStrCat(
+      return InternalStrCat(
           "Encountered negative padding in IrEmitter on CPU. "
           "This should have been eliminated at the HLO level. ",
           pad->ToString());

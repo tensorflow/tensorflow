@@ -2031,10 +2031,9 @@ Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
   }
 
   if (!out_of_slices(slice_index)) {
-    return InternalErrorStrCat("Ran out of space in root ",
-                               root.chunk.ToString(),
-                               " to fit slice permutation; however, we should "
-                               "have caught such a condition earlier.");
+    return InternalStrCat("Ran out of space in root ", root.chunk.ToString(),
+                          " to fit slice permutation; however, we should "
+                          "have caught such a condition earlier.");
   }
 
   return OkStatus();
