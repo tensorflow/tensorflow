@@ -16,12 +16,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_PREFETCHED_SPLIT_PROVIDER_H_
 
 #include <cstddef>
-#include <deque>
 #include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -67,8 +67,7 @@ class PrefetchedSplitProvider {
   // Writes the split to `target_split_path` and returns the split. Returns
   // `std::nullopt` if no more splits are available. If there are more available
   // splits but not currently ready for reading, blocks until they are ready.
-  absl::StatusOr<std::optional<Tensor>> GetSplit(
-      const std::string& target_split_path);
+  absl::StatusOr<std::optional<Tensor>> GetNext(const std::string& split_path);
 
   // Resets the split provider.
   absl::Status Reset();
@@ -76,10 +75,20 @@ class PrefetchedSplitProvider {
   // TODO(b/320755733): Support Save and Load.
 
  private:
-  // Prefetched split and the absolute path where a temporary file is written.
-  struct SplitFile {
+  // Prefetched split and its split index.
+  struct SplitAndIndex {
     Tensor split;
-    std::string filename;
+    size_t index = 0;
+
+    // Returns the absolute path of the prefetched split.
+    std::string SplitPath(const std::string& directory) const {
+      return tsl::io::JoinPath(directory,
+                               absl::StrCat("split_", index, ".tfrecord"));
+    }
+
+    friend bool operator<(const SplitAndIndex& lhs, const SplitAndIndex& rhs) {
+      return lhs.index < rhs.index;
+    }
   };
 
   // Initializes directories for writing. This cleans up all existing files in
@@ -100,10 +109,7 @@ class PrefetchedSplitProvider {
   absl::StatusOr<bool> PrefetchSplit();
 
   // Gets the next split from the split provider.
-  absl::StatusOr<std::optional<Tensor>> GetSplitFromProvider();
-
-  // Generates a unique file name. Returns the absolute file path.
-  absl::StatusOr<std::string> GetUniqueFile() const;
+  absl::StatusOr<std::optional<SplitAndIndex>> GetSplitFromProvider();
 
   // Updates the status and notifies waiters.
   void UpdateStatus(absl::Status status);
@@ -124,6 +130,13 @@ class PrefetchedSplitProvider {
   // Whether the split provider is being reset.
   bool reset_ ABSL_GUARDED_BY(mu_) = false;
 
+  // The indices ensure the splits are returned in order. When prefetching a
+  // split, associates each split with the `split_index_to_write_`. The buffer
+  // is sorted by the split index. When reading, waits for the split with index
+  // `split_index_to_read_`.
+  size_t split_index_to_read_ ABSL_GUARDED_BY(mu_) = 0;
+  size_t split_index_to_write_ ABSL_GUARDED_BY(mu_) = 0;
+
   // Number of finished threads. If `finished_threads_ >= num_write_threads_`,
   // then all the splits have been pushed to the buffer. Otherwise, the split
   // provider has not produced all the splits, or some thread is still writing
@@ -131,7 +144,7 @@ class PrefetchedSplitProvider {
   size_t finished_threads_ ABSL_GUARDED_BY(mu_) = 0;
 
   // Buffer to hold the splits. The size should be bounded by `buffer_size_`.
-  std::deque<SplitFile> buffer_ ABSL_GUARDED_BY(mu_);
+  absl::btree_set<SplitAndIndex> buffer_ ABSL_GUARDED_BY(mu_);
 
   std::unique_ptr<tsl::thread::ThreadPool> thread_pool_;
 };

@@ -50,6 +50,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+using ::testing::ElementsAreArray;
 using ::testing::IsSupersetOf;
 using ::testing::UnorderedElementsAreArray;
 using ::tsl::testing::IsOkAndHolds;
@@ -112,7 +113,7 @@ absl::StatusOr<std::vector<T>> GetSplits(
     std::string target_split_path =
         tsl::io::JoinPath(test_dir, absl::StrCat("split_", i));
     TF_ASSIGN_OR_RETURN(std::optional<Tensor> split,
-                        prefetched_split_provider.GetSplit(target_split_path));
+                        prefetched_split_provider.GetNext(target_split_path));
     if (!split.has_value()) {
       return splits;
     }
@@ -155,7 +156,7 @@ TEST_P(PrefetchedSplitProviderParamTest, GetSplits) {
       std::move(split_provider), test_dirs[0], tsl::Env::Default(),
       NumWriteThreads(), BufferSizePerThread());
   EXPECT_THAT(GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
-              IsOkAndHolds(UnorderedElementsAreArray(Range(NumElements()))));
+              IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
 }
 
 TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplits) {
@@ -177,6 +178,7 @@ TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplits) {
           TF_ASSERT_OK_AND_ASSIGN(
               std::vector<int64_t> splits_per_thread,
               GetSplits<int64_t>(prefetched_split_provider, test_dirs[1 + i]));
+          EXPECT_TRUE(absl::c_is_sorted(splits_per_thread));
           absl::MutexLock l(&mu);
           absl::c_move(splits_per_thread, std::back_inserter(splits));
         })));
@@ -198,7 +200,7 @@ TEST_P(PrefetchedSplitProviderParamTest, Reset) {
   // The split provider produces elements from the beginning after being reset.
   for (int i = 0; i < 3; ++i) {
     EXPECT_THAT(GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
-                IsOkAndHolds(UnorderedElementsAreArray(Range(NumElements()))));
+                IsOkAndHolds(ElementsAreArray(Range(NumElements()))));
     TF_EXPECT_OK(prefetched_split_provider.Reset());
   }
 }
