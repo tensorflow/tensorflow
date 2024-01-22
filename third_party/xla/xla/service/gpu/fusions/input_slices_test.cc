@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/fusions/input_slices.h"
 
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/service/gpu/fusions/fusions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
@@ -28,9 +32,26 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 
-class InputSlicesTest : public HloTestBase {};
+class InputSlicesTest : public HloTestBase {
+ public:
+  void SetUp() override {
+    HloTestBase::SetUp();
+    printer_.SetDimensionName(0, "th_x");
+    printer_.SetDimensionName(1, "th_y");
+    printer_.SetDimensionName(2, "th_z");
+    printer_.SetDimensionName(3, "bl_x");
+    printer_.SetDimensionName(4, "bl_y");
+    printer_.SetDimensionName(5, "bl_z");
+  }
+
+ protected:
+  AffineMapPrinter printer_;
+  mlir::MLIRContext mlir_context_;
+};
 
 TEST_F(InputSlicesTest, ThreadIndexing) {
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -62,12 +83,19 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
   auto fusion = dynamic_cast<InputSlicesFusion*>(emitter.get());
   ASSERT_NE(fusion, nullptr);
 
-  mlir::MLIRContext mlir_context;
-  EXPECT_THAT(
-      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
-      HasSubstr(
-          "(d0, d1, d2, d3, d4, d5) -> (0, ((d0 + d3 * 128) floordiv 3) mod 2, "
-          "(d0 + d3 * 128) mod 3, ((d0 + d3 * 128) floordiv 6) mod 5)"));
+  auto thread_id_to_output_indexing =
+      fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
+  EXPECT_THAT(printer_.ToString(thread_id_to_output_indexing->affine_map),
+              HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z) -> "
+                        "(0, "
+                        "((th_x + bl_x * 128) floordiv 3) mod 2, "
+                        "(th_x + bl_x * 128) mod 3, "
+                        "((th_x + bl_x * 128) floordiv 6) mod 5)"));
+  EXPECT_THAT(thread_id_to_output_indexing->domain,
+              MatchDomain(ElementsAre(MatchRange(0, 127), MatchRange(0, 0),
+                                      MatchRange(0, 0), MatchRange(0, 1),
+                                      MatchRange(0, 0), MatchRange(0, 0)),
+                          IsEmpty()));
 }
 
 }  // namespace

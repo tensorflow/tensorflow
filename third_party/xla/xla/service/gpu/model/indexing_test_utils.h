@@ -34,6 +34,12 @@ MATCHER_P2(MatchRange, lower_bound, upper_bound,
                             result_listener);
 }
 
+MATCHER_P2(MatchDomain, dim_ranges, symbol_ranges, "") {
+  return ExplainMatchResult(dim_ranges, arg.dimension_ranges,
+                            result_listener) &&
+         ExplainMatchResult(symbol_ranges, arg.symbol_ranges, result_listener);
+}
+
 MATCHER_P3(MatchIndexingMap, affine_map_string, dim_ranges, symbol_ranges, "") {
   if (!arg.has_value()) {
     return false;
@@ -41,9 +47,7 @@ MATCHER_P3(MatchIndexingMap, affine_map_string, dim_ranges, symbol_ranges, "") {
   return ExplainMatchResult(::testing::HasSubstr(affine_map_string),
                             AffineMapPrinter().ToString(arg->affine_map),
                             result_listener) &&
-         ExplainMatchResult(dim_ranges, arg->domain.dimension_ranges,
-                            result_listener) &&
-         ExplainMatchResult(symbol_ranges, arg->domain.symbol_ranges,
+         ExplainMatchResult(MatchDomain(dim_ranges, symbol_ranges), arg->domain,
                             result_listener);
 }
 

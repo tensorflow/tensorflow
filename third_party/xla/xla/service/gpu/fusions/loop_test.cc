@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -34,7 +35,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
+using ::testing::IsEmpty;
 
 class LoopTest : public HloTestBase {
  public:
@@ -87,12 +90,18 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   auto analysis = AnalyzeFusion(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
-  EXPECT_THAT(loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_)
-                  ->ToString(printer_),
+  auto thread_id_to_output_indexing =
+      loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
+  EXPECT_THAT(printer_.ToString(thread_id_to_output_indexing->affine_map),
               HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z)[s0] -> ("
                         "(th_x * 4 + bl_x * 512 + s0) floordiv 60000, "
                         "((th_x * 4 + bl_x * 512 + s0) floordiv 300) mod 200, "
                         "(th_x * 4 + bl_x * 512 + s0) mod 300)"));
+  EXPECT_THAT(thread_id_to_output_indexing->domain,
+              MatchDomain(ElementsAre(MatchRange(0, 127), MatchRange(0, 0),
+                                      MatchRange(0, 0), MatchRange(0, 1007),
+                                      MatchRange(0, 0), MatchRange(0, 0)),
+                          ElementsAre(MatchRange(0, 3))));
 }
 
 TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
@@ -114,9 +123,15 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
   auto analysis = AnalyzeFusion(*root, device_info_);
 
   TF_ASSERT_OK_AND_ASSIGN(auto loop_fusion, GetLoopFusion(analysis));
-  EXPECT_THAT(loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_)
-                  ->ToString(printer_),
+  auto thread_id_to_output_indexing =
+      loop_fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context_);
+  EXPECT_THAT(printer_.ToString(thread_id_to_output_indexing->affine_map),
               HasSubstr("(th_x, th_y, th_z, bl_x, bl_y, bl_z) -> (th_x)"));
+  EXPECT_THAT(thread_id_to_output_indexing->domain,
+              MatchDomain(ElementsAre(MatchRange(0, 19), MatchRange(0, 0),
+                                      MatchRange(0, 0), MatchRange(0, 0),
+                                      MatchRange(0, 0), MatchRange(0, 0)),
+                          IsEmpty()));
 }
 
 }  // namespace
