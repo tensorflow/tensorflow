@@ -359,7 +359,11 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     const int64_t N = segment_ids.dimension(0);
     const int64_t num_segments = output.dimension(0);
     const int64_t inner_dim = data.dimension(1);
+    const T* data_ptr = data.data();
+    T* out_ptr = output.data();
     ReductionF reduction;
+
+    const bool is_inner_dim_1d = inner_dim == 1;
 
     // `num_real_segment` counts the rows actually reduced from input,
     // the rows with negative segment index will be excluded.
@@ -411,7 +415,15 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
         }
       }
     };
-
+    auto reductionWorker1D = [&](int64_t begin, int64_t end) -> void {
+      for (int64_t i = 0; i < N; i++) {
+        Index j = internal::SubtleMustCopy(segment_ids(i));
+        // If `j` is in work scope of this worker, do the reduction.
+        if (j >= begin && j < end) {
+          reduction(data_ptr[i], out_ptr[j]);
+        }
+      }
+    };
     // Reduction functors includes Sum, Max, Min, etc. Simply consider it
     // will cost 5 cycles per operation.
     const int64_t kAverTaskSize = num_real_segment / num_segments;
@@ -419,7 +431,11 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
     const int64_t input_bytes = sizeof(T) * inner_dim * kAverTaskSize;
     const int64_t output_bytes = sizeof(T) * inner_dim * kAverTaskSize;
     const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
-    cpu_device.parallelFor(num_segments, cost, reductionWorker);
+    if (is_inner_dim_1d) {
+      cpu_device.parallelFor(num_segments, cost, reductionWorker1D);
+    } else {
+      cpu_device.parallelFor(num_segments, cost, reductionWorker);
+    }
   }
 };
 
@@ -436,6 +452,7 @@ struct SumOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
     output += data;
   }
+  void operator()(const T& data, T& output) { output += data; }
 };
 
 template <typename T>
@@ -443,6 +460,7 @@ struct MaxOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
     output = data.cwiseMax(output);
   }
+  void operator()(const T& data, T& output) { output = std::max(data, output); }
 };
 
 template <typename T>
@@ -450,6 +468,7 @@ struct MinOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
     output = data.cwiseMin(output);
   }
+  void operator()(const T& data, T& output) { output = std::min(data, output); }
 };
 
 template <typename T>
@@ -457,6 +476,7 @@ struct ProdOp {
   void operator()(const constMatrixChip<T> data, MatrixChip<T> output) {
     output *= data;
   }
+  void operator()(const T& data, T& output) { output *= data; }
 };
 }  // namespace functor
 
