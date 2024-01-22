@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_SRC_UTIL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_SRC_UTIL_H_
 
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>

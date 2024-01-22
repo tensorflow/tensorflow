@@ -16,17 +16,14 @@ limitations under the License.
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
 
 #include <cstddef>
-#include <cstdint>
 #include <cstring>
 #include <functional>
-#include <limits>
 #include <numeric>
 #include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
-#include "tensorflow/lite/experimental/shlo/src/util.h"
 
 namespace stablehlo {
 

@@ -13,22 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-#include <bit>
-#include <cmath>
 #include <cstddef>
-#include <cstdint>
-#include <functional>
-#include <numeric>
-#include <optional>
-#include <type_traits>
-#include <version>
 
 #include "absl/status/status.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
-#include "tensorflow/lite/experimental/shlo/src/bf16.h"
 #include "tensorflow/lite/experimental/shlo/src/dispatch.h"
-#include "tensorflow/lite/experimental/shlo/src/f16.h"
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
 #include "tensorflow/lite/experimental/shlo/src/util.h"
 

@@ -16,8 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_SRC_DEBUG_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_SRC_DEBUG_H_
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <ios>
+#include <limits>
+#include <optional>
 #include <ostream>
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
 #include "tensorflow/lite/experimental/shlo/src/bf16.h"
 #include "tensorflow/lite/experimental/shlo/src/f16.h"

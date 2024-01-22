@@ -19,14 +19,11 @@ cc_binary(
     ],
     deps = [
         ":util",
-        "//base",
         "//tensorflow/lite/experimental/shlo",
-        "//tensorflow/lite/experimental/shlo:debug",
         "//tensorflow/lite/experimental/shlo/test:util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/types:span",
         "@com_google_benchmark//:benchmark",
     ],
 )
@@ -40,12 +37,9 @@ cc_binary(
     ],
     deps = [
         ":util",
-        "//base",
         "//tensorflow/lite/experimental/shlo:float",
         "@XNNPACK",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/types:span",
         "@com_google_benchmark//:benchmark",
     ],
 )

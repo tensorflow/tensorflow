@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/experimental/shlo/include/shlo.h"
-#include "tensorflow/lite/experimental/shlo/src/debug.h"
+#include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
 #include "tensorflow/lite/experimental/shlo/src/storage.h"
 #include "tensorflow/lite/experimental/shlo/test/util.h"
 
