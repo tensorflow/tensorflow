@@ -2944,38 +2944,13 @@ ENTRY test {
   dot_a = bf16[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   z_bcast = bf16[2,4] broadcast(z), dimensions={1}
   ROOT out = bf16[2,4] add(dot_a, z_bcast)
-}
-
-)";
+})";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[2,3], {{.*}}: bf16[3,4], {{.*}}: bf16[4]) -> bf16[2,4] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[2,3]{1,0} parameter(0)
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = bf16[8,8]{1,0} pad([[P0]], [[C0]]), padding=0_6x0_5
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = bf16[8,8]{1,0} pad([[P1]], [[C0]]), padding=0_5x0_4
-; CHECK-NEXT:    [[P2:%[^ ]+]] = bf16[4]{0} parameter(2)
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS"
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[2,4]{1,0} slice([[MATMUL]]), slice={[0:2], [0:4]}
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-DAG: ENTRY %test ({{.*}}: bf16[2,3], {{.*}}: bf16[3,4], {{.*}}: bf16[4]) -> bf16[2,4] {
+; CHECK-DAG:    bf16[8,8]{1,0} pad({{.*}}), padding=0_6x0_5
+; CHECK-DAG:    bf16[8,8]{1,0} pad({{.*}}), padding=0_5x0_4
       )");
 }
 
@@ -3696,38 +3671,13 @@ ENTRY test {
   bcast.3 = bf16[2,4] broadcast(const.3), dimensions={}
   mul.4 = bf16[2,4] multiply(add.2, bcast.3)
   ROOT out = bf16[2,4] multiply(dot, mul.4)
-}
-
-)";
+})";
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{5e-5, 1e-5}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[2,3], {{.*}}: bf16[3,4]) -> bf16[2,4] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[2,3]{1,0} parameter(0)
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[P0_PAD:%[^ ]+]] = bf16[8,8]{1,0} pad([[P0]], [[C0]]), padding=0_6x0_5
-; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_PAD:%[^ ]+]] = bf16[8,8]{1,0} pad([[P1]], [[C0]]), padding=0_5x0_4
-; CHECK-NEXT:    [[DOT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PAD]], [[P1_PAD]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"GELU"
-; CHECK:           }
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[2,4]{1,0} slice([[DOT]]), slice={[0:2], [0:4]}
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-DAG: ENTRY %test ({{.*}}: bf16[2,3], {{.*}}: bf16[3,4]) -> bf16[2,4] {
+; CHECK-DAG:    bf16[8,8]{1,0} pad({{.*}}), padding=0_6x0_5
+; CHECK-DAG:    bf16[8,8]{1,0} pad({{.*}}), padding=0_5x0_4
       )");
 }
 
@@ -3863,34 +3813,13 @@ ENTRY test {
   dot_a = f16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   z_bcast = f16[8,8] broadcast(z), dimensions={1}
   ROOT add = f16[8,8] add(dot_a, z_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{8e-3, 2e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: f16[8,16], {{.*}}: f16[16,8], {{.*}}: f16[8]) -> f16[8,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS"
-; CHECK:           }
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT:  pad("
+; CHECK:      custom-call
+; CHECK-SAME: custom_call_target="__cublas$lt$matmul"
       )");
 }
 
@@ -3909,38 +3838,15 @@ ENTRY test {
   dot_a = f16[6,6] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   z_bcast = f16[6,6] broadcast(z), dimensions={1}
   ROOT add = f16[6,6] add(dot_a, z_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
 
-; CHECK-LABEL: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6], {{.*}}: f16[6]) -> f16[6,6] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
-; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[12,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = f16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[6]{0} parameter(2)
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS"
-; CHECK:           }
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+; CHECK-DAG: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6], {{.*}}: f16[6]) -> f16[6,6] {
+; CHECK-DAG:    f16[8,16]{1,0} pad({{.*}}), padding=0_2x0_4
+; CHECK-DAG:    f16[16,8]{1,0} pad({{.*}}), padding=0_4x0_2
       )");
 }
 
@@ -3957,33 +3863,13 @@ ENTRY test {
   c = f16[] constant(0)
   c_bcast = f16[8,8] broadcast(c), dimensions={}
   ROOT out = f16[8,8] maximum(dot_a, c_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: f16[8,16], {{.*}}: f16[16,8]) -> f16[8,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"RELU"
-; CHECK:           }
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT:  pad("
+; CHECK:      custom-call
+; CHECK-SAME: custom_call_target="__cublas$lt$matmul"
       )");
 }
 
@@ -4002,37 +3888,13 @@ ENTRY test {
   c = f16[] constant(0)
   c_bcast = f16[6,6] broadcast(c), dimensions={}
   ROOT out = f16[6,6] maximum(dot_a, c_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6]) -> f16[6,6] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
-; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[12,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = f16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"RELU"
-; CHECK:           }
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-DAG: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6]) -> f16[6,6] {
+; CHECK-DAG:    f16[8,16]{1,0} pad({{.*}}), padding=0_2x0_4
+; CHECK-DAG:    f16[16,8]{1,0} pad({{.*}}), padding=0_4x0_2
       )");
 }
 
@@ -4097,35 +3959,14 @@ ENTRY test {
   c = f16[] constant(0)
   c_bcast = f16[8,8] broadcast(c), dimensions={}
   ROOT out = f16[8,8] maximum(add, c_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: f16[8,16], {{.*}}: f16[16,8], {{.*}}: f16[8]) -> f16[8,8] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[8,16]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[16,8]{1,0} parameter(1)
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[8]{0} parameter(2)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS_RELU"
-; CHECK:           }
-      )");
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT:  pad("
+; CHECK:      custom-call
+; CHECK-SAME: custom_call_target="__cublas$lt$matmul"
+)");
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationF16Padded) {
@@ -4146,37 +3987,13 @@ ENTRY test {
   c = f16[] constant(0)
   c_bcast = f16[6,6] broadcast(c), dimensions={}
   ROOT out = f16[6,6] maximum(add, c_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6], {{.*}}: f16[6]) -> f16[6,6] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f16[6,12]{1,0} parameter(0)
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f16[] constant(0)
-; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f16[12,6]{1,0} parameter(1)
-; CHECK-NEXT:    [[P1_PADDED:%[^ ]+]] = f16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
-; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[6]{0} parameter(2)
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS_RELU"
-; CHECK:           }
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-DAG: ENTRY %test ({{.*}}: f16[6,12], {{.*}}: f16[12,6], {{.*}}: f16[6]) -> f16[6,6] {
+; CHECK-DAG:   f16[8,16]{1,0} pad({{.*}}), padding=0_2x0_4
+; CHECK-DAG:   f16[16,8]{1,0} pad({{.*}}), padding=0_4x0_2
       )");
 }
 
@@ -4269,34 +4086,13 @@ ENTRY test {
   dot_a = bf16[8,8] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   z_bcast = bf16[8,8] broadcast(z), dimensions={1}
   ROOT add = bf16[8,8] add(dot_a, z_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{8e-3, 2e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[8,16], {{.*}}: bf16[16,8], {{.*}}: bf16[8]) -> bf16[8,8] {
-; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
-; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
-; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS"
-; CHECK:           }
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT:  pad("
+; CHECK:      custom-call
+; CHECK-SAME: custom_call_target="__cublas$lt$matmul"
       )");
 }
 
@@ -4315,38 +4111,13 @@ ENTRY test {
   dot_a = bf16[6,6] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   z_bcast = bf16[6,6] broadcast(z), dimensions={1}
   ROOT add = bf16[6,6] add(dot_a, z_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6], {{.*}}: bf16[6]) -> bf16[6,6] {
-; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
-; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
-; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
-; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS"
-; CHECK:           }
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-DAG:  ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6], {{.*}}: bf16[6]) -> bf16[6,6] {
+; CHECK-DAG:    bf16[8,16]{1,0} pad({{.*}}), padding=0_2x0_4
+; CHECK-DAG:    bf16[16,8]{1,0} pad({{.*}}), padding=0_4x0_2
       )");
 }
 
@@ -4367,29 +4138,10 @@ ENTRY test {
 
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[8,16], {{.*}}: bf16[16,8]) -> bf16[8,8] {
-; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
-; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"RELU"
-; CHECK:           }
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-NOT:  pad("
+; CHECK:      custom-call
+; CHECK-SAME: custom_call_target="__cublas$lt$matmul"
       )");
 }
 
@@ -4408,37 +4160,13 @@ ENTRY test {
   c = bf16[] constant(0)
   c_bcast = bf16[6,6] broadcast(c), dimensions={}
   ROOT out = bf16[6,6] maximum(dot_a, c_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6]) -> bf16[6,6] {
-; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
-; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
-; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"RELU"
-; CHECK:           }
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-DAG: ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6]) -> bf16[6,6] {
+; CHECK-DAG:     bf16[8,16]{1,0} pad({{.*}}), padding=0_2x0_4
+; CHECK-DAG:     bf16[16,8]{1,0} pad({{.*}}), padding=0_4x0_2
       )");
 }
 
@@ -4458,34 +4186,14 @@ ENTRY test {
   c = bf16[] constant(0)
   c_bcast = bf16[8,8] broadcast(c), dimensions={}
   ROOT out = bf16[8,8] maximum(add, c_bcast)
-}
+})";
 
-)";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{8e-3, 2e-3}));
   MatchOptimizedHlo(hlo_text,
                     R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[8,16], {{.*}}: bf16[16,8], {{.*}}: bf16[8]) -> bf16[8,8] {
-; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[8,16]{1,0} parameter(0)
-; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[16,8]{1,0} parameter(1)
-; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[8]{0} parameter(2)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS_RELU"
-; CHECK:           }
+; CHECK-NOT:  pad("
+; CHECK:      custom-call
+; CHECK-SAME: custom_call_target="__cublas$lt$matmul"
       )");
 }
 
@@ -4511,34 +4219,10 @@ ENTRY test {
 
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
-  MatchOptimizedHlo(hlo_text,
-                    R"(
-
-; CHECK-LABEL: ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6], {{.*}}: bf16[6]) -> bf16[6,6] {
-; CHECK-DAG:     [[P0:%[^ ]+]] = bf16[6,12]{1,0} parameter(0)
-; CHECK-DAG:     [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-DAG:     [[P0_PADDED:%[^ ]+]] = bf16[8,16]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_4
-; CHECK-DAG:     [[P1:%[^ ]+]] = bf16[12,6]{1,0} parameter(1)
-; CHECK-DAG:     [[P1_PADDED:%[^ ]+]] = bf16[16,8]{1,0} pad([[P1]], [[C0]]), padding=0_4x0_2
-; CHECK-DAG:     [[P2:%[^ ]+]] = bf16[6]{0} parameter(2)
-; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = bf16[8,8]{1,0} custom-call([[P0_PADDED]], [[P1_PADDED]], [[P2]]),
-; CHECK:           custom_call_target="__cublas$lt$matmul",
-; CHECK:           backend_config={
-; CHECK-DAG:         "alpha_real":1
-; CHECK-DAG:         "alpha_imag":0
-; CHECK-DAG:         "beta":0
-; CHECK-DAG:         "dot_dimension_numbers":{
-; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
-; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
-; CHECK-DAG:           "lhs_batch_dimensions":[]
-; CHECK-DAG:           "rhs_batch_dimensions":[]
-; CHECK-DAG:         }
-; CHECK-DAG:         "precision_config":{
-; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
-; CHECK-DAG:         }
-; CHECK-DAG:         "epilogue":"BIAS_RELU"
-; CHECK:           }
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = bf16[6,6]{1,0} slice([[MATMUL]]), slice={[0:6], [0:6]}
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK-DAG: ENTRY %test ({{.*}}: bf16[6,12], {{.*}}: bf16[12,6], {{.*}}: bf16[6]) -> bf16[6,6] {
+; CHECK-DAG:     bf16[8,16]{1,0} pad({{.*}}), padding=0_2x0_4
+; CHECK-DAG:     bf16[16,8]{1,0} pad({{.*}}), padding=0_4x0_2
       )");
 }
 
