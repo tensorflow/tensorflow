@@ -231,7 +231,7 @@ tf_py_strict_test(
     # "//conditions:default": None,
     # }),
     # copybara:uncomment_end
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

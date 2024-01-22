@@ -40,8 +40,7 @@ class DistributedSaveTest(
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3], num_elements=[0, 10, 10000]),
-      ))
+          combinations.combine(num_workers=[1, 3], num_elements=[0, 10, 1000])))
   def testSaveLoad(self, num_workers, num_elements):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()

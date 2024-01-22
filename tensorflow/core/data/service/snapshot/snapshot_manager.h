@@ -234,14 +234,14 @@ class SnapshotManager {
   class StreamRestorer {
    public:
     explicit StreamRestorer(tsl::Env* env, absl::string_view path,
-                            int64_t stream_index, std::vector<Source>& sources,
+                            int64_t stream_index, int64_t num_sources,
                             SnapshotAssignmentManager& assignment_manager)
         : env_(env),
           path_(path),
           stream_index_(stream_index),
-          sources_(sources),
+          num_sources_(num_sources),
           assignment_manager_(assignment_manager),
-          repetition_indices_(sources_.size()) {}
+          repetition_indices_(num_sources) {}
 
     // Reads snapshot stream from the files and collects data for restoration.
     absl::Status ReadOnDiskStream();
@@ -259,7 +259,6 @@ class SnapshotManager {
     }
 
    private:
-    int64_t num_sources() const { return sources_.size(); }
     absl::StatusOr<std::string> OwnerWorkerAddress() const;
     absl::Status ReadOnDiskSource(int64_t source_index);
     absl::Status ReadOnDiskSplit(int64_t source_index,
@@ -270,7 +269,7 @@ class SnapshotManager {
     tsl::Env* const env_;
     const std::string path_;
     const int64_t stream_index_;
-    std::vector<Source>& sources_;
+    const int64_t num_sources_;
     SnapshotAssignmentManager& assignment_manager_;
 
     std::string worker_address_;

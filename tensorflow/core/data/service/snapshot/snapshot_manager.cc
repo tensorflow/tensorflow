@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
@@ -51,8 +52,22 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace {
 
 const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
+
+absl::Status SkipSplit(SplitProvider& split_provider) {
+  Tensor tensor;
+  bool end_of_splits = false;
+  TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
+  while (end_of_splits) {
+    TF_RETURN_IF_ERROR(split_provider.Reset());
+    TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 absl::StatusOr<bool> SnapshotAssignmentManager::TryAddAssignment(
     absl::string_view snapshot_path, absl::string_view worker_address,
@@ -269,7 +284,7 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
     thread_pool->Schedule([this, &stream_directories, stream_index, &mu,
                            &global_split_indices,
                            &resume_status]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-      StreamRestorer stream_restorer(env_, path_, stream_index, sources_,
+      StreamRestorer stream_restorer(env_, path_, stream_index, sources_.size(),
                                      assignment_manager_);
       absl::Status s = stream_restorer.ReadOnDiskStream();
       tsl::mutex_lock l(mu);
@@ -321,7 +336,7 @@ absl::Status SnapshotManager::StreamRestorer::ReadOnDiskStream() {
   }
 
   worker_address_ = *worker_address;
-  restored_stream_.emplace(num_sources());
+  restored_stream_.emplace(num_sources_);
   std::string splits_path = SplitsDirectory(path_, stream_index_);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> source_directories,
                       GetChildren(splits_path, env_));
@@ -338,10 +353,10 @@ absl::Status SnapshotManager::StreamRestorer::ReadOnDiskStream() {
           "Can't parse tf.data snapshot source directory ", source_path,
           ": filename must have the format source_<source_index>."));
     }
-    if (source_index >= num_sources()) {
+    if (source_index >= num_sources_) {
       return absl::InternalError(
           absl::StrCat("Found conflict between the number of sources, ",
-                       num_sources(), ", and the filename of ", source_path));
+                       num_sources_, ", and the filename of ", source_path));
     }
     TF_RETURN_IF_ERROR(ReadOnDiskSource(source_index));
   }
@@ -401,21 +416,6 @@ absl::Status SnapshotManager::StreamRestorer::ReadOnDiskSplit(
         ": Found duplicate global split index in split ", split_file, "."));
   }
   global_split_indices_.insert(global_split_index);
-
-  // To account for this split having been assigned, skip a split in the
-  // respective split provider.
-  return SkipSplit(*sources_[source_index].split_provider);
-}
-
-absl::Status SnapshotManager::StreamRestorer::SkipSplit(
-    SplitProvider& split_provider) {
-  Tensor tensor;
-  bool end_of_splits = false;
-  TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
-  while (end_of_splits) {
-    TF_RETURN_IF_ERROR(split_provider.Reset());
-    TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
-  }
   return absl::OkStatus();
 }
 
@@ -451,6 +451,14 @@ absl::Status SnapshotManager::RestoreFrom(
         sources_[source_index].repetition_index) {
       sources_[source_index].repetition_index =
           stream_restorer.RepetitionIndices()[source_index];
+    }
+
+    // To account for the splits having been assigned, skips the splits in the
+    // respective split providers.
+    int64_t skip_splits = streams_[stream_restorer.StreamIndex()]
+                              .num_assigned_splits_per_source[source_index];
+    for (int64_t i = 0; i < skip_splits; ++i) {
+      TF_RETURN_IF_ERROR(SkipSplit(*sources_[source_index].split_provider));
     }
   }
   for (int64_t global_split_index : stream_restorer.GlobalSplitIndices()) {
