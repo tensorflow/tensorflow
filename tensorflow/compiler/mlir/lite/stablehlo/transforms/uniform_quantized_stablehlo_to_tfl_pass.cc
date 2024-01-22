@@ -22,17 +22,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -1271,28 +1267,6 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
   }
 };
 
-// stablehlo.uniform_dequantize -> tfl.dequantize
-class RewriteTransposeOp : public OpRewritePattern<stablehlo::TransposeOp> {
- public:
-  using OpRewritePattern<stablehlo::TransposeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(stablehlo::TransposeOp op,
-                                PatternRewriter& rewriter) const override {
-    auto operand_type = op.getOperand().getType().cast<TensorType>();
-    const int64_t rank = operand_type.getRank();
-    ArrayRef<int64_t> shape(rank);
-    TensorType permutation_type =
-        operand_type.cloneWith(shape, rewriter.getI64Type());
-    auto permutation_attr =
-        DenseIntElementsAttr::get(permutation_type, op.getPermutation());
-    auto permutation =
-        rewriter.create<arith::ConstantOp>(op.getLoc(), permutation_attr);
-    rewriter.replaceOpWithNewOp<TFL::TransposeOp>(op, op.getOperand(),
-                                                  permutation);
-    return success();
-  }
-};
-
 void UniformQuantizedStablehloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
@@ -1302,8 +1276,8 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
                RewriteUpstreamQuantizedConvolutionOp,
                RewriteUpstreamQuantizedDotGeneralOpToBatchMatmulOp,
                RewriteUpstreamQuantizedDotGeneralOpToTflFullyConnectedOp,
-               RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
-               RewriteTransposeOp>(&ctx);
+               RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp>(
+      &ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "
