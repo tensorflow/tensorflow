@@ -83,6 +83,7 @@ class NcclCliqueKey {
   friend H AbslHashValue(H h, const NcclCliqueKey& k);
 
   friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
+  friend bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
   const std::vector<GlobalDeviceId> devices_;
@@ -95,6 +96,7 @@ H AbslHashValue(H h, const NcclCliqueKey& k) {
 }
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
+bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
 //===----------------------------------------------------------------------===//
 // NcclCliqueId

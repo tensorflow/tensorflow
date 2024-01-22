@@ -307,6 +307,33 @@ Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
   return OkStatus();
 }
 
+absl::Status NcclCollectiveThunk::Prepare(const PrepareParams& params,
+                                          ResourceRequests& resource_requests) {
+  const CollectiveExecuteParams* collectives = params.collective_params;
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<GlobalDeviceId> participants,
+      GetParticipatingDevices(collectives->global_device_id,
+                              *collectives->device_assn,
+                              config().replica_groups, config().group_mode));
+
+  std::vector<GlobalDeviceId> local_devices;
+  if (collectives->global_device_id_map) {
+    local_devices.reserve(collectives->global_device_id_map->size());
+    for (const auto& entry : *collectives->global_device_id_map) {
+      local_devices.push_back(entry.second);
+    }
+  }
+
+  size_t num_local_participants = GetNumLocalParticipants(
+      participants,
+      collectives->global_device_id_map ? &local_devices : nullptr);
+
+  return resource_requests.AddClique(
+      NcclCliqueKey(std::move(participants), GetStreamId()),
+      num_local_participants);
+}
+
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
                                 Thunk::KindToString(kind()));

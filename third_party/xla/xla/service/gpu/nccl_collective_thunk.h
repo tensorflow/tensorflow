@@ -150,6 +150,10 @@ class NcclCollectiveThunk : public Thunk {
       const Thunk::CollectiveExecuteParams& params);
 
   AsyncExecutor* async_executor() { return async_.get(); }
+
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
+
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
   NcclApi* nccl_api() const { return nccl_api_; }

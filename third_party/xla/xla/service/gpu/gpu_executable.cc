@@ -27,6 +27,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -204,6 +205,45 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
 
 namespace {
 
+// Shared resources required for thunk initialization and execution.
+class ResourceRequests : public Thunk::ResourceRequests {
+ public:
+  absl::Status AddClique(const NcclCliqueKey& clique_key,
+                         int32_t num_local_participants) final {
+    VLOG(5) << "Add collective clique request: " << clique_key.ToString()
+            << "; num_local_participants: " << num_local_participants;
+
+    // We can't have multiple requests for a same clique key with different
+    // number of local participants as we can acquire a clique only once and we
+    // have to know how many executables will join the rendezvous.
+    auto emplaced = cliques_.try_emplace(clique_key, num_local_participants);
+    if (!emplaced.second && emplaced.first->second != num_local_participants) {
+      return absl::InternalError(absl::StrCat(
+          "Clique request for a clique key ", clique_key.ToString(),
+          " has number of local participants ", num_local_participants,
+          " different from previous value of ", emplaced.first->second, ".",
+          " This will lead to deadlock at run time and is an XLA compiler"
+          " bug. Please report it to XLA team."));
+    }
+    return absl::OkStatus();
+  }
+
+  // TODO(ezhulenev): Instead of logging we need to acquire locks for all
+  // requested cliques and pass them to Initialize and Execute.
+  void LogCliqueRequests() {
+    VLOG(2) << "Collected " << cliques_.size() << " clique requests:";
+    for (const auto& [clique_key, num_local_participants] : cliques_) {
+      VLOG(2) << "  clique_key: " << clique_key.ToString()
+              << "; num_local_participants: " << num_local_participants;
+    }
+  }
+
+ private:
+  // Keep all clique requests in an ordered container so that we acquire cliques
+  // in the same order for all participants and do not create a deadlock.
+  absl::btree_map<NcclCliqueKey, int64_t> cliques_;
+};
+
 absl::Status MaybeSyncAndProfile(
     const ServiceExecutableRunOptions* run_options,
     std::optional<se::gpu::GpuTimer> execution_timer,
@@ -271,16 +311,32 @@ absl::Status ExecuteThunks(const std::string& module_name,
                           *run_options, buffer_allocations, main_stream,
                           command_buffer_trace_stream, async_comms_streams));
 
-  // Initialize thunks to prepare them for execution.
-  Thunk::InitializeParams initialize_params{executor,
-                                            executable_source,
-                                            &buffer_allocations,
-                                            main_stream,
-                                            command_buffer_trace_stream,
-                                            &execute_params.collective_params};
+  ResourceRequests resource_requests;
 
-  for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
+  {  // Collect resource requirements from thunks.
+    Thunk::PrepareParams prepare_params{&execute_params.collective_params};
+
+    tsl::profiler::TraceMe trace([&] { return "Thunks::Prepare"; });
+    for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
+      TF_RETURN_IF_ERROR(thunk->Prepare(prepare_params, resource_requests));
+    }
+  }
+
+  resource_requests.LogCliqueRequests();
+
+  {  // Initialize thunks using prepared resources before execution.
+    Thunk::InitializeParams initialize_params{
+        executor,
+        executable_source,
+        &buffer_allocations,
+        main_stream,
+        command_buffer_trace_stream,
+        &execute_params.collective_params};
+
+    tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
+    for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
+      TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
+    }
   }
 
   // Maybe join a round of rendezvous after thunk initialization.

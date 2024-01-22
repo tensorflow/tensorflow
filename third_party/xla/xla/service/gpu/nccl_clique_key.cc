@@ -51,6 +51,13 @@ bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {
   return a.devices_ == b.devices_ && a.stream_id_ == b.stream_id_;
 }
 
+bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b) {
+  if (a.stream_id_ < b.stream_id_) return true;
+  if (b.stream_id_ < a.stream_id_) return false;
+
+  return a.devices_ < b.devices_;
+}
+
 //===----------------------------------------------------------------------===//
 // NcclCliqueId
 //===----------------------------------------------------------------------===//

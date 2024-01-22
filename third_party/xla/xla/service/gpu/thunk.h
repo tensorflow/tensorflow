@@ -52,7 +52,24 @@ namespace gpu {
 // supposed to override these interfaces to launch a generated kernel or call an
 // external library function (such as operations in cuBLAS).
 //
-// This is thread-compatible.
+// Thunks have three execution stages:
+//
+// (1) Prepare: at this stage Thunk can request shared resources required at run
+//     time, i.e. collective thunks request collective cliques. Executable(s)
+//     will coordinate resource acquisition.
+//
+// (2) Initialize: at this stage Thunk must initialize all internal state
+//     required for execution, maybe using resources requested at prepare stage.
+//
+// (3) Execute: at this stage Thunk must launch "work" on underlying device
+//     using given stream, and it's expected that all expensive initialization
+//     is completed at earlier stages.
+//
+// This is thread-compatible. Thunk implementation should expect that it will be
+// called concurrently from multiple threads, for different run ids and for
+// different devices (stream executors). For partitioned XLA programs the
+// expectation is that all local participants execute simultaneously on
+// different threads and coordinate resource acquisition via rendezvous.
 class Thunk {
  public:
   enum Kind {
@@ -122,6 +139,20 @@ class Thunk {
     // TODO(b/304613751): This is only needed by the LMHLO. Remove this when
     // LMHLO is removed from the runtime pipeline.
     mlir::Operation* op;
+  };
+
+  //===--------------------------------------------------------------------===//
+  // ResourceRequests
+  //===--------------------------------------------------------------------===//
+
+  // Each individual thunk can request various resources required for execution
+  // at prepare stage. XLA executable is responsible for allocating them before
+  // initializing and executing thunks.
+  class ResourceRequests {
+   public:
+    virtual ~ResourceRequests() = default;
+    virtual absl::Status AddClique(const NcclCliqueKey& clique_key,
+                                   int32_t num_local_participants) = 0;
   };
 
   //===--------------------------------------------------------------------===//
@@ -212,11 +243,23 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
+  // PrepareParams
+  //===--------------------------------------------------------------------===//
+
+  // Parameters passed to Prepare. At thunk prepare time we do not launch any
+  // work or do any expensive initialization and only pass resource requirements
+  // back to executable, i.e. request collective cliques required at run time.
+  struct PrepareParams {
+    // Parameters for executing collective operations.
+    const CollectiveExecuteParams* collective_params = nullptr;
+  };
+
+  //===--------------------------------------------------------------------===//
   // InitializeParams
   //===--------------------------------------------------------------------===//
 
   // Parameters passed to Initialize. At thunk initialization time we do not
-  // launch any "work" on device and only prepare thunks for execution, i.e.
+  // launch any "work" on device and only initialize thunks for execution, i.e.
   // we pre-load kernels on device and instantiate all command buffers.
   struct InitializeParams {
     se::StreamExecutor* executor = nullptr;
@@ -261,20 +304,31 @@ class Thunk {
   // cease the practice of lowering thunks to XLA runtime custom calls.
   mlir::Operation* op() { return op_; }
 
-  // Prepares the thunk for execution on the given StreamExecutor.
+  // Prepares thunk for execution.
   //
-  // This may be called multiple times.  Its main purpose is to give us a chance
+  // This may be called multiple times. Its main purpose is to pass resource
+  // requests up to the parent executable so it can acquire them before
+  // initialization and execution.
+  virtual absl::Status Prepare(const PrepareParams& params,
+                               ResourceRequests& resource_requests) {
+    return absl::OkStatus();
+  }
+
+  // Initializes thunk for execution.
+  //
+  // This may be called multiple times. Its main purpose is to give us a chance
   // to do initialization outside of ExecuteOnStream() so that the
   // time spent initializing doesn't count towards our execution profile.
+  //
+  // Precondition: Prepare(initialize_params) has been called.
   virtual absl::Status Initialize(const InitializeParams& params) {
     return absl::OkStatus();
   }
 
-  // Execute the kernel for the thunk on the given stream. This method must be
-  // called after Initialize and can be called multiple times over Thunk's
-  // lifetime.
+  // Executes thunk on the given stream. This method must be called after
+  // Initialize and can be called multiple times over Thunk's lifetime.
   //
-  // Precondition: Initialize(stream->parent()) has been called.
+  // Precondition: Initialize(initialize_params) has been called.
   virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
   // Clears metadata that is only valid during compile time.
