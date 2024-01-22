@@ -14,6 +14,13 @@ package(
 )
 
 cc_library(
+    name = "types",
+    hdrs = ["types.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [],
+)
+
+cc_library(
     name = "component",
     hdrs = ["component.h"],
     compatible_with = get_compatible_with_portable(),
@@ -153,8 +160,8 @@ cc_library(
     hdrs = ["saved_model_import.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":types",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
     ],
@@ -284,7 +291,7 @@ cc_library(
     # tensorflow_framework, tensorflow_cc, or pywrap_tensorflow_internal) dependencies.
     deps = [
         ":component",
-        ":saved_model_import",
+        ":types",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
@@ -315,6 +322,7 @@ cc_library(
         ":pre_calibration",
         ":saved_model_export",
         ":saved_model_import",
+        ":types",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
