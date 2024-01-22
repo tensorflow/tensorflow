@@ -2094,39 +2094,38 @@ TEST(XlaBuilderTest, UnboundedReduceWindow) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedReshapeUnsupported1) {
+TEST(XlaBuilderTest, UnboundedReshape) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f32[2,3]"));
   Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0},
           /*new_sizes=*/{2, 3});
-  EXPECT_THAT(
-      BuildHloModule(b),
-      StatusIs(
-          _,
-          HasSubstr("Reshaping with unbounded dimensions is not supported.")));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
-TEST(XlaBuilderTest, UnboundedReshapeUnsupported2) {
+TEST(XlaBuilderTest, UnboundedReshapeUnsupportedOutputShape) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[6]"));
   Reshape(Parameter(&b, 0, operand, "operand"), /*dimensions=*/{0},
           /*new_sizes=*/{Shape::kUnboundedSize, Shape::kUnboundedSize});
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(
-          _,
-          HasSubstr("Reshaping with unbounded dimensions is not supported.")));
+      StatusIs(_,
+               HasSubstr(
+                   "Reshaping with unbounded result shape is not supported.")));
 }
 
-TEST(XlaBuilderTest, UnboundedReshapeUnsupported3) {
+TEST(XlaBuilderTest, UnboundedReshapeUnsupportedInferredShape) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
   Reshape(operand, Parameter(&b, 0, operand, "operand"));
   EXPECT_THAT(
       BuildHloModule(b),
-      StatusIs(
-          _,
-          HasSubstr("Reshaping with unbounded dimensions is not supported.")));
+      StatusIs(_,
+               HasSubstr(
+                   "Reshaping with unbounded result shape is not supported.")));
 }
 
 TEST(XlaBuilderTest, UnboundedSelect) {

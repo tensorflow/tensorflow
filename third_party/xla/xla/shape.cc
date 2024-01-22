@@ -138,13 +138,25 @@ bool Shape::is_static() const {
 }
 
 bool Shape::is_unbounded_dynamic() const {
-  if (IsTuple() && absl::c_any_of(tuple_shapes_, [](const Shape& subshape) {
-        return subshape.is_unbounded_dynamic();
-      })) {
-    return true;
+  if (IsTuple()) {
+    return absl::c_any_of(tuple_shapes_, [](const Shape& subshape) {
+      return subshape.is_unbounded_dynamic();
+    });
   }
   return absl::c_any_of(dimensions_,
                         [](int64_t dim) { return dim == kUnboundedSize; });
+}
+
+bool Shape::is_bounded_dynamic() const {
+  if (IsTuple()) {
+    return absl::c_any_of(tuple_shapes_, [](const Shape& subshape) {
+      return subshape.is_bounded_dynamic();
+    });
+  }
+  for (auto i = 0; i < dimensions_.size(); ++i) {
+    if (is_bounded_dynamic_dimension(i)) return true;
+  }
+  return false;
 }
 
 void Shape::DeleteDimension(int64_t dim_to_delete) {
