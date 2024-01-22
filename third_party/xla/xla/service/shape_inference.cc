@@ -3235,8 +3235,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand, absl::Span<const int64_t> broadcast_sizes) {
+  // This method is used to infer shape for xla::BroadcastInDim.
   TF_RETURN_IF_ERROR(ExpectArray(operand, "operand of broadcast"));
+  TF_RET_CHECK(!operand.is_unbounded_dynamic());
   for (int64_t size : broadcast_sizes) {
+    if (size == Shape::kUnboundedSize) {
+      return InvalidArgument("Non-broadcast dimensions must not be dynamic.");
+    }
     if (size < 0) {
       return InvalidArgument("Broadcast with negative dimension size %d.",
                              size);
@@ -3261,8 +3266,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
     const Shape& operand_shape, const Shape& output_shape,
     absl::Span<const int64_t> broadcast_dimensions) {
+  // This method is used to infer shape for xla::BroadcastInDim.
   TF_RETURN_IF_ERROR(ExpectArray(operand_shape, "operand of broadcast"));
   TF_RETURN_IF_ERROR(ExpectArray(output_shape, "operand of broadcast"));
+  TF_RET_CHECK(!output_shape.is_unbounded_dynamic());
   const int64_t operand_rank = operand_shape.rank();
   const int64_t output_rank = output_shape.rank();
   if (operand_rank > output_rank) {
@@ -3282,7 +3289,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       return InvalidArgument("Broadcast dimension %lld is out of bound",
                              broadcast_dimensions[i]);
     }
-    if (operand_shape.dimensions(i) !=
+    if (!operand_shape.is_unbounded_dynamic_dimension(i) &&
+        operand_shape.dimensions(i) !=
             output_shape.dimensions(broadcast_dimensions[i]) &&
         operand_shape.dimensions(i) != 1) {
       return InvalidArgument(
@@ -3292,8 +3300,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           i, operand_shape.dimensions(i), broadcast_dimensions[i],
           output_shape.dimensions(broadcast_dimensions[i]));
     }
-    if (operand_shape.is_dynamic_dimension(i) !=
-        output_shape.is_dynamic_dimension(broadcast_dimensions[i])) {
+    if (!operand_shape.is_unbounded_dynamic_dimension(i) &&
+        operand_shape.is_bounded_dynamic_dimension(i) !=
+            output_shape.is_bounded_dynamic_dimension(
+                broadcast_dimensions[i])) {
       return InvalidArgument(
           "Broadcast input and output dynamism mismatch: %s and %s",
           operand_shape.ToString(), output_shape.ToString());

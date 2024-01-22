@@ -849,14 +849,16 @@ StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
   }
 
   TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+  TF_RET_CHECK(!shape.is_unbounded_dynamic())
+      << "broadcast op result shapes must be static";
   for (int64_t i = 0; i < shape.rank(); i++) {
     if (auto it = absl::c_find(broadcast_dimensions, i);
         it != broadcast_dimensions.end()) {
       // Broadcast dimensions are permitted to be dynamic iff the operand
       // dimension is dynamic.
-      TF_RET_CHECK(operand_shape->is_dynamic_dimension(
+      TF_RET_CHECK(operand_shape->is_bounded_dynamic_dimension(
                        it - broadcast_dimensions.begin()) ==
-                   shape.is_dynamic_dimension(i))
+                   shape.is_bounded_dynamic_dimension(i))
           << " i: " << i << ", shape: " << shape.ToString()
           << ", operand_shape: " << operand_shape->ToString();
     } else {
@@ -1228,6 +1230,9 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(auto output_shape,
                         ShapeUtil::MakeValidatedShape(
                             operand_shape->element_type(), out_dim_size));
+    TF_RET_CHECK(!output_shape.is_unbounded_dynamic())
+        << "BroadcastInDim output must shape be static or bounded dynamic "
+        << output_shape.ToString();
     int64_t broadcast_rank = broadcast_dimensions.size();
     if (operand_shape->rank() != broadcast_rank) {
       return InvalidArgument(
@@ -1242,7 +1247,8 @@ XlaOp XlaBuilder::BroadcastInDim(
                                broadcast_dimensions[i]);
       }
       output_shape.set_dynamic_dimension(
-          broadcast_dimensions[i], operand_shape->is_dynamic_dimension(i));
+          broadcast_dimensions[i],
+          operand_shape->is_bounded_dynamic_dimension(i));
     }
 
     TF_RETURN_IF_ERROR(ShapeInference::InferBroadcastShape(
@@ -1251,9 +1257,12 @@ XlaOp XlaBuilder::BroadcastInDim(
     std::vector<int64_t> in_dim_size(out_dim_size.begin(), out_dim_size.end());
     std::vector<bool> in_dim_dynamic(out_dim_size.size(), false);
     for (int i = 0; i < broadcast_rank; i++) {
-      in_dim_size[broadcast_dimensions[i]] = operand_shape->dimensions(i);
+      in_dim_size[broadcast_dimensions[i]] =
+          (operand_shape->is_unbounded_dynamic_dimension(i))
+              ? out_dim_size[broadcast_dimensions[i]]
+              : operand_shape->dimensions(i);
       in_dim_dynamic[broadcast_dimensions[i]] =
-          operand_shape->is_dynamic_dimension(i);
+          operand_shape->is_bounded_dynamic_dimension(i);
     }
     const auto& in_dim_shape = ShapeUtil::MakeShape(
         operand_shape->element_type(), in_dim_size, in_dim_dynamic);
