@@ -490,7 +490,7 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
 // {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
 // Target sharding is {devices=[2,2]0,1,2,3}, the returned compatible sharding
 // will be sharding={devices=[2,2]0,2,1,3}.
-// If patial replicate sharding is not partial replicate or can't reshard to
+// If partial_sharding is not partial replicate or can't reshard to
 // target_tile_dims by dynamic slice, return std::nullopt.
 // If target_sharding is already compatible, returns it.
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
