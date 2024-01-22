@@ -397,7 +397,7 @@ class PartitionedHlo {
   // specified pad value used during resharding. Could only modify the reshard
   // cache.
   PartitionedHlo Reshard(const HloSharding& target,
-                         std::optional<Literal> pad_value = std::nullopt);
+                         std::optional<Literal> pad_value = std::nullopt) const;
 
   // Pads the garbage area of the output with the provided value. Normally,
   // unevenly partitioned dimensions are padded on the right, but this function
@@ -442,10 +442,10 @@ class PartitionedHlo {
 
   // Helper function to replicate the data on all devices. Could only modify
   // the reshard cache.
-  PartitionedHlo Replicate();
+  PartitionedHlo Replicate() const;
 
   // Helper function to replicate the data for partitions along the given dims.
-  HloInstruction* ReplicatePartial(absl::Span<const int64_t> dims);
+  HloInstruction* ReplicatePartial(absl::Span<const int64_t> dims) const;
 
   // Set state of the partitoned HLO.
   void set_state(PartitioningState state) { state_ = std::move(state); }
@@ -455,7 +455,7 @@ class PartitionedHlo {
   // cache, although it would indirectly modify by calling Replicate().
   PartitionedHlo ReshardNoCache(const HloSharding& target,
                                 std::optional<Literal> pad_value = std::nullopt,
-                                bool allow_full_replication = true);
+                                bool allow_full_replication = true) const;
 
   // Helper function to broadcast data from a single device to all devices.
   PartitionedHlo Broadcast() const;
@@ -463,7 +463,7 @@ class PartitionedHlo {
   // Try to perform complicated reshard handling by splitting a big reshard into
   // multiple reshards using that can be handled directly.
   std::optional<PartitionedHlo> TryComplexReshardHandling(
-      const HloSharding& target);
+      const HloSharding& target) const;
 
   // Helper function to reshard the tensor using AllToAll (instead of the
   // default of Replicate followed by Slice).
@@ -476,15 +476,15 @@ class PartitionedHlo {
 
   // Helper function to reshard to partial replicate using AllGather.
   std::optional<PartitionedHlo> ReshardToPartialReplicateWithAllGather(
-      const HloSharding& target);
+      const HloSharding& target) const;
 
   // Helper function to reshard from partial replicate using DynamicSlice.
   std::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
-      const HloSharding& target);
+      const HloSharding& target) const;
 
   // Helper function to reshard from partial replicate using AllToAll.
   std::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
-      const HloSharding& target);
+      const HloSharding& target) const;
 
   // SPMD instruction.
   HloInstruction* hlo_;

@@ -399,7 +399,7 @@ HloInstruction* SpmdBuilder::AddInstruction(
 }
 
 PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
-                                       std::optional<Literal> pad_value) {
+                                       std::optional<Literal> pad_value) const {
   if (sharding() == target) {
     return *this;
   }
@@ -444,9 +444,9 @@ PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target,
   return resharded;
 }
 
-PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target,
-                                              std::optional<Literal> pad_value,
-                                              bool allow_full_replication) {
+PartitionedHlo PartitionedHlo::ReshardNoCache(
+    const HloSharding& target, std::optional<Literal> pad_value,
+    bool allow_full_replication) const {
   VLOG(2) << "Resharding " << hlo_->ToString() << " from "
           << hlo_->sharding().ToString() << " to " << target.ToString();
   const Shape& shape = hlo_->shape();
@@ -1215,7 +1215,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
       get_dynamic_slice_offset_on_output_if_needed()});
 }
 
-PartitionedHlo PartitionedHlo::Replicate() {
+PartitionedHlo PartitionedHlo::Replicate() const {
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
   if (state_.partitioner->options().cache_all_gather) {
     for (auto& entry : cache) {
@@ -1263,7 +1263,7 @@ PartitionedHlo PartitionedHlo::Replicate() {
 }
 
 HloInstruction* PartitionedHlo::ReplicatePartial(
-    absl::Span<const int64_t> dims) {
+    absl::Span<const int64_t> dims) const {
   CHECK(!sharding().IsTileMaximal());
   const Shape& shard_shape = hlo()->shape();
   Shape target_shape = shard_shape;
@@ -1391,7 +1391,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
 
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardToPartialReplicateWithAllGather(
-    const HloSharding& target) {
+    const HloSharding& target) const {
   if (!target.ReplicateOnLastTileDim()) {
     return std::nullopt;
   }
@@ -1457,7 +1457,7 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
 
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
-    const HloSharding& target) {
+    const HloSharding& target) const {
   if (!sharding().ReplicateOnLastTileDim()) {
     return std::nullopt;
   }
@@ -1993,7 +1993,7 @@ PartitionedHlo MergeReshapeHelper(const PartitionedHlo& to_reshape,
 }  // namespace
 
 std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
-    const HloSharding& target) {
+    const HloSharding& target) const {
   VLOG(5) << "Trying to split complicated reshard: " << sharding().ToString()
           << " to " << target.ToString();
   const bool is_source_partially_replicated =
@@ -2082,7 +2082,8 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
 }
 
 std::optional<PartitionedHlo>
-PartitionedHlo::ReshardPartialReplicateWithAllToAll(const HloSharding& target) {
+PartitionedHlo::ReshardPartialReplicateWithAllToAll(
+    const HloSharding& target) const {
   bool source_is_partial_replicate = sharding().ReplicateOnLastTileDim();
   const auto& partial_replicate_sharding =
       source_is_partial_replicate ? sharding() : target;

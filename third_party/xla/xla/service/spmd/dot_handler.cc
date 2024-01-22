@@ -474,8 +474,8 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     const Window& conv_window, const DotConvDimsMapping& dims_mapping,
     const CallGraph& call_graph, int64_t max_iterations = INT64_MAX,
     const HloInstruction* original_hlo = nullptr,
-    PartitionedHlo* partitioned_lhs = nullptr,
-    PartitionedHlo* partitioned_rhs = nullptr,
+    const PartitionedHlo* const partitioned_lhs = nullptr,
+    const PartitionedHlo* const partitioned_rhs = nullptr,
     std::optional<absl::FunctionRef<
         StatusOr<HloInstruction*>(HloInstruction*, HloInstruction*,
                                   SpmdBuilder*, const Window& conv_window)>>
@@ -2060,9 +2060,9 @@ StatusOr<HloInstruction*> PartitionBaseCase(
 }
 
 StatusOr<HloInstruction*> PartitionDot(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
@@ -2181,7 +2181,7 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatchImpl(
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
         lhs.state(), output_grouped.device_groups, b);
     auto reshard_to_output_batch =
-        [&](PartitionedHlo operand, absl::Span<const int64_t> batch_dims,
+        [&](const PartitionedHlo& operand, absl::Span<const int64_t> batch_dims,
             absl::Span<const int64_t> contracting_dims,
             absl::Span<const int64_t> non_contracting_dims,
             int64_t contracting_dim_partitions,
@@ -3517,9 +3517,9 @@ bool LhsIsBestMatchForNonContractingPartitioning(
 
 StatusOr<std::optional<HloInstruction*>>
 PartitionConvOnBatchOrFeatureGroupedDims(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
@@ -3702,9 +3702,9 @@ PartitionConvOnBatchOrFeatureGroupedDims(
 }
 
 StatusOr<std::optional<HloInstruction*>> PartitionConv(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
@@ -3781,9 +3781,9 @@ StatusOr<std::optional<HloInstruction*>> PartitionConv(
 }
 
 StatusOr<HloInstruction*> PartitionDotGroupOnBatchDims(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
@@ -3827,9 +3827,9 @@ StatusOr<HloInstruction*> PartitionDotGroupOnBatchDims(
 }
 
 StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingDims(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
@@ -3936,9 +3936,9 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContractingDims(
 }
 
 StatusOr<HloInstruction*> PartitionDotGroupOnContractingDims(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
@@ -4005,9 +4005,9 @@ StatusOr<HloInstruction*> PartitionDotGroupOnContractingDims(
 }
 
 StatusOr<HloInstruction*> PartitionDotRemovingOutputPartialReplication(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
@@ -4042,9 +4042,9 @@ StatusOr<HloInstruction*> PartitionDotRemovingOutputPartialReplication(
 // in the operands and output, group the devices and recursively partition
 // the in-group dot.
 StatusOr<HloInstruction*> PartitionDot(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& raw_rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
@@ -4056,12 +4056,15 @@ StatusOr<HloInstruction*> PartitionDot(
         windowed_dot_general_loops,
     SpmdPartitioningVisitor* visitor) {
   // If lhs' hlo and rhs' hlo are identical, make a copy for rhs.
-  if (lhs.hlo() == rhs.hlo()) {
+  std::unique_ptr<PartitionedHlo> new_rhs;
+  if (lhs.hlo() == raw_rhs.hlo()) {
     auto copy_hlo = b->AddInstruction(HloInstruction::CreateUnary(
-        rhs.hlo()->shape(), HloOpcode::kCopy, rhs.hlo()));
-    copy_hlo->copy_sharding(rhs.hlo());
-    rhs = PartitionedHlo(copy_hlo, rhs.base_shape(), rhs.state());
+        raw_rhs.hlo()->shape(), HloOpcode::kCopy, raw_rhs.hlo()));
+    copy_hlo->copy_sharding(raw_rhs.hlo());
+    new_rhs = std::make_unique<PartitionedHlo>(copy_hlo, raw_rhs.base_shape(),
+                                               raw_rhs.state());
   }
+  const PartitionedHlo& rhs = (lhs.hlo() == raw_rhs.hlo()) ? *new_rhs : raw_rhs;
 
   // Recursively partition on different types of dimensions.
 
@@ -4157,9 +4160,9 @@ StatusOr<HloInstruction*> PartitionDot(
 }
 
 StatusOr<HloInstruction*> PartitionDot(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
-    int64_t num_partitions,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping, int64_t num_partitions,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>
