@@ -237,7 +237,7 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
           const Range& symbol_range =
               indexing_map.domain.symbol_ranges[symbol_expr.getPosition()];
           size_expr = getAffineConstantExpr(
-              symbol_range.upper_bound - symbol_range.lower_bound,
+              symbol_range.upper_bound - symbol_range.lower_bound + 1,
               mlir_context);
         } else if (auto dim_expr = llvm::dyn_cast<AffineDimExpr>(expr)) {
           CHECK(!size_expr);

@@ -25,14 +25,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "xla/service/gpu/model/affine_map_printer.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace gpu {
@@ -82,12 +81,12 @@ Domain Domain::FromUpperBounds(absl::Span<const int64_t> dimension_upper_bounds,
   domain.dimension_ranges.reserve(dimension_upper_bounds.size());
   for (int64_t ub : dimension_upper_bounds) {
     CHECK_GT(ub, 0);
-    domain.dimension_ranges.push_back(Range{0, ub});
+    domain.dimension_ranges.push_back(Range{0, ub - 1});
   }
   domain.symbol_ranges.reserve(symbol_upper_bounds.size());
   for (int64_t ub : symbol_upper_bounds) {
     CHECK_GT(ub, 0);
-    domain.symbol_ranges.push_back(Range{0, ub});
+    domain.symbol_ranges.push_back(Range{0, ub - 1});
   }
   return domain;
 }
@@ -219,40 +218,39 @@ IndexingMapSimplifier IndexingMapSimplifier::FromIndexingMap(
 
   const Domain& domain = indexing_map.domain;
   for (const auto& [index, range] : llvm::enumerate(domain.dimension_ranges)) {
-    simplifier.SetInclusiveBounds(getAffineDimExpr(index, mlir_context),
-                                  range.lower_bound, range.upper_bound - 1);
+    simplifier.SetRange(getAffineDimExpr(index, mlir_context),
+                        range.lower_bound, range.upper_bound);
   }
   for (const auto& [index, range] : llvm::enumerate(domain.symbol_ranges)) {
-    simplifier.SetInclusiveBounds(getAffineSymbolExpr(index, mlir_context),
-                                  range.lower_bound, range.upper_bound - 1);
+    simplifier.SetRange(getAffineSymbolExpr(index, mlir_context),
+                        range.lower_bound, range.upper_bound);
   }
   return simplifier;
 }
 
 bool IndexingMapSimplifier::IsAlwaysPositiveOrZero(mlir::AffineExpr expr) {
-  return GetInclusiveBounds(expr).lower >= 0;
+  return GetRange(expr).lower_bound >= 0;
 }
 
 bool IndexingMapSimplifier::IsAlwaysNegativeOrZero(mlir::AffineExpr expr) {
-  return GetInclusiveBounds(expr).upper <= 0;
+  return GetRange(expr).upper_bound <= 0;
 }
 
-void IndexingMapSimplifier::SetInclusiveBounds(AffineExpr expr, int64_t lower,
-                                               int64_t upper) {
-  bounds_[expr] = {lower, upper};
+void IndexingMapSimplifier::SetRange(AffineExpr expr, int64_t lower,
+                                     int64_t upper) {
+  ranges_[expr] = {lower, upper};
 }
 
-IndexingMapSimplifier::Bounds IndexingMapSimplifier::GetInclusiveBounds(
-    AffineExpr expr) {
-  auto bound = bounds_.find(expr);
-  if (bound != bounds_.end()) {
+Range IndexingMapSimplifier::GetRange(AffineExpr expr) {
+  auto bound = ranges_.find(expr);
+  if (bound != ranges_.end()) {
     return bound->second;
   }
 
   switch (expr.getKind()) {
     case AffineExprKind::Constant: {
       int64_t value = mlir::cast<mlir::AffineConstantExpr>(expr).getValue();
-      return bounds_[expr] = {value, value};
+      return ranges_[expr] = {value, value};
     }
     case AffineExprKind::DimId: {
       LOG(FATAL) << "Unknown dim "
@@ -265,32 +263,32 @@ IndexingMapSimplifier::Bounds IndexingMapSimplifier::GetInclusiveBounds(
     default:
       auto binary_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
       CHECK(binary_op);
-      auto lhs = GetInclusiveBounds(binary_op.getLHS());
-      auto rhs = GetInclusiveBounds(binary_op.getRHS());
+      auto lhs = GetRange(binary_op.getLHS());
+      auto rhs = GetRange(binary_op.getRHS());
 
-      auto& result = bounds_[expr];
+      auto& result = ranges_[expr];
       switch (expr.getKind()) {
         case AffineExprKind::Add:
-          return result = {lhs.lower + rhs.lower, lhs.upper + rhs.upper};
+          return result = {lhs.lower_bound + rhs.lower_bound,
+                           lhs.upper_bound + rhs.upper_bound};
         case AffineExprKind::Mul: {
-          int64_t a = lhs.lower * rhs.lower;
-          int64_t b = lhs.upper * rhs.upper;
+          int64_t a = lhs.lower_bound * rhs.lower_bound;
+          int64_t b = lhs.upper_bound * rhs.upper_bound;
           return result = {std::min(a, b), std::max(a, b)};
         }
         case AffineExprKind::Mod: {
-          CHECK_EQ(rhs.lower, rhs.upper) << "RHS of mod must be a constant";
-          int64_t m = rhs.lower;
-          if (0 <= lhs.lower && lhs.upper < m) {
+          CHECK(rhs.IsPoint()) << "RHS of mod must be a constant";
+          int64_t m = rhs.lower_bound;
+          if (0 <= lhs.lower_bound && lhs.upper_bound < m) {
             return result = lhs;
           }
           return result = {0, m - 1};
         }
         case AffineExprKind::FloorDiv: {
-          CHECK_EQ(rhs.lower, rhs.upper)
-              << "RHS of floor_div must be a constant";
-          int64_t d = rhs.lower;
-          int64_t a = FloorDiv(lhs.lower, d);
-          int64_t b = FloorDiv(lhs.upper, d);
+          CHECK(rhs.IsPoint()) << "RHS of floor_div must be a constant";
+          int64_t d = rhs.lower_bound;
+          int64_t a = FloorDiv(lhs.lower_bound, d);
+          int64_t b = FloorDiv(lhs.upper_bound, d);
           return result = {std::min(a, b), std::max(a, b)};
         }
         default:
@@ -303,28 +301,27 @@ IndexingMapSimplifier::Bounds IndexingMapSimplifier::GetInclusiveBounds(
 AffineExpr IndexingMapSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   auto lhs_simplified = SimplifyOnce(mod.getLHS());
 
-  auto lhs = GetInclusiveBounds(lhs_simplified);
-  auto rhs = GetInclusiveBounds(mod.getRHS());
+  auto lhs = GetRange(lhs_simplified);
+  auto rhs = GetRange(mod.getRHS());
 
   // a % b where b is always larger than a?
-  if (0 <= lhs.lower && lhs.upper < rhs.lower) {
+  if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.upper_bound) {
     return lhs_simplified;
   }
 
   // The logic below assumes we have a constant RHS.
-  if (rhs.lower != rhs.upper) {
+  if (!rhs.IsPoint()) {
     return mod;
   }
-  int64_t m = rhs.lower;
+  int64_t m = rhs.lower_bound;
 
   auto new_lhs = RewriteSumIf(lhs_simplified, [&](AffineExpr expr) {
     if (expr.getKind() != AffineExprKind::Mul) {
       return true;
     }
 
-    auto mul_rhs =
-        GetInclusiveBounds(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
-    bool remove = mul_rhs.lower == mul_rhs.upper && (mul_rhs.lower % m) == 0;
+    auto mul_rhs = GetRange(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
+    bool remove = mul_rhs.IsPoint() && (mul_rhs.lower_bound % m) == 0;
     return !remove;  // We keep it if we don't remove it!
   });
 
@@ -343,22 +340,22 @@ AffineExpr IndexingMapSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
 
 AffineExpr IndexingMapSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   auto lhs_simplified = SimplifyOnce(div.getLHS());
-  auto lhs = GetInclusiveBounds(lhs_simplified);
-  auto rhs = GetInclusiveBounds(div.getRHS());
+  auto lhs = GetRange(lhs_simplified);
+  auto rhs = GetRange(div.getRHS());
 
-  if (0 <= lhs.lower && lhs.upper < rhs.lower) {
+  if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.lower_bound) {
     return getAffineConstantExpr(0, mlir_context_);
   }
 
   // The logic below assumes we have a constant RHS.
-  if (rhs.lower != rhs.upper) {
+  if (!rhs.IsPoint()) {
     return div;
   }
-  int64_t d = rhs.lower;
+  int64_t d = rhs.lower_bound;
 
   // If the dividend's range has a single element, return its value.
-  int64_t a = FloorDiv(lhs.lower, d);
-  int64_t b = FloorDiv(lhs.upper, d);
+  int64_t a = FloorDiv(lhs.lower_bound, d);
+  int64_t b = FloorDiv(lhs.upper_bound, d);
   if (a == b) {
     return getAffineConstantExpr(a, mlir_context_);
   }
@@ -400,10 +397,11 @@ std::optional<int64_t> IndexingMapSimplifier::GetConstantRhsMultiplier(
   if (expr.getKind() != AffineExprKind::Mul) {
     return std::nullopt;
   }
-  auto bound =
-      GetInclusiveBounds(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
-  if (bound.lower != bound.upper) return std::nullopt;
-  return bound.lower;
+  auto bound = GetRange(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
+  if (!bound.IsPoint()) {
+    return std::nullopt;
+  }
+  return bound.lower_bound;
 }
 
 AffineExpr IndexingMapSimplifier::RewriteSumIf(
@@ -441,9 +439,9 @@ AffineExpr IndexingMapSimplifier::SimplifyOnce(AffineExpr expr) {
       return RewriteFloorDiv(mlir::cast<AffineBinaryOpExpr>(expr));
     case AffineExprKind::DimId:
     case AffineExprKind::SymbolId: {
-      auto bounds = GetInclusiveBounds(expr);
-      if (bounds.lower == bounds.upper) {
-        return getAffineConstantExpr(bounds.lower, mlir_context_);
+      auto bounds = GetRange(expr);
+      if (bounds.IsPoint()) {
+        return getAffineConstantExpr(bounds.lower_bound, mlir_context_);
       }
       return expr;
     }

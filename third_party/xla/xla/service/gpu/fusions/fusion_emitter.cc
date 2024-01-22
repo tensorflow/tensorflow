@@ -173,15 +173,15 @@ Domain KernelFusionInterface::GetThreadIdDomain(
     const LaunchDimensions& launch_dims, int unroll_factor) {
   Domain result;
   result.dimension_ranges = {
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x)},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y)},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().x)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().y)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().z)},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().x) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().y) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
   };
   if (unroll_factor > 1) {
-    result.symbol_ranges.push_back({0, unroll_factor});
+    result.symbol_ranges.push_back({0, unroll_factor - 1});
   }
   return result;
 }

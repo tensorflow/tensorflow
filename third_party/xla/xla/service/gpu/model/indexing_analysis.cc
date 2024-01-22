@@ -163,10 +163,10 @@ HloInstructionIndexing ComputeOutputToInputConcatenateOpIndexing(
   for (const auto [operand_id, operand] : llvm::enumerate(concat->operands())) {
     affine_map.setResult(concat_dim, concat_dim_expr - offset);
     int64_t operand_concat_dim = operand->shape().dimensions()[concat_dim];
-    domain.dimension_ranges[concat_dim] = Range{
-        .lower_bound = offset, .upper_bound = offset + operand_concat_dim};
+    domain.dimension_ranges[concat_dim] =
+        Range{offset, offset + operand_concat_dim - 1};
     concat_indexing.indexing_maps[operand_id].insert(
-        IndexingMap{.affine_map = affine_map.getAffineMap(), .domain = domain});
+        IndexingMap{affine_map.getAffineMap(), domain});
     offset += operand_concat_dim;
   }
   return concat_indexing;

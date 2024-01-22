@@ -50,13 +50,13 @@ TEST_F(IndexingMapTest, ComposeWithPermutation) {
   EXPECT_THAT(
       composed,
       MatchIndexingMap(
-          "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)", ElementsAre(MatchRange(0, 4)),
-          ElementsAre(MatchRange(0, 2), MatchRange(0, 2), MatchRange(0, 4))));
+          "(d0)[s0, s1, s2] -> (s2, d0, s1, s0)", ElementsAre(MatchRange(0, 3)),
+          ElementsAre(MatchRange(0, 1), MatchRange(0, 1), MatchRange(0, 3))));
 }
 
 TEST_F(IndexingMapTest, SimplifyConstantDims) {
   Domain domain;
-  domain.dimension_ranges.push_back(Range{5, 6});
+  domain.dimension_ranges.push_back(Range{5, 5});
   IndexingMap indexing_map{ParseAffineMap("(d0) -> (d0)", &mlir_context_),
                            domain};
   indexing_map.Simplify();
@@ -116,10 +116,10 @@ TEST_F(IndexingMapTest, SimplifyDivsAndModsWithReverse) {
 
 TEST_F(IndexingMapTest, AffineExprSignExtraction) {
   Domain domain;
-  domain.dimension_ranges.push_back(Range{0, 10});
-  domain.dimension_ranges.push_back(Range{-10, 0});
-  domain.dimension_ranges.push_back(Range{-1, 2});
-  domain.dimension_ranges.push_back(Range{0, 1});
+  domain.dimension_ranges.push_back(Range{0, 9});
+  domain.dimension_ranges.push_back(Range{-10, -1});
+  domain.dimension_ranges.push_back(Range{-1, 1});
+  domain.dimension_ranges.push_back(Range{0, 0});
 
   IndexingMap indexing_map{
       ParseAffineMap("(d0, d1, d2, d3) -> (d0, d1, d2, d3) ", &mlir_context_),

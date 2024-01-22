@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
 #define XLA_SERVICE_GPU_MODEL_INDEXING_MAP_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -33,11 +34,12 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Range represents a semi-closed interval [lower_bound, upper_bound).
+// Range represents a closed interval [lower_bound, upper_bound].
 struct Range {
   std::string ToString() const;
   void Print(std::ostream& out) const;
 
+  bool IsPoint() const { return lower_bound == upper_bound; }
 
   int64_t lower_bound = 0;
   int64_t upper_bound = 0;
@@ -89,7 +91,7 @@ H AbslHashValue(H h, const Domain& domain) {
 //   reduce = f32[150, 10] reduce(p0, p0_init), dimensions={3, 1}
 // ```
 // can be written as `(d0, d1)[s0, s1] -> (d0, s0, d1, s1)`  with
-// d0 in [0, 150), d1 in [0, 10), s0 in [0, 20) and s1 in [0, 50).
+// d0 in [0, 149], d1 in [0, 9], s0 in [0, 19] and s1 in [0, 49].
 //
 // 2. Indexing map for the input of the reverse op
 // ```
@@ -97,7 +99,7 @@ H AbslHashValue(H h, const Domain& domain) {
 //  reverse = f32[1, 17, 9, 9] reverse(%p0), dimensions={1, 2}
 // ```
 // can be written as `(d0, d1, d2, d3) -> (d0, -d1 + 16, -d2 + 8, d3)` with
-// d0 in [0, 1), d1 in [0, 17), d2 in [0, 9) and d3 in [0, 9).
+// d0 in [0, 1), d1 in [0, 16], d2 in [0, 8] and d3 in [0, 8].
 struct IndexingMap {
   std::string ToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
@@ -136,9 +138,9 @@ class IndexingMapSimplifier {
   // Derives an indexing map simplifier for the parameter indexing map.
   static IndexingMapSimplifier FromIndexingMap(const IndexingMap& indexing_map);
 
-  // Sets the inclusive bounds for the given expression. It can be used to set
-  // bounds for dimensions and symbols.
-  void SetInclusiveBounds(mlir::AffineExpr expr, int64_t lower, int64_t upper);
+  // Sets the [lower, upper] range for the given expression. It can be used to
+  // set bounds for dimensions and symbols.
+  void SetRange(mlir::AffineExpr expr, int64_t lower, int64_t upper);
 
   // Simplifies the map as much as possible.
   mlir::AffineMap Simplify(mlir::AffineMap affine_map);
@@ -153,11 +155,7 @@ class IndexingMapSimplifier {
   bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr);
 
  private:
-  struct Bounds {
-    int64_t lower;
-    int64_t upper;
-  };
-  Bounds GetInclusiveBounds(mlir::AffineExpr expr);
+  Range GetRange(mlir::AffineExpr expr);
 
   std::optional<int64_t> GetConstantRhsMultiplier(mlir::AffineExpr expr);
 
@@ -179,7 +177,7 @@ class IndexingMapSimplifier {
   mlir::AffineExpr SimplifyOnce(mlir::AffineExpr expr);
 
   mlir::MLIRContext* mlir_context_;
-  llvm::DenseMap<mlir::AffineExpr, Bounds> bounds_{};
+  llvm::DenseMap<mlir::AffineExpr, Range> ranges_{};
 };
 
 
