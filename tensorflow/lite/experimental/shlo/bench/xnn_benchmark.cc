@@ -13,18 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <XNNPACK/include/xnnpack.h>
-#include <absl/log/log.h>
-#include <benchmark/include/benchmark/benchmark.h>
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <vector>
 
-#include "bench/util.h"
-#include "src/f16.h"
+#include "xnnpack.h"  // from @XNNPACK
+#include "absl/log/log.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/lite/experimental/shlo/bench/util.h"
+#include "tensorflow/lite/experimental/shlo/src/f16.h"
 
 namespace stablehlo {
 namespace benchmark {

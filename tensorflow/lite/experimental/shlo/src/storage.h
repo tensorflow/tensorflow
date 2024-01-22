@@ -19,9 +19,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "include/shlo.h"
-#include "src/bf16.h"
-#include "src/f16.h"
+#include "tensorflow/lite/experimental/shlo/include/shlo.h"
+#include "tensorflow/lite/experimental/shlo/src/bf16.h"
+#include "tensorflow/lite/experimental/shlo/src/f16.h"
 
 namespace stablehlo {
 

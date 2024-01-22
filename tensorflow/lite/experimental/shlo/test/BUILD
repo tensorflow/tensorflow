@@ -1,14 +1,13 @@
-load("//tensorflow/lite/experimental/shlo:build_defs.bzl", "shlo_cc_library", "shlo_cc_test")
-
 package(default_applicable_licenses = ["//tensorflow:license"])
 
-shlo_cc_library(
+cc_library(
     name = "util",
     srcs = [
     ],
     hdrs = [
         "util.h",
     ],
+    visibility = ["//tensorflow/lite/experimental/shlo/bench:__subpackages__"],
     deps = [
         "//tensorflow/lite/experimental/shlo",
         "//tensorflow/lite/experimental/shlo:debug",
@@ -20,7 +19,7 @@ shlo_cc_library(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "broadcast_in_dim",
     srcs = [
         "broadcast_in_dim_test.cc",
@@ -39,7 +38,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "clamp",
     srcs = [
         "clamp_test.cc",
@@ -57,7 +56,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "compare",
     srcs = [
         "compare_test.cc",
@@ -75,7 +74,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "concatenate",
     srcs = [
         "concatenate_test.cc",
@@ -94,7 +93,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "elementwise_binary",
     srcs = [
         "elementwise_binary_test.cc",
@@ -112,7 +111,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "elementwise_unary",
     srcs = [
         "elementwise_unary_test.cc",
@@ -130,7 +129,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "iota",
     srcs = [
         "iota_test.cc",
@@ -149,7 +148,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "is_finite",
     srcs = [
         "is_finite_test.cc",
@@ -167,7 +166,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "select",
     srcs = [
         "select_test.cc",
@@ -185,7 +184,7 @@ shlo_cc_test(
     ],
 )
 
-shlo_cc_test(
+cc_test(
     name = "uniform_dequantize_quantize",
     srcs = [
         "uniform_dequantize_quantize_test.cc",

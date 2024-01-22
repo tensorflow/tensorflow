@@ -1,16 +1,18 @@
 # StableHLO Device Profile reference implementation
 
-load(":build_defs.bzl", "shlo_cc_library")
+package(
+    default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":__subpackages__"],
+)
 
-package(default_applicable_licenses = ["//tensorflow:license"])
-
-shlo_cc_library(
+cc_library(
     name = "shlo",
     srcs = [
         "src/broadcast_in_dim.cc",
         "src/clamp.cc",
         "src/compare.cc",
         "src/concatenate.cc",
+        "src/dispatch.h",
         "src/elementwise_binary.cc",
         "src/elementwise_unary.cc",
         "src/iota.cc",
@@ -21,7 +23,6 @@ shlo_cc_library(
     ],
     hdrs = [
         "include/shlo.h",
-        "src/dispatch.h",
         "src/storage.h",
         "src/util.h",
     ],
@@ -33,7 +34,7 @@ shlo_cc_library(
     ],
 )
 
-shlo_cc_library(
+cc_library(
     name = "debug",
     srcs = [
         "src/debug.cc",
@@ -50,7 +51,7 @@ shlo_cc_library(
     ],
 )
 
-shlo_cc_library(
+cc_library(
     name = "float",
     srcs = [
     ],

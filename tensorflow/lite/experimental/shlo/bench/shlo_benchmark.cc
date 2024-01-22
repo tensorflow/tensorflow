@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <absl/log/check.h>
-#include <absl/log/log.h>
-#include <absl/status/status.h>
-#include <benchmark/include/benchmark/benchmark.h>
-
 #include <utility>
 
-#include "bench/util.h"
-#include "include/shlo.h"
-#include "src/storage.h"
-#include "test/util.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/lite/experimental/shlo/bench/util.h"
+#include "tensorflow/lite/experimental/shlo/include/shlo.h"
+#include "tensorflow/lite/experimental/shlo/src/storage.h"
+#include "tensorflow/lite/experimental/shlo/test/util.h"
 
 namespace stablehlo {
 namespace benchmark {

@@ -1,8 +1,6 @@
-load("//tensorflow/lite/experimental/shlo:build_defs.bzl", "shlo_cc_binary", "shlo_cc_library")
-
 package(default_applicable_licenses = ["//tensorflow:license"])
 
-shlo_cc_library(
+cc_library(
     name = "util",
     srcs = [
     ],
@@ -14,7 +12,7 @@ shlo_cc_library(
     ],
 )
 
-shlo_cc_binary(
+cc_binary(
     name = "shlo_benchmark",
     srcs = [
         "shlo_benchmark.cc",
@@ -33,7 +31,7 @@ shlo_cc_binary(
     ],
 )
 
-shlo_cc_binary(
+cc_binary(
     name = "xnn_benchmark",
     srcs = [
         "xnn_benchmark.cc",
