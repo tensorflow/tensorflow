@@ -297,29 +297,29 @@ absl::StatusOr<int64_t> GetMockNcclSleepTime(size_t count,
 // together with the input clique, we re-run nccl algorithms to construct the
 // target nccl topology graphs.
 absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
-    const NcclExecuteParams& params,
+    const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
     bool enable_clique_optimization,
     GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
-  GlobalDeviceId global_device_id = params.global_device_id();
+  GlobalDeviceId global_device_id = params.global_device_id;
 
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participants,
-      GetParticipatingDevices(global_device_id, *params.device_assn(),
+      GetParticipatingDevices(global_device_id, *params.device_assn,
                               replica_groups, group_mode));
 
   if (IsGlobalNcclConfig() &&
-      (participants.size() != params.device_assn()->replica_count())) {
+      (participants.size() != params.device_assn->replica_count())) {
     return InvalidArgument(
         "Partial replica groups are not allowed when using NCCL_COMM_ID "
         "environment configuration.");
   }
 
   std::vector<GlobalDeviceId> local_devices;
-  if (params.global_device_id_map()) {
-    local_devices.reserve(params.global_device_id_map()->size());
-    for (const auto& entry : *params.global_device_id_map()) {
+  if (params.global_device_id_map) {
+    local_devices.reserve(params.global_device_id_map->size());
+    for (const auto& entry : *params.global_device_id_map) {
       local_devices.push_back(entry.second);
     }
   } else {
@@ -327,10 +327,10 @@ absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
   }
   TF_ASSIGN_OR_RETURN(
       const NcclCliqueIdCallback* clique_id_callback,
-      GetNcclCliqueIdCallback(params.nccl_clique_id_callback(), true));
+      GetNcclCliqueIdCallback(params.nccl_clique_id_callback, true));
 
   size_t num_local_participants = GetNumLocalParticipants(
-      participants, params.global_device_id_map() ? &local_devices : nullptr);
+      participants, params.global_device_id_map ? &local_devices : nullptr);
 
   auto global_it = absl::c_find(participants, global_device_id);
   TF_RET_CHECK(global_it != participants.end());
@@ -340,7 +340,7 @@ absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
     return absl::CancelledError("Only mock nccl call for gpu rank 0");
   }
 
-  return AcquireMockNcclComm(params.run_id(), OpId(op_id),
+  return AcquireMockNcclComm(params.run_id, OpId(op_id),
                              std::move(participants), std::move(local_devices),
                              num_local_participants, *clique_id_callback,
                              global_rank, stream_id, false, topo_model);

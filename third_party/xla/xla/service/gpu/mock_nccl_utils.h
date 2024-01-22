@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -37,7 +38,7 @@ namespace gpu {
 
 // Create the mock nccl communicator assuming all hosts have the same hardwares.
 absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
-    const NcclExecuteParams& params,
+    const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
     bool enable_clique_optimization,

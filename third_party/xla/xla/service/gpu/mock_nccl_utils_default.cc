@@ -47,7 +47,7 @@ absl::StatusOr<NcclComm::Lock> AcquireMockNcclComm(
 }
 
 absl::StatusOr<NcclComm::Lock> LockMockNcclComm(
-    const NcclExecuteParams& params,
+    const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
     bool enable_clique_optimization,

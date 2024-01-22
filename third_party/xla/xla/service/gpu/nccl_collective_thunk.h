@@ -146,7 +146,8 @@ class NcclCollectiveThunk : public Thunk {
   };
 
   // Logging support.
-  static std::string GetDeviceString(const NcclExecuteParams& params);
+  static std::string GetDeviceString(
+      const Thunk::CollectiveExecuteParams& params);
 
   AsyncExecutor* async_executor() { return async_.get(); }
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -230,7 +231,7 @@ size_t GetNumLocalParticipants(
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
 absl::StatusOr<NcclComm::Lock> LockNcclComm(
-    const NcclExecuteParams& params,
+    const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
     bool enable_clique_optimization);

@@ -846,15 +846,16 @@ absl::Status AllReduceCmd::Record(const RecordParams& params,
             << device_buffers[i].destination_buffer.opaque() << ")";
   }
 
-  if (params.nccl_params == nullptr) {
-    return absl::InvalidArgumentError("AllReduceCmd requires nccl_params");
+  if (params.collective_params == nullptr) {
+    return absl::InvalidArgumentError(
+        "AllReduceCmd requires collective parameters");
   }
 
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`, and enable clique optimization.
   TF_ASSIGN_OR_RETURN(
       NcclComm::Lock comm,
-      LockNcclComm(*params.nccl_params, config_.replica_groups,
+      LockNcclComm(*params.collective_params, config_.replica_groups,
                    config_.group_mode, config_.op_id, /*stream_id=*/0,
                    /*enable_clique_optimization=*/true));
 
@@ -914,15 +915,16 @@ absl::Status ReduceScatterCmd::Record(const RecordParams& params,
             << device_buffers[i].destination_buffer.opaque() << ")";
   }
 
-  if (params.nccl_params == nullptr) {
-    return absl::InvalidArgumentError("ReduceScatterCmd requires nccl_params");
+  if (params.collective_params == nullptr) {
+    return absl::InvalidArgumentError(
+        "ReduceScatterCmd requires collective parameters");
   }
 
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`, and enable clique optimization.
   TF_ASSIGN_OR_RETURN(
       NcclComm::Lock comm,
-      LockNcclComm(*params.nccl_params, config_.replica_groups,
+      LockNcclComm(*params.collective_params, config_.replica_groups,
                    config_.group_mode, config_.op_id, /*stream_id=*/0,
                    /*enable_clique_optimization=*/true));
 
@@ -979,15 +981,16 @@ absl::Status AllGatherCmd::Record(const RecordParams& params,
             << device_buffers[i].destination_buffer.opaque() << ")";
   }
 
-  if (params.nccl_params == nullptr) {
-    return absl::InvalidArgumentError("AllGatherCmd requires nccl_params");
+  if (params.collective_params == nullptr) {
+    return absl::InvalidArgumentError(
+        "AllGatherCmd requires collective parameters");
   }
 
   // Today when recording collective operations into command buffers we always
   // use a sync mode and a stream id `0`, and enable clique optimization.
   TF_ASSIGN_OR_RETURN(
       NcclComm::Lock comm,
-      LockNcclComm(*params.nccl_params, config_.replica_groups,
+      LockNcclComm(*params.collective_params, config_.replica_groups,
                    config_.group_mode, config_.op_id, /*stream_id=*/0,
                    /*enable_clique_optimization=*/true));
 

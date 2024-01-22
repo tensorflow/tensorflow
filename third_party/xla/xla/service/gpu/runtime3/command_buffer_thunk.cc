@@ -126,7 +126,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   CommandBufferCmd::RecordParams record_params = {
       params.executor, params.stream, params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
-      params.nccl_params};
+      params.collective_params};
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -188,13 +188,12 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   CommandBufferCmd::RecordParams record_params = {
       executor, params.stream, params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
-      &params.nccl_params};
+      &params.collective_params};
 
   if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()
-            << " by recoding command buffer cmd sequence"
-            << " after " << cmd_buffer->num_executions
-            << " executions since last update"
+            << " by recoding command buffer cmd sequence" << " after "
+            << cmd_buffer->num_executions << " executions since last update"
             << "; num_commands=" << commands_.size();
 
     TraceMe trace([&] {

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -25,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -32,17 +34,15 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/status.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
-
-class GpuExecutable;
 
 // Thunk acts as the bridge between IrEmitter and GpuExecutable. It stores the
 // metadata IrEmitter generates for GpuExecutable to invoke an HloInstruction.
@@ -124,28 +124,45 @@ class Thunk {
     mlir::Operation* op;
   };
 
-  // Parameters passed to Initialize. At thunk initialization time we do not
-  // launch any "work" on device and only prepare thunks for execution, i.e.
-  // we pre-load kernels on device and instantiate all command buffers.
-  struct InitializeParams {
-    se::StreamExecutor* executor = nullptr;
-    ExecutableSource src;
+  //===--------------------------------------------------------------------===//
+  // CollectiveExecuteParams
+  //===--------------------------------------------------------------------===//
 
-    const BufferAllocations* buffer_allocations = nullptr;
+  // Parameters capturing all the details required for collective execution of
+  // XLA executables (multiple partitions and replicas).
+  struct CollectiveExecuteParams {
+    // Creates NCCL execution parameters from the run options for the given
+    // local device. Returns an error if run options are misconfigured (i.e.
+    // missing a global device mapping for a local device ordinal).
+    static absl::StatusOr<CollectiveExecuteParams> Create(
+        const ServiceExecutableRunOptions& run_options,
+        int64_t local_device_ordinal);
 
-    // Main compute stream that will be used, passed via `ExecuteParams` to
-    // `ExecuteOnStream`. It can be used to initialize on-device "state" (i.e.
-    // various control structures) at command buffer recording time (we use it
-    // to initialize NCCL execution plans on device when we trace NCCL
-    // operations into command buffers);
-    se::Stream* stream = nullptr;
+    // A mapping from local device ordinals to global device IDs.
+    using GlobalDeviceIdMap = std::map<int32_t, GlobalDeviceId>;
 
-    // Auxiliary stream for tracing command buffers. We use a separate stream to
-    // avoid accidental tracing of unrelated activities on a main stream.
-    se::Stream* command_buffer_trace_stream = nullptr;
+    // XLA execution run id allows us to distinguish collective operations
+    // from different concurrent executions and avoid deadlocks.
+    RunId run_id;
 
-    const NcclExecuteParams* nccl_params = nullptr;
+    int64_t local_device_ordinal;
+    GlobalDeviceId global_device_id;
+
+    const DeviceAssignment* device_assn;
+    const GlobalDeviceIdMap* global_device_id_map;
+    const NcclCliqueIdCallback* nccl_clique_id_callback;
+
+   private:
+    CollectiveExecuteParams(
+        RunId run_id, int64_t local_device_ordinal,
+        GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
+        const GlobalDeviceIdMap* global_device_id_map,
+        const NcclCliqueIdCallback* nccl_clique_id_callback);
   };
+
+  //===--------------------------------------------------------------------===//
+  // ExecuteParams
+  //===--------------------------------------------------------------------===//
 
   // Parameters passed to ExecuteOnStream. ExecuteOnStream is responsible for
   // launching "work" on device, i.e. it launches kernels, executes command
@@ -169,10 +186,11 @@ class Thunk {
     se::Stream* command_buffer_trace_stream;
 
     // Streams for asynchronous collective communications.
+    // TODO(ezhulenev): Move this into `CollectiveExecuteParams`.
     absl::InlinedVector<se::Stream*, 4> async_comms_streams;
 
     // Parameters for executing collective operations.
-    NcclExecuteParams nccl_params;
+    CollectiveExecuteParams collective_params;
 
     // Streams for moving data between host and device.
     se::Stream* device_to_host_stream;
@@ -186,12 +204,42 @@ class Thunk {
     ExecuteParams(const BufferAllocations* buffer_allocations,
                   se::Stream* stream, se::Stream* command_buffer_trace_stream,
                   absl::InlinedVector<se::Stream*, 4> async_comms_streams,
-                  NcclExecuteParams nccl_params,
+                  CollectiveExecuteParams collective_params,
                   se::Stream* device_to_host_stream,
                   se::Stream* host_to_device_stream,
                   SendDeviceMemoryFunction* send_device_memory_function,
                   RecvDeviceMemoryFunction* recv_device_memory_function);
   };
+
+  //===--------------------------------------------------------------------===//
+  // InitializeParams
+  //===--------------------------------------------------------------------===//
+
+  // Parameters passed to Initialize. At thunk initialization time we do not
+  // launch any "work" on device and only prepare thunks for execution, i.e.
+  // we pre-load kernels on device and instantiate all command buffers.
+  struct InitializeParams {
+    se::StreamExecutor* executor = nullptr;
+    ExecutableSource src;
+
+    const BufferAllocations* buffer_allocations = nullptr;
+
+    // Main compute stream that will be used, passed via `ExecuteParams` to
+    // `ExecuteOnStream`. It can be used to initialize on-device "state" (i.e.
+    // various control structures) at command buffer recording time (we use it
+    // to initialize NCCL execution plans on device when we trace NCCL
+    // operations into command buffers);
+    se::Stream* stream = nullptr;
+
+    // Auxiliary stream for tracing command buffers. We use a separate stream to
+    // avoid accidental tracing of unrelated activities on a main stream.
+    se::Stream* command_buffer_trace_stream = nullptr;
+
+    // Parameters for executing collective operations.
+    const CollectiveExecuteParams* collective_params = nullptr;
+  };
+
+  //===--------------------------------------------------------------------===//
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
   // generated from, but Thunk never uses this argument other than to save it

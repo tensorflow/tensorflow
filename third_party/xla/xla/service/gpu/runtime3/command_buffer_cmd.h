@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -93,8 +92,9 @@ class CommandBufferCmd {
     MemoryAccess access;
   };
 
-  using ExecutableSource = Thunk::ExecutableSource;
   using BufferUsageVector = absl::InlinedVector<BufferUsage, 4>;
+  using CollectiveExecuteParams = Thunk::CollectiveExecuteParams;
+  using ExecutableSource = Thunk::ExecutableSource;
 
   // Run time parameters required for recording commands into the command
   // buffer. For example when we emit command buffer cmd sequence from an HLO
@@ -110,7 +110,7 @@ class CommandBufferCmd {
     se::Stream* stream = nullptr;
     se::Stream* trace_stream = nullptr;
     const BufferAllocations* buffer_allocations = nullptr;
-    const NcclExecuteParams* nccl_params = nullptr;
+    const CollectiveExecuteParams* collective_params = nullptr;
   };
 
   // Prepares a command for recording on a given executor. We split it into a

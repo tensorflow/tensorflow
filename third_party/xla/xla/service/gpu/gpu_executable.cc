@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/runtime/tracing.h"
@@ -271,9 +272,12 @@ absl::Status ExecuteThunks(const std::string& module_name,
                           command_buffer_trace_stream, async_comms_streams));
 
   // Initialize thunks to prepare them for execution.
-  Thunk::InitializeParams initialize_params{
-      executor,    executable_source,           &buffer_allocations,
-      main_stream, command_buffer_trace_stream, &execute_params.nccl_params};
+  Thunk::InitializeParams initialize_params{executor,
+                                            executable_source,
+                                            &buffer_allocations,
+                                            main_stream,
+                                            command_buffer_trace_stream,
+                                            &execute_params.collective_params};
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
