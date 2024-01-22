@@ -672,7 +672,10 @@ message DebugOptions {
   // Enable NCCL user buffers.
   bool xla_gpu_enable_nccl_user_buffers = 267;
 
-  // Next id: 269
+  // If enabled, uses the libnvptxcompiler library to compile PTX to cuBIN.
+  bool xla_gpu_enable_libnvptxcompiler = 269;
+
+  // Next id: 270
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

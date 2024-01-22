@@ -521,7 +521,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
 }
 
-static absl::StatusOr<std::vector<uint8_t>> CompileWithPtxAs(
+static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
     const std::string& ptx, se::CudaComputeCapability cc,
     const HloModuleConfig& hlo_module_config,
     GpuCompiler::CompileOptions options, bool relocatable) {
@@ -540,8 +540,20 @@ static absl::StatusOr<std::vector<uint8_t>> CompileWithPtxAs(
       hlo_module_config.debug_options()
           .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
       options.is_autotuning_compilation;
-  absl::StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
-      cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
+
+  absl::StatusOr<std::vector<uint8_t>> maybe_cubin = [&] {
+    if (hlo_module_config.debug_options().xla_gpu_enable_libnvptxcompiler()) {
+#ifdef ENABLE_LIBNVPTXCOMPILER_SUPPORT
+      return se::CompileGpuAsmUsingLibNvPtxCompiler(
+          cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
+#else
+      LOG(FATAL) << "Libnvptxcompiler is not supported in this build.";
+#endif
+    }
+
+    return se::CompileGpuAsm(cc.major, cc.minor, ptx.c_str(), ptxas_config,
+                             cancel_if_reg_spill);
+  }();
 
   if (maybe_cubin.ok()) {
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
@@ -651,9 +663,9 @@ NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
       cache_value.compilation_done_cv.SignalAll();
     };
 
-    TF_ASSIGN_OR_RETURN(
-        cache_value.cubin_data,
-        CompileWithPtxAs(ptx, cc, hlo_module_config, options, relocatable));
+    TF_ASSIGN_OR_RETURN(cache_value.cubin_data,
+                        AssembleOptionsAndCompile(ptx, cc, hlo_module_config,
+                                                  options, relocatable));
     return cache_value.cubin_data;
   }
 
