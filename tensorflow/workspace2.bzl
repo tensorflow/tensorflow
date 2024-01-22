@@ -917,7 +917,7 @@ def _tf_repositories():
         version_conflict_policy = "pinned",
     )
 
-def _workspace():
+def workspace():
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.
     versions.check("1.0.0")
@@ -939,4 +939,4 @@ def _workspace():
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
-tf_workspace2 = _workspace
+tf_workspace2 = workspace
