@@ -227,13 +227,81 @@ DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(InvalidArgument);
 DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unimplemented);
 DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Internal);
 DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(FailedPrecondition);
-DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Cancelled);
-DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(ResourceExhausted);
-DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(NotFound);
-DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unavailable);
-DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unknown);
 
 #undef DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE
+// The following three macros define a common set of code for creating
+// absl::Status errors with the given error_type, with the addition of adding
+// absl::SourceLocation if it's available (PLATFORM_GOOGLE).  They're a
+// complicated by the need to use #ifdefs within the code.  This would be the
+// equivalent code for ResourceExhausted if a #define macro could have embedded
+// #ifdef directives:
+//
+// template <typename... Args>
+// struct ResourceExhausted {
+//   Status status;
+// #if defined(PLATFORM_GOOGLE)
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   ResourceExhausted(const absl::FormatSpec<Args...>& format, Args&&... args,
+//                     absl::SourceLocation loc =
+//                     absl::SourceLocation::current())
+//       : status(WithLogBacktrace(
+//             tsl::errors::ResourceExhausted(absl::StrFormat(format, args...))
+//                 .WithSourceLocation(loc))) {}
+// #else
+//   ResourceExhaustedStrCat(Args&&... concat)
+//       : status(WithLogBacktrace(
+//             tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)))
+//             {}
+// #endif
+//
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   operator Status() const { return status; }
+// };
+//
+#define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_PREFIX(error_type) \
+  template <typename... Args>                                     \
+  struct error_type {                                             \
+    Status status;
+#define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)        \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  operator Status() const { return status; }                             \
+  }                                                                      \
+  ;                                                                      \
+  /*Deduction guide to make variadic arguments play nice with default */ \
+  /* absl::SourceLocation argument. */                                   \
+  template <typename... Args>                                            \
+  error_type(const absl::FormatSpec<Args...>& format,                    \
+             Args&&...) -> error_type<Args...>;
+
+#if defined(PLATFORM_GOOGLE)
+#define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(error_type)               \
+  XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_PREFIX(error_type)              \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  error_type(const absl::FormatSpec<Args...>& format, Args&&... args,    \
+             absl::SourceLocation loc = absl::SourceLocation::current()) \
+      : status(WithLogBacktrace(                                         \
+            tsl::errors::error_type(absl::StrFormat(format, args...))    \
+                .WithSourceLocation(loc))) {}                            \
+  XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX(error_type)
+#else
+#define XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(error_type)          \
+  template <typename... Args>                                       \
+  Status error_type(const absl::FormatSpec<Args...>& format,        \
+                    const Args&... args) {                          \
+    return WithLogBacktrace(                                        \
+        tsl::errors::error_type(absl::StrFormat(format, args...))); \
+  }
+#endif
+
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Cancelled);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(NotFound);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(ResourceExhausted);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unavailable);
+XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE(Unknown);
+
+#undef XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE
+#undef XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_PREFIX
+#undef XLA_ERROR_WITH_STRFORMAT_AND_BACKTRACE_SUFFIX
 
 // The following three macros define a common set of code for creating
 // absl::Status errors with the given error_type, with the addition of adding
