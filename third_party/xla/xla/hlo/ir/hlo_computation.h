@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -101,7 +103,7 @@ class HloComputation {
         std::unique_ptr<HloInstruction> parameter) {
       if (!parameter_numbers_.insert(parameter->parameter_number()).second) {
         return Internal("Duplicate parameter number %d",
-                             parameter->parameter_number());
+                        parameter->parameter_number());
       }
       return AddInstruction(std::move(parameter));
     }
