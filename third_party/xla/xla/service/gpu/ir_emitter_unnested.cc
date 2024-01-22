@@ -2086,6 +2086,21 @@ absl::Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
   return absl::OkStatus();
 }
 
+absl::Status IrEmitterUnnested::EmitFftThunk(const HloFftInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                      GetAllocationSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                      GetAllocationSliceForHlo(instr));
+  AddThunkToThunkSequence(
+      std::make_unique<FftThunk>(Thunk::ThunkInfo::WithProfileAnnotation(instr),
+                                 instr->fft_type(), instr->fft_length(),
+                                 /*input_buffer=*/arg_slice,
+                                 /*output_buffer=*/dest_slice,
+                                 /*input_shape=*/instr->operand(0)->shape(),
+                                 /*output_shape=*/instr->shape()));
+  return absl::OkStatus();
+}
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
     mlir::Operation* op) {
@@ -3969,6 +3984,9 @@ absl::Status IrEmitterUnnested::EmitOp(
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   if (mlir::isa<mlir::lmhlo::FftOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitFftThunk(Cast<HloFftInstruction>(hlo_for_lmhlo.at(op)));
+    }
     return EmitFftThunk(op);
   }
 
@@ -4305,6 +4323,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
     case HloOpcode::kPartitionId:
       return EmitReplicaOrPartitionId<PartitionIdThunk>(instr);
+    case HloOpcode::kFft:
+      return EmitFftThunk(Cast<HloFftInstruction>(instr));
 
     case HloOpcode::kRecv:
       return EmitRecvThunk(Cast<HloRecvInstruction>(instr));
