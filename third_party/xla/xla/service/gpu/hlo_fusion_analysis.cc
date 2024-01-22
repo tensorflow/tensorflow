@@ -181,6 +181,21 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
   return tiled_transpose_.has_value();
 }
 
+static bool UseConcatenateFusion(
+    const std::vector<const HloInstruction*>& roots,
+    const std::vector<const HloInstruction*>& heroes) {
+  if (heroes.size() != 1) return false;
+  if (heroes.front()->opcode() != HloOpcode::kConcatenate) return false;
+  // The concat emitter does not support multiple outputs yet. TODO(csigg): fix.
+  if (roots.front()->shape().IsTuple()) return false;
+  // Limit the number of operands because the concat emitter produces code for
+  // each operand, hurting occupancy.
+  if (heroes.front()->operand_count() > 4) return false;
+  // The loop emitter is faster when warp divergence and occupancy are both low.
+  // TODO(csigg): exclude this case.
+  return true;
+}
+
 HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     const {
   if (fusion_backend_config_.kind() == kCustomFusionKind) {
@@ -223,6 +238,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 
   if (fusion_roots_[0]->opcode() == HloOpcode::kScatter) {
     return EmitterFusionKind::kScatter;
+  }
+
+  if (UseConcatenateFusion(fusion_roots_, fusion_heroes_)) {
+    return EmitterFusionKind::kConcatenate;
   }
 
   return EmitterFusionKind::kLoop;

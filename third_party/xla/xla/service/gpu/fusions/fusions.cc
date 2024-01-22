@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/fusions/concatenate.h"
 #include "xla/service/gpu/fusions/copy.h"
 #include "xla/service/gpu/fusions/custom.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
@@ -193,6 +194,8 @@ absl::StatusOr<std::unique_ptr<FusionInterface>> GetFusionEmitter(
       return std::make_unique<ScatterFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
       return std::make_unique<TransposeFusion>(analysis);
+    case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
+      return std::make_unique<ConcatenateFusion>(analysis);
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
       return std::make_unique<TritonFusion>(analysis);
   }

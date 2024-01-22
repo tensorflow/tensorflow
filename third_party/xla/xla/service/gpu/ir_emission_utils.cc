@@ -910,7 +910,7 @@ Shape GetShape(mlir::Value value) {
   return shape;
 }
 
-std::optional<TransposeDescription> FindTiledTranspose(
+static std::optional<TransposeDescription> FindTiledTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kCopy) {
     return std::nullopt;
@@ -942,7 +942,7 @@ std::optional<TransposeDescription> FindTiledTranspose(
 }
 
 // Find 021 or 210 transpose in logical + physical transposition.
-std::optional<TransposeDescription> FindTiledLogicalTranspose(
+static std::optional<TransposeDescription> FindTiledLogicalTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kTranspose) {
     return std::nullopt;
@@ -1030,18 +1030,17 @@ static bool IsParameter(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kParameter;
 }
 
-static std::optional<HloInstructionAdaptor> FindTransposeHero(
-    HloInstructionAdaptor root, const HloFusionAdaptor& fusion) {
-  std::optional<HloInstructionAdaptor> transpose = std::nullopt;
-  auto visit = [&transpose](HloInstructionAdaptor node) {
-    if (FindTiledLogicalTranspose(node.instruction())) {
-      // If we do not find a unique transpose op, use the original non-trivial
-      // hero.
-      if (transpose) {
-        transpose = std::nullopt;
+static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
+    HloInstructionAdaptor root, const HloFusionAdaptor& fusion,
+    const std::function<bool(const HloInstruction&)>& predicate) {
+  std::optional<HloInstructionAdaptor> hero = std::nullopt;
+  auto visitor = [&](HloInstructionAdaptor node) {
+    if (predicate(node.instruction())) {
+      if (hero) {  // Bail out if we found multiple potential heros.
+        hero = std::nullopt;
         return TraversalResult::kInterrupt;
       }
-      transpose = node;
+      hero = node;
       return TraversalResult::kSkip;
     }
 
@@ -1050,50 +1049,55 @@ static std::optional<HloInstructionAdaptor> FindTransposeHero(
     }
     return TraversalResult::kAdvance;
   };
-  HloBfsConsumersFirstTraversal({root}, fusion, visit);
-  if (transpose) {
-    // Make sure that no non-elementwise op is reachable from the transpose.
-    auto visit = [](HloInstructionAdaptor node) {
-      return node.instruction().opcode() != HloOpcode::kTuple &&
-             node.instruction().opcode() != HloOpcode::kParameter &&
-             !IsIntermediate(&node.instruction(),
-                             /*allowed_operand_count=*/3);
-    };
-    bool has_nontrivial_user = HloAnyOf(transpose->GetUsers(), fusion, visit,
-                                        /*visit_operands=*/false);
-    if (has_nontrivial_user) {
-      return std::nullopt;
-    }
+  HloBfsConsumersFirstTraversal({root}, fusion, visitor);
+  if (!hero) {
+    return std::nullopt;
   }
-  return transpose;
+
+  // Make sure that no non-elementwise op is reachable from the transpose.
+  auto is_nontrivial = [](HloInstructionAdaptor node) {
+    return node.instruction().opcode() != HloOpcode::kTuple &&
+           node.instruction().opcode() != HloOpcode::kParameter &&
+           !IsIntermediate(&node.instruction(),
+                           /*allowed_operand_count=*/3);
+  };
+  bool visit_operands = false;
+  if (HloAnyOf(hero->GetUsers(), fusion, is_nontrivial, visit_operands)) {
+    return std::nullopt;
+  }
+
+  return hero;
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
                                          const HloFusionAdaptor& fusion) {
-  HloInstructionAdaptor idx{instr};
+  HloInstructionAdaptor hero{instr};
 
   // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
   // that no memoization is needed due to number of operands constraints: we
   // never have to revisit same nodes.
-  auto get_intermediate_arg =
-      [&](HloInstructionAdaptor node) -> std::optional<HloInstructionAdaptor> {
-    if (IsIntermediate(&node.instruction(), /*allowed_operand_count=*/1,
-                       &fusion) &&
-        fusion.ContainsInstruction(node.GetOperand(0))) {
-      return node.GetOperand(0);
-    }
-    return std::nullopt;
-  };
-  while (auto arg = get_intermediate_arg(idx)) {
-    idx = *arg;
+  while (IsIntermediate(&hero.instruction(), /*allowed_operand_count=*/1,
+                        &fusion) &&
+         fusion.ContainsInstruction(hero.GetOperand(0))) {
+    hero = hero.GetOperand(0);
   }
 
-  // Try a bit harder to find a transpose hero. The shared memory transpose
-  // emitter also works if there are elementwise ops with more than 1 operand on
-  // the path between root and the transpose op.
-  std::optional<HloInstructionAdaptor> transpose =
-      FindTransposeHero(idx, fusion);
-  return transpose ? transpose->instruction() : idx.instruction();
+  // Try a bit harder to find a transpose or concat hero. The shared memory
+  // transpose and concat emitters also work if there are elementwise ops with
+  // more than 1 operand on the path between root and the root op.
+  auto is_transpose = [](const HloInstruction& node) {
+    return FindTiledLogicalTranspose(node).has_value();
+  };
+  if (auto transpose = FindNonTrivialHero(hero, fusion, is_transpose)) {
+    return transpose->instruction();
+  }
+  auto is_concatenate = [](const HloInstruction& node) {
+    return node.opcode() == HloOpcode::kConcatenate;
+  };
+  if (auto concatenate = FindNonTrivialHero(hero, fusion, is_concatenate)) {
+    return concatenate->instruction();
+  }
+  return hero.instruction();
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {

@@ -139,6 +139,7 @@ cc_library(
     hdrs = ["fusions.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":concatenate",
         ":copy",
         ":custom",
         ":fusion_emitter",
@@ -407,6 +408,35 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "concatenate",
+    srcs = ["concatenate.cc"],
+    hdrs = ["concatenate.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":fusion_emitter",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:ir_emitter",
+        "//xla/service/gpu:ir_emitter_context",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:parallel_loop_emitter",
+        "//xla/service/gpu/model:indexing_map",
+        "//xla/service/llvm_ir:fused_ir_emitter",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:loop_emitter",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )

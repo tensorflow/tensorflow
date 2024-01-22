@@ -216,12 +216,6 @@ struct TransposeDescription {
   }
 };
 
-std::optional<TransposeDescription> FindTiledTranspose(
-    const HloInstruction& instr);
-
-std::optional<TransposeDescription> FindTiledLogicalTranspose(
-    const HloInstruction& instr);
-
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 

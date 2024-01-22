@@ -449,6 +449,18 @@ xla_test(
 )
 
 xla_cc_test(
+    name = "concatenate_emitter_test",
+    srcs = ["concatenate_emitter_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//xla/tests:hlo_test_base",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
     name = "transpose_emitter_test",
     srcs = ["transpose_emitter_test.cc"],
     tags = tf_cuda_tests_tags(),

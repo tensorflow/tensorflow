@@ -42,6 +42,7 @@ class HloFusionAnalysis {
     kTriton,
     kReduction,
     kTranspose,
+    kConcatenate,
     kInputSlices,
     kScatter,
   };

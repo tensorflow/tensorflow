@@ -717,6 +717,7 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
       return HloInstruction::FusionKind::kCustom;
+    case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:
