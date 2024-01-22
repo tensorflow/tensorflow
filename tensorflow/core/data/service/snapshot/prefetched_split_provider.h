@@ -60,7 +60,7 @@ class PrefetchedSplitProvider {
       std::unique_ptr<SplitProvider> split_provider,
       const std::string& directory, tsl::Env* env,
       size_t num_write_threads = 20, size_t buffer_size_per_thread = 5);
-  virtual ~PrefetchedSplitProvider() = default;
+  virtual ~PrefetchedSplitProvider();
   PrefetchedSplitProvider(const PrefetchedSplitProvider&) = delete;
   PrefetchedSplitProvider& operator=(const PrefetchedSplitProvider&) = delete;
 
@@ -70,7 +70,10 @@ class PrefetchedSplitProvider {
   absl::StatusOr<std::optional<Tensor>> GetSplit(
       const std::string& target_split_path);
 
-  // TODO(b/320755733): Support Cancel, Reset, Save, Load.
+  // Resets the split provider.
+  absl::Status Reset();
+
+  // TODO(b/320755733): Support Save and Load.
 
  private:
   // Prefetched split and the absolute path where a temporary file is written.
@@ -78,6 +81,13 @@ class PrefetchedSplitProvider {
     Tensor split;
     std::string filename;
   };
+
+  // Initializes directories for writing. This cleans up all existing files in
+  // `directory_`.
+  absl::Status InitDirs();
+
+  // Runs the prefetch threads.
+  std::unique_ptr<tsl::thread::ThreadPool> RunPrefetchThreads();
 
   // The prefetching threads run this method to prefetch the splits.
   void PrefetchLoop();
@@ -110,6 +120,9 @@ class PrefetchedSplitProvider {
   std::unique_ptr<SplitProvider> split_provider_;
 
   absl::Status status_ ABSL_GUARDED_BY(mu_);
+
+  // Whether the split provider is being reset.
+  bool reset_ ABSL_GUARDED_BY(mu_) = false;
 
   // Number of finished threads. If `finished_threads_ >= num_write_threads_`,
   // then all the splits have been pushed to the buffer. Otherwise, the split

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/prefetched_split_provider.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -46,19 +47,25 @@ PrefetchedSplitProvider::PrefetchedSplitProvider(
       num_write_threads_(num_write_threads),
       buffer_size_(num_write_threads_ * buffer_size_per_thread),
       split_provider_(std::move(split_provider)) {
-  thread_pool_ = std::make_unique<tsl::thread::ThreadPool>(
-      env_, tsl::ThreadOptions{}, "tf_data_prefetch_splits_thread",
-      num_write_threads_);
-  for (size_t i = 0; i < num_write_threads_; ++i) {
-    thread_pool_->Schedule([this]() { PrefetchLoop(); });
+  absl::Status status = InitDirs();
+  if (!status.ok()) {
+    UpdateStatus(std::move(status));
+    return;
   }
+  thread_pool_ = RunPrefetchThreads();
+}
+
+PrefetchedSplitProvider::~PrefetchedSplitProvider() {
+  // Finishes the in-flight threads.
+  UpdateStatus(
+      absl::CancelledError("tf.data prefetched split provider is shut down."));
 }
 
 absl::StatusOr<std::optional<Tensor>> PrefetchedSplitProvider::GetSplit(
     const std::string& target_split_path) ABSL_LOCKS_EXCLUDED(mu_) {
   absl::MutexLock l(&mu_);
-  while (status_.ok() && finished_threads_ < num_write_threads_ &&
-         buffer_.empty()) {
+  while (status_.ok() && buffer_.empty() &&
+         (finished_threads_ < num_write_threads_ || reset_)) {
     ready_to_pop_.Wait(&mu_);
   }
   TF_RETURN_IF_ERROR(status_);
@@ -71,6 +78,17 @@ absl::StatusOr<std::optional<Tensor>> PrefetchedSplitProvider::GetSplit(
   buffer_.pop_front();
   ready_to_push_.Signal();
   return std::move(split_file.split);
+}
+
+std::unique_ptr<tsl::thread::ThreadPool>
+PrefetchedSplitProvider::RunPrefetchThreads() {
+  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
+      env_, tsl::ThreadOptions{}, "tf_data_prefetch_splits_thread",
+      num_write_threads_);
+  for (size_t i = 0; i < num_write_threads_; ++i) {
+    thread_pool->Schedule([this]() { PrefetchLoop(); });
+  }
+  return thread_pool;
 }
 
 void PrefetchedSplitProvider::PrefetchLoop() ABSL_LOCKS_EXCLUDED(mu_) {
@@ -94,7 +112,7 @@ void PrefetchedSplitProvider::PrefetchLoop() ABSL_LOCKS_EXCLUDED(mu_) {
 bool PrefetchedSplitProvider::ShouldPrefetchSplit() const
     ABSL_LOCKS_EXCLUDED(mu_) {
   absl::MutexLock l(&mu_);
-  return status_.ok();
+  return status_.ok() && !reset_;
 }
 
 absl::StatusOr<bool> PrefetchedSplitProvider::PrefetchSplit()
@@ -117,10 +135,13 @@ absl::StatusOr<bool> PrefetchedSplitProvider::PrefetchSplit()
 absl::StatusOr<std::optional<Tensor>>
 PrefetchedSplitProvider::GetSplitFromProvider() ABSL_LOCKS_EXCLUDED(mu_) {
   absl::MutexLock l(&mu_);
-  while (status_.ok() && buffer_.size() >= buffer_size_) {
+  while (status_.ok() && buffer_.size() >= buffer_size_ && !reset_) {
     ready_to_push_.Wait(&mu_);
   }
   TF_RETURN_IF_ERROR(status_);
+  if (reset_) {
+    return std::nullopt;
+  }
 
   Tensor split;
   bool end_of_splits = false;
@@ -129,6 +150,35 @@ PrefetchedSplitProvider::GetSplitFromProvider() ABSL_LOCKS_EXCLUDED(mu_) {
     return std::nullopt;
   }
   return split;
+}
+
+absl::Status PrefetchedSplitProvider::Reset() ABSL_LOCKS_EXCLUDED(mu_) {
+  {
+    absl::MutexLock l(&mu_);
+    reset_ = true;
+    ready_to_push_.SignalAll();
+    ready_to_pop_.SignalAll();
+  }
+  thread_pool_.reset();
+  TF_RETURN_IF_ERROR(split_provider_->Reset());
+
+  absl::MutexLock l(&mu_);
+  TF_RETURN_IF_ERROR(status_);
+  reset_ = false;
+  finished_threads_ = 0;
+  buffer_.clear();
+  TF_RETURN_IF_ERROR(InitDirs());
+  thread_pool_ = RunPrefetchThreads();
+  return absl::OkStatus();
+}
+
+absl::Status PrefetchedSplitProvider::InitDirs() {
+  if (env_->FileExists(directory_).ok()) {
+    int64_t undeleted_files, undeleted_dirs;
+    TF_RETURN_IF_ERROR(
+        env_->DeleteRecursively(directory_, &undeleted_files, &undeleted_dirs));
+  }
+  return env_->RecursivelyCreateDir(directory_);
 }
 
 absl::StatusOr<std::string> PrefetchedSplitProvider::GetUniqueFile() const {
