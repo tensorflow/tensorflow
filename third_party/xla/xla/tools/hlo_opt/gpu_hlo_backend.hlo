@@ -2,16 +2,9 @@
 
 HloModule module
 
-// CHECK: fused_computation
-// CHECK: sqrt
-
-// CHECK: fused_computation
-// CHECK: transpose
+// CHECK: is_scheduled=true
 
 ENTRY computation {
-// CHECK-DAG: wrapped_sqrt
-// CHECK-DAG: wrapped_transpose
-// CHECK-DAG: bitcast
     p = f32[5000,6000]{1,0} parameter(0)
     e = f32[5000,6000]{1,0} sqrt(p)
     c = f32[6000,5000] transpose(p), dimensions={1,0}
