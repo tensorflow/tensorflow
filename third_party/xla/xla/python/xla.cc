@@ -590,7 +590,9 @@ static void Init(py::module_& m) {
   alloc_config.def(py::init<>())
       .def_readwrite("kind", &GpuAllocatorConfig::kind)
       .def_readwrite("memory_fraction", &GpuAllocatorConfig::memory_fraction)
-      .def_readwrite("preallocate", &GpuAllocatorConfig::preallocate);
+      .def_readwrite("preallocate", &GpuAllocatorConfig::preallocate)
+      .def_readwrite("collective_memory_size",
+                     &GpuAllocatorConfig::collective_memory_size);
   py::enum_<GpuAllocatorConfig::Kind>(alloc_config, "Kind")
       .value("DEFAULT", GpuAllocatorConfig::Kind::kDefault)
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)

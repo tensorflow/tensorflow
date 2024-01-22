@@ -84,7 +84,9 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   int device_ordinal = executor->device_ordinal();
   auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
       executor, tsl::PlatformDeviceId(device_ordinal),
-      /*use_unified_memory=*/enable_unified_memory,
+      /*memory_type=*/
+      enable_unified_memory ? stream_executor::MemoryType::kUnified
+                            : stream_executor::MemoryType::kDevice,
       /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
       /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
 
@@ -114,6 +116,33 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   return std::make_unique<tsl::BFCAllocator>(
       std::move(sub_allocator), allocator_memory,
       absl::StrCat("GPU_", device_ordinal, "_bfc"), opts);
+}
+
+// Builds a BFCAllocator for all local GPUs that uses collective memory.
+StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
+    se::StreamExecutor* executor, size_t allocator_memory, bool preallocate) {
+  int device_ordinal = executor->device_ordinal();
+  auto sub_allocator = std::make_unique<se::DeviceMemAllocator>(
+      executor, tsl::PlatformDeviceId(device_ordinal),
+      /*memory_type=*/stream_executor::MemoryType::kCollective,
+      /*alloc_visitors=*/std::vector<tsl::SubAllocator::Visitor>(),
+      /*free_visitors=*/std::vector<tsl::SubAllocator::Visitor>());
+
+  if (preallocate) {
+    LOG(INFO) << "XLA backend allocating " << allocator_memory
+              << " bytes on device " << device_ordinal
+              << " for CollectiveBFCAllocator.";
+  } else {
+    LOG(INFO) << "XLA backend will use up to " << allocator_memory
+              << " bytes on device " << device_ordinal
+              << " for CollectiveBFCAllocator.";
+  }
+
+  tsl::BFCAllocator::Options opts;
+  opts.allow_growth = !preallocate;
+  return std::make_unique<tsl::BFCAllocator>(
+      std::move(sub_allocator), allocator_memory,
+      absl::StrCat("GPU_collectivememory_", device_ordinal, "_bfc"), opts);
 }
 
 // Returns a GPU pinned host memory allocator to use when staging host->GPU

@@ -61,6 +61,8 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
            {"allocator", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
            {"memory_fraction", PJRT_NamedValue_Type::PJRT_NamedValue_kFloat},
            {"preallocate", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
+           {"collective_memory_size",
+            PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
            {"visible_devices",
             PJRT_NamedValue_Type::PJRT_NamedValue_kInt64List},
            {"node_id", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
@@ -98,6 +100,10 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   if (auto it = create_options.find("preallocate");
       it != create_options.end()) {
     allocator_config.preallocate = std::get<bool>(it->second);
+  }
+  if (auto it = create_options.find("collective_memory_size");
+      it != create_options.end()) {
+    allocator_config.collective_memory_size = std::get<int64_t>(it->second);
   }
   std::optional<std::set<int>> visible_devices;
   if (auto it = create_options.find("visible_devices");

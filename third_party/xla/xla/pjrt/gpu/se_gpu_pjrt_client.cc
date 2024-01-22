@@ -651,12 +651,13 @@ namespace {
 
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
 
-StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
+StatusOr<std::vector<se::MultiDeviceAdapter::AllocatorInfo>>
+CreateCudaAsyncAllocator(
     se::Platform* platform,
     const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
     double memory_fraction, bool preallocate) {
   CHECK_GT(addressable_devices.size(), 0);
-  std::vector<se::MultiDeviceAdapter::AllocatorWithStream> allocators;
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
 
   for (auto& ordinal_and_device : addressable_devices) {
     se::StreamExecutor* executor = ordinal_and_device.second->executor();
@@ -690,15 +691,16 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
             ->platform_specific_handle()
             .stream);
     allocators.emplace_back(std::move(allocator),
-                            ordinal_and_device.second->compute_stream());
+                            ordinal_and_device.second->compute_stream(),
+                            /*memory_space=*/0);
   }
-  return std::make_unique<se::MultiDeviceAdapter>(platform,
-                                                  std::move(allocators));
+  return allocators;
 }
 
 #else  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
 
-StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
+StatusOr<std::vector<se::MultiDeviceAdapter::AllocatorInfo>>
+CreateCudaAsyncAllocator(
     se::Platform* platform,
     const std::map<int, std::unique_ptr<LocalDeviceState>>& addressable_devices,
     double memory_fraction, bool preallocate) {
@@ -730,47 +732,67 @@ GetStreamExecutorGpuDeviceAllocator(
     se::Platform* platform, const GpuAllocatorConfig& allocator_config,
     const std::map<int, std::unique_ptr<LocalDeviceState>>&
         addressable_devices) {
-  std::unique_ptr<se::DeviceMemoryAllocator> allocator;
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
   switch (allocator_config.kind) {
     case GpuAllocatorConfig::Kind::kCudaAsync: {
-      auto allocator_or = CreateCudaAsyncAllocator(
+      auto allocators_or = CreateCudaAsyncAllocator(
           platform, addressable_devices, allocator_config.memory_fraction,
           allocator_config.preallocate);
-      if (allocator_or.ok()) {
+      if (allocators_or.ok()) {
         LOG(INFO) << "Using CUDA async allocator.";
-        allocator = std::move(allocator_or.value());
+        allocators = std::move(allocators_or.value());
         break;
       }
       LOG(ERROR) << "Failed to initialize CUDA async allocator: "
-                 << allocator_or.status() << "; falling back to BFC.";
+                 << allocators_or.status() << "; falling back to BFC.";
       [[fallthrough]];
     }
 
     case GpuAllocatorConfig::Kind::kDefault:
     case GpuAllocatorConfig::Kind::kBFC: {
       LOG(INFO) << "Using BFC allocator.";
-      std::vector<se::MultiDeviceAdapter::AllocatorWithStream>
-          allocators_and_streams;
       for (const auto& ordinal_and_device : addressable_devices) {
         TF_ASSIGN_OR_RETURN(
             auto bfc_allocator,
             CreateBFCAllocator(ordinal_and_device.second->executor(),
                                allocator_config.memory_fraction,
                                allocator_config.preallocate));
-        allocators_and_streams.emplace_back(
-            std::move(bfc_allocator),
-            ordinal_and_device.second->compute_stream());
+        allocators.emplace_back(std::move(bfc_allocator),
+                                ordinal_and_device.second->compute_stream(),
+                                /*memory_space=*/0);
       }
-      allocator = std::make_unique<se::MultiDeviceAdapter>(
-          platform, std::move(allocators_and_streams));
       break;
     }
 
     case GpuAllocatorConfig::Kind::kPlatform:
       LOG(INFO) << "Using platform allocator.";
-      break;
+      if (allocator_config.collective_memory_size != 0) {
+        LOG(WARNING)
+            << "collective_memory_size is non-zero, but allocator kind is set "
+               "to \"platform\". Collective memory will not be allocated.";
+      }
+      // Returning null will cause the client to use the default backend
+      // allocator.
+      return nullptr;
   }
-  return std::move(allocator);
+
+  // Add any additional allocators for alternate memory spaces.
+  if (allocator_config.collective_memory_size != 0) {
+    for (const auto& ordinal_and_device : addressable_devices) {
+      TF_ASSIGN_OR_RETURN(
+          auto collective_bfc_allocator,
+          CreateCollectiveBFCAllocator(
+              ordinal_and_device.second->executor(),
+              /*allocator_memory=*/allocator_config.collective_memory_size,
+              /*preallocate=*/true));
+      allocators.emplace_back(std::move(collective_bfc_allocator),
+                              ordinal_and_device.second->compute_stream(),
+                              /*memory_space=*/1);
+    }
+  }
+
+  return std::make_unique<se::MultiDeviceAdapter>(platform,
+                                                  std::move(allocators));
 }
 
 Status BuildDistributedDevices(

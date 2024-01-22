@@ -194,6 +194,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_client_registry",
+        "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
     ],
 )
