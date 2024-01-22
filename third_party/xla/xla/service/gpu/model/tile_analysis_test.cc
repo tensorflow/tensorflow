@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -43,32 +43,24 @@ MATCHER_P3(MatchSymbolicTile, offset_map_string, size_map_string,
                             : "doesn't equal symbolic tile with offset_map_ ",
                         offset_map_string, " and size_map_ ", size_map_string,
                         " and stride_map_ ", stride_map_string)) {
+  AffineMapPrinter printer;
   return ExplainMatchResult(StrEq(offset_map_string),
-                            ToString(arg.offset_map()), result_listener) &&
-         ExplainMatchResult(StrEq(size_map_string), ToString(arg.size_map()),
+                            printer.ToString(arg.offset_map()),
+                            result_listener) &&
+         ExplainMatchResult(StrEq(size_map_string),
+                            printer.ToString(arg.size_map()),
                             result_listener) &&
          ExplainMatchResult(StrEq(stride_map_string),
-                            ToString(arg.stride_map()), result_listener);
+                            printer.ToString(arg.stride_map()),
+                            result_listener);
 }
 
 class SymbolicTileTest : public HloTestBase {
  public:
   HloInstructionIndexing GetOutputToInputIndexingForEntryComputation(
       absl::string_view hlo_string, int output_id = 0) {
-    auto module = ParseAndReturnVerifiedModule(hlo_string);
-    EXPECT_TRUE(module.ok());
-
-    HloInstruction* root =
-        module.value()->entry_computation()->root_instruction();
-
-    // If there are multiple instructions, they need to be wrapped in a fusion.
-    for (auto* operand : root->operands()) {
-      if (operand->opcode() != HloOpcode::kParameter &&
-          operand->opcode() != HloOpcode::kConstant) {
-        return {};
-      }
-    }
-    return ComputeOutputToInputIndexing(root, output_id, &mlir_context_);
+    return ComputeOutputToInputIndexingForEntryComputation(
+        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, output_id);
   }
   mlir::MLIRContext mlir_context_;
 };

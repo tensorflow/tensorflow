@@ -24,17 +24,14 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
@@ -193,66 +190,6 @@ HloInstructionIndexing ComputeInputToOutputConcatenateOpIndexing(
   IndexingMap indexing_map{.affine_map = affine_map.getAffineMap(),
                            .domain = Domain::FromUpperBounds(operand_dims, {})};
   return HloInstructionIndexing::FromIndexingMaps({indexing_map});
-}
-
-// Composes affine maps, i.e. consumer_map ∘ producer_map.
-// Right now the ranges of the composed indexing map are correct only when there
-// is no composition with concat.
-// TODO(b/319410501): Generalize domain modelling.
-std::optional<IndexingMap> ComposeIndexingMaps(
-    const std::optional<IndexingMap>& producer_map,
-    const std::optional<IndexingMap>& consumer_map) {
-  if (!producer_map.has_value() || !consumer_map.has_value()) {
-    return std::nullopt;
-  }
-  // AffineMap::compose(some_affine_map) actually computes some_affine_map ∘
-  // this.
-  AffineMap composed_map = mlir::simplifyAffineMap(
-      producer_map->affine_map.compose(consumer_map->affine_map));
-
-  // After the composition some of the symbols might become unused, e.g. when a
-  // dimension was added by broadcasting as then reduced. We should remove these
-  // dimensions from the composed affine map and also from the resulting
-  // `domain.symbol_ranges`.
-  //
-  // For example, if there is a reduction(broadcast):
-  //
-  //   param = f32[15] parameter(0)
-  //   bcast = f32[15, 20] broadcast(p0), dimensions={0}
-  //   reduce = f32[15, 20] reduce(bcast, init) dimensions={1}
-  //
-  // then `reduce` has (d0)[s0] -> (d0, s0) with s0 in [0, 20).
-  // and  `bcast` has (d0, d1) -> (d0) indexing map.
-  //
-  // The composition of there two maps yields (d0)[s0] -> (d0),
-  // although `s0` is not used in the mapping. In order to remove such symbols,
-  // we get the indices of unused symbols and remove them from the composed
-  // affine map and the `domain.symbol_ranges`.
-  auto unused_symbols_bit_vector =
-      mlir::getUnusedSymbolsBitVector({composed_map});
-  composed_map = mlir::compressSymbols(composed_map, unused_symbols_bit_vector);
-
-  // The symbols in the composed map, i.e. combined
-  // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
-  // symbols(consumer_map)]. In that order we are adding the symbol ranges while
-  // skipping the symbols that are unused.
-  std::vector<Range> combined_symbol_ranges;
-  combined_symbol_ranges.reserve(producer_map->domain.symbol_ranges.size() +
-                                 consumer_map->domain.symbol_ranges.size());
-  int64_t symbol_id = 0;
-  for (const Range& symbol_range :
-       llvm::concat<const Range>(producer_map->domain.symbol_ranges,
-                                 consumer_map->domain.symbol_ranges)) {
-    if (unused_symbols_bit_vector[symbol_id++]) continue;
-    combined_symbol_ranges.push_back(symbol_range);
-  }
-  IndexingMap composed_indexing_map{
-      .affine_map = std::move(composed_map),
-      .domain =
-          Domain{.dimension_ranges = consumer_map->domain.dimension_ranges,
-                 .symbol_ranges = combined_symbol_ranges}};
-  composed_indexing_map.Simplify();
-  return composed_indexing_map;
 }
 
 // Composes instruction indexing maps starting at the root instruction

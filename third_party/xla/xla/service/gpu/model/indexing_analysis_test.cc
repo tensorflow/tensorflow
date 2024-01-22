@@ -19,12 +19,11 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -35,28 +34,9 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::Eq;
 using ::testing::ExplainMatchResult;
-using ::testing::FieldsAre;
-using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
-
-MATCHER_P2(MatchRange, lower_bound, upper_bound,
-           absl::StrCat(negation ? "equals " : "doesn't equal ", "range [",
-                        lower_bound, ", ", upper_bound, "]")) {
-  return ExplainMatchResult(FieldsAre(lower_bound, upper_bound), arg,
-                            result_listener);
-}
-
-MATCHER_P3(MatchIndexingMap, affine_map_string, dim_ranges, symbol_ranges, "") {
-  if (!arg.has_value()) return false;
-  return ExplainMatchResult(HasSubstr(affine_map_string),
-                            ToString(arg->affine_map), result_listener) &&
-         ExplainMatchResult(dim_ranges, arg->domain.dimension_ranges,
-                            result_listener) &&
-         ExplainMatchResult(symbol_ranges, arg->domain.symbol_ranges,
-                            result_listener);
-}
 
 MATCHER_P2(MatchInstrIndexing, operand_id, indexing_map_matchers, "") {
   return ExplainMatchResult(Eq(operand_id), arg.operand_id, result_listener) &&
@@ -68,52 +48,30 @@ class IndexingAnalysisTest : public HloTestBase {
  public:
   HloInstructionIndexing GetOutputToInputIndexingForEntryComputation(
       absl::string_view hlo_string, int output_id = 0) {
-    auto module = ParseAndReturnVerifiedModule(hlo_string);
-    EXPECT_TRUE(module.ok());
-
-    HloInstruction* root =
-        module.value()->entry_computation()->root_instruction();
-
-    // If there are multiple instructions, they need to be wrapped in a fusion.
-    for (auto* operand : root->operands()) {
-      if (operand->opcode() != HloOpcode::kParameter &&
-          operand->opcode() != HloOpcode::kConstant) {
-        return {};
-      }
-    }
-    return ComputeOutputToInputIndexing(root, output_id, &mlir_context_);
+    return ComputeOutputToInputIndexingForEntryComputation(
+        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, output_id);
   }
 
   HloInstructionIndexing GetInputToOutputIndexingForEntryComputation(
       absl::string_view hlo_string, int input_id = 0) {
-    auto module = ParseAndReturnVerifiedModule(hlo_string);
-    EXPECT_TRUE(module.ok());
-
-    HloInstruction* root =
-        module.value()->entry_computation()->root_instruction();
-
-    // If there are multiple instructions, they need to be wrapped in a fusion.
-    for (auto* operand : root->operands()) {
-      if (operand->opcode() != HloOpcode::kParameter &&
-          operand->opcode() != HloOpcode::kConstant) {
-        return {};
-      }
-    }
-    return ComputeInputToOutputIndexing(root, input_id, &mlir_context_);
+    return ComputeInputToOutputIndexingForEntryComputation(
+        static_cast<HloTestBase*>(this), &mlir_context_, hlo_string, input_id);
   }
   mlir::MLIRContext mlir_context_;
 };
 
 TEST_F(IndexingAnalysisTest, ComputeGroupedOutputToInputIndexing) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
     ENTRY e {
       p0 = f32[1000, 1000] parameter(0)
       transpose_p0 = f32[1000, 1000]{0, 1} transpose(p0), dimensions={1, 0}
       ROOT a0 = f32[1000, 1000] add(p0, transpose_p0)
     }
-  )"));
-  const HloInstruction* root = module->entry_computation()->root_instruction();
+  )");
+  EXPECT_TRUE(module.ok());
+  const HloInstruction* root =
+      (*module)->entry_computation()->root_instruction();
   const HloInstruction* parameter = root->operand(0);
   const HloInstruction* transpose = root->operand(1);
 

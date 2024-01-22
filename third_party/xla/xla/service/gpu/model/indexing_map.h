@@ -113,6 +113,14 @@ struct IndexingMap {
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
 
+// Composes affine maps, i.e. consumer_map ∘ producer_map.
+// Right now the ranges of the composed indexing map are correct only when there
+// is no composition with concat.
+// TODO(b/319410501): Generalize domain modelling.
+std::optional<IndexingMap> ComposeIndexingMaps(
+    const std::optional<IndexingMap>& producer_map,
+    const std::optional<IndexingMap>& consumer_map);
+
 template <typename H>
 H AbslHashValue(H h, const IndexingMap& indexing_map) {
   llvm::hash_code affine_map_hash = llvm::hash_combine(indexing_map.affine_map);
