@@ -111,9 +111,31 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
 
     DumpHloCompilationResult("legalize_tf_fallback", compilation_result.get())
         .IgnoreError();
-
     return *compilation_result;
   }
+
+  auto combined_bridge_status = internal::LegalizeTfToHlo(
+      std::get<0>(computation), metadata, use_tuple_args, device_type,
+      shape_determination_fns, arg_shapes, arg_core_mapping,
+      per_core_arg_shapes, custom_legalization_passes, client,
+      compilation_result.get());
+
+  if (combined_bridge_status.ok()) {
+    VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using "
+               "Combined MLIR and XlaBuilder Bridge.";
+
+    DumpHloCompilationResult("legalize_tf_combined_bridge",
+                             compilation_result.get())
+        .IgnoreError();
+    return *compilation_result;
+  }
+
+  VLOG(1)
+      << "Failed to compile MLIR computation to XLA HLO using "
+         "Combined MLIR and XlaBuilder Bridge. Falling back to Graph Bridge.";
+  tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
+                          combined_bridge_status.status().ToString())
+      .IgnoreError();
 
   auto mlir_bridge_status = internal::LegalizeWithMlirBridge(
       std::get<0>(computation), metadata, use_tuple_args, device_type,
@@ -130,7 +152,6 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     DumpHloCompilationResult("legalize_tf_mlir_bridge",
                              compilation_result.get())
         .IgnoreError();
-
     return *compilation_result;
   } else if (mlir_bridge_status.status() ==
              CompileToHloGraphAnalysisFailedError()) {
@@ -146,30 +167,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
         MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure);
   }
 
-  auto combined_bridge_status = internal::LegalizeTfToHlo(
-      std::get<0>(computation), metadata, use_tuple_args, device_type,
-      shape_determination_fns, arg_shapes, arg_core_mapping,
-      per_core_arg_shapes, custom_legalization_passes, client,
-      compilation_result.get());
-
-  if (combined_bridge_status.ok()) {
-    VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using "
-               "Combined MLIR and XlaBuilder Bridge.";
-
-    DumpHloCompilationResult("legalize_tf_combined_bridge",
-                             compilation_result.get())
-        .IgnoreError();
-
-    return *compilation_result;
-  }
-
-  VLOG(1) << "Failed to compile MLIR computation to XLA HLO using "
-             "Combined MLIR and XlaBuilder Bridge. Could not generate HLO.";
-  tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
-                          combined_bridge_status.status().ToString())
-      .IgnoreError();
-
-  return combined_bridge_status.status();
+  return mlir_bridge_status.status();
 }
 
 };  // namespace v2
