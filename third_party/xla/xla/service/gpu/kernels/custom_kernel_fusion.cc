@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/kernels/custom_fusion.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 
 #include <memory>
 #include <string>
@@ -38,15 +38,15 @@ CustomFusionRegistry* CustomFusionRegistry::Default() {
 }
 
 absl::Status CustomFusionRegistry::Register(
-    std::string name, std::unique_ptr<CustomFusion> fusion) {
+    std::string name, std::unique_ptr<CustomKernelFusion> fusion) {
   absl::MutexLock lock(&mutex_);
   if (auto it = registry_.try_emplace(name, std::move(fusion)); it.second)
     return absl::OkStatus();
   return absl::InternalError(
-      absl::StrCat("Custom fusion ", name, " already registered."));
+      absl::StrCat("Custom kernel fusion ", name, " already registered."));
 }
 
-CustomFusion* CustomFusionRegistry::Lookup(std::string_view name) const {
+CustomKernelFusion* CustomFusionRegistry::Lookup(std::string_view name) const {
   absl::MutexLock lock(&mutex_);
   if (auto it = registry_.find(name); it != registry_.end())
     return it->second.get();

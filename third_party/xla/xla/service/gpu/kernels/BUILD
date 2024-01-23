@@ -1,6 +1,6 @@
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -15,9 +15,9 @@ package_group(
 )
 
 cc_library(
-    name = "custom_fusion",
-    srcs = ["custom_fusion.cc"],
-    hdrs = ["custom_fusion.h"],
+    name = "custom_kernel_fusion",
+    srcs = ["custom_kernel_fusion.cc"],
+    hdrs = ["custom_kernel_fusion.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":custom_kernel",
@@ -77,9 +77,9 @@ cc_library(
     hdrs = ["cutlass_gemm_fusion.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":custom_fusion",
         ":custom_fusion_pattern",
         ":custom_kernel",
+        ":custom_kernel_fusion",
         ":cutlass_gemm",
         ":cutlass_gemm_custom_kernel",
         "//xla:shape_util",

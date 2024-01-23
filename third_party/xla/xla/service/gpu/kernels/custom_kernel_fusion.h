@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_H_
-#define XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_H_
+#ifndef XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_H_
+#define XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_H_
 
 #include <memory>
 #include <string>
@@ -35,11 +35,11 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// CustomFusion
+// CustomKernelFusion
 //===----------------------------------------------------------------------===//
 
-// Custom fusion is a mechanism for registering custom kernels corresponding to
-// HLO fusions.
+// Custom kernel fusion is a mechanism for registering custom kernels
+// corresponding to HLO fusions.
 //
 // Example: row-major mixed dtype gemm with fused bitcast
 //
@@ -69,20 +69,23 @@ namespace xla::gpu {
 // (2) Triton: XLA:GPU uses Triton to codegen gemm fusion into devie kernels
 //     (PTX and CUBIN for NVIDIA gpus).
 //
-// (3) Custom fusion is another mechanism to execute fusion on device, which
+// (3) Custom kernel fusion is another mechanism to execute fusion on device,
+// which
 //     relies on pre-compiled libraries of custom kernels authored by CUDA C++
-//     experts. Custom fusion implements one particular fusion pattern (e.g.
-//     type casting plus a dot operation like in the example above) with custom
-//     kernels that XLA has to choose from at run time based on auto tuning.
+//     experts. Custom kernel fusion implements one particular fusion pattern
+//     (e.g. type casting plus a dot operation like in the example above) with
+//     custom kernels that XLA has to choose from at run time based on auto
+//     tuning.
 //
-//     In practice custom fusion almost always implemented with multiple
+//     In practice custom kernel fusion almost always implemented with multiple
 //     kernels, because input shapes are not known at compile time, and custom
 //     fusion has multiple kernels with different tiling schemes.
 //
-// What differentiates custom fusions from custom calls, is that custom fusion
-// should be implemented with a device kernel, and this allows XLA:GPU to treat
-// custom fusion just like any other device kernel: it's launched as a regular
-// KernelThunk and automatically captured into command buffers.
+// What differentiates custom kernel fusions from custom calls, is that custom
+// kernel fusion should be implemented with a device kernel, and this allows
+// XLA:GPU to treat custom kernel fusion just like any other device kernel: it's
+// launched as a regular KernelThunk and automatically captured into command
+// buffers.
 //
 // Custom calls (registered with XLA:FFI) on the other hand gives much more
 // flexibility, and can be implemented as a combination of a non-trivial host
@@ -90,13 +93,15 @@ namespace xla::gpu {
 //
 // Also XLA:FFI offers a stable C API that allows registering external functions
 // loaded from dynamic libraries compiled with a different toolchain of XLA
-// version. Custom fusions integration relies on C++ ABI and static linking.
+// version. Custom kernel fusions integration relies on C++ ABI and static
+// linking.
 //
 // TODO(ezhulenev): It should be possible to lower `stablehlo.custom_call`
-// operations to custom fusions, albeit with a static linking restriction.
-class CustomFusion {
+// operations to custom kernel fusions, albeit with a static linking
+// restriction.
+class CustomKernelFusion {
  public:
-  virtual ~CustomFusion() = default;
+  virtual ~CustomKernelFusion() = default;
 
   // Loads kernels implementing `hlo_computation` optimized for a given device.
   virtual absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
@@ -108,26 +113,27 @@ class CustomFusion {
 // CustomFusionRegistry
 //===----------------------------------------------------------------------===//
 
-// Custom fusion registry is a mapping from a custom fusion name to the custom
-// fusion implementation, and XLA compiler uses this registry to lower fusion
-// operations to kernels when emitting thunks.
+// Custom fusion registry is a mapping from a custom kernel fusion name to the
+// custom fusion implementation, and XLA compiler uses this registry to lower
+// fusion operations to kernels when emitting thunks.
 class CustomFusionRegistry {
  public:
   // Returns a pointer to a default custom fusion registry, which is a global
   // static registry.
   static CustomFusionRegistry* Default();
 
-  // Registers custom fusion in the registry. Returns error if fusion with the
-  // given name already registered.
-  absl::Status Register(std::string name, std::unique_ptr<CustomFusion> fusion);
+  // Registers custom kernel fusion in the registry. Returns error if fusion
+  // with the given name already registered.
+  absl::Status Register(std::string name,
+                        std::unique_ptr<CustomKernelFusion> fusion);
 
-  // Looks up custom fusion by name. Return nullptr if it's not found.
-  CustomFusion* Lookup(std::string_view name) const;
+  // Looks up custom kernel fusion by name. Return nullptr if it's not found.
+  CustomKernelFusion* Lookup(std::string_view name) const;
 
  private:
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<std::string, std::unique_ptr<CustomFusion>> registry_
-      ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<std::string, std::unique_ptr<CustomKernelFusion>>
+      registry_ ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace xla::gpu
@@ -148,4 +154,4 @@ class CustomFusionRegistry {
         return status.ok();                                        \
       }()
 
-#endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_FUSION_H_
+#endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_H_

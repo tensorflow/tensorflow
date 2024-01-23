@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/runtime/executable.h"
 #include "xla/runtime/memref_view.h"
 #include "xla/runtime/state.h"
-#include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/runtime/concurrent_region.h"
 #include "xla/service/gpu/runtime/support.h"
@@ -160,13 +160,13 @@ static absl::StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
     se::StreamExecutor* executor, std::string_view name,
     std::string_view custom_fusion_computation) {
   auto* registry = CustomFusionRegistry::Default();
-  auto* custom_fusion = registry->Lookup(name);
+  auto* custom_kernel_fusion = registry->Lookup(name);
 
   // If custom fusion is not found it means that some of the build targets might
   // not be statically linked into the binary.
-  if (custom_fusion == nullptr) {
+  if (custom_kernel_fusion == nullptr) {
     return absl::InternalError(absl::StrCat(
-        "Custom fusion ", name, " not found in a default registry."));
+        "Custom kernel fusion ", name, " not found in a default registry."));
   }
 
   // Parse attached custom fusion computation.
@@ -184,14 +184,14 @@ static absl::StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
 
   // Load custom kernels that can implement a fusion computation.
   TF_ASSIGN_OR_RETURN(std::vector<CustomKernel> kernels,
-                      custom_fusion->LoadKernels(
+                      custom_kernel_fusion->LoadKernels(
                           executor->GetDeviceDescription(), computation.get()));
 
   // This should never happen, it means that compilation pipeline created a
   // fusion operation that is not supported by a given custom fusion.
   if (kernels.empty()) {
     return absl::InternalError(
-        absl::StrCat("Custom fusion ", name,
+        absl::StrCat("Custom kernel fusion ", name,
                      " returned empty custom kernels for a fused computation"));
   }
 

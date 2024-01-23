@@ -26,7 +26,8 @@ namespace xla {
 namespace gpu {
 
 // A wrapper for fusions implemented using the mechanism in
-// xla/service/gpu/kernels. See custom_fusion.h in that folder for details.
+// xla/service/gpu/kernels. See custom_kernel_fusion.h in that folder for
+// details.
 class CustomFusionEmitter : public FusionInterface {
  public:
   absl::StatusOr<FusionEmissionResult> Emit(

@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_arguments.h"
-#include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
 #include "xla/service/gpu/thunk.h"
@@ -133,26 +133,27 @@ absl::StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
 
   auto* registry = CustomFusionRegistry::Default();
-  auto* custom_fusion = registry->Lookup(config.name());
+  auto* custom_kernel_fusion = registry->Lookup(config.name());
 
   // If custom fusion is not found it means that some of the build targets might
   // not be statically linked into the binary.
-  if (custom_fusion == nullptr) {
-    return absl::InternalError(absl::StrCat(
-        "Custom fusion ", config.name(), " not found in a default registry."));
+  if (custom_kernel_fusion == nullptr) {
+    return absl::InternalError(
+        absl::StrCat("Custom kernel fusion ", config.name(),
+                     " not found in a default registry."));
   }
 
   // Load custom kernels that can implement a fusion computation.
-  TF_ASSIGN_OR_RETURN(
-      std::vector<CustomKernel> kernels,
-      custom_fusion->LoadKernels(ir_emitter_context.gpu_device_info(),
-                                 fusion.fused_instructions_computation()));
+  TF_ASSIGN_OR_RETURN(std::vector<CustomKernel> kernels,
+                      custom_kernel_fusion->LoadKernels(
+                          ir_emitter_context.gpu_device_info(),
+                          fusion.fused_instructions_computation()));
 
   // This should never happen, it means that compilation pipeline created a
   // fusion operation that is not supported by a given custom fusion.
   if (kernels.empty()) {
     return absl::InternalError(
-        absl::StrCat("Custom fusion ", config.name(),
+        absl::StrCat("Custom kernel fusion ", config.name(),
                      " returned empty custom kernels for a fused computation"));
   }
 
