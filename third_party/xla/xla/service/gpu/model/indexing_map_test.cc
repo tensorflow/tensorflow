@@ -55,10 +55,8 @@ TEST_F(IndexingMapTest, ComposeWithPermutation) {
 }
 
 TEST_F(IndexingMapTest, SimplifyConstantDims) {
-  Domain domain;
-  domain.dimension_ranges.push_back(Range{5, 5});
   IndexingMap indexing_map{ParseAffineMap("(d0) -> (d0)", &mlir_context_),
-                           domain};
+                           Domain{{Range{5, 5}}, {}}};
   indexing_map.Simplify();
   EXPECT_THAT(printer_.ToString(indexing_map.affine_map),
               HasSubstr("(d0) -> (5)"));
@@ -81,7 +79,7 @@ TEST_F(IndexingMapTest, SimplifyDivsAndModsWithMultipliers) {
       "d2 mod 10)";
 
   IndexingMap indexing_map{ParseAffineMap(serialized_map, &mlir_context_),
-                           Domain::FromUpperBounds({10, 10, 10}, {})};
+                           Domain::FromUpperBounds({9, 9, 9}, {})};
   indexing_map.Simplify();
 
   EXPECT_THAT(printer_.ToString(indexing_map.affine_map),
@@ -114,36 +112,27 @@ TEST_F(IndexingMapTest, SimplifyDivsAndModsWithReverse) {
               HasSubstr("(d0, d1) -> (d0, d1)"));
 }
 
-TEST_F(IndexingMapTest, AffineExprSignExtraction) {
-  Domain domain;
-  domain.dimension_ranges.push_back(Range{0, 9});
-  domain.dimension_ranges.push_back(Range{-10, -1});
-  domain.dimension_ranges.push_back(Range{-1, 1});
-  domain.dimension_ranges.push_back(Range{0, 0});
-
-  IndexingMap indexing_map{
-      ParseAffineMap("(d0, d1, d2, d3) -> (d0, d1, d2, d3) ", &mlir_context_),
-      domain};
-  auto simplifier = IndexingMapSimplifier::FromIndexingMap(indexing_map);
-
+TEST_F(IndexingMapTest, RangeEvaluatorTest) {
+  Domain domain({Range{0, 9}, Range{-10, -1}, Range{-1, 2}, Range{0, 0}}, {});
+  RangeEvaluator range_evaluator(&domain);
   mlir::AffineExpr d0, d1, d2, d3;
   bindDims(&mlir_context_, d0, d1, d2, d3);
 
   // d0 is always positive.
-  EXPECT_TRUE(simplifier.IsAlwaysPositiveOrZero(d0));
-  EXPECT_FALSE(simplifier.IsAlwaysNegativeOrZero(d0));
+  EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d0));
+  EXPECT_FALSE(range_evaluator.IsAlwaysNegativeOrZero(d0));
 
   // d1 is always negative.
-  EXPECT_FALSE(simplifier.IsAlwaysPositiveOrZero(d1));
-  EXPECT_TRUE(simplifier.IsAlwaysNegativeOrZero(d1));
+  EXPECT_FALSE(range_evaluator.IsAlwaysPositiveOrZero(d1));
+  EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d1));
 
   // d2 is sometimes positive and sometimes negative.
-  EXPECT_FALSE(simplifier.IsAlwaysPositiveOrZero(d2));
-  EXPECT_FALSE(simplifier.IsAlwaysNegativeOrZero(d2));
+  EXPECT_FALSE(range_evaluator.IsAlwaysPositiveOrZero(d2));
+  EXPECT_FALSE(range_evaluator.IsAlwaysNegativeOrZero(d2));
 
   // d3 is always 0.
-  EXPECT_TRUE(simplifier.IsAlwaysPositiveOrZero(d3));
-  EXPECT_TRUE(simplifier.IsAlwaysNegativeOrZero(d3));
+  EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d3));
+  EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
 }
 
 // TODO(b/313840171): Simplify `(d1 * 4 + d2) floordiv 8` to `d1 floordiv 2`.

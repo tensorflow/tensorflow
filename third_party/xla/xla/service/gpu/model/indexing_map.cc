@@ -75,18 +75,18 @@ bool operator==(const Range& lhs, const Range& rhs) {
          lhs.upper_bound == rhs.upper_bound;
 }
 
-Domain Domain::FromUpperBounds(absl::Span<const int64_t> dimension_upper_bounds,
+Domain Domain::FromUpperBounds(absl::Span<const int64_t> dim_upper_bounds,
                                absl::Span<const int64_t> symbol_upper_bounds) {
   Domain domain;
-  domain.dimension_ranges.reserve(dimension_upper_bounds.size());
-  for (int64_t ub : dimension_upper_bounds) {
+  domain.dim_ranges_.reserve(dim_upper_bounds.size());
+  for (int64_t ub : dim_upper_bounds) {
     CHECK_GT(ub, 0);
-    domain.dimension_ranges.push_back(Range{0, ub - 1});
+    domain.dim_ranges_.push_back(Range{0, ub - 1});
   }
-  domain.symbol_ranges.reserve(symbol_upper_bounds.size());
+  domain.symbol_ranges_.reserve(symbol_upper_bounds.size());
   for (int64_t ub : symbol_upper_bounds) {
     CHECK_GT(ub, 0);
-    domain.symbol_ranges.push_back(Range{0, ub - 1});
+    domain.symbol_ranges_.push_back(Range{0, ub - 1});
   }
   return domain;
 }
@@ -99,174 +99,49 @@ std::string Domain::ToString(const AffineMapPrinter& printer) const {
 }
 
 void Domain::Print(std::ostream& out, const AffineMapPrinter& printer) const {
-  for (const auto& [index, range] : llvm::enumerate(dimension_ranges)) {
+  for (const auto& [index, range] : llvm::enumerate(dim_ranges_)) {
     out << printer.GetDimensionName(static_cast<int64_t>(index)) << " in "
         << range << '\n';
   }
-  for (const auto& [index, range] : llvm::enumerate(symbol_ranges)) {
+  for (const auto& [index, range] : llvm::enumerate(symbol_ranges_)) {
     out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in " << range
         << '\n';
   }
 }
 
-std::ostream& operator<<(std::ostream& out, const Domain& domain) {
-  AffineMapPrinter printer;
-  domain.Print(out, printer);
-  return out;
+bool RangeEvaluator::IsAlwaysPositiveOrZero(mlir::AffineExpr expr) {
+  return ComputeExpressionRange(expr).lower_bound >= 0;
 }
 
-bool operator==(const Domain& lhs, const Domain& rhs) {
-  return lhs.dimension_ranges == rhs.dimension_ranges &&
-         lhs.symbol_ranges == rhs.symbol_ranges;
+bool RangeEvaluator::IsAlwaysNegativeOrZero(mlir::AffineExpr expr) {
+  return ComputeExpressionRange(expr).upper_bound <= 0;
 }
 
-std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
-  std::string s;
-  std::stringstream ss(s);
-  Print(ss, printer);
-  return ss.str();
-}
-
-void IndexingMap::Print(std::ostream& out,
-                        const AffineMapPrinter& printer) const {
-  printer.Print(out, affine_map);
-  out << " with domain\n";
-  domain.Print(out, printer);
-  out << "\n";
-}
-
-std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
-  AffineMapPrinter printer;
-  indexing_map.Print(out, printer);
-  return out;
-}
-
-bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
-  return lhs.affine_map == rhs.affine_map && lhs.domain == rhs.domain;
-}
-
-bool IndexingMap::Simplify() {
-  AffineMap simplified_affine_map =
-      IndexingMapSimplifier::FromIndexingMap(*this).Simplify(affine_map);
-  if (simplified_affine_map == affine_map) {
-    return false;
-  }
-  affine_map = simplified_affine_map;
-  return true;
-}
-
-std::optional<IndexingMap> ComposeIndexingMaps(
-    const std::optional<IndexingMap>& producer_map,
-    const std::optional<IndexingMap>& consumer_map) {
-  if (!producer_map.has_value() || !consumer_map.has_value()) {
-    return std::nullopt;
-  }
-  // AffineMap::compose(some_affine_map) actually computes some_affine_map ∘
-  // this.
-  AffineMap composed_map = mlir::simplifyAffineMap(
-      producer_map->affine_map.compose(consumer_map->affine_map));
-
-  // After the composition some of the symbols might become unused, e.g. when a
-  // dimension was added by broadcasting as then reduced. We should remove these
-  // dimensions from the composed affine map and also from the resulting
-  // `domain.symbol_ranges`.
-  //
-  // For example, if there is a reduction(broadcast):
-  //
-  //   param = f32[15] parameter(0)
-  //   bcast = f32[15, 20] broadcast(p0), dimensions={0}
-  //   reduce = f32[15, 20] reduce(bcast, init) dimensions={1}
-  //
-  // then `reduce` has (d0)[s0] -> (d0, s0) with s0 in [0, 20).
-  // and  `bcast` has (d0, d1) -> (d0) indexing map.
-  //
-  // The composition of there two maps yields (d0)[s0] -> (d0),
-  // although `s0` is not used in the mapping. In order to remove such symbols,
-  // we get the indices of unused symbols and remove them from the composed
-  // affine map and the `domain.symbol_ranges`.
-  auto unused_symbols_bit_vector =
-      mlir::getUnusedSymbolsBitVector({composed_map});
-  composed_map = mlir::compressSymbols(composed_map, unused_symbols_bit_vector);
-
-  // The symbols in the composed map, i.e. combined
-  // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
-  // symbols(consumer_map)]. In that order we are adding the symbol ranges while
-  // skipping the symbols that are unused.
-  std::vector<Range> combined_symbol_ranges;
-  combined_symbol_ranges.reserve(producer_map->domain.symbol_ranges.size() +
-                                 consumer_map->domain.symbol_ranges.size());
-  int64_t symbol_id = 0;
-  for (const Range& symbol_range :
-       llvm::concat<const Range>(producer_map->domain.symbol_ranges,
-                                 consumer_map->domain.symbol_ranges)) {
-    if (unused_symbols_bit_vector[symbol_id++]) {
-      continue;
-    }
-    combined_symbol_ranges.push_back(symbol_range);
-  }
-  IndexingMap composed_indexing_map{
-      std::move(composed_map),
-      Domain{consumer_map->domain.dimension_ranges, combined_symbol_ranges}};
-  composed_indexing_map.Simplify();
-  return composed_indexing_map;
-}
-
-IndexingMapSimplifier IndexingMapSimplifier::FromIndexingMap(
-    const IndexingMap& indexing_map) {
-  mlir::MLIRContext* mlir_context = indexing_map.affine_map.getContext();
-  IndexingMapSimplifier simplifier(mlir_context);
-
-  const Domain& domain = indexing_map.domain;
-  for (const auto& [index, range] : llvm::enumerate(domain.dimension_ranges)) {
-    simplifier.SetRange(getAffineDimExpr(index, mlir_context),
-                        range.lower_bound, range.upper_bound);
-  }
-  for (const auto& [index, range] : llvm::enumerate(domain.symbol_ranges)) {
-    simplifier.SetRange(getAffineSymbolExpr(index, mlir_context),
-                        range.lower_bound, range.upper_bound);
-  }
-  return simplifier;
-}
-
-bool IndexingMapSimplifier::IsAlwaysPositiveOrZero(mlir::AffineExpr expr) {
-  return GetRange(expr).lower_bound >= 0;
-}
-
-bool IndexingMapSimplifier::IsAlwaysNegativeOrZero(mlir::AffineExpr expr) {
-  return GetRange(expr).upper_bound <= 0;
-}
-
-void IndexingMapSimplifier::SetRange(AffineExpr expr, int64_t lower,
-                                     int64_t upper) {
-  ranges_[expr] = {lower, upper};
-}
-
-Range IndexingMapSimplifier::GetRange(AffineExpr expr) {
-  auto bound = ranges_.find(expr);
-  if (bound != ranges_.end()) {
-    return bound->second;
-  }
-
+Range RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
   switch (expr.getKind()) {
     case AffineExprKind::Constant: {
-      int64_t value = mlir::cast<mlir::AffineConstantExpr>(expr).getValue();
-      return ranges_[expr] = {value, value};
+      int64_t value = mlir::cast<AffineConstantExpr>(expr).getValue();
+      return Range{value, value};
     }
     case AffineExprKind::DimId: {
-      LOG(FATAL) << "Unknown dim "
-                 << mlir::cast<mlir::AffineDimExpr>(expr).getPosition();
+      return domain_->GetDimensionRange(
+          mlir::cast<AffineDimExpr>(expr).getPosition());
     }
     case AffineExprKind::SymbolId: {
-      LOG(FATAL) << "Unknown symbol"
-                 << mlir::cast<mlir::AffineSymbolExpr>(expr).getPosition();
+      return domain_->GetSymbolRange(
+          mlir::cast<AffineSymbolExpr>(expr).getPosition());
     }
     default:
+      auto bound = expression_ranges_cache_.find(expr);
+      if (bound != expression_ranges_cache_.end()) {
+        return bound->second;
+      }
       auto binary_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
       CHECK(binary_op);
-      auto lhs = GetRange(binary_op.getLHS());
-      auto rhs = GetRange(binary_op.getRHS());
+      auto lhs = ComputeExpressionRange(binary_op.getLHS());
+      auto rhs = ComputeExpressionRange(binary_op.getRHS());
 
-      auto& result = ranges_[expr];
+      auto& result = expression_ranges_cache_[expr];
       switch (expr.getKind()) {
         case AffineExprKind::Add:
           return result = {lhs.lower_bound + rhs.lower_bound,
@@ -298,11 +173,115 @@ Range IndexingMapSimplifier::GetRange(AffineExpr expr) {
   }
 }
 
+std::ostream& operator<<(std::ostream& out, const Domain& domain) {
+  AffineMapPrinter printer;
+  domain.Print(out, printer);
+  return out;
+}
+
+bool operator==(const Domain& lhs, const Domain& rhs) {
+  return lhs.GetDimensionRanges() == rhs.GetDimensionRanges() &&
+         lhs.GetSymbolRanges() == rhs.GetSymbolRanges();
+}
+
+std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
+  std::string s;
+  std::stringstream ss(s);
+  Print(ss, printer);
+  return ss.str();
+}
+
+void IndexingMap::Print(std::ostream& out,
+                        const AffineMapPrinter& printer) const {
+  printer.Print(out, affine_map);
+  out << " with domain\n";
+  domain.Print(out, printer);
+  out << "\n";
+}
+
+std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map) {
+  AffineMapPrinter printer;
+  indexing_map.Print(out, printer);
+  return out;
+}
+
+bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
+  return lhs.affine_map == rhs.affine_map && lhs.domain == rhs.domain;
+}
+
+bool IndexingMap::Simplify() {
+  RangeEvaluator range_evaluator(&domain);
+  AffineMap simplified_affine_map =
+      IndexingMapSimplifier(&range_evaluator, affine_map.getContext())
+          .Simplify(affine_map);
+  if (simplified_affine_map == affine_map) {
+    return false;
+  }
+  affine_map = simplified_affine_map;
+  return true;
+}
+
+std::optional<IndexingMap> ComposeIndexingMaps(
+    const std::optional<IndexingMap>& producer_map,
+    const std::optional<IndexingMap>& consumer_map) {
+  if (!producer_map.has_value() || !consumer_map.has_value()) {
+    return std::nullopt;
+  }
+  // AffineMap::compose(some_affine_map) actually computes some_affine_map ∘
+  // this.
+  AffineMap composed_map = mlir::simplifyAffineMap(
+      producer_map->affine_map.compose(consumer_map->affine_map));
+
+  // After the composition some of the symbols might become unused, e.g. when a
+  // dimension was added by broadcasting as then reduced. We should remove these
+  // dimensions from the composed affine map and also from the resulting
+  // `domain.symbol_ranges_`.
+  //
+  // For example, if there is a reduction(broadcast):
+  //
+  //   param = f32[15] parameter(0)
+  //   bcast = f32[15, 20] broadcast(p0), dimensions={0}
+  //   reduce = f32[15, 20] reduce(bcast, init) dimensions={1}
+  //
+  // then `reduce` has (d0)[s0] -> (d0, s0) with s0 in [0, 20).
+  // and  `bcast` has (d0, d1) -> (d0) indexing map.
+  //
+  // The composition of there two maps yields (d0)[s0] -> (d0),
+  // although `s0` is not used in the mapping. In order to remove such symbols,
+  // we get the indices of unused symbols and remove them from the composed
+  // affine map and the `domain.symbol_ranges_`.
+  auto unused_symbols_bit_vector =
+      mlir::getUnusedSymbolsBitVector({composed_map});
+  composed_map = mlir::compressSymbols(composed_map, unused_symbols_bit_vector);
+
+  // The symbols in the composed map, i.e. combined
+  // producer_map.compose(consumer_map) are packed as [symbols(producer_map) |
+  // symbols(consumer_map)]. In that order we are adding the symbol ranges while
+  // skipping the symbols that are unused.
+  std::vector<Range> combined_symbol_ranges_;
+  combined_symbol_ranges_.reserve(producer_map->domain.GetSymbolCount() +
+                                  consumer_map->domain.GetSymbolCount());
+  int64_t symbol_id = 0;
+  for (const Range& symbol_range :
+       llvm::concat<const Range>(producer_map->domain.GetSymbolRanges(),
+                                 consumer_map->domain.GetSymbolRanges())) {
+    if (unused_symbols_bit_vector[symbol_id++]) {
+      continue;
+    }
+    combined_symbol_ranges_.push_back(symbol_range);
+  }
+  IndexingMap composed_indexing_map{
+      std::move(composed_map), Domain{consumer_map->domain.GetDimensionRanges(),
+                                      combined_symbol_ranges_}};
+  composed_indexing_map.Simplify();
+  return composed_indexing_map;
+}
+
 AffineExpr IndexingMapSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   auto lhs_simplified = SimplifyOnce(mod.getLHS());
 
-  auto lhs = GetRange(lhs_simplified);
-  auto rhs = GetRange(mod.getRHS());
+  auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
+  auto rhs = range_evaluator_->ComputeExpressionRange(mod.getRHS());
 
   // a % b where b is always larger than a?
   if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.upper_bound) {
@@ -320,7 +299,8 @@ AffineExpr IndexingMapSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
       return true;
     }
 
-    auto mul_rhs = GetRange(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
+    auto mul_rhs = range_evaluator_->ComputeExpressionRange(
+        mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
     bool remove = mul_rhs.IsPoint() && (mul_rhs.lower_bound % m) == 0;
     return !remove;  // We keep it if we don't remove it!
   });
@@ -340,8 +320,8 @@ AffineExpr IndexingMapSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
 
 AffineExpr IndexingMapSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
   auto lhs_simplified = SimplifyOnce(div.getLHS());
-  auto lhs = GetRange(lhs_simplified);
-  auto rhs = GetRange(div.getRHS());
+  auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
+  auto rhs = range_evaluator_->ComputeExpressionRange(div.getRHS());
 
   if (0 <= lhs.lower_bound && lhs.upper_bound < rhs.lower_bound) {
     return getAffineConstantExpr(0, mlir_context_);
@@ -397,7 +377,8 @@ std::optional<int64_t> IndexingMapSimplifier::GetConstantRhsMultiplier(
   if (expr.getKind() != AffineExprKind::Mul) {
     return std::nullopt;
   }
-  auto bound = GetRange(mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
+  auto bound = range_evaluator_->ComputeExpressionRange(
+      mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
   if (!bound.IsPoint()) {
     return std::nullopt;
   }
@@ -439,7 +420,7 @@ AffineExpr IndexingMapSimplifier::SimplifyOnce(AffineExpr expr) {
       return RewriteFloorDiv(mlir::cast<AffineBinaryOpExpr>(expr));
     case AffineExprKind::DimId:
     case AffineExprKind::SymbolId: {
-      auto bounds = GetRange(expr);
+      auto bounds = range_evaluator_->ComputeExpressionRange(expr);
       if (bounds.IsPoint()) {
         return getAffineConstantExpr(bounds.lower_bound, mlir_context_);
       }
@@ -470,7 +451,6 @@ AffineMap IndexingMapSimplifier::Simplify(AffineMap affine_map) {
     nothing_changed &= simplified == expr;
     results.push_back(simplified);
   }
-
   if (nothing_changed) {
     return affine_map;
   }

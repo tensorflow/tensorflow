@@ -35,9 +35,10 @@ MATCHER_P2(MatchRange, lower_bound, upper_bound,
 }
 
 MATCHER_P2(MatchDomain, dim_ranges, symbol_ranges, "") {
-  return ExplainMatchResult(dim_ranges, arg.dimension_ranges,
+  return ExplainMatchResult(dim_ranges, arg.GetDimensionRanges(),
                             result_listener) &&
-         ExplainMatchResult(symbol_ranges, arg.symbol_ranges, result_listener);
+         ExplainMatchResult(symbol_ranges, arg.GetSymbolRanges(),
+                            result_listener);
 }
 
 MATCHER_P3(MatchIndexingMap, affine_map_string, dim_ranges, symbol_ranges, "") {

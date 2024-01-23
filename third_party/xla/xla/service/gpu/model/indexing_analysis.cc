@@ -153,7 +153,11 @@ HloInstructionIndexing ComputeOutputToInputConcatenateOpIndexing(
   // be adjusted for a particular operand_id.
   mlir::MutableAffineMap affine_map =
       AffineMap::getMultiDimIdentityMap(operand_0_dims.size(), mlir_context);
-  Domain domain = Domain::FromUpperBounds(operand_0_dims, {});
+  std::vector<Range> dim_ranges;
+  dim_ranges.reserve(operand_0_dims.size());
+  for (int64_t dim : operand_0_dims) {
+    dim_ranges.push_back(Range{0, dim - 1});
+  }
 
   HloInstructionIndexing concat_indexing;
   concat_indexing.indexing_maps.resize(concat->operand_count());
@@ -163,10 +167,9 @@ HloInstructionIndexing ComputeOutputToInputConcatenateOpIndexing(
   for (const auto [operand_id, operand] : llvm::enumerate(concat->operands())) {
     affine_map.setResult(concat_dim, concat_dim_expr - offset);
     int64_t operand_concat_dim = operand->shape().dimensions()[concat_dim];
-    domain.dimension_ranges[concat_dim] =
-        Range{offset, offset + operand_concat_dim - 1};
-    concat_indexing.indexing_maps[operand_id].insert(
-        IndexingMap{affine_map.getAffineMap(), domain});
+    dim_ranges[concat_dim] = Range{offset, offset + operand_concat_dim - 1};
+    concat_indexing.indexing_maps[operand_id].insert(IndexingMap{
+        affine_map.getAffineMap(), Domain(dim_ranges, /*symbol_ranges=*/{})});
     offset += operand_concat_dim;
   }
   return concat_indexing;

@@ -235,7 +235,7 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
         if (symbol_expr && symbol_expr.getPosition() < num_known_symbols) {
           CHECK(!size_expr);
           const Range& symbol_range =
-              indexing_map.domain.symbol_ranges[symbol_expr.getPosition()];
+              indexing_map.domain.GetSymbolRange(symbol_expr.getPosition());
           size_expr = getAffineConstantExpr(
               symbol_range.upper_bound - symbol_range.lower_bound + 1,
               mlir_context);
@@ -257,16 +257,14 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
   offset_expressions.reserve(num_results);
   std::vector<AffineExpr> stride_expressions;
   stride_expressions.reserve(num_results);
-  IndexingMapSimplifier simplifier =
-      IndexingMapSimplifier::FromIndexingMap(indexing_map);
-
+  RangeEvaluator range_evaluator(&indexing_map.domain);
   for (auto [offset_expr, stride_expr, size_expr] :
        llvm::zip(unnormalized_offset_expressions, signed_stride_expressions,
                  size_expressions)) {
-    if (simplifier.IsAlwaysPositiveOrZero(stride_expr)) {
+    if (range_evaluator.IsAlwaysPositiveOrZero(stride_expr)) {
       offset_expressions.push_back(offset_expr);
       stride_expressions.push_back(stride_expr);
-    } else if (simplifier.IsAlwaysNegativeOrZero(stride_expr)) {
+    } else if (range_evaluator.IsAlwaysNegativeOrZero(stride_expr)) {
       offset_expressions.push_back(offset_expr + stride_expr * size_expr);
       stride_expressions.push_back(-stride_expr);
     } else {
@@ -295,20 +293,20 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
 /*static*/ std::optional<SymbolicTile> SymbolicTile::FromIndexingMap(
     const IndexingMap& indexing_map) {
   MLIRContext* mlir_context = indexing_map.affine_map.getContext();
-  int64_t num_input_dims = indexing_map.domain.dimension_ranges.size();
+  int64_t num_input_dims = indexing_map.domain.GetDimensionCount();
   std::vector<AffineExpr> exprs;
   exprs.reserve(num_input_dims);
 
-  Domain tile_domain;
-  tile_domain.dimension_ranges.reserve(num_input_dims);
-  tile_domain.symbol_ranges.reserve(kNumTileParametersPerInputDim *
-                                        num_input_dims +
-                                    indexing_map.affine_map.getNumSymbols());
+  std::vector<Range> tile_dimension_ranges;
+  tile_dimension_ranges.reserve(num_input_dims);
+  std::vector<Range> tile_symbol_ranges;
+  tile_symbol_ranges.reserve(kNumTileParametersPerInputDim * num_input_dims +
+                             indexing_map.affine_map.getNumSymbols());
 
   // The symbols declared in 'indexing_map.affine_map' will precede those
   // defined in the producer map we construct here.
-  absl::c_copy(indexing_map.domain.symbol_ranges,
-               std::back_inserter(tile_domain.symbol_ranges));
+  absl::c_copy(indexing_map.domain.GetSymbolRanges(),
+               std::back_inserter(tile_symbol_ranges));
 
   // For each input dims we add kNumTileParametersPerInputDim = 3 symbols, as
   // well as a single dim. Symbols are ordered in (offset, size, stride)
@@ -322,12 +320,12 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
 
     exprs.push_back(offset + stride * index);
 
-    Range range = indexing_map.domain.dimension_ranges[dim];
-    tile_domain.dimension_ranges.push_back(range);
+    Range range = indexing_map.domain.GetDimensionRange(dim);
+    tile_dimension_ranges.push_back(range);
 
     for (int64_t symbol_index = 0; symbol_index < kNumTileParametersPerInputDim;
          ++symbol_index) {
-      tile_domain.symbol_ranges.push_back(range);
+      tile_symbol_ranges.push_back(range);
     }
   }
 
@@ -337,7 +335,7 @@ std::optional<RawSymbolicTile> RawSymbolicTileFromIndexingMap(
 
   IndexingMap composed_indexing_map{
       .affine_map = indexing_map.affine_map.compose(producer_map),
-      .domain = tile_domain};
+      .domain = Domain(tile_dimension_ranges, tile_symbol_ranges)};
   composed_indexing_map.Simplify();
 
   std::optional<RawSymbolicTile> maybe_raw_symbolic_tile =

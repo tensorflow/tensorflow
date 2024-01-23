@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -53,26 +54,65 @@ H AbslHashValue(H h, const Range& range) {
 }
 
 // Domain contains ranges for symbols and dimensions of an affine map.
-struct Domain {
+class Domain {
+ public:
+  Domain() = default;
+
+  Domain(absl::Span<const Range> dim_ranges,
+         absl::Span<const Range> symbol_ranges)
+      : dim_ranges_(dim_ranges.begin(), dim_ranges.end()),
+        symbol_ranges_(symbol_ranges.begin(), symbol_ranges.end()) {}
+
+  static Domain FromUpperBounds(absl::Span<const int64_t> dim_upper_bounds,
+                                absl::Span<const int64_t> symbol_upper_bounds);
+
+  // Setters/getters for dimension ranges.
+  Range GetDimensionRange(int64_t id) const { return dim_ranges_[id]; }
+  absl::Span<const Range> GetDimensionRanges() const { return dim_ranges_; }
+  int64_t GetDimensionCount() const { return dim_ranges_.size(); }
+
+  // Setters/getters for symbol ranges.
+  Range GetSymbolRange(int64_t id) const { return symbol_ranges_[id]; }
+  absl::Span<const Range> GetSymbolRanges() const { return symbol_ranges_; }
+  int64_t GetSymbolCount() const { return symbol_ranges_.size(); }
+
   std::string ToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
 
   void Print(std::ostream& out, const AffineMapPrinter& printer) const;
 
-  static Domain FromUpperBounds(
-      absl::Span<const int64_t> dimension_upper_bounds,
-      absl::Span<const int64_t> symbol_upper_bounds);
-
-  std::vector<Range> dimension_ranges;
-  std::vector<Range> symbol_ranges;
+ private:
+  std::vector<Range> dim_ranges_;
+  std::vector<Range> symbol_ranges_;
 };
+
+// Evaluates lower and upper bounds for expressions given the domain.
+// Not thread safe.
+class RangeEvaluator {
+ public:
+  explicit RangeEvaluator(const Domain* domain) : domain_(domain) {}
+
+  // Checks whether an `AffineExpr` always describes a non-negative value.
+  bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
+
+  // Checks whether an `AffineExpr` always describes a non-positive value.
+  bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr);
+
+  // Computes the range of expression using its subexpression ranges.
+  Range ComputeExpressionRange(mlir::AffineExpr expr);
+
+ private:
+  const Domain* const domain_;
+  llvm::DenseMap<mlir::AffineExpr, Range> expression_ranges_cache_;
+};
+
 std::ostream& operator<<(std::ostream& out, const Domain& domain);
 bool operator==(const Domain& lhs, const Domain& rhs);
 
 template <typename H>
 H AbslHashValue(H h, const Domain& domain) {
-  return H::combine(std::move(h), domain.dimension_ranges,
-                    domain.symbol_ranges);
+  return H::combine(std::move(h), domain.GetDimensionRanges(),
+                    domain.GetSymbolRanges());
 }
 
 // Contains an affine map with N dimension expressions and M symbols:
@@ -132,15 +172,9 @@ H AbslHashValue(H h, const IndexingMap& indexing_map) {
 
 class IndexingMapSimplifier {
  public:
-  explicit IndexingMapSimplifier(mlir::MLIRContext* mlir_context)
-      : mlir_context_(mlir_context) {}
-
-  // Derives an indexing map simplifier for the parameter indexing map.
-  static IndexingMapSimplifier FromIndexingMap(const IndexingMap& indexing_map);
-
-  // Sets the [lower, upper] range for the given expression. It can be used to
-  // set bounds for dimensions and symbols.
-  void SetRange(mlir::AffineExpr expr, int64_t lower, int64_t upper);
+  IndexingMapSimplifier(RangeEvaluator* range_evaluator,
+                        mlir::MLIRContext* mlir_context)
+      : range_evaluator_(range_evaluator), mlir_context_(mlir_context) {}
 
   // Simplifies the map as much as possible.
   mlir::AffineMap Simplify(mlir::AffineMap affine_map);
@@ -148,15 +182,7 @@ class IndexingMapSimplifier {
   // Simplifies the expression as much as possible.
   mlir::AffineExpr Simplify(mlir::AffineExpr expr);
 
-  // Checks whether an `AffineExpr` always describes a non-negative value.
-  bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
-
-  // Checks whether an `AffineExpr` always describes a non-positive value.
-  bool IsAlwaysNegativeOrZero(mlir::AffineExpr expr);
-
  private:
-  Range GetRange(mlir::AffineExpr expr);
-
   std::optional<int64_t> GetConstantRhsMultiplier(mlir::AffineExpr expr);
 
   // Simplifier for mod.
@@ -176,8 +202,8 @@ class IndexingMapSimplifier {
   // result further.
   mlir::AffineExpr SimplifyOnce(mlir::AffineExpr expr);
 
+  RangeEvaluator* range_evaluator_;
   mlir::MLIRContext* mlir_context_;
-  llvm::DenseMap<mlir::AffineExpr, Range> ranges_{};
 };
 
 
