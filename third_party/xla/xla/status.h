@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_STATUS_H_
 #define XLA_STATUS_H_
 
-#include "tsl/platform/status.h"  // IWYU pragma: export
+#include "absl/log/check.h"  // IWYU pragma: export
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 
 namespace xla {
 // NOLINTBEGIN(misc-unused-using-decls)
-using tsl::OkStatus;
-using tsl::Status;  // TENSORFLOW_STATUS_OK
+using absl::OkStatus;
+using absl::Status;
+using absl::StatusOr;
 // NOLINTEND(misc-unused-using-decls)
 }  // namespace xla
 
