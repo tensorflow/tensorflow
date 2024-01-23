@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -28,11 +29,14 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -192,45 +196,43 @@ std::string FindCudaExecutable(const std::string& binary_name,
   }
 
   auto env = tsl::Env::Default();
-  std::string binary_path =
-      tsl::io::JoinPath(preferred_cuda_dir, "bin", binary_filename);
+  std::vector<std::string> candidates{};
 
-  // Search in the preferred cuda directory
-  VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
-  if (env->FileExists(binary_path).ok() &&
-      GetToolVersionString(binary_path).ok()) {
-    VLOG(2) << "Using " << binary_filename << " at " << binary_path;
-    seen_binary_paths->emplace(std::move(cache_key), binary_path);
-    return binary_path;
+  // #1 - Check the preferred CUDA directory
+  candidates.emplace_back(
+      tsl::io::JoinPath(preferred_cuda_dir, "bin", binary_filename));
+
+  std::string_view path_env = std::getenv("PATH");
+
+#if defined(PLATFORM_WINDOWS)
+  constexpr char kSearchPathSeparator = ';';
+#else
+  constexpr char kSearchPathSeparator = ':';
+#endif
+
+  // #2 - Check the PATH environment variable
+  for (std::string_view path : absl::StrSplit(path_env, kSearchPathSeparator)) {
+    candidates.emplace_back(tsl::io::JoinPath(path, binary_filename));
   }
 
-  // Try searching in PATH if the preferred cuda directory didn't work.
-  if (GetToolVersionString(binary_filename).ok()) {
-    VLOG(2) << "Using " << binary_filename;
-    seen_binary_paths->emplace(std::move(cache_key), binary_filename);
-    return binary_filename;
+  // #2 - Check generic CUDA locations
+  for (std::string_view path : tsl::CandidateCudaRoots()) {
+    candidates.emplace_back(tsl::io::JoinPath(path, "bin", binary_filename));
   }
 
-  // Search in cuda root candidates.
-  for (const std::string& cuda_root : tsl::CandidateCudaRoots()) {
-    binary_path = tsl::io::JoinPath(cuda_root, "bin", binary_filename);
-    VLOG(2) << "Looking for " << binary_filename << " at " << binary_path;
-    if (env->FileExists(binary_path).ok() &&
-        GetToolVersionString(binary_path).ok()) {
-      VLOG(2) << "Using " << binary_filename << " at " << binary_path;
-      seen_binary_paths->emplace(std::move(cache_key), binary_path);
-      return binary_path;
+  for (const auto& candidate : candidates) {
+    VLOG(2) << "Looking for " << candidate;
+    if (env->FileExists(candidate).ok() &&
+        GetToolVersionString(candidate).ok()) {
+      VLOG(2) << "Using " << candidate;
+      seen_binary_paths->emplace(std::move(cache_key), candidate);
+      return candidate;
     }
   }
 
-  // Give up and just rely on subprocess invocation to find the correct
-  // binary. This won't work, in all probability, given we already tried that
-  // above, but it's the best we can do.
-  VLOG(2) << "Unable to find " << binary_name;
-  binary_path = binary_filename;
-  VLOG(2) << "Using " << binary_filename << " at " << binary_path;
-  seen_binary_paths->emplace(std::move(cache_key), binary_path);
-  return binary_path;
+  LOG(FATAL) << "Unable to find " << binary_name
+             << " in any of the following locations: "
+             << absl::StrJoin(candidates, ", ");
 }
 
 static void LogPtxasTooOld(const std::string& ptxas_path, int cc_major,
