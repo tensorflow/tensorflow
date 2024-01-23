@@ -125,7 +125,7 @@ class AutoMixedPrecisionTest : public GrapplerTest {
         virtual_cluster_.reset(
             new VirtualCluster({{"/GPU:1", device_properties}}));
       } else {
-	// try running on CPU
+	// When no GPUs are available, try running on CPU.
         DeviceProperties device_properties;
         device_properties.set_type("CPU");
         virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 0));

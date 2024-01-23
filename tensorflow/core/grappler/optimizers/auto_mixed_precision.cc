@@ -2314,7 +2314,7 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool run_fp16_on_cpu = false;
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
     // No GPUs to run AutoMixedPrecision in FP16.
-    // Check if CPU supports
+    // Check if CPU supports FP16.
     if (!IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF)) {
       LOG(WARNING) << "No support for " << name() << " graph optimizer on CPU/GPU";
       return OkStatus();
