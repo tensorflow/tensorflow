@@ -77,20 +77,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> BuildCustomKernelThunkForFusion(
       instr, std::move(custom_kernel), std::move(kernel_arguments.args()));
 }
 
-bool IsSliceInLeadingDimOnly(const HloInstruction& instr) {
-  auto slice = DynCast<HloSliceInstruction>(&instr);
-  if (!slice) return false;
-  const Shape& shape = slice->operand(0)->shape();
-  int64_t major_dim = shape.layout().minor_to_major().back();
-  for (size_t i = 0; i < shape.rank(); ++i) {
-    if (i == major_dim) continue;
-    if (slice->slice_starts(i) != 0 ||
-        slice->slice_limits(i) != shape.dimensions(i))
-      return false;
-  }
-  return true;
-}
-
 absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
     const BufferAssignment& buffer_assignment, const HloFusionAdaptor& fusion,
     const HloInstruction* bufferized_instr, const HloInstruction& start) {
@@ -109,26 +95,32 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   TF_RET_CHECK(IsSliceWithUnitStrides(&slice_instr))
       << "AddressComputationFusion only handles slices with unit strides "
          "currently";
-  TF_RET_CHECK(IsSliceInLeadingDimOnly(slice_instr))
-      << "AddressComputationFusion only handles slices in leading dim "
-         "currently";
+  TF_RET_CHECK(IsContiguousSlice(slice_instr))
+      << "AddressComputationFusion only handles contiguous slices currently";
 
-  // Given this shape f16[10,10,10]{2,1,0}, sliced into f16[2,10,10]{2,1,0}
-  // We say that the sliced shape contains 2 slice units of f16[10,10]
-  const Shape& shape = slice_instr.shape();
-  int64_t major_dim = shape.layout().minor_to_major().back();
-  // The sliced leading dim is the number of slice units.
-  int64_t slice_unit_count = shape.dimensions(major_dim);
-  int64_t num_elem = ShapeUtil::ElementsIn(shape);
-  // The number of elements in a slice unit is the total number of elements
-  // divided by the number of slice units.
-  int64_t slice_unit_num_elem = num_elem / slice_unit_count;
-  int64_t slice_unit_byte_size =
-      slice_unit_num_elem *
-      ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
+  // Given this slice
+  // f16[1,4,8]{2,1,0} slice(f16[2,8,8]{2,1,0}),
+  //                         slice={[1:2], [4:8], [0:8]}
+  // The size of the slice should be:
+  //    4 * 8 * sizeof(f16) = sizeof(f16) * product of dst_shape's dimensions
+  //
+  // The offset of the slice should be:
+  //    slice_starts(0) * 8 * 8 * sizeof(f16) +
+  //    slice_starts(1) * 8 * sizeof(f16)
+  const Shape& src_shape = slice_instr.operand(0)->shape();
+  const Shape& dst_shape = slice_instr.shape();
+  int64_t size = ShapeUtil::ByteSizeOfPrimitiveType(dst_shape.element_type());
+  int64_t offset = 0;
+  int64_t cur_size =
+      ShapeUtil::ByteSizeOfPrimitiveType(src_shape.element_type());
+  for (auto dim : src_shape.layout().minor_to_major()) {
+    // IsContiguousSlice ensures that more major dimensions than the first
+    // sliced dimension are all 1.
+    size *= dst_shape.dimensions(dim);
+    offset += slice_instr.slice_starts(dim) * cur_size;
+    cur_size *= src_shape.dimensions(dim);
+  }
 
-  int64_t offset = slice_instr.slice_starts(major_dim) * slice_unit_byte_size;
-  int64_t size = slice_unit_count * slice_unit_byte_size;
   return BufferAllocation::Slice(orig_slice.allocation(), offset, size);
 }
 
