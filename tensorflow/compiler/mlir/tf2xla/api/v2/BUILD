@@ -82,6 +82,7 @@ tf_cc_test(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:statusor",
