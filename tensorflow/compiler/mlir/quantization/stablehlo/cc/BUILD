@@ -275,7 +275,6 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:errors",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
     ],
