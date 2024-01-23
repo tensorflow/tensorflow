@@ -211,9 +211,14 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 
   if (input_output_info_.has_4_bit_input ||
       input_output_info_.has_4_bit_output) {
-    // Only loop fusions currently can handle int4 inputs/outputs, due to the
-    // special handling with IrArray needed to deal with two values occupying a
-    // single byte.
+    // Only loop and input slice fusions currently can handle int4
+    // inputs/outputs, due to the special handling with IrArray needed to deal
+    // with two values occupying a single byte.
+    if (fusion_roots_.size() > 1 &&
+        IsInputFusibleNonStridedSlices(fusion_roots_) &&
+        AllSliceInputsAreCompatible(fusion_roots_)) {
+      return EmitterFusionKind::kInputSlices;
+    }
     return EmitterFusionKind::kLoop;
   }
 

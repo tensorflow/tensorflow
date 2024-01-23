@@ -174,15 +174,13 @@ absl::StatusOr<Shape> GetConsistentInputShapeForRootSlices(
   return first_slice_operand_shape;
 }
 
-constexpr int kUnrollFactor = 1;
-
 }  // namespace
 
 LaunchDimensions InputSlicesFusion::launch_dimensions() const {
   auto* root = analysis_.fusion_roots().front();
   const auto& shape = root->operands()[0]->shape();
   return CalculateLaunchDimensions(shape, analysis_.device_info(),
-                                   {kUnrollFactor});
+                                   {unroll_factor_});
 }
 
 std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
@@ -194,8 +192,8 @@ std::optional<IndexingMap> InputSlicesFusion::ComputeThreadIdToOutputIndexing(
   // still use the requested output's shape for clarity.
   const auto& shape = analysis_.fusion_roots()[output_id]->shape();
   IndexingMap result{GetDefaultThreadIdToOutputIndexingMap(
-                         launch_dims, kUnrollFactor, shape, ctx),
-                     GetThreadIdDomain(launch_dims, kUnrollFactor)};
+                         launch_dims, unroll_factor_, shape, ctx),
+                     GetThreadIdDomain(launch_dims, unroll_factor_)};
   result.Simplify();
   return result;
 }
@@ -207,6 +205,8 @@ absl::Status InputSlicesFusion::EmitKernel(
   TF_ASSIGN_OR_RETURN(Shape element_shape,
                       GetConsistentInputShapeForRootSlices(
                           fusion.fused_instructions_computation()));
+  LaunchDimensionsConfig launch_config;
+  launch_config.unroll_factor = unroll_factor_;
   GpuElementalIrEmitter elemental_emitter(ir_emitter_context, builder);
   return ParallelLoopEmitter(
              [&](const llvm_ir::IrArray::Index index) -> absl::Status {
@@ -214,7 +214,7 @@ absl::Status InputSlicesFusion::EmitKernel(
                    elemental_emitter, fusion.fused_instructions_computation(),
                    inputs, outputs, index, builder);
              },
-             element_shape, launch_dims, builder)
+             element_shape, launch_dims, builder, launch_config)
       .EmitLoop(
           fusion.name(),
           GetIndexTypeForKernel(&fusion, launch_dims.launch_bound(), builder));

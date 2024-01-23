@@ -63,15 +63,16 @@ namespace gpu {
 // fused operations have the same shape or not.
 //
 // case 1: if Mul and Add's output shape and type are the same, then we fuse
-// them into the below pattern: i0 i1   i2 i3
+// them into the below pattern:
+// i0 i1   i2 i3
 //  | |     | |
 //  v v     v v
 //  Mul     Add
 //   |       |
 //   v       v
 //  (ROOT) tuple
-// the fused kernel will be kLoop type, i.e, GPU code is emitted through
-// IrEmitterUnnested::EmitLoopFusion
+// the fused kernel will be kLoop type, and GPU code is emitted through
+// the LoopFusion class.
 //
 // case 2: if Mul and Add's output shape are diffent, then we fuse them into
 // the below pattern that adds extra indexing:
@@ -96,7 +97,7 @@ namespace gpu {
 //  (ROOT) tuple
 //
 // the fused kernel will be kInput type, and, the GPU code is emitted through
-// IrEmitterUnnested::EmitInputFusibleNonStridedSlices
+// the InputSlicesFusion class.
 //
 // In theory, the pattern in case 1 could also be fused into the case2 target
 // graph, but we prefer to fuse into kLoop type, because the codegen for it does
