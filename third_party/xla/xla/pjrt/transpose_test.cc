@@ -127,8 +127,10 @@ TEST(TransposeTest, InvalidTilings) {
   options.elem_size_in_bytes = sizeof(float);
   options.dims = dims;
   options.permutation = perm;
-  options.input_layout = TransposePlan::Tiling{{8, 128}};
-  options.output_tiling = TransposePlan::Tiling{{4}};
+  std::vector<int64_t> input_tiling = {8, 128};
+  std::vector<int64_t> output_tiling = {4};
+  options.input_layout = TransposePlan::Tiling{input_tiling};
+  options.output_tiling = TransposePlan::Tiling{output_tiling};
   auto plan = TransposePlan::Create(options);
   EXPECT_EQ(plan.status().code(), tsl::error::UNIMPLEMENTED);
   EXPECT_THAT(
@@ -422,7 +424,8 @@ TEST(TransposeTest, NegativeStrides1D) {
   options.elem_size_in_bytes = sizeof(int32_t);
   options.dims = dims;
   options.permutation = permutation;
-  options.input_layout = TransposePlan::Striding{{-int64_t{sizeof(int32_t)}}};
+  std::vector<int64_t> strides = {-int64_t{sizeof(int32_t)}};
+  options.input_layout = TransposePlan::Striding{strides};
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   plan->Execute(input.data() + (n - 1), output.data());
   EXPECT_EQ(expected, output);
