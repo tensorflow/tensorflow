@@ -317,22 +317,32 @@ StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
+  return LookupDevice(PjRtGlobalDeviceId(device_id));
+}
+
+StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(
+    PjRtGlobalDeviceId global_device_id) const {
   PJRT_Client_LookupDevice_Args args;
   args.struct_size = PJRT_Client_LookupDevice_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.client = c_client_.get();
-  args.id = device_id;
+  args.id = global_device_id.value();
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Client_LookupDevice(&args), c_api_);
   return GetCppDevice(args.device);
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
     int local_hardware_id) const {
+  return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
+}
+
+StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
+    PjRtLocalDeviceId local_device_id) const {
   PJRT_Client_LookupAddressableDevice_Args args;
   args.struct_size = PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.client = c_client_.get();
-  args.local_hardware_id = local_hardware_id;
+  args.local_hardware_id = local_device_id.value();
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api_->PJRT_Client_LookupAddressableDevice(&args), c_api_);
   return GetCppDevice(args.addressable_device);
@@ -755,13 +765,17 @@ bool PjRtCApiDevice::IsAddressable() const {
 }
 
 int PjRtCApiDevice::local_hardware_id() const {
+  return local_hardware_id_typed().value();
+}
+
+PjRtLocalHardwareId PjRtCApiDevice::local_hardware_id_typed() const {
   PJRT_Device_LocalHardwareId_Args args;
   args.struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.device = device_;
   const PJRT_Api* api = client_->pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_LocalHardwareId(&args), api);
-  return args.local_hardware_id;
+  return PjRtLocalHardwareId(args.local_hardware_id);
 }
 
 StatusOr<PjRtMemorySpace*> PjRtCApiDevice::default_memory_space() const {

@@ -127,6 +127,7 @@ class PjRtCApiDevice : public PjRtDevice {
   bool IsAddressable() const override;
 
   int local_hardware_id() const override;
+  PjRtLocalHardwareId local_hardware_id_typed() const override;
 
   Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented("PJRT C API does not support TransferToInfeed");
@@ -247,9 +248,13 @@ class PjRtCApiClient : public PjRtClient {
   absl::Span<PjRtDevice* const> addressable_devices() const override;
 
   StatusOr<PjRtDevice*> LookupDevice(int device_id) const override;
+  StatusOr<PjRtDevice*> LookupDevice(
+      PjRtGlobalDeviceId global_device_id) const override;
 
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override;
+  StatusOr<PjRtDevice*> LookupAddressableDevice(
+      PjRtLocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
