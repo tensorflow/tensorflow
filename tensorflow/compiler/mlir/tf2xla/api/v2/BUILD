@@ -76,6 +76,8 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/monitoring:cell_reader",

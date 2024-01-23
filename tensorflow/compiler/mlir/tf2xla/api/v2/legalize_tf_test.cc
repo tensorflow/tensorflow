@@ -29,9 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/client_library.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/monitoring/test_utils.h"
 #include "tsl/platform/statusor.h"
 
@@ -184,14 +188,39 @@ TEST_P(BatchMatMulTest, BatchMatMul) {
 
 INSTANTIATE_TEST_SUITE_P(
     BatchMatMulTest, BatchMatMulTest,
-    testing::ValuesIn<MatMulTestCase>({
+    ::testing::ValuesIn<MatMulTestCase>({
         {"BatchMatMul"},
         {"BatchMatMulV2"},
         {"BatchMatMulV3"},
     }),
-    [](const testing::TestParamInfo<BatchMatMulTest::ParamType>& info) {
+    [](const ::testing::TestParamInfo<BatchMatMulTest::ParamType>& info) {
       return info.param.mat_mul_method;
     });
+
+TEST(LegalizeTFTest, DumpsProducedHLO) {
+  Env* env = Env::Default();
+  std::string test_dir = testing::TmpDir();
+  setenv("TF_DUMP_GRAPH_PREFIX", test_dir.c_str(), /*overwrite=*/1);
+  setenv("TF_DUMP_GRAPH_NAME_FILTER", "*", 1);
+  DEBUG_DATA_DUMPER()->LoadEnvvars();
+
+  std::vector<std::string> files;
+  TF_ASSERT_OK(env->GetChildren(test_dir, &files));
+  int original_files_size = files.size();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      XlaCompiler::CompilationResult result,
+      CompileMlirModule(
+          kMlirModuleStr,
+          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED));
+
+  // Due to the shared test of this infrastructure, we just need to make sure
+  // that the dumped file size is greater than what was originally inside
+  // the test directory.
+  TF_ASSERT_OK(env->GetChildren(test_dir, &files));
+  EXPECT_THAT(files.size(), ::testing::Gt(original_files_size));
+  setenv("TF_DUMP_GRAPH_PREFIX", test_dir.c_str(), /*overwrite=*/0);
+}
 
 TEST(LegalizeTFTest, RecordsStreamzForFailedLegalizeWithMlirBridge) {
   CellReader<int64_t> compilation_status(kCompilationStatusStreamzName);
