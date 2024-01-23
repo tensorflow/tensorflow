@@ -61,6 +61,20 @@ XLA_TEST_F(HloTestBase, Slice) {
   EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
+XLA_TEST_F(HloTestBase, Add) {
+  const std::string hlo_text = R"(
+  HloModule HorizontalLoopFusion
+
+  ENTRY main {
+    x = s4[5,5] parameter(0)
+    x8 = s8[5,5] convert(x)
+    y8 = add(x8, x8)
+    ROOT y = s4[5,5] convert(y8)
+  }
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
+}
+
 XLA_TEST_F(HloTestBase, NonMajorToMinorLayout) {
   // Tests transposing a matrix with a non-major-to-minor layout.
   const std::string hlo_text = R"(

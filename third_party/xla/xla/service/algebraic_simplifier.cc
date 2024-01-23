@@ -1868,12 +1868,14 @@ AlgebraicSimplifierVisitor::TryRemoveUpcastAndDowncastSurroundingBinaryOp(
   const PrimitiveType bin_op_type = bin_op_instr->shape().element_type();
   if (!primitive_util::IsIntegralType(final_type) ||
       !primitive_util::IsIntegralType(bin_op_type) ||
+      primitive_util::Is4BitType(final_type) ||
+      primitive_util::Is4BitType(bin_op_type) ||
       (primitive_util::IsSignedIntegralType(final_type) !=
        primitive_util::IsSignedIntegralType(bin_op_type)) ||
       (primitive_util::IsUnsignedIntegralType(final_type) !=
        primitive_util::IsUnsignedIntegralType(bin_op_type))) {
     // So far, only the safety of this transformation with same signedness
-    // integer types has been verified.
+    // non-4-bit integer types has been verified.
     // TODO(b/277095299): Add support for floating point types.
     return OkStatus();
   }
