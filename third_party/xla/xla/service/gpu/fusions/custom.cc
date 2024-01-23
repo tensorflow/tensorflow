@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -110,11 +111,9 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   //    slice_starts(0) * 8 * 8 * sizeof(f16) +
   //    slice_starts(1) * 8 * sizeof(f16)
   int64_t offset = 0;
-  int64_t cur_size =
-      ShapeUtil::ByteSizeOfPrimitiveType(src_shape.element_type());
-  for (auto dim : src_shape.layout().minor_to_major()) {
-    offset += slice_instr.slice_starts(dim) * cur_size;
-    cur_size *= src_shape.dimensions(dim);
+  for (auto [start, stride] : llvm::zip(slice_instr.slice_starts(),
+                                        *ShapeUtil::ByteStrides(src_shape))) {
+    offset += start * stride;
   }
 
   return BufferAllocation::Slice(orig_slice.allocation(), offset, size);
