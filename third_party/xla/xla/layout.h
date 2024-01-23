@@ -221,11 +221,6 @@ class Layout {
     n_dim_level_types_ = 0;
     return *this;
   }
-  //  absl::Span<const DimLevelType> dim_level_types() const {
-  //    return dim_level_types_;
-  //  }
-  //  DimLevelTypeVector* mutable_dim_level_types() { return &dim_level_types_;
-  //  }
 
   // Methods for accessing the dim_unique array.
   int dim_unique_size() const { return n_dim_unique_; }
@@ -242,7 +237,6 @@ class Layout {
     n_dim_unique_++;
     return *this;
   }
-  //  absl::Span<const bool> dim_unique() const { return dim_unique_; }
 
   // Methods for accessing the dim_ordered array.
   int dim_ordered_size() const { return n_dim_ordered_; }
@@ -261,7 +255,6 @@ class Layout {
     n_dim_ordered_++;
     return *this;
   }
-  //  absl::Span<const bool> dim_ordered() const { return dim_ordered_; }
 
   // Methods for accessing the minor-to-major array.
   int minor_to_major_size() const { return minor_to_major_.size(); }
