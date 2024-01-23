@@ -65,6 +65,7 @@ string SafeDeviceDebugString(Device* device) {
     return device->DebugString();
   }
 }
+
 }  // namespace
 
 TensorHandle::PackedTensorHandleData::PackedTensorHandleData(
@@ -850,7 +851,14 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
     }
     auto& mirror = remote_mirror->second;
     if (mirror.context_view_id() == context_view_id) {
-      return mirror.SetShape(shape);
+      auto status = mirror.SetShape(shape);
+      if (!status.ok()) {
+        // TODO(b/307761242) Return an error or assert that this condition will
+        // never occur.
+        LOG(ERROR) << "SetShape returned " << status.message()
+                   << ". This should never occur.";
+      }
+      return status;
     } else if (mirror.context_view_id() < context_view_id) {
       return errors::Internal(
           absl::Substitute("Unexpected context_view_id ($0) which should not "
@@ -879,7 +887,14 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
   // consuming op/function device, and we (for now) have to aggressively
   // invalidate those copies to avoid any false positives during cluster update.
   if (op_device.empty()) {
-    return data.SetShape(shape);
+    auto status = data.SetShape(shape);
+    if (!status.ok()) {
+      // TODO(anshumang) Return an error or assert that this condition will
+      // never occur.
+      LOG(ERROR) << "SetShape returned " << status.message()
+                 << ". This should never occur.";
+    }
+    return status;
   } else {
     if (!unknown_device_) {
       return errors::Internal("Cannot reset known devices.");
@@ -897,7 +912,14 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
           "Unable to find remote task corresponding to device ",
           device->name());
     }
-    return data.SetShapeAndRemoteTask(shape, remote_task);
+    auto status = data.SetShapeAndRemoteTask(shape, remote_task);
+    if (!status.ok()) {
+      // TODO(anshumang) Return an error or assert that this condition will
+      // never occur.
+      LOG(ERROR) << "SetShape returned " << status
+                 << ". This should never occur.";
+    }
+    return status;
   }
 }
 
