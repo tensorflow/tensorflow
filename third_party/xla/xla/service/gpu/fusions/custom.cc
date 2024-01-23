@@ -121,7 +121,7 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
 
 }  // namespace
 
-absl::StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
+absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) const {
   TF_ASSIGN_OR_RETURN(auto gpu_config,
@@ -171,7 +171,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusionEmitter::Emit(
   return result;
 }
 
-absl::StatusOr<FusionEmissionResult> AddressComputationFusionEmitter::Emit(
+absl::StatusOr<FusionEmissionResult> AddressComputationFusion::Emit(
     IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
     const HloFusionInstruction& fusion) const {
   const BufferAssignment& buffer_assignment =
