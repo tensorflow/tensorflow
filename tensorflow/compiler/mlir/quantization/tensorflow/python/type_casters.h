@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11/detail/common.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -141,6 +142,16 @@ template <>
 struct type_caster<tensorflow::calibrator::CalibrationStatistics>
     : public internal::SerializedProtobufCaster<
           tensorflow::calibrator::CalibrationStatistics> {};
+
+template <>
+struct type_caster<stablehlo::quantization::QuantizationConfig>
+    : public internal::SerializedProtobufCaster<
+          stablehlo::quantization::QuantizationConfig> {};
+
+template <>
+struct type_caster<tensorflow::quantization::RepresentativeDatasetFile>
+    : public internal::SerializedProtobufCaster<
+          tensorflow::quantization::RepresentativeDatasetFile> {};
 
 }  // namespace pybind11::detail
 

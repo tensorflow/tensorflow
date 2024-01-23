@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -41,7 +41,7 @@ namespace m = ::xla::match;
 // Wrapper around SoftmaxRewriterTriton(gpu_version).Run(module) that finds
 // and fuses as many diamond chains as possible without invoking any kind of
 // cost analysis.
-StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
+absl::StatusOr<bool> SoftmaxRewriterTritonMatchAndRewrite(
     se::GpuComputeCapability gpu_version, HloModule* module) {
   CHECK_NE(module, nullptr);
   SoftmaxRewriterTriton softmax_rewriter_triton(gpu_version);

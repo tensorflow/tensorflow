@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/runtime_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
@@ -68,6 +69,7 @@ int main(int argc, char **argv) {
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
   tensorflow::RegisterGraphOptimizationPasses();
   tensorflow::RegisterMlProgramPasses();
+  mlir::TFTPU::registerRuntimeLoweringPasses();
   tensorflow::tfrt_compiler::RegisterTPULowerClusterToRuntimeOpsPassPipeline();
   tensorflow::tfrt_compiler::
       RegisterNonTPULowerClusterToRuntimeOpsPassPipeline();

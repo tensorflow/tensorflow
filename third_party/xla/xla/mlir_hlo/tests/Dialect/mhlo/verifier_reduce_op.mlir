@@ -94,6 +94,35 @@ func.func @reduce_mix_rank_and_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<*x
   func.return %0#0, %0#1 : tensor<4xf32>, tensor<*xf32>
 }
 
+// -----
+
+// CHECK-LABEL: func @reduce_with_promotable_types
+func.func @reduce_with_promotable_types(%arg0: tensor<4x4xf32>, %arg1 : tensor<f32>)
+    -> (tensor<4xf64>) {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+
+  ^bb0(%arg2: tensor<f64>, %arg3: tensor<f64> ):
+    %1 = "mhlo.add"(%arg2, %arg3) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+    "mhlo.return"(%1) : (tensor<f64>) -> ()
+
+  }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<f32>) -> tensor<4xf64>
+
+  func.return %0: tensor<4xf64>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_with_promotable_quantized_types
+func.func @reduce_with_promotable_quantized_types(%arg0: tensor<4x4x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+  %arg1: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+  %0 = mhlo.reduce(%arg0 init: %arg1) across dimensions = [0] : (tensor<4x4x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>>
+  reducer(%arg2: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>)  {
+    %1 = mhlo.add %arg2, %arg3 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+    mhlo.return %1 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+  }
+  return %0 : tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>>
+}
+
 // Next, we have the invalid testcases.
 
 // -----
@@ -314,7 +343,7 @@ func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32
 func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
     %arg2: tensor<f32>, %arg3: tensor<i32>) -> (tensor<?xf32>, tensor<?xi32>) {
 
-  // expected-error@+1 {{The type of reduction-region's result type at index 1 differs from the op's corresponding init-value type: 'tensor<f32>' vs 'tensor<i32>'}}
+  // expected-error@+1 {{The element-type of reduction-region's result type at index 1 is expected to be promotable from the op's corresponding init-value element-type: 'tensor<f32>' vs 'tensor<i32>'}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):
@@ -332,7 +361,7 @@ func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32
 func.func @verify_reducer_function(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
     %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>) {
 
-  // expected-error@+1 {{The element-type of reduction-region's argument at index 3 is expected to be 'i32', but got 'tensor<f32>'}}
+  // expected-error@+1 {{The element-type of reduction-region's argument at index 3 is expected to be promotable from 'i32', but got 'f32'}}
   %0:2 = "mhlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
 
   ^bb0(%arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>):

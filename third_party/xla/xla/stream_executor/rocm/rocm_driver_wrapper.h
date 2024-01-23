@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -79,6 +79,7 @@ namespace wrap {
   __macro(hipDeviceGetName)                         \
   __macro(hipDeviceGetPCIBusId)                     \
   __macro(hipDeviceGetSharedMemConfig)              \
+  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipDeviceGraphMemTrim)                    \
   __macro(hipDevicePrimaryCtxGetState)              \
   __macro(hipDevicePrimaryCtxSetFlags)              \
@@ -153,10 +154,12 @@ namespace wrap {
   __macro(hipModuleLaunchKernel)                    \
   __macro(hipModuleLoadData)                        \
   __macro(hipModuleUnload)                          \
+  __macro(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor) \
+  __macro(hipModuleOccupancyMaxPotentialBlockSize)  \
   __macro(hipPointerGetAttribute)                   \
   __macro(hipPointerGetAttributes)                  \
+  __macro(hipRuntimeGetVersion)                     \
   __macro(hipSetDevice)                             \
-  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipStreamAddCallback)                     \
   __macro(hipStreamBeginCapture)                    \
   __macro(hipStreamCreateWithFlags)                 \

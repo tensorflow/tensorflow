@@ -81,7 +81,15 @@ bazel test \
     --output_filter="" \
     --macos_minimum_os=10.15 \
     --keep_going \
+    --test_output=errors \
     --config=nonccl \
     --build_tag_filters=$TAGS_FILTER  --test_tag_filters=$TAGS_FILTER \
     --test_size_filters=small,medium \
     -- //xla/... $TARGET_FILTER
+
+
+# We want to store the individual test logs in GCS after the build finishes.
+# Since the Bazel test output folder is in a different partition to the Kokoro
+# artifacts folder, we need to symlink the test output folder to be in the
+# artifacts folder.
+ln -s /Volumes/BuildData/bazel_output "$KOKORO_ARTIFACTS_DIR"

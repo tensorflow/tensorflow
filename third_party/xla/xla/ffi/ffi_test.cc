@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,9 +34,9 @@ TEST(FfiTest, StaticRegistration) {
   static constexpr auto* noop = +[] { return absl::OkStatus(); };
 
   XLA_FFI_DEFINE_HANDLER(NoOp, noop, Ffi::Bind());
-  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op", NoOp);
+  XLA_FFI_REGISTER_HANDLER(GetXlaFfiApi(), "no-op", "Host", NoOp);
 
-  auto handler = FindHandler("no-op");
+  auto handler = FindHandler("no-op", "Host");
   TF_ASSERT_OK(handler.status());
 }
 

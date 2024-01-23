@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
@@ -74,21 +75,21 @@ PartialSnapshotWriter::PartialSnapshotWriter(const DatasetDef& dataset,
                                              const std::string& snapshot_path,
                                              int64_t stream_index,
                                              const std::string& compression,
-                                             int64_t max_chunk_size_bytes,
+                                             ByteSize max_chunk_size,
                                              absl::Duration checkpoint_interval)
     : dataset_(dataset),
       snapshot_path_(snapshot_path),
       stream_index_(stream_index),
       compression_(compression),
-      max_chunk_size_bytes_(max_chunk_size_bytes),
+      max_chunk_size_(max_chunk_size),
       checkpoint_interval_(checkpoint_interval) {}
 
 absl::StatusOr<PartialSnapshotWriter> PartialSnapshotWriter::Create(
     const DatasetDef& dataset, const std::string& snapshot_path,
     int64_t stream_index, const std::string& compression,
-    int64_t max_chunk_size_bytes, absl::Duration checkpoint_interval) {
+    ByteSize max_chunk_size, absl::Duration checkpoint_interval) {
   PartialSnapshotWriter writer(dataset, snapshot_path, stream_index,
-                               compression, max_chunk_size_bytes,
+                               compression, max_chunk_size,
                                checkpoint_interval);
   TF_RETURN_IF_ERROR(writer.Initialize());
   return writer;
@@ -101,7 +102,7 @@ absl::Status PartialSnapshotWriter::Initialize() {
                                      stream_index_,
                                      compression_,
                                      Env::Default(),
-                                     max_chunk_size_bytes_,
+                                     max_chunk_size_,
                                      checkpoint_interval_,
                                      /*test_only_keep_temp_files=*/true};
   TF_ASSIGN_OR_RETURN(std::unique_ptr<StandaloneTaskIterator> iterator,
@@ -153,9 +154,9 @@ absl::Status PartialSnapshotWriter::WriteUncommittedChunks(
     if (uncommitted_chunk_indexes.contains(chunk_index)) {
       std::string tmp_chunk_path =
           tsl::io::JoinPath(tmp_chunks_directory, tmp_chunk);
-      std::string uncommitted_chunk_path =
-          tsl::io::JoinPath(uncommitted_chunks_directory,
-                            absl::StrCat("chunk_", stream_index_, chunk_index));
+      std::string uncommitted_chunk_path = tsl::io::JoinPath(
+          uncommitted_chunks_directory,
+          absl::StrCat("chunk_", chunk_index, "_CHUNK_SHARDS_0"));
       TF_RETURN_IF_ERROR(
           Env::Default()->CopyFile(tmp_chunk_path, uncommitted_chunk_path));
     }

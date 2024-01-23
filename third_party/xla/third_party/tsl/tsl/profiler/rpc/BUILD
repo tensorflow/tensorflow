@@ -1,4 +1,4 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",

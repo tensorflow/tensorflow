@@ -129,10 +129,11 @@ void SparseMatrixBatchVectorMultiplyAccumulate1x16(
 void SparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result) {
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    const float* per_channel_scale) {
   PortableSparseMatrixBatchVectorMultiplyAccumulate(
-      matrix, ledger, m_rows, m_cols, vectors, scaling_factors, n_batch,
-      result);
+      matrix, ledger, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
+      per_channel_scale);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(

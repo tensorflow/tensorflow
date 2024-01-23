@@ -15,7 +15,11 @@
 """Saves and restore variables inside traced @tf.functions."""
 
 import dataclasses
+import math
+import time
 from typing import Callable, Mapping, MutableMapping, MutableSequence, Sequence
+
+from absl import logging
 
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.checkpoint import checkpoint_options
@@ -35,6 +39,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.saved_model import registration
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
@@ -244,7 +249,9 @@ class MultiDeviceSaver:
         Trackable in the checkpoint.
       call_with_mapped_captures: TODO
     """
-    self._shardable_tensors: MutableSequence[sharding_util.ShardableTensor] = []
+    self._shardable_tensors_by_task: MutableMapping[
+        device_lib.DeviceSpec,
+        MutableSequence[sharding_util.ShardableTensor]] = {}
     # Keep these two data structures so that we can map restored tensors to
     # the Trackable restore functions.
     self._keys_to_restore_fn: MutableMapping[
@@ -285,10 +292,16 @@ class MultiDeviceSaver:
           self._restore_fn_to_keys.setdefault(restore_fn, []).append(
               (checkpoint_key, slice_spec))
 
-          device = (device_lib.DeviceSpec.from_string(tensor_save_spec.device)
-                    if isinstance(tensor_save_spec.device, str)
-                    else tensor_save_spec.device)
-          self._shardable_tensors.append(
+          if isinstance(tensor_save_spec.device, str):
+            device = device_lib.DeviceSpec.from_string(tensor_save_spec.device)
+            task = device_lib.DeviceSpec.from_string(
+                saveable_object_util.set_cpu0(tensor_save_spec.device))
+          else:
+            device = tensor_save_spec.device
+            task = device_lib.DeviceSpec.from_string(
+                saveable_object_util.set_cpu0(device.to_string()))
+
+          self._shardable_tensors_by_task.setdefault(task, []).append(
               sharding_util.ShardableTensor(
                   _tensor_save_spec=tensor_save_spec,
                   tensor=tensor_value,
@@ -374,8 +387,7 @@ class MultiDeviceSaver:
     Returns:
       A list of shards.
     """
-    shardable_tensors_by_task = {}
-    for shardable_tensor in self._shardable_tensors:
+    def wrap_tensor(shardable_tensor):
       tensor_val = shardable_tensor.tensor
       tensor_shape = shardable_tensor.shape
       save_spec = shardable_tensor._tensor_save_spec  # pylint: disable=protected-access
@@ -386,7 +398,7 @@ class MultiDeviceSaver:
         # A tensor value of `None` indicates that this SaveableObject gets
         # recorded in the object graph, but that no value is saved in the
         # checkpoint.
-        continue
+        return None
       elif save_spec_tensor is not None:
         # Pull the tensor value from _tensor_save_spec.
         tensor_val = save_spec_tensor
@@ -400,19 +412,31 @@ class MultiDeviceSaver:
         if isinstance(shardable_tensor.slice_spec, tensor_lib.Tensor):
           tensor_val._wrapped_slice_spec = save_spec.slice_spec  # pylint: disable=protected-access
 
-      task = device_lib.DeviceSpec.from_string(
-          saveable_object_util.set_cpu0(shardable_tensor.device.to_string()))
-      shardable_tensors_by_task.setdefault(task, []).append(dataclasses.replace(
+      return dataclasses.replace(
           shardable_tensor,
           tensor=tensor_val,
-          shape=tensor_shape
-      ))
+          shape=tensor_shape)
+
+    shardable_tensors_by_task = {
+        task: [shardable_tensor
+               for shardable_tensor in map(wrap_tensor, shardable_tensors)
+               if shardable_tensor is not None]
+        for task, shardable_tensors in self._shardable_tensors_by_task.items()}
 
     sharding_callback = (
         sharding_callback or sharding_policies.ShardByTaskPolicy())
+    metrics.SetShardingCallbackDescription(
+        description=sharding_callback.description)
+
+    start_time = time.time() * 1e6
     shards_by_task = [
         (task, sharding_callback(shardable_tensors))
         for task, shardable_tensors in shardable_tensors_by_task.items()]
+    callback_duration = math.ceil(time.time() * 1e6 - start_time)
+    metrics.AddShardingCallbackDuration(
+        callback_duration=max(1, callback_duration))  # in microseconds
+    logging.info("Sharding callback duration: %s", callback_duration)
+
     return shards_by_task
 
   def save(
@@ -489,8 +513,9 @@ class MultiDeviceSaver:
 
       shards_by_task = self._get_shards_by_task(
           options.experimental_sharding_callback)
-      num_shards_tensor = constant_op.constant(
-          sum([len(shards) for _, shards in shards_by_task]), name="num_shards")
+      num_shards = sum([len(shards) for _, shards in shards_by_task])
+      metrics.AddNumCheckpointShardsWritten(num_shards=num_shards)
+      num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
       sharded_saves = []
 
       shard_idx = 0
@@ -507,7 +532,7 @@ class MultiDeviceSaver:
       with ops.control_dependencies(sharded_saves):
         # Merge on the io_device if specified, otherwise co-locates the merge op
         # with the last device used.
-        tensor_device_spec = self._shardable_tensors[-1].device
+        tensor_device_spec = list(self._shardable_tensors_by_task.keys())[-1]
         merge_device_spec = (
             options.experimental_io_device or
             saveable_object_util.set_cpu0(tensor_device_spec.to_string()))
@@ -556,38 +581,41 @@ class MultiDeviceSaver:
           fn: len(keys) for fn, keys in self._restore_fn_to_keys.items()}
 
       restore_ops = {}
-      if self._shardable_tensors:
-        with ops.device("CPU:0"):
+
+      for task, shard in self._shardable_tensors_by_task.items():
+        with ops.device(task):
           # Load values from checkpoint
           restored_tensor_dict = _single_shard_restore(
-              file_prefix, self._shardable_tensors, options)
+              file_prefix, shard, options)
 
-          # Map restored tensors to the corresponding restore_fn, and see if all
-          # inputs have all been loaded. Call `restore_fn` if that is the case.
-          for checkpoint_key, slice_and_tensor in restored_tensor_dict.items():
+          # Map restored tensors to the corresponding restore_fn, and see if
+          # all inputs have all been loaded. Call `restore_fn` if that is the
+          # case.
+          for ckpt_key, slice_and_tensor in restored_tensor_dict.items():
             for slice_spec, tensor in slice_and_tensor.items():
-              restore_fn = self._keys_to_restore_fn[(checkpoint_key,
+              restore_fn = self._keys_to_restore_fn[(ckpt_key,
                                                      slice_spec)]
 
-              # Processing the returned restored_tensor_dict to prepare for the
-              # Trackable `restore` function. The `restore` function expects a
-              # map of `string name (checkpoint_key) -> Tensor`. Unless there is
-              # a slice_spec, in which case the map will be of
+              # Processing the returned restored_tensor_dict to prepare for
+              # the Trackable `restore` function. The `restore` function
+              # expects a map of `string name (checkpoint_key) -> Tensor`.
+              # Unless there is a slice_spec, in which case the map will be of
               # `string name (checkpoint_key)-> slice_spec -> Tensor`.
               if slice_spec:
                 (restore_fn_inputs.setdefault(restore_fn, {}).setdefault(
-                    checkpoint_key, {})[slice_spec]) = tensor
+                    ckpt_key, {})[slice_spec]) = tensor
               else:
                 restore_fn_inputs.setdefault(restore_fn,
-                                             {})[checkpoint_key] = tensor
+                                             {})[ckpt_key] = tensor
               restore_fn_input_count[restore_fn] -= 1
 
               if restore_fn_input_count[restore_fn] == 0:
                 restored_tensors = {}
                 # Extracts the substring after the "/.ATTRIBUTES/" in the
                 # ckpt_key from restore_fn_inputs[restore_fn] to
-                # restored_tensors. For example, if restore_fn_input[restore_fn]
-                # is dict { "/.ATTIBUTES/a": Tensor}, restored_tensors will be
+                # restored_tensors. For example, if
+                # restore_fn_input[restore_fn] is dict
+                # { "/.ATTIBUTES/a": Tensor}, restored_tensors will be
                 # changed to dict {"a": Tensor}
                 for ckpt_key, tensor in restore_fn_inputs[restore_fn].items():
                   restored_tensors[trackable_utils.extract_local_name(
@@ -600,9 +628,11 @@ class MultiDeviceSaver:
         restore_fn(file_prefix)
       return restore_ops
 
-    has_custom_device_saver = any([
-        context.is_custom_device(st.device.to_string())
-        for st in self._shardable_tensors])
+    has_custom_device_saver = False
+    for sts in self._shardable_tensors_by_task.values():
+      if any([context.is_custom_device(st.device.to_string()) for st in sts]):
+        has_custom_device_saver = True
+        break
     # Since this will cause a function re-trace on each restore, limit this to
     # cases where it is needed: eager and when there are multiple tasks or any
     # device_spec is a custom device. Note that the retrace is needed to ensure

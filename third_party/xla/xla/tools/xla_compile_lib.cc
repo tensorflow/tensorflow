@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,11 +57,12 @@ namespace xla {
 static StatusOr<std::string> AotCompileCpuExecutable(
     std::unique_ptr<HloModule> hlo_module) {
   cpu::CpuCompiler cpu_compiler;
+  auto module_group = std::make_unique<HloModuleGroup>(std::move(hlo_module));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<cpu::CpuExecutable> cpu_executable,
-      cpu_compiler.CompileXlaRuntimeCpuExecutable(std::move(hlo_module)));
+      std::vector<std::unique_ptr<Executable>> executables,
+      cpu_compiler.Compile(std::move(module_group), {{nullptr}}, {nullptr}));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
-                      cpu_compiler.Export(cpu_executable.get()));
+                      cpu_compiler.Export(executables[0].get()));
   return aot_result->SerializeAsString();
 }
 

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -279,88 +279,6 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0001}));
 }
 
-TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
-  const char *const kHloString = R"(
-  HloModule column_reduce_powerof2
-
-  reduction {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT add = f32[] add(x, y)
-  }
-
-  ENTRY kernel_entry {
-    constant0 = f32[] constant(0)
-    arg1 = f16[1024,512,128]{2,1,0} parameter(0)
-    arg1_conv = f32[1024,512,128]{2,1,0} convert(arg1)
-    ROOT reduce = f32[512,128]{1,0} reduce(arg1_conv, constant0), dimensions={0}, to_apply=reduction
-  })";
-
-  // Check that two calls to llvm.nvvm.atomic are generated.
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .value();
-  const char *expected_ir = R"(
-; CHECK: store float %{{.*}}, ptr addrspace(1)
-; CHECK: store float %{{.*}}, ptr addrspace(1)
-)";
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
-                     /*match_optimized_ir=*/true);
-  // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
-}
-
-TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
-  const char *const kHloString = R"(
-  HloModule column_reduce_powerof2_mof
-
-  reduction22 {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT add = f32[] add(x, y)
-  }
-
-  fused_computation {
-    constant0 = f32[] constant(0)
-    arg.1 = f16[1024,512,128]{2,1,0} parameter(0)
-    arg.2 = f16[1024,512,128]{2,1,0} parameter(1)
-    arg1.conv = f32[1024,512,128]{2,1,0} convert(arg.1)
-    arg2.conv = f32[1024,512,128]{2,1,0} convert(arg.2)
-    reduce1 = f32[512,128]{1,0} reduce(arg1.conv, constant0), dimensions={0},
-      to_apply=reduction22
-    reduce2 = f32[512,128]{1,0} reduce(arg2.conv, constant0), dimensions={0},
-      to_apply=reduction22
-    add = f32[1024,512,128]{2,1,0} add(arg1.conv, arg2.conv)
-    ROOT tuple = (f32[512,128]{1,0}, f32[512,128]{1,0}, f32[1024,512,128]{2,1,0})
-      tuple(reduce1, reduce2, add)
-  }
-
-  ENTRY kernel_entry {
-    arg1 = f16[1024,512,128]{2,1,0} parameter(0)
-    arg2 = f16[1024,512,128]{2,1,0} parameter(1)
-    ROOT fusion = (f32[512,128]{1,0}, f32[512,128]{1,0}, f32[1024,512,128]{2,1,0})
-      fusion(arg1, arg2), kind=kInput, calls=fused_computation
-  })";
-
-  // Check that four calls to llvm.nvvm.atomic are generated.
-  std::unique_ptr<VerifiedHloModule> hlo_module =
-      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .value();
-  const char *expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
-; CHECK: store float %{{.*}}, ptr addrspace(1)
-; CHECK: store float %{{.*}}, ptr addrspace(1)
-; CHECK: store float %{{.*}}, ptr addrspace(1)
-; CHECK: store float %{{.*}}, ptr addrspace(1)
-; CHECK-NOT: store float %{{.*}}, ptr addrspace(1)
-)";
-  CompileAndVerifyIr(std::move(hlo_module),
-                     MakePlatformSpecificLlvm(expected_ir),
-                     /*match_optimized_ir=*/true);
-  // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
-}
-
 TEST_F(GpuKernelTilingTest, MofReduceDifferentType) {
   const char *const kHloString = R"(
 HloModule module, entry_computation_layout={(f32[128,1024]{1,0})->(f16[128]{0}, f32[128]{0})}
@@ -448,7 +366,7 @@ TEST_F(GpuKernelTilingTest, RowReductionWithLayoutChangeTiled) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK: call SHUFFLE
 ; CHECK: }
 )";
@@ -482,7 +400,7 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
 ; CHECK: call SHUFFLE
@@ -521,7 +439,7 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
 ; CHECK: call SHUFFLE
@@ -561,7 +479,7 @@ TEST_F(GpuKernelTilingTest,
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   const char *expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK: store float %{{.*}}, ptr addrspace(1)
 ; CHECK: }
 )";
@@ -617,49 +535,6 @@ TEST_F(GpuKernelTilingTest, ColumnReductionSmallTileSizeX) {
   EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{1.0e-5, 1.0e-5}));
 }
 
-TEST_F(GpuKernelTilingTest, ColReductionWithSmallDtype) {
-  const char *const kHloString = R"(
-HloModule mod
-region_0 {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0, Arg_1)
-}
-fused_computation {
-  param_0.4 = bf16[32,16,512,512]{3,2,1,0} parameter(0)
-  convert.31 = f32[32,16,512,512]{3,2,1,0} convert(param_0.4)
-  constant_1 = f32[] constant(0)
-  ROOT reduce = f32[16,512,512]{2,1,0} reduce(convert.31, constant_1), dimensions={0}, to_apply=region_0
-}
-ENTRY main {
- Arg_3.4 = bf16[32,16,512,512]{3,2,1,0} parameter(0)
- ROOT fusion = f32[16,512,512]{2,1,0} fusion(Arg_3.4), kind=kInput, calls=fused_computation
-})";
-
-  // Check that the kernel is not tiled by looking for llvm.nvvm.shfl.sync.down.
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
-          .value();
-  std::string expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
-; CHECK: load <4 x i16>
-; CHECK-COUNT-4: load PLATFORM_SPECIFIC_TYPE
-; CHECK-NOT: load
-; CHECK: }
-)";
-
-  expected_ir = absl::StrReplaceAll(
-      expected_ir,
-      {{"PLATFORM_SPECIFIC_TYPE", is_built_with_rocm_ ? "i32" : "float"}});
-
-  CompileAndVerifyIr(std::move(hlo_module),
-                     MakePlatformSpecificLlvm(expected_ir),
-                     /*match_optimized_ir=*/true);
-
-  // Check that the kernel runs correctly.
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
-}
-
 TEST_F(GpuKernelTilingTest,
        RowReductionWithSmallNonPowerOfTwoDimensionNotTiled) {
   const char *const kHloString = R"(
@@ -682,7 +557,7 @@ TEST_F(GpuKernelTilingTest,
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
   auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @wrapped_reduce
+; CHECK-LABEL: define KERNEL_ANNOTATION @{{(wrapped_reduce|fusion)}}
 ; CHECK-NOT: call SHUFFLE
 ; CHECK: }
 )";
@@ -719,6 +594,7 @@ TEST_F(GpuKernelTilingTest, RowReductionRequiring64BitIndex) {
                      /*match_optimized_ir=*/true);
 }
 
+<<<<<<< HEAD
 TEST_F(GpuKernelTilingTest, ColumnReductionVectorization) {
   const char *const kHloString = R"(
 HloModule column_reduce_powerof2
@@ -777,6 +653,8 @@ ENTRY main {
                      /*match_optimized_ir=*/true);
 }
 
+=======
+>>>>>>> upstream/master
 TEST_F(GpuKernelTilingTest, Hlo021CopyNoOobAccess) {
   const char *const kHloString = R"(
 HloModule primitive_computation_svd.38
@@ -847,12 +725,11 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   }
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
-  Status status = CompileToExecutable(std::move(hlo_module)).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kFailedPrecondition);
-  EXPECT_THAT(
-      status.message(),
-      ::testing::HasSubstr(
-          "Number of physical blocks (4294967296) does not fit in an i32"));
+  absl::Status status = CompileToExecutable(std::move(hlo_module)).status();
+  EXPECT_THAT(status.message(),
+              ::testing::ContainsRegex(
+                  "Kernel '.*' launch needs more blocks [(]4294967296[)] than "
+                  "allowed by hardware [(]2147483647[)]"));
 }
 
 }  // namespace

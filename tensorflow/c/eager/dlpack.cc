@@ -78,6 +78,9 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
   dtype.lanes = 1;
   dtype.bits = TF_DataTypeSize(data_type) * 8;
   switch (data_type) {
+    case TF_DataType::TF_BOOL:
+      dtype.code = DLDataTypeCode::kDLBool;
+      break;
     case TF_DataType::TF_HALF:
     case TF_DataType::TF_FLOAT:
     case TF_DataType::TF_DOUBLE:
@@ -89,7 +92,6 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
     case TF_DataType::TF_INT64:
       dtype.code = DLDataTypeCode::kDLInt;
       break;
-    case TF_DataType::TF_BOOL:
     case TF_DataType::TF_UINT8:
     case TF_DataType::TF_UINT16:
     case TF_DataType::TF_UINT32:
@@ -161,6 +163,14 @@ absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
 Status TfDataTypeFormDlDataType(const DLDataType& dtype,
                                 TF_DataType* tf_dtype) {
   switch (dtype.code) {
+    case DLDataTypeCode::kDLBool:
+      if (dtype.bits != 8) {
+        return tensorflow::errors::InvalidArgument(
+            "Only DLPack bools of bitwidth 8 are supported, got: ", dtype.bits);
+      }
+      *tf_dtype = TF_DataType::TF_BOOL;
+      return OkStatus();
+
     case DLDataTypeCode::kDLUInt:
       switch (dtype.bits) {
         case 8:

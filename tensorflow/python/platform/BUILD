@@ -324,6 +324,7 @@ py_strict_library(
 py_strict_library(
     name = "flags",
     srcs = ["flags.py"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/util:tf_decorator_py",
         "@absl_py//absl/flags",

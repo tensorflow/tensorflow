@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -72,12 +72,17 @@ inline constexpr absl::string_view kTritonSoftmaxFusionKind =
 inline constexpr absl::string_view kUncompilableFusion =
     "__uncompilable_fusion";
 
+inline constexpr absl::string_view kTopKCustomCallTarget = "__gpu$TopK";
+
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
 // This returns true if `hlo` is a CustomCall HLO with a call target equal to
 // one of the kCusolver... constants, but returns *false* for HLOs with
 // say, a kCholesky opcode.
 bool IsCustomCallToCusolver(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to a TopK routine.
+bool IsCustomCallToTopK(const HloInstruction& hlo);
 
 // Cholesky decomposition. Takes a (batched) matrix as input, and returns a
 // tuple of (result, workspace, info), where result is the result of the
@@ -90,6 +95,13 @@ extern const char* const kCusolverCholeskyCallTarget;
 // ROOT slices have no strides.
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
                           bool verify_no_strides);
+
+// Returns true if `instr` is a non-strided slice.
+bool IsSliceWithUnitStrides(const HloInstruction* instr);
+
+// Returns true if `instr` is a slice instruction and produces a contiguous
+// slice.
+bool IsContiguousSlice(const HloInstruction& instr);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -124,15 +136,19 @@ std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
   return std::vector<T>(v.begin(), v.end());
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name = nullptr);
+
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    const BufferAssignment& buffer_assignment, const HloInstruction* instr,
+    const ShapeIndex& index);
 
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation* const> allocations);
 
-StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
     const std::vector<const HloInstruction*>& roots);
@@ -200,12 +216,6 @@ struct TransposeDescription {
   }
 };
 
-std::optional<TransposeDescription> FindTiledTranspose(
-    const HloInstruction& instr);
-
-std::optional<TransposeDescription> FindTiledLogicalTranspose(
-    const HloInstruction& instr);
-
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     const HloInstruction& root, const HloInstruction& hero);
 
@@ -241,6 +251,9 @@ std::string GetIrNameFromLoc(mlir::Location loc);
 // Whether the module's target is an AMD GPU.
 bool IsAMDGPU(const llvm::Module* module);
 
+// Whether the module's target is a SPIR.
+bool IsSPIR(const llvm::Module* module);
+
 // This class stores either a non-owning reference or owns data that represents
 // a dense array in XLA format. It is used for intermediate storage during IR
 // constant emission.
@@ -270,7 +283,8 @@ class DenseDataIntermediate {
   std::variant<std::vector<uint8_t>, absl::Span<const uint8_t>> data_;
 };
 
-StatusOr<DenseDataIntermediate> LiteralToXlaFormat(const Literal& literal);
+absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
+    const Literal& literal);
 
 }  // namespace gpu
 }  // namespace xla

@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 
+#include <stdarg.h>
+#include <stdint.h>
+
 #include <cstdio>
-#include <iostream>
-#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/lite/c/c_api_opaque_internal.h"
@@ -278,6 +279,10 @@ TfLiteOpaqueTensorBuilder* TfLiteOpaqueTensorBuilderSetQuantization(
     TfLiteOpaqueTensorBuilder* builder, TfLiteQuantization quantization) {
   builder->quantization = quantization;
   return builder;
+}
+
+void TfLiteOpaqueTensorSetAllocationTypeToDynamic(TfLiteOpaqueTensor* tensor) {
+  tflite::SetTensorToDynamic(Convert(tensor));
 }
 
 const TfLiteOpaqueTensor* TfLiteOpaqueNodeGetInput(
@@ -631,4 +636,40 @@ void TfLiteOpaqueContextReportErrorVa(
   auto* context = reinterpret_cast<TfLiteContext*>(opaque_context);
   TF_LITE_KERNEL_LOG(context, "%s", buffer);
   delete[] buffer;
+}
+
+#ifndef TF_LITE_STATIC_MEMORY
+TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
+    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
+  if (!opaque_delegate_builder) return nullptr;
+
+  TfLiteDelegate* result = new TfLiteDelegate{};
+  result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
+  *(result->opaque_delegate_builder) = *opaque_delegate_builder;
+
+  return reinterpret_cast<TfLiteOpaqueDelegate*>(result);
+}
+
+void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
+  if (!opaque_delegate) return;
+
+  const TfLiteDelegate* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
+  delete tflite_delegate->opaque_delegate_builder;
+  delete tflite_delegate;
+}
+#endif  // TF_LITE_STATIC_MEMORY
+
+void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
+  if (!delegate) return nullptr;
+
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
+  const auto* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(delegate);
+
+  if (!tflite_delegate->opaque_delegate_builder) return tflite_delegate->data_;
+
+  return tflite_delegate->opaque_delegate_builder->data;
 }

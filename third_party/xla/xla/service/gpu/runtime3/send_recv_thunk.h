@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -25,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
@@ -61,12 +63,12 @@ namespace xla::gpu {
 class SendRecvAsyncEvents {
  public:
   // Emplace a new send/recv completion event.
-  Status Emplace(se::StreamExecutor* executor, int32_t channel_id,
-                 tsl::AsyncValueRef<se::Event> event);
+  absl::Status Emplace(se::StreamExecutor* executor, int32_t channel_id,
+                       tsl::AsyncValueRef<se::Event> event);
 
   // Extract a send/recv completion event.
-  StatusOr<tsl::AsyncValueRef<se::Event>> Extract(se::StreamExecutor* executor,
-                                                  int32_t channel_id);
+  absl::StatusOr<tsl::AsyncValueRef<se::Event>> Extract(
+      se::StreamExecutor* executor, int32_t channel_id);
 
  private:
   using Key = std::pair<se::StreamExecutor*, /*channel_id=*/int64_t>;
@@ -84,9 +86,10 @@ class SendThunk : public Thunk {
  public:
   SendThunk(ThunkInfo thunk_info, Shape shape, BufferAllocation::Slice buffer,
             int64_t channel_id, std::shared_ptr<SendRecvAsyncEvents> events,
-            absl::flat_hash_map<std::string, std::string> frontend_attrs);
+            absl::flat_hash_map<std::string, std::string> frontend_attrs,
+            std::optional<GlobalDeviceId> device_constraint);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   Shape shape_;
@@ -96,6 +99,7 @@ class SendThunk : public Thunk {
 
   std::shared_ptr<SendRecvAsyncEvents> events_;
   absl::flat_hash_map<std::string, std::string> frontend_attrs_;
+  std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -105,14 +109,16 @@ class SendThunk : public Thunk {
 class SendDoneThunk : public Thunk {
  public:
   SendDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
-                std::shared_ptr<SendRecvAsyncEvents> events);
+                std::shared_ptr<SendRecvAsyncEvents> events,
+                std::optional<GlobalDeviceId> device_constraint);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   int64_t channel_id_;
 
   std::shared_ptr<SendRecvAsyncEvents> events_;
+  std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -123,9 +129,10 @@ class RecvThunk : public Thunk {
  public:
   RecvThunk(ThunkInfo thunk_info, Shape shape, BufferAllocation::Slice buffer,
             int64_t channel_id, std::shared_ptr<SendRecvAsyncEvents> events,
-            absl::flat_hash_map<std::string, std::string> frontend_attrs);
+            absl::flat_hash_map<std::string, std::string> frontend_attrs,
+            std::optional<GlobalDeviceId> device_constraint);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   Shape shape_;
@@ -135,6 +142,7 @@ class RecvThunk : public Thunk {
 
   std::shared_ptr<SendRecvAsyncEvents> events_;
   absl::flat_hash_map<std::string, std::string> frontend_attrs_;
+  std::optional<GlobalDeviceId> device_constraint_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -144,14 +152,16 @@ class RecvThunk : public Thunk {
 class RecvDoneThunk : public Thunk {
  public:
   RecvDoneThunk(ThunkInfo thunk_info, int64_t channel_id,
-                std::shared_ptr<SendRecvAsyncEvents> events);
+                std::shared_ptr<SendRecvAsyncEvents> events,
+                std::optional<GlobalDeviceId> device_constraint);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   int64_t channel_id_;
 
   std::shared_ptr<SendRecvAsyncEvents> events_;
+  std::optional<GlobalDeviceId> device_constraint_;
 };
 
 }  // namespace xla::gpu

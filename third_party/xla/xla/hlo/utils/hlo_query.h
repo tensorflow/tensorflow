@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,12 +31,14 @@ namespace hlo_query {
 // that is represented as HloCollectiveInstruction.
 bool IsCollectiveCommunicationOp(HloOpcode op);
 
-// Returns whether the given opcode represents the start operation for a
+// Returns whether the given instruction represents the start operation for a
 // collective communication, may include send & recv operations.
-bool IsAsyncCollectiveStartOp(HloOpcode op, bool include_send_recv = false);
-// Returns whether the given opcode represents the done operation for a
+bool IsAsyncCollectiveStartOp(const HloInstruction* instruction,
+                              bool include_send_recv = false);
+// Returns whether the given instruction represents the done operation for a
 // collective communication, may include send & recv operations.
-bool IsAsyncCollectiveDoneOp(HloOpcode op, bool include_send_recv = false);
+bool IsAsyncCollectiveDoneOp(const HloInstruction* instruction,
+                             bool include_send_recv = false);
 
 // Returns whether the instruction provided is a constant rank-0 float32, and
 // if so, places the constant value into out.

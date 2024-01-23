@@ -138,8 +138,39 @@ class RebatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         combinations.combine(drop_remainder=[True, False])))
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              batch_size=[2, 3, 4], drop_remainder=[True, False]
+          ),
+      )
+  )
+  def testBatchSizeEqualToOriginal(self, batch_size, drop_remainder):
+    # `drop_remainder` needs to be `False` in `rebatch` call
+    # so that the remainder batch is preserved.
+    #
+    # For example:
+    # d = range(3).batch(2, drop_remainder=True)
+    # d2 = d.rebatch(2, drop_remainder=True)
+    # d becomes [[0, 1], [2]] and d2 becomes [[0, 1]],
+    # which is a mismatch we do not want.
+
+    dataset = dataset_ops.Dataset.range(11).batch(
+        batch_size, drop_remainder=drop_remainder
+    )
+    expected_output = self.getDatasetOutput(dataset)
+    rebatched_dataset = dataset.rebatch(
+        batch_size=batch_size, drop_remainder=False
+    )
+
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(drop_remainder=[True, False]),
+      )
+  )
   def testEmptySplits(self, drop_remainder):
     # It's possible for splits to be empty if the batch size is smaller than
     # the number of replicas. Here, we use an example with batch_size == 4

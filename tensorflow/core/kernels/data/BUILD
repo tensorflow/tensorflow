@@ -381,6 +381,9 @@ tf_kernel_library(
         "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:dataset_utils",
         "//tensorflow/core/data:name_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -430,6 +433,7 @@ tf_kernel_library(
         "//tensorflow/core/data:metric_utils",
         "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:serialization_utils",
+        "//tensorflow/core/data:tf_data_memory_logger",
         "//tensorflow/core/data:tfdataz_metrics",
         "//tensorflow/core/data:unbounded_thread_pool",
         "//tensorflow/core/data:utils",
@@ -1525,6 +1529,7 @@ filegroup(
         "//tensorflow/core/data:serialization_utils.h",
         "//tensorflow/core/data:split_utils.h",
         "//tensorflow/core/data:stats_utils.h",
+        "//tensorflow/core/data:tf_data_memory_logger.h",
         "//tensorflow/core/data:tfdataz_metrics.h",
         "//tensorflow/core/data:unbounded_thread_pool.h",
         "//tensorflow/core/data:utils.h",
@@ -1553,6 +1558,7 @@ filegroup(
         "//tensorflow/core/data:serialization_utils.cc",
         "//tensorflow/core/data:split_utils.cc",
         "//tensorflow/core/data:stats_utils.cc",
+        "//tensorflow/core/data:tf_data_memory_logger.cc",
         "//tensorflow/core/data:tfdataz_metrics.cc",
         "//tensorflow/core/data:unbounded_thread_pool.cc",
         "//tensorflow/core/data:utils.cc",

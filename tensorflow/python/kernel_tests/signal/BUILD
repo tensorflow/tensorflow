@@ -44,7 +44,7 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["fft_ops_test.py"],
     python_version = "PY3",
-    shard_count = 1,
+    shard_count = 2,
     tags = [
         "optonly",
     ],

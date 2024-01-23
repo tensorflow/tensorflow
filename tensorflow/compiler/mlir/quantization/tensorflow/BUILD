@@ -513,8 +513,8 @@ cc_library(
     deps = [
         ":passes",
         ":quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pass_pipeline",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",
         "//tensorflow/core/platform:path",

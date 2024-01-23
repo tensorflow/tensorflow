@@ -21,13 +21,14 @@ from tensorflow.compiler.mlir.quantization.tensorflow.python import representati
 def static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
-    quantization_options_serialized: bytes,
+    quantization_config_serialized: bytes,
     *,
     signature_keys: list[str],
     signature_def_map_serialized: dict[str, bytes],
     function_aliases: dict[str, str],
     py_function_library: py_function_lib.PyFunctionLibrary,
-    representative_dataset: rd.RepresentativeDatasetOrMapping,
+    # Value type: RepresentativeDatasetFile.
+    representative_dataset_file_map_serialized: dict[str, bytes],
 ) -> Any: ...  # Status
 
 # LINT.ThenChange()

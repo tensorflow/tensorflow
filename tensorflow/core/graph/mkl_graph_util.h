@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/util.h"
 
@@ -173,14 +172,6 @@ inline string GetMklEagerOpName(const string& name) {
   return string(kMklEagerOpPrefix) + name;
 }
 
-static inline void BF16UnsupportedWarning() {
-  static absl::once_flag cpu_bfloat16_warn_once_flag;
-  absl::call_once(cpu_bfloat16_warn_once_flag, [] {
-    LOG(ERROR) << "oneDNN BFloat16 support are only on platforms with AVX512. "
-                  "Falling back to default implementation if present.";
-  });
-}
-
 // Check whether opname with type T is registered as MKL operator
 // that will go through name change or layout change pass.
 //
@@ -224,15 +215,11 @@ static inline bool IsMklOp(const string& op_name, DataType T,
                                  T == DT_DOUBLE || T == DT_FLOAT)
                               : T == DT_FLOAT;
       if (!kernel_registered) {
-        if (T == DT_BFLOAT16) {
-          if (IsBF16SupportedByOneDNNOnThisCPU()) {
-            kernel_registered = true;
-          } else {
-            // Restrict bfloat16 ops to platforms with at least AVX512 support,
-            // fall back to Eigen implementation otherwise.
-            BF16UnsupportedWarning();
-            kernel_registered = false;
-          }
+        if ((T == DT_BFLOAT16 || T == DT_HALF) &&
+            IsDataTypeSupportedByOneDNNOnThisCPU(T)) {
+          kernel_registered = true;
+        } else {
+          DataTypeUnsupportedWarning(T);
         }
       }
     }

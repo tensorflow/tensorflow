@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,10 +30,12 @@ namespace gpu {
 
 // Attempts to build an initializer constant for the given value. Returns an
 // empty optional if the value is not a constant.
-StatusOr<std::optional<std::unique_ptr<Thunk>>> BuildConstantInitializerThunk(
-    IrEmitterContext& ir_emitter_context, mlir::Operation* op,
-    const HloInstruction* instr, const HloInstruction* init_value,
-    mlir::Value dest, BufferAllocation::Slice dest_slice);
+absl::StatusOr<std::optional<std::unique_ptr<Thunk>>>
+BuildConstantInitializerThunk(IrEmitterContext& ir_emitter_context,
+                              mlir::Operation* op, const HloInstruction* instr,
+                              const HloInstruction* init_value,
+                              mlir::Value dest,
+                              BufferAllocation::Slice dest_slice);
 
 }  // namespace gpu
 }  // namespace xla

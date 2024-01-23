@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -593,6 +593,18 @@ class LiteralBase {
       auto* tuple_rep = GetTupleRep();
       DCHECK(tuple_rep);
       return tuple_rep->children[index];
+    }
+
+    Piece& child(ShapeIndexView index) {
+      return const_cast<Piece&>(const_cast<const Piece*>(this)->child(index));
+    }
+    const Piece& child(ShapeIndexView index) const {
+      const Piece* result = this;
+      while (!index.empty()) {
+        result = &result->child(index.front());
+        index.remove_prefix(1);
+      }
+      return *result;
     }
 
     // Adds a child piece to this piece's children.
@@ -1237,6 +1249,10 @@ class BorrowingLiteral : public LiteralBase {
                    const Shape& shape);
   // TODO(b/79707221): adding constructors for nested tuples as well.
 
+  // Construct a BorrowingLiteral from a LiteralProto.  The proto must not be
+  // modified during the lifetime of the BorrowingLiteral.
+  explicit BorrowingLiteral(const LiteralProto& proto);
+
  private:
   // Recursively builds the subtree for the given piece and sets the subshapes
   // of the given piece with the given shape.
@@ -1349,38 +1365,32 @@ NativeT LiteralBase::GetFirstElement() const {
 
 template <typename T>
 int64_t LiteralBase::CountEqual(T value) const {
-  if (!shape().IsArray()) {
+  PrimitiveType ty = shape().element_type();
+  if (!primitive_util::IsArrayType(ty)) {
     return 0;
   }
-  PrimitiveType ty = shape().element_type();
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+  return primitive_util::ArrayTypeSwitch<int64_t>(
       [&](auto primitive_type_constant) -> int64_t {
-        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          scalar.Set<NativeT>({}, static_cast<NativeT>(value));
-          return root_piece().CountAll(scalar);
-        }
-        return 0;
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        scalar.Set<NativeT>({}, static_cast<NativeT>(value));
+        return root_piece().CountAll(scalar);
       },
       ty);
 }
 
 template <typename T>
 int64_t LiteralBase::CountEqual(std::complex<T> value) const {
-  if (!shape().IsArray()) {
+  PrimitiveType ty = shape().element_type();
+  if (!primitive_util::IsComplexType(ty)) {
     return 0;
   }
-  PrimitiveType ty = shape().element_type();
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::PrimitiveTypeSwitch<int64_t>(
+  return primitive_util::ComplexTypeSwitch<int64_t>(
       [&](auto primitive_type_constant) -> int64_t {
-        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          scalar.Set<NativeT>({}, static_cast<NativeT>(value));
-          return root_piece().CountAll(scalar);
-        }
-        return 0;
+        using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+        scalar.Set<NativeT>({}, static_cast<NativeT>(value));
+        return root_piece().CountAll(scalar);
       },
       ty);
 }

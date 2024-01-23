@@ -31,7 +31,6 @@ load(
     _tf_generate_proto_text_sources = "tf_generate_proto_text_sources",
     _tf_grpc_cc_dependencies = "tf_grpc_cc_dependencies",
     _tf_grpc_dependencies = "tf_grpc_dependencies",
-    _tf_jit_compilation_passes_extra_deps = "tf_jit_compilation_passes_extra_deps",
     _tf_kernel_library = "tf_kernel_library",
     _tf_monitoring_framework_deps = "tf_monitoring_framework_deps",
     _tf_monitoring_python_deps = "tf_monitoring_python_deps",
@@ -73,7 +72,6 @@ tf_pybind_cc_library_wrapper = _tf_pybind_cc_library_wrapper
 tf_monitoring_framework_deps = _tf_monitoring_framework_deps
 tf_monitoring_python_deps = _tf_monitoring_python_deps
 tf_selective_registration_deps = _tf_selective_registration_deps
-tf_jit_compilation_passes_extra_deps = _tf_jit_compilation_passes_extra_deps
 tfcompile_target_cpu = _tfcompile_target_cpu
 tfcompile_dfsan_enabled = _tfcompile_dfsan_enabled
 tfcompile_dfsan_abilists = _tfcompile_dfsan_abilists

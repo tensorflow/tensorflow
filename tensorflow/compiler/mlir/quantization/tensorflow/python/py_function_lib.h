@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
-#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/min_max_value.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -83,7 +82,8 @@ class PyFunctionLibrary {
       const std::unordered_set<std::string>& tags,
       const CalibrationOptions& calibration_options,
       bool force_graph_mode_calibration,
-      pybind11::object representative_dataset) const = 0;
+      const absl::flat_hash_map<std::string, RepresentativeDatasetFile>&
+          representative_dataset_file_map) const = 0;
   // LINT.ThenChange(
   //     pywrap_function_lib.pyi:run_calibration,
   //     py_function_lib.py:run_calibration,

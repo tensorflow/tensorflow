@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,14 +15,23 @@ package(
     ],
 )
 
+tf_proto_library(
+    name = "ifrt_config_proto",
+    srcs = ["ifrt_config.proto"],
+    protodeps = [
+        "@local_xla//xla:xla_data_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "ifrt_serving_executable",
     srcs = ["ifrt_serving_executable.cc"],
     hdrs = ["ifrt_serving_executable.h"],
     deps = [
+        ":ifrt_tensor_utils",
         ":sharding_utils",
         "//tensorflow/compiler/mlir/tfrt/transforms/ifrt:tf2hlo",
-        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -44,7 +54,6 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/pjrt:pjrt_executable",
         "@local_xla//xla/python/ifrt",
-        "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
     ],
@@ -74,7 +83,30 @@ cc_library(
         ":ifrt_executable_registry",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
         "@local_xla//xla/python/ifrt",
+    ],
+)
+
+cc_library(
+    name = "ifrt_tensor_utils",
+    srcs = ["ifrt_tensor_utils.cc"],
+    hdrs = ["ifrt_tensor_utils.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/python/ifrt",
+        "@local_xla//xla/python/pjrt_ifrt",
     ],
 )
 
@@ -87,7 +119,8 @@ cc_library(
         "sharding_utils.h",
     ],
     deps = [
-        "//tensorflow/compiler/tf2xla:common",
+        ":ifrt_config_proto_cc",
+        ":ifrt_tensor_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
@@ -95,6 +128,7 @@ cc_library(
         "//tensorflow/core/tpu/kernels:sharding_utils",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -104,10 +138,11 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:executable_run_options",
+        "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/python/ifrt",
-        "@local_xla//xla/python/pjrt_ifrt",
         "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
+        "@local_xla//xla/service:computation_placer_hdr",
     ],
 )
 
@@ -116,6 +151,7 @@ tf_cc_test(
     srcs = ["sharding_utils_test.cc"],
     tags = ["no_oss"],
     deps = [
+        ":ifrt_tensor_utils",
         ":sharding_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
@@ -126,7 +162,7 @@ tf_cc_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
-        "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
@@ -134,6 +170,7 @@ tf_cc_test(
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",
         "@local_xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
+        "@local_xla//xla/python/pjrt_ifrt:xla_ifrt",
     ],
 )
 
@@ -160,9 +197,11 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/python/ifrt:test_util",

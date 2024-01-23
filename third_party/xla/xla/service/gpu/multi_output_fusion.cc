@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -271,14 +271,10 @@ bool IsSiblingFusionCandidate(const HloInstruction* instr) {
   // Check if the users of multioutput fusion is not a get-tuple-element.
   // If this is the case, we bail out because the transformation assumes
   // the users are get-tuple-element.
-  if (instr->IsMultiOutputFusion()) {
-    for (HloInstruction* user : instr->users()) {
-      if (user->opcode() != HloOpcode::kGetTupleElement) {
-        return false;
-      }
-    }
-  }
-  return true;
+  return (!instr->IsMultiOutputFusion() ||
+          absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
+            return user->opcode() == HloOpcode::kGetTupleElement;
+          }));
 }
 
 FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
@@ -408,7 +404,7 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
   return changed;
 }
 
-StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
+absl::StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
   bool changed = false;
   RecomputeReachability();
   GpuHloCostAnalysis cost_analysis({shape_size_function_,
@@ -466,7 +462,8 @@ StatusOr<bool> GpuMultiOutputFusion::DoMultiOutputFusion() {
               << consumer_for_fusion->name();
     } else {
       input_fusion = computation_->AddInstruction(HloInstruction::CreateFusion(
-          consumer_for_fusion->shape(), ChooseFusionKind(*consumer_for_fusion),
+          consumer_for_fusion->shape(),
+          ChooseFusionKind(*producer, *consumer_for_fusion),
           consumer_for_fusion));
       VLOG(2) << "Fuse producer " << producer->name() << " and its consumer "
               << consumer_for_fusion->name() << " into "
@@ -509,7 +506,7 @@ void GpuMultiOutputFusion::DumpFusionState(const HloInstruction& consumer,
   }
 }
 
-StatusOr<bool> GpuMultiOutputFusion::Run(
+absl::StatusOr<bool> GpuMultiOutputFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

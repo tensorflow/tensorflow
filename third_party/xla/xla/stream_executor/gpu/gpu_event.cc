@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_event.h"
 
+#include "absl/status/status.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -27,16 +27,16 @@ GpuEvent::GpuEvent(GpuExecutor* parent)
 
 GpuEvent::~GpuEvent() {}
 
-tsl::Status GpuEvent::Init() {
+absl::Status GpuEvent::Init() {
   return GpuDriver::InitEvent(parent_->gpu_context(), &gpu_event_,
                               GpuDriver::EventFlags::kDisableTiming);
 }
 
-tsl::Status GpuEvent::Destroy() {
+absl::Status GpuEvent::Destroy() {
   return GpuDriver::DestroyEvent(parent_->gpu_context(), &gpu_event_);
 }
 
-tsl::Status GpuEvent::Record(GpuStream* stream) {
+absl::Status GpuEvent::Record(GpuStream* stream) {
   return GpuDriver::RecordEvent(parent_->gpu_context(), gpu_event_,
                                 stream->gpu_stream());
 }

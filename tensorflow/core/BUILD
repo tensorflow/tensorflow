@@ -653,7 +653,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
-        "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
         "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
@@ -1415,7 +1415,6 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:load_library",
-        "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:net",
         "//tensorflow/core/platform:notification",
@@ -1466,7 +1465,9 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_proto_cc_impl",
@@ -1486,6 +1487,9 @@ cc_library(
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
         "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
+        "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
+        "//tensorflow/lite/toco:model_flags_proto_cc_impl",
+        "//tensorflow/lite/toco:types_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
@@ -1998,7 +2002,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_relu_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
-        "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
+        "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
         "//tensorflow/core/kernels/mkl:mkl_deprecated_ops",
     ]),
 )

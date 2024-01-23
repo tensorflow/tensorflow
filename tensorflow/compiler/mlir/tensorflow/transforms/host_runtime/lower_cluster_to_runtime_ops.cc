@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/runtime_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"

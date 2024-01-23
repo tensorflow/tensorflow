@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,9 +60,10 @@ Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
 // XLA FFI registry
 //===----------------------------------------------------------------------===//
 
-// Returns registered FFI handler for a given name, or an error if it's not
-// found in the static registry.
-StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name);
+// Returns registered FFI handler for a given name and platform, or an error if
+// it's not found in the static registry.
+StatusOr<XLA_FFI_Handler*> FindHandler(std::string_view name,
+                                       std::string_view platform);
 
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation

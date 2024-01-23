@@ -54,6 +54,7 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:call_graph",
+        "//xla/service:collective_ops_utils",
         "//xla/service:computation_layout",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service:dot_as_convolution_util",
@@ -79,6 +80,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/utility",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:statusor",
@@ -120,7 +122,6 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -151,7 +152,6 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -191,7 +191,6 @@ cc_library(
     hdrs = ["spmd_prepare.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":spmd_partitioner",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:hlo_pass",
@@ -209,7 +208,6 @@ cc_library(
         ":spmd_partitioner",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -230,7 +228,6 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -286,8 +283,6 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -321,5 +316,16 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@local_tsl//tsl/lib/core:status_test_util",
+    ],
+)
+
+xla_cc_test(
+    name = "spmd_partitioner_util_test",
+    srcs = ["spmd_partitioner_util_test.cc"],
+    deps = [
+        ":spmd_partitioner",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:tile_assignment",
+        "@com_google_googletest//:gtest_main",
     ],
 )

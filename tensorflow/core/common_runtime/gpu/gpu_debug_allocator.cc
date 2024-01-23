@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/device_id.h"
@@ -82,8 +81,8 @@ void InitMask(se::StreamExecutor* exec, void* ptr, int64_t* mask) {
 GPUDebugAllocator::GPUDebugAllocator(Allocator* allocator,
                                      tsl::PlatformDeviceId platform_device_id)
     : base_allocator_(allocator) {
-  stream_exec_ = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                     se::GPUMachineManager(), platform_device_id)
+  stream_exec_ = se::GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
 }
 
@@ -161,8 +160,8 @@ bool GPUDebugAllocator::CheckFooter(void* ptr) {
 GPUNanResetAllocator::GPUNanResetAllocator(
     Allocator* allocator, tsl::PlatformDeviceId platform_device_id)
     : base_allocator_(allocator) {
-  stream_exec_ = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                     se::GPUMachineManager(), platform_device_id)
+  stream_exec_ = se::GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
 }
 

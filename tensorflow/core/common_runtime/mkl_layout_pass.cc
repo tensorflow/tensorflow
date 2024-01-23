@@ -1074,10 +1074,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     if (HasNodeAttr(n->def(), type_attr)) {
       const auto& attr = n->def().attr().at(type_attr);
       DataType dtype = attr.type();
-      if (dtype == DT_BFLOAT16 && !IsBF16SupportedByOneDNNOnThisCPU()) {
-        mkl_op_registry::BF16UnsupportedWarning();
+      if ((dtype == DT_BFLOAT16 || dtype == DT_HALF) &&
+          !IsDataTypeSupportedByOneDNNOnThisCPU(dtype)) {
+        DataTypeUnsupportedWarning(dtype);
         result = false;
-        reason = "Intel oneDNN with bfloat16 is not supported.";
+        reason =
+            "Intel oneDNN with " + DataType_Name(dtype) + " is not supported.";
       }
     }
 
@@ -1128,8 +1130,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DataType T_m;
     TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
 
-    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16
-    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16) return n;
+    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16 or DT_HALF
+    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16 && T_m != DT_HALF) return n;
 
     if (m->type_string() == csinfo_.bias_add) {
       // If a is BiasAdd, then Conv2D is 0th input of BiasAdd.
@@ -1168,8 +1170,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DataType T_m;
     TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
 
-    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16
-    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16) return n;
+    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16 or DT_HALF
+    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16 && T_m != DT_HALF) return n;
 
     const Node* conv_node;
     if (m->type_string() == csinfo_.pad) {
@@ -1308,8 +1310,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DataType T_m;
     TF_CHECK_OK(GetNodeAttr(m->def(), "T", &T_m));
 
-    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16
-    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16) return n;
+    // Don't try to merge if datatype is not DT_FLOAT or DT_BFLOAT16 or DT_HALF
+    if (T_m != DT_FLOAT && T_m != DT_BFLOAT16 && T_m != DT_HALF) return n;
 
     if (m->type_string() == csinfo_.bias_add_grad) {
       // Get 1st input 'g' of BiasAddGrad.
@@ -1529,7 +1531,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static bool MatMulRewrite(const Node* n) {
     DataType T;
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
-    if ((T == DT_FLOAT) || (T == DT_BFLOAT16)) {
+    if ((T == DT_FLOAT) || (T == DT_BFLOAT16) || (T == DT_HALF)) {
       VLOG(2) << "Rewriting MatMul to _MklMatMul";
 #ifdef DNNL_AARCH64_USE_ACL
       return MatMulHeuristic(n);
@@ -1586,11 +1588,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // impact.
     TF_CHECK_OK(GetNodeAttr(n->def(), "transpose_a", &trans_a));
 
-    // Only rewrite float and bfloat16.
+    // Only rewrite float, bfloat16 and half.
     DataType T_m;
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T_m));
 
-    return !trans_a && (T_m == DT_FLOAT || T_m == DT_BFLOAT16);
+    return !trans_a &&
+           (T_m == DT_FLOAT || T_m == DT_BFLOAT16 || T_m == DT_HALF);
   }
 
   // Check if we are performing pooling on depth or batch. If it is, then we

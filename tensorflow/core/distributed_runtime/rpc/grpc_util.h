@@ -30,7 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
-using tsl::ComputeBackoffMicroseconds;
 using tsl::FromGrpcStatus;
 using tsl::SharedGrpcChannelPtr;
 using tsl::ToGrpcStatus;

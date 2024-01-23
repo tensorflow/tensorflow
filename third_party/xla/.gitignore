@@ -8,6 +8,9 @@ bazel-bin
 bazel-out
 bazel-testlogs
 
+# Ignore files produced by `configure`
+.tf_configure.bazelrc
+tools/python_bin_path.sh
 
 # Emacs autosaves
 *~

@@ -176,7 +176,7 @@ absl::Status RunClusteringPipelineOnSubmodule(
     clustering_pipeline_status = RunTFXLABridge(
         submodule,
         [](OpPassManager &pm) {
-          internal::AddBridgeClusteringPipelinePasses(pm);
+          internal::AddReplicatedBridgeClusteringPipelinePasses(pm);
         },
         /*module_name=*/"", /*dump_prefix=*/"tf_xla_clustering_bridge_v1");
     if (num_submodules > 1) {

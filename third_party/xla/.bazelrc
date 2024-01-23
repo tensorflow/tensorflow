@@ -134,7 +134,7 @@ build --experimental_link_static_libraries_once=false
 # Prevent regressions on those two incompatible changes
 # TODO: remove those flags when they are flipped in the default Bazel version TF uses.
 build --incompatible_enforce_config_setting_visibility
-# TODO: also enable this flag after fixing the visbility violations
+# TODO: also enable this flag after fixing the visibility violations
 # build --incompatible_config_setting_private_default_visibility
 
 # Default options should come above this line.
@@ -249,7 +249,7 @@ build:cuda_clang --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_8
 build:cuda_clang_official --config=cuda_clang
 build:cuda_clang_official --action_env=TF_CUDA_VERSION="12"
 build:cuda_clang_official --action_env=TF_CUDNN_VERSION="8"
-build:cuda_clang_official --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-12.2"
+build:cuda_clang_official --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-12.3"
 build:cuda_clang_official --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
 build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-17/bin/clang"
 build:cuda_clang_official --action_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
@@ -307,7 +307,7 @@ build:macos --copt=-w
 build:windows --copt=/W0
 build:windows --host_copt=/W0
 
-# Suppress most C++ complier warnings to reduce log size but allow
+# Suppress most C++ compiler warnings to reduce log size but allow
 # for specific warnings to still be present.
 build:linux --copt="-Wno-all"
 build:linux --copt="-Wno-extra"
@@ -588,7 +588,7 @@ test:release_base --test_size_filters=small,medium
 # Target the AVX instruction set
 build:release_linux_base --config=avx_linux
 
-# Disable clang extention that rejects type definitions within offsetof.
+# Disable clang extension that rejects type definitions within offsetof.
 # This was added in clang-16 by https://reviews.llvm.org/D133574.
 # Can be removed once upb is updated, since a type definition is used within
 # offset of in the current version of ubp.
@@ -791,6 +791,14 @@ test:macos_arm64_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-os
 test:macos_arm64_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
 test:macos_arm64_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:macos_arm64_pycpp_test --config=macos_arm64_pycpp_test_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/compiler/aot/... -//tensorflow/core/kernels/image:resize_bicubic_op_test
+# MACOS X86 PYCPP
+test:macos_x86_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+test:macos_x86_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
+test:macos_x86_pycpp_test_filters --keep_going --test_lang_filters=cc,py --test_size_filters=small,medium
+test:macos_x86_pycpp_test --config=macos_x86_pycpp_test_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/...
+# CROSS-COMPILE MACOS X86 PYCPP
+test:cross_compile_macos_x86_pycpp_test --config=macos_x86_pycpp_test
+test:cross_compile_macos_x86_pycpp_test -//tensorflow/core/kernels:quantized_conv_ops_test -//tensorflow/core/kernels:quantized_matmul_op_test -//tensorflow/python/ops:quantized_conv_ops_test -//tensorflow/tools/graph_transforms:transforms_test -//tensorflow/python/tools:aot_compiled_test
 # END TF TEST SUITE OPTIONS
 
 # START CROSS-COMPILE CONFIGS
@@ -836,7 +844,7 @@ build:cross_compile_macos_x86 --action_env  MACOSX_DEPLOYMENT_TARGET=10.15
 build:cross_compile_macos_x86 --platforms=//tensorflow/tools/toolchains/cross_compile/config:darwin_x86_64
 build:cross_compile_macos_x86 --cpu=darwin
 build:cross_compile_macos_x86 --crosstool_top=//tensorflow/tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
-# When RBE cross-compiling for macOS, we need to explictly register the
+# When RBE cross-compiling for macOS, we need to explicitly register the
 # toolchain. Otherwise, oddly, RBE complains that a "docker container must be
 # specified".
 build:cross_compile_macos_x86 --extra_toolchains=//tensorflow/tools/toolchains/cross_compile/config:macos-x86-cross-compile-cc-toolchain
@@ -848,5 +856,7 @@ build:cross_compile_macos_x86 --platform_mappings=tensorflow/tools/toolchains/cr
 build:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86
 build:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
 test:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
+# Increase the test timeout as tests often take longer on mac.
+test:rbe_cross_compile_macos_x86 --test_timeout=300,450,1200,3600
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS

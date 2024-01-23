@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -16,12 +16,17 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
@@ -39,6 +45,16 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace spmd {
 namespace {
+using ::testing::Each;
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::FieldsAre;
+using ::testing::IsEmpty;
+using ::testing::IsFalse;
+using ::testing::IsTrue;
+using ::testing::Pair;
+using ::testing::ResultOf;
+using ::testing::UnorderedElementsAre;
 
 using DummyAutoShardingTest = HloTestBase;
 
@@ -142,7 +158,7 @@ ENTRY %elementwise {
     EXPECT_EQ(root->sharding().ReplicateOnLastTileDim(),
               expeted_last_dim_replicate);
     EXPECT_THAT(root->sharding().tile_assignment().dimensions(),
-                ::testing::ElementsAreArray(expected_tile));
+                ElementsAreArray(expected_tile));
   }
 };
 
@@ -170,6 +186,35 @@ ENTRY %elementwise {
   auto* instruction = FindInstruction(module.get(), "param0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
+}
+
+TEST_F(AutoShardingTest, NDIterativeSolveTest) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %elementwise {
+  param = s32[512,3084]{1,0} parameter(0), sharding={devices=[256,1]0,1,2,3,4,5,6,7,16,17,18,19,20,21,22,23,8,9,10,11,12,13,14,15,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255}
+  sharding_call = s32[512,3084]{1,0} custom-call(param), custom_call_target="Sharding", sharding={devices=[256,1]<=[256]}
+  ROOT slice = s32[512,2048]{1,0} slice(sharding_call), slice={[0:512], [0:2048]}
+})";
+
+  AutoShardingOption option;
+  option.enable = true;
+  option.solve_nd_sharding_iteratively = true;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  option.device_mesh_shape = {16, 16};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  HloInstruction* slice = FindInstruction(module.get(), "slice");
+  EXPECT_NE(slice, nullptr);
+  EXPECT_THAT(slice, op::Sharding("{devices=[256,1]<=[256]}"));
 }
 
 TEST_F(AutoShardingTest, RngBitGeneratorArrayInput) {
@@ -257,22 +302,22 @@ ENTRY %entry {
   EXPECT_THAT(
       std::make_tuple(param0, param1, dot),
       AnyOf(
-          ::testing::FieldsAre(
+          FieldsAre(
               op::Sharding(
                   "{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"),
               op::Sharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}"),
               op::Sharding("{devices=[1,2,2]0,1,2,3}")),
-          ::testing::FieldsAre(
+          FieldsAre(
               op::Sharding(
                   "{devices=[1,2,1,2]0,2,1,3 last_tile_dim_replicate}"),
               op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"),
               op::Sharding("{devices=[1,2,2]0,2,1,3}")),
-          ::testing::FieldsAre(
+          FieldsAre(
               op::Sharding(
                   "{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"),
               op::Sharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}"),
               op::Sharding("{devices=[2,1,2]0,1,2,3}")),
-          ::testing::FieldsAre(
+          FieldsAre(
               op::Sharding(
                   "{devices=[2,1,1,2]0,2,1,3 last_tile_dim_replicate}"),
               op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"),
@@ -301,18 +346,34 @@ ENTRY %entry {
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
   auto* param0 = FindInstruction(module.get(), "param0");
-  ASSERT_NE(param0, nullptr);
-  EXPECT_THAT(
-      param0,
-      op::Sharding("{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"));
   auto* param1 = FindInstruction(module.get(), "param1");
-  ASSERT_NE(param1, nullptr);
-  EXPECT_THAT(
-      param1,
-      op::Sharding("{devices=[1,1,2,1,2]0,2,1,3 last_tile_dim_replicate}"));
   auto* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(param0, nullptr);
+  ASSERT_NE(param1, nullptr);
   ASSERT_NE(dot, nullptr);
-  EXPECT_THAT(dot, op::Sharding("{devices=[2,2,1]0,1,2,3}"));
+  EXPECT_THAT(
+      std::make_tuple(param0, param1, dot),
+      AnyOf(
+          FieldsAre(op::Sharding(
+                        "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+                    op::Sharding(
+                        "{devices=[1,1,2,1,2]0,2,1,3 last_tile_dim_replicate}"),
+                    op::Sharding("{devices=[2,2,1]0,1,2,3}")),
+          FieldsAre(op::Sharding(
+                        "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+                    op::Sharding(
+                        "{devices=[1,1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+                    op::Sharding("{devices=[2,1,2]0,1,2,3}")),
+          FieldsAre(op::Sharding(
+                        "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+                    op::Sharding(
+                        "{devices=[1,1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+                    op::Sharding("{devices=[2,1,2]0,2,1,3}")),
+          FieldsAre(op::Sharding(
+                        "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+                    op::Sharding(
+                        "{devices=[1,1,2,1,2]0,1,2,3 last_tile_dim_replicate}"),
+                    op::Sharding("{devices=[2,2,1]0,2,1,3}"))));
 }
 
 TEST_F(AutoShardingTest, DotTwoContractingDims) {
@@ -344,18 +405,16 @@ ENTRY %entry {
   ASSERT_NE(dot, nullptr);
   EXPECT_THAT(
       std::make_tuple(param0, param1, dot),
-      AnyOf(::testing::FieldsAre(
-                op::Sharding(
-                    "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
-                op::Sharding(
-                    "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
-                op::Sharding("{devices=[2,2]0,2,1,3}")),
-            ::testing::FieldsAre(
-                op::Sharding(
-                    "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
-                op::Sharding(
-                    "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
-                op::Sharding("{devices=[2,2]0,1,2,3}"))));
+      AnyOf(FieldsAre(op::Sharding(
+                          "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+                      op::Sharding(
+                          "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+                      op::Sharding("{devices=[2,2]0,2,1,3}")),
+            FieldsAre(op::Sharding(
+                          "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+                      op::Sharding(
+                          "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+                      op::Sharding("{devices=[2,2]0,1,2,3}"))));
 }
 
 TEST_F(AutoShardingTest, TwoMatmul) {
@@ -413,21 +472,28 @@ ENTRY twomatmul {
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
   param1 = FindInstruction(module.get(), "parameter.1");
-  ASSERT_NE(param1, nullptr);
-  EXPECT_THAT(param1, op::Sharding("{replicated}"));
   param2 = FindInstruction(module.get(), "parameter.2");
-  ASSERT_NE(param2, nullptr);
-  EXPECT_THAT(param2, op::Sharding("{replicated}"));
   param3 = FindInstruction(module.get(), "parameter.3");
-  ASSERT_NE(param3, nullptr);
-  EXPECT_THAT(param3,
-              op::Sharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}"));
   dot4 = FindInstruction(module.get(), "dot.4");
-  ASSERT_NE(dot4, nullptr);
-  EXPECT_THAT(dot4, op::Sharding("{replicated}"));
   dot5 = FindInstruction(module.get(), "dot.5");
+  ASSERT_NE(param1, nullptr);
+  ASSERT_NE(param2, nullptr);
+  ASSERT_NE(param3, nullptr);
+  ASSERT_NE(dot4, nullptr);
   ASSERT_NE(dot5, nullptr);
-  EXPECT_THAT(dot5, op::Sharding("{devices=[2,2]0,1,2,3}"));
+  EXPECT_THAT(
+      std::make_tuple(param1, param2, param3, dot4, dot5),
+      AnyOf(
+          FieldsAre(
+              op::Sharding("{replicated}"), op::Sharding("{replicated}"),
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"),
+              op::Sharding("{replicated}"),
+              op::Sharding("{devices=[2,2]0,2,1,3}")),
+          FieldsAre(
+              op::Sharding("{replicated}"), op::Sharding("{replicated}"),
+              op::Sharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}"),
+              op::Sharding("{replicated}"),
+              op::Sharding("{devices=[2,2]0,1,2,3}"))));
 }
 
 TEST_F(AutoShardingTest, ProcessCustomCallShardings) {
@@ -460,7 +526,7 @@ ENTRY %entry {
               op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}"));
 }
 
-TEST_F(AutoShardingTest, RemoveShardingAnnotationKeepAll) {
+TEST_F(AutoShardingTest, SaveAndRemoveShardingAnnotationKeepAll) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -476,25 +542,104 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   // Keep all user shardings
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
-                        module.get()));
+  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+      saved_shardings_result =
+          AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
+              module.get(), /* replicated_small_tensors */ {},
+              /* execution_threads */ {});
+  absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
+      saved_shardings_result.first;
+  bool changed = saved_shardings_result.second;
   EXPECT_FALSE(changed);
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* ins : computation->instructions()) {
-      EXPECT_TRUE(ins->has_sharding());
-    }
-  }
+  std::vector<HloInstruction*> instructions =
+      module->entry_computation()->MakeInstructionPostOrder();
+  EXPECT_THAT(instructions,
+              Each(ResultOf(
+                  [](const HloInstruction* ins) { return ins->has_sharding(); },
+                  IsTrue())));
+
+  auto verified_parse_sharding = [](const absl::string_view sharding_str) {
+    StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
+    CHECK_OK(sharding);
+    return *sharding;
+  };
+
+  EXPECT_THAT(
+      saved_shardings,
+      UnorderedElementsAre(
+          Pair("param0",
+               ElementsAre(verified_parse_sharding(
+                   "{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"))),
+          Pair("param1",
+               ElementsAre(verified_parse_sharding(
+                   "{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"))),
+          Pair("dot",
+               ElementsAre(verified_parse_sharding("{devices=[2,2]0,1,2,3}"))),
+          Pair("copy", ElementsAre(verified_parse_sharding(
+                           "{devices=[2,2]0,1,2,3}")))));
 }
 
-TEST_F(AutoShardingTest, RemoveShardingAnnotationRemoveIntermediate) {
+TEST_F(AutoShardingTest,
+       SaveAndRemoveShardingAnnotationKeepInputOutputSmallTensor) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
+  %param0 = f32[4,256,64]{2,1,0} parameter(0), sharding={devices=[2,2,1]0,1,2,3}
+  %param1 = f32[4,256,32]{2,1,0} parameter(1), sharding={devices=[2,2,1]0,1,2,3}
+  %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0, f32[4,256,32]{2,1,0} %param1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={replicated}
+  ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  // Keep all user shardings
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
+  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+      saved_shardings_result =
+          AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
+              module.get(), /* replicated_small_tensors */ {"dot"},
+              /* execution_threads */ {});
+  absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
+      saved_shardings_result.first;
+  bool changed = saved_shardings_result.second;
+  EXPECT_FALSE(changed);
+  std::vector<HloInstruction*> instructions =
+      module->entry_computation()->MakeInstructionPostOrder();
+  EXPECT_THAT(instructions,
+              Each(ResultOf(
+                  [](const HloInstruction* ins) { return ins->has_sharding(); },
+                  IsTrue())));
+
+  auto verified_parse_sharding = [](const absl::string_view sharding_str) {
+    StatusOr<HloSharding> sharding = ParseSharding(sharding_str);
+    CHECK_OK(sharding);
+    return *sharding;
+  };
+
+  EXPECT_THAT(
+      saved_shardings,
+      UnorderedElementsAre(
+          Pair("param0", ElementsAre(verified_parse_sharding(
+                             "{devices=[2,2,1]0,1,2,3}"))),
+          Pair("param1", ElementsAre(verified_parse_sharding(
+                             "{devices=[2,2,1]0,1,2,3}"))),
+          Pair("dot", ElementsAre(verified_parse_sharding("{replicated}"))),
+          Pair("copy", ElementsAre(verified_parse_sharding(
+                           "{devices=[2,2]0,1,2,3}")))));
+}
+
+TEST_F(AutoShardingTest, SaveAndRemoveShardingAnnotationKeepInputOutput) {
   const char* const hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   %param0 = f32[4,256,64]{2,1,0} parameter(0), sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}
   %param1 = f32[4,256,32]{2,1,0} parameter(1), sharding={devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}
-  %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0, f32[4,256,32]{2,1,0} %param1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={devices=[2,2]0,1,2,3}
+  %param0_copy = f32[4,256,64]{2,1,0} copy(param0), sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %param1_copy = f32[4,256,32]{2,1,0} copy(param1), sharding={devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}
+  %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0_copy, f32[4,256,32]{2,1,0} %param1_copy), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={devices=[2,2]0,1,2,3}
   ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -502,42 +647,79 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   AutoShardingOption option;
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
-                        module.get()));
+  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+      saved_shardings_result =
+          AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
+              module.get(), /* replicated_small_tensors */ {},
+              /* execution_threads */ {});
+  absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
+      saved_shardings_result.first;
+  bool changed = saved_shardings_result.second;
   EXPECT_TRUE(changed);
+
   // Dot does not have shardings anymore.
-  auto* dot = FindInstruction(module.get(), "dot");
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
   ASSERT_NE(dot, nullptr);
   EXPECT_FALSE(dot->has_sharding());
-  // params and copy still have shardings.
-  auto* param0 = FindInstruction(module.get(), "param0");
+
+  // params and copies still have shardings.
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
   ASSERT_NE(param0, nullptr);
   EXPECT_TRUE(param0->has_sharding());
   EXPECT_THAT(
       param0,
       op::Sharding("{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"));
-  auto* param1 = FindInstruction(module.get(), "param1");
+
+  const HloInstruction* param0_copy =
+      FindInstruction(module.get(), "param0_copy");
+  ASSERT_NE(param0_copy, nullptr);
+  EXPECT_TRUE(param0_copy->has_sharding());
+  EXPECT_THAT(
+      param0_copy,
+      op::Sharding("{devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}"));
+
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
   ASSERT_NE(param1, nullptr);
   EXPECT_TRUE(param1->has_sharding());
   EXPECT_THAT(
       param1,
       op::Sharding("{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"));
-  auto* copy = FindInstruction(module.get(), "copy");
+
+  const HloInstruction* param1_copy =
+      FindInstruction(module.get(), "param1_copy");
+  ASSERT_NE(param1_copy, nullptr);
+  EXPECT_TRUE(param1_copy->has_sharding());
+  EXPECT_THAT(
+      param1_copy,
+      op::Sharding("{devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}"));
+
+  // Root still has sharding
+  const HloInstruction* copy = FindInstruction(module.get(), "copy");
   ASSERT_NE(copy, nullptr);
   EXPECT_TRUE(copy->has_sharding());
   EXPECT_THAT(copy, op::Sharding("{devices=[2,2]0,1,2,3}"));
+
+  EXPECT_THAT(
+      saved_shardings,
+      UnorderedElementsAre(Pair("param0", ElementsAre(param0->sharding())),
+                           Pair("param0_copy", ElementsAre(param0->sharding())),
+                           Pair("param1", ElementsAre(param1->sharding())),
+                           Pair("param1_copy", ElementsAre(param1->sharding())),
+                           Pair("copy", ElementsAre(copy->sharding()))));
 }
 
-TEST_F(AutoShardingTest, RemoveShardingAnnotationRemoveAll) {
+TEST_F(AutoShardingTest, SaveAndRemoveShardingAnnotationRemoveAll) {
   const char* const hlo_string = R"(
 HloModule module
 
 ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
-  %param0 = f32[4,256,64]{2,1,0} parameter(0), sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate}
-  %param1 = f32[4,256,32]{2,1,0} parameter(1), sharding={devices=[1,1,2,2]0,2,1,3 last_tile_dim_replicate}
-  %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0, f32[4,256,32]{2,1,0} %param1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={devices=[2,2]0,1,2,3}
-  ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
+  %param0 = f32[4,256,64]{2,1,0} parameter(0),
+  sharding={devices=[1,1,2,2]0,1,2,3 last_tile_dim_replicate} %param1 =
+  f32[4,256,32]{2,1,0} parameter(1), sharding={devices=[1,1,2,2]0,2,1,3
+  last_tile_dim_replicate} %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0}
+  %param0, f32[4,256,32]{2,1,0} %param1), lhs_contracting_dims={0,1},
+  rhs_contracting_dims={0,1}, sharding={devices=[2,2]0,1,2,3} ROOT %copy =
+  f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={devices=[2,2]0,1,2,3}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -545,15 +727,75 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   // Remove all user shardings
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
-                        module.get()));
+  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+      saved_shardings_result =
+          AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
+              module.get(), /* replicated_small_tensors */ {},
+              /* execution_threads */ {});
+  absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
+      saved_shardings_result.first;
+  bool changed = saved_shardings_result.second;
   EXPECT_TRUE(changed);
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* ins : computation->instructions()) {
-      EXPECT_FALSE(ins->has_sharding());
-    }
-  }
+  EXPECT_THAT(saved_shardings, IsEmpty());
+  std::vector<HloInstruction*> instructions =
+      module->entry_computation()->MakeInstructionPostOrder();
+  EXPECT_THAT(instructions,
+              Each(ResultOf(
+                  [](const HloInstruction* ins) { return ins->has_sharding(); },
+                  IsFalse())));
+}
+
+TEST_F(AutoShardingTest, SaveAndRemoveShardingAnnotationRemoveAllSmallTensor) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
+  %param0 = f32[4,256,64]{2,1,0} parameter(0), sharding={devices=[2,2,1]0,1,2,3}
+  %param1 = f32[4,256,32]{2,1,0} parameter(1), sharding={devices=[2,2,1]0,1,2,3}
+  %dot = f32[64,32]{1,0} dot(f32[4,256,64]{2,1,0} %param0, f32[4,256,32]{2,1,0} %param1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={replicated}
+  ROOT %copy = f32[64,32]{1,0} copy(f32[64,32]{1,0} %dot), sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  // Remove all user shardings
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
+  std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
+      saved_shardings_result =
+          AutoShardingImplementation(option).SaveAndRemoveShardingAnnotation(
+              module.get(), /* replicated_small_tensors */ {"dot", "copy"},
+              /* execution_threads */ {});
+  absl::flat_hash_map<std::string, std::vector<HloSharding>> saved_shardings =
+      saved_shardings_result.first;
+  bool changed = saved_shardings_result.second;
+  EXPECT_TRUE(changed);
+
+  // params have no shardings.
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  ASSERT_NE(param0, nullptr);
+  EXPECT_FALSE(param0->has_sharding());
+
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  ASSERT_NE(param1, nullptr);
+  EXPECT_FALSE(param1->has_sharding());
+
+  // Dot and copy have shardings as they are specified as replicated small
+  // tensors.
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(dot, nullptr);
+  EXPECT_TRUE(dot->has_sharding());
+  EXPECT_TRUE(dot->sharding().IsReplicated());
+
+  const HloInstruction* copy = FindInstruction(module.get(), "copy");
+  ASSERT_NE(copy, nullptr);
+  EXPECT_TRUE(copy->has_sharding());
+  EXPECT_TRUE(copy->sharding().IsReplicated());
+
+  EXPECT_THAT(
+      saved_shardings,
+      UnorderedElementsAre(Pair("dot", ElementsAre(dot->sharding())),
+                           Pair("copy", ElementsAre(copy->sharding()))));
 }
 
 TEST_F(AutoShardingTest, TupleReduceTest) {
@@ -749,7 +991,11 @@ ENTRY %entry {
   ASSERT_NE(gather, nullptr);
   EXPECT_THAT(
       gather,
-      op::Sharding("{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"));
+      AnyOf(
+          op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"),
+          op::Sharding("{devices=[1,2,1,2]0,2,1,3 last_tile_dim_replicate}"),
+          op::Sharding("{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"),
+          op::Sharding("{devices=[2,1,1,2]0,2,1,3 last_tile_dim_replicate}")));
   auto gather_sharding = gather->sharding();
   TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
 }
@@ -778,7 +1024,8 @@ ENTRY %entry {
   ASSERT_NE(gather, nullptr);
   ASSERT_NE(param0, nullptr);
   EXPECT_THAT(gather, op::Sharding("{devices=[8,1,1]0,1,2,3,4,5,6,7}"));
-  EXPECT_THAT(param0, op::Sharding("{devices=[8,1]0,1,2,3,4,5,6,7}"));
+  EXPECT_THAT(param0, AnyOf(op::Sharding("{devices=[1,8]0,1,2,3,4,5,6,7}"),
+                            op::Sharding("{devices=[8,1]0,1,2,3,4,5,6,7}")));
   TF_EXPECT_OK(gather->sharding().Validate(gather->shape(), 8));
   // Ensure no resharding op is created for operand 0 of gather in this case.
   EXPECT_EQ(param0, gather->operand(0));
@@ -809,13 +1056,18 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   EXPECT_TRUE(changed);
   auto* gather = FindInstruction(module.get(), "gather");
+  auto* conv = FindInstruction(module.get(), "convolution");
   ASSERT_NE(gather, nullptr);
-  EXPECT_THAT(gather, op::Sharding("{devices=[4,1,1]0,1,2,3}"));
+  ASSERT_NE(conv, nullptr);
+  EXPECT_THAT(std::make_tuple(gather, conv),
+              AnyOf(FieldsAre(op::Sharding("{devices=[4,1,1]0,1,2,3}"),
+                              op::Sharding("{devices=[4,1,1]0,1,2,3}")),
+                    FieldsAre(op::Sharding("{replicated}"),
+                              op::Sharding("{devices=[1,1,4]0,1,2,3}")),
+                    FieldsAre(op::Sharding("{replicated}"),
+                              op::Sharding("{devices=[4,1,1]0,1,2,3}"))));
   auto gather_sharding = gather->sharding();
   TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
-  auto* conv = FindInstruction(module.get(), "convolution");
-  ASSERT_NE(conv, nullptr);
-  EXPECT_THAT(conv, op::Sharding("{devices=[4,1,1]0,1,2,3}"));
   auto conv_sharding = conv->sharding();
   TF_EXPECT_OK(conv_sharding.Validate(conv->shape(), 4));
 }

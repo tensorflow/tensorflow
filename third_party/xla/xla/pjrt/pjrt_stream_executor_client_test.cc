@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -141,7 +141,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   auto result_literal = std::make_shared<Literal>(
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
-  blocked_buffer->ToLiteral(result_literal.get(), [&](absl::Status s) {
+  blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
     absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
     got_literal = true;

@@ -4,7 +4,7 @@
 load("//tsl:tsl.bzl", "set_external_visibility")
 load("//tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(

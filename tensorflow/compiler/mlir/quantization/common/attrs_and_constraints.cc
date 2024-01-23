@@ -23,26 +23,9 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"  // IWYU pragma: keep
 
 namespace mlir::quant {
-
-bool HasQuantizedTensors(Operation* op) {
-  if (!IsOpQuantizable(op)) return false;
-  for (Type operand_type : op->getOperandTypes()) {
-    auto tensor_type = operand_type.dyn_cast<TensorType>();
-    if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
-      return true;
-    }
-  }
-  for (Type result_type : op->getResultTypes()) {
-    auto tensor_type = result_type.dyn_cast<TensorType>();
-    if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
-      return true;
-    }
-  }
-  return false;
-}
 
 bool HasStaticShape(Value value) {
   auto shaped_type = value.getType().dyn_cast<ShapedType>();

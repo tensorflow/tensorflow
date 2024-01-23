@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "xla/pjrt/cpu/cpu_topology.h"
+#include "xla/pjrt/pjrt_compiler.h"
 
 #define EIGEN_USE_THREADS
 
@@ -97,6 +100,7 @@ limitations under the License.
 #include "tsl/concurrency/async_value.h"
 #include "tsl/concurrency/async_value_ref.h"
 #include "tsl/concurrency/ref_count.h"
+#include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
@@ -263,6 +267,28 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
   return to_string_;
 }
 
+/*static*/ TfrtCpuTopologyDescription TfrtCpuTopologyDescription::Create(
+    PjRtPlatformId platform_id, absl::string_view platform_name,
+    absl::string_view platform_version,
+    absl::Span<const std::unique_ptr<TfrtCpuDevice>> devices) {
+  std::vector<CpuTopology::CpuDevice> cpu_devices;
+  cpu_devices.reserve(devices.size());
+  for (auto& device : devices) {
+    cpu_devices.push_back(
+        {device->id(), device->process_index(), device->local_hardware_id()});
+  }
+  return TfrtCpuTopologyDescription(platform_id, platform_name,
+                                    platform_version, cpu_devices);
+}
+
+absl::StatusOr<std::string> TfrtCpuTopologyDescription::Serialize() const {
+  std::string result;
+  if (!tsl::SerializeToStringDeterministic(cpu_topology_.ToProto(), &result)) {
+    return absl::InternalError("Failed to serialize cpu_topology");
+  }
+  return result;
+}
+
 TfrtCpuDevice::TfrtCpuDevice(int id, int process_index, int local_hardware_id,
                              int max_inflight_computations)
     : description_(id, process_index, local_hardware_id),
@@ -315,10 +341,10 @@ StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
   }
 
   GlobalTopologyProto global_topology;
-  TF_RETURN_IF_ERROR(
-      ExchangeTopologies("cpu", options.node_id, options.num_nodes,
-                         absl::Minutes(2), absl::Minutes(5), options.kv_get,
-                         options.kv_put, local_topology, &global_topology));
+  TF_RETURN_IF_ERROR(ExchangeTopologies(
+      "cpu", options.node_id, options.num_nodes, absl::Minutes(2),
+      absl::Minutes(5), options.kv_store.get(), local_topology,
+      &global_topology));
 
   std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
   for (const LocalTopologyProto& node : global_topology.nodes()) {
@@ -354,7 +380,9 @@ TfrtCpuClient::TfrtCpuClient(
       last_collective_launch_event_(
           tsl::MakeAvailableAsyncValueRef<CpuEvent>()),
       transpose_cache_(1024),
-      collectives_(std::move(collectives)) {
+      collectives_(std::move(collectives)),
+      topology_(TfrtCpuTopologyDescription::Create(
+          platform_id(), platform_name(), platform_version(), owned_devices_)) {
   for (const std::unique_ptr<TfrtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
     CHECK(id_to_device_.insert({device->id(), device.get()}).second)
@@ -831,7 +859,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+    PjRtDevice* device) {
   tsl::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostBuffer");
   Shape shape = ShapeUtil::MakeShape(type, dims);
   VLOG(2) << "TfrtCpuClient::BufferFromHostBuffer: shape: " << shape.ToString()
@@ -1316,7 +1345,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     std::optional<absl::string_view> error_message =
         xla::CustomCallStatusGetMessage(&status);
     if (error_message) {
-      return InternalError("Generated function failed: %s", *error_message);
+      return Internal("Generated function failed: %s", *error_message);
     }
 
   } else {
@@ -1428,7 +1457,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
         [done_event = done_event.CopyRef(), event = execute_event.CopyRef()]() {
           Status s;
           if (auto* error = event.GetErrorIfPresent()) {
-            s = InternalError("Compute error: %s", error->message());
+            s = Internal("Compute error: %s", error->message());
           }
           done_event.emplace(std::move(s));
         });

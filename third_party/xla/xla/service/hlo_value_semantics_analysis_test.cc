@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -593,7 +593,7 @@ TEST_F(EinsumDepthAnalysisTest, HandleConditional) {
     branch1 {
       fparam = f32[4] parameter(0)
       %async-start = ((f32[4]), f32[4], s32[]) custom-call-start(f32[4] fparam), async_execution_thread="parallel_thread", custom_call_target="foo"
-      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start), async_execution_thread="parallel_thread", custom_call_target="foo"
+      ROOT %async-done = f32[4] custom-call-done(((f32[4]), f32[4], s32[]) %async-start)
     }
 
     branch2 {

@@ -16,32 +16,87 @@ limitations under the License.
 
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
+#include "tensorflow/lite/signature_runner.h"
+
+#ifdef TFLITE_DISABLE_SELECT_JAVA_APIS
+#include <algorithm>
+
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/util.h"
+#endif
 
 using tflite::Interpreter;
 using tflite::jni::ThrowException;
-
-#ifndef TFLITE_DISABLE_SELECT_JAVA_APIS
 
 namespace tflite {
 // A helper class to access private information of SignatureRunner class.
 class SignatureRunnerJNIHelper {
  public:
-  explicit SignatureRunnerJNIHelper(impl::SignatureRunner* runner)
+  explicit SignatureRunnerJNIHelper(SignatureRunner* runner)
       : signature_runner_(runner) {}
 
-  // Gets the subgraph index associated with this SignatureRunner.
+#ifndef TFLITE_DISABLE_SELECT_JAVA_APIS
+  // Attempts to get the subgraph index associated with this SignatureRunner.
+  // Returns the subgraph index, if available, or -1 on error.
   int GetSubgraphIndex() {
     if (!signature_runner_) return -1;
 
     return signature_runner_->signature_def_->subgraph_index;
   }
+#endif
 
+ public:
+  // Gets the index of the input specified by `input_name`.
+  int GetInputIndex(const char* input_name) {
+#ifndef TFLITE_DISABLE_SELECT_JAVA_APIS
+    int input_tensor_index = GetInputTensorIndex(input_name);
+    if (input_tensor_index == -1) return -1;
+
+    int count = 0;
+    for (int tensor_idx : signature_runner_->subgraph_->inputs()) {
+      if (input_tensor_index == tensor_idx) return count;
+      ++count;
+    }
+    return -1;
+#else
+    const auto& inputs = signature_runner_->input_names();
+    const auto& it = std::find(inputs.begin(), inputs.end(), input_name);
+    if (it == inputs.end()) {
+      return -1;
+    }
+    return it - inputs.begin();
+#endif
+  }
+
+  // Gets the index of the output specified by `output_name`.
+  int GetOutputIndex(const char* output_name) {
+#ifndef TFLITE_DISABLE_SELECT_JAVA_APIS
+    int output_tensor_index = GetOutputTensorIndex(output_name);
+    if (output_tensor_index == -1) return -1;
+
+    int count = 0;
+    for (int tensor_idx : signature_runner_->subgraph_->outputs()) {
+      if (output_tensor_index == tensor_idx) return count;
+      ++count;
+    }
+    return -1;
+#else
+    const auto& outputs = signature_runner_->output_names();
+    const auto& it = std::find(outputs.begin(), outputs.end(), output_name);
+    if (it == outputs.end()) {
+      return -1;
+    }
+    return it - outputs.begin();
+#endif
+  }
+
+ private:
+#ifndef TFLITE_DISABLE_SELECT_JAVA_APIS
   // Gets the tensor index of a given input.
   int GetInputTensorIndex(const char* input_name) {
-    const auto& it = signature_runner_->signature_def_->inputs.find(input_name);
-    if (it == signature_runner_->signature_def_->inputs.end()) {
+    const auto& inputs = signature_runner_->signature_def_->inputs;
+    const auto& it = inputs.find(input_name);
+    if (it == inputs.end()) {
       return -1;
     }
     return it->second;
@@ -56,54 +111,23 @@ class SignatureRunnerJNIHelper {
     }
     return it->second;
   }
+#endif  // ndef TFLITE_DISABLE_SELECT_JAVA_APIS
 
-  // Gets the index of the input specified by `input_name`.
-  int GetInputIndex(const char* input_name) {
-    int input_tensor_index = GetInputTensorIndex(input_name);
-    if (input_tensor_index == -1) return -1;
-
-    int count = 0;
-    for (int tensor_idx : signature_runner_->subgraph_->inputs()) {
-      if (input_tensor_index == tensor_idx) return count;
-      ++count;
-    }
-    return -1;
-  }
-
-  // Gets the index of the output specified by `output_name`.
-  int GetOutputIndex(const char* output_name) {
-    int output_tensor_index = GetOutputTensorIndex(output_name);
-    if (output_tensor_index == -1) return -1;
-
-    int count = 0;
-    for (int tensor_idx : signature_runner_->subgraph_->outputs()) {
-      if (output_tensor_index == tensor_idx) return count;
-      ++count;
-    }
-    return -1;
-  }
-
- private:
-  impl::SignatureRunner* signature_runner_;
+  SignatureRunner* signature_runner_;
 };
 }  // namespace tflite
 
 using tflite::Interpreter;
+using tflite::SignatureRunner;
 using tflite::SignatureRunnerJNIHelper;
-using tflite::impl::SignatureRunner;
 using tflite::jni::BufferErrorReporter;
 using tflite::jni::CastLongToPointer;
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 
 extern "C" {
+
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeGetSignatureRunner(
     JNIEnv* env, jclass clazz, jlong handle, jstring signature_key) {
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: nativeGetSignatureRunner");
-  return -1;
-#else
   Interpreter* interpreter = CastLongToPointer<Interpreter>(env, handle);
   if (interpreter == nullptr) return -1;
   const char* signature_key_ptr =
@@ -119,7 +143,6 @@ Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeGetSignatureRunner(
   // Release the memory before returning.
   env->ReleaseStringUTFChars(signature_key, signature_key_ptr);
   return reinterpret_cast<jlong>(runner);
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT jint JNICALL
@@ -139,39 +162,22 @@ Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeGetSubgraphIndex(
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeInputNames(
     JNIEnv* env, jclass clazz, jlong handle) {
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: nativeInputNames");
-  return nullptr;
-#else
   SignatureRunner* runner = CastLongToPointer<SignatureRunner>(env, handle);
   if (runner == nullptr) return nullptr;
   return tflite::jni::CreateStringArray(runner->input_names(), env);
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeOutputNames(
     JNIEnv* env, jclass clazz, jlong handle) {
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: nativeOutputNames");
-  return nullptr;
-#else
   SignatureRunner* runner = CastLongToPointer<SignatureRunner>(env, handle);
   if (runner == nullptr) return nullptr;
   return tflite::jni::CreateStringArray(runner->output_names(), env);
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeGetInputIndex(
     JNIEnv* env, jclass clazz, jlong handle, jstring input_name) {
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: nativeGetInputIndex");
-  return -1;
-#else
   SignatureRunner* runner = CastLongToPointer<SignatureRunner>(env, handle);
   if (runner == nullptr) return -1;
   const char* input_name_ptr = env->GetStringUTFChars(input_name, nullptr);
@@ -179,17 +185,11 @@ Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeGetInputIndex(
   // Release the memory before returning.
   env->ReleaseStringUTFChars(input_name, input_name_ptr);
   return index;
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT jint JNICALL
 Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeGetOutputIndex(
     JNIEnv* env, jclass clazz, jlong handle, jstring output_name) {
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: nativeGetOutputIndex");
-  return -1;
-#else
   SignatureRunner* runner = CastLongToPointer<SignatureRunner>(env, handle);
   if (runner == nullptr) return -1;
   const char* output_name_ptr = env->GetStringUTFChars(output_name, nullptr);
@@ -197,18 +197,12 @@ Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeGetOutputIndex(
   // Release the memory before returning.
   env->ReleaseStringUTFChars(output_name, output_name_ptr);
   return index;
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT jboolean JNICALL
 Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeResizeInput(
     JNIEnv* env, jclass clazz, jlong handle, jlong error_handle,
     jstring input_name, jintArray dims) {
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: nativeResizeInput");
-  return -1;
-#else
   SignatureRunner* runner = CastLongToPointer<SignatureRunner>(env, handle);
   BufferErrorReporter* error_reporter =
       CastLongToPointer<BufferErrorReporter>(env, error_handle);
@@ -223,12 +217,19 @@ Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeResizeInput(
   }
   bool is_changed = tflite::jni::AreDimsDifferent(env, target, dims);
   if (is_changed) {
+#if TFLITE_DISABLE_SELECT_JAVA_APIS
+    // In this case, only unknown dimensions (those with size = -1)
+    // can be resized.
+    TfLiteStatus status = runner->ResizeInputTensorStrict(
+        input_name_ptr, tflite::jni::ConvertJIntArrayToVector(env, dims));
+#else
     TfLiteStatus status = runner->ResizeInputTensor(
         input_name_ptr, tflite::jni::ConvertJIntArrayToVector(env, dims));
+#endif
     if (status != kTfLiteOk) {
       ThrowException(env, tflite::jni::kIllegalArgumentException,
-                     "Internal error: Failed to resize input %s: %s",
-                     input_name_ptr, error_reporter->CachedErrorMessage());
+                     "Error: Failed to resize input %s: %s", input_name_ptr,
+                     error_reporter->CachedErrorMessage());
       // Release the memory before returning.
       env->ReleaseStringUTFChars(input_name, input_name_ptr);
       return JNI_FALSE;
@@ -237,17 +238,11 @@ Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeResizeInput(
   // Release the memory before returning.
   env->ReleaseStringUTFChars(input_name, input_name_ptr);
   return is_changed ? JNI_TRUE : JNI_FALSE;
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeAllocateTensors(
     JNIEnv* env, jclass clazz, jlong handle, jlong error_handle) {
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: nativeAllocateTensors");
-#else
-
   SignatureRunner* runner = CastLongToPointer<SignatureRunner>(env, handle);
   BufferErrorReporter* error_reporter =
       CastLongToPointer<BufferErrorReporter>(env, error_handle);
@@ -260,17 +255,11 @@ Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeAllocateTensors(
         " %s",
         error_reporter->CachedErrorMessage());
   }
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
 
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeInvoke(
     JNIEnv* env, jclass clazz, jlong handle, jlong error_handle) {
-#if TFLITE_DISABLE_SELECT_JAVA_APIS
-  ThrowException(env, tflite::jni::kUnsupportedOperationException,
-                 "Not supported: nativeInvoke");
-#else
-
   SignatureRunner* runner = CastLongToPointer<SignatureRunner>(env, handle);
   BufferErrorReporter* error_reporter =
       CastLongToPointer<BufferErrorReporter>(env, error_handle);
@@ -281,6 +270,6 @@ Java_org_tensorflow_lite_NativeSignatureRunnerWrapper_nativeInvoke(
                    "Internal error: Failed to run on the given Interpreter: %s",
                    error_reporter->CachedErrorMessage());
   }
-#endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 }
+
 }  // extern "C"

@@ -247,7 +247,7 @@ class ReifyOperationOutputShapes : public RewritePattern {
         !IsArrayOfShapes(output_shapes))
       return failure();
 
-    rewriter.updateRootInPlace(op, [&] {
+    rewriter.modifyOpInPlace(op, [&] {
       op->removeAttr(output_shapes_id_);
       assert(output_shapes.size() == results.size());
       for (auto it :
@@ -323,14 +323,14 @@ class DropAttributes : public RewritePattern {
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
     if (!isa<OpTs...>(op)) return failure();
-    rewriter.startRootUpdate(op);
+    rewriter.startOpModification(op);
     if (!llvm::count_if(attr_ids_, [&](StringAttr attr_id) {
           return op->removeAttr(attr_id);
         })) {
-      rewriter.cancelRootUpdate(op);
+      rewriter.cancelOpModification(op);
       return failure();
     }
-    rewriter.finalizeRootUpdate(op);
+    rewriter.finalizeOpModification(op);
     return success();
   }
 
@@ -524,7 +524,7 @@ struct MaterializeIfAttrs : public MaterializeAttrsPattern<IfLikeOp> {
               this->getArgumentElementTypesAttr(rewriter, op));
     attrs.set(op.getToutAttrName(),
               GetElementTypesAttr(rewriter, op.getOuts()));
-    rewriter.updateRootInPlace(
+    rewriter.modifyOpInPlace(
         op, [&] { op->setAttrs(attrs.getDictionary(op->getContext())); });
     return success();
   }
@@ -543,7 +543,7 @@ struct MaterializeCaseAttrs : public MaterializeAttrsPattern<CaseLikeOp> {
               this->getArgumentElementTypesAttr(rewriter, op));
     attrs.set(op.getToutAttrName(),
               GetElementTypesAttr(rewriter, op.getOuts()));
-    rewriter.updateRootInPlace(
+    rewriter.modifyOpInPlace(
         op, [&] { op->setAttrs(attrs.getDictionary(op->getContext())); });
     return success();
   }
@@ -557,7 +557,7 @@ struct MaterializeTAttr : public MaterializeAttrsPattern<WhileOrForLikeOp> {
   LogicalResult matchAndRewrite(WhileOrForLikeOp op,
                                 PatternRewriter &rewriter) const override {
     if (op.getT()) return failure();
-    rewriter.updateRootInPlace(op, [&] {
+    rewriter.modifyOpInPlace(op, [&] {
       op.setTAttr(this->getArgumentElementTypesAttr(rewriter, op));
     });
     return success();
@@ -589,7 +589,7 @@ class MaterializeOutputShapesBase : public RewritePattern {
         shapes.push_back(ShapeAttr::get(op->getContext(), std::nullopt));
       }
     }
-    rewriter.updateRootInPlace(op, [&] {
+    rewriter.modifyOpInPlace(op, [&] {
       op->setAttr(attr_id_, rewriter.getArrayAttr(shapes));
       rewriteImpl(op, rewriter);
     });

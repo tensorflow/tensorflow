@@ -44,7 +44,7 @@ namespace mlir::quant::stablehlo {
 namespace {
 
 // Base struct for quantization.
-template <typename ConcreteT, typename RootOpT = quantfork::DequantizeCastOp>
+template <typename ConcreteT, typename RootOpT = quant::DequantizeCastOp>
 struct StableHloQuantizationBase
     : public StableHloQuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
                                           quantfork::DequantizeCastOp,
@@ -130,6 +130,7 @@ void QuantizePass::runOnOperation() {
   RewritePatternSet patterns(&ctx);
   patterns.add<StableHloQuantization, StableHloQuantizationReverse>(
       &ctx, quant_params);
+  PopulateQuantizeOpWithRegionPattern(ctx, patterns);
   PopulateFusedGemmStylePatterns(ctx, patterns);
 
   if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {

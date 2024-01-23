@@ -43,7 +43,7 @@ REGISTER_OP("Examples>AsyncSleep")
 Pause for `delay` seconds (which need not be an integer).
 
 This is an asynchronous (non-blocking) version of sleep. It is intended to
-be an example of how to implements ops that do I/O or that block on other ops.
+be an example of how to implement ops that do I/O or that block on other ops.
 
 delay: tf.Tensor which is a scalar of type float.
 

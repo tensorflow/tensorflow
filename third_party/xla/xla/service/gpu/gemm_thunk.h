@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,9 +42,8 @@ class GemmThunk : public Thunk {
   GemmThunk(const GemmThunk&) = delete;
   GemmThunk& operator=(const GemmThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
 
   GemmConfig config() const { return config_; }
   BufferAllocation::Slice lhs_buffer() const { return lhs_buffer_; }

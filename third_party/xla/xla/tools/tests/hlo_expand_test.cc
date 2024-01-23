@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,6 +69,34 @@ ENTRY %main.3 () -> f64[3,3] {
   EXPECT_THAT(stdout_output_, testing::HasSubstr(expected_hlo_string));
 }
 
+TEST_F(HloExpandTest, SpmdHlo) {
+  std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
+                                           "tests", "spmd.hlo");
+  std::vector<std::string> additional_flags = {"--spmd_expander", hlo_path};
+  HloOpt(additional_flags);
+
+  const std::string& expected_hlo_string =
+      R"(HloModule module, entry_computation_layout={(f32[24,64]{1,0}, f32[39296,64]{1,0})->f32[24,19648]{1,0}}, num_partitions=2
+
+ENTRY %entry_spmd (param: f32[24,64], param.1: f32[39296,64]) -> f32[24,19648] {
+  %param = f32[24,64]{1,0} parameter(0), sharding={replicated}
+  %lhs.copy.1 = f32[24,64]{1,0} copy(f32[24,64]{1,0} %param)
+  %param.1 = f32[39296,64]{1,0} parameter(1), sharding={replicated}
+  %constant = s32[2]{0} constant({0, 19648})
+  %partition-id = u32[] partition-id()
+  %dynamic-slice = s32[1]{0} dynamic-slice(s32[2]{0} %constant, u32[] %partition-id), dynamic_slice_sizes={1}
+  %reshape = s32[] reshape(s32[1]{0} %dynamic-slice)
+  %constant.1 = s32[] constant(0)
+  %dynamic-slice.1 = f32[19648,64]{1,0} dynamic-slice(f32[39296,64]{1,0} %param.1, s32[] %reshape, s32[] %constant.1), dynamic_slice_sizes={19648,64}
+  %rhs.copy.1 = f32[19648,64]{1,0} copy(f32[19648,64]{1,0} %dynamic-slice.1)
+  ROOT %dot.1 = f32[24,19648]{1,0} dot(f32[24,64]{1,0} %lhs.copy.1, f32[19648,64]{1,0} %rhs.copy.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 0);
+  EXPECT_THAT(stdout_output_, testing::HasSubstr(expected_hlo_string));
+}
+
 TEST_F(HloExpandTest, CholeskyExpanderHlo) {
   std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
                                            "tests", "cholesky.hlo");
@@ -103,7 +131,7 @@ TEST_F(HloExpandTest, InvalidInputFileExtension) {
   HloOpt(additional_flags);
 
   const std::string& expected_string =
-      "input_format must be specified as [hlo|pb|pbtxt].";
+      "input_format must be specified as [hlo|pb|pbtxt|txt].";
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 1);
@@ -115,7 +143,7 @@ TEST_F(HloExpandTest, InvalidInputFormat) {
   HloOpt(additional_flags);
 
   const std::string& expected_string =
-      "input_format must be specified as [hlo|pb|pbtxt].";
+      "input_format must be specified as [hlo|pb|pbtxt|txt].";
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 1);
@@ -175,7 +203,8 @@ TEST_F(HloExpandTest, UnsupportedOutputFormat) {
   HloOpt(additional_flags);
 
   const std::string& expected_string =
-      "Printing to stdout must specify supported output_format=[hlo|pbtxt].";
+      "Printing to stdout must specify supported "
+      "output_format=[hlo|pbtxt|txt].";
 
   EXPECT_TRUE(exited_normally_);
   EXPECT_EQ(exit_status_, 1);

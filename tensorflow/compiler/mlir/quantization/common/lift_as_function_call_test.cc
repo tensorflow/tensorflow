@@ -31,8 +31,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-namespace mlir::quant::common {
+namespace mlir::quant {
 namespace {
+
+using ::mlir::quant::QuantizationTestBase;
 
 class LiftAsFunctionCallTest : public QuantizationTestBase {};
 
@@ -128,4 +130,4 @@ TEST_F(LiftAsFunctionCallTest, EinsumSupportedForXlaDotV2Succeeds) {
 }
 
 }  // namespace
-}  // namespace mlir::quant::common
+}  // namespace mlir::quant

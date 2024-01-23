@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1246,9 +1246,6 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
     `called_computation` is the function that will be run asynchronously
     `execution_thread` is the name of the thread in which it will be run. The main
       thread is called "main". All threads have names.
-    `group_id` labels a set of async-start, async-done, and zero or more
-      async-update ops corresponding to the same computation. We
-      represent a missing group_id with either an negative value or None.
 
     This returns all the state needed between async ops. After buffer
     assignment, the return values represents the space needed to hold the input,
@@ -1258,8 +1255,7 @@ def MHLO_AsyncStartOp : MHLO_Op<"async_start", []> {
   let arguments = (ins
     Variadic<MHLO_TensorOrTokenOrTuple>:$inputs,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
   );
 
   let results = (outs MHLO_AsyncBundle);
@@ -1282,8 +1278,7 @@ def MHLO_AsyncUpdateOp : MHLO_Op<"async_update", [DeclareOpInterfaceMethods<Infe
   let arguments = (ins
     MHLO_AsyncBundle:$bundle,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
     );
 
   let results = (outs MHLO_AsyncBundle);
@@ -1307,8 +1302,7 @@ def MHLO_AsyncDoneOp : MHLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTyp
   let arguments = (ins
     MHLO_AsyncBundle:$bundle,
     FlatSymbolRefAttr:$called_computation,
-    StrAttr:$execution_thread,
-    OptionalAttr<I64Attr>:$group_id
+    StrAttr:$execution_thread
     );
 
   let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
@@ -1455,8 +1449,9 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   string summary = "AllGather operation";
   string description = [{
     Within each process group in the process grid, concatenates the values of the
-    `operand` tensor from each process along `all_gather_dim` and produces a
-    `result` tensor.
+    operand tensor from each process along `all_gather_dim` and produces a
+    result tensor. The `computation` is applied separately for each operand in
+    `operands`, producing one result per operand.
 
     See:
     https://github.com/openxla/stablehlo/blob/main/docs/spec.md#all_gather
@@ -1474,13 +1469,13 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   }];
 
   let arguments = (ins
-    MHLO_Tensor:$operand,
+    Variadic<MHLO_Tensor>:$operands,
     I64Attr:$all_gather_dim,
     I64ElementsAttr:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
-  let results = (outs MHLO_Tensor);
+  let results = (outs Variadic<MHLO_Tensor>);
   // use_global_device_ids is rarely used, so we add simplified builder methods
   // for convenience.
   let builders = [
@@ -1495,7 +1490,6 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
 }
 
 def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
-    SameOperandsAndResultElementType,
     SingleBlockImplicitTerminator<"ReturnOp">,
     InferTensorType
   ]> {
@@ -1549,8 +1543,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
   let hasCustomHLOConverter = 1;
 }
 
-def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter",
-    [SameOperandsAndResultElementType]> {
+def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter", []> {
   let summary = "ReduceScatter operation";
   let description = [{
      Within each process group in the process grid, performs reduction, using
@@ -1695,6 +1688,12 @@ def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
   let regions = (region SizedRegion<1>:$body);
+
+  // Builder
+  let builders = [
+    OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
+      "DenseIntElementsAttr":$dimensions, "TypeRange":$element_types)>,
+  ];
 
   // TODO(b/129422361): ReduceOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;

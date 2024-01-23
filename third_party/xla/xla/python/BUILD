@@ -39,13 +39,16 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        ":xla_extension",
+        ":xla_extension",  # buildcleaner: keep
         "@ml_dtypes",
     ],
 )
 
 exports_files(
-    ["xla_client.pyi"],
+    [
+        "xla_client.py",
+        "xla_client.pyi",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -360,7 +363,7 @@ cc_library(
         "//xla/service:platform_util",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:float8",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/python/lib/core:numpy",
@@ -480,25 +483,14 @@ cc_library(
     deps = [
         ":py_client",
         ":python_ref_manager",
-        ":python_utils",
         ":pytree",
         ":types",
-        ":util",
         # placeholder for index annotation deps
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_python//:python_headers",  # build_cleaner: keep
-        "//xla:shape_util",
-        "//xla:statusor",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/pjrt:exceptions",
-        "//xla/pjrt:lru_cache",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
@@ -539,6 +531,7 @@ cc_library(
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:status_casters",
         "//xla/service:call_inliner",
         "//xla/service:custom_call_sharding_helper",
@@ -626,7 +619,6 @@ cc_library(
         "//xla/pjrt:lru_cache",
         "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
-        "//xla/python/pjrt_ifrt",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@pybind11",
@@ -663,7 +655,6 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
-        "//xla/python/pjrt_ifrt",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
@@ -1137,6 +1128,7 @@ cc_library(
         "//xla/pjrt/cpu:cpu_client",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
+        "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:service",
         "//xla/python/ifrt",
@@ -1181,7 +1173,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",

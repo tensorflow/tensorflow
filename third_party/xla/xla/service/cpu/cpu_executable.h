@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ class XlaRuntimeCpuExecutable {
   StatusOr<std::string_view> GetObjFile() const {
     if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
             executable_)) {
-      return InternalError("No JitExecutable");
+      return Internal("No JitExecutable");
     }
 
     runtime::JitExecutable* jit_executable =
@@ -87,7 +87,7 @@ class XlaRuntimeCpuExecutable {
     std::unique_ptr<llvm::MemoryBuffer> obj_file =
         jit_executable->DefaultExecutable()->obj_file();
     if (!obj_file)
-      return InternalError("XlaRuntimeCpuExecutable didn't save the obj file");
+      return Internal("XlaRuntimeCpuExecutable didn't save the obj file");
 
     return std::string_view(obj_file->getBuffer());
   }
@@ -95,7 +95,7 @@ class XlaRuntimeCpuExecutable {
   StatusOr<std::string_view> GetMlirModule() const {
     if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
             executable_)) {
-      return InternalError("No JitExecutable");
+      return Internal("No JitExecutable");
     }
 
     runtime::JitExecutable* jit_executable =
@@ -169,6 +169,12 @@ class CpuExecutable : public Executable {
       std::unique_ptr<BufferAssignment> buffer_assignment,
       XlaFrameworkMapping xla_framework_mapping,
       runtime::JitExecutable::Options opts);
+
+  absl::Span<const std::string> obj_files() const { return obj_files_; }
+
+  void set_obj_files(std::vector<std::string> obj_files) {
+    obj_files_ = std::move(obj_files);
+  }
 
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
@@ -247,6 +253,11 @@ class CpuExecutable : public Executable {
 
   // The JIT containing compiled modules.
   std::unique_ptr<SimpleOrcJIT> jit_;
+
+  // Object files (machine code) compiled from an HLO module by the JIT
+  // compiler. We capture all object files created by SimpleOrcJIT so we can
+  // export them to AOT compilation result.
+  std::vector<std::string> obj_files_;
 
   // Buffer assignment for the buffers we need to allocate.
   const std::unique_ptr<const BufferAssignment> assignment_;

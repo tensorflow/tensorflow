@@ -71,18 +71,13 @@ tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
   for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
     platforms.push_back(attr.getValue().str());
   }
-  // XlaCallModuleOp OpKernel will determine platform index when running
-  // TF2XLA. We don't know the device/platform type in this MLIR pass, so
-  // we set loading_platform to the first platform.
-  std::string loading_platform =
-      (platforms.empty() ? "CPU" : platforms.front());
-  TF_ASSIGN_OR_RETURN(auto loader,
-                      tensorflow::XlaCallModuleLoader::Create(
-                          context, static_cast<int>(op.getVersion()),
-                          op.getModule().str(), std::move(disabled_checks),
-                          std::move(platforms), std::move(loading_platform),
-                          /*num_invocation_args=*/op.getArgs().size(),
-                          op.getHasTokenInputOutput()));
+  TF_ASSIGN_OR_RETURN(
+      auto loader,
+      tensorflow::XlaCallModuleLoader::Create(
+          context, static_cast<int>(op.getVersion()), op.getModule().str(),
+          std::move(disabled_checks), std::move(platforms),
+          /*num_invocation_args=*/op.getArgs().size(),
+          op.getHasTokenInputOutput()));
   return std::move(*loader).module();
 }
 

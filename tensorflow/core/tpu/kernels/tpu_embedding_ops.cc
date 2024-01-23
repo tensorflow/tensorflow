@@ -763,7 +763,7 @@ class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    VLOG(1) << "Compile ComputeDeduplicationDataShapeOp";
+    VLOG(1) << "Compile ComputeDedupDataTupleMaskOp";
 
     TpuEmbeddingEngine_DedupDataTupleMaskComputation_Params params;
     params.tpu_embedding_config.bytes = config_string_.c_str();

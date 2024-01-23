@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
 #endif
 
 #include "xla/service/gpu/tests/gpu_codegen_test.h"

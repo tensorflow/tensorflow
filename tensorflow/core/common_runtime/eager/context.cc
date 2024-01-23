@@ -1203,10 +1203,16 @@ Device* EagerContext::GetCachedDevice(Fprint128 device_cache_key) {
   return iter->second;
 }
 
-void EagerContext::AddKernelToCache(Fprint128 cache_key,
-                                    KernelAndDevice* kernel) {
+core::RefCountPtr<KernelAndDevice> EagerContext::AddKernelToCache(
+    Fprint128 cache_key, core::RefCountPtr<KernelAndDevice> kernel) {
   mutex_lock ml(cache_mu_);
-  core::RefCountPtr<KernelAndDevice> new_ref(kernel);
+  auto iter = kernel_cache_.find(cache_key);
+  if (iter != kernel_cache_.end()) {
+    core::RefCountPtr<KernelAndDevice> new_ref(iter->second.get());
+    new_ref->Ref();
+    return new_ref;
+  }
+  core::RefCountPtr<KernelAndDevice> new_ref(kernel.get());
   new_ref->Ref();
   kernel_cache_[cache_key] = std::move(new_ref);
   auto* registered_function =
@@ -1218,6 +1224,7 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
     VLOG(5) << "Cached key size of kernel " << kernel->name()
             << " is: " << registered_function->cached_kernel_keys->size();
   }
+  return kernel;
 }
 
 void EagerContext::AddDeviceToCache(Fprint128 device_cache_key,

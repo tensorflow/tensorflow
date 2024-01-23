@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,24 +18,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#ifdef NCCL_ENABLED
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#if (TF_ROCM_VERSION >= 50200)
-#include "rocm/include/rccl/rccl.h"
-#else
-#include "rocm/include/rccl.h"
-#endif
-#else
-#include "third_party/nccl/nccl.h"
-#endif
-#endif  // NCCL_ENABLED
-
-#include "xla/util.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
+#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
-StatusOr<std::string> NcclIdStore::GetNcclUniqueId(
+StatusOr<gpu::NcclCliqueId> NcclIdStore::GetNcclUniqueId(
     const gpu::NcclCliqueKey& key) {
   // The caller must ensure that threads calling this method concurrently have
   // unique keys, otherwise the global key-value store may hold the wrong value.
@@ -46,23 +40,18 @@ StatusOr<std::string> NcclIdStore::GetNcclUniqueId(
       return it->second;
     }
   }
-  std::string id_string;
+  gpu::NcclCliqueId clique_id;
   int primary_node_id = device_to_node_.at(key.devices()[0]);
   if (node_id_ == primary_node_id) {
-#ifdef NCCL_ENABLED
-    ncclUniqueId id;
-    ncclResult_t r = ncclGetUniqueId(&id);
-    TF_RET_CHECK(r == ncclSuccess);
-    id_string = std::string(id.internal, NCCL_UNIQUE_ID_BYTES);
-    TF_RETURN_IF_ERROR(kv_put_(key.ToString(), id_string));
-#else
-    return FailedPrecondition("NCCL support was not built into XLA binary.");
-#endif
+    TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclApi::Default()->GetUniqueId());
+    TF_RETURN_IF_ERROR(kv_store_->Set(key.ToString(), clique_id.ToString()));
   } else {
-    TF_ASSIGN_OR_RETURN(id_string, kv_get_(key.ToString(), absl::Minutes(10)));
+    TF_ASSIGN_OR_RETURN(std::string id_str,
+                        kv_store_->Get(key.ToString(), absl::Minutes(10)));
+    TF_ASSIGN_OR_RETURN(clique_id, gpu::NcclCliqueId::FromString(id_str));
   }
   absl::MutexLock lock(&mu_);
-  auto result = cache_.emplace(key, std::move(id_string));
+  auto result = cache_.emplace(key, std::move(clique_id));
   TF_RET_CHECK(result.second) << "Unique ID already in cache.";
   return result.first->second;
 }

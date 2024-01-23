@@ -38,12 +38,22 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
+Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+  constexpr int kMaxParallelism = 16;
+  static tsl::thread::ThreadPool* thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "IfrtSharding", kMaxParallelism);
+  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
+                                 kMaxParallelism);
+}
 
 TEST(IfrtBackendCompilerTest, Basic) {
   // Create test input module
@@ -67,7 +77,9 @@ TEST(IfrtBackendCompilerTest, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  IfrtModelContext model_context(client);
+  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
+
+  IfrtModelContext model_context(client, &thread_pool_device);
 
   std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime =
       tensorflow::tfrt_stub::DefaultTfrtRuntime(/*num_threads=*/1);

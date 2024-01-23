@@ -1,8 +1,8 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,6 +21,7 @@ cc_library(
         "flags.h",
     ],
     visibility = ["//tensorflow:internal"],
+    deps = ["//tensorflow/core/platform:stringpiece"],
 )
 
 filegroup(

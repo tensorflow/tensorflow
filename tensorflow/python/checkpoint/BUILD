@@ -103,7 +103,6 @@ py_strict_library(
         "//tensorflow/python/util:tf_contextlib",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -422,6 +421,7 @@ py_strict_library(
         "//tensorflow/python/ops:io_ops",
         "//tensorflow/python/ops:io_ops_gen",
         "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/saved_model:pywrap_saved_model",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:trackable_utils",

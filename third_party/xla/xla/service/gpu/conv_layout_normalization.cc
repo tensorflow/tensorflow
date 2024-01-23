@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
+absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
     HloCustomCallInstruction* hlo) {
   HloInstruction* lhs = hlo->mutable_operand(0);
   HloInstruction* rhs = hlo->mutable_operand(1);
@@ -190,7 +190,7 @@ StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
 
 }  // namespace
 
-StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
+absl::StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
     HloCustomCallInstruction* hlo) {
   if (IsCustomCallToDnnConvolution(*hlo)) {
     TF_ASSIGN_OR_RETURN(std::optional<HloInstruction*> bc_to_orig,

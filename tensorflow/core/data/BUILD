@@ -41,6 +41,8 @@ exports_files([
     "split_utils.h",
     "stats_utils.cc",
     "stats_utils.h",
+    "tf_data_memory_logger.cc",
+    "tf_data_memory_logger.h",
     "tfdataz_metrics.h",
     "tfdataz_metrics.cc",
     "unbounded_thread_pool.cc",
@@ -212,6 +214,22 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "tf_data_memory_logger",
+    srcs = ["tf_data_memory_logger.cc"],
+    hdrs = ["tf_data_memory_logger.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tfdataz_metrics",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:numbers",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,7 +55,8 @@ int64_t CountCopies(const HloModule& module) {
 
 class NVPTXCompilerTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(HloModule* module) {
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      HloModule* module) {
     Backend& test_backend = backend();
     NVPTXCompiler compiler;
     return compiler.AssignBuffers(module,
@@ -202,7 +203,9 @@ ENTRY main {
             HloOpcode::kCopy);
 
   NVPTXCompiler compiler;
-  TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(module.get(), 100000));
+  TF_EXPECT_OK(compiler.RunPostSchedulingPipelines(
+      module.get(), 100000,
+      backend().default_stream_executor()->GetDeviceDescription()));
   EXPECT_EQ(CountCopies(*module), 3);
   while_op = hlo_query::GetFirstInstructionWithOpcode(
       *module->entry_computation(), HloOpcode::kWhile);

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -169,7 +170,8 @@ FusionDecision IsProducerMultiOutputFusible(const HloInstruction& producer);
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);
 
 // Determines the fusion kind to be used when fusing into `consumer`.
-HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& consumer);
+HloInstruction::FusionKind ChooseFusionKind(const HloInstruction& producer,
+                                            const HloInstruction& consumer);
 
 // Returns whether `consumer` is the only non-root user of `instr`.
 bool IsConsumerTheOnlyNonRootUser(const HloInstruction& instr,
@@ -206,12 +208,12 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr);
 std::vector<const HloInstruction*> GetFusionRoots(
     const HloComputation& computation);
 
-// Whether the instruction is a reduction hero for the given root.
-bool IsRealReductionHero(const HloInstruction& root,
-                         const HloInstruction& hero);
-
 // Whether the instruction is a Triton Softmax fusion.
 bool IsTritonSoftmaxFusion(const HloInstruction& instr);
+
+// Whether the fusion will likely behave poorly with vectorization due to the
+// instructions it contains.
+bool MayPreventVectorization(const HloFusionAdaptor& fusion);
 
 }  // namespace gpu
 }  // namespace xla

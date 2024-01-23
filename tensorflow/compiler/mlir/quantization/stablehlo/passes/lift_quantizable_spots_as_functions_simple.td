@@ -55,3 +55,15 @@ def LiftDotGeneral : Pat<
       (NamedAttr<"dot_dimension_numbers"> $dot_dimension_numbers),
       (NamedAttr<"precision_config"> (DefaultOrNullAttr $precision_config)))),
   [(IsNotInLiftedFunc $res)], [], (addBenefit 1)>;
+
+def LiftGather : Pat<
+  (StableHLO_GatherOp:$res
+      $operand, $start_indices, $dimension_numbers, $slice_sizes, $indices_are_sorted),
+  (LiftAsTFXlaCallModule<"composite_gather_fn">
+    (ArgumentList $operand, $start_indices),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"dimension_numbers"> $dimension_numbers),
+      (NamedAttr<"slice_sizes"> $slice_sizes),
+      (NamedAttr<"indices_are_sorted"> (DefaultOrNullAttr $indices_are_sorted)))),
+  [(IsNotInLiftedFunc $res), (IsStableHLOConstantOp $operand)], [], (addBenefit 1)>;

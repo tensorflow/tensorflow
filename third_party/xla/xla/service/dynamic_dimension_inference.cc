@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1415,7 +1415,7 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(
       SetDynamicSizes(hlo, {}, dynamic_sizes);
       return OkStatus();
     }
-    return InternalError(
+    return Internal(
         "Need inferred dimension to be set to "
         "flatten-unflatten pair. %s",
         hlo->ToString());
@@ -1844,7 +1844,7 @@ Status DynamicDimensionInferenceVisitor::HandleGather(HloInstruction* hlo) {
               }
               ++operand_dimension;
             }
-            return InternalError("Invalid instruction: %s", hlo->ToString());
+            return Internal("Invalid instruction: %s", hlo->ToString());
           }
           return Unimplemented(
               "Detects a dynamic dimension on the data input of gather, which "

@@ -189,6 +189,71 @@ TEST(GifTest, BadGif) {
   TestInvalidGifFormat("\x49\x49\x2A\x00");                  // tiff
 }
 
+TEST(GifTest, TransparentIndexOutsideColorTable) {
+  // Given a GIF with a transparent index outside of its color table...
+  unsigned char encoded[43] = {
+      'G', 'I', 'F', '8', '9', 'a',  // Header.
+      3, 0, 1, 0,                    // Logical width = 3 and height = 1.
+      0b1'111'0'000,                 // Global color table present, (7 + 1) bit
+                                     // color, unsorted, 2^(0 + 1) palette size.
+      0,                             // Background index = 0
+      0,                             // Default aspect ratio.
+      0x80, 0x00, 0x00,              // Palette entry 0: red.
+      0xFF, 0xFF, 0xFF,              // Palette entry 1: white.
+      '!', 0xF9, 0x04,               // Graphic Control Extension.
+      1,                             // Transparent index is specified.
+      0, 0,                          // Delay of 0 seconds.
+      2,                             // Transparent index is 2.
+      0,                             // End GCE block.
+      ',', 0, 0, 0, 0,               // Image at logical (0, 0).
+      3, 0, 1, 0,                    // Width = 3, height = 1
+      0,                             // No local color table.
+      2,                             // Symbols need 2 bits to cover [0, 2].
+      2,                             // Two bytes of image data.
+      0b01'000'100,                  // Clear (100), 0, 1 (truncated).
+      0b0'101'010'0,                 // 1 (continued), 2, End (101), padding.
+      0, ';'                         // End of data, end of file.
+  };
+
+  // ...decoding that image...
+  std::unique_ptr<uint8[]> imgdata;
+  string error_string;
+  int nframes;
+  auto allocate_image_data = [&](int frame_cnt, int width, int height,
+                                 int channels) -> uint8* {
+    nframes = frame_cnt;
+    return new uint8[frame_cnt * height * width * channels];
+  };
+  imgdata.reset(gif::Decode(encoded, sizeof(encoded), allocate_image_data,
+                            &error_string));
+
+  // ...should be successful and treat the pixels with the transparent index as
+  // transparent.
+  ASSERT_EQ(nframes, 1);
+  ASSERT_EQ(error_string, "");
+  uint8 expected[9] = {
+      0x80, 0x00, 0x00,  // Red (palette entry 0).
+      0xFF, 0xFF, 0xFF,  // White (palette entry 1).
+      0x00, 0x00, 0x00,  // Transparent (not in palette, specified by Graphic
+                         // Control Extension), defaults to black.
+  };
+  for (int i = 0; i < 9; i++) {
+    ASSERT_EQ(imgdata[i], expected[i]) << "i=" << i;
+  }
+
+  // However, if there is an out-of-palette pixel that is not the transparent
+  // index...
+  encoded[40] = 0b0'101'011'0;  // The '011' is an out-of-palette color 3.
+
+  // ...decoding the image...
+  error_string.clear();
+  imgdata.reset(gif::Decode(encoded, sizeof(encoded), allocate_image_data,
+                            &error_string));
+
+  // ...should fail with an error about a color out of range.
+  ASSERT_EQ(error_string, "found color index 3 outside of color map range 2");
+}
+
 }  // namespace
 }  // namespace gif
 }  // namespace tensorflow

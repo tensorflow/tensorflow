@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_TPU_TPU_STREAM_INTERFACE_H_
 #define XLA_STREAM_EXECUTOR_TPU_TPU_STREAM_INTERFACE_H_
 
+#include "absl/status/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -27,7 +27,7 @@ namespace tpu {
 class TpuStreamInterface : public stream_executor::internal::StreamInterface {
  public:
   virtual bool IsSameSharedMemoryLocation(TpuStreamInterface* other) = 0;
-  virtual tsl::Status EnqueueOnTpuDeviceSendRecvLocal(
+  virtual absl::Status EnqueueOnTpuDeviceSendRecvLocal(
       stream_executor::DeviceMemoryBase send_buffer,
       stream_executor::DeviceMemoryBase recv_buffer) = 0;
 };

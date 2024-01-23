@@ -3,10 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-    ],
+    default_visibility = ["//tensorflow/core/tfrt/saved_model:__pkg__"],
     licenses = ["notice"],
 )
 

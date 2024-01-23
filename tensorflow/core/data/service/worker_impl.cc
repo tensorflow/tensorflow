@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -114,7 +115,8 @@ WorkerConfig ApplyWorkerDefaults(const WorkerConfig& config) {
         absl::ToInt64Milliseconds(kDefaultDispatcherTimeout));
   }
   if (new_config.snapshot_max_chunk_size_bytes() == 0) {
-    new_config.set_snapshot_max_chunk_size_bytes(kDefaultMaxChunkSizeBytes);
+    new_config.set_snapshot_max_chunk_size_bytes(
+        kDefaultMaxChunkSize.ToUnsignedBytes());
   }
   return new_config;
 }
@@ -744,7 +746,7 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
             SnapshotWriterParams{
                 snapshot_task.base_path(), snapshot_task.stream_index(),
                 snapshot_task.metadata().compression(), Env::Default(),
-                config_.snapshot_max_chunk_size_bytes()},
+                ByteSize::Bytes(config_.snapshot_max_chunk_size_bytes())},
             std::move(iterator)));
   }
 

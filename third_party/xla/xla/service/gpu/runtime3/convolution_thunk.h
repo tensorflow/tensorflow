@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ class ConvolutionThunk : public Thunk {
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   std::vector<BufferAllocation::Slice> operand_buffers_;
@@ -70,7 +70,7 @@ class ConvolutionReorderThunk : public Thunk {
   ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
   ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   static se::dnn::FilterDescriptor CreateFilterDescriptor(

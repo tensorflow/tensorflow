@@ -1,4 +1,4 @@
-# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,10 +59,12 @@ class XlaRuntimeError(RuntimeError):
 class PrimitiveType(enum.IntEnum):
   PRIMITIVE_TYPE_INVALID: PrimitiveType
   PRED: PrimitiveType
+  S4: PrimitiveType
   S8: PrimitiveType
   S16: PrimitiveType
   S32: PrimitiveType
   S64: PrimitiveType
+  U4: PrimitiveType
   U8: PrimitiveType
   U16: PrimitiveType
   U32: PrimitiveType
@@ -451,6 +453,7 @@ class GpuAllocatorConfig:
       kind: Kind = ...,
       memory_fraction: float = ...,
       preallocate: bool = ...,
+      collective_memory_size: int = ...,
   ) -> None: ...
 
 class HostBufferSemantics(enum.IntEnum):
@@ -669,6 +672,7 @@ class Executable:
   def get_compiled_memory_stats(self) -> CompiledMemoryStats: ...
   def serialize(self) -> str: ...
   def compile_options(self) -> CompileOptions: ...
+  def cost_analysis(self) -> Dict[str, Any]: ...
 
 class DeviceTopology:
   platform: str
@@ -788,6 +792,7 @@ class DeviceList:
   def __getitem__(self, index: Any) -> Any: ...
   def __iter__(self) -> Iterator[Device]: ...
   def __str__(self) -> str: ...
+  def __repr__(self) -> str: ...
   def __getstate__(self) -> Any: ...
   def __setstate__(self, state: Any): ...
   @property
@@ -867,6 +872,7 @@ def pjit(
     static_argnames: Sequence[str],
     donate_argnums: Sequence[int],
     pytree_registry: pytree.PyTreeRegistry,
+    shard_arg_fallback: Callable,
     cache: Optional[PjitFunctionCache] = ...,
 ) -> PjitFunction: ...
 

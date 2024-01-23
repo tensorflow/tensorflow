@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_MLIR_RUNTIME_TRANSFORMS_TESTS_TESTLIB_PIPELINE_H_
 #define XLA_MLIR_RUNTIME_TRANSFORMS_TESTS_TESTLIB_PIPELINE_H_
 
+#include "absl/status/status.h"
 #include "xla/runtime/compiler.h"
 
 namespace xla {
@@ -25,7 +26,7 @@ namespace runtime {
 void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects);
 
 // Populates passes for compiling Xla runtime tests.
-void CreateXlaRuntimeTestlibPipeline(PassManager& passes);
+absl::Status CreateXlaRuntimeTestlibPipeline(PassManager& passes);
 
 }  // namespace runtime
 }  // namespace xla

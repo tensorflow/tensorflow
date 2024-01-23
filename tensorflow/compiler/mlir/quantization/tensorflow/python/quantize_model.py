@@ -166,6 +166,31 @@ def _run_static_range_ptq(
   ).meta_info_def.function_aliases
 
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
+
+  if isinstance(representative_dataset, Mapping):
+    representative_dataset_map = representative_dataset
+  else:
+    representative_dataset_map = {
+        list(signature_def_map.keys())[0]: representative_dataset,
+    }
+
+  # Save the representative dataset to temporary TFRecord files.
+  path_map = {}
+  for signature_key in representative_dataset_map.keys():
+    path_map[signature_key] = tempfile.mkstemp(
+        suffix='.tfrecord', prefix=signature_key
+    )[1]  # Filepath.
+
+  dataset_file_map = repr_dataset.TfRecordRepresentativeDatasetSaver(
+      path_map
+  ).save(representative_dataset_map)
+
+  # `quantize_ptq_static_range` requires `RepresentativeDatasetFile`s to be
+  # serialized. Serialize the values to match the type.
+  dataset_file_map_serialized = {
+      signature_key: dataset_file.SerializeToString()
+      for signature_key, dataset_file in dataset_file_map.items()
+  }
   pywrap_quantize_model.quantize_ptq_static_range(
       src_saved_model_path,
       dst_saved_model_path,
@@ -174,7 +199,7 @@ def _run_static_range_ptq(
       signature_def_map_serialized=signature_def_map_serialized,
       function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
-      representative_dataset=representative_dataset,
+      representative_dataset_file_map_serialized=dataset_file_map_serialized,
   )
 
 
@@ -845,7 +870,7 @@ def quantize(
     )
 
   if quantization_options.representative_datasets:
-    representative_dataset = repr_dataset.RepresentativeDatasetLoader(
+    representative_dataset = repr_dataset.TfRecordRepresentativeDatasetLoader(
         quantization_options.representative_datasets
     ).load()
 

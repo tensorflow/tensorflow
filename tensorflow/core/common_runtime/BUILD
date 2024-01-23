@@ -4,7 +4,6 @@ load(
     "if_libtpu",
     "if_macos",
     "if_oss",
-    "if_zendnn",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -1317,6 +1316,7 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/config:flag_defs",
     ],
 )
 
@@ -1357,26 +1357,6 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:portable_gif_internal",
     ],
-)
-
-cc_library(
-    name = "zen_layout_pass",
-    srcs = ["zen_layout_pass.cc"],
-    copts = tf_copts(),
-    deps = [
-        ":function",
-        ":layout_pass_util",
-        ":optimization_registry",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/graph:zen_graph_util",
-        "@com_google_absl//absl/base",
-    ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -2031,7 +2011,7 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
-    ] + if_zendnn([":zen_layout_pass"]) + if_macos(
+    ] + if_macos(
         [],
         [":replicate_constants_pass"],  # TODO(b/301469885): Remove.
     ),
@@ -3190,6 +3170,7 @@ tf_cc_test(
     name = "lower_while_op_test",
     size = "small",
     srcs = ["lower_while_op_test.cc"],
+    env = {"TF_FLAG_ENABLE_COLOCATION_KEY_PROPAGATION_IN_WHILE_OP_LOWERING": "1"},
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -3207,8 +3188,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -3530,5 +3511,15 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         ":serving_device_selector",
+    ],
+)
+
+cc_library(
+    name = "device_id_utils",
+    hdrs = ["device_id_utils.h"],
+    deps = [
+        "@local_tsl//tsl/framework:device_id_impl",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:platform",
     ],
 )

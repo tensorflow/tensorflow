@@ -1093,24 +1093,6 @@ OpFoldResult CastOp::fold(FoldAdaptor) {
 }
 
 //===----------------------------------------------------------------------===//
-// CheckNumericsOp
-//===----------------------------------------------------------------------===//
-
-void CheckNumericsOp::getEffects(
-    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
-        effects) {
-  effects.emplace_back(MemoryEffects::Write::get(),
-                       ResourceEffects::CheckNumerics::get());
-  MarkResourceAsReadOnly(getTensor(), effects);
-}
-
-// For `CheckNumerics` ops the `device` attribute corresponds to the resource
-// instance.
-std::optional<std::string> CheckNumericsOp::GetResourceInstanceStr() {
-  return GetDeviceAttrAsResourceInstanceStr(*this);
-}
-
-//===----------------------------------------------------------------------===//
 // CollectiveReduceV2Op
 //===----------------------------------------------------------------------===//
 
@@ -2602,7 +2584,8 @@ OpFoldResult EnsureShapeOp::fold(FoldAdaptor) {
   if (!type || !type.hasRank()) return {};
   // If shape attribute equals input operand's type's shape, fold it to input.
   std::optional<llvm::ArrayRef<int64_t>> shape_constraint = getShape();
-  if (type.getShape() == shape_constraint) return getInput();
+  if (type.getShape() == shape_constraint && getInput().getType() == getType())
+    return getInput();
 
   // If input operand's type's shape always satisfies the shape attribute, fold
   // it to input.
@@ -2614,7 +2597,7 @@ OpFoldResult EnsureShapeOp::fold(FoldAdaptor) {
         return {};
       }
     }
-    return getInput();
+    if (getInput().getType() == getType()) return getInput();
   }
   // Else retain to enable failing dynamically.
   return {};
@@ -3317,7 +3300,9 @@ OpFoldResult LeakyReluOp::fold(FoldAdaptor adaptor) {
   assert(operands.size() == 1 && "leaky relu has one operand");
 
   // leaky_relu(x, alpha: 1) -> x
-  if (getAlpha().convertToFloat() == 1.0f) return getOperand();
+  if (getAlpha().convertToFloat() == 1.0f &&
+      getOperand().getType() == getType())
+    return getOperand();
 
   auto calculate = [&](FloatAttr arg) {
     APFloat val = arg.getValue();

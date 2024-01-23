@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_value_containers.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
@@ -205,7 +205,7 @@ Status GatherComputationsByAllocationType(
                                               true));  // Thread local.
             break;
           default:
-            return InternalError("Unexpected calling opcode: %s",
+            return Internal("Unexpected calling opcode: %s",
                                  HloOpcodeString(instruction->opcode()));
         }
       }
@@ -1022,11 +1022,21 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
   // Process each buffer allocation entry in the proto to create a new
   // allocation.
   for (const auto& alloc_proto : proto.buffer_allocations()) {
-    auto* allocation = buffer_assignment->NewEmptyAllocation(
+    BufferAllocation* allocation = buffer_assignment->NewEmptyAllocation(
         alloc_proto.size(), alloc_proto.color());
+
+    // We don't copy allocation index as it gets automatically assigned.
     CHECK(allocation->index() == alloc_proto.index())
         << "Expected allocations in BufferAssignment proto to be sorted by "
            "index.";
+
+    // Set allocation properties for a newly constructed BufferAllocation.
+    allocation->set_is_thread_local(alloc_proto.is_thread_local());
+    allocation->set_is_tuple(alloc_proto.is_tuple());
+    allocation->set_constant(alloc_proto.is_constant());
+
+    // If allocation corresponds to an entry computation parameter, copy
+    // parameter properties to a BufferAllocation.
     if (alloc_proto.is_entry_computation_parameter()) {
       std::vector<int64_t> shape_idx_vals;
       absl::c_copy(alloc_proto.parameter_shape_index(),
@@ -1044,6 +1054,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
       buffer_assignment->AddAssignment(allocation, *buffer_val,
                                        assignee.offset(), assignee.size());
     }
+
+    // We don't set `maybe_live_out` as it is inferred automatically by
+    // buffer assignment when we call `AddAssignment` above.
     CHECK_EQ(allocation->maybe_live_out(), alloc_proto.maybe_live_out())
         << "Dataflow analysis differs from proto.";
   }

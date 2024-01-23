@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_reduce_scatter_creator.h"
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-StatusOr<bool> ReduceScatterCreator::Run(
+absl::StatusOr<bool> ReduceScatterCreator::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   const HloModuleConfig &config = module->config();

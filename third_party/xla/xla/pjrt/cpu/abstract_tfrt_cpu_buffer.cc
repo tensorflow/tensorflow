@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -168,7 +168,7 @@ StatusOr<Shape> AbstractTfrtCpuBuffer::logical_on_device_shape() {
   const auto& av = device_buffer->definition_event();
   BlockUntilReady(av.GetAsyncValue());
   if (auto* error = av.GetErrorIfPresent()) {
-    return InternalError("Error Execute: %s", error->message());
+    return Internal("Error Execute: %s", error->message());
   }
 
   ShapedBuffer shaped_buffer =
@@ -347,7 +347,7 @@ AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
       BlockUntilReady(av.GetAsyncValue());
       if (auto* error = av.GetErrorIfPresent()) {
         first_error.Update(
-            InternalError("Error Execute: %s", error->message()));
+            Internal("Error Execute: %s", error->message()));
       }
     }
     if (!first_error.ok()) return std::move(first_error);
@@ -682,7 +682,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     PjRtClient::HostBufferSemantics host_buffer_semantics,
-    std::function<void()> on_done_with_host_buffer, const Shape& shape,
+    absl::AnyInvocable<void() &&> on_done_with_host_buffer, const Shape& shape,
     AsyncWorkRunner* async_work_runner, absl::Mutex* transpose_mu,
     TransposePlanCache* transpose_cache) {
   bool has_default_layout =
@@ -700,7 +700,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         (cpu_function_runtime::MinAlign() - 1)) == 0);
   absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers;
   absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events;
-  std::function<void()> on_delete_callback;
+  absl::AnyInvocable<void() &&> on_delete_callback;
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
   if (can_use_zero_copy) {
     auto device_buffer = std::make_shared<MaybeOwningCpuMemory>(
@@ -724,11 +724,13 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
       {
         absl::InlinedVector<int64_t, 4> permutation(dims.size());
         absl::c_iota(permutation, 0);
+        TransposePlan::Options options;
+        options.elem_size_in_bytes = primitive_util::ByteWidth(type);
+        options.dims = dims;
+        options.permutation = permutation;
+        options.input_layout = TransposePlan::Striding{*byte_strides};
         absl::MutexLock lock(transpose_mu);
-        TF_ASSIGN_OR_RETURN(
-            transpose, transpose_cache->GetOrCreate(
-                           primitive_util::ByteWidth(type), dims, permutation,
-                           TransposePlan::Striding{*byte_strides}));
+        TF_ASSIGN_OR_RETURN(transpose, transpose_cache->GetOrCreate(options));
       }
       if (!is_int4) {
         transpose->Execute(data, dst_data_ptr);
@@ -745,7 +747,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
         PackInt4(src_data_span, dst_data_span);
       }
       if (on_done_with_host_buffer) {
-        on_done_with_host_buffer();
+        std::move(on_done_with_host_buffer)();
         on_done_with_host_buffer = nullptr;
       }
     } else {
@@ -756,7 +758,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
       if (should_sync_copy) {
         std::memcpy(dst_data_ptr, data, byte_size);
         if (on_done_with_host_buffer) {
-          on_done_with_host_buffer();
+          std::move(on_done_with_host_buffer)();
           on_done_with_host_buffer = nullptr;
         }
       } else {
@@ -771,7 +773,7 @@ AbstractTfrtCpuBuffer::BufferFromHostBufferHelper(
               tsl::profiler::TraceMe traceme("H2D Dispatch");
               std::memcpy(dst_data_ptr, data, byte_size);
               if (on_done_with_host_buffer) {
-                on_done_with_host_buffer();
+                std::move(on_done_with_host_buffer)();
                 on_done_with_host_buffer = nullptr;
               }
               // Signal copy is complete.

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/layout_util.h"
@@ -61,7 +62,7 @@ static Status PopulateResultTupleBuffers(const ShapedBuffer& result,
     if (transfer_stream && transfer_stream != stream) {
       stream->ThenWaitFor(transfer_stream);
     }
-    return ::tsl::OkStatus();
+    return absl::OkStatus();
   } else {
     return transfer_manager->WriteTupleIndexTablesAsync(stream, result);
   }
@@ -113,7 +114,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
                 alias->ToString());
           }
         }
-        return ::tsl::OkStatus();
+        return absl::OkStatus();
       }));
 
   if (VLOG_IS_ON(3)) {
@@ -141,8 +142,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     // Return an InternalError if result_index is invalid. This avoids failing
     // the CHECK when calling GetAliasedParameter
     if (!ShapeUtil::IndexIsValid(alias_config.shape(), result_index)) {
-      return InternalError("result_index is invalid: %s",
-                           result_index.ToString());
+      return Internal("result_index is invalid: %s", result_index.ToString());
     }
 
     std::optional<HloInputOutputAliasConfig::Alias> alias =

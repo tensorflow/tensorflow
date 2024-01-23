@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME3_SEQUENTIAL_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME3_SEQUENTIAL_THUNK_H_
 
-#include <vector>
+#include <string>
 
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/buffer_allocations.h"
+#include "absl/status/status.h"
 #include "xla/service/gpu/thunk.h"
 
 namespace xla {
@@ -38,9 +37,10 @@ class SequentialThunk : public Thunk {
   const ThunkSequence& thunks() const { return thunks_; }
   std::string ToStringExtra(int indent) const override;
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   // The list of sub-thunks.

@@ -1,6 +1,6 @@
 load("//tsl:tsl.bzl", "if_oss", "set_external_visibility", "tsl_gpu_library")
 load("//tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -175,10 +175,13 @@ tsl_cc_test(
         "//tsl/platform:errors",
         "//tsl/platform:protobuf",
         "//tsl/platform:status",
+        "//tsl/platform:statusor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/protobuf:coordination_config_proto_cc_impl",
         "//tsl/protobuf:coordination_service_proto_cc_impl",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/time",

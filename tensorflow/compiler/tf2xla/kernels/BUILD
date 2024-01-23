@@ -327,6 +327,7 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

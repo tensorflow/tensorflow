@@ -55,7 +55,6 @@ tf_py_strict_test(
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
-        "@absl_py//absl/logging",
     ],
 )
 
@@ -73,7 +72,6 @@ py_strict_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/util:tf_export",
-        "@absl_py//absl/logging",
     ],
 )
 

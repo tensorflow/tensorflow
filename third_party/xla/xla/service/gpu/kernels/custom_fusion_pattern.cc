@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ bool CustomFusionPattern::Match::HasReplacement(HloInstruction* instr) const {
   return replacements_.contains(instr);
 }
 
-StatusOr<HloInstruction*> CustomFusionPattern::Match::BuildReplacement(
+absl::StatusOr<HloInstruction*> CustomFusionPattern::Match::BuildReplacement(
     HloInstruction* instr, HloFusionInstruction* fusion) const {
   if (auto it = replacements_.find(instr); it != replacements_.end()) {
     return it->second(fusion);

@@ -38,12 +38,24 @@ message StaticRangePtqPreset {
   repeated RepresentativeDatasetConfig representative_datasets = 1;
 }
 
+// Metadata specific to the input TensorFlow SavedModel, which may be required
+// to identify the specific MetaGraphDef to quantize, for example.
+// Next ID: 2
+message TfSavedModelConfig {
+  // Set of tags that uniquely identify the `MetaGraphDef` existing in the
+  // input SavedModel.
+  repeated string tags = 1;
+}
+
 // Quantization configuration for StableHLO Quantizer. This is the primary
 // message containing all configurable options.
-// Next ID: 2
+// Next ID: 4
 message QuantizationConfig {
   oneof preset {
     // Performs best-effort static-range post-training quantization (PTQ).
     StaticRangePtqPreset static_range_ptq_preset = 1;
   }
+
+  // TF SavedModel specific information for the input model.
+  TfSavedModelConfig tf_saved_model = 2;
 }

@@ -1,8 +1,8 @@
 # Description:
 #   Implementation of XLA’s HLO transformations.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],

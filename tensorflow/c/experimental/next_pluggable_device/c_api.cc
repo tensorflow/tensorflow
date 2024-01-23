@@ -19,12 +19,14 @@ limitations under the License.
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/experimental/next_pluggable_device/tensor_pjrt_buffer_util.h"
 #include "tensorflow/c/kernels.h"
@@ -216,8 +218,8 @@ void TF_CoordinationServiceInsertKeyValue(const char* key, int64_t key_size,
                                           TF_CoordinationServiceAgent* agent,
                                           TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  absl::Status cc_status =
-      cc_agent->InsertKeyValue(key, key_size, value, value_size);
+  absl::Status cc_status = cc_agent->InsertKeyValue(
+      std::string_view(key, key_size), std::string_view(value, value_size));
   status->status = cc_status;
 }
 
@@ -242,15 +244,30 @@ TF_Buffer* TF_CoordinationServiceGetKeyValue(const char* key, int64_t key_size,
                                              TF_CoordinationServiceAgent* agent,
                                              TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  auto value = cc_agent->GetKeyValue(key, key_size);
+  auto value = cc_agent->GetKeyValue(std::string_view(key, key_size));
   return ProcessGetKeyValueResult(value, status);
 }
 
 TF_Buffer* TF_CoordinationServiceGetKeyValueWithTimeout(
     const char* key, int64_t key_size, int64_t timeout_seconds,
     TF_CoordinationServiceAgent* agent, TF_Status* status) {
+  if (timeout_seconds <= 0) {
+    status->status = absl::InvalidArgumentError(
+        "TF_CoordinationServiceGetKeyValueWithTimeout invoked with invalid "
+        "timeout_seconds <= 0.");
+    return nullptr;
+  }
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  auto value = cc_agent->GetKeyValue(key, key_size, timeout_seconds);
+  auto value = cc_agent->GetKeyValue(std::string_view(key, key_size),
+                                     absl::Seconds(timeout_seconds));
+  return ProcessGetKeyValueResult(value, status);
+}
+
+TF_Buffer* TF_CoordinationServiceTryGetKeyValue(
+    const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
+    TF_Status* status) {
+  auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
+  auto value = cc_agent->TryGetKeyValue(std::string_view(key, key_size));
   return ProcessGetKeyValueResult(value, status);
 }
 
@@ -258,7 +275,8 @@ void TF_CoordinationServiceDeleteKeyValue(const char* key, int64_t key_size,
                                           TF_CoordinationServiceAgent* agent,
                                           TF_Status* status) {
   auto* cc_agent = reinterpret_cast<tsl::CoordinationServiceAgent*>(agent);
-  absl::Status cc_status = cc_agent->DeleteKeyValue(key, key_size);
+  absl::Status cc_status =
+      cc_agent->DeleteKeyValue(std::string_view(key, key_size));
   status->status = cc_status;
 }
 

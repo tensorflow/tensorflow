@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
 #include "xla/service/gpu/metrics.h"
@@ -147,12 +149,12 @@ class DumpAfterPassIfEnabled : public mlir::PassInstrumentation {
 };
 
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
-static Status LowerToXlaGpuRuntime(
+static absl::Status LowerToXlaGpuRuntime(
     mlir::ModuleOp module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
     const HloModule* hlo_module, se::GpuComputeCapability compute_capability) {
   if (!module) {
-    return InternalError("No MLIR module to lower.");
+    return Internal("No MLIR module to lower.");
   }
 
   const DebugOptions& debug_options = hlo_module->config().debug_options();
@@ -171,7 +173,7 @@ static Status LowerToXlaGpuRuntime(
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
   for (int command_type_num : debug_options.xla_gpu_enable_command_buffer()) {
     if (!DebugOptions::CommandBufferCmdType_IsValid(command_type_num)) {
-      return InternalError("Invalid command buffer command type");
+      return Internal("Invalid command buffer command type");
     }
     DebugOptions::CommandBufferCmdType command_type =
         static_cast<DebugOptions::CommandBufferCmdType>(command_type_num);
@@ -187,10 +189,10 @@ static Status LowerToXlaGpuRuntime(
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {
-    return InternalError("Failed to lower LMHLO to Gpu runtime custom calls.");
+    return Internal("Failed to lower LMHLO to Gpu runtime custom calls.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -230,7 +232,7 @@ static void ForwardCollectiveAttrs(mlir::ModuleOp module,
   func->setAttr("num_partitions", b.getI64IntegerAttr(config.num_partitions()));
 }
 
-StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
+absl::StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes,
     std::unique_ptr<ThunkSequence> thunk_sequence, const HloModule* hlo_module,
@@ -265,7 +267,7 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
 //
 // This function also serves as a half-baked verifier for function arg
 // attributes, since a full verifier doesn't exist yet.
-static Status GetMlirAllocationInfo(
+static absl::Status GetMlirAllocationInfo(
     mlir::func::FuncOp func, std::vector<BufferAllocation>* allocations,
     absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>* output_info,
     Shape* output_shape) {
@@ -302,7 +304,7 @@ static Status GetMlirAllocationInfo(
 
 // The order of `thunk_sequence` corresponds to
 // `hlo_schedule->ThunkLaunchOrder()`.
-StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
+absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
@@ -323,7 +325,12 @@ StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true,
-          /*colorer=*/BufferAssigner::DefaultColorer(),
+          /*colorer=*/
+          hlo_module->config()
+                  .debug_options()
+                  .xla_gpu_enable_nccl_user_buffers()
+              ? CollectiveColorer()
+              : BufferAssigner::DefaultColorer(),
           /*must_not_live_out=*/{}, can_share_buffer_function));
 
   VLOG(1) << "Buffer Assignment Stats for " << hlo_module->name() << "\n"

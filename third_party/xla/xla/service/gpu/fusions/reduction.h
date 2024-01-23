@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,23 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 #define XLA_SERVICE_GPU_FUSIONS_REDUCTION_H_
 
+#include <optional>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "llvm/IR/IRBuilder.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
+#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/llvm_ir/ir_array.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace gpu {
@@ -87,18 +102,69 @@ namespace gpu {
 // complicating the index calculation in the code generation of the reduce
 // instructions. In other words, a block_id_y is assigned to a group and so
 // different groups can be run in parallel.
-class ReductionFusion : public FusionInterface {
+class ReductionFusion : public KernelFusionEmitterBase {
  public:
-  explicit ReductionFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
+  explicit ReductionFusion(const HloFusionAnalysis& analysis);
 
-  StatusOr<FusionEmissionResult> Emit(
-      IrEmitterContext& ir_emitter_context,
-      ElementalIrEmitter& elemental_emitter, mlir::lmhlo::FusionOp fusion_op,
-      const HloFusionInstruction& fusion, KernelReuseCache& kernel_cache,
-      llvm::IRBuilder<>* builder) const override;
+  LaunchDimensions launch_dimensions() const override;
+
+  std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
+      int64_t output_id, mlir::MLIRContext* ctx) const override {
+    // TODO(b/319081342): Implement this.
+    return std::nullopt;
+  }
+
+ protected:
+  absl::StatusOr<FusionEmissionResult> EmitInitializers(
+      IrEmitterContext& ir_emitter_context, mlir::lmhlo::FusionOp fusion_op,
+      const HloFusionInstruction& fusion) const override;
+
+  absl::Status EmitKernel(IrEmitterContext& ir_emitter_context,
+                          const HloFusionInstruction& fusion,
+                          const LaunchDimensions& launch_dims,
+                          std::vector<llvm_ir::IrArray> inputs,
+                          std::vector<llvm_ir::IrArray> outputs,
+                          llvm::IRBuilder<>* builder) const override;
 
  private:
-  HloFusionAnalysis& analysis_;
+  class ReductionEmitter;
+  class ReductionGroupEmitter;
+
+  class ReductionCodegenInfo {
+   public:
+    using IndexGroups = std::vector<std::vector<const HloInstruction*>>;
+
+    ReductionCodegenInfo(TilingScheme mapping_scheme, bool is_row_reduction,
+                         bool is_race_free, IndexGroups index_groups,
+                         const HloInstruction* first_reduce)
+        : tiling_scheme_(mapping_scheme),
+          is_row_reduction_(is_row_reduction),
+          is_race_free_(is_race_free),
+          index_groups_(std::move(index_groups)),
+          first_reduce_(first_reduce) {}
+
+    const TilingScheme& GetTilingScheme() const { return tiling_scheme_; }
+    const IndexGroups& GetIndexGroups() const { return index_groups_; }
+    Shape GetReduceOperandShape() const {
+      return first_reduce_->operand(0)->shape();
+    }
+
+    bool IsRowReduction() const { return is_row_reduction_; }
+    bool IsRaceFree() const { return is_race_free_; }
+
+   private:
+    TilingScheme tiling_scheme_;
+    bool is_row_reduction_;
+    bool is_race_free_;
+    IndexGroups index_groups_;
+    const HloInstruction* first_reduce_;
+  };
+
+  static ReductionCodegenInfo ComputeReductionCodegenInfo(
+      const HloFusionAnalysis& analysis);
+
+  const HloFusionAnalysis& analysis_;
+  ReductionCodegenInfo reduction_codegen_info_;
 };
 
 }  // namespace gpu

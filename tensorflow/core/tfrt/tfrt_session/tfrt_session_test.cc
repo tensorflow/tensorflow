@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/tfrt_session/tfrt_session.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/time/time.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/saved_model/reader.h"
@@ -29,15 +32,18 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"  // NOLINT(unused-includes): For TF_ASSERT_OK
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/threadpool_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -555,6 +561,42 @@ TEST_F(TfrtSessionTest, RunAfterCloseError) {
               ::testing::HasSubstr("Session has been closed."));
 }
 
+TEST_F(TfrtSessionTest, RunsGraphWithNoTpuOps) {
+  TfrtSessionOptions options;
+  TF_ASSERT_OK(InitializeTfrtSession(options));
+  options.use_tpu = true;
+  TF_ASSERT_OK(InitializeTfrtSession(options));
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session_->Run(inputs_, output_tensor_names_, target_node_names_,
+                             &outputs));
+
+  ASSERT_EQ(outputs.size(), 3);
+
+  // Check output "r1".
+  test::ExpectEqual(outputs[0],
+                    test::AsTensor<int32_t>({6}, TensorShape{1, 1}));
+
+  // Check output "r21".
+  test::ExpectEqual(outputs[1],
+                    test::AsTensor<int32_t>({12}, TensorShape{1, 1}));
+
+  // Check output "r31".
+  test::ExpectEqual(outputs[2],
+                    test::AsTensor<int32_t>({18}, TensorShape{1, 1}));
+}
+
+TEST_F(TfrtSessionTest, GetRuntime) {
+  auto runtime = TfrtSessionFactory::GetRuntime();
+  EXPECT_NE(runtime, nullptr);
+}
+
+TEST_F(TfrtSessionTest, RegisterTwiceCrashes) {
+  TfrtSessionFactory::RegisterInitializer(
+      [](tfrt_stub::Runtime*) { return OkStatus(); });
+  ASSERT_DEBUG_DEATH(TfrtSessionFactory::RegisterInitializer(
+                         [](tfrt_stub::Runtime*) { return OkStatus(); }),
+                     "");
+}
 }  // namespace
 }  // namespace tensorflow
 

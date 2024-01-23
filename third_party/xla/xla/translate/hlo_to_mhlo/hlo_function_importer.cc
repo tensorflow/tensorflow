@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -32,10 +34,13 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -664,6 +669,56 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
   return importer.ImportInstructionWithLayout(instr, operands, builder, mode);
 }
 
+StatusOr<mlir::Operation*> HloFunctionImporter::ImportCustomCallAsOp(
+    const HloInstruction* instruction, mlir::Location loc,
+    const Type result_type, mlir::ValueRange operands,
+    mlir::OpBuilder* func_builder) {
+  auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+  if (custom_call->custom_call_target() == "mhlo.dynamic_broadcast_in_dim") {
+    auto raw_backend_config = custom_call->raw_backend_config_string();
+    if (raw_backend_config.empty()) {
+      return Internal("backend_config attribute cannot be empty.");
+    }
+
+    auto attr = mlir::parseAttribute(raw_backend_config, builder_->getContext())
+                    .dyn_cast<mlir::DictionaryAttr>();
+    if (!attr) {
+      return Internal(
+          "Couldn't parse backend config into a dictionary attribute");
+    }
+
+    auto broadcast_dimensions_attr =
+        attr.get("broadcast_dimensions").dyn_cast_or_null<mlir::ArrayAttr>();
+    if (!broadcast_dimensions_attr) {
+      return Internal("broadcast_dimensions attribute is required.");
+    }
+
+    std::vector<int64_t> broadcast_dimensions(broadcast_dimensions_attr.size());
+    for (auto [i, broadcast_dimension] :
+         llvm::enumerate(broadcast_dimensions_attr)) {
+      broadcast_dimensions[i] =
+          broadcast_dimension.cast<mlir::IntegerAttr>().getInt();
+    }
+
+    return func_builder
+        ->create<mlir::mhlo::DynamicBroadcastInDimOp>(
+            loc, result_type, operands[0], operands[1],
+            builder_->getI64TensorAttr(broadcast_dimensions))
+        .getOperation();
+  }
+  if (custom_call->custom_call_target() == "mhlo.dynamic_reshape") {
+    auto raw_backend_config = custom_call->raw_backend_config_string();
+    if (!raw_backend_config.empty()) {
+      return Internal("backend_config attribute should be empty.");
+    }
+    return func_builder
+        ->create<mlir::mhlo::DynamicReshapeOp>(loc, result_type, operands)
+        .getOperation();
+  }
+  return InvalidArgument("Unsupported MHLO op custom_call %s",
+                         custom_call->custom_call_target());
+}
+
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     const HloInstruction* instruction,
     const llvm::SmallVectorImpl<mlir::Value>& operands,
@@ -733,11 +788,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "execution_thread", builder_->getStringAttr(execution_thread)));
       function->setAttr("execution_thread",
                         builder_->getStringAttr(execution_thread));
-      auto group_id = async_op->async_group_id();
-      if (group_id) {
-        attributes.push_back(builder_->getNamedAttr(
-            "group_id", builder_->getI64IntegerAttr(*group_id)));
-      }
 
       if (instruction->opcode() == HloOpcode::kAsyncStart) {
         auto bundle_result_type = mlir::mhlo::AsyncBundleType::get(
@@ -869,6 +919,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCustomCall: {
       auto custom_call = Cast<HloCustomCallInstruction>(instruction);
+      if (absl::StrContains(custom_call->custom_call_target(), "mhlo.")) {
+        return ImportCustomCallAsOp(instruction, loc, result_type, operands,
+                                    func_builder);
+      }
       const auto& called_computations = custom_call->called_computations();
       if (!called_computations.empty()) {
         llvm::SmallVector<mlir::Attribute> callees;
@@ -1368,6 +1422,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllGather: {
       auto all_gather = Cast<HloAllGatherInstruction>(instruction);
+      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
+
+      llvm::SmallVector<Type> result_types = {result_type};
+      if (result_tuple_ty) {
+        result_types = llvm::to_vector(result_tuple_ty.getTypes());
+      }
       attributes.push_back(builder_->getNamedAttr(
           "all_gather_dim",
           builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
@@ -1378,10 +1438,15 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             ConvertChannelHandle(all_gather->channel_id().value()));
       if (all_gather->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds());
-      return func_builder
-          ->create<mlir::mhlo::AllGatherOp>(loc, result_type, operands,
-                                            attributes)
-          .getOperation();
+      auto all_gather_op = func_builder->create<mlir::mhlo::AllGatherOp>(
+          loc, result_types, operands, attributes);
+      if (result_tuple_ty) {
+        return func_builder
+            ->create<mlir::mhlo::TupleOp>(loc, result_type,
+                                          all_gather_op.getResults())
+            .getOperation();
+      }
+      return all_gather_op.getOperation();
     }
     case HloOpcode::kAllGatherStart: {
       auto all_gather_start = Cast<HloAllGatherInstruction>(instruction);
@@ -1395,6 +1460,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             ConvertChannelHandle(all_gather_start->channel_id().value()));
       if (all_gather_start->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds());
+      if (all_gather_start->operands().size() > 1)
+        return InvalidArgument(
+            "Async tuple all-gather is not supported in MHLO");
 
       return ImportOldStyleAsyncStart<mlir::mhlo::AllGatherOp>(
           attributes, operands, loc, result_type, func_builder, "all_gather_",

@@ -81,7 +81,9 @@ cc_library(
     name = "test_delegate",
     testonly = 1,
     srcs = ["test_delegate.cc"],
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/lite/core/c:common",
     ],
@@ -158,7 +160,9 @@ cc_library(
     name = "test_registerer",
     srcs = ["test_registerer.cc"],
     hdrs = ["test_registerer.h"],
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",

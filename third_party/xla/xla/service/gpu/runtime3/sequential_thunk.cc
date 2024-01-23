@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "xla/service/gpu/thunk.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -32,20 +38,27 @@ std::string SequentialThunk::ToStringExtra(int indent) const {
   return result;
 }
 
-Status SequentialThunk::Initialize(se::StreamExecutor* executor,
-                                   ExecutableSource src) {
+absl::Status SequentialThunk::Prepare(const PrepareParams& params,
+                                      ResourceRequests& resource_requests) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(executor, src));
+    TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
+  for (auto& thunk : thunks_) {
+    TF_RETURN_IF_ERROR(thunk->Initialize(params));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   for (const auto& thunk : thunks_) {
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

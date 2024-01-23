@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -1572,8 +1573,7 @@ TEST_F(HloInstructionTest, CloneSuffixNames) {
   EXPECT_EQ(foo_clone_clone3->Clone()->name(), "foo.clone.clone4");
 }
 
-TEST_F(HloInstructionTest, Stringification) {
-  // Tests stringification of a simple op, fusion, while, and conditional.
+TEST_F(HloInstructionTest, StringifyDot) {
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
   const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
@@ -1607,16 +1607,31 @@ TEST_F(HloInstructionTest, Stringification) {
   EXPECT_EQ(dot->ToString(options2),
             "dot = f32[5,20] dot(x, transpose), "
             "lhs_contracting_dims={1}, rhs_contracting_dims={0}");
+}
+
+TEST_F(HloInstructionTest, StringifyConditional) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
+  const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
+  const Shape sout = ShapeUtil::MakeShape(F32, {5, 20});
+
+  HloComputation::Builder builder("TransposeDot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "y"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateTranspose(s2t, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(HloInstruction::CreateDot(sout, x, reshape, dot_dnums,
+                                                   DefaultPrecisionConfig(2)));
 
   auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
-  HloInstruction* loop = builder.AddInstruction(
-      HloInstruction::CreateWhile(sout, computation, computation, x));
-  EXPECT_EQ(loop->ToString(options),
-            "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
-            "condition=%TransposeDot, body=%TransposeDot");
-
+  auto options = HloPrintOptions().set_print_metadata(false);
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   HloInstruction* conditional =
@@ -1626,6 +1641,36 @@ TEST_F(HloInstructionTest, Stringification) {
             "%conditional = f32[5,20]{1,0} conditional(pred[] %constant, "
             "f32[5,10]{1,0} %x, f32[5,10]{1,0} %x), "
             "true_computation=%TransposeDot, false_computation=%TransposeDot");
+}
+
+TEST_F(HloInstructionTest, StringifyWhile) {
+  const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
+  const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
+  const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
+  const Shape sout = ShapeUtil::MakeShape(F32, {5, 20});
+
+  HloComputation::Builder builder("TransposeDot");
+  HloInstruction* x =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "x"));
+  HloInstruction* y =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "y"));
+  HloInstruction* reshape =
+      builder.AddInstruction(HloInstruction::CreateTranspose(s2t, y, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  builder.AddInstruction(HloInstruction::CreateDot(sout, x, reshape, dot_dnums,
+                                                   DefaultPrecisionConfig(2)));
+
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+
+  auto options = HloPrintOptions().set_print_metadata(false);
+  HloInstruction* loop = builder.AddInstruction(
+      HloInstruction::CreateWhile(sout, computation, computation, x));
+  EXPECT_EQ(loop->ToString(options),
+            "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
+            "condition=%TransposeDot, body=%TransposeDot");
 }
 
 TEST_F(HloInstructionTest, GetSetStatisticsViz) {
@@ -1853,17 +1898,11 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
   HloInstruction* async_start =
       entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
           s_tuple, {entry_param}, async_computation.get(),
-          /*async_group_id=*/std::nullopt,
           /*async_execution_thread=*/"parallel_thread"));
-  HloInstruction* async_update =
-      entry_builder.AddInstruction(HloInstruction::CreateAsyncUpdate(
-          s_tuple, async_start, async_computation.get(),
-          /*async_group_id=*/std::nullopt,
-          /*async_execution_thread=*/"parallel_thread"));
-  entry_builder.AddInstruction(HloInstruction::CreateAsyncDone(
-      s2, async_update, async_computation.get(),
-      /*async_group_id=*/std::nullopt,
-      /*async_execution_thread=*/"parallel_thread"));
+  HloInstruction* async_update = entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncUpdate(s_tuple, async_start));
+  entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncDone(s2, async_update));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(entry_builder.Build());
@@ -1875,8 +1914,8 @@ TEST_F(HloInstructionTest, StringifyAsyncOps) {
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
   %custom-call-start = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", custom_call_target="foo"
-  %custom-call-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-start), async_execution_thread="parallel_thread", custom_call_target="foo"
-  ROOT %custom-call-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-update), async_execution_thread="parallel_thread", custom_call_target="foo"
+  %custom-call-update = ((f32[10]{0}), f32[20]{0}, s32[]) custom-call-update(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-start)
+  ROOT %custom-call-done = f32[20]{0} custom-call-done(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-update)
 }
 
 )";
@@ -1892,8 +1931,8 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
 ENTRY %Entry (p0: f32[10]) -> f32[20] {
   %p0 = f32[10]{0} parameter(0)
   %custom-call-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(f32[10]{0} %p0), async_execution_thread="parallel_thread", calls=%AsyncOp
-  %custom-call-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-start), async_execution_thread="parallel_thread", calls=%AsyncOp
-  ROOT %custom-call-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-update), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %custom-call-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-start)
+  ROOT %custom-call-done = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %custom-call-update)
 }
 
 )";
@@ -1938,17 +1977,11 @@ TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
   HloInstruction* async_start =
       entry_builder.AddInstruction(HloInstruction::CreateAsyncStart(
           async_start_shape, {entry_param}, async_computation.get(),
-          /*async_group_id=*/std::nullopt,
           /*async_execution_thread=*/"parallel_thread"));
-  HloInstruction* async_update =
-      entry_builder.AddInstruction(HloInstruction::CreateAsyncUpdate(
-          async_start_shape, async_start, async_computation.get(),
-          /*async_group_id=*/std::nullopt,
-          /*async_execution_thread=*/"parallel_thread"));
-  entry_builder.AddInstruction(HloInstruction::CreateAsyncDone(
-      rs_output_shape, async_update, async_computation.get(),
-      /*async_group_id=*/std::nullopt,
-      /*async_execution_thread=*/"parallel_thread"));
+  HloInstruction* async_update = entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncUpdate(async_start_shape, async_start));
+  entry_builder.AddInstruction(
+      HloInstruction::CreateAsyncDone(rs_output_shape, async_update));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(entry_builder.Build());
@@ -1967,8 +2000,8 @@ TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
 ENTRY %Entry (pentry: f32[20]) -> f32[10] {
   %pentry = f32[20]{0} parameter(0)
   %reduce-scatter-start = ((f32[20]{0}), f32[10]{0}) reduce-scatter-start(f32[20]{0} %pentry), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
-  %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) reduce-scatter-update(((f32[20]{0}), f32[10]{0}) %reduce-scatter-start), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
-  ROOT %reduce-scatter-done = f32[10]{0} reduce-scatter-done(((f32[20]{0}), f32[10]{0}) %reduce-scatter-update), async_execution_thread="parallel_thread", replica_groups={}, dimensions={0}, to_apply=%add
+  %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) reduce-scatter-update(((f32[20]{0}), f32[10]{0}) %reduce-scatter-start)
+  ROOT %reduce-scatter-done = f32[10]{0} reduce-scatter-done(((f32[20]{0}), f32[10]{0}) %reduce-scatter-update)
 }
 
 )";
@@ -1991,8 +2024,8 @@ ENTRY %Entry (pentry: f32[20]) -> f32[10] {
 ENTRY %Entry (pentry: f32[20]) -> f32[10] {
   %pentry = f32[20]{0} parameter(0)
   %reduce-scatter-start = ((f32[20]{0}), f32[10]{0}) async-start(f32[20]{0} %pentry), async_execution_thread="parallel_thread", calls=%AsyncOp
-  %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) async-update(((f32[20]{0}), f32[10]{0}) %reduce-scatter-start), async_execution_thread="parallel_thread", calls=%AsyncOp
-  ROOT %reduce-scatter-done = f32[10]{0} async-done(((f32[20]{0}), f32[10]{0}) %reduce-scatter-update), async_execution_thread="parallel_thread", calls=%AsyncOp
+  %reduce-scatter-update = ((f32[20]{0}), f32[10]{0}) async-update(((f32[20]{0}), f32[10]{0}) %reduce-scatter-start)
+  ROOT %reduce-scatter-done = f32[10]{0} async-done(((f32[20]{0}), f32[10]{0}) %reduce-scatter-update)
 }
 
 )";
@@ -2127,9 +2160,6 @@ TEST_F(HloInstructionTest, CanonicalStringificationConditional) {
   auto* computation = module->AddEntryComputation(builder.Build());
   computation->CreateFusionInstruction({dot, reshape},
                                        HloInstruction::FusionKind::kLoop);
-
-  builder.AddInstruction(
-      HloInstruction::CreateWhile(sout, computation, computation, x));
 
   auto pred = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
@@ -2417,16 +2447,19 @@ TEST_F(HloInstructionTest, BackendConfigCanContainNonFiniteFloats) {
   dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot = b.AddInstruction(HloInstruction::CreateDot(
       shape, p0, p0, dot_dnums, DefaultPrecisionConfig(2)));
-
-  gpu::GemmBackendConfig orig_config;
+  gpu::GpuBackendConfig gpu_config;
+  gpu::GemmBackendConfig& orig_config =
+      *gpu_config.mutable_gemm_backend_config();
   orig_config.set_alpha_real(std::numeric_limits<double>::infinity());
   orig_config.set_alpha_imag(std::numeric_limits<double>::quiet_NaN());
-  TF_ASSERT_OK(dot->set_backend_config(orig_config));
+  TF_ASSERT_OK(dot->set_backend_config(gpu_config));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto new_config,
-                          dot->backend_config<gpu::GemmBackendConfig>());
-  EXPECT_GT(new_config.alpha_real(), std::numeric_limits<double>::max());
-  EXPECT_NE(new_config.alpha_imag(), new_config.alpha_imag());
+  TF_ASSERT_OK_AND_ASSIGN(auto new_gpu_config,
+                          dot->backend_config<gpu::GpuBackendConfig>());
+  EXPECT_GT(new_gpu_config.gemm_backend_config().alpha_real(),
+            std::numeric_limits<double>::max());
+  EXPECT_NE(new_gpu_config.gemm_backend_config().alpha_imag(),
+            new_gpu_config.gemm_backend_config().alpha_imag());
 }
 
 TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
@@ -2541,88 +2574,12 @@ TEST_F(HloInstructionTest, PrintCycle) {
   ASSERT_IS_OK(send_done->DropAllControlDeps());
 }
 
-TEST_F(HloInstructionTest, SetOperationQueueId) {
-  std::unique_ptr<HloComputation> main_computation;
-  HloComputation::Builder main_builder("Entry");
-  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
-  HloInstruction* param0 = main_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-  HloInstruction* param1 = main_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-
-  HloInstruction* add =
-      main_builder.AddInstruction(HloInstruction::CreateBinary(
-          scalar_shape, HloOpcode::kAdd, param0, param1));
-  add->set_operation_queue_id(3);
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(main_builder.Build());
-
-  auto options = HloPrintOptions().set_print_metadata(false);
-  EXPECT_EQ(module->entry_computation()->root_instruction()->ToString(options),
-            "%add = f32[] add(f32[] %p0, f32[] %p1), operation_queue_id=3");
-}
-
-TEST_F(HloInstructionTest, SetWaitOnOperationQueues) {
-  std::unique_ptr<HloComputation> main_computation;
-  HloComputation::Builder main_builder("Entry");
-  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
-  HloInstruction* param0 = main_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-  HloInstruction* param1 = main_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-
-  HloInstruction* add =
-      main_builder.AddInstruction(HloInstruction::CreateBinary(
-          scalar_shape, HloOpcode::kAdd, param0, param1));
-  std::vector<int64_t> wait_on_queues = {0, 2};
-  add->set_wait_on_operation_queues(wait_on_queues);
-  add->add_wait_on_operation_queues(5);
-
-  auto module = CreateNewVerifiedModule();
-  module->AddEntryComputation(main_builder.Build());
-
-  auto options = HloPrintOptions().set_print_metadata(false);
-  EXPECT_EQ(module->entry_computation()->root_instruction()->ToString(options),
-            "%add = f32[] add(f32[] %p0, f32[] %p1), "
-            "wait_on_operation_queues={0, 2, 5}");
-}
-
-TEST_F(HloInstructionTest, ParseOperationQueueId) {
-  constexpr char kHloString[] = R"(
-  ENTRY main {
-    c0 = f32[] constant(0)
-    ROOT add0 = f32[] add(c0, c0), operation_queue_id=2
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  EXPECT_EQ(
-      module->entry_computation()->root_instruction()->operation_queue_id(), 2);
-}
-
-TEST_F(HloInstructionTest, ParseWaitOnOperationQueues) {
-  constexpr char kHloString[] = R"(
-  ENTRY main {
-    c0 = f32[] constant(0)
-    ROOT add0 = f32[] add(c0, c0), wait_on_operation_queues={0,2}
-  })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  std::vector<int64_t> expected_wait_on_queue_ids = {0, 2};
-  for (int64_t i = 0; i < expected_wait_on_queue_ids.size(); i++) {
-    EXPECT_EQ(expected_wait_on_queue_ids[i],
-              module->entry_computation()
-                  ->root_instruction()
-                  ->wait_on_operation_queues()[i]);
-  }
-}
-
 TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
   auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
 
   HloComputation::Builder cond_builder("cond");
   {
-    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
     HloInstruction* param = cond_builder.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_shape, "p0"));
     HloInstruction* constant = cond_builder.AddInstruction(
@@ -2635,7 +2592,6 @@ TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
 
   HloComputation::Builder body_builder("body");
   {
-    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
     HloInstruction* param = body_builder.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_shape, "p0"));
     body_builder.AddInstruction(HloInstruction::CreateBinary(
@@ -2662,6 +2618,137 @@ TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
     }
   }
   EXPECT_EQ(num_while_body_comp, 1);
+}
+
+TEST_F(HloInstructionTest,
+       VerifyBranchComputationPointsToConditonal_TrueFalseConstructor) {
+  auto module = CreateNewVerifiedModule();
+  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+
+  HloComputation::Builder branch_0_builder("branch_0");
+  {
+    HloInstruction* param = branch_0_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* constant = branch_0_builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1024.0)));
+    branch_0_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kAdd, param, constant));
+  }
+  auto branch_0_computation =
+      module->AddEmbeddedComputation(branch_0_builder.Build());
+
+  HloComputation::Builder branch_1_builder("branch_1");
+  {
+    HloInstruction* param = branch_1_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    branch_1_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kMultiply, param, param));
+  }
+  auto branch_1_computation =
+      module->AddEmbeddedComputation(branch_1_builder.Build());
+
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+
+  HloInstruction* pred_param =
+      main_builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(PRED, {}), "pred_param"));
+  HloInstruction* param = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "input"));
+
+  main_builder.AddInstruction(HloInstruction::CreateConditional(
+      scalar_shape, pred_param, /*true_computation_arg=*/param,
+      /*true_computation=*/branch_0_computation,
+      /*false_computation_arg=*/param,
+      /*false_computation=*/branch_1_computation));
+
+  module->AddEntryComputation(main_builder.Build());
+  // Should find conditional branch computations in the graph and it should
+  // point to the conditonal instruction.
+  int num_conditional_branch_comp = 0;
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    if (comp->IsConditionalBranchComputation()) {
+      num_conditional_branch_comp += 1;
+      EXPECT_EQ(comp->ConditionalCallInstruction(),
+                module->entry_computation()->root_instruction());
+    }
+  }
+  EXPECT_EQ(num_conditional_branch_comp, 2);
+}
+
+TEST_F(HloInstructionTest,
+       VerifyBranchComputationPointsToConditonal_BranchIndexConstructor) {
+  auto module = CreateNewVerifiedModule();
+  const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+
+  std::vector<HloComputation*> branch_computations;
+
+  {
+    HloComputation::Builder builder("branch_0");
+
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* constant = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1024.0)));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kAdd, param, constant));
+
+    branch_computations.push_back(
+        module->AddEmbeddedComputation(builder.Build()));
+  }
+
+  {
+    HloComputation::Builder builder("branch_1");
+
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kMultiply, param, param));
+
+    branch_computations.push_back(
+        module->AddEmbeddedComputation(builder.Build()));
+  }
+
+  {
+    HloComputation::Builder builder("branch_2");
+
+    HloInstruction* param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    builder.AddInstruction(
+        HloInstruction::CreateUnary(scalar_shape, HloOpcode::kLog, param));
+
+    branch_computations.push_back(
+        module->AddEmbeddedComputation(builder.Build()));
+  }
+
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+
+  HloInstruction* branch_index =
+      main_builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeScalarShape(S32), "branch_index_param"));
+  HloInstruction* param = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "input"));
+
+  std::vector<HloInstruction*> branch_computation_args(
+      branch_computations.size(), param);
+
+  main_builder.AddInstruction(HloInstruction::CreateConditional(
+      scalar_shape, branch_index, branch_computations,
+      branch_computation_args));
+
+  module->AddEntryComputation(main_builder.Build());
+  // Should find conditional branch computations in the graph and it should
+  // point to the conditonal instruction.
+  int num_conditional_branch_comp = 0;
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    if (comp->IsConditionalBranchComputation()) {
+      num_conditional_branch_comp += 1;
+      EXPECT_EQ(comp->ConditionalCallInstruction(),
+                module->entry_computation()->root_instruction());
+    }
+  }
+  EXPECT_EQ(num_conditional_branch_comp, branch_computations.size());
 }
 
 }  // namespace

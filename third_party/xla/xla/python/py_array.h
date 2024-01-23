@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -219,7 +219,7 @@ class PyArray : public pybind11::object {
   StatusOr<size_t> GetOnDeviceSizeInBytes();
   StatusOr<pybind11::object> SingleDeviceArrayToNumpyArray();
   Status CopySingleDeviceArrayToHostAsync();
-  StatusOr<pybind11::dict> CudaArrayInterface();
+  pybind11::dict CudaArrayInterface();
   StatusOr<std::uintptr_t> UnsafeBufferPointer();
 
   Status Delete();

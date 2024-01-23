@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -481,6 +482,13 @@ class LiveRangeRegions {
     // create a new HloValue aliasing without defining a new value (cannot be
     // value_definition).
     bool is_definition;
+
+    std::string ToString() const {
+      return absl::StrCat(
+          "is_definition: ", std::to_string(is_definition),
+          ", value_definition: ",
+          value_definition ? value_definition->name() : "nullptr");
+    }
   };
   // Map instructions that use a value to the defining instruction of the value.
   // Because all values must belong to the same live range, an instruction can
@@ -530,6 +538,20 @@ class LiveRangeRegions {
     }
     auto instr_map = (*p).second;
     return instr_map.find(instr) != instr_map.end();
+  }
+
+  std::string ToString() const {
+    std::string result;
+
+    for (const auto* computation : computation_vector_) {
+      StrAppend(&result, "computation: ", computation->name(), "\n");
+      for (const auto& entry : computation_map_.at(computation)) {
+        StrAppend(&result, "  entry: ", entry.first->name(), ", ",
+                  entry.second.ToString(), "\n");
+      }
+    }
+
+    return result;
   }
 
  private:
@@ -723,7 +745,7 @@ class ComputeRelativeLocation {
   typedef LiveRangeRegions::InstructionEntry InstructionEntry;
   explicit ComputeRelativeLocation(HloOrdering* ordering)
       : ordering_(ordering) {
-    VLOG(3) << "New analysis\n";
+    VLOG(3) << "New analysis";
   }
 
   // Compute locationing constraints between two instructions. Here entry2 is
@@ -752,7 +774,7 @@ class ComputeRelativeLocation {
     // computation, then any modification is considered intercepting.
     if (def->opcode() == HloOpcode::kParameter &&
         use == use->parent()->root_instruction()) {
-      VLOG(3) << "Setting interception due to parameter/root relation\n";
+      VLOG(3) << "Setting interception due to parameter/root relation";
       return Relation(order, true);
     }
 
@@ -781,11 +803,62 @@ class ComputeRelativeLocation {
       return Relation(order, false);
     }
 
+    // Special case for conditional instruction when in one branch two results
+    // can be put in one buffers and another branch returns two results from a
+    // multi-output instruction, e.g. fusion or variadic reduction.
+    //
+    //  branch_0 {
+    //    exp = f64[] exp(...)
+    //    ROOT tuple = (f64[], f64[]) tuple(exp, exp)
+    //  }
+    //
+    //  fused_computation {
+    //    abs = f64[] abs(...)
+    //    negate = f64[] negate(...)
+    //    ROOT tuple = (f64[], f64[]) tuple(abs, negate)
+    //  }
+    //
+    //  branch_1 {
+    //    ROOT fusion = (f64[], f64[]) fusion(...), calls=%fused_computation
+    //  }
+    //
+    //  ENTRY main {
+    //    ROOT root = (f64[], f64[]) conditional(...),
+    //    branch_computations={%branch_0, %branch_1}
+    //  }
+    //
+    // `branch_0` can use one buffer for both result. `branch_1` must use two
+    // different buffers.
+    //
+    // During live range analysis of results of `branch_0` this function will be
+    // called when entry1 and entry2 are different outputs on `fusion` in
+    // `branch_1`. `fusion` defines two buffers, but `value_definition` in
+    // LiveRangeRegions::InstructionInfo does not track output index. The
+    // analysis will say that they are not interfering and assign the same
+    // buffer to both. This will lead to incorrect numerical results during
+    // runtime.
+    //
+    // This check makes sure that outputs of multi-output instructions are
+    // always interfering and can not be combined. It can be a false positive
+    // when entry1 and entry2 correspond to the same output, but we prefer that
+    // over numerical issues.
+    //
+    // A proper solution would be to track output index in
+    // LiveRangeRegions::InstructionInfo.
+    if (use->parent() == def->parent() &&
+        def->parent()->IsConditionalBranchComputation() &&
+        def == entry2.first && def->shape().IsTuple()) {
+      VLOG(3) << "Setting interception for multi-output instruction inside "
+                 "conditional branch: "
+              << def->name();
+      return Relation(order, true);
+    }
+
     if (Relation::UseImpliesInterception(order)) {
       auto order2 = ComputeRuntimeOrdering(entry2.first, def);
       if (Relation::DefinitionImpliesInterception(order2)) {
         VLOG(3) << "Setting interception for " << def->ToString()
-                << " with use:" << entry1.first->ToString() << "\n";
+                << " with use: " << entry1.first->ToString();
         intercept = true;
       }
     }
@@ -797,8 +870,7 @@ class ComputeRelativeLocation {
   Relation Compute(const LiveRangeRegions& range1,
                    const LiveRangeRegions& range2) {
     Relation dir_src_dest;
-    for (int64_t index = 0; index < range1.size(); index++) {
-      auto* computation1 = range1.Computation(index);
+    for (const auto* computation1 : range1) {
       for (const auto* computation2 : range2) {
         for (auto instr_entry2 : range2[computation2]) {
           if (!ordering_->call_graph().Dominates(computation1, computation2)) {
@@ -813,15 +885,15 @@ class ComputeRelativeLocation {
           bool unordered_intercept = false;
           for (auto instr_entry1 : range1[computation1]) {
             auto rel = Compute(instr_entry1, instr_entry2, instr2_can_modify);
-            VLOG(3) << "new relation with:" << instr_entry1.first->ToString()
-                    << " = " << rel.ToString() << "\n";
+            VLOG(3) << "New relation with " << instr_entry1.first->name()
+                    << ": " << rel.ToString();
             if (!rel.RuntimeOrderIsUnordered()) {
               instr2_relation.UnionRelationFromSameSource(rel);
             } else {
               unordered_ops.push_back(instr_entry1);
               unordered_intercept |= rel.InterceptDefUse();
             }
-            VLOG(3) << "instr2 relation:" << instr2_relation.ToString() << "\n";
+            VLOG(3) << "instr2 relation: " << instr2_relation.ToString();
           }
           // Here instru2_relation is guaranteed to have at most a single entry,
           // because it was initialized to be empty, and has been updated only
@@ -829,12 +901,12 @@ class ComputeRelativeLocation {
           // maintains that the updated result has only a single entry.
           if (!ForceRuntimeOrder(unordered_ops, instr_entry2,
                                  instr2_relation.GetRuntimeOrder())) {
-            VLOG(3) << "Unable to force ordering of unordered ops\n";
+            VLOG(3) << "Unable to force ordering of unordered ops";
             instr2_relation.UnionRelationFromSameSource(Relation(
                 Relation::kBeforeStartOrAfterEnd, unordered_intercept));
           }
           dir_src_dest.UnionRelationFromDifferentSource(instr2_relation);
-          VLOG(3) << "Resulting relation : " << dir_src_dest.ToString() << "\n";
+          VLOG(3) << "Resulting relation: " << dir_src_dest.ToString();
         }
       }
     }
@@ -859,8 +931,8 @@ class ComputeRelativeLocation {
       for (const auto& instr_it : comp_it.second) {
         HloInstruction* entry1 = instr_it.first;
         for (HloInstruction* entry2 : instr_it.second) {
-          VLOG(3) << "Add control dependence between " << entry2->ToString();
-          VLOG(3) << "\n vs " << entry1->ToString() << "\n";
+          VLOG(3) << "Add control dependence between " << entry2->name()
+                  << " vs " << entry1->name();
           TF_CHECK_OK(entry2->AddControlDependencyTo(entry1));
         }
         reachability_map.UpdateReachabilityThroughInstruction(entry1);
@@ -925,8 +997,7 @@ class ComputeRelativeLocation {
       if (succ->opcode() == HloOpcode::kCopy &&
           ModifiesNonCopy(pred, succ->operand(0))) {
         VLOG(3) << "Failed to force unordered op ordering due to copy ordering "
-                << " between " << pred->ToString() << "\n";
-        VLOG(3) << " vs. " << succ->ToString() << "\n";
+                << " between " << pred->name() << " vs " << succ->name();
         return false;
       }
     }
@@ -1056,8 +1127,8 @@ class ComputeRelativeLocation {
           (relation == Relation::kBeforeStart) ? entry1 : entry2;
       HloInstruction* succ =
           (relation == Relation::kBeforeStart) ? entry2 : entry1;
-      VLOG(3) << "Save unordered relation: " << pred->ToString() << "\n";
-      VLOG(3) << " vs " << succ->ToString() << "\n";
+      VLOG(3) << "Save unordered relation: " << pred->name() << " vs "
+              << succ->name();
       CHECK_EQ(succ->parent(), pred->parent());
       auto& dep_vec = ctrl_deps_[succ->parent()][succ];
       for (HloInstruction*& op : dep_vec) {
@@ -1071,8 +1142,8 @@ class ComputeRelativeLocation {
           return relation;
         }
       }
-      VLOG(2) << "Forcing unordered:" << pred->ToString() << "\n";
-      VLOG(2) << " vs " << succ->ToString() << "\n";
+      VLOG(2) << "Forcing unordered: " << pred->name() << " vs "
+              << succ->name();
       dep_vec.push_back(pred);
     }
     return relation;
@@ -1083,8 +1154,8 @@ class ComputeRelativeLocation {
                                                 HloInstruction* instr2) {
     auto saved_relation = AlreadyComputed(instr1, instr2);
     if (saved_relation.first != kNotComputed) {
-      VLOG(3) << "Already computed between " << instr1->ToString() << "\n vs "
-              << instr2->ToString() << "\n";
+      VLOG(3) << "Already computed between " << instr1->name() << " vs "
+              << instr2->name();
       return saved_relation.second;
     }
     auto constraint = ordering_->GetExecutionConstraint(instr1, instr2);
@@ -1120,15 +1191,15 @@ class ComputeRelativeLocation {
           if (absl::c_any_of(ctrl_deps[instr2], [&](HloInstruction* pred2) {
                 return ControlDependenceBefore(instr1, pred2);
               })) {
-            VLOG(2) << "control-dependent: " << instr1->ToString() << "\n";
-            VLOG(2) << "vs " << instr2->ToString() << "\n";
+            VLOG(2) << "control-dependent: " << instr1->name() << " vs "
+                    << instr2->name();
             return Save(instr1, instr2, Relation::kBeforeStart);
           } else if (absl::c_any_of(
                          ctrl_deps[instr1], [&](HloInstruction* pred1) {
                            return ControlDependenceBefore(instr2, pred1);
                          })) {
-            VLOG(2) << "control-dependent: " << instr2->ToString() << "\n";
-            VLOG(2) << "vs " << instr1->ToString() << "\n";
+            VLOG(2) << "control-dependent: " << instr2->name() << " vs "
+                    << instr1->name();
             return Save(instr1, instr2, Relation::kAfterEnd);
           }
         }
@@ -1489,15 +1560,15 @@ class CopyRemover {
       CHECK_NE(src, nullptr);
       CHECK_NE(dest, nullptr);
       if (!use_region_analysis) {
-        VLOG(2) << "Configured to not use region-based analysis.\n";
+        VLOG(2) << "Configured to not use region-based analysis.";
         return true;
       }
       *region_analysis_limit += live_range_size1 * live_range_size2;
       if (ValuesInterfere(src, dest, option)) {
-        VLOG(2) << "Region-based interference is true. \n";
+        VLOG(2) << "Region-based interference is true.";
         return true;
       }
-      VLOG(2) << "Region-based interference is false. \n";
+      VLOG(2) << "Region-based interference is false.";
       return false;
     };
 
@@ -1576,7 +1647,7 @@ class CopyRemover {
           CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest)) &&
           // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
           CheckLiveRangeBefore(copy_node.dest->prev, Next(*copy_node.src));
-      VLOG(2) << "LiveRangeBefore result: " << live_range_before << "\n";
+      VLOG(2) << "LiveRangeBefore result: " << live_range_before;
       if (!live_range_before &&
           CheckLiveRangeInterference(copy_node.src, copy_node.dest,
                                      kMergeFirstDestInSource)) {
@@ -1606,11 +1677,11 @@ class CopyRemover {
           CheckLiveRangeBefore(Prev(*copy_node.dest), copy_node.src->next) &&
           // Live range of 'last_src' must be before next_dest d_{y+1}.
           CheckLiveRangeBefore(copy_node.src, Next(*copy_node.dest));
-      VLOG(2) << "LiveRangeBefore result: " << live_range_before << "\n";
+      VLOG(2) << "LiveRangeBefore result: " << live_range_before;
       if (!live_range_before &&
           CheckLiveRangeInterference(copy_node.src, copy_node.dest,
                                      kMergeLastSourceInDest)) {
-        VLOG(2) << "Region-based analysis concludes interference.\n";
+        VLOG(2) << "Region-based analysis concludes interference.";
         return false;
       }
       VLOG(2) << "Splice src after prev of dest.";
@@ -1683,8 +1754,8 @@ class CopyRemover {
       VLOG(2) << "Empty uses for " << *a.value;
       return ordering_->IsDefinedBefore(*a.value, *b.value);
     }
-    VLOG(3) << "Checking live ranges before :" << ValueListToString(&a)
-            << " vs " << ValueListToString(&b) << "\n";
+    VLOG(3) << "Checking live ranges before: " << ValueListToString(&a)
+            << " vs " << ValueListToString(&b);
     // If any of the positions of the "a" value is a root of the same
     // computation as "b", "a"'s live range cannot be before "b"'s. This catches
     // the cases where the root may not be the last instruction in the
@@ -1756,27 +1827,34 @@ class CopyRemover {
     // Get the entire range of values sharing the buffers in src and dest.
     auto src_live_range = ComputeLiveRangeRegions(src);
     auto dest_live_range = ComputeLiveRangeRegions(dest);
+
+    VLOG(5) << "src value: " << src->value->ToString();
+    VLOG(5) << "src live range:\n" << src_live_range.ToString();
+
+    VLOG(5) << "dest value: " << dest->value->ToString();
+    VLOG(5) << "dest live range:\n" << dest_live_range.ToString();
+
     ComputeRelativeLocation relative_location_analysis(ordering_);
     auto rel1 =
         relative_location_analysis.Compute(src_live_range, dest_live_range);
-    VLOG(3) << "Location of dest in relation to src:" << rel1.ToString()
-            << " with interception set to " << rel1.InterceptDefUse() << "\n";
+    VLOG(3) << "Location of dest in relation to src: " << rel1.ToString()
+            << " with interception set to " << rel1.InterceptDefUse();
     auto rel2 =
         relative_location_analysis.Compute(dest_live_range, src_live_range);
-    VLOG(3) << "Location of src in relation to dest:" << rel2.ToString()
-            << " with interception set to " << rel1.InterceptDefUse() << "\n";
+    VLOG(3) << "Location of src in relation to dest: " << rel2.ToString()
+            << " with interception set to " << rel2.InterceptDefUse();
     // If src and dest are interleaved with each other, they interfere.
     if (rel1.RuntimeOrderOverlap() && rel2.RuntimeOrderOverlap()) {
-      VLOG(3) << "Both relations are overlap.\n";
+      VLOG(3) << "Both relations are overlap.";
       return true;
     }
     // If src and dest belong to the same group of computations and do not
     // overlap, they do not interfere.
     if (rel1.RuntimeOrderOverlap() || rel2.RuntimeOrderOverlap()) {
-      VLOG(3) << "At least one relation is overlap.\n";
+      VLOG(3) << "At least one relation is overlap.";
       if (rel1.RuntimeOrderOverlap()) {
         VLOG(3) << "rel1 is overlap, with interception = "
-                << rel1.InterceptDefUse() << "\n";
+                << rel1.InterceptDefUse();
         if (rel1.InterceptDefUse() ||
             (merge_location != kMergeFirstDestInSource &&
              rel2.InterceptDefUse())) {
@@ -1784,7 +1862,7 @@ class CopyRemover {
         }
       } else {
         VLOG(3) << "rel2 is overlap, with interception = "
-                << rel2.InterceptDefUse() << "\n";
+                << rel2.InterceptDefUse();
         // Here src is at the end of a nested computation inside dest.
         if (rel2.InterceptDefUse() ||
             (merge_location != kMergeLastSourceInDest &&
@@ -2202,7 +2280,7 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
   bool changed = true;
   int64_t num_iterations = -1;
   VLOG(6) << "Copy Insertion analyzing module with instruction count = "
-          << module->instruction_count() << "\n";
+          << module->instruction_count();
   BoundNonLinearCompilerAnalysis allowance(module, name(), 10);
   while (changed) {
     CHECK_LE(++num_iterations, num_existing_copies);
@@ -2211,9 +2289,10 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
             << " of copy elision";
     for (HloComputation* computation :
          module->computations(execution_threads)) {
-      VLOG(2) << "computation:" << computation->name() << "\n";
+      VLOG(2) << "computation:" << computation->name();
       for (HloInstruction* instruction : computation->instructions()) {
-        VLOG(2) << instruction->ToString() << "\n";
+        if (instruction->opcode() != HloOpcode::kCopy) continue;
+
         // The region_analysis_cost_now is always set to
         // use_region_based_live_range_analysis_ if it is < 0, in which case the
         // analysis is always performed.
@@ -2222,22 +2301,19 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
                 ? 0
                 : std::min(allowance.analysis_allowance(),
                            use_region_based_live_range_analysis_);
-        if (instruction->opcode() == HloOpcode::kCopy) {
-          if (copy_remover.TryElideCopy(instruction,
-                                        &region_analysis_cost_now)) {
-            changed = true;
-            TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
-            TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
-                instruction->mutable_operand(0)));
-            VLOG(6) << "succeeded in eliminating copy.\n";
-          }
-          if (allowance.ContinueAnalysis() && region_analysis_cost_now > 0) {
-            VLOG(6) << "Copy Insertion analyzing module cost: "
-                    << region_analysis_cost_now << "\n";
-            VLOG(6) << "instruction:" << instruction->ToString() << "\n";
-            allowance.DeductCost(region_analysis_cost_now);
-            VLOG(6) << "allowance:" << allowance.analysis_allowance() << "\n";
-          }
+        if (copy_remover.TryElideCopy(instruction, &region_analysis_cost_now)) {
+          changed = true;
+          TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
+          TF_RETURN_IF_ERROR(
+              instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+          VLOG(6) << "succeeded in eliminating copy.";
+        }
+        if (allowance.ContinueAnalysis() && region_analysis_cost_now > 0) {
+          VLOG(6) << "Copy Insertion analyzing module cost: "
+                  << region_analysis_cost_now;
+          VLOG(6) << "instruction:" << instruction->ToString();
+          allowance.DeductCost(region_analysis_cost_now);
+          VLOG(6) << "allowance:" << allowance.analysis_allowance();
         }
       }
     }

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_tf_graph.h"
@@ -60,6 +61,8 @@ tsl::StatusOr<XlaCompilationResult> LegalizeTfToHlo(
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     std::vector<std::unique_ptr<mlir::Pass>>& custom_legalization_passes,
     xla::CompileOnlyClient* client, XlaCompilationResult* compilation_result) {
+  LOG_FIRST_N(INFO, 1) << "Compiling MLIR computation to XLA HLO using the "
+                          "Combined MLIR Tf2Xla Bridge.";
   CompilationTimer timer;
   constexpr char kCombinedBridgeTimer[] = "combined_bridge";
 

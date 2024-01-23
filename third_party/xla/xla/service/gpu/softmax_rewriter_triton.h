@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ class SoftmaxRewriterTriton : public HloModulePass {
   absl::string_view name() const override { return "triton-softmax-rewriter"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -58,7 +58,7 @@ class SoftmaxRewriterTriton : public HloModulePass {
   // Constructs a Softmax fusion containing all the instructions between the
   // root and the producer of a diamond chain. The producer is excluded from the
   // fusion.
-  Status FuseDiamondChain(const DiamondChainDescriptor& diamond_chain);
+  absl::Status FuseDiamondChain(const DiamondChainDescriptor& diamond_chain);
 
  private:
   se::GpuComputeCapability gpu_version_;

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,13 +49,13 @@ class CublasLtMatmulThunk : public Thunk {
                       BufferAllocation::Slice d_scale_buffer /* may be null */,
                       BufferAllocation::Slice d_amax_buffer /* may be null */);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(
+  absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(
       const stream_executor::Stream* stream);
-  StatusOr<std::optional<se::gpu::BlasLt::MatmulAlgorithm> > GetMatmulAlgorithm(
-      const se::gpu::BlasLt::MatmulPlan* plan);
+  absl::StatusOr<std::optional<se::gpu::BlasLt::MatmulAlgorithm> >
+  GetMatmulAlgorithm(const se::gpu::BlasLt::MatmulPlan* plan);
 
   absl::Mutex matmul_plans_cache_mutex_;
   absl::flat_hash_map<const stream_executor::Stream*,

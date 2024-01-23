@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/rewrite_cluster_to_ifrt_call.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 
 namespace tensorflow {

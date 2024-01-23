@@ -1,4 +1,4 @@
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_grpc_cc_dependencies")
 load("//tsl:tsl.bzl", "set_external_visibility")

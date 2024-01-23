@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ struct NcclP2PConfig {
 };
 
 // Extracts source/target pairs for send/recv from frontend attributes.
-StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
+absl::StatusOr<std::vector<std::pair<int64_t, int64_t>>> GetSourceTargetPairs(
     mlir::DictionaryAttr frontend_attributes);
 
 // Returns the GroupMode for Send and Recv.

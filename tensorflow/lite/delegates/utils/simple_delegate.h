@@ -88,7 +88,7 @@ class SimpleDelegateInterface {
     int min_nodes_per_partition = 0;
   };
 
-  virtual ~SimpleDelegateInterface() {}
+  virtual ~SimpleDelegateInterface() = default;
 
   // Returns true if 'node' is supported by the delegate. False otherwise.
   virtual bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration,
@@ -115,6 +115,32 @@ class SimpleDelegateInterface {
   // Returns SimpleDelegateInterface::Options which has delegate properties
   // relevant for graph partitioning.
   virtual SimpleDelegateInterface::Options DelegateOptions() const = 0;
+
+  /// Optional method for supporting hardware buffers.
+  /// Copies the data from delegate buffer handle into raw memory of the given
+  /// `tensor`. Note that the delegate is allowed to allocate the raw bytes as
+  /// long as it follows the rules for kTfLiteDynamic tensors.
+  virtual TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
+                                            TfLiteBufferHandle buffer_handle,
+                                            TfLiteTensor* tensor) {
+    return kTfLiteError;
+  }
+
+  /// Optional method for supporting hardware buffers.
+  /// Copies the data from raw memory of the given `tensor` to delegate buffer
+  /// handle.
+  virtual TfLiteStatus CopyToBufferHandle(TfLiteContext* context,
+                                          TfLiteBufferHandle buffer_handle,
+                                          const TfLiteTensor* tensor) {
+    return kTfLiteError;
+  }
+
+  /// Optional method for supporting hardware buffers.
+  /// Frees the Delegate Buffer Handle. Note: This only frees the handle, but
+  /// this doesn't release the underlying resource (e.g. textures). The
+  /// resources are either owned by application layer or the delegate.
+  virtual void FreeBufferHandle(TfLiteContext* context,
+                                TfLiteBufferHandle* handle) {}
 };
 
 // Factory class that provides static methods to deal with SimpleDelegate

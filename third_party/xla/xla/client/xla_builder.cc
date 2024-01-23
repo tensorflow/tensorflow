@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -160,20 +160,11 @@ std::pair<XlaOp, int64_t> XlaBuilderFriend::BuildAsyncStart(
     XlaBuilder* builder, absl::Span<const XlaOp> operands,
     std::string execution_thread, const XlaComputation& called_computation,
     const Shape& shape) {
-  return BuildAsyncStart(builder, operands, execution_thread, /*group_id=*/-1,
-                         called_computation, shape);
-}
-
-std::pair<XlaOp, int64_t> XlaBuilderFriend::BuildAsyncStart(
-    XlaBuilder* builder, absl::Span<const XlaOp> operands,
-    std::string execution_thread, int64_t group_id,
-    const XlaComputation& called_computation, const Shape& shape) {
   int64_t called_computation_id;
   auto start_op = builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     instr.set_async_execution_thread(execution_thread);
-    instr.set_async_group_id(group_id);
     builder->AddCalledComputation(called_computation, &instr);
     called_computation_id = instr.called_computation_ids()[0];
     return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncStart,
@@ -187,18 +178,10 @@ XlaOp XlaBuilderFriend::BuildAsyncUpdate(XlaBuilder* builder,
                                          std::string execution_thread,
                                          int64_t called_computation,
                                          const Shape& shape) {
-  return BuildAsyncUpdate(builder, operand, execution_thread, /*group_id=*/-1,
-                          called_computation, shape);
-}
-
-XlaOp XlaBuilderFriend::BuildAsyncUpdate(
-    XlaBuilder* builder, const XlaOp operand, std::string execution_thread,
-    int64_t group_id, int64_t called_computation, const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     instr.set_async_execution_thread(execution_thread);
-    instr.set_async_group_id(group_id);
     instr.add_called_computation_ids(called_computation);
     return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncUpdate,
                                    {operand});
@@ -209,20 +192,10 @@ XlaOp XlaBuilderFriend::BuildAsyncDone(XlaBuilder* builder, const XlaOp operand,
                                        std::string execution_thread,
                                        int64_t called_computation,
                                        const Shape& shape) {
-  return BuildAsyncDone(builder, operand, execution_thread, /*group_id=*/-1,
-                        called_computation, shape);
-}
-
-XlaOp XlaBuilderFriend::BuildAsyncDone(XlaBuilder* builder, const XlaOp operand,
-                                       std::string execution_thread,
-                                       int64_t group_id,
-                                       int64_t called_computation,
-                                       const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     instr.set_async_execution_thread(execution_thread);
-    instr.set_async_group_id(group_id);
     instr.add_called_computation_ids(called_computation);
     return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncDone,
                                    {operand});
@@ -876,14 +849,16 @@ StatusOr<XlaOp> XlaBuilder::InDimBroadcast(
   }
 
   TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+  TF_RET_CHECK(!shape.is_unbounded_dynamic())
+      << "broadcast op result shapes must be static";
   for (int64_t i = 0; i < shape.rank(); i++) {
     if (auto it = absl::c_find(broadcast_dimensions, i);
         it != broadcast_dimensions.end()) {
       // Broadcast dimensions are permitted to be dynamic iff the operand
       // dimension is dynamic.
-      TF_RET_CHECK(operand_shape->is_dynamic_dimension(
+      TF_RET_CHECK(operand_shape->is_bounded_dynamic_dimension(
                        it - broadcast_dimensions.begin()) ==
-                   shape.is_dynamic_dimension(i))
+                   shape.is_bounded_dynamic_dimension(i))
           << " i: " << i << ", shape: " << shape.ToString()
           << ", operand_shape: " << operand_shape->ToString();
     } else {
@@ -1255,6 +1230,9 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(auto output_shape,
                         ShapeUtil::MakeValidatedShape(
                             operand_shape->element_type(), out_dim_size));
+    TF_RET_CHECK(!output_shape.is_unbounded_dynamic())
+        << "BroadcastInDim output must shape be static or bounded dynamic "
+        << output_shape.ToString();
     int64_t broadcast_rank = broadcast_dimensions.size();
     if (operand_shape->rank() != broadcast_rank) {
       return InvalidArgument(
@@ -1269,7 +1247,8 @@ XlaOp XlaBuilder::BroadcastInDim(
                                broadcast_dimensions[i]);
       }
       output_shape.set_dynamic_dimension(
-          broadcast_dimensions[i], operand_shape->is_dynamic_dimension(i));
+          broadcast_dimensions[i],
+          operand_shape->is_bounded_dynamic_dimension(i));
     }
 
     TF_RETURN_IF_ERROR(ShapeInference::InferBroadcastShape(
@@ -1278,9 +1257,12 @@ XlaOp XlaBuilder::BroadcastInDim(
     std::vector<int64_t> in_dim_size(out_dim_size.begin(), out_dim_size.end());
     std::vector<bool> in_dim_dynamic(out_dim_size.size(), false);
     for (int i = 0; i < broadcast_rank; i++) {
-      in_dim_size[broadcast_dimensions[i]] = operand_shape->dimensions(i);
+      in_dim_size[broadcast_dimensions[i]] =
+          (operand_shape->is_unbounded_dynamic_dimension(i))
+              ? out_dim_size[broadcast_dimensions[i]]
+              : operand_shape->dimensions(i);
       in_dim_dynamic[broadcast_dimensions[i]] =
-          operand_shape->is_dynamic_dimension(i);
+          operand_shape->is_bounded_dynamic_dimension(i);
     }
     const auto& in_dim_shape = ShapeUtil::MakeShape(
         operand_shape->element_type(), in_dim_size, in_dim_dynamic);
@@ -1301,11 +1283,9 @@ XlaOp XlaBuilder::BroadcastInDim(
 StatusOr<XlaOp> XlaBuilder::ReshapeInternal(const Shape& shape, XlaOp operand,
                                             int64_t inferred_dimension) {
   TF_RETURN_IF_ERROR(first_error_);
-
-  TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-  if (shape.is_unbounded_dynamic() || operand_shape->is_unbounded_dynamic()) {
+  if (shape.is_unbounded_dynamic()) {
     return InvalidArgument(
-        "Reshaping with unbounded dimensions is not supported.");
+        "Reshaping with unbounded result shape is not supported.");
   }
 
   HloInstructionProto instr;
@@ -5040,6 +5020,18 @@ XlaOp AllGather(const XlaOp operand, int64_t all_gather_dimension,
   return operand.builder()->AllGather(operand, all_gather_dimension,
                                       shard_count, replica_groups, channel_id,
                                       layout, use_global_device_ids);
+}
+
+XlaOp AllGatherTuple(const absl::Span<const XlaOp> operands,
+                     int64_t all_gather_dimension, int64_t shard_count,
+                     absl::Span<const ReplicaGroup> replica_groups,
+                     const std::optional<ChannelHandle>& channel_id,
+                     const std::optional<Layout>& layout,
+                     const std::optional<bool> use_global_device_ids) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->AllGather(
+      operands[0].builder()->Tuple(operands), all_gather_dimension, shard_count,
+      replica_groups, channel_id, layout, use_global_device_ids);
 }
 
 XlaOp CrossReplicaSum(const XlaOp operand,

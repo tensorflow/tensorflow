@@ -587,7 +587,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       tags: set[str],
       calibration_options_serialized: bytes,
       force_graph_mode_calibration: bool,
-      representative_dataset: rd.RepresentativeDatasetOrMapping,
+      representative_dataset_file_map_serialized: dict[str, bytes],
   ) -> None:
     # LINT.ThenChange(py_function_lib.h:run_calibration)
     """Runs calibration and adds calibration statistics to exported model.
@@ -599,13 +599,31 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
       tags: A set of tags that identify the MetaGraphDef.
       calibration_options_serialized: Serialized `CalibrationOptions`.
       force_graph_mode_calibration: If True, runs the calibration in graph mode.
-      representative_dataset: Representative dataset to run calibration.
+      representative_dataset_file_map_serialized: Signature key ->
+        `RepresentativeDatasetFile` mapping for running the calibration step.
+        Each dataset file stores the representative dataset for the function
+        matching the signature key.
 
     Returns:
       Updated exported model (serialized) where the collected calibration
       statistics are added to `CustomerAggregator` nodes at the `min` and `max`
       attributes.
     """
+    dataset_file_map = {}
+    for (
+        signature_key,
+        dataset_file_serialized,
+    ) in representative_dataset_file_map_serialized.items():
+      dataset_file_map[signature_key] = (
+          quantization_options_pb2.RepresentativeDatasetFile.FromString(
+              dataset_file_serialized
+          )
+      )
+
+    repr_dataset_map = rd.TfRecordRepresentativeDatasetLoader(
+        dataset_file_map=dataset_file_map
+    ).load()
+
     # Uses the representative dataset to collect statistics for calibration.
     # After this operation, min & max values are stored separately in a global
     # CalibratorSingleton instance.
@@ -613,7 +631,7 @@ class PyFunctionLibrary(pywrap_function_lib.PyFunctionLibrary):
         saved_model_path,
         signature_keys,
         tags,
-        representative_dataset,
+        repr_dataset_map,
         force_graph_mode_calibration,
     )
 

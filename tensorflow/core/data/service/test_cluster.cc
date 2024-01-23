@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/data/service/test_cluster.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tsl/platform/env.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,6 +43,15 @@ TestCluster::TestCluster(int num_workers) : num_workers_(num_workers) {}
 TestCluster::TestCluster(const TestCluster::Config& config)
     : num_workers_(config.num_workers), config_(config) {}
 
+TestCluster::~TestCluster() {
+  if (!config_.work_dir.empty()) {
+    int64_t undeleted_files, undeleted_dirs;
+    tsl::Env::Default()
+        ->DeleteRecursively(config_.work_dir, &undeleted_files, &undeleted_dirs)
+        .IgnoreError();
+  }
+}
+
 Status TestCluster::Initialize() {
   if (initialized_) {
     return errors::FailedPrecondition(
@@ -51,6 +61,7 @@ Status TestCluster::Initialize() {
   experimental::DispatcherConfig dispatcher_config;
   if (!config_.work_dir.empty()) {
     dispatcher_config.set_work_dir(config_.work_dir);
+    dispatcher_config.set_fault_tolerant_mode(true);
   }
   dispatcher_config.set_protocol(kProtocol);
   for (int i = 0; i < num_workers_; ++i) {

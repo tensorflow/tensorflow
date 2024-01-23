@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,6 +45,9 @@ struct TargetIntrinsics {
   std::variant<llvm::Intrinsic::ID,
                std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>
       amdgpu_intrinsic_or_function;
+  std::variant<llvm::Intrinsic::ID,
+               std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>
+      spir_intrinsic_or_function;
 };
 
 // Gets the llvm intrinsic ids on different platforms (NVPTX, AMDGPU)
@@ -52,32 +55,82 @@ struct TargetIntrinsics {
 struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
   switch (intrin) {
     case TargetIntrinsicID::kThreadIdx: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
-              llvm::Intrinsic::amdgcn_workitem_id_x};
+      return {
+          llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x,
+          llvm::Intrinsic::amdgcn_workitem_id_x,
+          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+            return EmitDeviceFunctionCall(
+                "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(0)},
+                {U32}, U64, {b_->getContext()}, b_);
+          },
+      };
     }
     case TargetIntrinsicID::kThreadIdy: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y,
-              llvm::Intrinsic::amdgcn_workitem_id_y};
+      return {
+          llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y,
+          llvm::Intrinsic::amdgcn_workitem_id_y,
+          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+            return EmitDeviceFunctionCall(
+                "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(1)},
+                {U32}, U64, {b_->getContext()}, b_);
+          },
+      };
     }
     case TargetIntrinsicID::kThreadIdz: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z,
-              llvm::Intrinsic::amdgcn_workitem_id_z};
+      return {
+          llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z,
+          llvm::Intrinsic::amdgcn_workitem_id_z,
+          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+            return EmitDeviceFunctionCall(
+                "_Z32__spirv_BuiltInLocalInvocationIdi", {b_->getInt32(2)},
+                {U32}, U64, {b_->getContext()}, b_);
+          },
+      };
     }
     case TargetIntrinsicID::kBlockIdx: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x,
-              llvm::Intrinsic::amdgcn_workgroup_id_x};
+      return {
+          llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x,
+          llvm::Intrinsic::amdgcn_workgroup_id_x,
+          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+            return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
+                                          {b_->getInt32(0)}, {U32}, U64,
+                                          {b_->getContext()}, b_);
+          },
+      };
     }
     case TargetIntrinsicID::kBlockIdy: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y,
-              llvm::Intrinsic::amdgcn_workgroup_id_y};
+      return {
+          llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y,
+          llvm::Intrinsic::amdgcn_workgroup_id_y,
+          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+            return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
+                                          {b_->getInt32(1)}, {U32}, U64,
+                                          {b_->getContext()}, b_);
+          },
+      };
     }
     case TargetIntrinsicID::kBlockIdz: {
-      return {llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z,
-              llvm::Intrinsic::amdgcn_workgroup_id_z};
+      return {
+          llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z,
+          llvm::Intrinsic::amdgcn_workgroup_id_z,
+          [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+            return EmitDeviceFunctionCall("_Z26__spirv_BuiltInWorkgroupIdi",
+                                          {b_->getInt32(2)}, {U32}, U64,
+                                          {b_->getContext()}, b_);
+          },
+      };
     }
     case TargetIntrinsicID::kBarrierId: {
-      return {llvm::Intrinsic::nvvm_barrier0,
-              llvm::Intrinsic::amdgcn_s_barrier};
+      return {llvm::Intrinsic::nvvm_barrier0, llvm::Intrinsic::amdgcn_s_barrier,
+              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+                return EmitDeviceFunctionCall(
+                    "_Z22__spirv_ControlBarrierjjj",
+                    {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
+                    {U32, U32, U32}, U32,
+                    llvm::AttrBuilder(b_->getContext())
+                        .addAttribute(llvm::Attribute::Convergent),
+                    b_);
+              }};
     }
     case TargetIntrinsicID::kBlockDimx: {
       return {llvm::Intrinsic::nvvm_read_ptx_sreg_ntid_x,
@@ -85,6 +138,11 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
                                               {b_->getInt32(0)}, {U32}, U64,
                                               {b_->getContext()}, b_);
+              },
+              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+                return EmitDeviceFunctionCall(
+                    "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(0)},
+                    {U32}, U64, {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kBlockDimy: {
@@ -93,6 +151,11 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
                                               {b_->getInt32(1)}, {U32}, U64,
                                               {b_->getContext()}, b_);
+              },
+              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+                return EmitDeviceFunctionCall(
+                    "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(1)},
+                    {U32}, U64, {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kBlockDimz: {
@@ -101,11 +164,25 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
                 return EmitDeviceFunctionCall("__ockl_get_local_size",
                                               {b_->getInt32(2)}, {U32}, U64,
                                               {b_->getContext()}, b_);
+              },
+              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+                return EmitDeviceFunctionCall(
+                    "_Z28__spirv_BuiltInWorkgroupSizei", {b_->getInt32(2)},
+                    {U32}, U64, {b_->getContext()}, b_);
               }};
     }
     case TargetIntrinsicID::kGroupBarrierId: {
       return {llvm::Intrinsic::nvvm_bar_warp_sync,
-              llvm::Intrinsic::amdgcn_wave_barrier};
+              llvm::Intrinsic::amdgcn_wave_barrier,
+              [](llvm::IRBuilder<>* b_) -> llvm::CallInst* {
+                return EmitDeviceFunctionCall(
+                    "_Z22__spirv_ControlBarrierjjj",
+                    {b_->getInt32(2), b_->getInt32(2), b_->getInt32(272)},
+                    {U32, U32, U32}, U32,
+                    llvm::AttrBuilder(b_->getContext())
+                        .addAttribute(llvm::Attribute::Convergent),
+                    b_);
+              }};
     }
   }
 }
@@ -114,6 +191,7 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
 struct TargetDeviceFunction {
   const std::string nvptx_root;
   const std::string amdgpu_root;
+  const std::string spir_root;
 };
 
 // Gets the device function name on different platforms (NVPTX, AMDGPU)
@@ -122,55 +200,55 @@ struct TargetDeviceFunction GetDeviceFunctionRoot(
     TargetDeviceFunctionID func_id) {
   switch (func_id) {
     case TargetDeviceFunctionID::kAtan2: {
-      return {"__nv_atan2", "__ocml_atan2"};
+      return {"__nv_atan2", "__ocml_atan2", "_Z17__spirv_ocl_atan2"};
     }
     case TargetDeviceFunctionID::kCos: {
-      return {"__nv_cos", "__ocml_cos"};
+      return {"__nv_cos", "__ocml_cos", "_Z15__spirv_ocl_cos"};
     }
     case TargetDeviceFunctionID::kExp: {
-      return {"__nv_exp", "__ocml_exp"};
+      return {"__nv_exp", "__ocml_exp", "_Z15__spirv_ocl_exp"};
     }
     case TargetDeviceFunctionID::kExpm1: {
-      return {"__nv_expm1", "__ocml_expm1"};
+      return {"__nv_expm1", "__ocml_expm1", "_Z17__spirv_ocl_expm1"};
     }
     case TargetDeviceFunctionID::kFmod: {
-      return {"__nv_fmod", "__ocml_fmod"};
+      return {"__nv_fmod", "__ocml_fmod", "_Z16__spirv_ocl_fmod"};
     }
     case TargetDeviceFunctionID::kHypot: {
-      return {"__nv_hypot", "__ocml_hypot"};
+      return {"__nv_hypot", "__ocml_hypot", "_Z17__spirv_ocl_hypot"};
     }
     case TargetDeviceFunctionID::kLog: {
-      return {"__nv_log", "__ocml_log"};
+      return {"__nv_log", "__ocml_log", "_Z15__spirv_ocl_log"};
     }
     case TargetDeviceFunctionID::kLog1p: {
-      return {"__nv_log1p", "__ocml_log1p"};
+      return {"__nv_log1p", "__ocml_log1p", "_Z17__spirv_ocl_log1p"};
     }
     case TargetDeviceFunctionID::kPow: {
-      return {"__nv_pow", "__ocml_pow"};
+      return {"__nv_pow", "__ocml_pow", "_Z15__spirv_ocl_pow"};
     }
     case TargetDeviceFunctionID::kRsqrt: {
-      return {"__nv_rsqrt", "__ocml_rsqrt"};
+      return {"__nv_rsqrt", "__ocml_rsqrt", "_Z17__spirv_ocl_rsqrt"};
     }
     case TargetDeviceFunctionID::kSin: {
-      return {"__nv_sin", "__ocml_sin"};
+      return {"__nv_sin", "__ocml_sin", "_Z15__spirv_ocl_sin"};
     }
     case TargetDeviceFunctionID::kSqrt: {
-      return {"__nv_sqrt", "__ocml_sqrt"};
+      return {"__nv_sqrt", "__ocml_sqrt", "_Z16__spirv_ocl_sqrt"};
     }
     case TargetDeviceFunctionID::kTan: {
-      return {"__nv_tan", "__ocml_tan"};
+      return {"__nv_tan", "__ocml_tan", "_Z15__spirv_ocl_tan"};
     }
     case TargetDeviceFunctionID::kTanh: {
-      return {"__nv_tanh", "__ocml_tanh"};
+      return {"__nv_tanh", "__ocml_tanh", "_Z16__spirv_ocl_tanh"};
     }
     case TargetDeviceFunctionID::kCbrt: {
-      return {"__nv_cbrt", "__ocml_cbrt"};
+      return {"__nv_cbrt", "__ocml_cbrt", "_Z16__spirv_ocl_cbrt"};
     }
   }
 }
 }  // namespace
 
-StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
+absl::StatusOr<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
   switch (op) {
     case HloOpcode::kAtan2:
       return TargetDeviceFunctionID::kAtan2;
@@ -231,6 +309,28 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
     } else {
       LOG(FATAL) << "Unexpected type while getting device function name.";
     }
+  } else if (target_triple.isSPIR()) {
+    if (output_type == F32) {
+      if (gpu_root_names.spir_root == "_Z17__spirv_ocl_hypot" ||
+          gpu_root_names.spir_root == "_Z15__spirv_ocl_pow" ||
+          gpu_root_names.spir_root == "_Z17__spirv_ocl_atan2" ||
+          gpu_root_names.spir_root == "_Z16__spirv_ocl_fmod") {
+        return StrCat(gpu_root_names.spir_root, "ff");
+      } else {
+        return StrCat(gpu_root_names.spir_root, "f");
+      }
+    } else if (output_type == F64) {
+      if (gpu_root_names.spir_root == "_Z17__spirv_ocl_hypot" ||
+          gpu_root_names.spir_root == "_Z15__spirv_ocl_pow" ||
+          gpu_root_names.spir_root == "_Z17__spirv_ocl_atan2" ||
+          gpu_root_names.spir_root == "_Z16__spirv_ocl_fmod") {
+        return StrCat(gpu_root_names.spir_root, "dd");
+      } else {
+        return StrCat(gpu_root_names.spir_root, "d");
+      }
+    } else {
+      LOG(FATAL) << "Unexpected type while getting device function name.";
+    }
   } else {
     LOG(FATAL) << "Invalid triple " << target_triple.str();
   }
@@ -243,6 +343,7 @@ llvm::CallInst* EmitDeviceFunctionCall(
     absl::string_view name) {
   std::vector<llvm::Type*> ir_input_types;
   llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::Triple target_triple = llvm::Triple(module->getTargetTriple());
   for (PrimitiveType input_type : input_types) {
     ir_input_types.push_back(
         llvm_ir::PrimitiveTypeToIrType(input_type, module));
@@ -260,6 +361,8 @@ llvm::CallInst* EmitDeviceFunctionCall(
           .getCallee());
 
   callee->addFnAttrs(attributes);
+  if (target_triple.isSPIR())
+    callee->setCallingConv(llvm::CallingConv::SPIR_FUNC);
 
   return b->CreateCall(callee, llvm_ir::AsArrayRef(operands), name.data());
 }
@@ -283,6 +386,18 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
       std::function<llvm::CallInst*(llvm::IRBuilder<>*)>* builder_func =
           std::get_if<std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>(
               &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
+      return (*builder_func)(b);
+    }
+  } else if (target_triple.isSPIR()) {
+    llvm::Intrinsic::ID* llvm_intrinsic_id_ptr =
+        std::get_if<llvm::Intrinsic::ID>(
+            &gpu_intrinsic_id.spir_intrinsic_or_function);
+    if (llvm_intrinsic_id_ptr) {
+      llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
+    } else {
+      std::function<llvm::CallInst*(llvm::IRBuilder<>*)>* builder_func =
+          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>(
+              &gpu_intrinsic_id.spir_intrinsic_or_function);
       return (*builder_func)(b);
     }
   } else {
@@ -312,6 +427,9 @@ void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
     // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
     func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
     func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+  } else if (target_triple.isSPIR()) {
+    // Attach information so that it can be recognized as a SPIR kernel.
+    func->setCallingConv(llvm::CallingConv::SPIR_KERNEL);
   } else {
     LOG(FATAL) << "Invalid triple " << target_triple.str();
   }

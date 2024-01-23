@@ -179,6 +179,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_impl",
+        "//tensorflow/core/common_runtime:device_id_utils",
         "//tensorflow/core/common_runtime:node_file_writer",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/platform:tensor_float_32_utils",
@@ -193,7 +194,8 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor/gpu:gpu_init_impl",
     ] + if_google(
         # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
-        # Clean up so that PJRT can run on ARM.
+        # Clean up so that PJRT can run on ARM (and remove "#if defined(PLATFORM_GOOGLE) ..." use
+        # from gpu_util.cc).
         # Also it won't build with WeightWatcher which tracks OSS build binaries.
         # TODO(b/290533709): Clean up this build rule.
         selects.with_or({

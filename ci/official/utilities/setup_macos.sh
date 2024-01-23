@@ -58,10 +58,13 @@ fi
 
 # "TFCI_MACOS_UPGRADE_PYENV_ENABLE" is used to decide if we need to upgrade the
 # Pyenv version. We enable this for macOS x86 builds as the default Pyenv on
-# those VMs does not support installing Python 3.10 and above which we need
+# those VMs does not support installing Python 3.12 and above which we need
 # for running smoke tests in nightly/release wheel builds.
 if [[ "${TFCI_MACOS_UPGRADE_PYENV_ENABLE}" == 1 ]]; then
-  brew upgrade pyenv
+  # The TFCI Mac VM image seems to have uncommitted local changes to the Pyenv
+  # repository so we have to discard them and reset the working directory before
+  # we can pull in the latest changes.
+  cd /Users/kbuilder/.pyenv/ && git reset --hard HEAD && git pull && cd -
 fi
 
 # "TFCI_MACOS_PYENV_INSTALL_ENABLE" controls whether to use Pyenv to install
@@ -84,11 +87,38 @@ if [[ "$TFCI_PYTHON_VERSION" == "3.12" ]]; then
   brew install cmake
 fi
 
+# TFCI Mac VM images do not have twine installed by default so we need to
+# install it manually. We use Twine in nightly builds to upload Python packages
+# to PyPI.
+if [[ "$TFCI_MACOS_TWINE_INSTALL_ENABLE" == 1 ]]; then
+  pip install twine==3.6.0
+fi
+
 # Scheduled nightly and release builds upload build artifacts (Pip packages,
 # Libtensorflow archives) to GCS buckets. TFCI Mac VMs need to authenticate as
 # a service account that has the right permissions to be able to do so.
 set +x
 if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  # Python 3.12 removed the module `imp` which is needed by gcloud CLI so we set
+  # `CLOUDSDK_PYTHON` to Python 3.11 which is the system Python on TFCI Mac
+  # VMs.
+  export CLOUDSDK_PYTHON=$(which python3.11)
   gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
 fi
 set -x
+
+# When cross-compiling with RBE, we need to copy the macOS sysroot to be
+# inside the TensorFlow root directory. We then define them as a filegroup
+# target inside "tensorflow/tools/toolchains/cross_compile/cc" so that Bazel
+# can register it as an input to compile/link actions and send it to the remote
+# VMs when needed.
+# TODO(b/316932689): Avoid copying and replace with a local repository rule.
+if [[ "$TFCI_MACOS_CROSS_COMPILE_ENABLE" == 1 ]]; then
+  mkdir -p "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/usr"
+  mkdir -p "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/System/Library/Frameworks/"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/usr/include" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/usr/include"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/usr/lib" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/usr/lib"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/System/Library/Frameworks/CoreFoundation.framework" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/System/Library/Frameworks/CoreFoundation.framework"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/System/Library/Frameworks/Security.framework" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/System/Library/Frameworks/Security.framework"
+  cp -r "${TFCI_MACOS_CROSS_COMPILE_SDK_SOURCE}/System/Library/Frameworks/SystemConfiguration.framework" "${TFCI_MACOS_CROSS_COMPILE_SDK_DEST}/System/Library/Frameworks/SystemConfiguration.framework"
+fi

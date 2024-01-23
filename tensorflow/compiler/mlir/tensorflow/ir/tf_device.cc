@@ -16,13 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 #include <algorithm>
-#include <cstddef>
+#include <cassert>
 #include <cstdint>
 #include <iterator>
 #include <optional>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -42,8 +43,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {

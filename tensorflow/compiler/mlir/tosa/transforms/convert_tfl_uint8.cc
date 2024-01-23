@@ -196,7 +196,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           builder.getI32IntegerAttr(uint8_zp),
           builder.getI32IntegerAttr(int8_zp),
           builder.getDenseI32ArrayAttr({1 << 30}),
-          builder.getDenseI32ArrayAttr({30}), builder.getBoolAttr(true),
+          builder.getDenseI8ArrayAttr({30}), builder.getBoolAttr(true),
           builder.getBoolAttr(false), builder.getBoolAttr(false));
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
@@ -313,7 +313,7 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           builder.getI32IntegerAttr(int8_zp),
           builder.getI32IntegerAttr(uint8_zp),
           builder.getDenseI32ArrayAttr({1 << 30}),
-          builder.getDenseI32ArrayAttr({30}), builder.getBoolAttr(true),
+          builder.getDenseI8ArrayAttr({30}), builder.getBoolAttr(true),
           builder.getBoolAttr(false), builder.getBoolAttr(false));
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);

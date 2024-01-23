@@ -64,6 +64,16 @@ def HasSameStaticShapes : Constraint<
           "$1.getType().cast<ShapedType>().getShape()">,
     "have the same static shape">;
 
+def IsPermutationNCHW : Constraint<CPred<"IsPermutationNCHW($0)">>;
+
+def IsBiasShape : Constraint<
+    CPred<"$0.getType().cast<ShapedType>().getRank() == 4 && "
+          "$0.getType().cast<ShapedType>().getShape()[2] == 1 && "
+          "$0.getType().cast<ShapedType>().getShape()[3] == 1">,
+    "has shape consistent with a bias">;
+
+def ReshapeNCHWBiasToNHWC : NativeCodeCall<"ReshapeNCHWBiasToNHWC($0, $1)">;
+
 //===----------------------------------------------------------------------===//
 // Ternary ops patterns.
 //===----------------------------------------------------------------------===//
@@ -1530,3 +1540,22 @@ def FuseTransposeAfterBatchMatmul : Pat<
                      $asymmetric_quantize_inputs
   ),
   [(AreLastTwoDimsTransposed $perm_value)]>;
+
+// Replace conv-->transpose-->add with conv-->add-->transpose
+// The bias needs only reshape (i.e. ReshapeNCHWBiasToNHWC) and not transpose
+// because the bias's shape simply changes from NxCx1x1 to Nx1x1xC.
+def ReorderNCHWTransposeAdd : Pat <
+  (TFL_AddOp:$add_op
+    (TFL_TransposeOp:$transpose_op $input, $perm),
+    (Arith_ConstantOp:$bias_op FloatElementsAttr:$bias),
+    $act_fn),
+  (TFL_TransposeOp
+    (TFL_AddOp $input,
+      (Arith_ConstantOp (ReshapeNCHWBiasToNHWC $bias_op, $bias)),
+      $act_fn),
+    $perm),
+  [(IsPermutationNCHW $perm),
+  (IsBiasShape $bias_op),
+  (IsDefinedByConv2DOp $input),
+  (HasOneUse $add_op),
+  (HasOneUse $transpose_op)]>;

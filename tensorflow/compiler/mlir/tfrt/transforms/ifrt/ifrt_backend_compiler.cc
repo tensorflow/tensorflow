@@ -91,6 +91,7 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
     auto executable = std::make_unique<IfrtServingExecutable>(
         model_name, entry_function_name.str(), *std::move(submodule),
         ifrt_model_context.GetClient(),
+        &ifrt_model_context.GetThreadPoolDevice(),
         ifrt_model_context.GetShapeRepresentationFn());
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that

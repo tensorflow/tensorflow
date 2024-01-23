@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/status/status.h"
 #include "mlir/Conversion/AsyncToLLVM/AsyncToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
@@ -49,7 +50,7 @@ void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects) {
   registerLLVMDialectTranslation(*dialects);
 }
 
-void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
+absl::Status CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   passes->addPass(mlir::createConvertSCFToCFPass());
   passes->addPass(mlir::createAsyncFuncToAsyncRuntimePass());
 
@@ -79,6 +80,8 @@ void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
   // Clean up IR before translating it to LLVM.
   passes->addPass(mlir::createCSEPass());
   passes->addPass(mlir::createCanonicalizerPass());
+
+  return absl::OkStatus();
 }
 
 }  // namespace runtime

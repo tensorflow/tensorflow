@@ -109,8 +109,7 @@ class Writer {
 class TFRecordWriter : public Writer {
  public:
   TFRecordWriter(const std::string& filename,
-                 const std::string& compression_type,
-                 bool overwrite_existing = false);
+                 const std::string& compression_type);
 
   Status Initialize(tensorflow::Env* env) override;
 
@@ -125,7 +124,6 @@ class TFRecordWriter : public Writer {
  private:
   const std::string filename_;
   const std::string compression_type_;
-  const bool overwrite_existing_;
 
   std::unique_ptr<WritableFile> dest_;
   std::unique_ptr<io::RecordWriter> record_writer_;

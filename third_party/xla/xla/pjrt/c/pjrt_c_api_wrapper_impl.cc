@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -226,14 +228,17 @@ static xla::Status PopulateExecutableOutputMemoryKinds(
   return xla::OkStatus();
 }
 
-xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
-    PJRT_KeyValueGetCallback c_callback, void* user_arg) {
-  if (c_callback == nullptr) {
-    return nullptr;
-  }
-  return [c_callback, user_arg](
-             std::string_view key,
-             absl::Duration timeout) -> xla::StatusOr<std::string> {
+class CApiKeyValueStore : public xla::KeyValueStoreInterface {
+ public:
+  CApiKeyValueStore(PJRT_KeyValueGetCallback c_get_callback, void* get_user_arg,
+                    PJRT_KeyValuePutCallback c_put_callback, void* put_user_arg)
+      : c_get_callback_(c_get_callback),
+        get_user_arg_(get_user_arg),
+        c_put_callback_(c_put_callback),
+        put_user_arg_(put_user_arg) {}
+
+  absl::StatusOr<std::string> Get(std::string_view key,
+                                  absl::Duration timeout) override {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
                                            size_t message_size) {
@@ -245,24 +250,17 @@ xla::PjRtClient::KeyValueGetCallback ToCppKeyValueGetCallback(
     args.key_size = key.size();
     args.timeout_in_ms = timeout / absl::Milliseconds(1);
     args.callback_error = &callback_error;
-    args.user_arg = user_arg;
-    std::unique_ptr<PJRT_Error> error(c_callback(&args));
+    args.user_arg = get_user_arg_;
+    std::unique_ptr<PJRT_Error> error(c_get_callback_(&args));
     if (error != nullptr) {
       return error->status;
     }
     auto result = std::string(args.value, args.value_size);
     args.value_deleter_callback(args.value);
     return result;
-  };
-}
-
-xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
-    PJRT_KeyValuePutCallback c_callback, void* user_arg) {
-  if (c_callback == nullptr) {
-    return nullptr;
   }
-  return [c_callback, user_arg](std::string_view key,
-                                std::string_view value) -> xla::Status {
+
+  absl::Status Set(std::string_view key, std::string_view value) override {
     PJRT_CallbackError callback_error = [](PJRT_Error_Code code,
                                            const char* message,
                                            size_t message_size) {
@@ -275,13 +273,29 @@ xla::PjRtClient::KeyValuePutCallback ToCppKeyValuePutCallback(
     args.value = value.data();
     args.value_size = value.size();
     args.callback_error = &callback_error;
-    args.user_arg = user_arg;
-    std::unique_ptr<PJRT_Error> error(c_callback(&args));
+    args.user_arg = put_user_arg_;
+    std::unique_ptr<PJRT_Error> error(c_put_callback_(&args));
     if (error != nullptr) {
       return error->status;
     }
-    return xla::OkStatus();
-  };
+    return absl::OkStatus();
+  }
+
+ private:
+  PJRT_KeyValueGetCallback c_get_callback_;
+  void* get_user_arg_;
+  PJRT_KeyValuePutCallback c_put_callback_;
+  void* put_user_arg_;
+};
+
+std::shared_ptr<xla::KeyValueStoreInterface> ToCppKeyValueStore(
+    PJRT_KeyValueGetCallback c_get_callback, void* get_user_arg,
+    PJRT_KeyValuePutCallback c_put_callback, void* put_user_arg) {
+  if (c_get_callback == nullptr || c_put_callback == nullptr) {
+    return nullptr;
+  }
+  return std::make_shared<CApiKeyValueStore>(c_get_callback, get_user_arg,
+                                             c_put_callback, put_user_arg);
 }
 
 // ---------------------------------- Errors -----------------------------------
@@ -449,8 +463,8 @@ PJRT_Error* PJRT_Client_AddressableMemories(
 }
 
 // Searches `device_list` for a PJRT_Device* that wraps a provided
-// `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device* is
-// returned. Otherwise, returns nullptr.
+// `xla::PjRtDevice *` (`cpp_device`). If a match is found, that PJRT_Device*
+// is returned. Otherwise, returns nullptr.
 static PJRT_Device* FindDeviceWrapper(
     xla::PjRtDevice* cpp_device, absl::Span<PJRT_Device* const> device_list) {
   for (PJRT_Device* device : device_list) {
@@ -658,7 +672,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
   xla::PjRtFuture<xla::Status>::Promise promise =
       xla::PjRtFuture<xla::Status>::CreatePromise();
 
-  std::function<void()> on_done_with_host_buffer = [promise]() mutable {
+  absl::AnyInvocable<void() &&> on_done_with_host_buffer = [promise]() mutable {
     promise.Set(xla::OkStatus());
   };
 
@@ -674,9 +688,18 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
                     dims, byte_strides,
                     ::pjrt::ConvertFromPjRtHostBufferSemantics(
                         args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->memory->memory_space,
-                    &layout.value()));
+                    std::move(on_done_with_host_buffer),
+                    args->memory->memory_space, &layout.value()));
   } else if (has_layout_and_no_memory) {
+    PJRT_ASSIGN_OR_RETURN(
+        buffer, args->client->client->BufferFromHostBuffer(
+                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
+                    dims, byte_strides,
+                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
+                        args->host_buffer_semantics),
+                    std::move(on_done_with_host_buffer), args->device->device,
+                    &layout.value()));
+  } else if (has_memory_and_no_layout) {
     PJRT_ASSIGN_OR_RETURN(
         buffer,
         args->client->client->BufferFromHostBuffer(
@@ -684,16 +707,8 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
             byte_strides,
             ::pjrt::ConvertFromPjRtHostBufferSemantics(
                 args->host_buffer_semantics),
-            on_done_with_host_buffer, args->device->device, &layout.value()));
-  } else if (has_memory_and_no_layout) {
-    PJRT_ASSIGN_OR_RETURN(
-        buffer, args->client->client->BufferFromHostBuffer(
-                    args->data, ::pjrt::ConvertFromPjRtBufferType(args->type),
-                    dims, byte_strides,
-                    ::pjrt::ConvertFromPjRtHostBufferSemantics(
-                        args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->memory->memory_space,
-                    /*device_layout=*/nullptr));
+            std::move(on_done_with_host_buffer), args->memory->memory_space,
+            /*device_layout=*/nullptr));
   } else {
     PJRT_ASSIGN_OR_RETURN(
         buffer, args->client->client->BufferFromHostBuffer(
@@ -701,7 +716,7 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
                     dims, byte_strides,
                     ::pjrt::ConvertFromPjRtHostBufferSemantics(
                         args->host_buffer_semantics),
-                    on_done_with_host_buffer, args->device->device));
+                    std::move(on_done_with_host_buffer), args->device->device));
   }
 
   args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
@@ -1245,8 +1260,8 @@ static xla::SendCallback CSendCallbackToCpp(
         PJRT_Chunk c_chunk = ConvertFromCppChunk(std::move(input));
         // PJRT_CallbackError creates PJRT_Error in the implementation, but
         // using the caller's callback status code & message. This way, the
-        // caller avoids creating PJRT_Error itself, and the PJRT_Error is fully
-        // managed in the implementation layer.
+        // caller avoids creating PJRT_Error itself, and the PJRT_Error is
+        // fully managed in the implementation layer.
         PJRT_CallbackError c_callback_error =
             [](PJRT_Error_Code code, const char* message, size_t message_size) {
               return new PJRT_Error{
@@ -1414,7 +1429,8 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     if (args->num_devices != 1) {
       return new PJRT_Error{xla::InvalidArgument(
           "num_devices and corresponding output list sizes must be 1 when "
-          "calling PJRT_LoadedExecutable_Execute with non-null execute_device. "
+          "calling PJRT_LoadedExecutable_Execute with non-null "
+          "execute_device. "
           "Got "
           "num_devices=%i",
           args->num_devices)};

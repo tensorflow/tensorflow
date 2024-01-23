@@ -20,10 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/cross_trainer_cache.h"
 #include "tensorflow/core/data/service/data_transfer.h"
-#include "tensorflow/core/data/service/logging_utils.h"
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -179,7 +179,7 @@ CachingTaskRunner::CachingTaskRunner(std::unique_ptr<TaskIterator> iterator,
       cache_(max_cache_size_bytes,
              std::make_unique<GetElementResultSequence>(fcfs_task_runner_)) {
   LOG(INFO) << "Initialized tf.data service cross-trainer cache with "
-            << FormatBytes(max_cache_size_bytes) << " of memory.";
+            << ByteSize::Bytes(max_cache_size_bytes) << " of memory.";
 }
 
 CachingTaskRunner::~CachingTaskRunner() { Cancel(); }

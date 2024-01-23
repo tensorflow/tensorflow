@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "xla/service/computation_placer.h"
@@ -31,10 +32,11 @@ namespace xla {
 namespace {
 
 TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
-  std::vector<int> actual = GetParticipatingIDs(
-                                /*current_id=*/0, /*total_participant_count=*/3,
-                                /*groups=*/{})
-                                .value();
+  std::vector<int> actual =
+      GetParticipatingIDs(CollectiveOpGroupMode::kFlattenedID,
+                          /*current_id=*/0, /*total_participant_count=*/3,
+                          /*groups=*/{})
+          .value();
   std::vector<int> expected = {0, 1, 2};
   EXPECT_EQ(actual, expected);
 }
@@ -49,9 +51,10 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
   replica_groups[2].add_replica_ids(3);
 
   std::vector<int> actual =
-      GetParticipatingIDs(
-          /*current_id=*/1, /*total_participant_count=*/std::nullopt,
-          replica_groups)
+      GetParticipatingIDs(CollectiveOpGroupMode::kFlattenedID,
+                          /*current_id=*/1,
+                          /*total_participant_count=*/std::nullopt,
+                          replica_groups)
           .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);

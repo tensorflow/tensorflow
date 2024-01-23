@@ -20,7 +20,6 @@ from packaging import version
 import tensorboard
 import tensorflow as tf
 from tensorflow_docs.api_generator import public_api
-import tensorflow_estimator
 
 
 def get_base_dirs_and_prefixes(code_url_prefix):
@@ -46,7 +45,6 @@ def get_base_dirs_and_prefixes(code_url_prefix):
         # The generated api-module files are now in `site-packages/keras/...`
         pathlib.Path(keras.__file__).parent,
         pathlib.Path(tensorboard.__file__).parent,
-        pathlib.Path(tensorflow_estimator.__file__).parent,
         # The tensorflow base dir goes last because `tf.keras``
         base_dir,
     ]
@@ -57,7 +55,6 @@ def get_base_dirs_and_prefixes(code_url_prefix):
         None,
         None,
         f"https://github.com/tensorflow/tensorboard/tree/{tensorboard.__version__}/tensorboard",
-        "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
         code_url_prefix,
     )
   elif version.parse(tf.__version__) >= version.parse("2.9"):
@@ -65,13 +62,11 @@ def get_base_dirs_and_prefixes(code_url_prefix):
         base_dir,
         pathlib.Path(keras.__file__).parent,
         pathlib.Path(tensorboard.__file__).parent,
-        pathlib.Path(tensorflow_estimator.__file__).parent,
     ]
     code_url_prefixes = (
         code_url_prefix,
         keras_url_prefix,
         f"https://github.com/tensorflow/tensorboard/tree/{tensorboard.__version__}/tensorboard",
-        "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
     )
   else:
     raise ValueError("Unsupported: version < 2.9")

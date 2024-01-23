@@ -85,7 +85,6 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//learning/expander/pod/deep_pod/utils:__subpackages__",
-        "//research/handwriting/converters/tflite:__subpackages__",
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [

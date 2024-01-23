@@ -98,9 +98,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   Status Reset() override;
 
   StatusOr<std::string> GetKeyValue(std::string_view key) override;
-  StatusOr<std::string> GetKeyValue(const char* key, int64_t key_size) override;
-  StatusOr<std::string> GetKeyValue(const char* key, int64_t key_size,
-                                    int64_t timeout_seconds) override;
   StatusOr<std::string> GetKeyValue(std::string_view key,
                                     absl::Duration timeout) override;
   std::shared_ptr<CallOptions> GetKeyValueAsync(
@@ -111,10 +108,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   void GetKeyValueDirAsync(std::string_view key,
                            StatusOrValueDirCallback done) override;
   Status InsertKeyValue(std::string_view key, std::string_view value) override;
-  Status InsertKeyValue(const char* key, int64_t key_size, const char* value,
-                        int64_t value_size) override;
   Status DeleteKeyValue(std::string_view key) override;
-  Status DeleteKeyValue(const char* key, int64_t key_size) override;
   Status UpdateKeyValue(std::string_view key, std::string_view value) override;
 
   Status StartWatchKey(std::string_view key,
@@ -577,21 +571,6 @@ StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
 }
 
 StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
-    const char* key, int64_t key_size) {
-  return GetKeyValue(std::string_view(key, key_size));
-}
-
-StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
-    const char* key, int64_t key_size, int64_t timeout_seconds) {
-  if (timeout_seconds <= 0) {
-    return absl::InvalidArgumentError(
-        "GetKeyValue() invoked with invalid timeout_seconds <= 0.");
-  }
-  return GetKeyValue(std::string_view(key, key_size),
-                     absl::Seconds(timeout_seconds));
-}
-
-StatusOr<std::string> CoordinationServiceAgentImpl::GetKeyValue(
     std::string_view key, absl::Duration timeout) {
   auto n = std::make_shared<absl::Notification>();
   auto result = std::make_shared<StatusOr<std::string>>();
@@ -726,14 +705,6 @@ Status CoordinationServiceAgentImpl::InsertKeyValue(std::string_view key,
   return status;
 }
 
-Status CoordinationServiceAgentImpl::InsertKeyValue(const char* key,
-                                                    int64_t key_size,
-                                                    const char* value,
-                                                    int64_t value_size) {
-  return InsertKeyValue(std::string_view(key, key_size),
-                        std::string_view(value, value_size));
-}
-
 Status CoordinationServiceAgentImpl::DeleteKeyValue(std::string_view key) {
   DeleteKeyValueRequest request;
   request.set_key(key.data(), key.size());
@@ -750,11 +721,6 @@ Status CoordinationServiceAgentImpl::DeleteKeyValue(std::string_view key) {
   n.WaitForNotification();
   VLOG(3) << "DeleteKeyValueResponse " << status;
   return OkStatus();
-}
-
-Status CoordinationServiceAgentImpl::DeleteKeyValue(const char* key,
-                                                    int64_t key_size) {
-  return DeleteKeyValue(std::string_view(key, key_size));
 }
 
 Status CoordinationServiceAgentImpl::UpdateKeyValue(std::string_view key,

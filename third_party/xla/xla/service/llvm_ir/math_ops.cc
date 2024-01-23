@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,13 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/service/llvm_ir/math_ops.h"
+
 #include "xla/service/llvm_ir/llvm_util.h"
 
 namespace xla {
 namespace llvm_ir {
 
-llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
+llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input,
+                          bool with_fma) {
   llvm::Type* type = input->getType();
+  const float plus_clamp =
+      with_fma ? 7.99881172180175781f : 7.90531110763549805f;
+  const float minus_clamp = -plus_clamp;
+  // Inputs in the range [plus_clamp, 9.0] may cause the output
+  // of EmitFastTanh to be greater than 1, so we set the input to be at most
+  // 'plus_clamp'. We choose 'plus_clamp' in a way that the
+  // tanh approximation on that input is exactly 1.0. Similarly for
+  // 'minus_clamp', where the tanh approximation will return exactly
+  // -1.0.
+  // Taken from tanh(Eigen/src/Core/MathFunctionsImpl.h).
 
   // For small values of x, we can approximate tanh(x)=x. For extremely small
   // values of x (|x| < 1e-37), the other approximation evaluates tanh(x) = 0.
@@ -30,14 +42,12 @@ llvm::Value* EmitFastTanh(llvm::IRBuilder<>* b, llvm::Value* input) {
   auto use_aprox =
       b->CreateFCmpOLT(abs_x, llvm::ConstantFP::get(type, kCanUseApprox));
 
-  // Clamp the input to [-9, 9].
-  //
   // To simplify the code base until it's an issue, don't have a slow min/max in
   // this approximation.
   llvm::Value* input_clamped = llvm_ir::EmitFloatMin(
-      llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(type, -9.0), b,
+      llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(type, minus_clamp), b,
                             /*enable_fast_min_max=*/true),
-      llvm::ConstantFP::get(type, 9.0), b, /*enable_fast_min_max=*/true);
+      llvm::ConstantFP::get(type, plus_clamp), b, /*enable_fast_min_max=*/true);
 
   static constexpr std::array<float, 7> numerator_coeffs{
       -2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,

@@ -37,15 +37,6 @@ namespace tsl {
 constexpr char kGrpcPayloadsLost[] =
     "type.googleapis.com/tensorflow.distributed_runtime.GrpcPayloadsLost";
 
-// Given the total number of RPC retries attempted, return a randomized
-// amount of time to delay before retrying the request.
-//
-// The average computed backoff increases with the number of RPCs attempted.
-// See implementation for details on the calculations.
-int64_t ComputeBackoffMicroseconds(int current_retry_attempt,
-                                   int64_t min_delay = 1000,
-                                   int64_t max_delay = 10000000);
-
 constexpr char kStreamRemovedMessage[] = "Stream removed";
 
 // Identify if the given grpc::Status corresponds to an HTTP stream removed

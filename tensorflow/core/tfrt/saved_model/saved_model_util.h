@@ -106,6 +106,7 @@ using ::tensorflow::StatusOr;
 
 struct Initializer {
   std::string name;
+  std::vector<tensorflow::Tensor> inputs;
 };
 
 struct InitializersAndSignatures {
@@ -115,8 +116,10 @@ struct InitializersAndSignatures {
   SignatureMap signature_map;
 };
 
+// If `saved_model_dir` is non-empty, this function fills in the Initializer's
+// inputs in the returned result.
 StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module);
+    mlir::ModuleOp module, absl::string_view saved_model_dir = "");
 
 std::string GetAotPackagePath(absl::string_view saved_model_dir);
 

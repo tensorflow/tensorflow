@@ -111,10 +111,10 @@ func.func @merge_consecutive_qcast(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %
 // CHECK-LABEL: func @skip_nan_inf_constant
 // CHECK-SAME: (%[[ARG_0:.*]]: tensor<?x112x112x64xf32>) -> tensor<?x56x56x64xf32>
 func.func @skip_nan_inf_constant(%arg0: tensor<?x112x112x64xf32>) -> tensor<?x56x56x64xf32> {
-  // CHECK: %[[cst0:.*]] = stablehlo.constant
-  // CHECK: %[[cst1:.*]] = stablehlo.constant
-  // CHECK: %[[cst2:.*]] = stablehlo.constant
-  // CHECK: %[[cst3:.*]] = stablehlo.constant
+  // CHECK-DAG: %[[cst0:.*]] = stablehlo.constant dense<0xFF800000> : tensor<f32
+  // CHECK-DAG: %[[cst1:.*]] = stablehlo.constant dense<0x7FC00000> : tensor<f32>
+  // CHECK-DAG: %[[cst2:.*]] = stablehlo.constant dense<6.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[cst3:.*]] = stablehlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK-NOT: %[[q0:.*]] = "quantfork.qcast"(%[[cst0]])
   // CHECK-NOT: %[[q1:.*]] = "quantfork.qcast"(%[[cst1]])
   // CHECK: %[[q2:.*]] = "quantfork.qcast"(%[[cst2]])

@@ -30,9 +30,11 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/core/platform/test.h"
 
-namespace mlir::quant::common {
+namespace mlir::quant {
 
 using ::testing::Test;
 
@@ -41,6 +43,8 @@ class QuantizationTestBase : public Test {
   QuantizationTestBase() {
     ctx_.loadDialect<arith::ArithDialect, mlir::stablehlo::StablehloDialect,
                      func::FuncDialect, TF::TensorFlowDialect,
+                     tf_saved_model::TensorFlowSavedModelDialect,
+                     tf_executor::TensorFlowExecutorDialect,
                      quant::QuantizationDialect,
                      quantfork::QuantizationForkDialect>();
   }
@@ -74,6 +78,6 @@ class QuantizationTestBase : public Test {
   OpBuilder builder_{&ctx_};
 };
 
-}  // namespace mlir::quant::common
+}  // namespace mlir::quant
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_TEST_BASE_H_
