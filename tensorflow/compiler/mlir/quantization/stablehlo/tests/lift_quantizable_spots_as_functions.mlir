@@ -619,7 +619,7 @@ func.func @gather_fn() -> tensor<2x3x2x2xi32> {
     collapsed_slice_dims = [0],
     start_index_map = [1, 0],
     index_vector_dim = 2>,
-  slice_sizes = dense<[1, 2, 2]> : tensor<3xi64>,
+  slice_sizes = array<i64: 1, 2, 2>,
   indices_are_sorted = false
 } : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
   func.return %2: tensor<2x3x2x2xi32>

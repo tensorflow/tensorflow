@@ -52,6 +52,11 @@ Attribute convertAttr(Attribute stablehloAttr) {
         RankedTensorType::get(attr.getSize(), attr.getElementType()),
         attr.asArrayRef());
   }
+  if (auto attr = stablehloAttr.dyn_cast<DenseBoolArrayAttr>()) {
+    return DenseIntElementsAttr::get(
+        RankedTensorType::get(attr.getSize(), attr.getElementType()),
+        attr.asArrayRef());
+  }
 
   // Handle StableHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
