@@ -1846,7 +1846,7 @@ std::optional<GroupedSharding> AlignGroupsWithInternal(
   auto get_permutation = [](absl::Span<const int64_t> src,
                             absl::Span<const int64_t> dst) {
     CHECK_EQ(src.size(), dst.size());
-    absl::flat_hash_map<int64_t, int64_t> dst_reverse_map;
+    absl::flat_hash_map<int64_t, int64_t> dst_reverse_map(dst.size());
     for (int64_t i = 0; i < dst.size(); ++i) {
       dst_reverse_map[dst[i]] = i;
     }
@@ -1860,7 +1860,8 @@ std::optional<GroupedSharding> AlignGroupsWithInternal(
   };
   CHECK_EQ(grouped_sharding.device_groups.size(),
            reference.device_groups.size());
-  absl::flat_hash_map<int64_t, int64_t> device_to_ref_group;
+  std::vector<int64_t> device_to_ref_group(reference.device_groups.size() *
+                                           reference.device_groups[0].size());
   for (int64_t g = 0; g < reference.device_groups.size(); ++g) {
     for (int64_t device : reference.device_groups[g]) {
       device_to_ref_group[device] = g;
@@ -2031,6 +2032,10 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
   if (sharding.IsTileMaximal() || device_groups.size() < 2) {
     return std::nullopt;
   }
+  const int64_t num_devices = sharding.tile_assignment().num_elements();
+  if (num_devices != device_groups.size() * device_groups[0].size()) {
+    return std::nullopt;
+  }
   std::vector<int64_t> dims;
   if (device_groups[0].size() < 2) {
     // Trivial case: single member groups
@@ -2041,15 +2046,16 @@ std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     }
     return dims;
   }
-  int64_t rank = sharding.tile_assignment().num_dimensions();
-  absl::flat_hash_map<int64_t, std::vector<int64_t>> device_to_index;
+
+  std::vector<std::vector<int64_t>> device_to_index(
+      num_devices,
+      std::vector<int64_t>(sharding.tile_assignment().num_dimensions()));
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> index, int64_t device) {
-        device_to_index[device] =
-            std::vector<int64_t>(index.begin(), index.begin() + rank);
+        device_to_index[device].assign(index.begin(), index.end());
       });
   int64_t group_count = 1;
-  for (int64_t i = 0; i < rank; ++i) {
+  for (int64_t i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
     if (device_to_index[device_groups[0][0]][i] ==
         device_to_index[device_groups[0][1]][i]) {
       dims.push_back(i);
