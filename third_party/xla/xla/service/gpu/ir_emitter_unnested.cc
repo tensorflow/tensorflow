@@ -3218,7 +3218,6 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   const int64_t replica_count = hlo_config.replica_count();
   const int64_t partition_count = hlo_config.num_partitions();
 
-  NcclCollectiveThunk::AsyncExecutor* async_executor;
   if (NcclCollectivePermuteStartThunk::IsDegenerate(
           collective_permute_op, replica_count, partition_count)) {
     // For a degenerate collective permute, just generate a copy thunk.
@@ -3229,8 +3228,9 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
         /*source_value=*/collective_permute_op.getOperand(),
         /*destination_value=*/collective_permute_op.getOutput()));
+
     // Signal that start thunk not created with nullptr.
-    async_executor = nullptr;
+    collectives_async_events_.try_emplace(op, nullptr);
   } else {
     const NcclCollectiveThunk::Buffer buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
@@ -3239,10 +3239,9 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(op), NcclApi::Default(),
         collective_permute_op, replica_count, partition_count, buffer);
-    async_executor = thunk->async_executor();
+    collectives_async_events_.try_emplace(op, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
   }
-  async_executors_.insert({op, async_executor});
   return absl::OkStatus();
 }
 
@@ -3264,7 +3263,6 @@ Status IrEmitterUnnested::EmitCollectivePermute(
   const int64_t replica_count = hlo_config.replica_count();
   const int64_t partition_count = hlo_config.num_partitions();
 
-  NcclCollectiveThunk::AsyncExecutor* async_executor;
   if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
                                                     partition_count)) {
     // For a degenerate collective permute, just generate a copy thunk.
@@ -3276,7 +3274,8 @@ Status IrEmitterUnnested::EmitCollectivePermute(
         /*source_value=*/nullptr,
         /*destination_value=*/nullptr));
     // Signal that start thunk not created with nullptr.
-    async_executor = nullptr;
+    collectives_async_events_.try_emplace(instr, nullptr);
+
   } else {
     const NcclCollectiveThunk::Buffer buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
@@ -3285,10 +3284,9 @@ Status IrEmitterUnnested::EmitCollectivePermute(
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
         instr, replica_count, partition_count, buffer);
-    async_executor = thunk->async_executor();
+    collectives_async_events_.try_emplace(instr, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
   }
-  async_executors_.insert({instr, async_executor});
   return absl::OkStatus();
 }
 
@@ -3337,7 +3335,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     auto thunk = std::make_unique<NcclThunkType>(
         Thunk::ThunkInfo::WithProfileAnnotation(op), NcclApi::Default(), op,
         /*buffers=*/std::move(buffers));
-    async_executors_.insert({untyped_op, thunk->async_executor()});
+    collectives_async_events_.try_emplace(untyped_op, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
   }
@@ -3347,7 +3345,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   }
 
   // Signal that start thunk not created with nullptr.
-  async_executors_.insert({untyped_op, nullptr});
+  collectives_async_events_.try_emplace(untyped_op, nullptr);
 
   VLOG(1) << "Collective call is degenerate, not doing NCCL call";
 
@@ -3378,15 +3376,15 @@ absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
                                                   mlir::Operation* op,
                                                   mlir::Value token) {
   auto start_op = token.getDefiningOp();
-  auto async_executor = async_executors_.extract(start_op);
-  TF_RET_CHECK(async_executor) << "couldn't find async executor for start op";
+  auto async_events = collectives_async_events_.extract(start_op);
+  TF_RET_CHECK(async_events) << "couldn't find async events for start op";
 
   // Can be null if no start thunk was created (e.g. if the start op is
   // degenerate), in which case there's nothing to do here.
-  if (async_executor.mapped() != nullptr) {
+  if (async_events.mapped()) {
     AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
         kind, Thunk::ThunkInfo::WithProfileAnnotation(op),
-        *async_executor.mapped()));
+        std::move(async_events.mapped())));
   }
   return absl::OkStatus();
 }
@@ -3465,7 +3463,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
     auto thunk = std::make_unique<NcclThunkType>(
         Thunk::ThunkInfo::WithProfileAnnotation(inst), NcclApi::Default(), inst,
         /*buffers=*/std::move(buffers));
-    async_executors_.insert({async_start, thunk->async_executor()});
+    collectives_async_events_.insert({async_start, thunk->async_events()});
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
   }
@@ -3475,7 +3473,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   }
 
   // Signal that start thunk not created with nullptr.
-  async_executors_.insert({async_start, nullptr});
+  collectives_async_events_.insert({async_start, nullptr});
 
   VLOG(1) << "Collective call is degenerate, not doing NCCL call";
 
@@ -3504,16 +3502,16 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
 absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
                                                   const HloInstruction* inst) {
   const HloInstruction* start = inst->operand(0);
-  auto async_executor = async_executors_.extract(start);
-  TF_RET_CHECK(async_executor)
-      << "couldn't find async executor for start operation";
+  auto async_events = collectives_async_events_.extract(start);
+  TF_RET_CHECK(async_events)
+      << "couldn't find async events for start operation";
 
   // Can be null if no start thunk was created (e.g. if the start op is
   // degenerate), in which case there's nothing to do here.
-  if (async_executor.mapped() != nullptr) {
+  if (async_events.mapped()) {
     AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
         kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
-        *async_executor.mapped()));
+        std::move(async_events.mapped())));
   }
   return absl::OkStatus();
 }
