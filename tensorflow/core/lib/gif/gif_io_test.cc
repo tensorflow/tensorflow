@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
 
+#include <memory>
+
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -222,10 +224,12 @@ TEST(GifTest, TransparentIndexOutsideColorTable) {
   auto allocate_image_data = [&](int frame_cnt, int width, int height,
                                  int channels) -> uint8* {
     nframes = frame_cnt;
-    return new uint8[frame_cnt * height * width * channels];
+    // Create the unique_ptr here, as gif::Decode does not return a pointer to
+    // the allocated array in the case of an error.
+    imgdata = std::make_unique<uint8[]>(frame_cnt * height * width * channels);
+    return imgdata.get();
   };
-  imgdata.reset(gif::Decode(encoded, sizeof(encoded), allocate_image_data,
-                            &error_string));
+  gif::Decode(encoded, sizeof(encoded), allocate_image_data, &error_string);
 
   // ...should be successful and treat the pixels with the transparent index as
   // transparent.
@@ -247,8 +251,7 @@ TEST(GifTest, TransparentIndexOutsideColorTable) {
 
   // ...decoding the image...
   error_string.clear();
-  imgdata.reset(gif::Decode(encoded, sizeof(encoded), allocate_image_data,
-                            &error_string));
+  gif::Decode(encoded, sizeof(encoded), allocate_image_data, &error_string);
 
   // ...should fail with an error about a color out of range.
   ASSERT_EQ(error_string, "found color index 3 outside of color map range 2");
