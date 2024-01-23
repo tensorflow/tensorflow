@@ -578,13 +578,9 @@ xla_test(
     ],
     shard_count = 20,
     tags = [
-<<<<<<< HEAD
-        "nomac",
         "no_rocm",
-=======
         "noasan",  # TODO(b/319626241): Reenable once the signed-integer-overflow is fixed
         "nomac",
->>>>>>> upstream/master
     ],
     deps = [
         ":backend_configs_cc",
@@ -4014,12 +4010,8 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-<<<<<<< HEAD
-        #"@com_google_absl//absl/strings:string_view",
-=======
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
->>>>>>> upstream/master
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],

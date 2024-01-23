@@ -2163,11 +2163,6 @@ tf_cuda_cc_test(
     tags = [
         "config-cuda-only",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-<<<<<<< HEAD
-=======
-        "no_rocm",  # ROCmSoftwarePlatform #958
-        "noasan",  # TODO(b/201651800)
->>>>>>> upstream/master
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],

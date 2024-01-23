@@ -19,21 +19,13 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
-<<<<<<< HEAD
-#if !TENSORFLOW_USE_ROCM
-=======
 #include "absl/status/status.h"
 #if GOOGLE_CUDA
->>>>>>> upstream/master
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "third_party/gpus/cuda/include/cusolver_common.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #endif
-<<<<<<< HEAD
-
-=======
->>>>>>> upstream/master
 #include "xla/primitive_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"

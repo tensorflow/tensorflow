@@ -126,24 +126,16 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     VLOG(2) << "Overriding layout to NHWC for " << instr->ToString();
     return kAllNHWC;
   }
-
+  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
+#if GOOGLE_CUDA
   // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
   // easy: Use NCHW.
-  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
-<<<<<<< HEAD
-#if GOOGLE_CUDA
-  if (!isFloat16 ||
-      !stream_executor->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeast(se::CudaComputeCapability::VOLTA) ||
-=======
   const auto* cuda_compute_capability =
       std::get_if<se::CudaComputeCapability>(&gpu_version);
   bool is_volta =
       cuda_compute_capability &&
       cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::VOLTA);
   if (!isFloat16 || !is_volta ||
->>>>>>> upstream/master
       instr->shape().tuple_shapes(0).dimensions_size() != 4) {
     return kAllNCHW;
   }
@@ -152,8 +144,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   TF_CHECK_OK(tsl::ReadBoolFromEnvVar(
       "TF_USE_ROCM_NHWC",
       /*default_val=*/false, &is_enabled));
-  auto rocm_compute_capability =
-      stream_executor->GetDeviceDescription().rocm_compute_capability();
+  auto rocm_compute_capability = std::get<se::RocmComputeCapability>(gpu_version);
   if (!isFloat16 || (!rocm_compute_capability.has_nhwc_layout_support()) ||
       instr->shape().tuple_shapes(0).dimensions_size() != 4 || !is_enabled) {
     return kAllNCHW;

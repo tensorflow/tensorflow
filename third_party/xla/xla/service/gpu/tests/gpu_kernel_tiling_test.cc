@@ -594,67 +594,6 @@ TEST_F(GpuKernelTilingTest, RowReductionRequiring64BitIndex) {
                      /*match_optimized_ir=*/true);
 }
 
-<<<<<<< HEAD
-TEST_F(GpuKernelTilingTest, ColumnReductionVectorization) {
-  const char *const kHloString = R"(
-HloModule column_reduce_powerof2
-
-reduction {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT add = f32[] add(x, y)
-}
-
-ENTRY kernel_entry {
-    constant0 = f32[] constant(0)
-    arg1 = f32[1024,512,128]{2,1,0} parameter(0)
-    ROOT reduce = f32[512,128]{1,0} reduce(arg1, constant0), dimensions={0}, to_apply=reduction
-}
-  )";
-  auto expected_ir = R"(
-; CHECK: load <2 x float>, ptr
-  )";
-  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
-                     /*match_optimized_ir=*/true);
-}
-
-TEST_F(GpuKernelTilingTest, ColumnMultiOutputVectorization) {
-  const char *const kHloString = R"(
-HloModule HandleReductionToVectorAndOtherReduction
-
-add {
-    acc = f16[] parameter(1)
-    op = f16[] parameter(0)
-    ROOT out = f16[] add(acc, op)
-}
-
-ENTRY main {
-    p = f16[4096,4096] parameter(0)
-    l1 = log(p)
-    l2 = log(l1)
-    s = log(l2)
-    z = f16[] constant(0)
-    r1 = f16[4096] reduce(p, z), dimensions={0}, to_apply=add
-    r2 = f16[4096] reduce(s, z), dimensions={0}, to_apply=add
-    ROOT out = (f16[4096], f16[4096]) tuple(r1, r2)
-}
-  )";
-  std::string expected_ir = R"(
-; CHECK: PLATFORM_SPECIFIC_TYPE, ptr
-  )";
-
-  expected_ir = absl::StrReplaceAll(
-      expected_ir,
-      {{"PLATFORM_SPECIFIC_TYPE", is_built_with_rocm_ ? "half" : "<2 x half>"}});
-
-  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
-  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
-                     /*match_optimized_ir=*/true);
-}
-
-=======
->>>>>>> upstream/master
 TEST_F(GpuKernelTilingTest, Hlo021CopyNoOobAccess) {
   const char *const kHloString = R"(
 HloModule primitive_computation_svd.38

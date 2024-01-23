@@ -935,13 +935,6 @@ tf_python_pybind_extension(
     ],
     deps = [
         # placeholder for index annotation deps
-<<<<<<< HEAD
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        #"@com_google_absl//absl/strings:string_view",
-=======
->>>>>>> upstream/master
         "//tensorflow/cc/experimental/libexport:save",
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:fingerprinting",

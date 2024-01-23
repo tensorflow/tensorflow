@@ -252,12 +252,7 @@ cc_library(
         ":rocblas_if_static",
         ":rocblas_wrapper",
         ":hipblas_lt_header",
-<<<<<<< HEAD
-        ":rocm_gpu_executor",
-        ":rocm_helpers",
-=======
         ":rocm_executor",
->>>>>>> upstream/master
         ":rocm_platform_id",
         "@eigen_archive//:eigen3",
         "//xla/stream_executor",

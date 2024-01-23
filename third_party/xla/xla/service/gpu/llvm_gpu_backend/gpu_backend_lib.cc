@@ -780,13 +780,8 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 
   auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
-<<<<<<< HEAD
-    return xla::InternalError("unable to find ld.lld in %s: %s", lld_path,
-                              lld_program.getError().message());
-=======
     return xla::Internal("unable to find ld.lld in PATH: %s",
                          lld_program.getError().message());
->>>>>>> upstream/master
   }
   std::vector<llvm::StringRef> lld_args{
       llvm_ir::AsStringRef("ld.lld"),    llvm_ir::AsStringRef("-flavor"),

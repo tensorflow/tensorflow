@@ -64,34 +64,6 @@ cc_library(
     ],
 )
 
-<<<<<<< HEAD
-cuda_library(
-    name = "sleep_kernel_cuda",
-    srcs = if_cuda_is_configured(["sleep_kernel.cu.cc"]),
-    hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
-    compatible_with = [],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        ":gpu_kernel_helper",
-    ]),
-)
-
-rocm_library(
-    name = "sleep_kernel_rocm",
-    srcs = if_rocm_is_configured(["sleep_kernel.cu.cc"]),
-    hdrs = if_rocm_is_configured(["sleep_kernel.h"]),
-    compatible_with = [],
-    copts = rocm_default_copts(),
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        ":gpu_kernel_helper",
-    ]),
-)
-
-=======
->>>>>>> upstream/master
 cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],

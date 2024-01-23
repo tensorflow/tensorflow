@@ -150,12 +150,8 @@ cc_library(
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; Required for pybind11.
-<<<<<<< HEAD
-        #"@com_google_absl//absl/strings:string_view",
-=======
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
->>>>>>> upstream/master
         "@local_tsl//tsl/platform:protobuf",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
