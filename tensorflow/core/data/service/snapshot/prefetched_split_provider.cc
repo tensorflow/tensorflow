@@ -55,11 +55,7 @@ PrefetchedSplitProvider::PrefetchedSplitProvider(
   thread_pool_ = RunPrefetchThreads();
 }
 
-PrefetchedSplitProvider::~PrefetchedSplitProvider() {
-  // Finishes the in-flight threads.
-  UpdateStatus(
-      absl::CancelledError("tf.data prefetched split provider is shut down."));
-}
+PrefetchedSplitProvider::~PrefetchedSplitProvider() { Cancel(); }
 
 absl::StatusOr<std::optional<Tensor>> PrefetchedSplitProvider::GetNext(
     const std::string& split_path) ABSL_LOCKS_EXCLUDED(mu_) {
@@ -183,6 +179,13 @@ absl::Status PrefetchedSplitProvider::Reset() ABSL_LOCKS_EXCLUDED(mu_) {
   TF_RETURN_IF_ERROR(InitDirs());
   thread_pool_ = RunPrefetchThreads();
   return absl::OkStatus();
+}
+
+void PrefetchedSplitProvider::Cancel() {
+  // Finishes the in-flight threads.
+  UpdateStatus(
+      absl::CancelledError("tf.data prefetched split provider is shut down."));
+  thread_pool_.reset();
 }
 
 absl::Status PrefetchedSplitProvider::InitDirs() {

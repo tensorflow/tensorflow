@@ -72,7 +72,9 @@ class PrefetchedSplitProvider {
   // Resets the split provider.
   absl::Status Reset();
 
-  // TODO(b/320755733): Support Save and Load.
+  // Cancels the split provider. After cancelling, concurrent `GetNext` calls
+  // will return a Cancelled error.
+  void Cancel();
 
  private:
   // Prefetched split and its split index.

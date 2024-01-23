@@ -298,6 +298,7 @@ cc_library(
     deps = [
         ":file_utils",
         ":path_utils",
+        ":prefetched_split_provider",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

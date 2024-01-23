@@ -54,6 +54,7 @@ using ::testing::ElementsAreArray;
 using ::testing::IsSupersetOf;
 using ::testing::UnorderedElementsAreArray;
 using ::tsl::testing::IsOkAndHolds;
+using ::tsl::testing::StatusIs;
 
 absl::StatusOr<std::vector<std::string>> TestDirs(size_t num_dirs) {
   std::vector<std::string> test_dirs;
@@ -243,6 +244,28 @@ INSTANTIATE_TEST_SUITE_P(
         /*NumClients*/ ::testing::Values(1, 5),
         /*NumWriteThreads*/ ::testing::Values(1, 10),
         /*BufferSizePerThread*/ ::testing::Values(1, 10000)));
+
+TEST(PrefetchedSplitProviderTest, Cancellation) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SplitProvider> split_provider,
+                          RangeSplitProvider(999999));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::string> test_dirs,
+                          TestDirs(/*num_dirs=*/2));
+  PrefetchedSplitProvider prefetched_split_provider(
+      std::move(split_provider), test_dirs[0], tsl::Env::Default(),
+      /*num_write_threads=*/2, /*buffer_size_per_thread=*/1);
+
+  std::unique_ptr<tsl::Thread> client_thread =
+      absl::WrapUnique(tsl::Env::Default()->StartThread(
+          /*thread_options=*/{}, /*name=*/"client_thread",
+          [&prefetched_split_provider, &test_dirs]() {
+            EXPECT_THAT(
+                GetSplits<int64_t>(prefetched_split_provider, test_dirs[1]),
+                StatusIs(absl::StatusCode::kCancelled));
+          }));
+
+  prefetched_split_provider.Cancel();
+  client_thread.reset();
+}
 
 TEST(PrefetchedSplitProviderTest, ShutdownWithUnreadSplits) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SplitProvider> split_provider,
