@@ -542,9 +542,6 @@ termcolor==2.3.0 \
     --hash=sha256:3afb05607b89aed0ffe25202399ee0867ad4d3cb4180d98aaf8eefa6a5f7d475 \
     --hash=sha256:b5b08f68937f138fe92f6c089b99f1e2da0ae56c52b78bf7075fd95420fd9a5a
     # via -r requirements.in
-tf-estimator-nightly==2.15.0.dev2023101608 \
-    --hash=sha256:fc045b32fb1a607da93799b3da0642527195a716cac424367f3c5f4edc2ec21e
-    # via -r requirements.in
 typing-extensions==4.8.0 \
     --hash=sha256:8f92fc8806f9a6b641eaa5318da32b44d401efaac0f6678c9bc448ba3605faa0 \
     --hash=sha256:df8e4339e9cb77357558cbdbceca33c303714cf861d1eef15e1070055ae8b7ef

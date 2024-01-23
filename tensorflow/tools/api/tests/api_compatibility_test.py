@@ -96,15 +96,9 @@ _TEST_README_FILE = resource_loader.get_path_to_datafile('README.txt')
 _UPDATE_WARNING_FILE = resource_loader.get_path_to_datafile(
     'API_UPDATE_WARNING.txt')
 
-_NON_CORE_PACKAGES = ['estimator', 'keras']
+_NON_CORE_PACKAGES = ['keras']
 _V1_APIS_FROM_KERAS = ['layers', 'nn.rnn_cell']
 _V2_APIS_FROM_KERAS = ['initializers', 'losses', 'metrics', 'optimizers']
-
-# TODO(annarev): remove this once we test with newer version of
-# estimator that actually has compat v1 version.
-if not hasattr(tf.compat.v1, 'estimator'):
-  tf.compat.v1.estimator = tf.estimator
-  tf.compat.v2.estimator = tf.estimator
 
 
 def _KeyToFilePath(key, api_version):
@@ -487,8 +481,6 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
       '--update_goldens', type=bool, default=False, help=_UPDATE_GOLDENS_HELP)
-  # TODO(mikecase): Create Estimator's own API compatibility test or
-  # a more general API compatibility test for use for TF components.
   parser.add_argument(
       '--only_test_core_api',
       type=bool,

@@ -79,7 +79,6 @@ py_strict_library(
     ],
     deps = [
         ":no_contrib",
-        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops/structured:structured_ops",
@@ -98,13 +97,11 @@ py_strict_library(
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:internal",
-        "//tensorflow/python/estimator:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
-        "//tensorflow_estimator:__subpackages__",
         "//third_party/py/tensorflow_privacy:__subpackages__",  # TODO(b/163395075): remove when fixed
     ],
     deps = [
@@ -121,7 +118,6 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:__pkg__",
-        "//tensorflow/python/estimator:__subpackages__",
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
@@ -157,7 +153,6 @@ py_strict_library(
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:combinations",  # For tf.__internal__ API.
         "//tensorflow/python/distribute:distribute_config",
-        "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/distribute:strategy_combinations",  # For tf.__internal__,
         "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
         "//tensorflow/python/dlpack",

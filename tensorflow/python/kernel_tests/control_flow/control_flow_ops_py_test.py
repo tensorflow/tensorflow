@@ -874,8 +874,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return tf_cond.cond(
           pred, lambda: true_fn(inputs), lambda: false_fn(inputs))
 
-    # This was needed for backwards compatibility with TF2 Estimators which
-    # rely on variable names.
     prefix = "cond/" if context.executing_eagerly() else ""
 
     with self.assertRaisesRegex(
@@ -907,8 +905,6 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
               lambda: br4_fn(inputs)
           ])
 
-    # This was needed for backwards compatibility with TF2 Estimators which
-    # rely on variable names.
     prefix = "switch_case/indexed_case/" if context.executing_eagerly() else ""
     with self.assertRaisesRegex(
         ValueError, "Tensor %sbr1_identity:0 in branch 1 is "

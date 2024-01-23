@@ -2082,8 +2082,6 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
           saved_model_dir, signature_key=signature_key, tag_set=tags
       )
 
-    # Ensures any graphs created in Eager mode are able to run. This is required
-    # in order to create a tf.estimator.Exporter that exports a TFLite model.
     if tags is None:
       tags = set([_tag_constants.SERVING])
 

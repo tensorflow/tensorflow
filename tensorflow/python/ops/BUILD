@@ -578,10 +578,7 @@ tf_gen_op_strict_wrapper_private_py(
 
 tf_gen_op_strict_wrapper_private_py(
     name = "sdca_ops_gen",
-    visibility = [
-        "//tensorflow/python:__pkg__",
-        "//tensorflow_estimator/python/estimator/canned/linear_optimizer:__pkg__",
-    ],
+    visibility = ["//tensorflow/python:__pkg__"],
 )
 
 tf_gen_op_strict_wrapper_private_py(
