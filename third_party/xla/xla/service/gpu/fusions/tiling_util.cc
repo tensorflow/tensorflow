@@ -266,33 +266,29 @@ absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
 
   KernelSupportLibrary ksl(builder, llvm_ir::UnrollMode::kDefaultUnroll);
 
-  int64_t non_tiling_dimension = tiling_scheme.GetTilingDimension(0) == 1
-                                     ? TilingScheme::DimZ
-                                     : TilingScheme::DimY;
+  CHECK_EQ(tiling_scheme.GetTilingDimension(1), TilingScheme::DimX);
+  CHECK(tiling_scheme.GetTilingDimension(0) == TilingScheme::DimY ||
+        tiling_scheme.GetTilingDimension(0) == TilingScheme::DimZ);
+  int64_t non_tiling_dimension = 1 - tiling_scheme.GetTilingDimension(0);
   const llvm_ir::IrArray::Index block_coords(
       thread_id_info.block_id,
       ShapeUtil::MakeShapeWithDenseLayout(
           PRED /*arbitrary*/, dims_in_blocks,
           // This layout determines the iteration order. We want the
           // non-tiling dimension to be the slowest varying dimension.
-          {2, 1 - non_tiling_dimension, non_tiling_dimension}),
+          {tiling_scheme.GetTilingDimension(1),
+           tiling_scheme.GetTilingDimension(0), non_tiling_dimension}),
       builder);
 
   std::array<llvm::Value*, 2> tile_dimensions;
-  // Coordinate access is shifted: 0 corresponds to the first non-tiling
-  // dimension and 1 corresponds to DimX.
-  std::array<int64_t, 2> tiling_coords{1 - non_tiling_dimension,
-                                       TilingScheme::DimX};
   for (int i = 0; i < 2; ++i) {
-    int64_t block_tile_size =
-        tiling_scheme.GetBlockTileSize()[tiling_coords[i]];
+    int dim = tiling_scheme.GetTilingDimension(i);
+    int64_t block_tile_size = tiling_scheme.GetBlockTileSize()[dim];
     // Only last row or column may not have full size.
-    llvm::Value* is_last =
-        builder->CreateICmpEQ(block_coords[tiling_coords[i]],
-                              constant(dims_in_blocks[tiling_coords[i]] - 1));
+    llvm::Value* is_last = builder->CreateICmpEQ(
+        block_coords[dim], constant(dims_in_blocks[dim] - 1));
     int64_t partial_row =
-        dims_in_elems[tiling_coords[i]] -
-        (dims_in_blocks[tiling_coords[i]] - 1) * block_tile_size;
+        dims_in_elems[dim] - (dims_in_blocks[dim] - 1) * block_tile_size;
     tile_dimensions[i] =
         builder->CreateSelect(is_last, constant(partial_row),
                               constant(block_tile_size), "tile_bound");
