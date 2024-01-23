@@ -210,6 +210,13 @@ TEST_F(CompilationEnvironmentsTest, ProtoRoundTrip) {
             20);
 }
 
+TEST_F(CompilationEnvironmentsTest, EnvTypePresenceCheck) {
+  CompilationEnvironments envs;
+  EXPECT_FALSE(envs.HasEnv<TestCompilationEnvironment1>());
+  envs.GetEnv<TestCompilationEnvironment1>();
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace xla
