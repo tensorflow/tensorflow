@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 
 #include <cstdlib>
+#include <string_view>
 
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -23,16 +24,16 @@ limitations under the License.
 
 namespace xla::internal {
 
-void AwaitAndLogIfStuck(absl::Notification& ready,
+void AwaitAndLogIfStuck(absl::Notification& ready, std::string_view name,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
   if (ready.WaitForNotificationWithTimeout(warn_stuck_timeout)) {
     return;
   }
 
-  LOG(ERROR) << "This thread has been waiting for "
+  LOG(ERROR) << "This thread has been waiting for `" << name << "` for "
              << absl::ToInt64Seconds(warn_stuck_timeout)
-             << " seconds and may be stuck:";
+             << " seconds and may be stuck.";
 
   if (ready.WaitForNotificationWithTimeout(terminate_timeout)) {
     LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
@@ -41,7 +42,8 @@ void AwaitAndLogIfStuck(absl::Notification& ready,
   }
 
   LOG(ERROR)
-      << "Termination timeout of " << absl::ToInt64Seconds(terminate_timeout)
+      << "Termination timeout for `" << name << "` of "
+      << absl::ToInt64Seconds(terminate_timeout)
       << " seconds exceeded. Exiting to ensure a consistent program state.";
   std::exit(42);
 }

@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -469,7 +470,13 @@ absl::Status MaybeRendezvousAfterInitialization(
           << num_local_participants << " local participants"
           << "; device_ordinal=" << run_options->device_ordinal();
 
-  RendezvousSingle(run_options->run_options().run_id(), num_local_participants,
+  auto rendezvous_key = run_options->run_options().run_id();
+  auto rendezvous_name = absl::StrFormat(
+      "thunk initialization completion for device ordinal %d; run_id=%d",
+      run_options->device_ordinal(),
+      run_options->run_options().run_id().ToInt());
+
+  RendezvousSingle(rendezvous_name, rendezvous_key, num_local_participants,
                    absl::Seconds(10), absl::Seconds(30));
 
   // Reload participant_id and use CAS to decide if we are the one who

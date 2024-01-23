@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -198,14 +199,17 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
   // concurrent initializations will not join the same rendezvous. The winner
   // will update cliques state, and others will destroy unused communicators.
   auto rendezvous_key = std::make_tuple(run_id, clique_key);
+  auto initialization_rendezvous_name = absl::StrFormat(
+      "create clique initialization state for rank %d; clique=%s; run_id=%d",
+      rank, clique_key.ToString(), run_id.ToInt());
 
   // Do a round of rendezvous to wait for all participants to join NCCL clique
   // initialization process.
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<InitializationState> state,
-      RendezvousSingle<absl::StatusOr<InitializationState>>(
-          rendezvous_key, rank, num_local_participants,
-          create_initialization_state, WarnStuckTimeout(), TerminateTimeout()));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<InitializationState> state,
+                      RendezvousSingle<absl::StatusOr<InitializationState>>(
+                          initialization_rendezvous_name, rendezvous_key, rank,
+                          num_local_participants, create_initialization_state,
+                          WarnStuckTimeout(), TerminateTimeout()));
 
   VLOG(3) << "Create NCCL communicator for clique " << clique_key.ToString()
           << " rank #" << rank << " of " << nranks
@@ -253,8 +257,12 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
   // Do one more round of rendezvous to guarantee that all ranks that
   // participated in clique initialization will share an exclusive access to all
   // communicators in a NCCL clique.
+  auto initialized_rendezvous_name = absl::StrFormat(
+      "acquire initialized clique for rank %d; clique=%s; run_id=%d", rank,
+      clique_key.ToString(), run_id.ToInt());
+
   return RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
-      rendezvous_key, num_local_participants,
+      initialized_rendezvous_name, rendezvous_key, num_local_participants,
       [&] {
         return AcquireNcclClique(clique_key, run_id, num_local_participants);
       },
@@ -286,14 +294,19 @@ absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
   } else {
     // Get the clique lock via the rendezvous process.
     auto rendezvous_key = std::make_tuple(run_id, clique_key);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
-                        RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
-                            rendezvous_key, num_local_participants,
-                            [&] {
-                              return AcquireNcclClique(clique_key, run_id,
-                                                       num_local_participants);
-                            },
-                            WarnStuckTimeout(), TerminateTimeout()));
+    auto rendezvous_name =
+        absl::StrFormat("acquire clique for rank %d; clique=%s; run_id=%d",
+                        rank, clique_key.ToString(), run_id.ToInt());
+
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<NcclClique::Lock> clique,
+        RendezvousSingle<absl::StatusOr<NcclClique::Lock>>(
+            rendezvous_name, rendezvous_key, num_local_participants,
+            [&] {
+              return AcquireNcclClique(clique_key, run_id,
+                                       num_local_participants);
+            },
+            WarnStuckTimeout(), TerminateTimeout()));
 
     // If lock is not null return it to the caller.
     if (*clique) return clique;
