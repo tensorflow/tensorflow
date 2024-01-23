@@ -11,6 +11,10 @@ func.func @testNoClusterFuncOpPasses(%arg0: tensor<4x?x!tf_type.stringref>) -> t
 
 // -----
 
+func.func @_func(%arg0: tensor<i32>) -> tensor<i32> {
+  func.return %arg0 : tensor<i32>
+}
+
 func.func @testClusterFuncOpFails(%arg0: tensor<i32>) -> tensor<i32> {
    // expected-error@below {{failed TF functional to executor validation, op tf_device.cluster_func is not allowed}}
   %cluster = "tf_device.cluster_func"(%arg0) {func = @_func} : (tensor<i32>) -> tensor<i32>
