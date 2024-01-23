@@ -217,8 +217,35 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kLoop;
   }
 
+  const HloInstruction* first_reduce_hero = nullptr;
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
     if (IsRealReductionHero(*root, *hero)) {
+      first_reduce_hero = hero;
+      break;
+    }
+  }
+  if (first_reduce_hero != nullptr) {
+    bool valid_shapes = true;
+    Shape hero_operand_shape = first_reduce_hero->operand(0)->shape();
+    for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
+      if (root == first_reduce_hero) {
+        continue;
+      }
+      if (!IsRealReductionHero(*root, *hero)) {
+        // Needs to have a compatible shape to the reduce operand.
+        if (!ShapeUtil::ReshapeIsBitcast(root->shape(),
+                                         first_reduce_hero->operand(0)->shape(),
+                                         /*ignore_element_type=*/true)) {
+          valid_shapes = false;
+          break;
+        }
+      } else if (!AreReductionsMultiOutputFusionCompatible(hero,
+                                                           first_reduce_hero)) {
+        valid_shapes = false;
+        break;
+      }
+    }
+    if (valid_shapes) {
       return EmitterFusionKind::kReduction;
     }
   }

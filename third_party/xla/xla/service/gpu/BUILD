@@ -1396,6 +1396,19 @@ cc_library(
     ]),
 )
 
+xla_cc_test(
+    name = "reduction_utils_test",
+    srcs = ["reduction_utils_test.cc"],
+    deps = [
+        ":reduction_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_parser",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 cc_library(
     name = "cublas_cudnn",
     srcs = ["cublas_cudnn.cc"],

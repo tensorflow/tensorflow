@@ -234,6 +234,42 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInBoth) {
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
+TEST_F(HloFusionAnalysisTest, InvalidReduceMultiOutputFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    fusion {
+      %p0 = f32[1024, 1024]{1,0} parameter(0)
+      %p1 = f32[] parameter(1)
+      %reduce = f32[1024]{0} reduce(%p0, %p1), dimensions={0}, to_apply=add
+      %reduce2 = f32[1024]{0} reduce(%p0, %p1), dimensions={1}, to_apply=add
+      ROOT res = (f32[1024]{0}, f32[1024]{0}) tuple(reduce, reduce2)
+    }
+
+    ENTRY main {
+      %p0 = f32[1024, 1024]{1,0} parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %fusion = (f32[1024]{0}, f32[1024]{0}) fusion(%p0, %p1), kind=kInput, calls=fusion
+    })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis =
+      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
+  ASSERT_NE(analysis, std::nullopt);
+  // We expect to fallback to the loop emitter, because the two reductions are
+  // not compatible as they reduce over different dimensions.
+  EXPECT_EQ(analysis->GetEmitterFusionKind(),
+            HloFusionAnalysis::EmitterFusionKind::kLoop);
+}
+
 TEST_F(HloFusionAnalysisTest, InvalidDevice) {
   // Verifies that an analysis can be created even with an invalid/empty device
   // info, and that the emitter type is determined correctly.
