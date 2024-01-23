@@ -223,13 +223,8 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:options",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/training:basic_session_run_hooks",
-        "//tensorflow/python/training:saver",
-        "//tensorflow/python/training:session_run_hook",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],

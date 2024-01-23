@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,27 +24,33 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
+#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_clique.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/service/gpu/nccl_errors.h"
-#include "xla/service/gpu/nccl_utils.h"
-#endif  // XLA_ENABLE_XCCL
-
-struct ncclComm;
-using ncclComm_t = ncclComm*;
 
 namespace xla {
 namespace gpu {
@@ -99,15 +106,22 @@ NcclCollectiveConfig GetNcclCollectiveConfigForMlir(
   return config;
 }
 
+//===----------------------------------------------------------------------===//
+// NcclCollectiveThunk
+//===----------------------------------------------------------------------===//
+
 // Thunk base class for NCCL collective operations.
 class NcclCollectiveThunk : public Thunk {
  public:
-  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
+  NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info, NcclApi* nccl_api,
+                      bool is_sync);
 
   struct Buffer {
     int64_t element_count;
     BufferAllocation::Slice source_buffer;
     BufferAllocation::Slice destination_buffer;
+    int64_t source_memory_space;
+    int64_t destination_memory_space;
     mlir::Value source_value;
     mlir::Value destination_value;
   };
@@ -117,9 +131,10 @@ class NcclCollectiveThunk : public Thunk {
     // Executes the function on the async communications stream and records a
     // completion event.
     absl::Status Execute(
-        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&, ncclComm_t)>
+        absl::FunctionRef<Status(const ExecuteParams&, se::Stream&,
+                                 NcclApi::NcclCommHandle)>
             fn,
-        const ExecuteParams& params, ncclComm_t comm,
+        const ExecuteParams& params, NcclApi::NcclCommHandle comm,
         AsyncStreamKind stream_kind);
     // Blocks the compute stream until async communication is complete.
     absl::Status Await(const ExecuteParams& params);
@@ -130,25 +145,23 @@ class NcclCollectiveThunk : public Thunk {
     absl::flat_hash_map<int, se::Event> done_events_ ABSL_GUARDED_BY(mu_);
   };
 
-  // Returns whether NCCL operations appear possible to perform; e.g. if we
-  // haven't done a build with the CUDA compiler enabled, we can't compile the
-  // NCCL header, and thus this will be false.
-  //
-  // When this is false, the ExecuteOnStream() call will simply return a status
-  // error.
-  static bool NcclIsEnabled();
-  static absl::Status CheckImplementable();
-
   // Logging support.
-  static std::string GetDeviceString(const NcclExecuteParams& params);
+  static std::string GetDeviceString(
+      const Thunk::CollectiveExecuteParams& params);
 
   AsyncExecutor* async_executor() { return async_.get(); }
+
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
+
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  NcclApi* nccl_api() const { return nccl_api_; }
 
  protected:
   virtual absl::Status RunNcclCollective(const ExecuteParams& params,
                                          se::Stream& stream,
-                                         ncclComm_t comm) = 0;
+                                         NcclApi::NcclCommHandle comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const {
     return AsyncStreamKind::kCollective;
@@ -160,11 +173,15 @@ class NcclCollectiveThunk : public Thunk {
     return xla::gpu::GetStreamId(IsAsync(), GetAsyncStreamKind());
   }
 
-#if XLA_ENABLE_XCCL
+  NcclApi* nccl_api_;
+
   bool first_call_to_execute_ = true;
-#endif                                    // XLA_ENABLE_XCCL
   std::unique_ptr<AsyncExecutor> async_;  // null if not async.
 };
+
+//===----------------------------------------------------------------------===//
+// NcclCollectiveDoneThunk
+//===----------------------------------------------------------------------===//
 
 class NcclCollectiveDoneThunk : public Thunk {
  public:
@@ -211,20 +228,26 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
           operand_count, str));
 }
 
-#if XLA_ENABLE_XCCL
-// TODO(hanbinyoon): Consider moving to nccl_utils.h when deprecating Thunks.
+//===----------------------------------------------------------------------===//
+
+size_t GetNumLocalParticipants(
+    const std::vector<GlobalDeviceId>& participants,
+    const std::vector<GlobalDeviceId>* local_devices);  // may be null
+
 absl::StatusOr<NcclComm::Lock> LockNcclComm(
-    const NcclExecuteParams& params,
+    const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id,
     bool enable_clique_optimization);
-#endif  // XLA_ENABLE_XCCL
 
 struct DeviceBufferPair {
   PrimitiveType element_type;
   int64_t element_count;
   se::DeviceMemoryBase source_buffer;
   se::DeviceMemoryBase destination_buffer;
+  // TODO(b/320767790): Remove once memory space added to DeviceMemoryBase.
+  int64_t source_memory_space;
+  int64_t destination_memory_space;
 };
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
@@ -237,15 +260,13 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const std::vector<NcclCollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
 
-// When using ncclMemAlloc, register buffers with the communicator to enable
-// copyless collectives.
-// Registration is only needed when not using cudaGraphs. Remove this function
-// when cudagraphs + nccl is enabled.
-// See
+// Registers buffers allocated in collective memory (see ncclMemAlloc) with a
+// communicator to enable zero-copy collectives.
+//
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-Status MaybeRegisterBuffers(int device_ordinal,
+Status MaybeRegisterBuffers(NcclApi* nccl_api, int device_ordinal,
                             const std::vector<DeviceBufferPair>& buffers,
-                            ncclComm_t comm);
+                            NcclApi::NcclCommHandle comm);
 
 }  // namespace gpu
 }  // namespace xla

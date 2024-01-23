@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -105,7 +105,7 @@ absl::Status FusionInstructionMerger::FuseIntoAllUsers(
     HloInstruction* consumer = user;
     if (consumer->opcode() != HloOpcode::kFusion) {
       consumer = computation_->AddInstruction(HloInstruction::CreateFusion(
-          user->shape(), ChooseFusionKind(*user), user));
+          user->shape(), ChooseFusionKind(*producer, *user), user));
       TF_CHECK_OK(computation_->ReplaceInstruction(user, consumer));
     }
 

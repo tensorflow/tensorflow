@@ -25,6 +25,7 @@ message OneDnnMatMulConfig {
     TANH = 3;
     GELU_ERF = 4;
     GELU_TANH = 5;
+    BINARY_ADD = 6;
   }
   repeated FusionKind fused_ops = 3;
   bool bias_broadcast = 4;

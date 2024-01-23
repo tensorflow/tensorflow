@@ -109,6 +109,21 @@ def UnwrapXlaCallModuleOpPass : Pass<"stablehlo-unwrap-xla-call-module-op", "Mod
   let dependentDialects = ["TF::TensorFlowDialect"];
 }
 
+def ConvertFuncToBfloat16Pass : Pass<"stablehlo-convert-func-to-bfloat16", "mlir::func::FuncOp"> {
+  let summary = "Convert a StableHLO function to bfloat16";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
+
+def ConvertXlaCallModuleOpToBfloat16Pass : Pass<"stablehlo-convert-xla-call-module-op-to-bfloat16", "mlir::func::FuncOp"> {
+  let summary = "Convert serialized XlaCallModuleOp to bfloat16";
+  let dependentDialects = [
+    "TF::TensorFlowDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::shape::ShapeDialect",
+    "mlir::stablehlo::StablehloDialect",
+  ];
+}
+
 def PopulateShapePass : Pass<"populate-shape", "ModuleOp"> {
   let summary = "Populate output shape with known information for CustomAggregatorOp and XlaCallModuleOp.";
   let dependentDialects = ["TF::TensorFlowDialect"];

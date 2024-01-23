@@ -179,6 +179,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           out = array_ops.concat([out, ones], 0)
         elif self.same_scale_op == 'gather':
           out = array_ops.gather(out, indices=[0], axis=0)
+        elif self.same_scale_op == 'max_pool':
+          out = nn_ops.max_pool(out, ksize=3, strides=1, padding='SAME')
         elif self.same_scale_op == 'pad':
           paddings = array_ops.ones(
               (array_ops.rank(out), 2), dtype=dtypes.int32
@@ -194,12 +196,8 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
           ones = array_ops.ones_like(out)
           out = math_ops.select(condition, out, ones)
         elif self.same_scale_op == 'slice':
-          begin = array_ops.zeros(
-              (array_ops.rank(out)), dtype=dtypes.int32
-          )
-          size = array_ops.ones(
-              (array_ops.rank(out)), dtype=dtypes.int32
-          )
+          begin = array_ops.zeros((array_ops.rank(out)), dtype=dtypes.int32)
+          size = array_ops.ones((array_ops.rank(out)), dtype=dtypes.int32)
           out = array_ops.slice(out, begin, size)
         elif self.same_scale_op == 'transpose':
           out = array_ops.transpose(out)

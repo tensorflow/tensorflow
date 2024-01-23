@@ -272,6 +272,7 @@ Status DataServiceDispatcherImpl::Start() {
 
 void DataServiceDispatcherImpl::Stop() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<SplitProvider*> split_providers;
+  std::vector<SnapshotManager*> snapshot_managers;
   {
     mutex_lock l(mu_);
     cancelled_ = true;
@@ -281,6 +282,10 @@ void DataServiceDispatcherImpl::Stop() TF_LOCKS_EXCLUDED(mu_) {
         split_providers.push_back(split_provider.get());
       }
     }
+
+    for (const auto& [path, snapshot_manager] : snapshots_) {
+      snapshot_managers.push_back(snapshot_manager.get());
+    }
   }
   // Cancels split providers without holding `mu_` as cancellation may require
   // the split provider's lock. Waiting for the split provider's lock while
@@ -288,6 +293,10 @@ void DataServiceDispatcherImpl::Stop() TF_LOCKS_EXCLUDED(mu_) {
   // provider is blocked waiting for some resources.
   for (SplitProvider* split_provider : split_providers) {
     split_provider->Cancel();
+  }
+
+  for (SnapshotManager* snapshot_manager : snapshot_managers) {
+    snapshot_manager->Cancel();
   }
 }
 

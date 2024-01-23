@@ -316,14 +316,16 @@ class DistributedSaveLoadTest(
             dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
     dataset = load_op._load_with_retry(snapshot_dir.full_path)
-    self.assertDatasetProduces(dataset, list(range(num_elements)))
+    self.assertDatasetProduces(
+        dataset, list(range(num_elements)), assert_items_equal=True)
 
     # After removing the dataset_spec file, the loaded dataset should produce
     # the same output.
     os.remove(os.path.join(
         snapshot_dir.full_path, dataset_ops.DATASET_SPEC_FILENAME))
     dataset = load_op._load_with_retry(snapshot_dir.full_path)
-    self.assertDatasetProduces(dataset, list(range(num_elements)))
+    self.assertDatasetProduces(
+        dataset, list(range(num_elements)), assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def test_snapshot_does_not_exist(self):
@@ -348,12 +350,15 @@ class DistributedSaveLoadTest(
     dataset = load_op._ListSnapshotChunksDataset(snapshot_dir.full_path)
     if num_repetitions != 1:
       dataset = dataset.repeat(num_repetitions)
-
     while self.evaluate(dataset.cardinality()) == dataset_ops.UNKNOWN:
       time.sleep(.1)
-    expected = (
-        dataset_ops.INFINITE if num_repetitions is None else num_repetitions)
-    self.assertEqual(self.evaluate(dataset.cardinality()), expected)
+
+    num_chunks = len(os.listdir(os.path.join(snapshot_dir.full_path, "chunks")))
+    expected_cardinality = (
+        dataset_ops.INFINITE
+        if num_repetitions is None
+        else num_chunks * num_repetitions)
+    self.assertEqual(self.evaluate(dataset.cardinality()), expected_cardinality)
 
 
 class SaveLoadCheckpointTest(

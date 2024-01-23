@@ -143,8 +143,9 @@ FailureOr<T> TryCast(Operation *op, const StringRef name) {
   if (cast_op) {
     return cast_op;
   } else {
-    llvm::dbgs() << "Failed to match " << name << " (" << T::getOperationName()
-                 << ").\n";
+    DEBUG_WITH_TYPE("mlir-quant-attrs-and-constraints",
+                    llvm::dbgs() << "Failed to match " << name << " ("
+                                 << T::getOperationName() << ").\n");
     return failure();
   }
 }

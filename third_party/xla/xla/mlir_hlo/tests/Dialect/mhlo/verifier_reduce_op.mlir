@@ -94,6 +94,35 @@ func.func @reduce_mix_rank_and_unranked(%arg0: tensor<4x4xf32>, %arg1: tensor<*x
   func.return %0#0, %0#1 : tensor<4xf32>, tensor<*xf32>
 }
 
+// -----
+
+// CHECK-LABEL: func @reduce_with_promotable_types
+func.func @reduce_with_promotable_types(%arg0: tensor<4x4xf32>, %arg1 : tensor<f32>)
+    -> (tensor<4xf64>) {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+
+  ^bb0(%arg2: tensor<f64>, %arg3: tensor<f64> ):
+    %1 = "mhlo.add"(%arg2, %arg3) : (tensor<f64>, tensor<f64>) -> tensor<f64>
+    "mhlo.return"(%1) : (tensor<f64>) -> ()
+
+  }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<f32>) -> tensor<4xf64>
+
+  func.return %0: tensor<4xf64>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_with_promotable_quantized_types
+func.func @reduce_with_promotable_quantized_types(%arg0: tensor<4x4x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+  %arg1: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+  %0 = mhlo.reduce(%arg0 init: %arg1) across dimensions = [0] : (tensor<4x4x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>>
+  reducer(%arg2: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %arg3: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>)  {
+    %1 = mhlo.add %arg2, %arg3 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+    mhlo.return %1 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+  }
+  return %0 : tensor<4x!quant.uniform<i32:f32, 2.000000e+00:15>>
+}
+
 // Next, we have the invalid testcases.
 
 // -----

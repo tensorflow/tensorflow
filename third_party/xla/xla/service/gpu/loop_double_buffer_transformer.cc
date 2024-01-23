@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,11 +54,8 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
   // have the same unique channel id.
   absl::flat_hash_map<int64_t, int64_t> old_to_new_channel_id_map;
   absl::flat_hash_map<int64_t, HloComputation*> channel_id_comp_map;
-  if (HloAsyncInstruction::ClassOf(new_instr) &&
-      hlo_query::IsCollectiveCommunicationOp(
-          DynCast<HloAsyncInstruction>(new_instr)
-              ->async_wrapped_instruction()
-              ->opcode())) {
+  if (new_instr->IsAsynchronous() && hlo_query::IsCollectiveCommunicationOp(
+                                         new_instr->async_wrapped_opcode())) {
     HloInstruction* wrapped_instr =
         DynCast<HloAsyncInstruction>(new_instr)->async_wrapped_instruction();
     int64_t old_channel_id = *wrapped_instr->channel_id();
@@ -80,7 +77,7 @@ void SetChannelIdForNewCollective(HloInstruction* new_instr,
       channel_id_comp_map[new_channel_id]->AddAsyncStart(new_instr);
     }
   } else if (hlo_query::IsCollectiveCommunicationOp(new_instr->opcode()) ||
-             hlo_query::IsAsyncCollectiveStartOp(new_instr->opcode())) {
+             hlo_query::IsAsyncCollectiveStartOp(new_instr)) {
     new_instr->set_channel_id(hlo_query::NextChannelId(*module));
   }
 }

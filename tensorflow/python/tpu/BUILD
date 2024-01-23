@@ -97,6 +97,7 @@ tpu_py_strict_test(
     srcs = ["async_checkpoint_test.py"],
     disable_experimental = True,
     disable_mlir_bridge = False,
+    tags = ["no_oss"],
     deps = [
         ":async_checkpoint",
         ":tpu_lib",
@@ -208,7 +209,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":feature_column_v2",
-        ":tpu_embedding",
         ":tpu_embedding_for_serving",
         ":tpu_embedding_v1",
         ":tpu_embedding_v2",
@@ -291,7 +291,6 @@ pytype_strict_library(
     srcs = [
         "__init__.py",
         "bfloat16.py",
-        "session_support.py",
         "tpu_optimizer.py",
         "tpu_strategy_util.py",
         "training_loop.py",
@@ -545,33 +544,6 @@ tf_py_strict_test(
     deps = [
         ":topology",
         "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-pytype_strict_library(
-    name = "tpu_embedding",
-    srcs = [
-        "tpu_embedding.py",
-        "tpu_embedding_gradient.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":tpu_system_metadata",
-        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_py",
-        "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_py",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:control_flow_ops",
-        "//tensorflow/python/ops:init_ops",
-        "//tensorflow/python/ops:math_ops",
-        "//tensorflow/python/ops:partitioned_variables",
-        "//tensorflow/python/ops:state_ops",
-        "//tensorflow/python/ops:variable_scope",
-        "//tensorflow/python/ops:variables",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/tpu/ops",
-        "//tensorflow/python/util:tf_export",
     ],
 )
 

@@ -102,8 +102,10 @@ absl::Status FindAndLoadTpuLibrary() {
 
   // Check if libtpu pip package is installed along with tf whl. In that case,
   // libtpu should be in the path `python3.x/site_packages/libtpu/libtpu.so`.
+  std::filesystem::path canonicalPath = std::filesystem::canonical(so_name);
   std::filesystem::path whl_libtpu_path =
-      std::filesystem::path(so_name).parent_path() / "libtpu/libtpu.so";
+      std::filesystem::path(canonicalPath).parent_path().parent_path() /
+      "libtpu/libtpu.so";
 
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path = nullptr;

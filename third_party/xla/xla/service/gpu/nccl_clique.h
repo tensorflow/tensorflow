@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/gpu/nccl_types.h"
 #include "xla/service/lockable.h"
 #include "tsl/lib/gtl/int_type.h"
 
@@ -55,10 +55,10 @@ namespace xla::gpu {
 // Returns true if the NCCL config is global (NCCL_COMM_ID env variable is set).
 bool IsGlobalNcclConfig();
 
-// Returns a unique id callback passed as an argument if it's not null or a
-// default callback to get NCCL id if we are running in local mode.
-absl::StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
-    const NcclUniqueIdCallback* unique_id_callback,  // may be null
+// Returns a clique id callback passed as an argument if it's not null or a
+// default callback to get create a clique id if we are running in local mode.
+absl::StatusOr<const NcclCliqueIdCallback*> GetNcclCliqueIdCallback(
+    const NcclCliqueIdCallback* clique_id_callback,  // may be null
     bool is_local);
 
 //===----------------------------------------------------------------------===//
@@ -67,15 +67,15 @@ absl::StatusOr<const NcclUniqueIdCallback*> GetNcclUniqueIdCallback(
 
 TSL_LIB_GTL_DEFINE_INT_TYPE(OpId, int64_t);
 
-struct NcclComm : public Lockable<NcclCommHandle> {
-  explicit NcclComm(NcclCommHandle comm) : Lockable(comm) {}
+struct NcclComm : public Lockable<NcclApi::NcclCommHandle> {
+  explicit NcclComm(NcclApi::NcclCommHandle comm) : Lockable(comm) {}
 };
 
 // Acquires an exclusive access to NCCL communicator owned by a NCCL clique.
 absl::StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int32_t rank,
+    const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     int64_t stream_id, bool enable_clique_optimization);
 
 }  // namespace xla::gpu

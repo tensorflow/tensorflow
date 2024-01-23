@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_NCCL_CLIQUE_KEY_H_
 #define XLA_SERVICE_GPU_NCCL_CLIQUE_KEY_H_
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -81,6 +83,7 @@ class NcclCliqueKey {
   friend H AbslHashValue(H h, const NcclCliqueKey& k);
 
   friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
+  friend bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
  private:
   const std::vector<GlobalDeviceId> devices_;
@@ -93,9 +96,10 @@ H AbslHashValue(H h, const NcclCliqueKey& k) {
 }
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
+bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b);
 
 //===----------------------------------------------------------------------===//
-// NcclUniqueId
+// NcclCliqueId
 //===----------------------------------------------------------------------===//
 
 // All collective cliques have a globally unique ID (128 bytes long for NCCL)
@@ -105,9 +109,34 @@ bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b);
 // host collective operations XLA automatically generates a unique id for local
 // cliques (cliques consisting of devices visible from a process).
 
+// A globally unique collective clique identifier.
+class NcclCliqueId {
+ public:
+  static constexpr int32_t kSize = 128;
+
+  static absl::StatusOr<NcclCliqueId> FromString(std::string_view str);
+
+  NcclCliqueId();
+  explicit NcclCliqueId(char bytes[kSize]);
+
+  absl::Span<const char> data() const;
+  std::string ToString() const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const NcclCliqueId& id);
+
+ private:
+  std::array<char, kSize> data_;
+};
+
+template <typename H>
+H AbslHashValue(H h, const NcclCliqueId& id) {
+  return H::combine(std::move(h), id.data());
+}
+
 // A callback to get a unique clique id (see `ncclUniqueId` documentation).
-using NcclUniqueIdCallback =  // NOLINT
-    std::function<absl::StatusOr<std::string>(const NcclCliqueKey&)>;
+using NcclCliqueIdCallback =  // NOLINT
+    std::function<absl::StatusOr<NcclCliqueId>(const NcclCliqueKey&)>;
 
 }  // namespace xla::gpu
 

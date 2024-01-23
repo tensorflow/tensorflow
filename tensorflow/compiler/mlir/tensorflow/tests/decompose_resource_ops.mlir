@@ -495,9 +495,9 @@ func.func @decompose_resource_gather_op(%indices : tensor<?xi32>) -> tensor<*xi3
     %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
 
     // CHECK-DAG: [[READVAR:%.+]] = "tf.ReadVariableOp"([[VAR]])
-    // CHECK: [[GATHER:%.+]] = "tf.GatherV2"([[READVAR]], [[INDEX]], [[ZERO]]) <{batch_dims = 0 : i64}> : (tensor<*xi32>, tensor<?xi32>, tensor<i64>) -> tensor<*xi32>
+    // CHECK: [[GATHER:%.+]] = "tf.GatherV2"([[READVAR]], [[INDEX]], [[ZERO]]) <{batch_dims = 0 : i64}> {_xla_outside_compilation = "0"} : (tensor<*xi32>, tensor<?xi32>, tensor<i64>) -> tensor<*xi32>
     // CHECK: return [[GATHER]]
-    %1 = "tf.ResourceGather"(%resource, %indices) : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<?xi32>) -> (tensor<*xi32>)
+    %1 = "tf.ResourceGather"(%resource, %indices) {_xla_outside_compilation = "0"} : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<?xi32>) -> (tensor<*xi32>)
     tf_device.return %1 : tensor<*xi32>
   }) : () -> (tensor<*xi32>)
   func.return %0: tensor<*xi32>

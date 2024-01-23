@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -429,7 +429,7 @@ Service::ExecuteParallelAndRegisterResult(
   for (int64_t i = 0, end = streams.size(); i < end; ++i) {
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
-      return InternalError("failed to complete execution for stream %d: %s", i,
+      return Internal("failed to complete execution for stream %d: %s", i,
                            block_status.message());
     }
   }

@@ -1,5 +1,4 @@
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -7,25 +6,19 @@ package(
     licenses = ["notice"],
 )
 
-glob_lit_tests(
+lit_test_suite(
     name = "all_tests",
-    data = [":test_utilities"],
-    driver = "@llvm-project//mlir:run_lit.sh",
-    test_file_exts = [
-        "mlir",
-        "hlotxt",
-    ],
-)
-
-# Bundle together all of the test utilities that are used by tests.
-# This intentionally does not pull-in the top-level tf-opt to reduce the
-# dependencies.
-filegroup(
-    name = "test_utilities",
-    testonly = True,
-    data = [
+    srcs = enforce_glob(
+        [
+            "legalize-xla-framework.mlir",
+            "outline-with-xla-framework.mlir",
+            "xla-framework.mlir",
+        ],
+        include = ["*.mlir"],
+    ),
+    cfg = "//xla:lit.cfg.py",
+    tools = [
         "//xla/translate/mhlo_to_lhlo_with_xla:xla-translate-opt",
         "@llvm-project//llvm:FileCheck",
     ],
-    visibility = ["//visibility:public"],
 )

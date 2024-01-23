@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,8 +60,8 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
     bool should_contracting_be_fastest) {
   HloInstruction* transpose_arg = fmha->mutable_operand(operand_index);
   HloInstruction* transpose_arg_operand = transpose_arg->mutable_operand(0);
-  GpuBackendConfig gpu_config;
-  TF_ASSIGN_OR_RETURN(gpu_config, fmha->backend_config<GpuBackendConfig>());
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      fmha->backend_config<GpuBackendConfig>());
   CudnnfMHABackendConfig config = gpu_config.cudnn_fmha_backend_config();
   CudnnfMHABackendConfig& new_fmha_config =
       *gpu_config.mutable_cudnn_fmha_backend_config();
@@ -98,12 +98,15 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
         new_bmm_dot_dims = config.bmm2_grad_gemm2_dot_dimension_numbers();
         break;
       default:
-        return InternalError("Invalid operand index.");
+        return Internal("Invalid operand index.");
     }
   }
   absl::Span<const int64_t> checked_dims;
   std::vector<int64_t> checked_dims_vec;
 
+  // `should_contracting_be_fastest` means if contracting dim is the head
+  // dim. cuDNN requires head dim to be the fastest dim. fwd bmm1 and bwd
+  // bmm2grad1 should set this value to true.
   if (should_contracting_be_fastest) {
     checked_dims = is_lhs ? new_bmm_dot_dims.lhs_contracting_dimensions()
                           : new_bmm_dot_dims.rhs_contracting_dimensions();
@@ -127,21 +130,19 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
     auto itr =
         std::find(inverse_perm.begin(), inverse_perm.end(), checked_dims[i]);
     if (itr == inverse_perm.end()) {
-      return InternalError("Invalid inverse perm");
+      return Internal("Invalid inverse perm");
     }
     new_bmm_checked_dims[i] = std::distance(inverse_perm.begin(), itr);
   }
   // We want to make sure that making the argument to transpose, an input to
-  // fmha, doesn't break cuDNN constraint that the checked dimensions of
-  // corresponding operand of BMM has the fastest moving dimension.
+  // fmha, doesn't break cuDNN constraint that the head dim of
+  // corresponding operand of BMM is the fastest moving dimension.
   // One exception is the forward activation which doesn't have the constraint
-  // that the fastest dim has to be 64.
+  // since it does not have head dim.
   absl::Span<const int64_t> minor_to_major_bmm =
       transpose_arg_operand->shape().layout().minor_to_major();
   if ((minor_to_major_bmm[0] != new_bmm_checked_dims[0]) &&
-      ((transpose_arg_operand->shape().dimensions().at(
-            new_bmm_checked_dims[0]) == 64) ||
-       (IsBwdCustomCallTofMHA(*fmha) && operand_index == 3))) {
+      !(IsBwdCustomCallTofMHA(*fmha) && operand_index == 3)) {
     return false;
   }
   if (should_contracting_be_fastest) {
@@ -163,7 +164,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
     auto itr =
         std::find(inverse_perm.begin(), inverse_perm.end(), batch_dims[i]);
     if (itr == inverse_perm.end()) {
-      return InternalError("Invalid inverse perm");
+      return Internal("Invalid inverse perm");
     }
     new_bmm_batch_dims[i] = std::distance(inverse_perm.begin(), itr);
   }
@@ -200,8 +201,10 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
   }
   if (IsFwdCustomCallTofMHA(*fmha)) {
     if (operand_index == 0 || operand_index == 1) {
+      // Q or K
       *new_fmha_config.mutable_bmm1_dot_dimension_numbers() = new_bmm_dot_dims;
     } else {
+      // V
       *new_fmha_config.mutable_bmm2_dot_dimension_numbers() = new_bmm_dot_dims;
     }
   } else {
@@ -241,7 +244,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
                              transpose_permutation.end(),
                              bmm2_grad_gemm1_contracting_dims[0]);
         if (itr == transpose_permutation.end()) {
-          return InternalError(
+          return Internal(
               "bmm2 gradident gemm1 contracting dimension not found.");
         }
         int64_t index = std::distance(transpose_permutation.begin(), itr);
@@ -269,7 +272,7 @@ absl::StatusOr<bool> FuseArgPrologueTransposeWithcuDNNFMHA(
         break;
       }
       default:
-        return InternalError("Invalid operand index.");
+        return Internal("Invalid operand index.");
     }
   }
 
@@ -456,9 +459,18 @@ absl::StatusOr<bool> FusePrologueTransposeWithcuDNNFMHA(HloComputation* comp) {
       }
       // D_output tensor in backward graph is lhs with constraint on
       // contracting dim.
-      TF_ASSIGN_OR_RETURN(changed, FuseArgPrologueTransposeWithcuDNNFMHA(
-                                       fmha, 4, true /*is_lhs*/,
-                                       true /*should_contracting_be_fastest*/));
+      // make sure we dont change layout of dO in flash attention case as dO
+      // should have the same layout of O
+      TF_ASSIGN_OR_RETURN(auto gpu_config,
+                          fmha->backend_config<GpuBackendConfig>());
+      const CudnnfMHABackendConfig config =
+          gpu_config.cudnn_fmha_backend_config();
+      if (!config.is_flash_attention()) {
+        TF_ASSIGN_OR_RETURN(changed,
+                            FuseArgPrologueTransposeWithcuDNNFMHA(
+                                fmha, 4, true /*is_lhs=*/,
+                                true /*should_contracting_be_fastest=*/));
+      }
 
       if (changed && VLOG_IS_ON(2)) {
         VLOG(2) << "After CudnnFusedMHATransposeFusion Arg 4: \n"
@@ -490,16 +502,42 @@ Calling this function with 'result' shape as the input shape and the inverse
 perm as the permutation will generate an output shape whose dimensions match
 'FMHA_out' dimensions but the physical layout is equivalent to 'result'. This is
 exactly what we want.
+
+FMHA output should have exactly one gte instruction for a tuple index
+so we can safely fuse the transpose following that gte to FMHA
+
+FMHA_out = gte(FMHA, index=0)
+FMHA_out_t = transpose(FMHA_out)
+use(FMHA_out_t)
+
+after fusion:
+
+FMHA_out_t = gte(FMHA, index=0)
+use(FMHA_out_t)
 */
 
 absl::StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
   bool changed = false;
+
+  auto only_one_gte_with_spec_index = [](const HloInstruction* instr,
+                                         int64_t index) {
+    int count = 0;
+    for (auto user : instr->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          user->tuple_index() == index) {
+        count += 1;
+      }
+    }
+    return count == 1;
+  };
+
   for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
     HloInstruction* fmha;
     HloInstruction* transpose;
     HloInstruction* gte;
     auto fwd_tuple_elem =
-        m::GetTupleElement(m::Op(&fmha).WithPredicate(IsFwdFMHACustomCall), 0)
+        m::GetTupleElement(&gte,
+                           m::Op(&fmha).WithPredicate(IsFwdFMHACustomCall), 0)
             .WithOneUser();
     // Note that we don't match any specific tuple index in matcher for
     // backward.
@@ -511,6 +549,10 @@ absl::StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
     auto bwd_pattern = m::Transpose(&transpose, bwd_tuple_elem);
 
     if (Match(instr, fwd_pattern)) {
+      // check if only one gte with such index exist
+      int64_t tuple_index = gte->tuple_index();
+      if (!only_one_gte_with_spec_index(fmha, tuple_index)) continue;
+
       std::vector<int64_t> inverse_perm =
           InversePermutation(transpose->dimensions());
 
@@ -559,9 +601,12 @@ absl::StatusOr<bool> FuseEpilogueTransposeWithcuDNNFMHA(HloComputation* comp) {
       }
       changed |= true;
     } else if (Match(instr, bwd_pattern)) {
+      // check if only one gte with such index exist
+      int64_t operand_tuple_idx = gte->tuple_index();
+      if (!only_one_gte_with_spec_index(fmha, operand_tuple_idx)) continue;
+
       std::vector<int64_t> inverse_perm =
           InversePermutation(transpose->dimensions());
-      int64_t operand_tuple_idx = gte->tuple_index();
 
       auto expected_fmha_shape =
           ShapeUtil::PermuteDimensions(inverse_perm, transpose->shape());

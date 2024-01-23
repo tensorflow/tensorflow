@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -241,7 +241,7 @@ absl::Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
   if (launch_ok) {
     return absl::OkStatus();
   }
-  return InternalError("Unable to launch fft with type %s",
+  return Internal("Unable to launch fft with type %s",
                        FftTypeToString(fft_type));
 }
 

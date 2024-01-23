@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -215,7 +215,7 @@ absl::Status RunTriangularSolve(
   }
 
   if (!launch_ok) {
-    return InternalError("Unable to launch triangular solve");
+    return Internal("Unable to launch triangular solve");
   }
   return absl::OkStatus();
 }

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_schedule_postprocessing.h"
 
-#include <algorithm>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -62,8 +61,7 @@ bool MayInvokeCustomCall(
 // Returns true if this is an asynchronous collective start operation, excluding
 // P2P operations.
 absl::StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
-  HloOpcode opcode = hlo->opcode();
-  if (!hlo_query::IsAsyncCollectiveStartOp(opcode,
+  if (!hlo_query::IsAsyncCollectiveStartOp(hlo,
                                            /*include_send_recv=*/false)) {
     return false;
   }
@@ -77,8 +75,7 @@ absl::StatusOr<bool> IsRelevantAsynchronousStart(const HloInstruction* hlo) {
 // Returns true if this is a collective done operation, excluding P2P
 // operations.
 absl::StatusOr<bool> IsRelevantAsynchronousDone(const HloInstruction* hlo) {
-  HloOpcode opcode = hlo->opcode();
-  return hlo_query::IsAsyncCollectiveDoneOp(opcode,
+  return hlo_query::IsAsyncCollectiveDoneOp(hlo,
                                             /*include_send_recv=*/false);
 }
 

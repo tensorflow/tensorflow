@@ -122,7 +122,6 @@ REQUIRED_PACKAGES = [
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
     'tb-nightly ~= 2.16.0.a',
-    'tf-estimator-nightly ~= 2.14.0.dev',
     'keras-nightly ~= 3.0.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
@@ -201,10 +200,6 @@ CONSOLE_SCRIPTS = [
     # We exclude it anyway if building tf_nightly.
     standard_or_nightly('tensorboard = tensorboard.main:run_main', None),
     'tf_upgrade_v2 = tensorflow.tools.compatibility.tf_upgrade_v2_main:main',
-    (
-        'estimator_ckpt_converter ='
-        ' tensorflow_estimator.python.estimator.tools.checkpoint_converter:main'
-    ),
 ]
 CONSOLE_SCRIPTS = [s for s in CONSOLE_SCRIPTS if s is not None]
 # pylint: enable=line-too-long

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     BufferAllocation::Slice source_slice = source_slices_[index].slice;
     if (!source_slice.allocation())
-      return InternalError("outfeed source missing buffer allocation");
+      return Internal("outfeed source missing buffer allocation");
     se::DeviceMemoryBase data_address =
         buffer_allocations.GetDeviceAddress(source_slice);
 
@@ -95,7 +95,7 @@ absl::Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
-    return InternalError("Failed to complete data transfer on stream %p: %s",
+    return Internal("Failed to complete data transfer on stream %p: %s",
                          &stream, block_status.message());
   }
 

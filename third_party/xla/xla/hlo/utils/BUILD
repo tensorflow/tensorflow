@@ -127,6 +127,7 @@ xla_cc_test(
     ],
     deps = [
         ":hlo_sharding_util",
+        "//xla:array",
         "//xla:shape_util",
         "//xla:test",
         "//xla:util",

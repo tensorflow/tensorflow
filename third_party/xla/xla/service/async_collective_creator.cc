@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -176,7 +176,7 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
               instruction, config_.get_context_shapes(instruction));
           break;
         default:
-          return InternalError("Unexpected opcode %s",
+          return Internal("Unexpected opcode %s",
                                HloOpcodeString(instruction->opcode()));
       }
       TF_RETURN_IF_ERROR(async_pair.status());
@@ -187,12 +187,8 @@ StatusOr<bool> AsyncCollectiveCreator::Run(
       }
 
       // Update control dependencies if present.
-      for (HloInstruction* pred : instruction->control_predecessors()) {
-        TF_RETURN_IF_ERROR(pred->AddControlDependencyTo(async_pair->start));
-      }
-      for (HloInstruction* succ : instruction->control_successors()) {
-        TF_RETURN_IF_ERROR(async_pair->done->AddControlDependencyTo(succ));
-      }
+      TF_RETURN_IF_ERROR(instruction->CopyAllControlDepsTo(async_pair->start,
+                                                           async_pair->done));
       TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
 
       TF_RETURN_WITH_CONTEXT_IF_ERROR(

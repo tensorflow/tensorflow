@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -109,7 +109,7 @@ absl::Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig* config,
     config->algorithm = algorithms[best_algorithm.gemm().algorithm()];
     return absl::OkStatus();
   } else {
-    return InternalError("Runtime autotuning failed to select an algorithm");
+    return Internal("Runtime autotuning failed to select an algorithm");
   }
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

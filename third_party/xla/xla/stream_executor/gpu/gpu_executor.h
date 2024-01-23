@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ limitations under the License.
 #include <optional>
 #include <set>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 
 #include "absl/base/thread_annotations.h"
@@ -35,10 +34,10 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/module_spec.h"
@@ -46,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "tsl/platform/fingerprint.h"
 
 namespace stream_executor {
 
@@ -131,13 +129,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   absl::Status Submit(Stream* stream,
                       const CommandBuffer& command_buffer) override;
 
-  // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
                          uint64_t registers_per_thread,
                          uint64_t shared_memory_per_block,
                          const ThreadDim& thread_dims, GpuFunctionHandle func);
 
-  // (supported on CUDA only)
   int CompareOccupancy(int* initial_blocks,
                        const DeviceDescription& device_description,
                        uint64_t registers_per_thread,
@@ -157,11 +153,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   }
 
   absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) override {
-    return GpuDriver::CollectiveMemoryAllocate(context_, size);
+    return GpuCollectives::CollectiveMemoryAllocate(context_, size);
   }
 
   absl::Status CollectiveMemoryDeallocate(void* location) override {
-    return GpuDriver::CollectiveMemoryDeallocate(context_, location);
+    return GpuCollectives::CollectiveMemoryDeallocate(context_, location);
   }
 
   // CUDA allocation/registration functions are necessary because the driver

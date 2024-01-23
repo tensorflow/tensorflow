@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ absl::Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Note: Convolution has a tuple buffer as an output, but we don't need to
   // populate it as no one should be reading from the tuple directly.
   if (!params.stream->ok()) {
-    return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
+    return Internal("ConvolutionThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }
@@ -115,7 +115,7 @@ absl::Status ConvolutionReorderThunk::ExecuteOnStream(
       std::move(bias_output)));
 
   if (!params.stream->ok()) {
-    return InternalError("ConvolutionReorderThunk::ExecuteOnStream failed.");
+    return Internal("ConvolutionReorderThunk::ExecuteOnStream failed.");
   }
   return absl::OkStatus();
 }

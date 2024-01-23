@@ -874,6 +874,7 @@ tf_py_strict_test(
         ":loader",
         ":pywrap_saved_model",
         ":save",
+        "//tensorflow/python/checkpoint/sharding:sharding_policies",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",

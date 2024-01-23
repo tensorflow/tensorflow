@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/stream_executor/dnn.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
@@ -30,7 +31,16 @@ namespace xla {
 
 Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
     : device_description(s->GetDeviceDescription().ToGpuProto()),
-      platform_name(s->platform()->Name()) {}
+      platform_name(s->platform()->Name()),
+      device_description_str(s->GetDeviceDescription().name()) {
+  se::dnn::DnnSupport* dnn = s->AsDnn();
+  if (dnn != nullptr) {
+    absl::StatusOr<se::dnn::VersionInfo> dnn_version = dnn->GetVersion();
+    if (dnn_version.ok()) {
+      dnn_version_info = *dnn_version;
+    }
+  }
+}
 
 Compiler::TargetConfig::TargetConfig(const se::GpuTargetConfigProto& proto)
     : device_description({proto.gpu_device_info()}),

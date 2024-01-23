@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -170,7 +170,7 @@ TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
   SendCallback send_callback = {
       /*channel_id=*/1,
       [&](const PjRtTransferMetadata&, PjRtChunk, int64_t, bool) {
-        return InternalError("Uh-oh, can send chunk to host");
+        return Internal("Uh-oh, can send chunk to host");
       }};
 
   // No-op Recv handler.
@@ -493,7 +493,7 @@ TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
         ++got_callback_count;
       });
     } else {
-      absl::Status error = InternalError("error %d", i);
+      absl::Status error = Internal("error %d", i);
       transfer_manager->SetBufferError(i, error);
       buffer->GetReadyFuture().OnReady(
           [error, &mu, &got_callback_count](absl::Status s) {

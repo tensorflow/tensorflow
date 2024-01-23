@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,8 +49,8 @@ class CommandBufferSchedulingTest : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() override {
     auto debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::NCCL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONALS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
     debug_options.set_xla_gpu_graph_min_graph_size(2);
     return debug_options;
   }
@@ -200,7 +200,7 @@ TEST_F(CommandBufferSchedulingTest, AllReduceStartFollowedByDone) {
       %a = s32[4] parameter(0)
       %start = s32[4]{0} all-reduce-start(s32[4]{0} %a),
         replica_groups={{0,1}}, to_apply=%add,
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
       ROOT %done = s32[4]{0} all-reduce-done(s32[4]{0} %start)
     })";
 
@@ -234,7 +234,7 @@ TEST_F(CommandBufferSchedulingTest, AllGatherStartFollowedByDone) {
 
       %start = (s32[2]{0}, s32[4]{0}) all-gather-start(%a),
         channel_id=555, replica_groups={{0,1}}, dimensions={0},
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
 
       ROOT %done = s32[4]{0} all-gather-done(%start)
     })";
@@ -275,7 +275,7 @@ TEST_F(CommandBufferSchedulingTest, ReduceScatterStartFollowedByDone) {
 
       %start = ((s32[4]{0}), s32[2]{0}) reduce-scatter-start(%a),
         channel_id=555, replica_groups={{0,1}}, dimensions={0}, to_apply=add,
-        backend_config={"is_sync":true,"no_parallel_custom_call":false}
+        backend_config={"collective_backend_config": {"is_sync":true,"no_parallel_custom_call":false}}
 
       ROOT %done = s32[2]{0} reduce-scatter-done(%start)
     })";

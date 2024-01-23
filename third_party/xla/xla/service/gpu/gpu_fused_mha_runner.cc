@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -134,7 +134,7 @@ absl::Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
           scratch_memory, activation_buffer);
       break;
     default:
-      return InternalError("Invalid cuDNN fMHA kind");
+      return Internal("Invalid cuDNN fMHA kind");
   }
 
   if (!run_status.ok()) {
@@ -142,9 +142,9 @@ absl::Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
   }
 
   if (!stream->ok()) {
-    return InternalError("Unable to launch FMHA with type %s and algorithm %s",
-                         CudnnfMHAKindToString(params.config->kind),
-                         algorithm.ToString());
+    return Internal("Unable to launch FMHA with type %s and algorithm %s",
+                    CudnnfMHAKindToString(params.config->kind),
+                    algorithm.ToString());
   }
 
   return absl::OkStatus();
@@ -352,7 +352,7 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
           bias_buffer, scratch_memory);
       break;
     default:
-      return InternalError("Invalid cuDNN fMHA kind");
+      return Internal("Invalid cuDNN fMHA kind");
   }
 
   if (!run_status.ok()) {
@@ -360,9 +360,9 @@ absl::Status RunGpuFMHABackwardImpl(const GpufMHABackwardParams &params,
   }
 
   if (!stream->ok()) {
-    return InternalError("Unable to launch FMHA with type %s and algorithm %s",
-                         CudnnfMHAKindToString(params.config->kind),
-                         algorithm.ToString());
+    return Internal("Unable to launch FMHA with type %s and algorithm %s",
+                    CudnnfMHAKindToString(params.config->kind),
+                    algorithm.ToString());
   }
 
   return run_status;

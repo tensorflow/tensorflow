@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -194,7 +194,7 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
 
   // Check that GpuConvAlgorithmPicker successfully loaded autotune results.
-  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "\"algo_id\":\"3\""))
+  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "\"algo_id\":\"28\""))
       << serialized_aot_result;
 
   // Get a LocalClient

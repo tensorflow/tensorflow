@@ -3,7 +3,7 @@
 
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla:xla.bzl",
     "xla_cc_binary",
@@ -131,20 +131,19 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gemm_rewrite_test",
     srcs = ["gemm_rewrite_test.cc"],
+    backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = tf_gpu_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//xla:statusor",
         "//xla:test",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:gpu_plugin",
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
@@ -190,9 +189,7 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
-        "//xla:statusor",
-        "//xla/tests:hlo_test_base",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
@@ -452,6 +449,18 @@ xla_test(
 )
 
 xla_cc_test(
+    name = "concatenate_emitter_test",
+    srcs = ["concatenate_emitter_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "//xla/tests:hlo_test_base",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+xla_cc_test(
     name = "transpose_emitter_test",
     srcs = ["transpose_emitter_test.cc"],
     tags = tf_cuda_tests_tags(),
@@ -673,69 +682,76 @@ xla_cc_binary(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor/host:host_platform",
-        "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_module_loader",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Target",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/platform:rocm_rocdl_path",
         "@local_tsl//tsl/util:command_line_flags",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor/cuda:cublas_plugin",
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:rocm_platform_id",
+        "//xla/stream_executor/rocm:rocm_platform_id",  # build_cleaner: keep
         "//xla/stream_executor/rocm:rocblas_plugin",
         "//xla/stream_executor/rocm:rocm_helpers",
         "//xla/service/gpu:amdgpu_compiler_impl",
-        "@local_tsl//tsl/platform:rocm_rocdl_path",
+        "@local_tsl//tsl/platform:rocm_rocdl_path",  # build_cleaner: keep
     ]),
 )
 
-glob_lit_tests(
+lit_test_suite(
     name = "all_tests",
-    data = [":test_utilities"],
-    default_tags = tf_cuda_tests_tags() + [
-    ],
-    driver = "//xla:run_lit.sh",
-    exclude = ["execute_memzero_thunk.mlir"],
-    features = if_cuda_is_configured([
+    srcs = enforce_glob(
+        [
+            "add_preds.hlo",
+            "calling_convention.hlo",
+            "concat.hlo",
+            "constant.hlo",
+            "copy.hlo",
+            "copy_nested.hlo",
+            "dynamic_update_slice_inplace.hlo",
+            "element_wise_row_vectorization.hlo",
+            "fused_scatter.hlo",
+            "fused_slice_different_operands.hlo",
+            "fused_slice.hlo",
+            "fusion.hlo",
+            "kernel_reuse.hlo",
+            "launch_dimensions.hlo",
+            "pad_to_static.hlo",
+            "reduce_unnested.hlo",
+            "reduction_vectorization_sm_all.hlo",
+            "rng_get_and_update_state.hlo",
+            "scatter.hlo",
+            "select_and_scatter.hlo",
+            "single_instruction.hlo",
+            "slice_to_dynamic.hlo",
+            "sorting.hlo",
+            "triton_naming.hlo",
+        ],
+        include = [
+            "*.hlo",
+        ],
+    ),
+    args = if_cuda_is_configured([
         "--param=PTX=PTX",
-        "--param=SUBST_TIDX=@llvm.nvvm.read.ptx.sreg.tid.x",
-        "--param=SUBST_CTAIDX=@llvm.nvvm.read.ptx.sreg.ctaid.x",
-        "--param=SUBST_BARRIER=@llvm.nvvm.barrier0",
-        "--param=SUBST_KERNEL_ANNOTATION=''",
-        "--param=SUBST_ADDRSPACE_ANNOTATION=''",
     ]) + if_rocm_is_configured([
         "--param=PTX=GCN",
-        "--param=SUBST_TIDX=@llvm.amdgcn.workitem.id.x",
-        "--param=SUBST_CTAIDX=@llvm.amdgcn.workgroup.id.x",
-        "--param=SUBST_BARRIER=@llvm.amdgcn.s.barrier",
-        "--param=SUBST_KERNEL_ANNOTATION=amdgpu_kernel[SPACE]",
-        "--param=SUBST_ADDRSPACE_ANNOTATION='addrspace(5)[SPACE]'",
     ]),
+    cfg = "//xla:lit.cfg.py",
+    default_tags = tf_cuda_tests_tags(),
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
         "element_wise_row_vectorization.hlo": ["no_rocm"],
         "single_instruction.hlo": ["no_rocm"],
         "reduce_unnested.hlo": ["no_rocm"],
     },
-    test_file_exts = ["hlo"],
-)
-
-# Bundle together all of the test utilities that are used by tests.
-filegroup(
-    name = "test_utilities",
-    testonly = True,
-    data = [
+    tools = [
         ":hlo_to_llvm_ir",
         "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
     ],
-    visibility = ["//visibility:public"],
 )
 
 xla_cc_test(
@@ -812,10 +828,16 @@ xla_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    backend_tags = {"gpu": [
+        "requires-gpu-sm80",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    shard_count = 2,
     deps = [
         ":gpu_codegen_test",
         "//xla:array4d",

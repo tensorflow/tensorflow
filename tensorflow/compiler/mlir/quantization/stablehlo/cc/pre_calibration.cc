@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/base/nullability.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -30,17 +31,14 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 
 namespace mlir::quant::stablehlo {
-namespace {
 
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::quantization::CalibrationOptions;
 using ::tensorflow::quantization::RunPasses;
 
-}  // namespace
-
 PreCalibrationComponent::PreCalibrationComponent(
-    MLIRContext* ctx, CalibrationOptions calibration_options)
-    : ctx_(*ABSL_DIE_IF_NULL(ctx)),  // Crash OK
+    absl::Nonnull<MLIRContext*> ctx, CalibrationOptions calibration_options)
+    : ctx_(ABSL_DIE_IF_NULL(ctx)),  // Crash OK
       calibration_options_(std::move(calibration_options)) {}
 
 absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
@@ -56,7 +54,7 @@ absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
         // the StableHLO module as tf.XlaCallModule to run calibration.
         AddCallModuleSerializationPasses(pm);
       },
-      ctx_, module_op));
+      *ctx_, module_op));
   return module_op;
 }
 

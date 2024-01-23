@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -104,9 +104,6 @@ typedef struct TpuSystemInfo*(PrototypeTpuDriver_QuerySystemInfo)(
     struct TpuDriver* driver);
 
 typedef void(PrototypeTpuDriver_FreeSystemInfo)(struct TpuSystemInfo* info);
-
-// TODO(frankchn): Make this not a hard-coded constant.
-const int32_t MemoryRegion_HBM = 1;
 
 typedef int64_t(PrototypeTpuDriver_ComputeLinearizedBytesFromShape)(
     struct TpuDriver* driver, const struct TpuAllocationShape shape);

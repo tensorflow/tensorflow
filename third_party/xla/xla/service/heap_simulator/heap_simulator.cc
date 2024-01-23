@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -54,6 +54,10 @@ namespace xla {
 
 using absl::flat_hash_map;
 using absl::flat_hash_set;
+
+bool IsOdd(int x) { return (x % 2) == 1; }
+
+bool IsEven(int x) { return (x % 2) == 0; }
 
 HeapSimulator::Chunk HeapSimulator::Chunk::FromOffsetEnd(int64_t offset,
                                                          int64_t end) {
@@ -564,8 +568,11 @@ NoFragmentationStatsHeap<BufferType>::Finish() {
 
 template <typename BufferType>
 GlobalDecreasingSizeBestFitHeap<BufferType>::GlobalDecreasingSizeBestFitHeap(
-    int64_t alignment, Type type, BufferIntervalCompare buffer_interval_compare)
-    : alignment_(alignment) {
+    int64_t alignment, Type type, BufferIntervalCompare buffer_interval_compare,
+    SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type)
+    : alignment_(alignment),
+      slice_time_permutation_iteration_type_(
+          slice_time_permutation_iterator_type) {
   if (type == kTemporal) {
     buffer_interval_compare_ = GetTemporalBufferIntervalCompare();
     CHECK(buffer_interval_compare == nullptr);
@@ -591,6 +598,12 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::GetTemporalBufferIntervalCompare()
     // Sort by duration (descending), size (descending), buffer (ascending).
     return std::make_tuple(x.start - x_end, -x.size, std::cref(*x.buffer));
   });
+}
+
+template <typename BufferType>
+SliceTimePermutationIterator::Ty GlobalDecreasingSizeBestFitHeap<
+    BufferType>::slice_time_permutation_iterator_type() const {
+  return slice_time_permutation_iteration_type_;
 }
 
 template <typename BufferType>
@@ -980,6 +993,18 @@ const std::vector<int64_t>& GlobalDecreasingSizeBestFitHeap<
 }
 
 template <typename BufferType>
+std::vector<int64_t> GlobalDecreasingSizeBestFitHeap<
+    BufferType>::SlicedBufferInterval::inclusive_start_times() const {
+  std::vector<int64_t> inclusive_start_times;
+  inclusive_start_times.reserve(num_slices());
+  for (const BufferInterval& buffer_interval : make_free_chunks_intervals_) {
+    inclusive_start_times.push_back(buffer_interval.start);
+  }
+
+  return inclusive_start_times;
+}
+
+template <typename BufferType>
 const typename GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval&
 GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedBufferInterval::
     IntervalForMakeFreeChunks(int64_t slice_time) const {
@@ -1098,16 +1123,47 @@ class SliceTimePermutationValidator {
   std::vector<int64_t> sizes_sorted_by_offset_;
 };
 
+// A manager class that tracks if we've already observed an equivalent
+// permutation. See the description of SliceTimePermutationIterator for a
+// definition of permutation equivalence.
+class ObservedPermutationManager {
+ public:
+  explicit ObservedPermutationManager(
+      absl::Span<const int64_t> inclusive_start_times) {
+    slice_time_to_inclusive_start_time_ = std::vector<int64_t>(
+        inclusive_start_times.begin(), inclusive_start_times.end());
+    absl::c_sort(slice_time_to_inclusive_start_time_);
+  }
+
+  // Returns true if an equivalent permutation was already seen. If false is
+  // returned, we track that we've now observed permutation.
+  bool Insert(absl::Span<const int64_t> permutation) {
+    std::vector<int64_t> permutation_inclusive_start_times;
+    permutation_inclusive_start_times.reserve(permutation.size());
+    for (int64_t slice_time : permutation) {
+      permutation_inclusive_start_times.push_back(
+          slice_time_to_inclusive_start_time_[slice_time]);
+    }
+
+    return observed_inclusive_start_time_permutation_
+        .insert(permutation_inclusive_start_times)
+        .second;
+  }
+
+  void Clear() { observed_inclusive_start_time_permutation_.clear(); }
+
+ protected:
+  std::vector<int64_t> slice_time_to_inclusive_start_time_;
+  absl::flat_hash_set<std::vector<int64_t>>
+      observed_inclusive_start_time_permutation_;
+};
+
 // A SliceTimePermutationIterator that iterates over all valid (see
 // SliceTimePermutationValidator for more details) permutations of slice times.
 class SliceTimeAllPermutationIterator : public SliceTimePermutationIterator {
  public:
-  SliceTimeAllPermutationIterator(
-      int64_t num_slices,
-      const SlicedAllocationData* original_sliced_allocation)
-      : validator_(original_sliced_allocation),
-        num_slices_(num_slices),
-        permutation_(num_slices, 0) {}
+  explicit SliceTimeAllPermutationIterator(int64_t num_slices)
+      : num_slices_(num_slices), permutation_(num_slices, 0) {}
 
   ~SliceTimeAllPermutationIterator() override = default;
 
@@ -1117,10 +1173,6 @@ class SliceTimeAllPermutationIterator : public SliceTimePermutationIterator {
     for (int64_t i = 0; i < num_slices_; ++i) {
       permutation_[i] = i;
     }
-
-    if (!Done() && !validator_.IsValid(Get())) {
-      Next();
-    }
   }
 
   bool Done() const override { return done_; }
@@ -1129,9 +1181,7 @@ class SliceTimeAllPermutationIterator : public SliceTimePermutationIterator {
     if (Done()) {
       return;
     }
-    do {
-      done_ = !absl::c_next_permutation(permutation_);
-    } while (!Done() && !validator_.IsValid(Get()));
+    done_ = !absl::c_next_permutation(permutation_);
   }
 
   absl::Span<const int64_t> Get() const override { return permutation_; }
@@ -1139,20 +1189,355 @@ class SliceTimeAllPermutationIterator : public SliceTimePermutationIterator {
  private:
   SliceTimeAllPermutationIterator() = default;
 
-  SliceTimePermutationValidator validator_;
   int64_t num_slices_;
   bool done_ = true;
   std::vector<int64_t> permutation_;
 };
 
+// A SliceTimePermutationIterator that iterates over "preferred" shapes, as
+// described in SliceTimePermutationIterator::Ty::kPreferred. When we have
+// original sliced allocation data available (from a repack), before
+// generating preferred permutation, we fix the slice time of any slice whose
+// size is different from the first slice. We fix the slice time for such slices
+// to their slice times in the original sliced data. Doing so avoids generating
+// invalid permutations (as defined in SliceTimePermutationIterator).
+//
+// Note, in repacking situations, we don't know the exact slice time that each
+// slice was assigned. We only know the inclusive start time of each slice.
+// This gives us the slice time, except in cases where 2 slices have the same
+// inclusive slice time. We choose to break such ties using offset, which is
+// fine because it doesn't hurt performance.
+class SliceTimePreferredPermutationIterator
+    : public SliceTimePermutationIterator {
+ public:
+  SliceTimePreferredPermutationIterator(
+      int64_t num_slices,
+      const SlicedAllocationData* original_sliced_allocation)
+      : num_slices_(num_slices),
+        fixed_permutation_values_(num_slices, false),
+        permutation_(num_slices, 0) {
+    // In the body of the constructor we need to:
+    // - If original_sliced_allocation is specified, we update
+    //   fixed_permutation_values_ and permutation_ accordingly
+    // - Initialize slice_times_available_for_permutation_.
+
+    if (!original_sliced_allocation) {
+      // If there are no original slice times, then any slice time can appear
+      // at any permutation index.
+      slice_times_available_for_permutation_.reserve(num_slices_);
+      for (int64_t slice_time = 0; slice_time < num_slices_; ++slice_time) {
+        slice_times_available_for_permutation_.push_back(slice_time);
+      }
+      return;
+    }
+
+    absl::flat_hash_map<const AllocatedSlice*, int64_t>
+        slice_to_slice_time_map =
+            BuildSliceToSliceTimeMap(original_sliced_allocation);
+    const AllocatedSlice* first_slice = nullptr;
+    if (!original_sliced_allocation->slices_sorted_by_offset.empty()) {
+      first_slice =
+          &original_sliced_allocation->slices_sorted_by_offset.front();
+    }
+    for (int offset_index = 0; offset_index < num_slices_; ++offset_index) {
+      CHECK(first_slice);
+      const AllocatedSlice& slice =
+          original_sliced_allocation->slices_sorted_by_offset[offset_index];
+      if (slice.size != first_slice->size) {
+        fixed_permutation_values_[offset_index] = true;
+        permutation_[offset_index] = slice_to_slice_time_map[&slice];
+        continue;
+      }
+      slice_times_available_for_permutation_.push_back(
+          slice_to_slice_time_map[&slice]);
+    }
+    absl::c_sort(slice_times_available_for_permutation_);
+  }
+
+  ~SliceTimePreferredPermutationIterator() override = default;
+
+  void Begin() override {
+    permutation_type_ = NextPermutationType(PermutationType::kUninitialized);
+    SetUpPermutationForCurrentType();
+  }
+
+  bool Done() const override {
+    return permutation_type_ == PermutationType::kDone;
+  }
+
+  void Next() override {
+    permutation_type_ = NextPermutationType(permutation_type_);
+    SetUpPermutationForCurrentType();
+  }
+
+  absl::Span<const int64_t> Get() const override { return permutation_; }
+
+ private:
+  enum class PermutationType {
+    kUninitialized,
+    // space
+    //   ^
+    //   |             +--+
+    //   |          +--+  |
+    //   |       +--+     |
+    //   |    +--+        |
+    //   | +--+           |
+    //   | +--------------+
+    //   +------------------> time
+    kSmallerOffsetSmallerSliceTime,
+    // space
+    //   ^
+    //   | +--------------+
+    //   | +--+           |
+    //   |    +--+        |
+    //   |       +--+     |
+    //   |          +--+  |
+    //   |             +--+
+    //   +------------------> time
+    kSmallerOffsetLargerSliceTime,
+    // space
+    //   ^
+    //   |             +--+
+    //   |       +-----+  |
+    //   | +-----+        |
+    //   | +--+           |
+    //   |    +-----+     |
+    //   |          +-----+
+    //   +------------------> time
+    kDistributeSmallSliceTimesAroundMiddleOffset,
+    kDone,
+  };
+
+  SliceTimePreferredPermutationIterator() = default;
+
+  // Increments from one PermutationType to the next. Note, we skip some
+  // PermutationTypes if the number of slices is small enough to make some
+  // PermutationTypes generate the same permutation.
+  PermutationType NextPermutationType(PermutationType ty) {
+    switch (ty) {
+      case PermutationType::kUninitialized:
+        if (num_slices_ <= 0) {
+          return PermutationType::kDone;
+        }
+        return PermutationType::kSmallerOffsetSmallerSliceTime;
+      case PermutationType::kSmallerOffsetSmallerSliceTime:
+        if (num_slices_ <= 1) {
+          return PermutationType::kDone;
+        }
+        return PermutationType::kSmallerOffsetLargerSliceTime;
+      case PermutationType::kSmallerOffsetLargerSliceTime:
+        if (num_slices_ <= 2) {
+          return PermutationType::kDone;
+        }
+        return PermutationType::kDistributeSmallSliceTimesAroundMiddleOffset;
+      case PermutationType::kDistributeSmallSliceTimesAroundMiddleOffset:
+      case PermutationType::kDone:
+        return PermutationType::kDone;
+    }
+  }
+
+  // Maps slices in original_sliced_allocation to their slice time.
+  //
+  // REQUIRES:
+  // - original_sliced_allocation may not be null
+  absl::flat_hash_map<const AllocatedSlice*, int64_t> BuildSliceToSliceTimeMap(
+      const SlicedAllocationData* original_sliced_allocation) {
+    CHECK(original_sliced_allocation);
+    std::vector<const AllocatedSlice*> slice_time_to_slice;
+    slice_time_to_slice.reserve(num_slices_);
+    for (const AllocatedSlice& slice :
+         original_sliced_allocation->slices_sorted_by_offset) {
+      slice_time_to_slice.push_back(&slice);
+    }
+    absl::c_sort(slice_time_to_slice, [](const AllocatedSlice* lhs,
+                                         const AllocatedSlice* rhs) {
+      return std::make_tuple(lhs->inclusive_start_time, lhs->offset) <
+             std::make_tuple(rhs->inclusive_start_time, rhs->offset);
+    });
+
+    absl::flat_hash_map<const AllocatedSlice*, int64_t> map;
+    for (int slice_time = 0; slice_time < slice_time_to_slice.size();
+         ++slice_time) {
+      map[slice_time_to_slice[slice_time]] = slice_time;
+    }
+
+    return map;
+  }
+
+  // Builds permutation_ according to permutation_type_.
+  //
+  // REQUIRES:
+  // - permutation_type_ != kUninitialized
+  void SetUpPermutationForCurrentType() {
+    CHECK(permutation_type_ != PermutationType::kUninitialized);
+    if (Done()) {
+      return;
+    }
+
+    int permutation_index = NextAvailablePermutationIndex(-1);
+
+    for (int i = slice_times_available_for_permutation_.size() - 1; i >= 0;
+         --i) {
+      if (permutation_type_ == PermutationType::kSmallerOffsetLargerSliceTime ||
+          (permutation_type_ ==
+               PermutationType::kDistributeSmallSliceTimesAroundMiddleOffset &&
+           IsOdd(i))) {
+        CHECK_LT(permutation_index, permutation_.size());
+        permutation_[permutation_index] =
+            slice_times_available_for_permutation_[i];
+        permutation_index = NextAvailablePermutationIndex(permutation_index);
+      }
+    }
+    for (int i = 0; i < slice_times_available_for_permutation_.size(); ++i) {
+      if (permutation_type_ ==
+              PermutationType::kSmallerOffsetSmallerSliceTime ||
+          (permutation_type_ ==
+               PermutationType::kDistributeSmallSliceTimesAroundMiddleOffset &&
+           IsEven(i))) {
+        CHECK_LT(permutation_index, permutation_.size());
+        permutation_[permutation_index] =
+            slice_times_available_for_permutation_[i];
+        permutation_index = NextAvailablePermutationIndex(permutation_index);
+      }
+    }
+    CHECK_EQ(permutation_index, permutation_.size());
+  }
+
+  // Increments permutation_index. We skip over indices with fixed slice times.
+  int NextAvailablePermutationIndex(int permutation_index) {
+    do {
+      ++permutation_index;
+    } while (permutation_index < permutation_.size() &&
+             fixed_permutation_values_[permutation_index]);
+    return permutation_index;
+  }
+
+  int64_t num_slices_;
+  // For each value in permutation, indicates if it has a fixed value tied to
+  // a sliced allocation before repacking. If fixed_permutation_values[i] is
+  // true, permutation_[i] holds the fixed slice time for the slice with the
+  // ith smallest offset.
+  std::vector<bool> fixed_permutation_values_;
+  // Slice times that are available for permutation. A slice time is not
+  // available for permutation if we have to fix it to an offset to generate
+  // valid permutations, due to repacking.
+  std::vector<int64_t> slice_times_available_for_permutation_;
+  // The current type of permutation we are generating.
+  PermutationType permutation_type_ = PermutationType::kUninitialized;
+  // The permutation pertaining to permutation_type_.
+  std::vector<int64_t> permutation_;
+};
+
+// A ComposedSliceTimePermutationIterator uses a base_iterator to generate
+// permutations. However, it only returns valid permutations, for which we
+// have not already emitted an equivalent permutation.
+class ComposedSliceTimePermutationIterator
+    : public SliceTimePermutationIterator {
+ public:
+  ComposedSliceTimePermutationIterator(
+      SliceTimePermutationValidator validator,
+      ObservedPermutationManager seen_manager,
+      std::unique_ptr<SliceTimePermutationIterator> base_iterator)
+      : validator_(std::move(validator)),
+        seen_(std::move(seen_manager)),
+        base_iterator_(std::move(base_iterator)) {}
+
+  ~ComposedSliceTimePermutationIterator() override = default;
+
+  void Begin() override { NextImpl(/*initialize=*/true); }
+
+  bool Done() const override { return base_iterator_->Done(); }
+
+  void Next() override { NextImpl(/*initialize=*/false); }
+
+  absl::Span<const int64_t> Get() const override {
+    return base_iterator_->Get();
+  }
+
+ private:
+  void NextImpl(bool initialize) {
+    if (initialize) {
+      seen_.Clear();
+      base_iterator_->Begin();
+    }
+
+    if (Done()) {
+      return;
+    }
+
+    if (!initialize) {
+      base_iterator_->Next();
+    }
+
+    // Keep advancing if we're not done, and the permutation is invalid or an
+    // equivalent permutation has already been observed.
+    while (!Done() && (!validator_.IsValid(Get()) || !seen_.Insert(Get()))) {
+      base_iterator_->Next();
+    }
+  }
+
+  SliceTimePermutationValidator validator_;
+  ObservedPermutationManager seen_;
+  std::unique_ptr<SliceTimePermutationIterator> base_iterator_;
+};
+
 }  // namespace
 
 std::unique_ptr<SliceTimePermutationIterator>
-SliceTimePermutationIterator::Create(
-    int64_t num_slices,
-    const SlicedAllocationData* original_sliced_allocation) {
-  return std::make_unique<SliceTimeAllPermutationIterator>(
-      num_slices, original_sliced_allocation);
+SliceTimePermutationIterator::CreateForNewAllocation(
+    Ty ty, absl::Span<const int64_t> inclusive_slice_start_times) {
+  switch (ty) {
+    case Ty::kAll:
+      return std::make_unique<ComposedSliceTimePermutationIterator>(
+          SliceTimePermutationValidator(/*original_slices=*/nullptr),
+          ObservedPermutationManager(inclusive_slice_start_times),
+          std::make_unique<SliceTimeAllPermutationIterator>(
+              inclusive_slice_start_times.size()));
+    case Ty::kPreferred:
+      return std::make_unique<ComposedSliceTimePermutationIterator>(
+          SliceTimePermutationValidator(/*original_slices=*/nullptr),
+          ObservedPermutationManager(inclusive_slice_start_times),
+          std::make_unique<SliceTimePreferredPermutationIterator>(
+              inclusive_slice_start_times.size(),
+              /*original_sliced_allocation=*/nullptr));
+  }
+}
+
+std::unique_ptr<SliceTimePermutationIterator>
+SliceTimePermutationIterator::CreateForRepack(
+    Ty ty, const SlicedAllocationData* original_sliced_allocation) {
+  // Repacking defaults to 1 slice in the absence of slicing data.
+  int64_t num_slices = 1;
+  if (original_sliced_allocation) {
+    num_slices = original_sliced_allocation->num_slices();
+  }
+
+  std::vector<int64_t> inclusive_start_times;
+  if (original_sliced_allocation) {
+    inclusive_start_times =
+        original_sliced_allocation->SortedInclusiveStartTimes();
+  } else {
+    // We don't actually know the first inclusive start time, but the actual
+    // values don't matter, just their uniqueness within
+    // inclusive_start_times. So, for a single slice, which is how we
+    // treat any repacked allocation without slice data, any start time will
+    // work.
+    inclusive_start_times.push_back(0);
+  }
+
+  switch (ty) {
+    case Ty::kAll:
+      return std::make_unique<ComposedSliceTimePermutationIterator>(
+          SliceTimePermutationValidator(original_sliced_allocation),
+          ObservedPermutationManager(inclusive_start_times),
+          std::make_unique<SliceTimeAllPermutationIterator>(num_slices));
+    case Ty::kPreferred:
+      return std::make_unique<ComposedSliceTimePermutationIterator>(
+          SliceTimePermutationValidator(original_sliced_allocation),
+          ObservedPermutationManager(inclusive_start_times),
+          std::make_unique<SliceTimePreferredPermutationIterator>(
+              num_slices, original_sliced_allocation));
+  }
 }
 
 template <typename BufferType>
@@ -1646,10 +2031,9 @@ Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
   }
 
   if (!out_of_slices(slice_index)) {
-    return InternalErrorStrCat("Ran out of space in root ",
-                               root.chunk.ToString(),
-                               " to fit slice permutation; however, we should "
-                               "have caught such a condition earlier.");
+    return InternalStrCat("Ran out of space in root ", root.chunk.ToString(),
+                          " to fit slice permutation; however, we should "
+                          "have caught such a condition earlier.");
   }
 
   return OkStatus();
@@ -1855,10 +2239,11 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
   int64_t max_colocation_size =
       GetMaxColocationSize(sliced_buffer_interval.full_buffer_interval());
   auto chunks =
-      CreateSlicedAllocationFinder(sliced_buffer_interval, max_colocation_size,
-                                   preferred_offset,
-                                   SliceTimePermutationIterator::Create(
-                                       sliced_buffer_interval.num_slices()))
+      CreateSlicedAllocationFinder(
+          sliced_buffer_interval, max_colocation_size, preferred_offset,
+          SliceTimePermutationIterator::CreateForNewAllocation(
+              slice_time_permutation_iteration_type_,
+              sliced_buffer_interval.inclusive_start_times()))
           .Find();
   return PostProcessFindChunkCandidatesResult(sliced_buffer_interval,
                                               std::move(chunks));

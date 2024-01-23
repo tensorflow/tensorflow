@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -107,7 +107,7 @@ XLA_TEST_P(GpuAsyncCollectiveAnnotatorTest, Test) {
   // Assert that all async collectives are annotated with the backend config.
   for (const HloInstruction* hlo :
        module->entry_computation()->instructions()) {
-    if (!hlo_query::IsAsyncCollectiveStartOp(hlo->opcode())) {
+    if (!hlo_query::IsAsyncCollectiveStartOp(hlo)) {
       continue;
     }
     auto gpu_config = hlo->backend_config<GpuBackendConfig>();

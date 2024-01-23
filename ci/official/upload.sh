@@ -25,22 +25,28 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
 fi
 source ci/official/utilities/get_versions.sh
 
+# $TF_VER_FULL will resolve to e.g. "2.15.0-rc2". When given a directory path,
+# gsutil copies the basename of the directory into the provided path. Uploading
+# /tmp/$TF_VER_FULL to gs://bucket/ will create gs://bucket/$TF_VER_FULL/files.
+# Since $TF_VER_FULL comes from get_versions.sh, which must be run *after*
+# update_version.py, this can't be set inside the rest of the _upload envs.
 DOWNLOADS="$(mktemp -d)/$TF_VER_FULL"
-gsutil -m cp -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$STAGED"
-ls "$STAGED"
+mkdir -p "$DOWNLOADS"
+# -r is needed to copy a whole folder.
+gsutil -m cp -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
+ls "$DOWNLOADS"
 
-# Upload all build artifacts to e.g. gs://tensorflow/ci/2.16.0-rc1 (releases) or
-# gs://tensorflow/ci/2.16.0-dev20240105 (nightly), overwriting previous values.
-# TODO(angerson) Add "-a public-read" to make them publicly available.
+# Upload all build artifacts to e.g. gs://tensorflow/versions/2.16.0-rc1 (releases) or
+# gs://tensorflow/nightly/2.16.0-dev20240105 (nightly), overwriting previous values.
 if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
-  gsutil -m cp -r "$STAGED" "$TFCI_ARTIFACT_FINAL_GCS_URI"
+  gcloud auth activate-service-account --key-file="$TFCI_ARTIFACT_FINAL_GCS_SA_PATH"
+  gsutil -m cp -r "$DOWNLOADS" "$TFCI_ARTIFACT_FINAL_GCS_URI"
   # Also mirror the latest-uploaded folder to the "latest" directory.
   # GCS does not support symlinks. -p preserves ACLs. -d deletes
   # no-longer-present files (it's what makes this act as a mirror).
   gsutil rsync -d -p -r "$TFCI_ARTIFACT_FINAL_GCS_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
 fi
 
-# TODO(angerson) Enable uploading to PyPI once switch-over is ready
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then
-  echo twine upload $TFCI_UPLOAD_WHL_PYPI_ARGS *.whl
+  twine upload $TFCI_UPLOAD_WHL_PYPI_ARGS "$DOWNLOADS"/*.whl
 fi

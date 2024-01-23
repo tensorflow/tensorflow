@@ -18,7 +18,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
     ],
 )
 
@@ -222,7 +222,7 @@ cc_library(
         ":tpu_executor_c_api_hdrs",
         ":tpu_platform_interface",
         ":tpu_topology_external",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -251,7 +251,7 @@ cc_library(
         ":tpu_executor_api",
         ":tpu_executor_c_api_hdrs",
         ":tpu_topology_external",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -381,7 +381,7 @@ cc_library(
         ":tpu_platform_interface",
         "//xla:status",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
     ],
 )
 
@@ -482,7 +482,7 @@ cc_library(
     deps = [
         ":tpu_platform_interface",
         ":tpu_topology_external",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -528,7 +528,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "@com_google_absl//absl/cleanup",
     ],
     alwayslink = True,
@@ -539,7 +539,7 @@ cc_library(
     hdrs = ["tpu_stream_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/status",
     ],
@@ -563,7 +563,7 @@ cc_library(
         "//xla/service:maybe_owning_device_memory",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -594,8 +594,8 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_execution_profile",
         "//xla/service:shaped_buffer",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:stream_executor_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",

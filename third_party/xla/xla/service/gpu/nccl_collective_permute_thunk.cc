@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,49 +29,37 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_p2p_thunk_common.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
 
 namespace xla {
 namespace gpu {
 
 using mlir::lmhlo_gpu::CollectivePermuteStartOp;
 
-namespace {
-
-bool IsSyncCollective(const HloInstruction* instr) {
-  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return false;
-  }
-  return backend_config->collective_backend_config().is_sync();
-}
-
-}  // namespace
-
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, CollectivePermuteStartOp op, int64_t replica_count,
-    int64_t partition_count, const Buffer& buffer)
+    ThunkInfo thunk_info, NcclApi* nccl_api, CollectivePermuteStartOp op,
+    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
-                          op.getIsSync()),
+                          nccl_api, op.getIsSync()),
       config_(GetNcclP2PConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
 
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
-    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
+    ThunkInfo thunk_info, NcclApi* nccl_api,
+    const HloCollectivePermuteInstruction* instr, int64_t replica_count,
+    int64_t partition_count, const Buffer& buffer)
     : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
-                          IsSyncCollective(instr)),
+                          nccl_api, IsSyncCollective(instr)),
       config_(GetNcclP2PConfig(instr, replica_count, partition_count)),
       buffer_(buffer) {}
 
@@ -158,10 +146,11 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
 /*static*/ absl::Status NcclCollectivePermuteStartThunk::CheckImplementable(
     CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
+  auto status = [&]() -> absl::Status {
+    return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
+  };
   return AddOpDescription<NcclCollectivePermuteStartThunk>(
-      IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute), op,
-      replica_count, partition_count);
+      status(), op, replica_count, partition_count);
 }
 
 /*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(
@@ -215,37 +204,37 @@ NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
 }
 
 absl::Status NcclCollectivePermuteStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
                              config_.config.operand_element_type));
   TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 
-  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
-                      params.nccl_params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(
-      const DeviceAssignment::LogicalID current_logical_id,
-      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
+  GlobalDeviceId global_device_id = params.collective_params.global_device_id;
+
+  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
+                      params.collective_params.device_assn->LogicalIdForDevice(
+                          global_device_id));
   const int64_t current_id =
       config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
-  std::string device_string = GetDeviceString(params.nccl_params);
+  std::string device_string = GetDeviceString(params.collective_params);
 
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
-  return ::xla::gpu::RunCollectivePermute(source_target, device_buffers[0],
-                                          stream, comm, device_string,
-                                          current_id);
+  return ::xla::gpu::RunCollectivePermute(nccl_api(), source_target,
+                                          device_buffers[0], stream, comm,
+                                          device_string, current_id);
 }
 
 absl::Status RunCollectivePermute(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
-    int64_t current_id) {
-#if XLA_ENABLE_XCCL
+    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
+    absl::string_view device_string, int64_t current_id) {
   // Determine the source and target IDs for this instance. The source ID is the
   // ID which will copy its data to this instance. The destination ID is the ID
   // to which this instance will copy its data. Either are optional.
@@ -284,44 +273,28 @@ absl::Status RunCollectivePermute(
                                 device_string, current_id,
                                 source_id.value_or(-1), target_id.value_or(-1));
 
-  // ncclGroupStart/end API is needed only if we will issue both ncclSend and
-  // ncclRecv API calls.
+  // GroupStart/End API is needed only if we will issue both send & recv calls.
   const bool is_nccl_group_needed = (target_id && source_id);
   if (is_nccl_group_needed) {
-    XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
+    TF_RETURN_IF_ERROR(nccl_api->GroupStart());
   }
-
-  TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                      ToNcclDataTypeAndCountMultiplier(
-                          buffer.element_type, Thunk::kNcclCollectivePermute));
-  ncclDataType_t dtype = dtype_and_multiplier.first;
-  int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
   // Send source buffer to target peer if needed.
   if (target_id) {
-    VLOG(3) << absl::StreamFormat(
-        "%s : Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
-        "comm=%p, stream=%p)",
-        device_string, src_addr.opaque(), element_count, *target_id,
-        static_cast<const void*>(comm), gpu_stream);
-    XLA_NCCL_RETURN_IF_ERROR(ncclSend(src_addr.opaque(), element_count, dtype,
-                                      *target_id, comm, gpu_stream));
+    TF_RETURN_IF_ERROR(nccl_api->Send(src_addr, buffer.element_type,
+                                      buffer.element_count, *target_id, comm,
+                                      &stream));
   }
 
   // Receive data from the source peer to the destination buffer.
   if (source_id) {
-    VLOG(3) << absl::StreamFormat(
-        "%s : Calling ncclRecv(recvbuff=%p, count=%d, peer=%d comm=%p, "
-        "stream=%p)",
-        device_string, dest_addr.opaque(), element_count, *source_id,
-        static_cast<const void*>(comm), gpu_stream);
-    XLA_NCCL_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
-                                      *source_id, comm, gpu_stream));
+    TF_RETURN_IF_ERROR(nccl_api->Recv(dest_addr, buffer.element_type,
+                                      buffer.element_count, *source_id, comm,
+                                      &stream));
   }
+
   if (is_nccl_group_needed) {
-    XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
+    TF_RETURN_IF_ERROR(nccl_api->GroupEnd());
   }
 
   if (!source_id) {
@@ -332,11 +305,6 @@ absl::Status RunCollectivePermute(
     stream.ThenMemZero(&dest_addr, dest_addr.size());
   }
   return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
 }
 
 }  // namespace gpu

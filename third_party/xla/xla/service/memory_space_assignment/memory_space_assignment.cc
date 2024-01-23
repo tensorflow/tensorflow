@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1621,7 +1621,10 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
     MemorySpaceAssignment::AllocationSequence* allocations,
     const Options& options, const HloAliasAnalysis& alias_analysis,
     const HloLiveRange& hlo_live_range)
-    : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes),
+    : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes,
+                                      /*type=*/kSpatial,
+                                      /*buffer_interval_compare=*/nullptr,
+                                      SliceTimePermutationIterator::Ty::kAll),
       allocations_(allocations),
       options_(options),
       alias_analysis_(alias_analysis),
@@ -2641,7 +2644,9 @@ void MemoryBoundLoopOptimizer::AllocateLoopValues() {
         AllocateTemporary(value);
         break;
       case LoopValue::AllocationType::kPinned:
-        AllocatePinned(value);
+        if (value.savings > 0) {
+          AllocatePinned(value);
+        }
         break;
       case LoopValue::AllocationType::kPrefetch:
         prefetch_values.push_back(&value);
@@ -8821,7 +8826,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     for (const Chunk& overlapping_chunk :
          interval_tree.ChunksOverlappingInTime(start_time, end_time - 1)) {
       if (chunk.OverlapsWith(overlapping_chunk)) {
-        return InternalError(
+        return Internal(
             ("Value %s (%d, %d) off: %d size: %d overlaps with another chunk"
              " off: %d size: %d"),
             value->ToShortString(), start_time, end_time, chunk.offset,

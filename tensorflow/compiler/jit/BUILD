@@ -362,6 +362,7 @@ cc_library(
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/pjrt:tf_pjrt_client",
+        "@local_xla//xla/service:compiler",
         "@local_xla//xla/service:executable",
     ],
     alwayslink = 1,

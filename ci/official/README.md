@@ -78,7 +78,7 @@ TFCI=py312,linux_x86_cuda,multicache ci/official/wheel.sh
 #      Ex. rbe        -- Use RBE for faster builds (Googlers only; see below)
 #      Ex. no_docker  -- Disable docker on enabled platforms
 #    See full examples below for more details on these. Some other modifiers are:
-#      Ex. release_upload -- for TF official release builds
+#      Ex. versions_upload -- for TF official release versions
 #      Ex. nightly_upload -- for TF nightly official builds; changes version numbers
 #      Ex. no_upload      -- Disable all uploads, usually for temporary CI issues
 

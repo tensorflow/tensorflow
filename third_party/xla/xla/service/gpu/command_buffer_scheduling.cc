@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -99,7 +99,7 @@ static bool IsCommand(const HloInstruction*, const CommandBufferConfig&);
 template <>
 bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
                                   const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::WHILE) &&
+  return config.contains(DebugOptions::CONDITIONALS) &&
          IsCommand(hlo->while_body(), config) &&
          IsCommand(hlo->while_condition(), config);
 }
@@ -109,7 +109,7 @@ bool IsCommand<HloOpcode::kWhile>(const HloInstruction* hlo,
 template <>
 bool IsCommand<HloOpcode::kConditional>(const HloInstruction* hlo,
                                         const CommandBufferConfig& config) {
-  return config.contains(DebugOptions::WHILE) &&
+  return config.contains(DebugOptions::CONDITIONALS) &&
          absl::c_all_of(hlo->branch_computations(),
                         [&](const HloComputation* comp) {
                           return IsCommand(comp, config);
@@ -122,13 +122,15 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  if (hlo->custom_call_target() == "cu_threefry2x32") {
-    if (hlo->operand_count() == 4) {
-      return true;
+  if (config.contains(DebugOptions::CUSTOM_CALL)) {
+    if (hlo->custom_call_target() == "cu_threefry2x32") {
+      if (hlo->operand_count() == 4) {
+        return true;
+      }
+      // This version of cu_threefy2x32 requires synchronization, which is not
+      // supported by command buffers.
+      DCHECK_EQ(hlo->operand_count(), 5);
     }
-    // This version of cu_threefy2x32 requires synchronization, which is not
-    // supported by command buffers.
-    DCHECK_EQ(hlo->operand_count(), 5);
   }
 
   return false;
@@ -169,12 +171,12 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
                                 const CommandBufferConfig& config) {
   if (hlo->opcode() == HloOpcode::kAllReduceStart ||
       hlo->opcode() == HloOpcode::kAllGatherStart) {
-    return config.contains(DebugOptions::NCCL);
+    return config.contains(DebugOptions::COLLECTIVES);
   }
 
   if (hlo->opcode() == HloOpcode::kAsyncStart) {
     if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-      return config.contains(DebugOptions::NCCL);
+      return config.contains(DebugOptions::COLLECTIVES);
     }
   }
 
@@ -566,7 +568,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   // compared to a regular execution. Some operations (i.e. async collectives)
   // can't be captured into command buffers, and forming too large command
   // buffers too early can impact async operations scheduling.
-  if (!module->has_schedule()) return InternalError("module is not scheduled");
+  if (!module->has_schedule()) return Internal("module is not scheduled");
 
   const DebugOptions& debug_options = module->config().debug_options();
 
@@ -576,9 +578,10 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   }
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
-  static constexpr auto kRequireConditionals = {DebugOptions::WHILE};
+  static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONALS};
   static constexpr auto kRequireTracing = {DebugOptions::CUBLAS,
-                                           DebugOptions::CUDNN};
+                                           DebugOptions::CUDNN,
+                                           DebugOptions::CUSTOM_CALL};
 
   auto erase = [&](absl::Span<const DebugOptions::CommandBufferCmdType> cmds) {
     for (auto cmd : cmds) {

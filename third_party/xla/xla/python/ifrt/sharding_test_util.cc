@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
@@ -52,14 +53,16 @@ std::shared_ptr<MockClient> MakeShardingTestClient(
 
   for (int i = 0; i < num_addressable_devices; ++i) {
     auto device = std::make_unique<MockDevice>();
-    ON_CALL(*device, id).WillByDefault(Return(i + 10));
+    ON_CALL(*device, global_device_id)
+        .WillByDefault(Return(PjRtGlobalDeviceId(i + 10)));
     ON_CALL(*device, IsAddressable).WillByDefault(Return(true));
     state->devices.push_back(device.get());
     state->device_map.insert({i + 10, std::move(device)});
   }
   for (int i = num_addressable_devices; i < num_devices; ++i) {
     auto device = std::make_unique<MockDevice>();
-    ON_CALL(*device, id).WillByDefault(Return(i + 10));
+    ON_CALL(*device, global_device_id)
+        .WillByDefault(Return(PjRtGlobalDeviceId(i + 10)));
     ON_CALL(*device, IsAddressable).WillByDefault(Return(false));
     state->devices.push_back(device.get());
     state->device_map.insert({i + 10, std::move(device)});

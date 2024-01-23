@@ -1,3 +1,4 @@
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
@@ -120,11 +121,11 @@ xla_test(
 
 cc_library(
     name = "topk_custom_kernel",
-    srcs = if_cuda_is_configured(
-        ["topk_custom_kernel.cc"],
-        ["topk_custom_kernel_stub.cc"],
-    ),
+    srcs = ["topk_custom_kernel.cc"],
     hdrs = ["topk_custom_kernel.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     visibility = ["//visibility:public"],
     deps = [
         ":custom_kernel",
@@ -136,7 +137,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
+    ] + if_gpu_is_configured([
+        "//xla/service/gpu/runtime:gpu_kernel_helper",
+    ]) + if_cuda_is_configured([
         "//xla/service/gpu/runtime:topk_kernel_cuda",
     ]) + if_rocm_is_configured([
         "//xla/service/gpu/runtime:topk_kernel_rocm",
@@ -145,11 +148,12 @@ cc_library(
 
 xla_test(
     name = "topk_custom_kernel_test",
-    srcs = if_cuda_is_configured(["topk_custom_kernel_test.cc"]),
+    srcs = if_gpu_is_configured(["topk_custom_kernel_test.cc"]),
     backends = ["gpu"],
     deps = [
         ":topk_custom_kernel",
         "//xla:xla_data_proto_cc",
+        "//xla/service:platform_util",
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",

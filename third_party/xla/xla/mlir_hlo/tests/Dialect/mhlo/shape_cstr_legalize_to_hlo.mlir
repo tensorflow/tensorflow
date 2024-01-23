@@ -91,20 +91,25 @@ func.func @mhlo_cstr_reshapable(%arg0: index, %arg1: tensor<2xindex>) {
   //  CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
   // CHECK-NEXT: %[[DIM_SIZE_1:.*]] = "mhlo.slice"(%[[DYNAMIC_SHAPE]]) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[DIM_SIZE_SCALAR_1:.*]] = mhlo.reshape %[[DIM_SIZE_1]] : (tensor<1xi32>) -> tensor<i32>
-  // CHECK-NEXT: %[[STATIC_DIMS_PRODUCT_1:.*]] = mhlo.multiply %[[MINUS_ONE]], %[[DIM_SIZE_SCALAR_1]] : tensor<i32>
+  // CHECK-NEXT: %[[ALL_DIMS_PRODUCT_1:.*]] = mhlo.multiply %[[ONE]], %[[DIM_SIZE_SCALAR_1]] : tensor<i32>
   // CHECK-NEXT: %[[EQ_MINUS_ONE_1:.*]] = mhlo.compare  EQ, %[[DIM_SIZE_SCALAR_1]], %[[MINUS_ONE]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK-NEXT: %[[DYNAMIC_DIM_1:.*]] = mhlo.select %[[EQ_MINUS_ONE_1]], %[[ONE]], %[[ZERO]] : tensor<i1>, tensor<i32>
   // CHECK-NEXT: %[[NUM_DYNAMIC_DIM_1:.*]] = mhlo.add %[[ZERO]], %[[DYNAMIC_DIM_1]] : tensor<i32>
   // CHECK-NEXT: %[[DIM_SIZE_2:.*]] = "mhlo.slice"(%[[DYNAMIC_SHAPE]]) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[DIM_SIZE_SCALAR_2:.*]] = mhlo.reshape %[[DIM_SIZE_2]] : (tensor<1xi32>) -> tensor<i32>
-  // CHECK-NEXT: %[[STATIC_DIMS_PRODUCT:.*]] = mhlo.multiply %[[STATIC_DIMS_PRODUCT_1]], %[[DIM_SIZE_SCALAR_2]] : tensor<i32>
+  // CHECK-NEXT: %[[ALL_DIMS_PRODUCT:.*]] = mhlo.multiply %[[ALL_DIMS_PRODUCT_1]], %[[DIM_SIZE_SCALAR_2]] : tensor<i32>
   // CHECK-NEXT: %[[EQ_MINUS_ONE_2:.*]] = mhlo.compare  EQ, %[[DIM_SIZE_SCALAR_2]], %[[MINUS_ONE]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK-NEXT: %[[DYNAMIC_DIM_2:.*]] = mhlo.select %[[EQ_MINUS_ONE_2]], %[[ONE]], %[[ZERO]] : tensor<i1>, tensor<i32>
   // CHECK-NEXT: %[[NUM_DYNAMIC_DIM:.*]] = mhlo.add %[[NUM_DYNAMIC_DIM_1]], %[[DYNAMIC_DIM_2]] : tensor<i32>
   // CHECK-NEXT: %[[ONLY_ONE_DYNAMIC_DIM:.*]] = mhlo.compare  EQ, %[[NUM_DYNAMIC_DIM]], %[[ONE]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-NEXT: %[[STATIC_DIMS_PRODUCT:.*]] = mhlo.multiply %[[ALL_DIMS_PRODUCT]], %[[MINUS_ONE]] : tensor<i32>
   // CHECK-NEXT: %[[REM:.*]] = mhlo.remainder %[[NUM_ELEMENTS]], %[[STATIC_DIMS_PRODUCT]] : tensor<i32>
   // CHECK-NEXT: %[[NO_RESIDUAL:.*]] = mhlo.compare  EQ, %[[REM]], %[[ZERO]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
-  // CHECK-NEXT: %[[RESHAPABLE:.*]] = mhlo.and %[[NO_RESIDUAL]], %[[ONLY_ONE_DYNAMIC_DIM]] : tensor<i1>
+  // CHECK-NEXT: %[[DYNAMIC_RESHAPABLE:.*]] = mhlo.and %[[NO_RESIDUAL]], %[[ONLY_ONE_DYNAMIC_DIM]] : tensor<i1>
+  // CHECK-NEXT: %[[NO_DYNAMIC_DIM:.*]] = mhlo.compare EQ, %16, %[[ZERO]], NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-NEXT: %[[NUM_ELEMENTS_EQUALS:.*]] = mhlo.compare EQ, %[[ALL_DIMS_PRODUCT]], %[[NUM_ELEMENTS]], NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-NEXT: %[[STATIC_RESHAPABLE:.*]] = mhlo.and %[[NO_DYNAMIC_DIM]], %[[NUM_ELEMENTS_EQUALS]] : tensor<i1>
+  // CHECK-NEXT: %[[RESHAPABLE:.*]] = mhlo.or %[[DYNAMIC_RESHAPABLE]], %[[STATIC_RESHAPABLE]] : tensor<i1>
   // CHECK-NEXT: mhlo.custom_call @shape_assertion(%[[RESHAPABLE]]) {error_message = "Shape assertion failed", has_side_effect = true} : (tensor<i1>) -> ()
 }
 
@@ -123,20 +128,25 @@ func.func @mhlo_cstr_reshapable_const(%arg0: tensor<?x2xf32>) {
   //  CHECK-DAG: %[[ZERO:.*]] = mhlo.constant dense<0> : tensor<i32>
   // CHECK-NEXT: %[[DIM_SIZE_1:.*]] = "mhlo.slice"(%[[DYNAMIC_SHAPE]]) {limit_indices = dense<1> : tensor<1xi64>, start_indices = dense<0> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[DIM_SIZE_SCALAR_1:.*]] = mhlo.reshape %[[DIM_SIZE_1]] : (tensor<1xi32>) -> tensor<i32>
-  // CHECK-NEXT: %[[STATIC_DIMS_PRODUCT_1:.*]] = mhlo.multiply %[[MINUS_ONE]], %[[DIM_SIZE_SCALAR_1]] : tensor<i32>
+  // CHECK-NEXT: %[[ALL_DIMS_PRODUCT_1:.*]] = mhlo.multiply %[[ONE]], %[[DIM_SIZE_SCALAR_1]] : tensor<i32>
   // CHECK-NEXT: %[[EQ_MINUS_ONE_1:.*]] = mhlo.compare  EQ, %[[DIM_SIZE_SCALAR_1]], %[[MINUS_ONE]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK-NEXT: %[[DYNAMIC_DIM_1:.*]] = mhlo.select %[[EQ_MINUS_ONE_1]], %[[ONE]], %[[ZERO]] : tensor<i1>, tensor<i32>
   // CHECK-NEXT: %[[NUM_DYNAMIC_DIM_1:.*]] = mhlo.add %[[ZERO]], %[[DYNAMIC_DIM_1]] : tensor<i32>
   // CHECK-NEXT: %[[DIM_SIZE_2:.*]] = "mhlo.slice"(%[[DYNAMIC_SHAPE]]) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<1xi32>
   // CHECK-NEXT: %[[DIM_SIZE_SCALAR_2:.*]] = mhlo.reshape %[[DIM_SIZE_2]] : (tensor<1xi32>) -> tensor<i32>
-  // CHECK-NEXT: %[[STATIC_DIMS_PRODUCT:.*]] = mhlo.multiply %[[STATIC_DIMS_PRODUCT_1]], %[[DIM_SIZE_SCALAR_2]] : tensor<i32>
+  // CHECK-NEXT: %[[ALL_DIMS_PRODUCT:.*]] = mhlo.multiply %[[ALL_DIMS_PRODUCT_1]], %[[DIM_SIZE_SCALAR_2]] : tensor<i32>
   // CHECK-NEXT: %[[EQ_MINUS_ONE_2:.*]] = mhlo.compare  EQ, %[[DIM_SIZE_SCALAR_2]], %[[MINUS_ONE]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
   // CHECK-NEXT: %[[DYNAMIC_DIM_2:.*]] = mhlo.select %[[EQ_MINUS_ONE_2]], %[[ONE]], %[[ZERO]] : tensor<i1>, tensor<i32>
   // CHECK-NEXT: %[[NUM_DYNAMIC_DIM:.*]] = mhlo.add %[[NUM_DYNAMIC_DIM_1]], %[[DYNAMIC_DIM_2]] : tensor<i32>
   // CHECK-NEXT: %[[ONLY_ONE_DYNAMIC_DIM:.*]] = mhlo.compare  EQ, %[[NUM_DYNAMIC_DIM]], %[[ONE]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-NEXT: %[[STATIC_DIMS_PRODUCT:.*]] = mhlo.multiply %[[ALL_DIMS_PRODUCT]], %[[MINUS_ONE]] : tensor<i32>
   // CHECK-NEXT: %[[REM:.*]] = mhlo.remainder %[[NUM_ELEMENTS]], %[[STATIC_DIMS_PRODUCT]] : tensor<i32>
   // CHECK-NEXT: %[[NO_RESIDUAL:.*]] = mhlo.compare  EQ, %[[REM]], %[[ZERO]],  NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
-  // CHECK-NEXT: %[[RESHAPABLE:.*]] = mhlo.and %[[NO_RESIDUAL]], %[[ONLY_ONE_DYNAMIC_DIM]] : tensor<i1>
+  // CHECK-NEXT: %[[DYNAMIC_RESHAPABLE:.*]] = mhlo.and %[[NO_RESIDUAL]], %[[ONLY_ONE_DYNAMIC_DIM]] : tensor<i1>
+  // CHECK-NEXT: %[[NO_DYNAMIC_DIM:.*]] = mhlo.compare EQ, %16, %[[ZERO]], NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-NEXT: %[[NUM_ELEMENTS_EQUALS:.*]] = mhlo.compare EQ, %[[ALL_DIMS_PRODUCT]], %[[NUM_ELEMENTS]], NOTYPE : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-NEXT: %[[STATIC_RESHAPABLE:.*]] = mhlo.and %[[NO_DYNAMIC_DIM]], %[[NUM_ELEMENTS_EQUALS]] : tensor<i1>
+  // CHECK-NEXT: %[[RESHAPABLE:.*]] = mhlo.or %[[DYNAMIC_RESHAPABLE]], %[[STATIC_RESHAPABLE]] : tensor<i1>
   // CHECK-NEXT: mhlo.custom_call @shape_assertion(%[[RESHAPABLE]]) {error_message = "Shape assertion failed", has_side_effect = true} : (tensor<i1>) -> ()
 }
 

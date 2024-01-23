@@ -186,6 +186,7 @@ xla_cc_test(
         ":best_fit_repacker",
         ":repacking",
         "//xla:comparison_util",
+        "//xla/service/heap_simulator",
         "//xla/service/heap_simulator:allocation_block",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",

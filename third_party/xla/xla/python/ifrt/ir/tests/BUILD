@@ -1,4 +1,4 @@
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load("//xla:xla.bzl", "xla_cc_test")
 
 package(
@@ -7,22 +7,31 @@ package(
     licenses = ["notice"],
 )
 
-glob_lit_tests(
+lit_test_suite(
     name = "all_tests",
-    data = [":test_utilities"],
-    driver = "//xla:run_lit.sh",
-    test_file_exts = ["mlir"],
-)
-
-filegroup(
-    name = "test_utilities",
-    testonly = True,
-    data = [
+    srcs = enforce_glob(
+        [
+            "ifrt_duplicated_callee_elimination.mlir",
+            "spmd_expansion.mlir",
+            "spmd_interface_verification.mlir",
+            "verify_array.mlir",
+            "verify_assemble.mlir",
+            "verify_attrs.mlir",
+            "verify_call.mlir",
+            "verify_call_loaded_executable.mlir",
+            "verify_disassemble.mlir",
+            "verify_loaded_executable.mlir",
+            "verify_reshard.mlir",
+        ],
+        include = [
+            "*.mlir",
+        ],
+    ),
+    cfg = "//xla:lit.cfg.py",
+    tools = [
         ":ifrt-opt",
         "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_binary(

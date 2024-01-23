@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
+#include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/runtime3/kernel_thunk.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -171,19 +172,19 @@ mlir::AffineMap KernelFusionInterface::GetDefaultThreadIdToOutputIndexingMap(
 
 Domain KernelFusionInterface::GetThreadIdDomain(
     const LaunchDimensions& launch_dims, int unroll_factor) {
-  Domain result;
-  result.dimension_ranges = {
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x)},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y)},
-      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().x)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().y)},
-      {0, static_cast<int64_t>(launch_dims.block_counts().z)},
+  std::vector<Range> dimension_ranges = {
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().x) - 1},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().y) - 1},
+      {0, static_cast<int64_t>(launch_dims.thread_counts_per_block().z) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().x) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().y) - 1},
+      {0, static_cast<int64_t>(launch_dims.block_counts().z) - 1},
   };
+  std::vector<Range> symbol_ranges;
   if (unroll_factor > 1) {
-    result.symbol_ranges.push_back({0, unroll_factor});
+    symbol_ranges.push_back({0, unroll_factor - 1});
   }
-  return result;
+  return Domain(dimension_ranges, symbol_ranges);
 }
 
 absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,

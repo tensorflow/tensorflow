@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "xla/service/backend.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -111,13 +112,6 @@ tsl::StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
                       HloModule::CreateModuleConfigFromProto(
                           module_proto, xla::GetDebugOptionsFromFlags()));
   return HloModule::CreateFromProto(module_proto, module_config);
-}
-
-bool IsSyncCollective(const HloInstruction* instr) {
-  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>()
-                            .value()
-                            .collective_backend_config();
-  return backend_config.is_sync();
 }
 
 bool NoParallelCustomCallCollective(const HloInstruction* instr) {
@@ -421,7 +415,7 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
       return ::tsl::OkStatus();
     }));
     if (i != output.size()) {
-      return xla::InternalError("output sizes don't match");
+      return xla::Internal("output sizes don't match");
     }
   }
 
@@ -753,7 +747,7 @@ tsl::StatusOr<lmhlo_gpu::CublasLtMatmulEpilogue> AsLhloEpilogue(
     case xla::gpu::GemmBackendConfig::BIAS_GELU_AUX:
       return lmhlo_gpu::CublasLtMatmulEpilogue::BiasGeluAux;
     default:
-      return xla::InternalError("unknown epilogue");
+      return xla::Internal("unknown epilogue");
   }
 }
 
@@ -779,7 +773,7 @@ tsl::StatusOr<lmhlo_gpu::FusedMhaDagSignature> AsLhloFusedMhaDagSignature(
     case xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout:
       return lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmaxDropout;
     default:
-      return xla::InternalError("unknown cudnn fmha fwd kind");
+      return xla::Internal("unknown cudnn fmha fwd kind");
   }
 }
 tsl::StatusOr<lmhlo_gpu::FusedMhaBackwardDagSignature>
@@ -807,7 +801,7 @@ AsLhloFusedMhaBackwardDagSignature(xla::gpu::CudnnfMHAKind kind) {
       return lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmaxDropout;
       break;
     default:
-      return xla::InternalError("unknown cudnn fmha bwd kind");
+      return xla::Internal("unknown cudnn fmha bwd kind");
   }
 }
 }  // namespace
@@ -988,7 +982,7 @@ static tsl::StatusOr<mlir::lmhlo_gpu::Activation> GetLHLOActivation(
     case stream_executor::dnn::kLeakyRelu:
       return mlir::lmhlo_gpu::Activation::LeakyRelu;
     default:
-      return xla::InternalError("Unknown activation");
+      return xla::Internal("Unknown activation");
   }
 }
 
@@ -1158,7 +1152,8 @@ LhloDialectEmitter::EmitDnnConvolutionReorderVectorized(
     // Output shape defines the filter, it must have NCHW_VECT_C layout.
     Shape shape = custom_call->shape();
     if (shape.IsTuple()) {
-      shape = shape.tuple_shapes(0);
+      // We explicitly create a copy here to avoid self-assignment issues
+      shape = Shape{shape.tuple_shapes(0)};
     }
 
     CHECK_EQ(shape.rank(), 5);
@@ -1385,7 +1380,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHA(
       return set_common_fmha_attributes(fmha);
     }
     default:
-      return xla::InternalError("Unknown forward fused MHA call.");
+      return xla::Internal("Unknown forward fused MHA call.");
   }
 }
 
@@ -1493,6 +1488,19 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
           custom_call, operands);
       return set_common_fmha_backward_attributes(fmha_backward);
     }
+    case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout: {
+      // push fwd output for bwd here if it is flash attention
+      if (config.is_flash_attention()) {
+        TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
+      }
+      TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands));
+      auto fmha_backward = CreateOpWithoutAttrs<lmhlo_gpu::fusedMHABackwardOp>(
+          custom_call, operands);
+      fmha_backward.setDropoutRateAttr(
+          builder_.getF64FloatAttr(config.dropout_rate()));
+      fmha_backward.setSeedAttr(builder_.getI64IntegerAttr(config.seed()));
+      return set_common_fmha_backward_attributes(fmha_backward);
+    }
     case xla::gpu::CudnnfMHAKind::kBackwardScaleBiasSoftmax: {
       // push fwd output for bwd here if it is flash attention
       if (config.is_flash_attention()) {
@@ -1584,7 +1592,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHABackward(
     }
 
     default:
-      return xla::InternalError("Unknown backward fused MHA call.");
+      return xla::Internal("Unknown backward fused MHA call.");
   }
 }
 

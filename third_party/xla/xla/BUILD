@@ -48,7 +48,9 @@ package_group(
 )
 
 exports_files(
-    ["run_lit.sh"],
+    [
+        "lit.cfg.py",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -1222,15 +1224,6 @@ cc_library(
         "@com_google_absl//absl/strings:cord",
         "@local_tsl//tsl/platform:logging",
     ],
-)
-
-filegroup(
-    name = "litfiles",
-    srcs = [
-        "runlit.cfg.py",
-        "runlit.site.cfg.py",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 # -----------------------------------------------------------------------------

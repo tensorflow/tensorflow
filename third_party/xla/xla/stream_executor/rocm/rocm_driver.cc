@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,6 +75,46 @@ namespace gpu {
 
 /* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
 /* static */ int64_t CreatedContexts::next_id_ = 1;  // 0 means "no context"
+
+// Formats hipError_t to output prettified values into a log stream.
+// Error summaries taken from:
+string ToString(hipError_t result) {
+#define OSTREAM_ROCM_ERROR(__name) \
+  case hipError##__name:           \
+    return "HIP_ERROR_" #__name;
+
+  switch (result) {
+    OSTREAM_ROCM_ERROR(InvalidValue)
+    OSTREAM_ROCM_ERROR(OutOfMemory)
+    OSTREAM_ROCM_ERROR(NotInitialized)
+    OSTREAM_ROCM_ERROR(Deinitialized)
+    OSTREAM_ROCM_ERROR(NoDevice)
+    OSTREAM_ROCM_ERROR(InvalidDevice)
+    OSTREAM_ROCM_ERROR(InvalidImage)
+    OSTREAM_ROCM_ERROR(InvalidContext)
+    OSTREAM_ROCM_ERROR(InvalidHandle)
+    OSTREAM_ROCM_ERROR(NotFound)
+    OSTREAM_ROCM_ERROR(NotReady)
+    OSTREAM_ROCM_ERROR(NoBinaryForGpu)
+
+    // Encountered an uncorrectable ECC error during execution.
+    OSTREAM_ROCM_ERROR(ECCNotCorrectable)
+
+    // Load/store on an invalid address. Must reboot all context.
+    case 700:
+      return "ROCM_ERROR_ILLEGAL_ADDRESS";
+    // Passed too many / wrong arguments, too many threads for register count.
+    case 701:
+      return "ROCM_ERROR_LAUNCH_OUT_OF_RESOURCES";
+
+      OSTREAM_ROCM_ERROR(ContextAlreadyInUse)
+      OSTREAM_ROCM_ERROR(PeerAccessUnsupported)
+      OSTREAM_ROCM_ERROR(Unknown)  // Unknown internal error to ROCM.
+    default:
+      return absl::StrCat("hipError_t(", static_cast<int>(result), ")");
+  }
+}
+
 namespace {
 
 // Returns the current context and checks that it is in the set of HIP contexts
@@ -1316,19 +1356,6 @@ struct BitPatternToValue {
       << "Feature not supported on ROCm platform (UnifiedMemoryDeallocate)";
 }
 
-/* static */ absl::StatusOr<void*> GpuDriver::CollectiveMemoryAllocate(
-    GpuContext* context, uint64_t bytes) {
-  ScopedActivateContext activated{context};
-  return absl::UnimplementedError(
-      "Feature not supported on ROCm platform (CollectiveMemoryAllocate)");
-}
-
-/* static */ absl::Status GpuDriver::CollectiveMemoryDeallocate(
-    GpuContext* context, void* location) {
-  return absl::UnimplementedError(
-      "Feature not supported on ROCm platform (CollectiveMemoryDeallocate)");
-}
-
 /* static */ void* GpuDriver::HostAllocate(GpuContext* context,
                                            uint64_t bytes) {
   ScopedActivateContext activation{context};
@@ -2105,21 +2132,27 @@ static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   ScopedActivateContext activation{context};
 
   int max_blocks = 0;
-  hipError_t result = hipSuccess;
-  // TODO(ROCm) implement this feature in HIP
-  if (result != hipSuccess) {
-    return absl::Status{
-        absl::StatusCode::kInternal,
-        absl::StrFormat("failed to calculate occupancy of kernel %p: %s",
-                        kernel, ToString(result).c_str())};
-  }
-
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipModuleOccupancyMaxActiveBlocksPerMultiprocessor(
+          &max_blocks, kernel, threads_per_block, dynamic_shared_memory_bytes),
+      "Failed to calculate maximal active blocks per SM");
   return max_blocks;
 }
 
 }  // namespace gpu
 
 namespace rocm {
+
+absl::Status OccupancyGetMaxPotentialBlockSize(int* gridSize, int* blockSize,
+                                               hipFunction_t kernel,
+                                               size_t dynSharedMemPerBlk,
+                                               int blockSizeLimit) {
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipModuleOccupancyMaxPotentialBlockSize(
+          gridSize, blockSize, kernel, dynSharedMemPerBlk, blockSizeLimit),
+      "Failed to calculate maximal potential block size");
+  return absl::OkStatus();
+}
 
 hipCtx_t CurrentContextOrDie() {
   hipCtx_t current = nullptr;

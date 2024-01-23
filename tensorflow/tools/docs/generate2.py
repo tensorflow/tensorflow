@@ -207,7 +207,7 @@ class RawOpsPageInfo(module_page.ModulePageInfo):
 # So prefix the score tuples with -1 when this is the canonical name, +1
 # otherwise. The generator chooses the name with the lowest score.
 class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
-  """A `tf_export`, `keras_export` and `estimator_export` aware doc_visitor."""
+  """A `tf_export`, and `keras_export` aware doc_visitor."""
 
   class TfNameScore(NamedTuple):
     canonical_score: int
@@ -216,8 +216,7 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
   def _score_name(self, path: doc_generator_visitor.ApiPath) -> TfNameScore:
     name = ".".join(path)
     all_exports = [tf_export.TENSORFLOW_API_NAME,
-                   tf_export.KERAS_API_NAME,
-                   tf_export.ESTIMATOR_API_NAME]
+                   tf_export.KERAS_API_NAME]
 
     for api_name in all_exports:
       try:
@@ -248,7 +247,6 @@ def build_docs(output_dir, code_url_prefix, search_hints):
 
   if version.parse(tf.__version__) >= version.parse("2.9"):
     doc_controls.set_deprecated(tf.compat.v1)
-    doc_controls.set_deprecated(tf.estimator)
     doc_controls.set_deprecated(tf.feature_column)
     doc_controls.set_deprecated(tf.keras.preprocessing)
 

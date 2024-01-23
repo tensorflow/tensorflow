@@ -796,7 +796,9 @@ test:macos_x86_pycpp_test_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_
 test:macos_x86_pycpp_test_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py38,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test
 test:macos_x86_pycpp_test_filters --keep_going --test_lang_filters=cc,py --test_size_filters=small,medium
 test:macos_x86_pycpp_test --config=macos_x86_pycpp_test_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/python/integration_testing/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/...
-
+# CROSS-COMPILE MACOS X86 PYCPP
+test:cross_compile_macos_x86_pycpp_test --config=macos_x86_pycpp_test
+test:cross_compile_macos_x86_pycpp_test -//tensorflow/core/kernels:quantized_conv_ops_test -//tensorflow/core/kernels:quantized_matmul_op_test -//tensorflow/python/ops:quantized_conv_ops_test -//tensorflow/tools/graph_transforms:transforms_test -//tensorflow/python/tools:aot_compiled_test
 # END TF TEST SUITE OPTIONS
 
 # START CROSS-COMPILE CONFIGS
@@ -854,5 +856,7 @@ build:cross_compile_macos_x86 --platform_mappings=tensorflow/tools/toolchains/cr
 build:rbe_cross_compile_macos_x86 --config=cross_compile_macos_x86
 build:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
 test:rbe_cross_compile_macos_x86 --config=rbe_cross_compile_base
+# Increase the test timeout as tests often take longer on mac.
+test:rbe_cross_compile_macos_x86 --test_timeout=300,450,1200,3600
 # END MACOS CROSS-COMPILE CONFIGS
 # END CROSS-COMPILE CONFIGS

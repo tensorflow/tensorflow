@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,11 +71,9 @@ bool IsCollectiveOp(const HloInstruction* op) {
     return true;
   }
 
-  return hlo_query::IsAsyncCollectiveDoneOp(opcode,
-                                            /*include_send_recv=*/true) ||
+  return hlo_query::IsAsyncCollectiveDoneOp(op, /*include_send_recv=*/true) ||
          (hlo_query::IsCollectiveCommunicationOp(opcode) &&
-          !hlo_query::IsAsyncCollectiveStartOp(opcode,
-                                               /*include_send_recv=*/true));
+          !hlo_query::IsAsyncCollectiveStartOp(op, /*include_send_recv=*/true));
 }
 
 // Returns the corresponding Done op if the input is a Start op. Otherwise,
@@ -173,7 +171,7 @@ struct P2PGroup {
       return OkStatus();
     }
     if (kind != kUnpipelined) {
-      return InternalError("Expected unpipelined group");
+      return Internal("Expected unpipelined group");
     }
     P2PGroupNode& node = nodes[kUnpipelinedNodeIdx];
     if (!node.RecordDoneOp(p2p)) {
@@ -189,7 +187,7 @@ struct P2PGroup {
     }
     if (kind == kUnpipelined) {
       if (nodes[kPipelinedParentNodeIdx].computation != nullptr) {
-        return InternalError("Expected unpipelined group");
+        return Internal("Expected unpipelined group");
       }
       kind = kPipelined;
     }
@@ -206,7 +204,7 @@ struct P2PGroup {
       return OkStatus();
     }
     if (kind == kUnpipelined) {
-      return InternalError("Expected pipelined group");
+      return Internal("Expected pipelined group");
     }
     P2PGroupNode& node = nodes[kPipelinedParentNodeIdx];
     if (!node.RecordWhileOp(while_op)) {
@@ -270,7 +268,7 @@ Status MayAddWhileOpToPipelinedGroup(HloInstruction* while_op,
     }
     pipelined_group++;
     if (pipelined_group > 1) {
-      return InternalError(
+      return Internal(
           "Expecting only one pipelined P2P group for each while-loop");
     }
     TF_RETURN_IF_ERROR(
@@ -470,7 +468,7 @@ StatusOr<int> ConnectP2PChain(HloComputation* computation,
       TF_RETURN_IF_ERROR(
           ConnectPipelinedP2PChild(p2p_group.nodes[kPipelinedChildNodeIdx]));
       if (pipelined_group != nullptr) {
-        return InternalError("Expected <=1 pipelined group in a while-body");
+        return Internal("Expected <=1 pipelined group in a while-body");
       }
       pipelined_group = &p2p_group;
     } else {
@@ -676,7 +674,7 @@ Status ChainCollectivesWithPipelinedP2PChild(
     }
     if (reachability->IsReachable(hlo, send_done) ||
         reachability->IsReachable(recv, hlo)) {
-      return InternalError("Detect deadlock in input HLO");
+      return Internal("Detect deadlock in input HLO");
     }
 
     HloOpcode opcode = hlo->opcode();

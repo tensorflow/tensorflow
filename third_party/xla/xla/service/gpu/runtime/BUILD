@@ -79,6 +79,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:global_device_id",
         "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/service/gpu:nccl_api",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
@@ -88,6 +89,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ] + if_gpu_is_configured([
         "//xla/service/gpu:mock_nccl_utils",
     ]),

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,14 +38,15 @@ class NcclSendThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::SendOp op);
   static const char* GetHloOpName() { return "send"; }
 
-  NcclSendThunk(ThunkInfo thunk_info, mlir::lmhlo::SendOp op,
+  NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api, mlir::lmhlo::SendOp op,
                 int64_t replica_count, int64_t partition_count,
                 const Buffer& buffer);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream, ncclComm_t comm) override;
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm) override;
   AsyncStreamKind GetAsyncStreamKind() const override {
     return AsyncStreamKind::kP2P;
   }
@@ -55,10 +56,11 @@ class NcclSendThunk : public NcclCollectiveThunk {
   const Buffer buffer_;
 };
 
-absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
+absl::Status RunSend(NcclApi* nccl_api,
+                     NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
-                     ncclComm_t comm, absl::string_view device_string,
-                     int64_t current_id);
+                     NcclApi::NcclCommHandle comm,
+                     absl::string_view device_string, int64_t current_id);
 
 }  // namespace gpu
 }  // namespace xla

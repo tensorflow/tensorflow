@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -83,8 +83,8 @@ absl::Status InfeedManager::TransferLiteralToInfeed(
   // finer-grained acknowledgement is possible.
   absl::Status block_status = stream()->BlockHostUntilDone();
   if (!block_status.ok()) {
-    return InternalError("Failed to complete data transfer on stream %p: %s",
-                         stream(), block_status.message());
+    return Internal("Failed to complete data transfer on stream %p: %s",
+                    stream(), block_status.message());
   }
 
   EnqueueDestination(std::move(buffer_tree));

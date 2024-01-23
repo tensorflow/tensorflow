@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -219,6 +219,7 @@ bool OneDnnMatMulRewriter::ShouldRewrite(const HloInstruction* dot_instr) {
   // Currently, blocking control dependencies
   if (dot_instr->HasControlDependencies()) return false;
   if (!IsSupportedType(dot_instr->shape().element_type())) return false;
+  if (dot_instr->operands().size() != 2) return false;
 
   // Currently, we rewrite when the data type is F32 or BF16. Note we do not
   // need to check equality of contraction dim-size of the operands. HLO
@@ -418,12 +419,15 @@ class OneDnnMatMulRewriteVisitor : public DfsHloRewriteVisitor {
         return OkStatus();
       }
 
+      bool nd_bias = absl::c_count_if(new_operands.back()->shape().dimensions(),
+                                      [](int64_t dim) { return dim > 1; }) > 1;
+
       auto matmul_call = Cast<HloCustomCallInstruction>(instr->AddInstruction(
           dot->CloneWithNewOperands(dot->shape(), new_operands)));
 
       auto backend_config = matmul_call->backend_config<BackendConfig>();
       backend_config->mutable_onednn_matmul_config()->add_fused_ops(
-          OneDnnMatMulConfig::BIAS);
+          nd_bias ? OneDnnMatMulConfig::BINARY_ADD : OneDnnMatMulConfig::BIAS);
       backend_config->mutable_onednn_matmul_config()->set_bias_broadcast(
           bias_bcast);
 

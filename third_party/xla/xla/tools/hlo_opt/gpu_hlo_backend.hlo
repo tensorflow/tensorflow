@@ -1,0 +1,13 @@
+// RUN: hlo-opt %s --platform=gpu --stage=hlo-backend --xla_gpu_target_config_filename=%S/gpu_specs/%{GPU}.txtpb | FileCheck %s
+
+HloModule module
+
+// CHECK: is_scheduled=true
+
+ENTRY computation {
+    p = f32[5000,6000]{1,0} parameter(0)
+    e = f32[5000,6000]{1,0} sqrt(p)
+    c = f32[6000,5000] transpose(p), dimensions={1,0}
+    r = f32[300,20,5000] reshape(c)
+    ROOT out = (f32[5000,6000], f32[300,20,5000]) tuple(e,r)
+}

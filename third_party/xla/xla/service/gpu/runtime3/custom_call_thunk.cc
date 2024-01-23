@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
       }
 
       if (!slice->slice.allocation())
-        return InternalError("custom call input missing buffer allocation");
+        return Internal("custom call input missing buffer allocation");
 
       buffers.push_back(
           params.buffer_allocations->GetDeviceAddress(slice->slice).opaque());
@@ -96,7 +96,7 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
                &custom_call_status);
   auto message = CustomCallStatusGetMessage(&custom_call_status);
   if (message) {
-    return InternalError("CustomCall failed: %s", *message);
+    return Internal("CustomCall failed: %s", *message);
   } else {
     return absl::OkStatus();
   }
@@ -117,11 +117,11 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(const ExecuteParams& params) {
     for (const std::optional<Slice>& slice : slices) {
       // TODO(ezhulenev): Add a token argument type to XLA:FFI.
       if (!slice.has_value()) {
-        return InternalError("FFI handlers do not support tokens (yet)!");
+        return Internal("FFI handlers do not support tokens (yet)!");
       }
 
       if (!slice->slice.allocation())
-        return InternalError("custom call input missing buffer allocation");
+        return Internal("custom call input missing buffer allocation");
 
       builder.AddBufferArg(
           params.buffer_allocations->GetDeviceAddress(slice->slice),

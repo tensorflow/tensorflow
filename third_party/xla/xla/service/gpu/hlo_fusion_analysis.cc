@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,13 +44,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-// Returns true if `instr` is a non-strided slice.
-bool IsSliceWithUnitStrides(const HloInstruction* instr) {
-  auto slice = DynCast<HloSliceInstruction>(instr);
-  return slice && absl::c_all_of(slice->slice_strides(),
-                                 [](int64_t stride) { return stride == 1; });
-}
 
 // Returns true if the fusion output contains non-strided slices only.
 bool IsInputFusibleNonStridedSlices(
@@ -188,6 +181,21 @@ bool HloFusionAnalysis::HasConsistentTransposeHeros() const {
   return tiled_transpose_.has_value();
 }
 
+static bool UseConcatenateFusion(
+    const std::vector<const HloInstruction*>& roots,
+    const std::vector<const HloInstruction*>& heroes) {
+  if (heroes.size() != 1) return false;
+  if (heroes.front()->opcode() != HloOpcode::kConcatenate) return false;
+  // The concat emitter does not support multiple outputs yet. TODO(csigg): fix.
+  if (roots.front()->shape().IsTuple()) return false;
+  // Limit the number of operands because the concat emitter produces code for
+  // each operand, hurting occupancy.
+  if (heroes.front()->operand_count() > 4) return false;
+  // The loop emitter is faster when warp divergence and occupancy are both low.
+  // TODO(csigg): exclude this case.
+  return true;
+}
+
 HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     const {
   if (fusion_backend_config_.kind() == kCustomFusionKind) {
@@ -230,6 +238,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
 
   if (fusion_roots_[0]->opcode() == HloOpcode::kScatter) {
     return EmitterFusionKind::kScatter;
+  }
+
+  if (UseConcatenateFusion(fusion_roots_, fusion_heroes_)) {
+    return EmitterFusionKind::kConcatenate;
   }
 
   return EmitterFusionKind::kLoop;

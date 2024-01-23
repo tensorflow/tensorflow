@@ -70,12 +70,12 @@ xla_cc_test(
     name = "heap_simulator_test",
     srcs = ["heap_simulator_test.cc"],
     deps = [
+        ":allocation_block",
         ":heap_simulator",
         "//xla:literal",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_value",
-        "//xla/service:hlo_dce",
         "//xla/service:hlo_ordering",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_value",
@@ -84,7 +84,9 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:test",
     ],
 )

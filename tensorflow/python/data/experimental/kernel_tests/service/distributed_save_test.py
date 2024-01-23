@@ -40,8 +40,7 @@ class DistributedSaveTest(
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3], num_elements=[0, 10, 10000]),
-      ))
+          combinations.combine(num_workers=[1, 3], num_elements=[0, 10, 1000])))
   def testSaveLoad(self, num_workers, num_elements):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     snapshot_dir = data_service_test_base.TempDir()
@@ -51,11 +50,8 @@ class DistributedSaveTest(
     _wait_for_snapshot(snapshot_dir.full_path)
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path)
-    multiple_workers = num_workers > 1
-    multiple_chunks = num_elements > 10
-    ignore_order = multiple_workers or multiple_chunks
     self.assertDatasetProduces(
-        dataset, list(range(num_elements)), assert_items_equal=ignore_order)
+        dataset, list(range(num_elements)), assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -73,7 +69,8 @@ class DistributedSaveTest(
     _wait_for_snapshot(snapshot_dir.full_path)
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path)
-    self.assertDatasetProduces(dataset, list(range(10)))
+    self.assertDatasetProduces(
+        dataset, list(range(10)), assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -108,7 +105,8 @@ class DistributedSaveTest(
         dataset, snapshot_dir.full_path, cluster.dispatcher_address()))
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path)
-    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5)
+    self.assertDatasetProduces(
+        dataset, [b"a", b"b", b"c"] * 5, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testChooseFromRepeatedDatasets(self):
@@ -126,7 +124,8 @@ class DistributedSaveTest(
     _wait_for_snapshot(snapshot_dir.full_path)
 
     dataset = dataset_ops.Dataset.load(snapshot_dir.full_path)
-    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5 + [b"c"] * 5)
+    self.assertDatasetProduces(
+        dataset, [b"a", b"b", b"c"] * 5 + [b"c"] * 5, assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -155,16 +154,11 @@ class DistributedSaveTest(
     _wait_for_snapshot(snapshot_path1)
     _wait_for_snapshot(snapshot_path2)
 
-    ignore_order = num_workers > 1
     dataset1 = dataset_ops.Dataset.load(snapshot_path1)
     self.assertDatasetProduces(
-        dataset1,
-        list(range(100)),
-        assert_items_equal=ignore_order)
+        dataset1, list(range(100)), assert_items_equal=True)
     self.assertDatasetProduces(
-        dataset2,
-        [b"a", b"b", b"c"] * 5,
-        assert_items_equal=ignore_order)
+        dataset2, [b"a", b"b", b"c"] * 5, assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(
@@ -219,12 +213,10 @@ class DistributedSaveTest(
             processing_mode=sharding_policy,
             service=cluster.dispatcher_address()))
 
-    ignore_order = num_workers > 0
     expected = list(range(10)) * repeated_load
     if sharding_policy == data_service_ops.ShardingPolicy.OFF:
       expected *= num_workers
-    self.assertDatasetProduces(
-        dataset, expected, assert_items_equal=ignore_order)
+    self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testImbalancedZipAndRepeat(self):
@@ -383,7 +375,7 @@ class LoadCheckpointTest(
     def _build_ds():
       return dataset_ops.Dataset.load(snapshot_dir.full_path)
 
-    verify_fn(self, _build_ds, num_outputs=10)
+    verify_fn(self, _build_ds, num_outputs=10, assert_items_equal=True)
 
 
 def _wait_for_snapshot(snapshot_path):

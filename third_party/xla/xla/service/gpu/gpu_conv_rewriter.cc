@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -146,9 +146,13 @@ ConvolutionMatch MatchBackwardFilter(HloInstruction* conv) {
   // "kernel dimensions" are large. If kernel dimensions are smaller than the
   // output dimensions, return foward conv; otherwise proceed with backward
   // filter conv.
-  if ((kernel_spatial_dims.empty() ||
-       conv->operand(1)->shape().dimensions(kernel_spatial_dims[0]) <=
-           conv->shape().dimensions(output_spatial_dims[0])) &&
+  bool exists_small_kernel_dimension = false;
+  for (int i = 0; i < kernel_spatial_dims.size(); ++i) {
+    exists_small_kernel_dimension |=
+        (conv->operand(1)->shape().dimensions(kernel_spatial_dims[i]) <=
+         conv->shape().dimensions(output_spatial_dims[i]));
+  }
+  if ((kernel_spatial_dims.empty() || exists_small_kernel_dimension) &&
       !window_util::HasWindowDilation(conv->window())) {
     VLOG(1) << conv->ToString()
             << " is a regular forward convolution. No need "

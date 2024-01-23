@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
-#include "xla/status.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -35,11 +37,11 @@ struct NcclAllGatherConfig {
 // Thunk that performs a NCCL-based All-Gather among CUDA GPU-based replicas.
 class NcclAllGatherStartThunk : public NcclCollectiveThunk {
  public:
-  NcclAllGatherStartThunk(ThunkInfo thunk_info,
+  NcclAllGatherStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                           mlir::lmhlo_gpu::AllGatherStartOp op,
                           std::vector<Buffer> buffers);
 
-  NcclAllGatherStartThunk(ThunkInfo thunk_info,
+  NcclAllGatherStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                           const HloAllGatherInstruction* inst,
                           std::vector<Buffer> buffers);
 
@@ -64,15 +66,17 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
 
  protected:
   absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream, ncclComm_t comm) override;
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm) override;
 
  private:
   const NcclAllGatherConfig config_;
   const std::vector<Buffer> buffers_;
 };
 
-absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, ncclComm_t comm);
+absl::Status RunAllGather(NcclApi* nccl_api,
+                          std::vector<DeviceBufferPair>& buffers,
+                          se::Stream& stream, NcclApi::NcclCommHandle comm);
 
 }  // namespace gpu
 }  // namespace xla

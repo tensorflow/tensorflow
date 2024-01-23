@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -638,7 +638,12 @@ StatusOr<std::uintptr_t> PyArray::UnsafeBufferPointer() {
 }
 
 py::dict PyArray::CudaArrayInterface() {
-  auto arr = ValueOrThrow(AssertUnsharded("UnsafeBufferPointer"));
+  auto arr_or_error = AssertUnsharded("UnsafeBufferPointer");
+  if (!arr_or_error.ok()) {
+    throw py::attribute_error(
+        "__cuda_array_interface__ is only supported for unsharded arrays.");
+  }
+  auto arr = *arr_or_error;
 
   ifrt::Array* ifrt_array = arr.ifrt_array();
   std::optional<Shape>& scratch = arr.GetStorage().dynamic_shape;

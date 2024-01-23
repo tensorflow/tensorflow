@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -626,7 +626,8 @@ bool IsSmallConstant(const HloInstruction* instr) {
 absl::StatusOr<bool> GpuPriorityFusion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool dump_enabled = DumpingEnabledForHloModule(*module);
+  bool dump_enabled =
+      DumpingEnabledForHloPass(name(), module->config().debug_options());
   if (dump_enabled) {
     fusion_process_dump_ = std::make_unique<FusionProcessDumpProto>();
   }
@@ -708,7 +709,6 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
   // Derive kInput/kLoop fusion kinds from fusion analysis. This shouldn't
   // matter but some passes downstream still query these instead of fusion
   // analysis.
-  // TODO: Don't recompute this all the time.
   const auto& analysis = fusion_analysis_cache_.Get(*producer, *consumer);
   if (!analysis) return HloInstruction::FusionKind::kLoop;
   switch (analysis->GetEmitterFusionKind()) {
@@ -717,6 +717,7 @@ HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(
     case HloFusionAnalysis::EmitterFusionKind::kTriton:
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion:
       return HloInstruction::FusionKind::kCustom;
+    case HloFusionAnalysis::EmitterFusionKind::kConcatenate:
     case HloFusionAnalysis::EmitterFusionKind::kReduction:
     case HloFusionAnalysis::EmitterFusionKind::kTranspose:
     case HloFusionAnalysis::EmitterFusionKind::kInputSlices:

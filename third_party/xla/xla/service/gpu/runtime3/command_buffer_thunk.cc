@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime3/command_buffer_cmd.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -38,11 +37,13 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/profiler_lock.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 
 namespace xla::gpu {
 
+using tsl::profiler::ScopedAnnotation;
 using tsl::profiler::TraceMe;
 using tsl::profiler::TraceMeEncode;
 
@@ -125,7 +126,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   CommandBufferCmd::RecordParams record_params = {
       params.executor, params.stream, params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
-      params.nccl_params};
+      params.collective_params};
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -172,6 +173,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
     VLOG(1) << "Execute command buffer thunk as a regular thunk sequence "
                "because we detected active profiling session";
     for (auto& thunk : *thunks_) {
+      ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
       TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
     }
     return absl::OkStatus();
@@ -186,13 +188,12 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   CommandBufferCmd::RecordParams record_params = {
       executor, params.stream, params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
-      &params.nccl_params};
+      &params.collective_params};
 
   if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()
-            << " by recoding command buffer cmd sequence"
-            << " after " << cmd_buffer->num_executions
-            << " executions since last update"
+            << " by recoding command buffer cmd sequence" << " after "
+            << cmd_buffer->num_executions << " executions since last update"
             << "; num_commands=" << commands_.size();
 
     TraceMe trace([&] {

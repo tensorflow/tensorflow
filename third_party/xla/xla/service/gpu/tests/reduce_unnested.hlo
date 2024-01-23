@@ -83,32 +83,6 @@ ENTRY reduce.1 {
 
 // -----
 
-// CHECK: define void @wrapped_vectorized_reduce(
-// CHECK-COUNT-12: call void @Sum
-// CHECK-NOT: call void @Sum
-
-HloModule Abc1, is_scheduled=true
-
-Sum {
-    x.1 = f32[] parameter(0)
-    y.1 = f32[] parameter(1)
-    ROOT add.1 = f32[] add(x.1, y.1)
-}
-
-fused_computation {
-  param_0 = f32[64,1048576]{1,0} parameter(0)
-  param_1 = f32[] parameter(1)
-  ROOT vectorized_reduce.1 = f32[1048576]{0} reduce(f32[64,1048576]{1,0} param_0, f32[] param_1), dimensions={0}, to_apply=Sum
-}
-
-ENTRY reduce.1 {
-    parameter = f32[64,1048576] parameter(0)
-    init_value = f32[] constant(0)
-    ROOT wrapped_vectorized_reduce = f32[1048576]{0} fusion(f32[64,1048576]{1,0} parameter, f32[] init_value), kind=kInput, calls=fused_computation
-}
-
-// -----
-
 // CHECK-LABEL: define void @fusion_not_vectorized_too_many_large_params(
 // CHECK-COUNT-6: call void @Sum
 // CHECK-NOT: call void @Sum
@@ -147,77 +121,6 @@ ENTRY reduce.1 {
         f32[128,65536] parameter2,
         f32[128,65536] parameter3
     ), kind=kLoop, calls=fusion_not_vectorized
-}
-
-// -----
-
-// CHECK: define void @fusion_vectorized_some_large_params(
-// CHECK-COUNT-12: call void @Sum
-// CHECK-NOT: call void @Sum
-
-HloModule ColumnReductionVectorizedSomeLargeParams, is_scheduled=true
-
-Sum {
-    x.1 = f32[] parameter(0)
-    y.1 = f32[] parameter(1)
-    ROOT add.1 = f32[] add(x.1, y.1)
-}
-
-fusion_vectorized {
-    a = f32[64,65536] parameter(0)
-    b = f32[128,65536] parameter(1)
-    c = f32[128,65536] parameter(2)
-
-    sum = f32[128,65536] add(b, c)
-    slice = f32[1,1] slice(sum), slice={[0:1],[0:1]}
-    init = f32[] reshape(f32[1,1] slice)
-
-    ROOT reduce = f32[65536] reduce(a, init), dimensions={0}, to_apply=Sum
-}
-
-ENTRY reduce.1 {
-    parameter0 = f32[64,65536] parameter(0)
-    parameter1 = f32[128,65536] parameter(1)
-    parameter2 = f32[128,65536] parameter(2)
-    ROOT fusion_vectorized_some_large_params = f32[65536] fusion(
-        f32[64,65536] parameter0,
-        f32[128,65536] parameter1,
-        f32[128,65536] parameter2
-    ), kind=kLoop, calls=fusion_vectorized
-}
-
-// -----
-
-// CHECK: define void @fusion_vectorized_non_elementwise(
-// CHECK-COUNT-12: call void @Sum
-// CHECK-NOT: call void @Sum
-
-HloModule ColumnReductionVectorizedNonElementwise, is_scheduled=true
-
-Sum {
-    x.1 = f32[] parameter(0)
-    y.1 = f32[] parameter(1)
-    ROOT add.1 = f32[] add(x.1, y.1)
-}
-
-fusion_vectorized {
-    a = f32[64,65536] parameter(0)
-    b = f32[128,65536] parameter(1)
-
-    slice = f32[1,1] slice(b), slice={[0:1],[0:1]}
-    init = f32[] reshape(f32[1,1] slice)
-
-    reverse = f32[64,65536] reverse(f32[64,65536] a), dimensions={0}
-    ROOT reduce = f32[65536] reduce(reverse, init), dimensions={0}, to_apply=Sum
-}
-
-ENTRY reduce.1 {
-    parameter0 = f32[64,65536] parameter(0)
-    parameter1 = f32[128,65536] parameter(1)
-    ROOT fusion_vectorized_non_elementwise = f32[65536] fusion(
-        f32[64,65536] parameter0,
-        f32[128,65536] parameter1
-    ), kind=kLoop, calls=fusion_vectorized
 }
 
 // -----
@@ -399,39 +302,4 @@ ENTRY reduce.1 {
     ROOT fusion_row_reduction_sin_does_not_prevent_vectorization = f32[131072] fusion(
         f32[131072,1024] parameter0
     ), kind=kLoop, calls=fusion_vectorized
-}
-
-// -----
-
-// CHECK: define void @vectorized_col_reduction_exceeding_shmem_budget(
-// CHECK-COUNT-12: call void @add
-// CHECK-NOT: call void @add
-
-// We are trying to have a column reduction that:
-// - triggers vectorization (thus large number of elements 1048576)
-// - has a small "smallest input size" (1 for pred)
-// - exceeds the shmem budget because `num_partial_results` is 8
-
-HloModule m, is_scheduled=true
-
-add {
- a = f64[] parameter(0)
- b = f64[] parameter(1)
- ROOT out = f64[] add(a, b)
-}
-
-fused_computation {
- p1 = f64[1048576,1048576]{1,0} parameter(0)
- p2 = f64[1048576,1048576]{1,0} parameter(1)
- s = pred[1048576,1048576]{1,0} parameter(2)
- p = f64[1048576,1048576]{1,0} select(s, p1, p2)
- z = f64[] constant(0)
- ROOT out = f64[1048576]{0} reduce(p, z), to_apply=add, dimensions={0}
-}
-
-ENTRY e {
- p1 = f64[1048576,1048576]{1,0} parameter(0)
- p2 = f64[1048576,1048576]{1,0} parameter(1)
- s = pred[1048576,1048576]{1,0} parameter(2)
- ROOT vectorized_col_reduction_exceeding_shmem_budget = f64[1048576]{0} fusion(p1, p2, s), kind=kInput, calls=fused_computation
 }

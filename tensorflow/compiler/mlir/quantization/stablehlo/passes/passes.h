@@ -17,10 +17,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_PASSES_H_
 
 #include <memory>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
 
@@ -40,6 +44,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
 // arguments. Preset method of SRQ is set to the quantization option by default.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
     bool enable_per_channel_quantization = false, int bit_width = 8);
+
+// Converts a serialized StableHLO module to bfloat16 and output serialized
+// module.
+FailureOr<std::string> ConvertSerializedStableHloModuleToBfloat16(
+    MLIRContext* context, StringRef serialized_stablehlo_module);
 
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL

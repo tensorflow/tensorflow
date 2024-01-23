@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,14 +17,12 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
-#include <cstdlib>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,18 +30,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
-
-#if XLA_ENABLE_XCCL
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -51,46 +48,22 @@ namespace gpu {
 using mlir::lmhlo_gpu::AllReduceStartOp;
 using mlir::lmhlo_gpu::ReduceScatterStartOp;
 
-absl::Status RunAllReduce(ReductionKind reduction_kind,
+absl::Status RunAllReduce(NcclApi* nccl_api, ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, ncclComm_t comm) {
-#if XLA_ENABLE_XCCL
+                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(ncclRedOp_t reduce_op, ToNcclReduction(reduction_kind));
-
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
-
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
-  for (size_t i = 0; i < buffers.size(); ++i) {
-    DeviceBufferPair& buffer = buffers[i];
-    const void* send_buffer = buffer.source_buffer.opaque();
-    void* recv_buffer = buffer.destination_buffer.opaque();
-
-    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(
-                            buffer.element_type, Thunk::kNcclAllReduce));
-    ncclDataType_t dtype = dtype_and_multiplier.first;
-    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
-    VLOG(3) << absl::StreamFormat(
-        "Calling ncclAllReduce(send_buffer=%p, recv_buffer=%p, count=%d, "
-        "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, element_count, static_cast<const void*>(comm),
-        gpu_stream);
-
-    XLA_NCCL_RETURN_IF_ERROR(ncclAllReduce(send_buffer, recv_buffer,
-                                           element_count, dtype, reduce_op,
-                                           comm, gpu_stream));
+  TF_RETURN_IF_ERROR(nccl_api->GroupStart());
+  for (DeviceBufferPair& buffer : buffers) {
+    TF_RETURN_IF_ERROR(nccl_api->AllReduce(
+        buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+        buffer.element_count, reduction_kind, comm, &stream));
   }
-  return XLA_NCCL_STATUS(ncclGroupEnd());
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
+
+  return nccl_api->GroupEnd();
 }
 
 namespace {
@@ -147,8 +120,6 @@ namespace impl {
 
 absl::Status CheckImplementableInst(const HloInstruction* inst,
                                     Thunk::Kind reduction_op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
-
   for (HloInstruction* operand : inst->operands()) {
     TF_RETURN_IF_ERROR(IsValidOperand(operand->shape(), reduction_op));
   }
@@ -163,7 +134,6 @@ absl::Status CheckImplementableInst(const HloInstruction* inst,
 
 template <typename OpT>
 absl::Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   for (mlir::Value operand : op.getInputs()) {
     TF_RETURN_IF_ERROR(IsValidOperand(operand, reduction_op));
   }
@@ -258,27 +228,28 @@ NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
 }
 
 NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
-    Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
-    std::vector<Buffer> buffers, bool is_sync)
-    : NcclCollectiveThunk(kind, thunk_info, is_sync),
+    Thunk::Kind kind, ThunkInfo thunk_info, NcclApi* nccl_api,
+    NcclAllReduceConfig config, std::vector<Buffer> buffers, bool is_sync)
+    : NcclCollectiveThunk(kind, thunk_info, nccl_api, is_sync),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(ThunkInfo thunk_info,
+                                                 NcclApi* nccl_api,
                                                  AllReduceStartOp op,
                                                  std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclAllReduceStart,
-                                          thunk_info,
+                                          thunk_info, nccl_api,
                                           impl::GetNcclAllReduceConfig(op),
                                           std::move(buffers), op.getIsSync()) {}
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
-    ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
-    std::vector<Buffer> buffers)
+    ThunkInfo thunk_info, NcclApi* nccl_api,
+    const HloAllReduceInstruction* inst, std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclAllReduceStart, thunk_info,
+          Thunk::kNcclAllReduceStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<GpuBackendConfig>()
               ->collective_backend_config()
@@ -310,28 +281,29 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
 }
 
 absl::Status NcclAllReduceStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return ::xla::gpu::RunAllReduce(config_.reduction_kind, device_buffers,
-                                  stream, comm);
+  return ::xla::gpu::RunAllReduce(nccl_api(), config_.reduction_kind,
+                                  device_buffers, stream, comm);
 }
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
-    ThunkInfo thunk_info, ReduceScatterStartOp op,
+    ThunkInfo thunk_info, NcclApi* nccl_api, ReduceScatterStartOp op,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclReduceScatterStart,
-                                          thunk_info,
+                                          thunk_info, nccl_api,
                                           impl::GetNcclAllReduceConfig(op),
                                           std::move(buffers), op.getIsSync()) {}
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
-    ThunkInfo thunk_info, const HloReduceScatterInstruction* inst,
-    std::vector<Buffer> buffers)
+    ThunkInfo thunk_info, NcclApi* nccl_api,
+    const HloReduceScatterInstruction* inst, std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclReduceScatterStart, thunk_info,
+          Thunk::kNcclReduceScatterStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<GpuBackendConfig>()
               ->collective_backend_config()
@@ -363,69 +335,44 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
 }
 
 absl::Status NcclReduceScatterStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return ::xla::gpu::RunReduceScatter(config_.reduction_kind, device_buffers,
-                                      stream, comm);
+  return ::xla::gpu::RunReduceScatter(nccl_api(), config_.reduction_kind,
+                                      device_buffers, stream, comm);
 }
 
-absl::Status RunReduceScatter(ReductionKind reduction_kind,
+absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, ncclComm_t comm) {
-#if XLA_ENABLE_XCCL
+                              se::Stream& stream,
+                              NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(ncclRedOp_t reduce_op, ToNcclReduction(reduction_kind));
+  TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 
-  se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
+  TF_RETURN_IF_ERROR(nccl_api->GroupStart());
 
-  int num_participants = 0;
-  XLA_NCCL_RETURN_IF_ERROR(ncclCommCount(comm, &num_participants));
-
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupStart());
-  for (size_t i = 0; i < buffers.size(); ++i) {
-    DeviceBufferPair& buffer = buffers[i];
-    const void* send_buffer = buffer.source_buffer.opaque();
-    void* recv_buffer = buffer.destination_buffer.opaque();
-
-    TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
-                        ToNcclDataTypeAndCountMultiplier(
-                            buffer.element_type, Thunk::kNcclReduceScatter));
-    ncclDataType_t dtype = dtype_and_multiplier.first;
-    int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
-
+  for (DeviceBufferPair& buffer : buffers) {
     // buffer.element_count is the source buffers element count. For
     // ncclReduceScatter, we need the destination buffers element count.
-    TF_RET_CHECK(element_count % num_participants == 0)
+    TF_RET_CHECK(buffer.element_count % num_participants == 0)
         << "Source buffer was not an exact multiple of the number of "
            "participants.";
 
-    int64_t recv_count = element_count / num_participants;
-    VLOG(3) << absl::StreamFormat(
-        "Calling ncclReduceScatter(send_buffer=%p, recv_buffer=%p, "
-        "recvcount=%d, "
-        "comm=%p, stream=%p)",
-        send_buffer, recv_buffer, recv_count, static_cast<const void*>(comm),
-        gpu_stream);
-    XLA_NCCL_RETURN_IF_ERROR(ncclReduceScatter(send_buffer, recv_buffer,
-                                               recv_count, dtype, reduce_op,
-                                               comm, gpu_stream));
+    TF_RETURN_IF_ERROR(nccl_api->ReduceScatter(
+        buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
+        buffer.element_count / num_participants, reduction_kind, comm,
+        &stream));
   }
-  XLA_NCCL_RETURN_IF_ERROR(ncclGroupEnd());
 
-  VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
-  return absl::OkStatus();
-#else   // XLA_ENABLE_XCCL
-  return Unimplemented(
-      "NCCL support is not available: this binary was not built with a CUDA "
-      "compiler, which is necessary to build the NCCL source library.");
-#endif  // XLA_ENABLE_XCCL
+  return nccl_api->GroupEnd();
 }
 
 }  // namespace gpu
