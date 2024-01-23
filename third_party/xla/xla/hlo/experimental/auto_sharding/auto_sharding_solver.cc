@@ -273,14 +273,15 @@ AutoShardingSolverResult CallORToolsSolver(
   if (solver->ProblemType() ==
       operations_research::MPSolver::SAT_INTEGER_PROGRAMMING) {
     // Set random_seed, interleave_search and share_binary_clauses for
-    // determinism, and num_workers for parallelism.
+    // determinism, mip_max_bound (to handle large costs), and num_workers for
+    // parallelism.
     solver_parameter_str =
         request.deterministic_mode()
             ? absl::StrCat(
                   "share_binary_clauses:false,random_seed:1,interleave_"
-                  "search:true,num_workers:",
+                  "search:true,mip_max_bound:1e9,num_workers:",
                   num_workers)
-            : absl::StrCat("num_workers:", num_workers);
+            : absl::StrCat("mip_max_bound:1e9,num_workers:", num_workers);
     solver->SetSolverSpecificParametersAsString(solver_parameter_str);
   }
 #endif
