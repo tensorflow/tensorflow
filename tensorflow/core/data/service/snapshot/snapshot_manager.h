@@ -190,6 +190,10 @@ class SnapshotManager {
                                  const StatusProto& status_proto);
 
   mutable tsl::mutex mu_;
+  // Uses a separate mutex for `GetSnapshotSplit` RPCs. `GetSnapshotSplit` uses
+  // file IO and may be slow, which may slow down `WorkerHeartbeat` RPCs if they
+  // share one mutex.
+  mutable tsl::mutex get_split_mu_;
 
   // The filepath of the on-disk state.
   const std::string path_;
@@ -252,8 +256,7 @@ class SnapshotManager {
           path_(path),
           stream_index_(stream_index),
           num_sources_(num_sources),
-          assignment_manager_(assignment_manager),
-          repetition_indices_(num_sources) {}
+          assignment_manager_(assignment_manager) {}
 
     // Reads snapshot stream from the files and collects data for restoration.
     absl::Status ReadOnDiskStream();
@@ -263,9 +266,6 @@ class SnapshotManager {
     const std::optional<Stream>& GetStream() const { return restored_stream_; }
     int64_t StreamIndex() const { return stream_index_; }
     const std::string& WorkerAddress() const { return worker_address_; }
-    const std::vector<int64_t>& RepetitionIndices() const {
-      return repetition_indices_;
-    }
     const absl::flat_hash_set<int64_t>& GlobalSplitIndices() const {
       return global_split_indices_;
     }
@@ -286,7 +286,6 @@ class SnapshotManager {
 
     std::string worker_address_;
     std::optional<Stream> restored_stream_;
-    std::vector<int64_t> repetition_indices_;
     absl::flat_hash_set<int64_t> global_split_indices_;
   };
 

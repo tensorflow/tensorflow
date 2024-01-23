@@ -74,11 +74,13 @@ absl::StatusOr<int64_t> CountSplits(SplitProvider& split_provider) {
   return num_splits;
 }
 
-absl::Status SkipSplit(SplitProvider& split_provider) {
+absl::Status SkipSplit(SplitProvider& split_provider,
+                       int64_t& repetition_index) {
   Tensor tensor;
   bool end_of_splits = false;
   TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
   while (end_of_splits) {
+    ++repetition_index;
     TF_RETURN_IF_ERROR(split_provider.Reset());
     TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
   }
@@ -395,8 +397,6 @@ absl::Status SnapshotManager::StreamRestorer::ReadOnDiskSource(
       SourceDirectory(path_, stream_index_, source_index);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> repetition_directories,
                       GetChildren(source_directory, env_));
-  repetition_indices_[source_index] =
-      repetition_directories.empty() ? 0 : repetition_directories.size() - 1;
 
   for (const std::string& repetition : repetition_directories) {
     std::string repetition_dir =
@@ -461,18 +461,13 @@ absl::Status SnapshotManager::RestoreFrom(
   }
   for (int64_t source_index = 0; source_index < repetition_indices.size();
        ++source_index) {
-    if (stream_restorer.RepetitionIndices()[source_index] >
-        repetition_indices[source_index]) {
-      repetition_indices[source_index] =
-          stream_restorer.RepetitionIndices()[source_index];
-    }
-
     // To account for the splits having been assigned, skips the splits in the
     // respective split providers.
     int64_t skip_splits = streams_[stream_restorer.StreamIndex()]
                               .num_assigned_splits_per_source[source_index];
     for (int64_t i = 0; i < skip_splits; ++i) {
-      TF_RETURN_IF_ERROR(SkipSplit(*split_providers[source_index]));
+      TF_RETURN_IF_ERROR(SkipSplit(*split_providers[source_index],
+                                   repetition_indices[source_index]));
     }
   }
   for (int64_t global_split_index : stream_restorer.GlobalSplitIndices()) {
@@ -640,52 +635,61 @@ absl::Status SnapshotManager::WorkerHeartbeat(
 
 absl::Status SnapshotManager::GetSnapshotSplit(
     const GetSnapshotSplitRequest& request, GetSnapshotSplitResponse& response)
-    TF_LOCKS_EXCLUDED(mu_) {
-  tsl::mutex_lock l(mu_);
-  if (auto it = assignments_.find(request.worker_address());
-      it == assignments_.end()) {
-    return absl::InternalError(
-        absl::StrCat("tf.data snapshot worker ", request.worker_address(),
-                     " was assigned stream ", request.stream_index(),
-                     ", but the assignment is no longer available."));
-  } else if (it->second != request.stream_index()) {
-    return absl::InternalError(
-        absl::StrCat("tf.data snapshot worker ", request.worker_address(),
-                     " was assigned stream ", request.stream_index(),
-                     " but is now assigned a different stream ", it->second));
-  }
+    TF_LOCKS_EXCLUDED(get_split_mu_, mu_) {
+  int64_t local_split_index = 0;
+  int64_t global_split_index = 0;
+  PrefetchedSplitProvider* split_provider = nullptr;
+  tsl::mutex_lock get_split_lock(get_split_mu_);
+  {
+    tsl::mutex_lock l(mu_);
+    if (auto it = assignments_.find(request.worker_address());
+        it == assignments_.end()) {
+      return absl::InternalError(
+          absl::StrCat("tf.data snapshot worker ", request.worker_address(),
+                       " was assigned stream ", request.stream_index(),
+                       ", but the assignment is no longer available."));
+    } else if (it->second != request.stream_index()) {
+      return absl::InternalError(
+          absl::StrCat("tf.data snapshot worker ", request.worker_address(),
+                       " was assigned stream ", request.stream_index(),
+                       " but is now assigned a different stream ", it->second));
+    }
 
-  Stream& stream = streams_[request.stream_index()];
-  int64_t local_split_index =
-      stream.num_assigned_splits_per_source[request.source_index()];
-  int64_t global_split_index = num_assigned_splits_;
-  response.set_local_split_index(local_split_index);
+    Stream& stream = streams_[request.stream_index()];
+    local_split_index =
+        stream.num_assigned_splits_per_source[request.source_index()];
+    global_split_index = num_assigned_splits_;
+    response.set_local_split_index(local_split_index);
 
-  Source& source = sources_[request.source_index()];
-  if (request.repetition_index() < source.repetition_index) {
-    response.set_end_of_splits(true);
-    return absl::OkStatus();
-  }
-  while (request.repetition_index() > source.repetition_index) {
-    // This could happen if an iterator is repeated before reaching end of
-    // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
-    // the previous repetitions as completed and advance to the requested
-    // repetition.
-    TF_RETURN_IF_ERROR(ResetSource(source, request.source_index()));
+    Source& source = sources_[request.source_index()];
+    if (request.repetition_index() < source.repetition_index) {
+      response.set_end_of_splits(true);
+      return absl::OkStatus();
+    }
+    while (request.repetition_index() > source.repetition_index) {
+      // This could happen if an iterator is repeated before reaching end of
+      // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
+      // the previous repetitions as completed and advance to the requested
+      // repetition.
+      TF_RETURN_IF_ERROR(ResetSource(source, request.source_index()));
+    }
+    split_provider = source.split_provider.get();
   }
 
   std::string split_path = SplitPath(
       path_, request.stream_index(), request.source_index(),
       request.repetition_index(), local_split_index, global_split_index);
   TF_ASSIGN_OR_RETURN(std::optional<Tensor> split,
-                      source.split_provider->GetNext(split_path));
+                      split_provider->GetNext(split_path));
   if (!split.has_value()) {
     response.set_end_of_splits(true);
     return absl::OkStatus();
   }
   split->AsProtoTensorContent(response.mutable_split());
 
-  ++stream.num_assigned_splits_per_source[request.source_index()];
+  tsl::mutex_lock l(mu_);
+  ++streams_[request.stream_index()]
+        .num_assigned_splits_per_source[request.source_index()];
   ++num_assigned_splits_;
   return absl::OkStatus();
 }
