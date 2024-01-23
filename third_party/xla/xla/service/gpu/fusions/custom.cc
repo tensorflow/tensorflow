@@ -98,25 +98,21 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   TF_RET_CHECK(IsContiguousSlice(slice_instr))
       << "AddressComputationFusion only handles contiguous slices currently";
 
+  const Shape& src_shape = slice_instr.operand(0)->shape();
+  const Shape& dst_shape = slice_instr.shape();
+  int64_t size = ShapeUtil::ByteSizeOf(dst_shape);
+
   // Given this slice
   // f16[1,4,8]{2,1,0} slice(f16[2,8,8]{2,1,0}),
   //                         slice={[1:2], [4:8], [0:8]}
-  // The size of the slice should be:
-  //    4 * 8 * sizeof(f16) = sizeof(f16) * product of dst_shape's dimensions
   //
   // The offset of the slice should be:
   //    slice_starts(0) * 8 * 8 * sizeof(f16) +
   //    slice_starts(1) * 8 * sizeof(f16)
-  const Shape& src_shape = slice_instr.operand(0)->shape();
-  const Shape& dst_shape = slice_instr.shape();
-  int64_t size = ShapeUtil::ByteSizeOfPrimitiveType(dst_shape.element_type());
   int64_t offset = 0;
   int64_t cur_size =
       ShapeUtil::ByteSizeOfPrimitiveType(src_shape.element_type());
   for (auto dim : src_shape.layout().minor_to_major()) {
-    // IsContiguousSlice ensures that more major dimensions than the first
-    // sliced dimension are all 1.
-    size *= dst_shape.dimensions(dim);
     offset += slice_instr.slice_starts(dim) * cur_size;
     cur_size *= src_shape.dimensions(dim);
   }
