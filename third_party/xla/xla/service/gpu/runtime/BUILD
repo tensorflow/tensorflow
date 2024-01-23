@@ -211,7 +211,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "@com_google_absl//absl/status",
     ] + if_gpu_is_configured([
-        "//xla/service/gpu:cub_sort_thunk",
+        "//xla/service/gpu/runtime3:cub_sort_thunk",
     ]),
 )
 

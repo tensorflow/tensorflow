@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/cub_sort_thunk.h"
+#include "xla/service/gpu/runtime3/cub_sort_thunk.h"
 #endif
 
 namespace xla {
