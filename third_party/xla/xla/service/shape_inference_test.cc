@@ -4009,6 +4009,16 @@ TEST_F(UnboundedConcatenateOpShapeInferenceTest,
               HasSubstr("Mismatched bound sizes 3 and 4 in dimension 1"));
 }
 
+TEST_F(ShapeInferenceTest, UnboundedConvert) {
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("f64[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape result, ShapeInference::InferConvertShape(
+                                            operand, PrimitiveType::F64));
+  EXPECT_TRUE(ShapeUtil::Equal(result, expected))
+      << "inferred: " << ShapeUtil::HumanString(result)
+      << " expected: " << ShapeUtil::HumanString(expected);
+}
+
 TEST_F(ShapeInferenceTest, UnboundedConvolution) {
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 2, ?, 128]"));
   TF_ASSERT_OK_AND_ASSIGN(Shape rhs, ParseShape("f32[2, 2, <=128, 8]"));

@@ -1856,6 +1856,16 @@ TEST(XlaBuilderTest, UnboundedConcatenate) {
               GmockMatch(m::Op().WithShapeEqualTo(&expected)));
 }
 
+TEST(XlaBuilderTest, UnboundedConvert) {
+  XlaBuilder b(TestName());
+  TF_ASSERT_OK_AND_ASSIGN(Shape operand, ParseShape("f32[?]"));
+  TF_ASSERT_OK_AND_ASSIGN(Shape expected, ParseShape("s32[?]"));
+  ConvertElementType(Parameter(&b, 0, operand, "operand"), PrimitiveType::S32);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(b));
+  EXPECT_THAT(GetRoot(*module),
+              GmockMatch(m::Op().WithShapeEqualTo(&expected)));
+}
+
 TEST(XlaBuilderTest, UnboundedConvolution) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(Shape lhs, ParseShape("f32[?, 2, ?, 128]"));
