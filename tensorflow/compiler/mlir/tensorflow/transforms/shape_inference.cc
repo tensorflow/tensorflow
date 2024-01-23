@@ -1972,8 +1972,17 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
     return false;
 
   DenseIntElementsAttr slice_sizes_attr;
-  if (!matchPattern(op.getSliceSizes(), m_Constant(&slice_sizes_attr)))
+  if (DenseIntElementsAttr attr;
+      matchPattern(op.getSliceSizes(), m_Constant(&attr))) {
+    slice_sizes_attr = attr;
+  } else if (const auto it = results_.find(ValuePort(op.getSliceSizes()));
+             it != results_.end() &&
+             llvm::isa<DenseIntElementsAttr>(it->second)) {
+    slice_sizes_attr = llvm::cast<DenseIntElementsAttr>(it->second);
+  } else {
     return false;
+  }
+
   llvm::SmallVector<int64_t> slice_sizes;
   for (const auto& attr : slice_sizes_attr.getValues<APInt>()) {
     slice_sizes.push_back(attr.getSExtValue());
