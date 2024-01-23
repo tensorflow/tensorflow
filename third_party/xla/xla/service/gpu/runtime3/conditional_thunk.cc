@@ -33,6 +33,19 @@ ConditionalThunk::ConditionalThunk(
       config_(std::move(config)),
       branch_index_buffer_index_(branch_index_buffer_index) {}
 
+absl::Status ConditionalThunk::Prepare(const PrepareParams& params,
+                                       ResourceRequests& resource_requests) {
+  if (config_.branch_index_is_bool) {
+    TF_RET_CHECK(config_.branch_thunks.size() == 2);
+  } else {
+    TF_RET_CHECK(!config_.branch_thunks.empty());
+  }
+  for (auto& branch_thunk : config_.branch_thunks) {
+    TF_RETURN_IF_ERROR(branch_thunk->Prepare(params, resource_requests));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status ConditionalThunk::Initialize(const InitializeParams& params) {
   if (config_.branch_index_is_bool) {
     TF_RET_CHECK(config_.branch_thunks.size() == 2);
@@ -61,9 +74,8 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   absl::Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
-    return Internal(
-        "Failed to retrieve branch_index value on stream %p: %s.", &stream,
-        block_status.message());
+    return Internal("Failed to retrieve branch_index value on stream %p: %s.",
+                    &stream, block_status.message());
   }
   if (config_.branch_index_is_bool) {
     branch_index = pred ? 0 : 1;

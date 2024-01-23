@@ -345,6 +345,7 @@ cc_library(
         "//xla/stream_executor",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -482,6 +483,8 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:thunk",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ],
@@ -548,10 +551,13 @@ cc_library(
         ":sequential_thunk",
         "//xla:status",
         "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:thunk",
         "//xla/stream_executor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
     ],
 )

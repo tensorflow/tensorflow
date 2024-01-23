@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME3_WHILE_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME3_WHILE_THUNK_H_
 
-#include <vector>
+#include <memory>
 
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/buffer_allocations.h"
+#include "absl/status/status.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -45,6 +44,8 @@ class WhileThunk : public Thunk {
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
 
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 

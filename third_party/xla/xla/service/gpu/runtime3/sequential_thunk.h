@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME3_SEQUENTIAL_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME3_SEQUENTIAL_THUNK_H_
 
-#include <vector>
+#include <string>
 
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/buffer_allocations.h"
+#include "absl/status/status.h"
 #include "xla/service/gpu/thunk.h"
 
 namespace xla {
@@ -38,6 +37,8 @@ class SequentialThunk : public Thunk {
   const ThunkSequence& thunks() const { return thunks_; }
   std::string ToStringExtra(int indent) const override;
 
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 

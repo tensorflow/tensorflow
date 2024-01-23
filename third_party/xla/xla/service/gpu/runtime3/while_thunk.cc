@@ -19,8 +19,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
-#include "xla/status.h"
+#include "absl/strings/str_format.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -36,6 +41,14 @@ WhileThunk::WhileThunk(
           ThunkInfo(thunk_info.op), std::move(*condition_thunk_sequence))),
       body_thunk_sequence_(std::make_unique<SequentialThunk>(
           ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
+
+absl::Status WhileThunk::Prepare(const PrepareParams& params,
+                                 ResourceRequests& resource_requests) {
+  TF_RETURN_IF_ERROR(
+      condition_thunk_sequence_->Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Prepare(params, resource_requests));
+  return absl::OkStatus();
+}
 
 absl::Status WhileThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(params));
@@ -61,9 +74,9 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     VLOG(3) << "condition_result = " << condition_result;
     absl::Status block_status = stream.BlockHostUntilDone();
     if (!block_status.ok()) {
-      return Internal(
+      return absl::InternalError(absl::StrFormat(
           "Failed to complete all kernels launched on stream %p: %s", &stream,
-          block_status.message());
+          block_status.message()));
     }
 
     if (!condition_result) {
