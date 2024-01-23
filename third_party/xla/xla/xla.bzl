@@ -65,6 +65,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     Label("//xla/stream_executor/gpu:gpu_stream"),
     Label("//xla/stream_executor/rocm:all_runtime"),
     Label("//xla/stream_executor/rocm:stream_executor_rocm"),
+    "@local_tsl//tsl/util:determinism",
 ])
 
 def xla_cc_binary(deps = [], copts = tsl_copts(), **kwargs):

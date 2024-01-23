@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -112,6 +113,11 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
 }
 
 namespace {
+absl::uint128 Fingerprint128(const absl::string_view s) {
+  auto fp = tsl::Fingerprint128(s);
+  return absl::MakeUint128(fp.high64, fp.low64);
+}
+
 int fpus_per_core(std::string gcn_arch_name) {
   // Source:
   // https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna2-white-paper.pdf
@@ -126,7 +132,55 @@ int fpus_per_core(std::string gcn_arch_name) {
 absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    absl::Span<const uint8_t> content) {
-  return absl::UnimplementedError("Not implemented for ROCm");
+  absl::MutexLock lock{&shared_constants_mu_};
+  // We assume all constants are uniquely identified by this hash. In the
+  // (highly unlikely) event of a hash collision, the program will likely crash
+  // (because the cached constant that will be returned by mistake is unlikely
+  // to have the correct size).
+  absl::uint128 fingerprint = Fingerprint128(absl::string_view(
+      reinterpret_cast<const char*>(content.data()), content.size()));
+  // Must insert nullptr first to get an iterator to the insertion point.
+  auto insert_result = shared_constants_.insert(
+      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
+  auto it = insert_result.first;
+  bool was_already_in_cache = !insert_result.second;
+  std::shared_ptr<DeviceMemoryBase> shared_constant;
+
+  if (was_already_in_cache) {
+    shared_constant = it->second.lock();
+  }
+
+  if (shared_constant == nullptr) {
+    // Either the constant wasn't found in the cache, or it was but its
+    // weak_ptr had expired.
+    DeviceMemoryBase* new_constant =
+        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
+    if (new_constant->opaque() == nullptr) {
+      return absl::InternalError(absl::StrFormat(
+          "Failed to allocate %d bytes for new constant", content.size()));
+    }
+
+    absl::Status status =
+        stream->ThenMemcpy(new_constant, content.data(), content.size())
+            .BlockHostUntilDone();
+    if (!status.ok()) {
+      Deallocate(new_constant);
+      status.Update(absl::InternalError(absl::StrFormat(
+          "Memcpy to device address %p failed", new_constant->opaque())));
+      return status;
+    }
+
+    // Capturing 'this' in the custom deleter means this executor must
+    // outlive all shared uses of this constant.
+    shared_constant = std::shared_ptr<DeviceMemoryBase>(
+        new_constant, [this](DeviceMemoryBase* p) {
+          Deallocate(p);
+          delete p;
+        });
+    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
+  }
+
+  return shared_constant;
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
