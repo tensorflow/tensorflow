@@ -550,7 +550,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "interleave_test",
-    size = "small",
+    size = "medium",
     srcs = ["interleave_test.py"],
     shard_count = 24,
     deps = [
@@ -565,6 +565,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
