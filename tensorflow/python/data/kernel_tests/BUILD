@@ -1382,6 +1382,7 @@ py_strict_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
