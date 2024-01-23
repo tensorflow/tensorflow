@@ -719,7 +719,7 @@ build:no_tfrt --deleted_packages=tensorflow/compiler/mlir/tfrt,tensorflow/compil
 # Use --config=tf_public_cache to try and use the TensorFlow public build cache
 # to build TensorFlow. Look at ci/official/envs to find which types of jobs
 # push to the cache.  For macOS, use --config=tf_public_macos_cache
-build:tf_public_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/september2022" --remote_upload_local_results=false
+build:tf_public_cache --remote_cache="https://storage.googleapis.com/tensorflow-devinfra-bazel-cache/january2024" --remote_upload_local_results=false
 # Cache pushes are limited to TF's CI system.
 build:tf_public_cache_push --config=tf_public_cache --remote_upload_local_results=true --google_default_credentials
 # Public cache for macOS builds
