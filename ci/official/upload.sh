@@ -48,5 +48,5 @@ if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
 fi
 
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then
-  twine upload $TFCI_UPLOAD_WHL_PYPI_ARGS "$DOWNLOADS"/*.whl
+  twine upload $TFCI_ARTIFACT_FINAL_PYPI_ARGS "$DOWNLOADS"/*.whl
 fi
