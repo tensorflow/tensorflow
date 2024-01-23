@@ -93,27 +93,6 @@ static absl::Duration TerminateTimeout() {
 // NcclClique
 //===----------------------------------------------------------------------===//
 
-// A group of NCCL communicators making up a clique. With NCCL it's notoriously
-// easy to get a deadlock, so we take extra care by grouping communicators into
-// cliques and making sure that we have a well defined order of all collective
-// operations that does not lead to deadlocks.
-struct NcclCliqueCommunicators {
-  NcclCliqueId clique_id;
-  absl::node_hash_map<int32_t, NcclComm> communicators;
-
-  // The latest (maybe still in progress) XLA run_id that used this clique to
-  // launch collective operations. We use this id to detect potentially
-  // dangerous (deadlocks) concurrent execution of multiple XLA runs.
-  int64_t run_id = -1;
-};
-
-struct NcclClique : public Lockable<NcclCliqueCommunicators> {
-  NcclClique(NcclCliqueId clique_id,
-             absl::node_hash_map<int32_t, NcclComm> communicators)
-      : Lockable(NcclCliqueCommunicators{clique_id, std::move(communicators)}) {
-  }
-};
-
 namespace {
 // Container for initialized and ready to use local (in-process) NCCL cliques.
 struct NcclCliques {
@@ -267,7 +246,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 
     // Create a new clique with given clique id and communicators.
     absl::MutexLock lock(&cliques.mu);
-    cliques.map.try_emplace(clique_key, state->clique_id,
+    cliques.map.try_emplace(clique_key, clique_key, state->clique_id,
                             std::move(communicators));
   }
 
@@ -284,7 +263,7 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
 
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
+absl::StatusOr<std::shared_ptr<NcclClique::Lock>> AcquireNcclClique(
     RunId run_id, OpId op_id, NcclCliqueKey clique_key,
     const NcclCliqueIdCallback& clique_id_callback, int32_t rank,
     size_t num_local_participants, bool may_skip_rendezvous) {

@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
@@ -197,6 +198,33 @@ NcclCollectiveThunk::NcclCollectiveThunk(Kind kind, ThunkInfo thunk_info,
       nccl_api_(nccl_api),
       async_events_(is_sync ? nullptr : new AsyncEvents()) {}
 
+static absl::StatusOr<NcclComm::Lock> GetNcclComm(
+    const Thunk::CollectiveExecuteParams& params,
+    const Thunk::CollectiveCliques& collective_cliques,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t stream_id) {
+  GlobalDeviceId global_device_id = params.global_device_id;
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<GlobalDeviceId> participants,
+      GetParticipatingDevices(global_device_id, *params.device_assn,
+                              replica_groups, group_mode));
+
+  if (IsGlobalNcclConfig() &&
+      (participants.size() != params.device_assn->replica_count())) {
+    return InvalidArgument(
+        "Partial replica groups are not allowed when using NCCL_COMM_ID "
+        "environment configuration.");
+  }
+
+  NcclCliqueKey clique_key(std::move(participants), stream_id);
+  std::optional<int64_t> rank = clique_key.rank(global_device_id);
+
+  return collective_cliques.GetComm(std::move(clique_key), *rank);
+}
+
+// TODO(ezhulenev): This is a deprecated code path and should be removed after
+// all users in legacy XLA runtime are removed.
 absl::StatusOr<NcclComm::Lock> LockNcclComm(
     const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -377,9 +405,8 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   const int64_t stream_id = GetStreamId();
   TF_ASSIGN_OR_RETURN(
       NcclComm::Lock comm,
-      LockNcclComm(params.collective_params, config().replica_groups,
-                   config().group_mode, config().op_id, stream_id,
-                   /*enable_clique_optimization=*/false));
+      GetNcclComm(*params.collective_params, *params.collective_cliques,
+                  config().replica_groups, config().group_mode, stream_id));
 
   se::StreamExecutor* executor = params.stream->parent();
   int64_t async_stream_idx = static_cast<int64_t>(GetAsyncStreamKind());

@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -40,6 +42,13 @@ NcclCliqueKey::NcclCliqueKey(std::vector<GlobalDeviceId> devices,
 
 absl::Span<const GlobalDeviceId> NcclCliqueKey::devices() const {
   return devices_;
+}
+
+std::optional<int64_t> NcclCliqueKey::rank(GlobalDeviceId id) const {
+  if (auto it = absl::c_find(devices_, id); it != devices_.end()) {
+    return it - devices_.begin();
+  }
+  return std::nullopt;
 }
 
 std::string NcclCliqueKey::ToString() const {

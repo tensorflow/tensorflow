@@ -54,7 +54,7 @@ static absl::StatusOr<bool> ShouldSkip(
     const std::optional<GlobalDeviceId>& device_constraint) {
   if (!device_constraint.has_value()) return false;
 
-  GlobalDeviceId global_device_id = params.collective_params.global_device_id;
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
   bool skip = global_device_id != *device_constraint;
   if (skip) {
     VLOG(3) << "Skip " << operation << " as device id " << global_device_id

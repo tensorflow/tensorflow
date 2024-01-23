@@ -27,6 +27,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/map_util.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/nccl_clique.h"
 #include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/executable.h"
@@ -228,14 +231,54 @@ class ResourceRequests : public Thunk::ResourceRequests {
     return absl::OkStatus();
   }
 
-  // TODO(ezhulenev): Instead of logging we need to acquire locks for all
-  // requested cliques and pass them to Initialize and Execute.
-  void LogCliqueRequests() {
-    VLOG(2) << "Collected " << cliques_.size() << " clique requests:";
+  absl::StatusOr<Thunk::CollectiveCliques> AcquireCollectiveCliques(
+      const Thunk::CollectiveExecuteParams& params) {
+    if (cliques_.empty()) return Thunk::CollectiveCliques();
+
+    VLOG(2) << "Acquire " << cliques_.size()
+            << " collective cliques for global device id "
+            << params.global_device_id.value()
+            << "; run_id=" << params.run_id.ToInt();
+
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("AcquireCollectiveCliques",
+                                          {{"num_cliques", cliques_.size()}});
+    });
+
+    auto start_micros = tsl::Env::Default()->NowMicros();
+
+    Thunk::CollectiveCliques::CliquesMap cliques_map;
+
     for (const auto& [clique_key, num_local_participants] : cliques_) {
-      VLOG(2) << "  clique_key: " << clique_key.ToString()
-              << "; num_local_participants: " << num_local_participants;
+      std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
+
+      if (!rank.has_value()) {
+        return absl::InternalError(absl::StrCat(
+            "Can't find global device id ", params.global_device_id.value(),
+            " in clique key ", clique_key.ToString()));
+      }
+
+      bool is_local = clique_key.devices().size() == num_local_participants;
+      TF_ASSIGN_OR_RETURN(
+          const NcclCliqueIdCallback* clique_id_callback,
+          GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
+
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
+                          AcquireNcclClique(params.run_id, OpId(0), clique_key,
+                                            *clique_id_callback, *rank,
+                                            num_local_participants, false));
+
+      cliques_map[clique_key] = std::move(clique);
     }
+
+    auto end_micros = tsl::Env::Default()->NowMicros();
+    VLOG(2) << "Acquired " << cliques_map.size()
+            << " collective cliques for global device id "
+            << params.global_device_id.value() << " in "
+            << (end_micros - start_micros) << " μs"
+            << "; run_id=" << params.run_id.ToInt();
+
+    return Thunk::CollectiveCliques(std::move(cliques_map));
   }
 
  private:
@@ -305,16 +348,16 @@ absl::Status ExecuteThunks(const std::string& module_name,
   }
 #endif
 
-  // Prepare parameters for thunks execution.
-  TF_ASSIGN_OR_RETURN(Thunk::ExecuteParams execute_params,
-                      Thunk::ExecuteParams::Create(
-                          *run_options, buffer_allocations, main_stream,
-                          command_buffer_trace_stream, async_comms_streams));
+  // Parameters for executing collective operations.
+  TF_ASSIGN_OR_RETURN(
+      Thunk::CollectiveExecuteParams collective_params,
+      Thunk::CollectiveExecuteParams::Create(
+          *run_options, main_stream->parent()->device_ordinal()));
 
   ResourceRequests resource_requests;
 
   {  // Collect resource requirements from thunks.
-    Thunk::PrepareParams prepare_params{&execute_params.collective_params};
+    Thunk::PrepareParams prepare_params{&collective_params};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Prepare"; });
     for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
@@ -322,16 +365,15 @@ absl::Status ExecuteThunks(const std::string& module_name,
     }
   }
 
-  resource_requests.LogCliqueRequests();
+  // Acquire collective cliques requested by thunks.
+  TF_ASSIGN_OR_RETURN(
+      Thunk::CollectiveCliques collective_cliques,
+      resource_requests.AcquireCollectiveCliques(collective_params));
 
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
-        executor,
-        executable_source,
-        &buffer_allocations,
-        main_stream,
-        command_buffer_trace_stream,
-        &execute_params.collective_params};
+        executor,    executable_source,           &buffer_allocations,
+        main_stream, command_buffer_trace_stream, &collective_params};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
     for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
@@ -343,12 +385,18 @@ absl::Status ExecuteThunks(const std::string& module_name,
   TF_RETURN_IF_ERROR(
       MaybeRendezvousAfterInitialization(run_options, thunks_initialized));
 
+  // Prepare parameters for thunks execution.
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      *run_options, buffer_allocations, main_stream,
+      command_buffer_trace_stream, async_comms_streams, &collective_params,
+      &collective_cliques);
+
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
-    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation();
+    VLOG(3) << "Executing the thunk for " << thunk->profile_annotation();
     if (NeedsAsyncCommsStream(*thunk)) {
       for (se::Stream* async_stream : async_comms_streams) {
         TF_RET_CHECK(async_stream != nullptr)
@@ -762,7 +810,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       BufferAllocations buffer_allocations,
       GenerateBufferAllocations(arguments, globals, memory_allocator,
                                 device_ordinal));
-  VLOG(2) << buffer_allocations.ToString();
+  VLOG(3) << buffer_allocations.ToString();
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
   const bool is_entire_tuple_contents_aliased = [&] {
