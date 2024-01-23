@@ -474,6 +474,54 @@ StatusOr<std::optional<int64_t>> GetOverriddenPreferredPrefetchTime(
   return static_cast<StatusOr<std::optional<int64_t>>>(std::nullopt);
 }
 
+bool DoesResultMatchFilter(const HloPositionMatcher& filter,
+                           const ShapeIndex& index,
+                           HloInstruction* instruction) {
+  if (filter.has_instruction_regex() &&
+      !RE2::FullMatch(instruction->ToString(), filter.instruction_regex())) {
+    return false;
+  }
+  if (filter.has_instruction_name_regex() &&
+      !RE2::FullMatch(instruction->name(), filter.instruction_name_regex())) {
+    return false;
+  }
+  if (filter.has_tuple_index() &&
+      index != ShapeIndex(filter.tuple_index().index().begin(),
+                          filter.tuple_index().index().end())) {
+    return false;
+  }
+  return true;
+}
+
+// Returns an integer representing the priority of a BufferInterval during
+// assignment, a smaller number indicates a higher priority.
+int64_t GetBufferIntervalOverridePriority(
+    const MsaSortOrderOverrides& msa_sort_order_overrides,
+    const BufferInterval& buffer_interval) {
+  if (msa_sort_order_overrides.overrides_size() == 0) {
+    return 0;
+  }
+  for (int64_t i = 0; i < msa_sort_order_overrides.overrides_size(); ++i) {
+    const auto& override = msa_sort_order_overrides.overrides(i);
+    if (!DoesResultMatchFilter(override.hlo_position_matcher(),
+                               buffer_interval.buffer->index(),
+                               buffer_interval.buffer->instruction())) {
+      continue;
+    }
+    LOG(INFO) << "Override Sort Order Config " << i << " matches "
+              << buffer_interval.buffer->instruction()->ToString();
+    switch (override.override_options().options_case()) {
+      case MsaSortOrderOverrideOptions::kAssignFirst:
+        return std::numeric_limits<int64_t>::lowest() + i;
+      case MsaSortOrderOverrideOptions::kAssignLast:
+        return std::numeric_limits<int64_t>::max() - i;
+      case MsaSortOrderOverrideOptions::OPTIONS_NOT_SET:
+        continue;
+    }
+  }
+  return 0;
+}
+
 std::tuple<int64_t, bool, int64_t> GetAllocationSortTuple(
     const std::unique_ptr<MemorySpaceAssignment::Allocation>& allocation) {
   int64_t scheduled_on_or_before = allocation->start_time();
@@ -762,6 +810,8 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
     return (elapsed_time_due_to_memory - elapsed_time_due_to_alternate_mem) *
            while_nest_multiplier;
   } else {
+    // TODO(b/317935037): Multiply with while nest multiplier and test for
+    // speedup.
     // Compute bound, return how far off are we to memory boundedness.
     return elapsed_time_due_to_memory - elapsed_time_due_to_compute;
   }
@@ -9069,8 +9119,8 @@ MemoryBoundednessBufferIntervalComparator::
 
 std::string
 MemoryBoundednessBufferIntervalComparator::DescribeComparisonCriteria() const {
-  return "[ -memory boundedness, -size, -buffer duration, latest use time, "
-         "(inclusive) start time, instruction id ]";
+  return "[override priority, -memory boundedness, -size, -buffer duration, "
+         "latest use time, (inclusive) start time, instruction id ]";
 }
 
 std::string MemoryBoundednessBufferIntervalComparator::CriteriaToString(
@@ -9084,8 +9134,7 @@ bool MemoryBoundednessBufferIntervalComparator::LessThan(
   return GetTuple(lhs) < GetTuple(rhs);
 }
 
-MemoryBoundednessBufferIntervalComparator::ComparisonTuple
-MemoryBoundednessBufferIntervalComparator::GetTuple(
+int64_t MemoryBoundednessBufferIntervalComparator::GetLatestUseTime(
     const BufferInterval& buffer_interval) {
   auto latest_use_it = buffer_to_latest_use_.find(buffer_interval.buffer);
   if (latest_use_it == buffer_to_latest_use_.end()) {
@@ -9102,13 +9151,25 @@ MemoryBoundednessBufferIntervalComparator::GetTuple(
             .insert(std::make_pair(buffer_interval.buffer, latest_use_time))
             .first;
   }
+  return latest_use_it->second;
+}
 
-  return std::make_tuple(-1.0 * cost_analysis_.GetMemoryBoundedness(
-                                    buffer_interval, cost_analysis_cache_),
-                         -1 * buffer_interval.size,
-                         buffer_interval.start - buffer_interval.end,
-                         latest_use_it->second, buffer_interval.start,
-                         buffer_interval.buffer->id());
+MemoryBoundednessBufferIntervalComparator::ComparisonTuple
+MemoryBoundednessBufferIntervalComparator::GetTuple(
+    const BufferInterval& buffer_interval) {
+  int64_t priority = GetBufferIntervalOverridePriority(
+      cost_analysis_.options().msa_sort_order_overrides, buffer_interval);
+  float inverse_memory_boundedness =
+      -1.0 * cost_analysis_.GetMemoryBoundedness(buffer_interval,
+                                                 cost_analysis_cache_);
+  int64_t inverse_buffer_size = -1 * buffer_interval.size;
+  int64_t inverse_buffer_duration = buffer_interval.start - buffer_interval.end;
+  int64_t latest_use_time = GetLatestUseTime(buffer_interval);
+  int64_t buffer_start_time = buffer_interval.start;
+  auto buffer_id = buffer_interval.buffer->id();
+  return std::make_tuple(priority, inverse_memory_boundedness,
+                         inverse_buffer_size, inverse_buffer_duration,
+                         latest_use_time, buffer_start_time, buffer_id);
 }
 
 }  // namespace memory_space_assignment
