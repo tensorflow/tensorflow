@@ -246,13 +246,16 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
     const SPMDCollectiveOpsCreator& creator,
     const std::vector<std::vector<int64_t>>& device_groups) {
   SPMDCollectiveOpsCreator result;
-  result.create_partition_id = [creator, device_groups](SpmdBuilder* b) {
-    return GetInGroupPartitionId(creator.create_partition_id(b), device_groups,
-                                 b);
+  auto device_groups_ptr =
+      std::make_shared<const std::vector<std::vector<int64_t>>>(device_groups);
+  result.create_partition_id = [creator, device_groups_ptr](SpmdBuilder* b) {
+    return GetInGroupPartitionId(creator.create_partition_id(b),
+                                 *device_groups_ptr, b);
   };
   auto expand_partition_groups =
-      [device_groups](
+      [device_groups_ptr](
           const std::vector<std::vector<int64_t>>& partition_subgroups) {
+        auto& device_groups = *device_groups_ptr;
         if (partition_subgroups.empty()) {
           return device_groups;
         }
@@ -280,10 +283,11 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
             channel_id);
       };
   result.create_cross_partition_collective_permute =
-      [creator, device_groups](
+      [creator, device_groups_ptr](
           SpmdBuilder* b, HloInstruction* operand,
           std::vector<std::pair<int64_t, int64_t>>& src_dst_pairs,
           int64_t next_channel_id) {
+        auto& device_groups = *device_groups_ptr;
         std::vector<std::pair<int64_t, int64_t>> expanded_pairs(
             src_dst_pairs.size() * device_groups.size());
         for (int64_t g = 0; g < device_groups.size(); ++g) {
