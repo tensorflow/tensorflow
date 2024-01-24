@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu {
@@ -60,8 +60,8 @@ static se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-static CommandBufferCmd::ExecutableSource ExecutableSource() {
-  CommandBufferCmd::ExecutableSource source = {
+Thunk::ExecutableSource ExecutableSource() {
+  Thunk::ExecutableSource source = {
 #if defined(GOOGLE_CUDA)
       /*text=*/se::gpu::internal::kAddI32Kernel,
       /*binary=*/{}
@@ -120,9 +120,8 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it copied the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -176,9 +175,8 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it zeroes the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -220,9 +218,8 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it set the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -287,9 +284,8 @@ TEST(CommandBufferThunkTest, MemallocFreeCmdSameThunk) {
 
   ServiceExecutableRunOptions run_options;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it copied the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -352,9 +348,8 @@ TEST(CommandBufferThunkTest, MemallocFreeCmdAcrossThunk) {
 
   ServiceExecutableRunOptions run_options;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it copied the memory.
   TF_ASSERT_OK(thunk1.ExecuteOnStream(params));
@@ -417,11 +412,10 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::ExecutableSource source = ExecutableSource();
+  Thunk::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -513,11 +507,10 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::ExecutableSource source = ExecutableSource();
+  Thunk::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -627,11 +620,10 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0,
                                 executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
+  Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(
       thunk.Initialize({executor, source, &allocations, &stream, &stream}));
 
@@ -728,11 +720,10 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b, c, d}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::ExecutableSource source = ExecutableSource();
+  Thunk::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -843,11 +834,10 @@ TEST(CommandBufferThunkTest, IfCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({pred, a, b}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::ExecutableSource source = ExecutableSource();
+  Thunk::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -942,11 +932,10 @@ TEST(CommandBufferThunkTest, IfElseCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({pred, a, b}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::ExecutableSource source = ExecutableSource();
+  Thunk::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -1031,11 +1020,10 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({index, a, b}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::ExecutableSource source = ExecutableSource();
+  Thunk::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value.
@@ -1110,11 +1098,10 @@ TEST(CommandBufferThunkTest, ForCmd) {
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({loop_cnt, a, b}, 0, executor->GetAllocator());
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Thunk::ExecuteParams params,
-      Thunk::ExecuteParams::Create(run_options, allocations, &stream, &stream));
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, &stream, &stream, {}, nullptr, nullptr);
 
-  CommandBufferCmd::ExecutableSource source = ExecutableSource();
+  Thunk::ExecutableSource source = ExecutableSource();
   TF_ASSERT_OK(thunk.Initialize({executor, source, &allocations, &stream}));
 
   // Execute command buffer thunk and verify that it added the value 10 times.

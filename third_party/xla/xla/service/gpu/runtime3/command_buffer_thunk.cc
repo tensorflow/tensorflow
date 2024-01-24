@@ -103,6 +103,25 @@ bool CommandBufferThunk::ExecutorCommandBuffer::ShouldUpdateCommandBuffer(
   return should_update;
 }
 
+absl::Status CommandBufferThunk::Prepare(const PrepareParams& params,
+                                         ResourceRequests& resource_requests) {
+  // We might end up with empty command sequence if all of the captured fusions
+  // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
+  if (commands_.empty()) return absl::OkStatus();
+
+  TF_RETURN_IF_ERROR(commands_.Prepare(params, resource_requests));
+
+  // Always prepare thunks if they are present so we are ready to fall back
+  // on them if we detect profiling activity.
+  if (thunks_.has_value()) {
+    for (auto& thunk : *thunks_) {
+      TF_RETURN_IF_ERROR(thunk->Prepare(params, resource_requests));
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // We might end up with empty command sequence if all of the captured fusions
   // are no-op (e.g. memcpy of size 0) and we have no emitted thunks for them.
@@ -124,9 +143,12 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   absl::MutexLock lock(&cmd_buffer->mutex);
 
   CommandBufferCmd::RecordParams record_params = {
-      params.executor, params.stream, params.command_buffer_trace_stream,
+      params.executor,
+      params.stream,
+      params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
-      params.collective_params};
+      params.collective_params,
+      params.collective_cliques};
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -186,9 +208,12 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   absl::MutexLock lock(&cmd_buffer->mutex);
 
   CommandBufferCmd::RecordParams record_params = {
-      executor, params.stream, params.command_buffer_trace_stream,
+      executor,
+      params.stream,
+      params.command_buffer_trace_stream,
       const_cast<BufferAllocations*>(params.buffer_allocations),
-      params.collective_params};
+      params.collective_params,
+      params.collective_cliques};
 
   if (cmd_buffer->ShouldUpdateCommandBuffer(commands_, record_params)) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()

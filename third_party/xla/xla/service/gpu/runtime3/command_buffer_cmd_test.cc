@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/service/platform_util.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -220,13 +221,13 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
                               /*shmem_bytes=*/0);
 
   // Initialize command sequence and load device kernels.
-  CommandBufferCmd::ExecutableSource source = {
+  Thunk::ExecutableSource source = {
 #if defined(GOOGLE_CUDA)
-    /*text=*/se::gpu::internal::kAddI32Kernel,
-    /*binary=*/{}
+      /*text=*/se::gpu::internal::kAddI32Kernel,
+      /*binary=*/{}
 #elif defined(TENSORFLOW_USE_ROCM)
-    /*text=*/{},
-    /*binary=*/se::gpu::internal::kAddI32KernelModule
+      /*text=*/{},
+      /*binary=*/se::gpu::internal::kAddI32KernelModule
 #endif
   };
   TF_ASSERT_OK(commands.Initialize(executor, source));

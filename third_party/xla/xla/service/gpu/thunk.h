@@ -253,6 +253,9 @@ class Thunk {
 
     // Parameters for executing collective operations.
     const CollectiveExecuteParams* collective_params = nullptr;
+
+    // Collective cliques acquired based on resource requests.
+    CollectiveCliques* collective_cliques = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
