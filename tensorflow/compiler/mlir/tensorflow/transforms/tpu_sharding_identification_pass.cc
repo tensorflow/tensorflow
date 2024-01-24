@@ -148,16 +148,6 @@ mlir::ArrayAttr GetStrArrayAttr(Builder* builder,
   return builder->getArrayAttr(strings);
 }
 
-// Given a `tf_device.cluster_func` operand value return true iff it a device
-// variable that should default to MAXIMAL sharding. Device variables that are
-// per-replica or distributed default to MAXIMAL sharding, which corresponds to
-// arguments of the `tf_device.replicate`. Otherwise the variable is broadcast,
-// which corresponds to edges that are implicitly captured by the `replicate`.
-bool IsMaximalVariable(Value value) {
-  auto read_var = value.getDefiningOp<TF::ReadVariableOp>();
-  return read_var && read_var->getParentOfType<tf_device::ReplicateOp>();
-}
-
 // Verify whether the given sharding can be applied to the given (tensor) type.
 // (A bad sharding might mean failing tf.Split ops if the graph later executes
 //  on CPU)
@@ -340,7 +330,7 @@ void IdentifyXlaShardingForComputationInputs(
       }
     }
 
-    if (use_spmd && !IsMaximalVariable(operand)) {
+    if (use_spmd) {
       // If XLA SPMD is enabled, host variables or non-variable per-replica
       // inputs should take on replicate sharding, so that every device gets the
       // whole tensor(s) (and can slice them up later). Exclude device
