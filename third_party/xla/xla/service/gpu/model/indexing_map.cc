@@ -199,11 +199,16 @@ void Domain::Print(std::ostream& out, const AffineMapPrinter& printer) const {
     range.Print(out);
     out << '\n';
   }
+  std::vector<std::string> expr_range_strings;
   for (const auto& [expr, range] : expr_ranges_) {
-    printer.Print(out, expr);
-    out << " in ";
-    range.Print(out);
-    out << '\n';
+    std::stringstream ss(expr_range_strings.emplace_back());
+    printer.Print(ss, expr);
+    ss << " in ";
+    range.Print(ss);
+  }
+  std::sort(expr_range_strings.begin(), expr_range_strings.end());
+  for (const auto& expr_range_string : expr_range_strings) {
+    out << expr_range_string << "\n";
   }
 }
 
@@ -292,7 +297,7 @@ std::string IndexingMap::ToString(const AffineMapPrinter& printer) const {
 void IndexingMap::Print(std::ostream& out,
                         const AffineMapPrinter& printer) const {
   printer.Print(out, affine_map);
-  out << " with domain\n";
+  out << "\ndomain:\n";
   domain.Print(out, printer);
   out << "\n";
 }
