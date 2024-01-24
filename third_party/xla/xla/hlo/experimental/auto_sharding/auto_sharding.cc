@@ -94,7 +94,6 @@ namespace spmd {
 namespace {
 constexpr double kOverbudgetCoeff = 1e6;
 constexpr double kSaltiplier = 0.0;  // This value (0.0) disables salting.
-constexpr double kCoeffLimit = 1e7;  // May result in model cost scaling.
 }  // namespace
 
 // Compute the resharding cost vector from multiple possible strategies to a
@@ -1669,7 +1668,6 @@ AutoShardingSolverResult CallSolver(
   request.mutable_solver_timeout()->set_solver_timeout_in_seconds(
       solver_timeout_in_seconds);
   request.mutable_overbudget_coeff()->set_coeff(kOverbudgetCoeff);
-  request.mutable_coeff_limit()->set_coeff(kCoeffLimit);
   request.set_crash_at_infinity_costs_check(!option.try_multiple_mesh_shapes);
   request.set_compute_iis(compute_iis);
   request.set_saltiplier(kSaltiplier);

@@ -183,6 +183,8 @@ void ScaleCoeffs(
 AutoShardingSolverRequest ScaleRequest(
     const AutoShardingSolverRequest& request) {
   if (!request.has_coeff_limit()) return request;
+  VLOG(0) << "Scaling request by coefficient limit: "
+          << request.coeff_limit().coeff();
   double max_coeff = 0.0;
   max_coeff = std::max(max_coeff, MaxCoeff(request.communication_costs()));
   max_coeff = std::max(max_coeff, MaxCoeff(request.computation_costs()));
@@ -290,15 +292,6 @@ AutoShardingSolverResult CallORToolsSolver(
   std::vector<std::vector<MPVariable*>> e(num_edges);
   MPVariable* overbudget_var = nullptr;
   MPVariable* makespan_var = nullptr;
-  MPVariable* cost_var =
-      solver->MakeNumVar(0.0,
-                         request.has_max_cost() ? request.max_cost().coeff()
-                                                : MPSolver::infinity(),
-                         "cost");
-  MPConstraint* cost_constraint =
-      solver->MakeRowConstraint(-MPSolver::infinity(), 0.0, "cost_constraint");
-  cost_constraint->SetCoefficient(cost_var, -1.0);
-  solver->MutableObjective()->SetCoefficient(cost_var, 1.0);
 
   size_t unique_nodes = 0;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
@@ -345,7 +338,7 @@ AutoShardingSolverResult CallORToolsSolver(
   }
 
   if (request.has_makespan_coeff()) {
-    makespan_var = CreateMakespanVar(request, e, *solver, *cost_constraint);
+    makespan_var = CreateMakespanVar(request, e, *solver);
   }
 
   // Construct objective function.
@@ -353,27 +346,27 @@ AutoShardingSolverResult CallORToolsSolver(
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
       double accumulated_coefficient =
-          cost_constraint->GetCoefficient(s[node_idx][j]);
+          solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       double coefficient = request.computation_costs(node_idx).costs(j) +
                            request.communication_costs(node_idx).costs(j);
       if (coefficient >= kInfinityCost) continue;
       AddSalt(absl::StrCat(node_idx, "S", j), request.saltiplier(),
               &coefficient);
-      cost_constraint->SetCoefficient(s[node_idx][j],
-                                      accumulated_coefficient + coefficient);
+      solver->MutableObjective()->SetCoefficient(
+          s[node_idx][j], accumulated_coefficient + coefficient);
     }
   }
   // Edge costs
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
     for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
       double accumulated_coefficient =
-          cost_constraint->GetCoefficient(e[edge_idx][j]);
+          solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       double coefficient = request.resharding_costs(edge_idx).costs(j);
       if (coefficient >= kInfinityCost) continue;
       AddSalt(absl::StrCat(edge_idx, "E", j), request.saltiplier(),
               &coefficient);
-      cost_constraint->SetCoefficient(e[edge_idx][j],
-                                      accumulated_coefficient + coefficient);
+      solver->MutableObjective()->SetCoefficient(
+          e[edge_idx][j], accumulated_coefficient + coefficient);
     }
   }
 
@@ -473,8 +466,8 @@ AutoShardingSolverResult CallORToolsSolver(
       }
     }
     if (overbudget_var) {
-      cost_constraint->SetCoefficient(overbudget_var,
-                                      request.overbudget_coeff().coeff());
+      solver->MutableObjective()->SetCoefficient(
+          overbudget_var, request.overbudget_coeff().coeff());
       solver->MutableObjective()->SetOffset(request.overbudget_coeff().coeff() *
                                             min_memory_overbudget);
     }
@@ -560,6 +553,15 @@ AutoShardingSolverResult CallORToolsSolver(
         constraint->SetCoefficient(s[node_idx][j],
                                    accumulated_coefficient + departure_cost);
       }
+    }
+  }
+  if (request.has_max_cost()) {
+    MPConstraint* cost_constraint = solver->MakeRowConstraint(
+        -MPSolver::infinity(),
+        request.max_cost().coeff() - solver->Objective().offset(),
+        "cost_constraint");
+    for (const auto [var, coeff] : solver->Objective().terms()) {
+      cost_constraint->SetCoefficient(var, coeff);
     }
   }
 

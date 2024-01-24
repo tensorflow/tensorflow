@@ -100,8 +100,7 @@ std::vector<std::string> Rationalize(const AutoShardingSolverRequest& request,
 operations_research::MPVariable* CreateMakespanVar(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<operations_research::MPVariable*>>& e,
-    operations_research::MPSolver& solver,
-    operations_research::MPConstraint& cost_constraint);
+    operations_research::MPSolver& solver);
 
 double EvaluateMakespan(const AutoShardingSolverRequest& request,
                         const AutoShardingSolverResult& result,
