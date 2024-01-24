@@ -24,6 +24,7 @@ from tensorflow.compiler.mlir.quantization.stablehlo.python.integration_test imp
 from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import tag_constants
@@ -46,23 +47,30 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
   @parameterized.parameters(
       parameter_combinations([{
-          'activation_fn': [None],
-          'has_bias': [True, False],
-          'dim_sizes': [
+          'bias_fn': (
+              None,
+              nn_ops.bias_add,
+          ),
+          'activation_fn': (
+              None,
+              nn_ops.relu,
+              nn_ops.relu6,
+          ),
+          'dim_sizes': (
               # tf.MatMul cases.
               ([None, 1024], [1024, 3]),  # dynamic batch dim.
               ([1, 1024], [1024, 3]),
               # tf.BatchMatMul cases.
               ([10, 1, 1024], [10, 1024, 3]),
               ([2, 3, 1, 1024], [2, 3, 1024, 3]),
-          ],
+          ),
       }])
   )
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(
       self,
+      bias_fn: Optional[ops.Operation],
       activation_fn: Optional[ops.Operation],
-      has_bias: bool,
       dim_sizes: Sequence[int],
   ):
     lhs_dim_size, rhs_dim_size = dim_sizes
@@ -73,7 +81,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_shape,
         filter_shape,
         self._input_saved_model_path,
-        has_bias,
+        bias_fn,
         activation_fn,
     )
 
@@ -205,21 +213,27 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # values are arbitrary.
     self.assertAllClose(new_outputs, expected_outputs, rtol=0.03, atol=0.2)
 
-  @parameterized.named_parameters(
-      {
-          'testcase_name': 'none',
-          'activation_fn': None,
-          'has_bias': False,
-          'has_batch_norm': False,
-          'input_shape_dynamic': False,
-          'enable_per_channel_quantization': False,
-      },
+  @parameterized.parameters(
+      parameter_combinations([{
+          'bias_fn': (
+              None,
+              nn_ops.bias_add,
+          ),
+          'activation_fn': (
+              None,
+              nn_ops.relu,
+              nn_ops.relu6,
+          ),
+          'has_batch_norm': (False,),
+          'input_shape_dynamic': (False,),
+          'enable_per_channel_quantization': (False,),
+      }])
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_ptq_model(
       self,
+      bias_fn: Optional[ops.Operation],
       activation_fn: Optional[ops.Operation],
-      has_bias: bool,
       has_batch_norm: bool,
       input_shape_dynamic: bool,
       enable_per_channel_quantization: bool,
@@ -232,9 +246,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_shape,
         filter_shape,
         self._input_saved_model_path,
-        has_bias,
-        has_batch_norm,
+        bias_fn,
         activation_fn,
+        has_batch_norm,
         strides,
         dilations,
     )

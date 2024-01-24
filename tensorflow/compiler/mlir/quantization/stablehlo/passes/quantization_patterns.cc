@@ -211,6 +211,9 @@ void SetQuantizedFunctionType(PatternRewriter& rewriter,
 }
 
 // Creates a UniformQuantize op and sets it as return op.
+// The requantize scale and zero point should be determined from the
+// entry_func_op's output, containing information on layerStats of the
+// entire function.
 void CreateAndReturnUniformQuantizeOp(PatternRewriter& rewriter, Operation& op,
                                       func::FuncOp entry_func_op,
                                       const Type func_result_type) {
@@ -233,11 +236,6 @@ void CreateAndReturnQuantizedBiasPattern(
   // For bias add with dynamic shape, quantize the broadcasted bias.
   if (auto dynamic_bcast_op =
           cast_or_null<DynamicBroadcastInDimOp>(bias_op.getDefiningOp())) {
-    const UniformQuantizedType dynamic_bcast_quantized_element_type =
-        CreateI32F32UniformQuantizedType(gemm_style_op->getLoc(),
-                                         *rewriter.getContext(), result_scale,
-                                         /*zero_point=*/0);
-
     Value dynamic_bcast_op_result = dynamic_bcast_op->getResult(0);
     auto dynamic_bcast_op_result_type =
         dynamic_bcast_op_result.getType().cast<RankedTensorType>();
@@ -346,6 +344,9 @@ void RewriteGemmStyleOp(func::FuncOp entry_func_op, PatternRewriter& rewriter) {
 
   Operation* next_op = gemm_style_op->getNextNode();
 
+  // If activation exists, omit clipping op.
+  // Since out_scale and out_zp are computed based on clipped range,
+  // explicit activation clipping op is not required.
   if (isa<AddOp>(next_op) && gemm_style_op->hasOneUse()) {
     // bias fusion
     CreateAndReturnQuantizedBiasPattern(
