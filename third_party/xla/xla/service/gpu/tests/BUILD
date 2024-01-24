@@ -730,7 +730,9 @@ lit_test_suite(
             "slice_to_dynamic.hlo",
             "sorting.hlo",
             "transpose_021.hlo",
+            "transpose_021_extra_output.hlo",
             "transpose_210.hlo",
+            "transpose_210_extra_output.hlo",
             "triton_naming.hlo",
         ],
         include = [
