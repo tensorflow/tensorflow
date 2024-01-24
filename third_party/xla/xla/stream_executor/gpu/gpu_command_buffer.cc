@@ -197,7 +197,11 @@ absl::StatusOr<GpuCommandBuffer::NoOpKernel*> GpuCommandBuffer::GetNoOpKernel(
     auto noop_kernel = std::make_unique<NoOpKernel>(executor);
 
     MultiKernelLoaderSpec spec(/*arity=*/0);
+#if !defined(TENSORFLOW_USE_ROCM)
     spec.AddCudaPtxInMemory(gpu::kNoOpKernel, "noop");
+#else
+    spec.AddInProcessSymbol(gpu::GetNoOpKernel(), "noop");
+#endif  // TENSORFLOW_USE_ROCM
     TF_RETURN_IF_ERROR(executor->GetKernel(spec, noop_kernel.get()));
 
     noop_kernel_ = std::move(noop_kernel);
