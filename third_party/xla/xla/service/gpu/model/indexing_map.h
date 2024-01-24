@@ -66,15 +66,34 @@ class Domain {
   static Domain FromUpperBounds(absl::Span<const int64_t> dim_upper_bounds,
                                 absl::Span<const int64_t> symbol_upper_bounds);
 
-  // Setters/getters for dimension ranges.
+  // Getters for dimension ranges.
   Range GetDimensionRange(int64_t id) const { return dim_ranges_[id]; }
   absl::Span<const Range> GetDimensionRanges() const { return dim_ranges_; }
   int64_t GetDimensionCount() const { return dim_ranges_.size(); }
 
-  // Setters/getters for symbol ranges.
+  // Getters for symbol ranges.
   Range GetSymbolRange(int64_t id) const { return symbol_ranges_[id]; }
   absl::Span<const Range> GetSymbolRanges() const { return symbol_ranges_; }
   int64_t GetSymbolCount() const { return symbol_ranges_.size(); }
+
+  // Getters for affine expression constraints.
+  const llvm::DenseMap<mlir::AffineExpr, Range>& GetExprRanges() const {
+    return expr_ranges_;
+  }
+  int64_t GetExprCount() const { return expr_ranges_.size(); }
+
+  // Allows to add bounds for the affine expression `expr`. If there are
+  // bounds for the `expr`, then computes intersection of the current and new
+  // ranges.
+  void AddConstraint(mlir::AffineExpr expr, const Range& range);
+
+  // Returns true if the domain is empty. Right now it scans through all
+  // constraints to find the one where lower_bound > upper_bound. If it returns
+  // true, that does not mean that the domain is not effectively empty.
+  // For example, if there are two constraints 0 <= d0 mod 7 <= 0 and
+  // 0 <= d0 mod 11 <= 0 for a dimension 0<= d0 <= 50 then there is no d0 that
+  // satisfies both constraints.
+  bool IsKnownEmpty() const;
 
   std::string ToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
@@ -84,6 +103,10 @@ class Domain {
  private:
   std::vector<Range> dim_ranges_;
   std::vector<Range> symbol_ranges_;
+  // Inequality constraints for affine expressions. They restrict the feasible
+  // set for the domain of the indexing map. It contains affine expressions
+  // other than AffineDimExpr and AffineSymbolExpr.
+  llvm::DenseMap<mlir::AffineExpr, Range> expr_ranges_;
 };
 
 // Evaluates lower and upper bounds for expressions given the domain.

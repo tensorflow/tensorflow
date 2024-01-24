@@ -41,6 +41,9 @@ class AffineMapPrinter {
   void Print(std::ostream& out, mlir::AffineMap affine_map) const;
   std::string ToString(mlir::AffineMap affine_map) const;
 
+  void Print(std::ostream& out, mlir::AffineExpr affine_expr) const;
+  std::string ToString(mlir::AffineExpr affine_expr) const;
+
  private:
   void PrintExprImpl(mlir::AffineExpr affine_expr, bool add_parentheses,
                      llvm::raw_ostream& os) const;

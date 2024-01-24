@@ -83,6 +83,18 @@ std::string AffineMapPrinter::ToString(AffineMap affine_map) const {
   return s;
 }
 
+void AffineMapPrinter::Print(std::ostream& out,
+                             mlir::AffineExpr affine_expr) const {
+  out << ToString(affine_expr);
+}
+
+std::string AffineMapPrinter::ToString(mlir::AffineExpr affine_expr) const {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  PrintExprImpl(affine_expr, /*add_parentheses=*/false, ss);
+  return s;
+}
+
 void AffineMapPrinter::PrintExprImpl(const mlir::AffineExpr affine_expr,
                                      bool add_parentheses,
                                      llvm::raw_ostream& os) const {
