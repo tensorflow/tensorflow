@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UNIFORM_QUANTIZED_TYPES_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UNIFORM_QUANTIZED_TYPES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_UNIFORM_QUANTIZED_TYPES_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_UNIFORM_QUANTIZED_TYPES_H_
 
 #include <cstdint>
 
@@ -81,4 +81,4 @@ bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type);
 }  // namespace quant
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_UNIFORM_QUANTIZED_TYPES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_UNIFORM_QUANTIZED_TYPES_H_

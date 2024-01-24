@@ -78,7 +78,6 @@ cc_library(
         ":quantization_patterns",
         ":stablehlo_passes_inc_gen",
         ":stablehlo_type_utils",
-        ":uniform_quantized_types",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
@@ -145,10 +144,10 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":uniform_quantized_types",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
         "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
@@ -740,30 +739,5 @@ tf_cc_binary(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:vhlo_ops",
-    ],
-)
-
-cc_library(
-    name = "uniform_quantized_types",
-    srcs = ["uniform_quantized_types.cc"],
-    hdrs = ["uniform_quantized_types.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-tf_cc_test(
-    name = "uniform_quantized_types_test",
-    srcs = ["uniform_quantized_types_test.cc"],
-    deps = [
-        ":uniform_quantized_types",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:Support",
     ],
 )
