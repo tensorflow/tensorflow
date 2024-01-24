@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,13 +34,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/custom_call_status.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime3/custom_call_thunk.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/shape.h"
 #include "xla/status.h"
@@ -50,13 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream_executor.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/gpu/gpu_types.h"
-#endif
-
 namespace xla::gpu {
-
-using OwnedKernel = std::unique_ptr<se::Kernel>;
 
 //===----------------------------------------------------------------------===//
 // CommandBufferCmd
@@ -265,7 +258,7 @@ class LaunchCmd : public CommandBufferCmd {
   // Command sequence can be recorded concurrently for multiple command buffers
   // on different stream executors and we need to synchronize mutable state.
   absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>> kernels_
       ABSL_GUARDED_BY(mutex_);
 };
 
@@ -295,7 +288,7 @@ class CustomKernelLaunchCmd : public CommandBufferCmd {
   // Command sequence can be recorded concurrently for multiple command buffers
   // on different stream executors and we need to synchronize mutable state.
   absl::Mutex mutex_;
-  absl::flat_hash_map<se::StreamExecutor*, OwnedKernel> kernels_
+  absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Kernel>> kernels_
       ABSL_GUARDED_BY(mutex_);
 };
 
@@ -542,17 +535,9 @@ class GemmCmd : public CommandBufferCmd {
 
 class CustomCallCmd : public CommandBufferCmd {
  public:
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  using Stream = stream_executor::gpu::GpuStreamHandle;
-#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  using Stream = void*;
-#endif  //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  using CustomCallTarget = std::function<void(Stream, void**, const char*,
-                                              size_t, XlaCustomCallStatus*)>;
-  struct Slice {
-    BufferAllocation::Slice slice;
-    Shape shape;
-  };
+  using Slice = CustomCallThunk::Slice;
+  using Stream = CustomCallThunk::Stream;
+  using CustomCallTarget = CustomCallThunk::CustomCallTarget;
 
   // This is a legacy custom call API that is discouraged, and will be
   // deprecated once XLA:FFI mechanism is ready.

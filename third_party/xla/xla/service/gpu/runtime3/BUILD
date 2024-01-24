@@ -45,6 +45,7 @@ cc_library(
     ]),
     visibility = ["//visibility:public"],
     deps = [
+        ":custom_call_thunk",
         "//xla:shape_util",
         "//xla:status",
         "//xla:types",

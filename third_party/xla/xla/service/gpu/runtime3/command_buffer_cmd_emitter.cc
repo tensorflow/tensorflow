@@ -145,26 +145,9 @@ static absl::StatusOr<Command> Convert(const NcclAllGatherStartThunk& thunk) {
                                         thunk.buffers());
 }
 
-static StatusOr<Command> Convert(const CustomCallThunk& thunk) {
-  auto convert_slices =
-      [](const std::vector<std::optional<CustomCallThunk::Slice>>& slices) {
-        std::vector<std::optional<CustomCallCmd::Slice>> converted;
-        converted.reserve(slices.size());
-        for (const std::optional<CustomCallThunk::Slice>& slice : slices) {
-          if (slice.has_value()) {
-            CustomCallCmd::Slice converted_slice = {slice.value().slice,
-                                                    slice.value().shape};
-            converted.push_back(converted_slice);
-          } else {
-            converted.push_back(std::nullopt);
-          }
-        }
-        return converted;
-      };
-
-  return std::make_unique<CustomCallCmd>(
-      thunk.call_target(), convert_slices(thunk.operands()),
-      convert_slices(thunk.results()), thunk.opaque());
+static absl::StatusOr<Command> Convert(const CustomCallThunk& thunk) {
+  return std::make_unique<CustomCallCmd>(thunk.call_target(), thunk.operands(),
+                                         thunk.results(), thunk.opaque());
 }
 
 //===----------------------------------------------------------------------===//
@@ -228,7 +211,7 @@ static absl::Status AppendCommands(CommandBufferCmdSequence& cmd_sequence,
     case Thunk::Kind::kNcclAllGatherDone:
     case Thunk::Kind::kNcclAllReduceDone:
     case Thunk::Kind::kNcclReduceScatterDone:
-      return OkStatus();
+      return absl::OkStatus();
 
     default:
       return Internal("Unsupported thunk kind: %s",
