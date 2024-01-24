@@ -7602,6 +7602,7 @@ cc_library(
     deps = [
         ":compilation_environments",
         "//xla:parse_flags_from_env",
+        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_proto_cc",

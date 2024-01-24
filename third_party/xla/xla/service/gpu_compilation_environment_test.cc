@@ -15,9 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu_compilation_environment.h"
 
-#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -96,54 +94,50 @@ TEST(CreateGpuCompEnvFromEnvVarTest, InvalidFlagValue) {
               StatusIs(tsl::error::INVALID_ARGUMENT));
 }
 
-TEST(ProcessNewEnvTest, BothProtoAndEnvVarUnset) {
+TEST(InitializeMissingFieldsFromXLAFlagsTest, BothProtoAndEnvVarUnset) {
   set_xla_flags_env_var("");
-  CompilationEnvironments envs;
+  GpuCompilationEnvironment env;
 
-  const auto& env = envs.GetEnv<GpuCompilationEnvironment>();
-
+  TF_ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
   EXPECT_EQ(env.dummy_flag(), 1);
 }
 
-TEST(ProcessNewEnvTest, ProtoSetButEnvVarUnset) {
+TEST(InitializeMissingFieldsFromXLAFlagsTest, ProtoSetButEnvVarUnset) {
   set_xla_flags_env_var("");
-  CompilationEnvironments envs;
-  {
-    auto env = std::make_unique<GpuCompilationEnvironment>();
-    env->set_dummy_flag(2);
-    TF_ASSERT_OK(envs.AddEnv(std::move(env)));
-  }
-  const auto& env = envs.GetEnv<GpuCompilationEnvironment>();
+  GpuCompilationEnvironment env;
+  env.set_dummy_flag(2);
+
+  TF_ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
 
   EXPECT_EQ(env.dummy_flag(), 2);
 }
 
-TEST(ProcessNewEnvTest, ProtoUnsetButEnvVarSet) {
+TEST(InitializeMissingFieldsFromXLAFlagsTest, ProtoUnsetButEnvVarSet) {
   set_xla_flags_env_var("--dummy_flag=4");
-  CompilationEnvironments envs;
-  const auto& env = envs.GetEnv<GpuCompilationEnvironment>();
+
+  GpuCompilationEnvironment env;
+  TF_ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
 
   EXPECT_EQ(env.dummy_flag(), 4);
 }
 
-TEST(ProcessNewEnvTest, BothProtoAndEnvVarSetButNoConflict) {
+TEST(InitializeMissingFieldsFromXLAFlagsTest,
+     BothProtoAndEnvVarSetButNoConflict) {
   set_xla_flags_env_var("--dummy_flag=4");
   CompilationEnvironments envs;
-  {
-    auto env = std::make_unique<GpuCompilationEnvironment>();
-    TF_ASSERT_OK(envs.AddEnv(std::move(env)));
-  }
-  const auto& env = envs.GetEnv<GpuCompilationEnvironment>();
+  GpuCompilationEnvironment env;
+  TF_ASSERT_OK(InitializeMissingFieldsFromXLAFlags(env));
   EXPECT_EQ(env.dummy_flag(), 4);
 }
 
-TEST(ProcessNewEnvTest, BothProtoAndEnvVarSetWithConflict) {
+TEST(InitializeMissingFieldsFromXLAFlagsTest,
+     BothProtoAndEnvVarSetWithConflict) {
   set_xla_flags_env_var("--dummy_flag=4");
 
   CompilationEnvironments envs;
-  auto env = std::make_unique<GpuCompilationEnvironment>();
-  env->set_dummy_flag(2);
-  EXPECT_THAT(envs.AddEnv(std::move(env)),
+  GpuCompilationEnvironment env;
+  env.set_dummy_flag(2);
+  EXPECT_THAT(InitializeMissingFieldsFromXLAFlags(env),
               StatusIs(tsl::error::INVALID_ARGUMENT));
 }
 
