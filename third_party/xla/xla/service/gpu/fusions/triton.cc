@@ -212,10 +212,11 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
              triton_wrapper_result.shmem_bytes}};
   };
 
-  auto [kernel, was_cached] = ir_emitter_context.kernel_cache().GetWithStatus(
-      hlo_computation, kernel_arguments.args(),
-      /*discriminator=*/"", generate);
-  TF_RETURN_IF_ERROR(kernel.status());
+  auto [status_or_entry, was_cached] =
+      ir_emitter_context.kernel_cache().GetWithStatus(
+          hlo_computation, kernel_arguments.args(),
+          /*discriminator=*/"", generate);
+  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
   std::variant<mlir::Operation*, const HloInstruction*> fusion_op_or_hlo;
   if (ir_emitter_context.emit_ir_from_hlo()) {
@@ -226,8 +227,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      fusion_op_or_hlo, kernel->kernel_name, kernel_arguments.args(),
-      kernel->launch_dimensions, kernel->shmem_bytes));
+      fusion_op_or_hlo, entry->kernel_name, kernel_arguments.args(),
+      entry->launch_dimensions, entry->shmem_bytes));
 
   return result;
 #else

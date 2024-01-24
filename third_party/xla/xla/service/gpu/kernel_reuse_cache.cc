@@ -18,8 +18,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
@@ -77,18 +84,7 @@ std::string GetComputationFingerprint(
                       fused_computation->ToString(print_options));
 }
 
-std::pair<KernelReuseCache::Entry, bool> KernelReuseCache::Get(
-    const HloComputation* fused_computation,
-    absl::Span<const KernelArgument> kernel_arguments,
-    absl::string_view discriminator,
-    const std::function<KernelReuseCache::Entry()>& generator) {
-  auto ret =
-      GetWithStatus(fused_computation, kernel_arguments, discriminator,
-                    [&]() -> absl::StatusOr<Entry> { return generator(); });
-  return {*ret.first, ret.second};
-}
-
-std::pair<absl::StatusOr<KernelReuseCache::Entry>, bool>
+std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,
     absl::Span<const KernelArgument> kernel_arguments,
@@ -99,13 +95,18 @@ KernelReuseCache::GetWithStatus(
   VLOG(4) << "Fingerprint: ";
   XLA_VLOG_LINES(4, fingerprint);
 
-  auto& entry = cache_[fingerprint];
-  if (entry.kernel_name.empty()) {
-    auto ret = generator();
-    if (ret.ok()) entry = *ret;
-    return {ret, false};
+  auto it = cache_.find(fingerprint);
+  if (it != cache_.end()) {
+    return {&it->second, /*was_cached=*/true};
   }
-  return {{entry}, true};
+
+  absl::StatusOr<Entry> entry = generator();
+  if (entry.ok()) {
+    it = cache_.insert({fingerprint, std::move(entry.value())}).first;
+    return {&it->second, /*was_cached=*/false};
+  }
+
+  return {entry.status(), /*was_cached=*/false};
 }
 
 }  // namespace gpu

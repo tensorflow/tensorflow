@@ -303,28 +303,31 @@ absl::StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
                       EmitInitializers(ir_emitter_context, fusion_op, fusion));
   auto launch_dims = launch_dimensions();
   std::vector<llvm_ir::IrArray> inputs, outputs;
-  auto [entry, cached] = ir_emitter_context.kernel_cache().GetWithStatus(
-      fused_computation, kernel_arguments.args(), /*discriminator=*/"",
-      [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
-        llvm::Function* kernel;
-        TF_ASSIGN_OR_RETURN(std::tie(kernel, inputs, outputs),
-                            BuildKernelPrototype(
-                                ir_emitter_context, suggested_kernel_name,
-                                kernel_arguments.args(), fusion.operand_count(),
-                                launch_dims, &builder));
-        if (ir_emitter_context.emit_kernels()) {
-          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion, launch_dims,
-                                        std::move(inputs), std::move(outputs),
-                                        &builder));
-        } else {
-          VLOG(3) << "Skipped kernel compilation: " << suggested_kernel_name;
-        }
-        // TODO(jreiffers): Return shmem_bytes from EmitKernel when
-        // converting the Triton emitters to this infrastructure.
-        return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
-                                       /*shmem_bytes=*/0};
-      });
-  TF_RETURN_IF_ERROR(entry.status());
+  auto [status_or_entry, cached] =
+      ir_emitter_context.kernel_cache().GetWithStatus(
+          fused_computation, kernel_arguments.args(), /*discriminator=*/"",
+          [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
+            llvm::Function* kernel;
+            TF_ASSIGN_OR_RETURN(
+                std::tie(kernel, inputs, outputs),
+                BuildKernelPrototype(ir_emitter_context, suggested_kernel_name,
+                                     kernel_arguments.args(),
+                                     fusion.operand_count(), launch_dims,
+                                     &builder));
+            if (ir_emitter_context.emit_kernels()) {
+              TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, fusion,
+                                            launch_dims, std::move(inputs),
+                                            std::move(outputs), &builder));
+            } else {
+              VLOG(3) << "Skipped kernel compilation: "
+                      << suggested_kernel_name;
+            }
+            // TODO(jreiffers): Return shmem_bytes from EmitKernel when
+            // converting the Triton emitters to this infrastructure.
+            return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
+                                           /*shmem_bytes=*/0};
+          });
+  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
   if (cached) {
     VLOG(3) << "Reuse: " << suggested_kernel_name << " -> "
