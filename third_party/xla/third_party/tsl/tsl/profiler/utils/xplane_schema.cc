@@ -265,6 +265,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tf_function_call", kTfFunctionCall},
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
+      {"model_flops", kModelFlops},
       {"bytes_accessed", kBytesAccessed},
       {"memory_access_breakdown", kMemoryAccessBreakdown},
       {"source", kSourceInfo},
