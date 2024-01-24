@@ -591,7 +591,7 @@ class MklQuantizeV2Op : public OpKernel {
       binary_prim.execute(*cpu_stream, net_args);
     } else {
       OP_REQUIRES(ctx, false,
-                  errors::Unimplemented(
+                  absl::UnimplementedError(
                       "Supported modes are MIN_FIRST and SCALED only."));
     }
 
