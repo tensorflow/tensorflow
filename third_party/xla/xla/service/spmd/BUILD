@@ -318,3 +318,14 @@ xla_cc_test(
         "@local_tsl//tsl/lib/core:status_test_util",
     ],
 )
+
+xla_cc_test(
+    name = "spmd_partitioner_util_test",
+    srcs = ["spmd_partitioner_util_test.cc"],
+    deps = [
+        ":spmd_partitioner",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:tile_assignment",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

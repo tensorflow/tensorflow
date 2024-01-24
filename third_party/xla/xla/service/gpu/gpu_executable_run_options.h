@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,10 +19,9 @@ limitations under the License.
 #include <map>
 #include <optional>
 
+#include "xla/executable_run_options.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_clique_key.h"
-#include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
@@ -85,20 +84,6 @@ class GpuExecutableRunOptions {
   MockNcclTopoModel mock_nccl_topo_model_ = MockNcclTopoModel::kGCPA3;
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   NcclCliqueIdCallback nccl_clique_id_callback_;
-};
-
-// NCCL-related execution parameters.
-struct NcclExecuteParams {
-  NcclExecuteParams(const ServiceExecutableRunOptions& run_options,
-                    se::StreamExecutor* stream_executor);
-
-  se::StreamExecutor* stream_executor;
-  RunId run_id;
-  const DeviceAssignment* device_assn;                         // never null
-  const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null
-  const NcclCliqueIdCallback* nccl_clique_id_callback;         // may be null
-
-  absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
 };
 
 }  // namespace gpu

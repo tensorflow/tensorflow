@@ -17,7 +17,7 @@
 
 # Keeps Bazel versions of the build scripts.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=6.1.0
+LATEST_BAZEL_VERSION=6.5.0
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/.bazelversion,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -105,6 +105,20 @@ class GpuCompiler : public LLVMCompiler {
   std::string target_triple() const { return target_triple_; }
   std::string data_layout() const { return data_layout_; }
 
+  const char* GetDataLayout() const { return data_layout_; }
+
+  const char* GetTargetTriple() const { return target_triple_; }
+
+  int64_t GetPointerSize() const { return pointer_size_; }
+
+  static absl::StatusOr<Compiler::TargetConfig> GetTargetConfig(
+      const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
+      se::StreamExecutor* executor);
+
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
+    return &FusionCanShareBufferHint;
+  }
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;
@@ -190,10 +204,6 @@ class GpuCompiler : public LLVMCompiler {
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) = 0;
-
-  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
-    return &FusionCanShareBufferHint;
-  }
 
   // TODO(timshen): Replace `debug_module` with some portable debug information
   // that accommodates both HLO and MLIR.

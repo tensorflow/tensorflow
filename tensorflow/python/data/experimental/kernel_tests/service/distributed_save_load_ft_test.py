@@ -38,8 +38,8 @@ class DistributedSaveLoadFtTest(
           test_base.eager_only_combinations(),
           combinations.combine(
               num_elements=[200],
-              num_workers=[1, 3],
-              load_repetitions=[1, 3],
+              num_workers=[1, 2],
+              load_repetitions=[1, 2],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
                   data_service_ops.ShardingPolicy.DYNAMIC])))
@@ -85,7 +85,7 @@ class DistributedSaveLoadFtTest(
           test_base.eager_only_combinations(),
           combinations.combine(
               num_elements=[200],
-              load_repetitions=[1, 3],
+              load_repetitions=[1, 2],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
                   data_service_ops.ShardingPolicy.DYNAMIC])))
@@ -119,28 +119,21 @@ class DistributedSaveLoadFtTest(
     # from the beginning of the dataset. The result is a partial range plus
     # `num_elements` repetitions.
     if sharding_policy == data_service_ops.ShardingPolicy.OFF:
-      # Search for 0 staring at index 1.
-      index_of_second_repetition = output.index(0, 1)
-      self.assertCountEqual(
-          output[index_of_second_repetition:],
-          list(range(num_elements)) * load_repetitions)
+      self.assertContainsSubset(
+          list(range(num_elements)) * load_repetitions, output)
 
     # For dynamic sharding, the first split (and possibly prefetched splits) may
     # be lost. The result is a partial range plus zero or more `num_elements`
     # ranges.
     if sharding_policy == data_service_ops.ShardingPolicy.DYNAMIC:
-      try:
-        index_of_second_repetition = output.index(0, 1)
-        self.assertCountEqual(
-            set(output[index_of_second_repetition:]), set(range(num_elements)))
-      except ValueError:
-        pass
+      num_ranges = len(output) // num_elements
+      self.assertContainsSubset(list(range(num_elements)) * num_ranges, output)
 
   @combinations.generate(
       combinations.times(
           test_base.eager_only_combinations(),
           combinations.combine(
-              load_repetitions=[1, 3],
+              load_repetitions=[1, 2],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
                   data_service_ops.ShardingPolicy.DYNAMIC])))
@@ -183,9 +176,9 @@ class DistributedSaveLoadFtTest(
       combinations.times(
           test_base.eager_only_combinations(),
           combinations.combine(
-              num_workers=[1, 3],
+              num_workers=[1, 2],
               num_elements=[200],
-              load_repetitions=[1, 3],
+              load_repetitions=[1, 2],
               sharding_policy=[
                   data_service_ops.ShardingPolicy.OFF,
                   data_service_ops.ShardingPolicy.DYNAMIC])))

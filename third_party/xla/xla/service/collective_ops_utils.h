@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -51,14 +52,6 @@ std::optional<ReductionKind> MatchReductionComputation(
 // PrimitiveType.
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
                                             PrimitiveType type);
-
-// Figures out which IDs are participating in the collective subgroup.
-// An empty `groups` indicates that all [0, total_participant_count) IDs
-// are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
-// groups cannot be empty, so `total_participant_count` is an optional.
-StatusOr<std::vector<int>> GetParticipatingIDs(
-    int current_id, std::optional<int> total_participant_count,
-    absl::Span<const ReplicaGroup> groups);
 
 // There are broadly 4 modes that collective communication ops use to describe
 // which sets of devices are participating with a given device in the operation.
@@ -99,6 +92,15 @@ enum class CollectiveOpGroupMode {
   kCrossReplicaAndPartition,
   kFlattenedID,
 };
+
+// Figures out which IDs are participating in the collective subgroup.
+// An empty `groups` indicates that all [0, total_participant_count) IDs
+// are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
+// groups cannot be empty, so `total_participant_count` is an optional.
+StatusOr<std::vector<int>> GetParticipatingIDs(
+    CollectiveOpGroupMode group_mode, int current_id,
+    std::optional<int> total_participant_count,
+    absl::Span<const ReplicaGroup> groups);
 
 absl::string_view CollectiveOpGroupModeToString(
     CollectiveOpGroupMode group_mode);

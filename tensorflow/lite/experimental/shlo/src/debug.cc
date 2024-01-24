@@ -13,10 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "src/debug.h"
-
-#include <absl/log/check.h>
-#include <absl/log/log.h>
+#include "tensorflow/lite/experimental/shlo/src/debug.h"
 
 #include <cmath>
 #include <cstddef>
@@ -25,11 +22,13 @@ limitations under the License.
 #include <limits>
 #include <ostream>
 
-#include "include/shlo.h"
-#include "src/bf16.h"
-#include "src/f16.h"
-#include "src/storage.h"
-#include "src/util.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "tensorflow/lite/experimental/shlo/include/shlo.h"
+#include "tensorflow/lite/experimental/shlo/src/bf16.h"
+#include "tensorflow/lite/experimental/shlo/src/f16.h"
+#include "tensorflow/lite/experimental/shlo/src/storage.h"
+#include "tensorflow/lite/experimental/shlo/src/util.h"
 
 namespace stablehlo {
 

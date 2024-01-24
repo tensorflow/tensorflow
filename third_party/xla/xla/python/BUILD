@@ -531,6 +531,7 @@ cc_library(
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:status_casters",
         "//xla/service:call_inliner",
         "//xla/service:custom_call_sharding_helper",

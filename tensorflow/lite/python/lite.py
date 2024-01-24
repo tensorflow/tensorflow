@@ -666,14 +666,14 @@ class TFLiteConverterBase:
     self._experimental_qdq_conversion_mode = None
 
     # Debug parameters
-    self.mlir_dump_dir = None
-    self.mlir_dump_pass_regex = None
-    self.mlir_dump_func_regex = None
-    self.mlir_enable_timing = None
-    self.mlir_print_ir_before = None
-    self.mlir_print_ir_after = None
-    self.mlir_print_ir_module_scope = None
-    self.mlir_elide_elementsattrs_if_larger = None
+    self.ir_dump_dir = None
+    self.ir_dump_pass_regex = None
+    self.ir_dump_func_regex = None
+    self.enable_timing = None
+    self.print_ir_before = None
+    self.print_ir_after = None
+    self.print_ir_module_scope = None
+    self.elide_elementsattrs_if_larger = None
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -804,16 +804,14 @@ class TFLiteConverterBase:
         "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
         "disable_fuse_mul_and_fc": self._experimental_disable_fuse_mul_and_fc,
         "quantization_options": self._experimental_quantization_options,
-        "mlir_dump_dir": self.mlir_dump_dir,
-        "mlir_dump_pass_regex": self.mlir_dump_pass_regex,
-        "mlir_dump_func_regex": self.mlir_dump_func_regex,
-        "mlir_enable_timing": self.mlir_enable_timing,
-        "mlir_print_ir_before": self.mlir_print_ir_before,
-        "mlir_print_ir_after": self.mlir_print_ir_after,
-        "mlir_print_ir_module_scope": self.mlir_print_ir_module_scope,
-        "mlir_elide_elementsattrs_if_larger": (
-            self.mlir_elide_elementsattrs_if_larger
-        ),
+        "ir_dump_dir": self.ir_dump_dir,
+        "ir_dump_pass_regex": self.ir_dump_pass_regex,
+        "ir_dump_func_regex": self.ir_dump_func_regex,
+        "enable_timing": self.enable_timing,
+        "print_ir_before": self.print_ir_before,
+        "print_ir_after": self.print_ir_after,
+        "print_ir_module_scope": self.print_ir_module_scope,
+        "elide_elementsattrs_if_larger": self.elide_elementsattrs_if_larger,
         "use_buffer_offset": self._experimental_use_buffer_offset,
         "reduce_type_precision": self._experimental_reduce_type_precision,
         "use_stablehlo_quantizer": self.experimental_use_stablehlo_quantizer,
@@ -2084,8 +2082,6 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
           saved_model_dir, signature_key=signature_key, tag_set=tags
       )
 
-    # Ensures any graphs created in Eager mode are able to run. This is required
-    # in order to create a tf.estimator.Exporter that exports a TFLite model.
     if tags is None:
       tags = set([_tag_constants.SERVING])
 

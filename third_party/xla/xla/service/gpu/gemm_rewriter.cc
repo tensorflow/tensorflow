@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1849,7 +1849,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return gemm_config.output_layout.order ==
              MatrixLayout::Order::kColumnMajor;
     } else {
-      return InternalError("Invalid matrix name.");
+      return Internal("Invalid matrix name.");
     }
   }
 

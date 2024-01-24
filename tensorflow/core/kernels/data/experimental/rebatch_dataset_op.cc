@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -535,7 +537,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
               TF_RETURN_IF_ERROR(batch_util::MaybeMoveContiguousSlices(
                   slice.Parent(), slice.Start(), dst_offset, num_slices,
                   &(*out_tensors)[i]));
-            } else if (slice.Parent().RefCount() == 3 &&
+            } else if (slice.ParentRefCount() == 3 &&
                        j == slices_to_concatenate.size() - 1 &&
                        !tensors_.empty()) {
               // Special case:
@@ -649,8 +651,20 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
           // there will be one reference from `parent_` and one from `slice_`.
           // Otherwise, some other iterator op might own this tensor.
           // For example, tensor_dataset_op.cc
-          return parent_->RefCount() == 2;
+          auto ref_count = ParentRefCount();
+          if (ref_count) {
+            return *ref_count == 2;
+          } else {
+            return false;
+          }
         }
+        std::optional<int> ParentRefCount() {
+          if (parent_->data() == nullptr) {
+            return std::nullopt;
+          }
+          return parent_->RefCount();
+        }
+
         Tensor& Slice() { return *slice_; }
         Tensor& Parent() { return *parent_; }
         inline void ClearSliceRef() { slice_.reset(); }

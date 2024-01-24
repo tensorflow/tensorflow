@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -147,11 +147,6 @@ class NVPTXCompiler : public GpuCompiler {
   // is critical here.
   absl::node_hash_map<CompilationCacheKey, CompilationCacheValue>
       compilation_cache_ ABSL_GUARDED_BY(mutex_);
-
-  absl::StatusOr<std::vector<uint8_t>> CompileWithPtxAs(
-      const std::string& ptx, se::CudaComputeCapability cc,
-      const HloModuleConfig& hlo_module_config, CompileOptions compile_options,
-      bool relocatable);
 
   NVPTXCompiler(const NVPTXCompiler&) = delete;
   NVPTXCompiler& operator=(const NVPTXCompiler&) = delete;

@@ -1,10 +1,12 @@
-// RUN:   hlo_to_llvm_ir %s | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %{IR_SUBST} %s
+// RUN:   hlo_to_llvm_ir %s | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %s
 // This tests that we do not increase the grid launch size when
 // few_waves is enabled.
 
 // CHECK-LABEL: entry:
-// CHECK:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
 // CHECK:   ![[ctaid_range]] = !{i32 0, i32 2}
 // CHECK:   ![[tid_range]] = !{i32 0, i32 1024}
 
@@ -26,8 +28,10 @@ ENTRY main {
 // This tests that we cap grid launch code when few_waves is enabled.
 
 // CHECK-LABEL: entry:
-// CHECK:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
 // CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
 // CHECK:   ![[tid_range]] = !{i32 0, i32 128}
@@ -50,8 +54,8 @@ ENTRY main {
 // and scalar broadcast are present.
 
 // CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
@@ -81,8 +85,8 @@ ENTRY main {
 // for the tests below.
 
 // CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
@@ -110,8 +114,8 @@ ENTRY main {
 // This tests that we keep few_waves enabled for large constants.
 
 // CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
@@ -138,8 +142,8 @@ ENTRY main {
 // This tests that we disable few_waves if a non-elementwise op is present.
 
 // CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 195313}
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
@@ -172,8 +176,8 @@ ENTRY main {
 // It serves as a baseline for the tests below.
 
 // CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 7813}
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
@@ -216,8 +220,8 @@ ENTRY main {
 // In this case, the block count is changed from 7813 to 2000.
 
 // CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 2000}
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 500}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
@@ -257,8 +261,8 @@ ENTRY main {
 // In this case, the block count is changed from 7813 to 1008.
 
 // CHECK-LABEL: entry:
-// CHECK-PTX:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK-PTX:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
 // CHECK-PTX:   ![[tid_range]] = !{i32 0, i32 128}
 // CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
@@ -297,8 +301,10 @@ ENTRY main {
 // motivated few_waves implementation.
 
 // CHECK-LABEL: entry:
-// CHECK:   call i32 [[CTAIDX]](), !range ![[ctaid_range:[0-9]+]]
-// CHECK:   call i32 [[TIDX]](), !range ![[tid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workgroup.id.x(), !range ![[ctaid_range:[0-9]+]]
+// CHECK-PTX:   call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range ![[tid_range:[0-9]+]]
+// CHECK-GCN:   call i32 @llvm.amdgcn.workitem.id.x(), !range ![[tid_range:[0-9]+]]
 // CHECK-PTX:   ![[ctaid_range]] = !{i32 0, i32 1008}
 // CHECK-GCN:   ![[ctaid_range]] = !{i32 0, i32 1664}
 // CHECK:   ![[tid_range]] = !{i32 0, i32 128}

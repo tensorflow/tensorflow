@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,6 +84,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
@@ -203,6 +204,7 @@ limitations under the License.
 #include "xla/service/select_and_scatter_expander.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/sharding_remover.h"
+#include "xla/service/simplify_fp_conversions.h"
 #include "xla/service/slow_operation_alarm.h"
 #include "xla/service/sort_simplifier.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
@@ -237,6 +239,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+#include "xla/service/cpu/cpu_float_support.h"
 #include "xla/service/cpu/onednn_matmul_rewriter.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 #endif
@@ -397,6 +400,8 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
   runtime::JitExecutable::Options opts;
   copts.xla_cpu_sparse_cuda_threads =
       GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
+  std::optional<std::string> maybeOverriddenPipeline =
+      options::ExperimentalOverriddenPipeline(module.config());
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
       [](xla::runtime::DialectRegistry& dialects) {
@@ -414,7 +419,25 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
         PopulateXlaXfeedCall(registry);
       });
   opts.compiler.create_compilation_pipeline =
-      [copts](xla::runtime::PassManager& passes) {
+      [copts, maybeOverriddenPipeline = std::move(maybeOverriddenPipeline)](
+          xla::runtime::PassManager& passes) {
+        if (maybeOverriddenPipeline.has_value()) {
+          std::string error_message;
+          llvm::raw_string_ostream error_stream(error_message);
+          mlir::LogicalResult result = mlir::parsePassPipeline(
+              maybeOverriddenPipeline.value(), *passes, error_stream);
+          if (mlir::failed(result)) {
+            LOG(ERROR)
+                << "Failed to parse experimental CPU compilation pipeline: "
+                << error_stream.str();
+            return absl::InternalError(
+                "Failed to parse experimental CPU compilation pipeline.");
+          }
+          LOG(INFO) << "Experimental CPU compilation pipeline: "
+                    << maybeOverriddenPipeline.value();
+          return absl::OkStatus();
+        }
+
         HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
             llvm::Triple(llvm::sys::getProcessTriple()),
             llvm::sys::getHostCPUName());
@@ -423,10 +446,12 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
 
         Status status = CreateHloXlaRuntimePipeline(passes, options);
         if (!status.ok()) {
-          LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
+          LOG(ERROR) << "HLO-XLA Runtime pipeline failed with: "
                      << status.message();
+          return status;
         }
         runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
+        return absl::OkStatus();
       };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());
@@ -717,7 +742,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Convert BF16 and F8 operations to F32 and F16 respectively so that the CPU
   // backend can support BF16/F8 operations without directly implementing a
   // BF16/F8 lowering for most ops.
+#if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
+  CpuFloatSupport bf16_support(BF16);
+#else
   FloatSupport bf16_support(BF16);
+#endif
   pipeline.AddPass<FloatNormalization>(&bf16_support);
   FloatSupport f8e5m2_support(F8E5M2, F16);
   pipeline.AddPass<FloatNormalization>(&f8e5m2_support);
@@ -904,7 +933,15 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
   // AOT compiled code runs in single thread.
   if (!is_aot_compile) {
+    // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
+    // easier to match.
+    pipeline.AddPass<SimplifyFPConversions>(
+        SimplifyFPConversions::Scope::kSimplifyAllConversions);
     pipeline.AddPass<OneDnnMatMulRewriter>();
+    // Run SimplifyFPConversions pass again to remove redundant Convert ops
+    // that may exist as a result of running OneDnnMatMulRewriter pass.
+    pipeline.AddPass<SimplifyFPConversions>(
+        SimplifyFPConversions::Scope::kSimplifyAllConversions);
   }
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
 

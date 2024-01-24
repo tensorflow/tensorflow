@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -568,7 +568,7 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
   // compared to a regular execution. Some operations (i.e. async collectives)
   // can't be captured into command buffers, and forming too large command
   // buffers too early can impact async operations scheduling.
-  if (!module->has_schedule()) return InternalError("module is not scheduled");
+  if (!module->has_schedule()) return Internal("module is not scheduled");
 
   const DebugOptions& debug_options = module->config().debug_options();
 

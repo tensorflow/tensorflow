@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -160,8 +160,3 @@ static void InitializeROCmPlatform() {
 
 REGISTER_MODULE_INITIALIZER(rocm_platform,
                             stream_executor::InitializeROCmPlatform());
-
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
-// Note that module initialization sequencing is not supported in the
-// open-source project, so this will be a no-op there.
-REGISTER_MODULE_INITIALIZER_SEQUENCE(rocm_platform, multi_platform_manager);

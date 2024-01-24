@@ -402,7 +402,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
       with self.assertRaisesRegex(ValueError,
-                                  "make sure that the dataset is created in "
+                                  "Make sure that the dataset is created in "
                                   "the same graph as the iterator"):
         _ = dataset_ops.make_one_shot_iterator(dataset)
 
@@ -412,7 +412,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
       with self.assertRaisesRegex(ValueError,
-                                  "make sure that the dataset is created in "
+                                  "Make sure that the dataset is created in "
                                   "the same graph as the iterator"):
         _ = dataset_ops.make_initializable_iterator(dataset)
 

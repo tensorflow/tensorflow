@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/service/pattern_matcher.h"
@@ -236,7 +236,7 @@ CutlassGemmWithUpcastPattern::TryMatch(const se::DeviceDescription& device,
 // Cutlass Gemm Fusions
 //===----------------------------------------------------------------------===//
 
-class CutlassGemmFusion : public CustomFusion {
+class CutlassGemmFusion : public CustomKernelFusion {
  public:
   absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
@@ -274,7 +274,7 @@ class CutlassGemmFusion : public CustomFusion {
   }
 };
 
-class CutlassGemmWithUpcastFusion : public CustomFusion {
+class CutlassGemmWithUpcastFusion : public CustomKernelFusion {
  public:
   absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,
@@ -302,7 +302,7 @@ class CutlassGemmWithUpcastFusion : public CustomFusion {
   }
 };
 
-class CutlassGemmWithDynamicUpdateSliceFusion : public CustomFusion {
+class CutlassGemmWithDynamicUpdateSliceFusion : public CustomKernelFusion {
  public:
   absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
       const se::DeviceDescription& device,

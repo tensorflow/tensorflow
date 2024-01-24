@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
@@ -34,8 +35,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/xla.pb.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tsl/platform/error_logging.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -64,26 +68,56 @@ bool ShouldFallbackToGraphCompiler(
          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
 }
 
+void DumpComputationInput(
+    const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>
+        computation) {
+  if (!VLOG_IS_ON(2)) {
+    return;
+  }
+
+  switch (computation.index()) {
+    case 0:
+      VLOG(2) << "LegalizeMlirToHlo with MLIR computation input: "
+              << std::get<0>(computation).mlir_module;
+      break;
+    case 1: {
+      auto input = std::get<1>(computation);
+      Graph g(input.flib_def);
+      VLOG(2) << "LegalizeMlirToHlo with FLIB computation input: "
+              << DumpGraphToFile(
+                     absl::StrCat("legalize_mlir_hlo_computation_input_",
+                                  input.function->name()),
+                     g, std::get<1>(computation).flib_def);
+    } break;
+    default:
+      VLOG(2) << "LegalizeMlirToHlo computation input: unknown";
+      break;
+  }
+}
+
 Status DumpHloCompilationResult(std::string_view name,
                                 XlaCompilationResult* compilation_result) {
-  if (VLOG_IS_ON(2)) {
-    TF_ASSIGN_OR_RETURN(
-        auto hlo_module_config,
-        xla::HloModule::CreateModuleConfigFromProto(
-            compilation_result->computation->proto(), xla::DebugOptions()));
-
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<xla::HloModule> hlo_module,
-        xla::HloModule::CreateFromProto(
-            compilation_result->computation->proto(), hlo_module_config));
-
-    std::string all_computations;
-    for (auto computation : hlo_module->computations()) {
-      all_computations += computation->ToString() + "\n\n";
-    }
-
-    tensorflow::DumpRawStringToFile(name, all_computations);
+  if (!VLOG_IS_ON(2) &&
+      !DEBUG_DATA_DUMPER()->ShouldDump(std::string(name), kDebugGroupMain)) {
+    return OkStatus();
   }
+
+  TF_ASSIGN_OR_RETURN(
+      auto hlo_module_config,
+      xla::HloModule::CreateModuleConfigFromProto(
+          compilation_result->computation->proto(), xla::DebugOptions()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::HloModule> hlo_module,
+      xla::HloModule::CreateFromProto(compilation_result->computation->proto(),
+                                      hlo_module_config));
+
+  std::string all_computations;
+  for (auto computation : hlo_module->computations()) {
+    all_computations += computation->ToString() + "\n\n";
+  }
+
+  tensorflow::DumpRawStringToFile(name, all_computations);
 
   return OkStatus();
 }
@@ -102,6 +136,8 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     xla::CompileOnlyClient* client) {
   auto compilation_result = std::make_unique<XlaCompilationResult>();
 
+  DumpComputationInput(computation);
+
   // If there are no MLIR args, compile the given function in the library.
   if (ShouldFallbackToGraphCompiler(computation)) {
     TF_RETURN_IF_ERROR(tf2xla::v1::CompileTensorflowGraphToHlo(
@@ -109,11 +145,34 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
         arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
         compilation_result.get()));
 
-    DumpHloCompilationResult("legalize_tf_fallback", compilation_result.get())
+    DumpHloCompilationResult("legalize_tf_fallback.hlo",
+                             compilation_result.get())
         .IgnoreError();
-
     return *compilation_result;
   }
+
+  auto combined_bridge_status = internal::LegalizeTfToHlo(
+      std::get<0>(computation), metadata, use_tuple_args, device_type,
+      shape_determination_fns, arg_shapes, arg_core_mapping,
+      per_core_arg_shapes, custom_legalization_passes, client,
+      compilation_result.get());
+
+  if (combined_bridge_status.ok()) {
+    VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using "
+               "Combined MLIR and XlaBuilder Bridge.";
+
+    DumpHloCompilationResult("legalize_tf_combined_bridge.hlo",
+                             compilation_result.get())
+        .IgnoreError();
+    return *compilation_result;
+  }
+
+  VLOG(1)
+      << "Failed to compile MLIR computation to XLA HLO using "
+         "Combined MLIR and XlaBuilder Bridge. Falling back to Graph Bridge.";
+  tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
+                          combined_bridge_status.status().ToString())
+      .IgnoreError();
 
   auto mlir_bridge_status = internal::LegalizeWithMlirBridge(
       std::get<0>(computation), metadata, use_tuple_args, device_type,
@@ -127,10 +186,9 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     IncrementTfMlirBridgeSecondPhaseCounter(
         MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
 
-    DumpHloCompilationResult("legalize_tf_mlir_bridge",
+    DumpHloCompilationResult("legalize_tf_mlir_bridge.hlo",
                              compilation_result.get())
         .IgnoreError();
-
     return *compilation_result;
   } else if (mlir_bridge_status.status() ==
              CompileToHloGraphAnalysisFailedError()) {
@@ -146,30 +204,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
         MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure);
   }
 
-  auto combined_bridge_status = internal::LegalizeTfToHlo(
-      std::get<0>(computation), metadata, use_tuple_args, device_type,
-      shape_determination_fns, arg_shapes, arg_core_mapping,
-      per_core_arg_shapes, custom_legalization_passes, client,
-      compilation_result.get());
-
-  if (combined_bridge_status.ok()) {
-    VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using "
-               "Combined MLIR and XlaBuilder Bridge.";
-
-    DumpHloCompilationResult("legalize_tf_combined_bridge",
-                             compilation_result.get())
-        .IgnoreError();
-
-    return *compilation_result;
-  }
-
-  VLOG(1) << "Failed to compile MLIR computation to XLA HLO using "
-             "Combined MLIR and XlaBuilder Bridge. Could not generate HLO.";
-  tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
-                          combined_bridge_status.status().ToString())
-      .IgnoreError();
-
-  return combined_bridge_status.status();
+  return mlir_bridge_status.status();
 }
 
 };  // namespace v2

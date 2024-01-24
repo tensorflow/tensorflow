@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -157,10 +157,10 @@ StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
   absl::flat_hash_set<HloInstruction*> in_flight_ops;
 
   for (HloInstruction* instruction : sequence.instructions()) {
-    if (hlo_query::IsAsyncCollectiveStartOp(instruction->opcode())) {
+    if (hlo_query::IsAsyncCollectiveStartOp(instruction)) {
       in_flight_ops.insert(instruction);
       VLOG(3) << "Found async start " << instruction->ToString();
-    } else if (hlo_query::IsAsyncCollectiveDoneOp(instruction->opcode())) {
+    } else if (hlo_query::IsAsyncCollectiveDoneOp(instruction)) {
       // If this done is matching with the previous start and all intervening
       // ops are nops (i.e., prev_async_start was not reset to null), then we
       // were unable to schedule an independent op to overlap with this async

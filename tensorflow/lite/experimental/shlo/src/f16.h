@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_SRC_F16_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_SRC_F16_H_
 
-#include "src/has_keyword.h"
+#include "tensorflow/lite/experimental/shlo/src/has_keyword.h"
 
 #if defined(__STDCPP_FLOAT16_T__)
 #include <stdfloat>

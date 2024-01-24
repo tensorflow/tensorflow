@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/service/byte_size.h"
@@ -35,24 +37,24 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
 
-ParallelTFRecordWriter::ParallelTFRecordWriter(const std::string& directory,
+ParallelTFRecordWriter::ParallelTFRecordWriter(const std::string& file_prefix,
                                                const std::string& compression,
                                                tsl::Env* env,
                                                ByteSize max_file_size,
                                                int64_t num_write_threads,
                                                int64_t buffer_size_per_thread)
     : env_(env),
-      directory_(directory),
+      file_prefix_(file_prefix),
       compression_(compression),
       max_file_size_(max_file_size),
       buffer_size_(num_write_threads * buffer_size_per_thread) {
   thread_pool_ = std::make_unique<tsl::thread::ThreadPool>(
-      env_, tsl::ThreadOptions{}, "tf_data_snapshot_write_thread",
-      num_write_threads);
+      env_, tsl::ThreadOptions{}, "write_tfrecord_thread", num_write_threads);
   for (int64_t i = 0; i < num_write_threads; ++i) {
     thread_pool_->Schedule([this]() { WriteFiles(); });
   }
@@ -61,7 +63,7 @@ ParallelTFRecordWriter::ParallelTFRecordWriter(const std::string& directory,
 ParallelTFRecordWriter::~ParallelTFRecordWriter() {
   absl::Status status = Finalize().status();
   if (!status.ok()) {
-    LOG(ERROR) << "tf.data snapshot writer failed with error: " << status;
+    LOG(ERROR) << "Parallel TFRecord writer failed with error: " << status;
   }
 }
 
@@ -74,7 +76,7 @@ absl::Status ParallelTFRecordWriter::Write(std::vector<Tensor> record)
   TF_RETURN_IF_ERROR(status_);
   if (finalized_) {
     return absl::FailedPreconditionError(absl::StrCat(
-        "Trying to write a closed TFRecord writer at ", directory_, "."));
+        "Trying to write a closed TFRecord file at ", file_prefix_, "."));
   }
 
   buffer_.push_back(std::move(record));
@@ -134,7 +136,21 @@ bool ParallelTFRecordWriter::ShouldWriteFile(const std::string& filename) const
 }
 
 absl::Status ParallelTFRecordWriter::WriteRecord(
-    const std::string& filename, snapshot_util::TFRecordWriter& writer)
+    const std::string& filename, snapshot_util::TFRecordWriter& writer) {
+  TF_ASSIGN_OR_RETURN(std::optional<std::vector<Tensor>> record,
+                      GetNextRecord(filename));
+  if (!record.has_value()) {
+    return absl::OkStatus();
+  }
+
+  tsl::profiler::TraceMe activity("WriteTFRecord",
+                                  tsl::profiler::TraceMeLevel::kInfo);
+  TF_RETURN_IF_ERROR(writer.WriteTensors(*std::move(record)));
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::optional<std::vector<Tensor>>>
+ParallelTFRecordWriter::GetNextRecord(const std::string& filename)
     ABSL_LOCKS_EXCLUDED(mu_) {
   absl::MutexLock l(&mu_);
   while (status_.ok() && !finalized_ && buffer_.empty()) {
@@ -142,16 +158,15 @@ absl::Status ParallelTFRecordWriter::WriteRecord(
   }
   TF_RETURN_IF_ERROR(status_);
   if (buffer_.empty()) {
-    return absl::OkStatus();
+    return std::nullopt;
   }
 
   std::vector<Tensor> record = std::move(buffer_.front());
-  TF_RETURN_IF_ERROR(writer.WriteTensors(record));
   ++file_stats_[filename].num_records;
   file_stats_[filename].estimated_size += EstimatedSize(record);
   buffer_.pop_front();
   ready_to_push_.SignalAll();
-  return absl::OkStatus();
+  return record;
 }
 
 absl::Status ParallelTFRecordWriter::DeleteEmptyFile(
@@ -170,7 +185,7 @@ absl::Status ParallelTFRecordWriter::DeleteEmptyFile(
 }
 
 absl::StatusOr<std::string> ParallelTFRecordWriter::GetUniqueFile() const {
-  std::string filename = tsl::io::JoinPath(directory_, "tfrecord_file_");
+  std::string filename = absl::StrCat(file_prefix_, "__shard__");
   if (!env_->CreateUniqueFileName(&filename, ".tfrecord")) {
     return absl::InternalError(
         absl::StrCat("Failed to write file ", filename,

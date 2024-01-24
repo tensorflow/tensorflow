@@ -17,10 +17,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CheckpointInputPipelineHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "CsvDataset"
     mtype: "<type \'type\'>"
   }

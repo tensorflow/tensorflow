@@ -18,7 +18,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[ARG1]], %[[ARG2]] : tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
     // CHECK: stablehlo.return %[[MAX]] : tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
     // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>
-    // CHECK-SAME: window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>
+    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 3, 1>
     // CHECK-SAME: (tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
 
     // CHECK: %[[DQ:.*]] = "quantfork.dcast"(%[[REDUCE]])
@@ -39,7 +39,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
       %14 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
       stablehlo.return %14 : tensor<f32>
-    }) {padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>} : (tensor<2x3x1x3xf32>, tensor<f32>) -> tensor<2x3x1x3xf32>
+    }) {padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = array<i64: 1, 3, 3, 1>} : (tensor<2x3x1x3xf32>, tensor<f32>) -> tensor<2x3x1x3xf32>
     %12 = "quantfork.qcast"(%11) {volatile} : (tensor<2x3x1x3xf32>) -> tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
     %13 = "quantfork.dcast"(%12) : (tensor<2x3x1x3x!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x1x3xf32>
     return %13 : tensor<2x3x1x3xf32>
@@ -74,7 +74,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[ARG1]], %[[ARG2]] : tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
     // CHECK: stablehlo.return %[[MAX]] : tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
     // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>
-    // CHECK-SAME: window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>
+    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 3, 1>
     // CHECK-SAME: (tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>, tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
 
     // CHECK: %[[Q2:.*]] = "quantfork.qcast"(%[[CST1]])
@@ -93,7 +93,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
       %14 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
       stablehlo.return %14 : tensor<f32>
-    }) {padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>} : (tensor<2x3x1x1024xf32>, tensor<f32>) -> tensor<2x3x1x1024xf32>
+    }) {padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>, window_dimensions = array<i64: 1, 3, 3, 1>} : (tensor<2x3x1x1024xf32>, tensor<f32>) -> tensor<2x3x1x1024xf32>
     %7 = "quantfork.qcast"(%6) {volatile} : (tensor<2x3x1x1024xf32>) -> tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
     %8 = "quantfork.dcast"(%7) : (tensor<2x3x1x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1x1024xf32>
     %9 = "quantfork.qcast"(%1) {volatile} : (tensor<2x3x1024x3xf32>) -> tensor<2x3x1024x3x!quant.uniform<i8<-127:127>:f32, 4.000000e-01>>
@@ -136,7 +136,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[ARG1]], %[[ARG2]] : tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
     // CHECK: stablehlo.return %[[MAX]] : tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>
     // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>
-    // CHECK-SAME: window_dimensions = dense<[1, 3, 1]> : tensor<3xi64>
+    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 1>
     // CHECK-SAME: (tensor<2x3x3x!quant.uniform<i8:f32, 3.000000e-01:1>>, tensor<!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
 
     // CHECK: %[[DQ:.*]] = "quantfork.dcast"(%[[REDUCE]])
@@ -160,7 +160,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
       %17 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
       stablehlo.return %17 : tensor<f32>
-    }) {padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>, window_dimensions = dense<[1, 3, 1]> : tensor<3xi64>} : (tensor<2x3x3xf32>, tensor<f32>) -> tensor<2x3x3xf32>
+    }) {padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>, window_dimensions = array<i64: 1, 3, 1>} : (tensor<2x3x3xf32>, tensor<f32>) -> tensor<2x3x3xf32>
     %15 = "quantfork.qcast"(%14) {volatile} : (tensor<2x3x3xf32>) -> tensor<2x3x3x!quant.uniform<i8:f32, 3.000000e-01:1>>
     %16 = "quantfork.dcast"(%15) : (tensor<2x3x3x!quant.uniform<i8:f32, 3.000000e-01:1>>) -> tensor<2x3x3xf32>
     return %16 : tensor<2x3x3xf32>
@@ -195,7 +195,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     // CHECK: %[[MAX:.*]] = stablehlo.maximum %[[ARG1]], %[[ARG2]] : tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
     // CHECK: stablehlo.return %[[MAX]] : tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>
     // CHECK{LITERAL}: padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>
-    // CHECK-SAME: window_dimensions = dense<[1, 3, 1]> : tensor<3xi64>
+    // CHECK-SAME: window_dimensions = array<i64: 1, 3, 1>
     // CHECK-SAME: (tensor<2x3x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>, tensor<!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
 
     // CHECK: %[[RESHAPE:.*]] = stablehlo.reshape %[[REDUCE]]
@@ -215,7 +215,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
       %17 = stablehlo.maximum %arg1, %arg2 : tensor<f32>
       stablehlo.return %17 : tensor<f32>
-    }) {padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>, window_dimensions = dense<[1, 3, 1]> : tensor<3xi64>} : (tensor<2x3x1024xf32>, tensor<f32>) -> tensor<2x3x1024xf32>
+    }) {padding = dense<[[0, 0], [1, 1], [0, 0]]> : tensor<3x2xi64>, window_dimensions = array<i64: 1, 3, 1>} : (tensor<2x3x1024xf32>, tensor<f32>) -> tensor<2x3x1024xf32>
     %7 = "quantfork.qcast"(%6) {volatile} : (tensor<2x3x1024xf32>) -> tensor<2x3x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>
     %8 = "quantfork.dcast"(%7) : (tensor<2x3x1024x!quant.uniform<i8:f32, 5.000000e-01:2>>) -> tensor<2x3x1024xf32>
     %9 = stablehlo.reshape %8 : (tensor<2x3x1024xf32>) -> tensor<2x3x1x1024xf32>

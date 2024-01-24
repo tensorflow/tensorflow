@@ -2867,44 +2867,6 @@ name=None))
                   )
     ```
 
-    #### Estimator
-
-    In the case of estimators, you need to generally define a `serving_input_fn`
-    which would require the features to be processed by the model while
-    inferencing.
-
-    ```python
-    def serving_input_fn():
-
-      raw_feature_spec = ... # Spec for the raw_features
-      input_fn = tf.estimator.export.build_parsing_serving_input_receiver_fn(
-          raw_feature_spec, default_batch_size=None)
-      )
-      serving_input_receiver = input_fn()
-      raw_features = serving_input_receiver.features
-
-      def preprocessing_fn(raw_feature):
-        # ... the raw_feature is preprocessed as per the use-case
-        return feature
-
-      dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
-                .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
-                .batch(BATCH_SIZE))
-
-      processed_features = dataset.get_single_element()
-
-      # Please note that the value of `BATCH_SIZE` should be equal to
-      # the size of the leading dimension of `raw_features`. This ensures
-      # that `dataset` has only element, which is a pre-requisite for
-      # using `dataset.get_single_element()`.
-
-      return tf.estimator.export.ServingInputReceiver(
-          processed_features, serving_input_receiver.receiver_tensors)
-
-    estimator = ... # A pre-built or custom estimator
-    estimator.export_saved_model(your_exported_model_dir, serving_input_fn)
-    ```
-
     Args:
       name: (Optional.) A name for the tf.data operation.
 
@@ -4266,10 +4228,8 @@ def _ensure_same_dataset_graph(dataset):
       raise ValueError(
           f"The graph {current_graph} of the iterator is different from the "
           f"graph {ds_graph} the dataset: {ds._variant_tensor} was created in. "
-          f"If you are using the Estimator API, make sure that no part of the "
-          f"dataset returned by the `input_fn` function is defined outside the "
-          f"`input_fn` function. Otherwise, make sure that the dataset is "
-          f"created in the same graph as the iterator.")
+          f"Make sure that the dataset is created in the same graph as the "
+          f"iterator.")
     for input_ds in ds._inputs():
       if input_ds not in visited:
         bfs_q.put(input_ds)
@@ -4725,6 +4685,9 @@ class NumpyIterator(tracking_base.Trackable):
   def __init__(self, dataset):
     self._iterator = iter(dataset)
     self._dataset = dataset
+
+  def __repr__(self):
+    return f"NumpyIterator(iterator={self._iterator})"
 
   def __iter__(self):
     return self

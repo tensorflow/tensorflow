@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -133,20 +133,6 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
   // (supported on CUDA only)
   static void UnifiedMemoryDeallocate(GpuContext* context, void* location);
-
-  // Allocates a collective device memory space of size bytes associated with
-  // the given context via ncclMemAlloc.
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclmemalloc
-  // (supported on CUDA only)
-  static absl::StatusOr<void*> CollectiveMemoryAllocate(GpuContext* context,
-                                                        uint64_t bytes);
-
-  // Deallocates a collective device memory space of size bytes associated with
-  // the given context via ncclMemFree.
-  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclmemfree
-  // (supported on CUDA only)
-  static absl::Status CollectiveMemoryDeallocate(GpuContext* context,
-                                                 void* location);
 
   // Allocates page-locked and CUDA-registered memory on the host via
   // cuMemAllocHost/hipHostMalloc.

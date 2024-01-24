@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -38,12 +38,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Bytecode/BytecodeWriter.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -316,22 +317,32 @@ StatusOr<DeviceAssignment> PjRtCApiClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(int device_id) const {
+  return LookupDevice(PjRtGlobalDeviceId(device_id));
+}
+
+StatusOr<PjRtDevice*> PjRtCApiClient::LookupDevice(
+    PjRtGlobalDeviceId global_device_id) const {
   PJRT_Client_LookupDevice_Args args;
   args.struct_size = PJRT_Client_LookupDevice_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.client = c_client_.get();
-  args.id = device_id;
+  args.id = global_device_id.value();
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Client_LookupDevice(&args), c_api_);
   return GetCppDevice(args.device);
 }
 
 StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
     int local_hardware_id) const {
+  return LookupAddressableDevice(PjRtLocalDeviceId(local_hardware_id));
+}
+
+StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
+    PjRtLocalDeviceId local_device_id) const {
   PJRT_Client_LookupAddressableDevice_Args args;
   args.struct_size = PJRT_Client_LookupAddressableDevice_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.client = c_client_.get();
-  args.local_hardware_id = local_hardware_id;
+  args.local_hardware_id = local_device_id.value();
   RETURN_STATUS_IF_PJRT_ERROR(
       c_api_->PJRT_Client_LookupAddressableDevice(&args), c_api_);
   return GetCppDevice(args.addressable_device);
@@ -382,19 +393,12 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
     mlir::ModuleOp module, CompileOptions options) {
-  std::string module_bytecode;
-  {
-    llvm::raw_string_ostream os(module_bytecode);
-    mlir::BytecodeWriterConfig config;
-    // Pin bytecode version to 1 until transition to stable.
-    // TODO(285913864): Remove post enabling frameworks to set it.
-    config.setDesiredBytecodeVersion(1);
-    if (mlir::failed(mlir::writeBytecodeToFile(module, os, config)))
-      return absl::UnknownError("writeBytecodeToFile() failed.");
-  }
+  // TODO: Once plugins are ready, use SerializeUsingVersionedStablehlo.
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      xla::SerializeUsingNativeBytecode(module));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
-                                  module_bytecode, format);
+                                  serialized, format);
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -761,13 +765,17 @@ bool PjRtCApiDevice::IsAddressable() const {
 }
 
 int PjRtCApiDevice::local_hardware_id() const {
+  return local_hardware_id_typed().value();
+}
+
+PjRtLocalHardwareId PjRtCApiDevice::local_hardware_id_typed() const {
   PJRT_Device_LocalHardwareId_Args args;
   args.struct_size = PJRT_Device_LocalHardwareId_Args_STRUCT_SIZE;
   args.priv = nullptr;
   args.device = device_;
   const PJRT_Api* api = client_->pjrt_c_api();
   pjrt::LogFatalIfPjrtError(api->PJRT_Device_LocalHardwareId(&args), api);
-  return args.local_hardware_id;
+  return PjRtLocalHardwareId(args.local_hardware_id);
 }
 
 StatusOr<PjRtMemorySpace*> PjRtCApiDevice::default_memory_space() const {
@@ -1066,15 +1074,9 @@ PjRtCApiExecutable::GetHloModules() const {
   if (program_format == ::pjrt::kMlirFormat) {
     xla::HloProto hlo_proto;
     mlir::MLIRContext ctx;
-    mlir::DialectRegistry registry;
-    registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                    mlir::ml_program::MLProgramDialect,
-                    mlir::shape::ShapeDialect>();
-    mlir::stablehlo::registerAllDialects(registry);
-    mlir::mhlo::registerAllMhloDialects(registry);
-    ctx.appendDialectRegistry(registry);
-    auto module = mlir::parseSourceString<mlir::ModuleOp>(code, &ctx);
-    if (!module) return xla::Internal("failed to parse source module");
+    TF_ASSIGN_OR_RETURN(  // NOLINT(clang-diagnostic-pre-c++20-compat)
+        mlir::OwningOpRef<mlir::ModuleOp> module,
+        ParseMlirModuleString(code, ctx));
     mlir::PassManager pm(&ctx);
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
     if (mlir::failed(pm.run(module.get())))
@@ -2180,19 +2182,12 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  std::string module_bytecode;
-  {
-    llvm::raw_string_ostream os(module_bytecode);
-    mlir::BytecodeWriterConfig config;
-    // Pin bytecode version to 1 until transition to stable.
-    // TODO(285913864): Remove post enabling frameworks to set it.
-    config.setDesiredBytecodeVersion(1);
-    if (mlir::failed(mlir::writeBytecodeToFile(module, os, config)))
-      return absl::UnknownError("writeBytecodeToFile() failed.");
-  }
+  // TODO: Once plugins are ready, use SerializeUsingVersionedStablehlo.
+  TF_ASSIGN_OR_RETURN(std::string serialized,
+                      xla::SerializeUsingNativeBytecode(module));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
-                                     module_bytecode, format);
+                                     serialized, format);
 }
 
 // -------------------------------- API access ---------------------------------

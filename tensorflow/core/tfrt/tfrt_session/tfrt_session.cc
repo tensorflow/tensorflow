@@ -12,6 +12,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/tfrt_session/tfrt_session.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -19,26 +21,38 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/die_if_null.h"
-#include "absl/status/status.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "Eigen/ThreadPool"  // from @eigen_archive
+#include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/common_runtime/local_session_selection.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/threadpool_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/batch_kernel.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
@@ -48,7 +62,10 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+#include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace {
@@ -115,18 +132,25 @@ class TfrtSessionInterOpThreadPools {
 
 class TfrtSession : public tensorflow::Session {
  public:
+  // Besides options, these arguments are passed from those stored in
+  // `TfrtSessionfactory`.
+  // `runtime` should be non-null, with lifetime exceeding that of TfrtSession.
+  // A null `backend_compiler` indicates the default TFRT compiler will be used,
+  // with existence consistent during the lifetime of TfrtSession.
   explicit TfrtSession(const SessionOptions& options,
                        tensorflow::tfrt_stub::Runtime* runtime,
                        TfrtDeviceInfraTarget device_target,
                        bool tpu_use_tpu_runner,
                        TfrtSessionInterOpThreadPools inter_op_thread_pools,
-                       bool enable_mlrt)
+                       bool enable_mlrt,
+                       tensorflow::BackendCompiler* backend_compiler)
       : runtime_{runtime},
         device_target_{device_target},
         tpu_use_tpu_runner_{tpu_use_tpu_runner},
         inter_op_thread_pools_{std::move(inter_op_thread_pools)},
         enable_mlrt_(enable_mlrt),
-        options_{options} {}
+        options_{options},
+        backend_compiler_(backend_compiler) {}
 
   Status Create(const GraphDef& graph) override {
     return Create(GraphDef(graph));
@@ -193,9 +217,32 @@ class TfrtSession : public tensorflow::Session {
     MetaGraphDef meta_graph_def;
     *meta_graph_def.mutable_graph_def() = graph;
     model_context.set_meta_graph_def(&meta_graph_def);
-    // TODO(b/300474723): Add functionality supporting Pathways initialization
-    // through TFRT Session.
-    model_context.set_is_local_session(true);
+    // In the multi-host case, this prevents local Sessions from running
+    // global resource creation functions.
+    model_context.set_is_local_session(
+        !options_.config.experimental().enable_multi_host());
+    // Create mock signature def with all inputs and outputs. This
+    // prevents graph pruning.
+    if (options_.config.experimental().enable_multi_host()) {
+      // Fake a SignatureDef with all inputs and outputs.
+      // TODO(b/303480573): Cleanup ServingContext to not use
+      // MetaGraphDef.
+      SignatureDef& signature_def =
+          (*meta_graph_def.mutable_signature_def())["dummy_signature"];
+      for (const auto& node : graph.node()) {
+        if (node.op() == "Placeholder" || node.op() == "Const") {
+          TensorInfo& tensor_info =
+              (*signature_def.mutable_inputs())[node.name()];
+          tensor_info.set_name(node.name());
+        }
+        if (node.attr().contains("Tout")) {
+          TensorInfo& tensor_info =
+              (*signature_def.mutable_outputs())[node.name()];
+          tensor_info.set_name(node.name());
+        }
+      }
+    }
+
     TF_RETURN_IF_ERROR(options.runtime->CreateRuntimeResources(model_context));
 
     // `GraphExecutor::Create()` will preprocess the graph (e.g., apply
@@ -441,6 +488,7 @@ class TfrtSession : public tensorflow::Session {
     // Enable TpuHostAllocator only for TpuRunner as it is the only
     // implementation that supports the premapped memory optimization.
     compile_options.use_tpu_host_allocator_for_inputs = tpu_use_tpu_runner_;
+    options.compile_options.backend_compiler = backend_compiler_;
 
     options.model_metadata = options_.config.experimental().session_metadata();
     options.enable_mlrt = enable_mlrt_;
@@ -484,6 +532,7 @@ class TfrtSession : public tensorflow::Session {
 
   bool enable_mlrt_ = false;
   SessionOptions options_ = SessionOptions();
+  tensorflow::BackendCompiler* backend_compiler_ = nullptr;
 };
 
 std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>
@@ -689,7 +738,7 @@ class InitializerRegistry {
     return *reg;
   }
 
-  void Register(std::function<absl::Status(tfrt_stub::Runtime*)> initializer) {
+  void Register(TfrtSessionFactory::RuntimeInitializer initializer) {
     DCHECK(initializer_ == nullptr);
     initializer_ = initializer;
   }
@@ -701,11 +750,10 @@ class InitializerRegistry {
   }
 
  private:
-  std::function<absl::Status(tfrt_stub::Runtime*)> initializer_;
+  TfrtSessionFactory::RuntimeInitializer initializer_;
 };
 
-void TfrtSessionFactory::RegisterInitializer(
-    std::function<absl::Status(tfrt_stub::Runtime*)> initializer) {
+void TfrtSessionFactory::RegisterInitializer(RuntimeInitializer initializer) {
   InitializerRegistry::Get().Register(std::move(initializer));
 }
 
@@ -715,9 +763,12 @@ Status TfrtSessionFactory::InitializeLocked(const TfrtSessionOptions& options) {
     // TODO(b/319186082): Update callers to set `use_tpu` alongside other.
     // options, instead of separately, and remove this check.
     DCHECK(runtime_);
+    DCHECK(!options.backend_compiler);
     device_target_ = TfrtDeviceInfraTarget::kBridgeFallback;
     tpu_use_tpu_runner_ = true;
     return OkStatus();
+  } else if (options.backend_compiler) {
+    backend_compiler_ = options.backend_compiler;
   }
   LOG(INFO) << "Start initializing TfrtSession";
   if (options.runtime != nullptr) {
@@ -763,9 +814,12 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
       auto inter_op_thread_pools,
       thread_pool_manager_->UpdateAndGetInterOpThreadPools(options));
 
-  *out_session =
-      new TfrtSession(options, runtime_, device_target_, tpu_use_tpu_runner_,
-                      std::move(inter_op_thread_pools), enable_mlrt_);
+  auto* backend_compiler = options.config.experimental().enable_multi_host()
+                               ? backend_compiler_
+                               : nullptr;
+  *out_session = new TfrtSession(
+      options, runtime_, device_target_, tpu_use_tpu_runner_,
+      std::move(inter_op_thread_pools), enable_mlrt_, backend_compiler);
   return OkStatus();
 }
 

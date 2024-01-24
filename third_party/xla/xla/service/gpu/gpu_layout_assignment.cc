@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -243,7 +243,7 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
 
   if (instr->operand_count() > 2 && kind != CudnnConvKind::kForwardActivation &&
       kind != CudnnConvKind::kForwardGraph) {
-    return InternalError(
+    return Internal(
         "Invalid convolution. Conv has a side input, but kind is not fused "
         "conv forward or graph conv foward: %s",
         instr->ToString());

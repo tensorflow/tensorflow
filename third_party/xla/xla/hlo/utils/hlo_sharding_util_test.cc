@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -670,7 +670,8 @@ TEST(HloShardingUtilTest, IsSubShardingCompatibleShapeTiledPartialTiled) {
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingNoShortcut) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4});
   std::vector<int64_t> success = {1, 3, 4, 7, 8, 11, 12, 15, 16, 19, 20};
   std::vector<int64_t> fail = {2, 5, 6, 9, 10, 13, 14, 17, 18};
@@ -685,14 +686,16 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingNoShortcut) {
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut1) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4});
   Shape shape = ShapeUtil::MakeShape(F32, {8});
   EXPECT_TRUE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut2) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
   Array<int64_t> lhs_array({4});
   lhs_array.SetValues({1, 0, 2, 3});
   HloSharding lhs_sharding = HloSharding::Tile(lhs_array);
@@ -701,7 +704,8 @@ TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut2) {
 }
 
 TEST(HloShardingUtilTest, IsSubTilingOrEqualShardingShortcut3) {
-  HloSharding rhs_sharding = HloSharding::PartialTile(TileAssignment({2, 2}));
+  HloSharding rhs_sharding = HloSharding::PartialTile(
+      TileAssignment((absl::Span<const int64_t>){2, 2}));
   HloSharding lhs_sharding = HloSharding::IotaTile({4}, {2, 2}, {1, 0});
   Shape shape = ShapeUtil::MakeShape(F32, {8});
   EXPECT_FALSE(IsSubTilingOrEqualSharding(shape, lhs_sharding, rhs_sharding));

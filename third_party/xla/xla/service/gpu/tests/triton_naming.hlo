@@ -1,6 +1,7 @@
-// RUN: hlo_to_llvm_ir %s | FileCheck %{IR_SUBST} %s
+// RUN: hlo_to_llvm_ir %s | FileCheck --check-prefixes=CHECK-%{PTX} %s
 
-// CHECK: define [[KERNEL_ANNOTATION]]void @triton_gemm_r(
+// CHECK-PTX: define void @triton_gemm_r(
+// CHECK-GCN: define amdgpu_kernel void @triton_gemm_r(
 
 HloModule t, is_scheduled=true, entry_computation_layout={(f16[15,19]{1,0},s8[19,17]{1,0})->f16[15,17]{1,0}}
 

@@ -13,18 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <absl/log/log.h>
-#include <absl/types/span.h>
-
 #include <initializer_list>
 #include <utility>
 #include <vector>
 
-#include "include/shlo.h"
-#include "src/debug.h"
-#include "src/storage.h"
-#include "test/util.h"
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/types/span.h"
+#include "tensorflow/lite/experimental/shlo/include/shlo.h"
+#include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
+#include "tensorflow/lite/experimental/shlo/src/storage.h"
+#include "tensorflow/lite/experimental/shlo/test/util.h"
 
 namespace stablehlo {
 namespace testing {
@@ -127,31 +126,35 @@ void test(QuantizedParameter&& quantized_parameter,
 }
 
 TEST(Concatenate, Unquantized) {
-  test<ElementType::kI1>({{{3, 2}, {true, false, true, false, true, false}}, {{1, 2}, {false, true}}}, 0,
-                          {{4, 2}, {true, false, true, false, true, false, false, true}});
+  test<ElementType::kI1>(
+      {{{3, 2}, {true, false, true, false, true, false}},
+       {{1, 2}, {false, true}}},
+      0, {{4, 2}, {true, false, true, false, true, false, false, true}});
   test<ElementType::kSI8>({{{3, 2}, {1, 2, 3, 4, 5, 6}}, {{1, 2}, {7, 8}}}, 0,
                           {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
   test<ElementType::kSI16>({{{3, 2}, {1, 2, 3, 4, 5, 6}}, {{1, 2}, {7, 8}}}, 0,
-                          {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
+                           {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
   test<ElementType::kSI32>({{{3, 2}, {1, 2, 3, 4, 5, 6}}, {{1, 2}, {7, 8}}}, 0,
-                          {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
+                           {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
   test<ElementType::kBF16>({{{3, 2}, {1, 2, 3, 4, 5, 6}}, {{1, 2}, {7, 8}}}, 0,
                            {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
   test<ElementType::kF16>({{{3, 2}, {1, 2, 3, 4, 5, 6}}, {{1, 2}, {7, 8}}}, 0,
-                           {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
+                          {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
   test<ElementType::kF32>({{{3, 2}, {1, 2, 3, 4, 5, 6}}, {{1, 2}, {7, 8}}}, 0,
                           {{4, 2}, {1, 2, 3, 4, 5, 6, 7, 8}});
 
-  test<ElementType::kI1>({{{2, 3}, {true, false, true, false, true, false}}, {{2, 1}, {true, false}}}, 1,
-                         {{2, 4}, {true, false, true, true, false, true, false, false}});
+  test<ElementType::kI1>(
+      {{{2, 3}, {true, false, true, false, true, false}},
+       {{2, 1}, {true, false}}},
+      1, {{2, 4}, {true, false, true, true, false, true, false, false}});
   test<ElementType::kSI8>({{{2, 3}, {1, 2, 3, 4, 5, 6}}, {{2, 1}, {7, 8}}}, 1,
                           {{2, 4}, {1, 2, 3, 7, 4, 5, 6, 8}});
   test<ElementType::kSI16>({{{2, 3}, {1, 2, 3, 4, 5, 6}}, {{2, 1}, {7, 8}}}, 1,
-                          {{2, 4}, {1, 2, 3, 7, 4, 5, 6, 8}});
+                           {{2, 4}, {1, 2, 3, 7, 4, 5, 6, 8}});
   test<ElementType::kSI32>({{{2, 3}, {1, 2, 3, 4, 5, 6}}, {{2, 1}, {7, 8}}}, 1,
-                          {{2, 4}, {1, 2, 3, 7, 4, 5, 6, 8}});
+                           {{2, 4}, {1, 2, 3, 7, 4, 5, 6, 8}});
   test<ElementType::kBF16>({{{2, 3}, {1, 2, 3, 4, 5, 6}}, {{2, 1}, {7, 8}}}, 1,
-                          {{2, 4}, {1, 2, 3, 7, 4, 5, 6, 8}});
+                           {{2, 4}, {1, 2, 3, 7, 4, 5, 6, 8}});
   test<ElementType::kF16>({{{2, 3}, {1, 2, 3, 4, 5, 6}}, {{2, 1}, {7, 8}}}, 1,
                           {{2, 4}, {1, 2, 3, 7, 4, 5, 6, 8}});
   test<ElementType::kF32>({{{2, 3}, {1, 2, 3, 4, 5, 6}}, {{2, 1}, {7, 8}}}, 1,

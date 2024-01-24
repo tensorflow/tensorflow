@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -521,61 +521,10 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
   return BackendCompileResult{std::move(ptx), std::move(maybe_cubin.value())};
 }
 
-absl::StatusOr<std::vector<uint8_t>>
-NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
+static absl::StatusOr<std::vector<uint8_t>> AssembleOptionsAndCompile(
     const std::string& ptx, se::CudaComputeCapability cc,
-    const HloModuleConfig& hlo_module_config, absl::string_view module_name,
-    bool relocatable, const CompileOptions& options) {
-  // This may print multiple lines per HLO compilation because of the
-  // parallelized compilation of LLVM modules.
-  XLA_SCOPED_LOGGING_TIMER_IF(
-      absl::StrCat("NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ",
-                   module_name),
-      !options.is_autotuning_compilation);
-  tsl::profiler::TraceMe activity("PTX->CUBIN",
-                                  tsl::profiler::TraceMeLevel::kInfo);
-  auto [iter, inserted] = [&] {
-    absl::MutexLock lock(&mutex_);
-    return compilation_cache_.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable),
-        std::forward_as_tuple());
-  }();
-
-  // Pointers into compilation_cache_ where the ptx and (optional) cuBIN are
-  // stored.
-  CompilationCacheValue& cache_value = iter->second;
-
-  // Compile the ptx if it wasn't in the cache before we called this function.
-  // Other threads asking for the same compilation key will block on
-  // cache_value->mutex_ until compilation is done.
-  absl::MutexLock lock(&cache_value.mutex);
-  if (inserted) {
-    CHECK(!cache_value.compilation_done);
-    absl::Cleanup mark_compilation_as_done = [&cache_value] {
-      // Note that we will set this to true also in the error case, so that we
-      // don't retry this compilation.
-      cache_value.compilation_done = true;
-      cache_value.compilation_done_cv.SignalAll();
-    };
-
-    TF_ASSIGN_OR_RETURN(
-        cache_value.cubin_data,
-        CompileWithPtxAs(ptx, cc, hlo_module_config, options, relocatable));
-    return cache_value.cubin_data;
-  }
-
-  while (!cache_value.compilation_done) {
-    cache_value.compilation_done_cv.Wait(&cache_value.mutex);
-  }
-
-  return cache_value.cubin_data;
-}
-
-absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileWithPtxAs(
-    const std::string& ptx, se::CudaComputeCapability cc,
-    const HloModuleConfig& hlo_module_config, CompileOptions options,
-    bool relocatable) {
+    const HloModuleConfig& hlo_module_config,
+    GpuCompiler::CompileOptions options, bool relocatable) {
   if (ptx.empty()) {
     return std::vector<uint8_t>();
   }
@@ -591,8 +540,20 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileWithPtxAs(
       hlo_module_config.debug_options()
           .xla_gpu_filter_kernels_spilling_registers_on_autotuning() &&
       options.is_autotuning_compilation;
-  absl::StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
-      cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
+
+  absl::StatusOr<std::vector<uint8_t>> maybe_cubin = [&] {
+    if (hlo_module_config.debug_options().xla_gpu_enable_libnvptxcompiler()) {
+#ifdef ENABLE_LIBNVPTXCOMPILER_SUPPORT
+      return se::CompileGpuAsmUsingLibNvPtxCompiler(
+          cc.major, cc.minor, ptx.c_str(), ptxas_config, cancel_if_reg_spill);
+#else
+      LOG(FATAL) << "Libnvptxcompiler is not supported in this build.";
+#endif
+    }
+
+    return se::CompileGpuAsm(cc.major, cc.minor, ptx.c_str(), ptxas_config,
+                             cancel_if_reg_spill);
+  }();
 
   if (maybe_cubin.ok()) {
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
@@ -662,6 +623,57 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::CompileWithPtxAs(
   }
 
   return maybe_cubin;
+}
+
+absl::StatusOr<std::vector<uint8_t>>
+NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
+    const std::string& ptx, se::CudaComputeCapability cc,
+    const HloModuleConfig& hlo_module_config, absl::string_view module_name,
+    bool relocatable, const CompileOptions& options) {
+  // This may print multiple lines per HLO compilation because of the
+  // parallelized compilation of LLVM modules.
+  XLA_SCOPED_LOGGING_TIMER_IF(
+      absl::StrCat("NVPTXCompiler::CompileGpuAsmOrGetCachedResult for ",
+                   module_name),
+      !options.is_autotuning_compilation);
+  tsl::profiler::TraceMe activity("PTX->CUBIN",
+                                  tsl::profiler::TraceMeLevel::kInfo);
+  auto [iter, inserted] = [&] {
+    absl::MutexLock lock(&mutex_);
+    return compilation_cache_.emplace(
+        std::piecewise_construct,
+        std::forward_as_tuple(ptx, cc.major, cc.minor, relocatable),
+        std::forward_as_tuple());
+  }();
+
+  // Pointers into compilation_cache_ where the ptx and (optional) cuBIN are
+  // stored.
+  CompilationCacheValue& cache_value = iter->second;
+
+  // Compile the ptx if it wasn't in the cache before we called this function.
+  // Other threads asking for the same compilation key will block on
+  // cache_value->mutex_ until compilation is done.
+  absl::MutexLock lock(&cache_value.mutex);
+  if (inserted) {
+    CHECK(!cache_value.compilation_done);
+    absl::Cleanup mark_compilation_as_done = [&cache_value] {
+      // Note that we will set this to true also in the error case, so that we
+      // don't retry this compilation.
+      cache_value.compilation_done = true;
+      cache_value.compilation_done_cv.SignalAll();
+    };
+
+    TF_ASSIGN_OR_RETURN(cache_value.cubin_data,
+                        AssembleOptionsAndCompile(ptx, cc, hlo_module_config,
+                                                  options, relocatable));
+    return cache_value.cubin_data;
+  }
+
+  while (!cache_value.compilation_done) {
+    cache_value.compilation_done_cv.Wait(&cache_value.mutex);
+  }
+
+  return cache_value.cubin_data;
 }
 
 static std::optional<std::array<int64_t, 3>> GetNvLinkVersion(

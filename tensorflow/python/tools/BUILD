@@ -403,6 +403,7 @@ py_strict_library(
     srcs = ["saved_model_aot_compile.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python",
         "//tensorflow/python/client:session",
@@ -417,9 +418,7 @@ py_strict_library(
         "//tensorflow/python/platform:sysconfig",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:saver",
-    ] + if_xla_available(
-        ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
-    ),
+    ],
 )
 
 py_strict_test(

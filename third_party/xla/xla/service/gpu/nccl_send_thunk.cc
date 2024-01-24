@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/global_device_id.h"
 #include "xla/service/gpu/nccl_api.h"
+#include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
 
@@ -41,16 +43,16 @@ NcclP2PConfig GetNcclP2PConfig(SendOp op, int64_t replica_count,
 }
 
 absl::Status CheckImplementable(SendOp op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   return IsValidOperand(op.getInputs()[0], Thunk::kNcclSend);
 }
 
 }  // namespace impl
 
-NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, SendOp op,
+NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, NcclApi* nccl_api, SendOp op,
                              int64_t replica_count, int64_t partition_count,
                              const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, /*is_sync=*/false),
+    : NcclCollectiveThunk(Thunk::kNcclSend, thunk_info, nccl_api,
+                          /*is_sync=*/false),
       config_(GetNcclP2PConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
 
@@ -71,35 +73,36 @@ NcclSendThunk::NcclSendThunk(ThunkInfo thunk_info, SendOp op,
 
 absl::Status NcclSendThunk::RunNcclCollective(const ExecuteParams& params,
                                               se::Stream& stream,
-                                              ncclComm_t comm) {
+                                              NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
                              config_.config.operand_element_type));
   TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 
-  TF_ASSIGN_OR_RETURN(const GlobalDeviceId global_device_id,
-                      params.nccl_params.GetGlobalDeviceId());
-  TF_ASSIGN_OR_RETURN(
-      const DeviceAssignment::LogicalID current_logical_id,
-      params.nccl_params.device_assn->LogicalIdForDevice(global_device_id));
+  GlobalDeviceId global_device_id = params.collective_params->global_device_id;
+
+  TF_ASSIGN_OR_RETURN(const DeviceAssignment::LogicalID current_logical_id,
+                      params.collective_params->device_assn->LogicalIdForDevice(
+                          global_device_id));
   const int64_t current_id =
       config_.config.group_mode == CollectiveOpGroupMode::kCrossReplica
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
-  std::string device_string = GetDeviceString(params.nccl_params);
+  std::string device_string = GetDeviceString(*params.collective_params);
 
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(config_.id_to_source_target, current_id);
 
-  return ::xla::gpu::RunSend(source_target, device_buffers[0], stream, comm,
-                             device_string, current_id);
+  return ::xla::gpu::RunSend(nccl_api(), source_target, device_buffers[0],
+                             stream, comm, device_string, current_id);
 }
 
-absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
+absl::Status RunSend(NcclApi* nccl_api,
+                     NcclP2PConfig::SourceTargetMapEntry source_target,
                      DeviceBufferPair& buffer, se::Stream& stream,
-                     ncclComm_t comm, absl::string_view device_string,
-                     int64_t current_id) {
+                     NcclApi::NcclCommHandle comm,
+                     absl::string_view device_string, int64_t current_id) {
   // Determine the target IDs for this instance. The target ID is the ID
   // to which this instance will copy its data.
   int device_ordinal = stream.parent()->device_ordinal();
@@ -114,9 +117,9 @@ absl::Status RunSend(NcclP2PConfig::SourceTargetMapEntry source_target,
 
   // Send source buffer to target peer if needed.
   if (target_id) {
-    TF_RETURN_IF_ERROR(NcclApi::Send(
-        src_addr, buffer.element_type, buffer.element_type, *target_id,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+    TF_RETURN_IF_ERROR(nccl_api->Send(src_addr, buffer.element_type,
+                                      buffer.element_type, *target_id, comm,
+                                      &stream));
   }
 
   return absl::OkStatus();

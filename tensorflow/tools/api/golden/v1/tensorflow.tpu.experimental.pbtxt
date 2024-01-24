@@ -1,14 +1,6 @@
 path: "tensorflow.tpu.experimental"
 tf_module {
   member {
-    name: "AdagradParameters"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "AdamParameters"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "DeviceAssignment"
     mtype: "<type \'type\'>"
   }
@@ -17,15 +9,7 @@ tf_module {
     mtype: "<class \'enum.EnumType\'>"
   }
   member {
-    name: "FtrlParameters"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "HardwareFeature"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "StochasticGradientDescentParameters"
     mtype: "<type \'type\'>"
   }
   member {

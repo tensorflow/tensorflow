@@ -1183,7 +1183,6 @@ pytype_strict_library(
         ":c_api_util",
         ":composite_tensor",
         ":device",
-        ":device_spec",
         ":dtypes",
         ":errors",
         ":op_callbacks",
@@ -2088,7 +2087,6 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:internal",
-        "//tensorflow_estimator/python/estimator:__subpackages__",
         "//tensorflow_model_optimization:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/py/neural_structured_learning:__subpackages__",

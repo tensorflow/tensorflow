@@ -79,6 +79,46 @@ func.func @reduce_window_with_non_scalar_block_arg2(%arg0: tensor<4x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @reduce_window_with_promotable_types
+func.func @reduce_window_with_promotable_types(%arg0: tensor<4x2xf32>,
+    %arg1: tensor<4x2xf32>, %init0: tensor<f32>, %init1: tensor<f32>) ->
+    (tensor<2x2xf64>, tensor<2x2xf32>) {
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f64>, %a1: tensor<f32>, %b0: tensor<f64>,
+                %b1: tensor<f32>):
+              %2 = mhlo.add %a0, %b0 : tensor<f64>
+              %3 = mhlo.add %a1, %b1 : tensor<f32>
+              "mhlo.return"(%2,%3) : (tensor<f64>, tensor<f32>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64> }
+         : (tensor<4x2xf32>, tensor<4x2xf32>, tensor<f32>, tensor<f32>) ->
+              (tensor<2x2xf64>, tensor<2x2xf32>)
+  func.return %0#0, %0#1 : tensor<2x2xf64>, tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_window_with_promotable_quantized_types
+func.func @reduce_window_with_promotable_quantized_types(%arg0: tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+    %init0: tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>) {
+
+  %0 = "mhlo.reduce_window"(%arg0, %init0) ({
+         ^bb0(%a0: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %b0: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+              %1 = mhlo.add %a0, %b0 : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+              "mhlo.return"(%1) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64>
+         }
+         : (tensor<4x2x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<!quant.uniform<i8:f32, 2.000000e+00:15>>) -> (tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>)
+  func.return %0 : tensor<2x2x!quant.uniform<i32:f32, 2.000000e+00:15>>
+}
+
+// -----
+
 func.func @reduce_window_invalid_inputs(%arg0: tensor<4x2xf32>,
     %arg1: tensor<4x3xi32>, %init0: tensor<f32>, %init1: tensor<i32>) ->
     (tensor<2x2xf32>, tensor<2x2xi32>) {

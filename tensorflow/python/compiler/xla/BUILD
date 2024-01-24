@@ -87,7 +87,6 @@ cuda_py_strict_test(
     deps = [
         ":xla",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
@@ -99,7 +98,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/summary:__init__",
+        "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/tpu:tpu_feed",
         "@absl_py//absl/testing:parameterized",
     ],

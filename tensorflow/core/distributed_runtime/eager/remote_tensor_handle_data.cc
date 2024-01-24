@@ -17,6 +17,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/distributed_runtime/eager/destroy_tensor_handle_node.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/platform/errors.h"
@@ -186,7 +189,21 @@ Status RemoteTensorHandleData::SetShapeAndRemoteTask(
 
   mutex_lock l(mu_);
   if (is_ready_) {
-    return errors::Internal("SetShape is only called on non-ready handles.");
+    // `RemoteTensorHandleData` does not allow setting the
+    // shape more than once. `is_ready_` indicates whether the shape has
+    // been set. We skip the second and any further attempt to set the
+    // shape with the same value. Previously, for all cases (whether the new
+    // shape is same or different), an `Internal` error would be returned. Now,
+    // if the new shape is same, `Ok` status will be returned with a `WARNING`.
+    // Otherwise, an error would be returned as the caller's attempt to change
+    // the shape did not succeed.
+    if (shape_ != shape) {
+      return absl::InternalError(
+          absl::StrCat("Trying to change shape to ", shape.DebugString(),
+                       " from existing shape of ", shape_.DebugString()));
+    }
+    LOG(WARNING) << "SetShape can only be called on non-ready handles.";
+    return OkStatus();
   }
 
   shape_ = shape;

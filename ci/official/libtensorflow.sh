@@ -30,15 +30,6 @@ tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=linu
 
 tfrun ./ci/official/utilities/repack_libtensorflow.sh "$TFCI_OUTPUT_DIR" "$TFCI_LIB_SUFFIX"
 
-if [[ "$TFCI_UPLOAD_LIB_ENABLE" == 1 ]]; then
-  gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_UPLOAD_LIB_GCS_URI"
-  if [[ "$TFCI_UPLOAD_LIB_LATEST_ENABLE" == 1 ]]; then
-    gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_UPLOAD_LIB_LATEST_GCS_URI"
-  fi
-fi
-
-# TODO(angerson): Replace individual uploads (above) with this
-# shared output bucket
 if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
   # Note: -n disables overwriting previously created files.
   gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_ARTIFACT_STAGING_GCS_URI"

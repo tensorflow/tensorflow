@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,10 +33,10 @@ struct NcclAllToAllConfig {
 // Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
 class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  public:
-  NcclAllToAllStartThunk(ThunkInfo thunk_info,
+  NcclAllToAllStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                          mlir::lmhlo_gpu::AllToAllStartOp op,
                          std::vector<Buffer> buffers);
-  NcclAllToAllStartThunk(ThunkInfo thunk_info,
+  NcclAllToAllStartThunk(ThunkInfo thunk_info, NcclApi* nccl_api,
                          const HloAllToAllInstruction* instr,
                          std::vector<Buffer> buffers);
 
@@ -59,23 +59,17 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNcclCollective(const ExecuteParams& params,
-                                 se::Stream& stream, ncclComm_t comm) override;
+                                 se::Stream& stream,
+                                 NcclApi::NcclCommHandle comm) override;
 
  private:
   const NcclAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
 };
 
-absl::Status RunAllToAll(bool has_split_dimension,
+absl::Status RunAllToAll(NcclApi* nccl_api, bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
-                         se::Stream& stream, ncclComm_t comm);
-
-inline absl::Status RunAllToAll(bool has_split_dimension,
-                                std::vector<DeviceBufferPair>& buffers,
-                                se::Stream& stream, NcclCommHandle comm) {
-  return RunAllToAll(has_split_dimension, buffers, stream,
-                     reinterpret_cast<ncclComm_t>(comm));
-}
+                         se::Stream& stream, NcclApi::NcclCommHandle comm);
 
 }  // namespace gpu
 }  // namespace xla

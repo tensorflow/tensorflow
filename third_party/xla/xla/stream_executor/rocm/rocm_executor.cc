@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
@@ -111,6 +113,11 @@ bool GpuExecutor::UnloadModule(ModuleHandle module_handle) {
 }
 
 namespace {
+absl::uint128 Fingerprint128(const absl::string_view s) {
+  auto fp = tsl::Fingerprint128(s);
+  return absl::MakeUint128(fp.high64, fp.low64);
+}
+
 int fpus_per_core(std::string gcn_arch_name) {
   // Source:
   // https://www.amd.com/content/dam/amd/en/documents/instinct-business-docs/white-papers/amd-cdna2-white-paper.pdf
@@ -125,7 +132,55 @@ int fpus_per_core(std::string gcn_arch_name) {
 absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
 GpuExecutor::CreateOrShareConstant(Stream* stream,
                                    absl::Span<const uint8_t> content) {
-  return absl::UnimplementedError("Not implemented for ROCm");
+  absl::MutexLock lock{&shared_constants_mu_};
+  // We assume all constants are uniquely identified by this hash. In the
+  // (highly unlikely) event of a hash collision, the program will likely crash
+  // (because the cached constant that will be returned by mistake is unlikely
+  // to have the correct size).
+  absl::uint128 fingerprint = Fingerprint128(absl::string_view(
+      reinterpret_cast<const char*>(content.data()), content.size()));
+  // Must insert nullptr first to get an iterator to the insertion point.
+  auto insert_result = shared_constants_.insert(
+      {fingerprint, std::weak_ptr<DeviceMemoryBase>()});
+  auto it = insert_result.first;
+  bool was_already_in_cache = !insert_result.second;
+  std::shared_ptr<DeviceMemoryBase> shared_constant;
+
+  if (was_already_in_cache) {
+    shared_constant = it->second.lock();
+  }
+
+  if (shared_constant == nullptr) {
+    // Either the constant wasn't found in the cache, or it was but its
+    // weak_ptr had expired.
+    DeviceMemoryBase* new_constant =
+        new DeviceMemoryBase(Allocate(content.size(), /*memory_space=*/0));
+    if (new_constant->opaque() == nullptr) {
+      return absl::InternalError(absl::StrFormat(
+          "Failed to allocate %d bytes for new constant", content.size()));
+    }
+
+    absl::Status status =
+        stream->ThenMemcpy(new_constant, content.data(), content.size())
+            .BlockHostUntilDone();
+    if (!status.ok()) {
+      Deallocate(new_constant);
+      status.Update(absl::InternalError(absl::StrFormat(
+          "Memcpy to device address %p failed", new_constant->opaque())));
+      return status;
+    }
+
+    // Capturing 'this' in the custom deleter means this executor must
+    // outlive all shared uses of this constant.
+    shared_constant = std::shared_ptr<DeviceMemoryBase>(
+        new_constant, [this](DeviceMemoryBase* p) {
+          Deallocate(p);
+          delete p;
+        });
+    it->second = std::weak_ptr<DeviceMemoryBase>(shared_constant);
+  }
+
+  return shared_constant;
 }
 
 bool GpuExecutor::UnloadGpuBinary(const void* gpu_binary) {
@@ -281,8 +336,6 @@ absl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
 absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                  const BlockDim& block_dims,
                                  const Kernel& kernel, const KernelArgs& args) {
-  CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
-           args.number_of_arguments());
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);
   const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
   hipFunction_t hipfunc = rocm_kernel->AsGpuFunctionHandle();
@@ -306,17 +359,35 @@ absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
         hipfunc, rocm_kernel->GetGpuCacheConfig()));
   }
 
+  auto launch = [&](const KernelArgsPackedArrayBase& packed) {
+    CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
+             packed.number_of_arguments());
+
+    void** kernel_params =
+        const_cast<void**>(packed.argument_addresses().data());
+
+    return GpuDriver::LaunchKernel(
+        GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x,
+        block_dims.y, block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+        args.number_of_shared_bytes(), hipstream, kernel_params, nullptr);
+  };
+
   auto* packed_args = DynCast<KernelArgsPackedArrayBase>(&args);
-  if (!packed_args)
-    return absl::InternalError("Unsupported kernel arguments type");
+  if (packed_args) return launch(*packed_args);
 
-  void** kernel_params =
-      const_cast<void**>(packed_args->argument_addresses().data());
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.kernel_args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
 
-  return GpuDriver::LaunchKernel(
-      GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
-      block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
-      args.number_of_shared_bytes(), hipstream, kernel_params, nullptr);
+    TF_ASSIGN_OR_RETURN(auto packed_args, pack(kernel, *device_mem));
+    return launch(*packed_args);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 absl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,

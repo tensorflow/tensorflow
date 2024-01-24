@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -2075,6 +2075,16 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     stride *= shape.dimensions(i);
   }
   return OkStatus();
+}
+
+/*static*/
+std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
+    const Shape& shape) {
+  absl::InlinedVector<int64_t, 4> strides(shape.dimensions_size());
+  if (!ByteStrides(shape, absl::MakeSpan(strides)).ok()) {
+    return std::nullopt;
+  }
+  return strides;
 }
 
 /*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {

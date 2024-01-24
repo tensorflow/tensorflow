@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -142,31 +143,45 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
         });
   }
 
-  std::vector<const HloInstruction*> heroes;
-  std::vector<std::optional<TransposeDescription>> transposes;
-  heroes.reserve(hlo_roots.size());
-  for (const auto& root : hlo_roots) {
-    heroes.push_back(&FindNonTrivialHero(*root));
-    transposes.push_back(
-        GetDescriptionForTiledTransposeEmitter(*root, *heroes.back()));
+  absl::flat_hash_map<const HloInstruction*,
+                      std::vector<std::pair<int64_t, const HloInstruction*>>>
+      transposes_to_roots;
+  // Keep a list of deduplicated transpose heroes separate from
+  // transposes_to_roots to make the CodeGen deterministic.
+  std::vector<TransposeDescription> transposes;
+  transposes.reserve(hlo_roots.size());
+  std::vector<std::pair<int64_t, const HloInstruction*>> extra_outputs;
+
+  for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
+    const auto& hero = FindNonTrivialHero(*root);
+    auto transpose_descr = GetDescriptionForTiledTransposeEmitter(*root, hero);
+    if (transpose_descr.has_value()) {
+      auto iterator_inserted = transposes_to_roots.insert(std::make_pair(
+          &hero, std::vector<std::pair<int64_t, const HloInstruction*>>{
+                     {output_idx, root}}));
+      if (iterator_inserted.second) {
+        transposes.push_back(*transpose_descr);
+      } else {
+        iterator_inserted.first->second.push_back({output_idx, root});
+      }
+    } else {
+      extra_outputs.push_back({output_idx, root});
+    }
   }
 
   absl::flat_hash_map<const HloInstruction*, llvm::GlobalVariable*> tiles;
   Vector3 permutation;
-  for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
-    if (const auto& tr = transposes[tile_idx]) {
-      const auto& hero = *heroes[tile_idx];
-      permutation = tr->permutation;
-      const auto& block_tile_size = tiling_scheme_.GetBlockTileSize();
-      tiles[&hero] =
-          AllocateShared(builder, tiling_scheme_,
-                         llvm_ir::PrimitiveTypeToIrType(
-                             hero.operand(0)->shape().element_type(),
-                             ir_emitter_context.llvm_module()),
-                         {block_tile_size[permutation[TilingScheme::DimX]],
-                          block_tile_size[TilingScheme::DimX] + 1},
-                         absl::StrCat("tr_tile_", tile_idx));
-    }
+  for (const auto& [tile_idx, tr] : llvm::enumerate(transposes)) {
+    permutation = tr.permutation;
+    const auto& block_tile_size = tiling_scheme_.GetBlockTileSize();
+    tiles[tr.instr] =
+        AllocateShared(builder, tiling_scheme_,
+                       llvm_ir::PrimitiveTypeToIrType(
+                           tr.instr->operand(0)->shape().element_type(),
+                           ir_emitter_context.llvm_module()),
+                       {block_tile_size[permutation[TilingScheme::DimX]],
+                        block_tile_size[TilingScheme::DimX] + 1},
+                       absl::StrCat("tr_tile_", tile_idx));
   }
 
   TileElementGenerator tile_generator =
@@ -182,36 +197,33 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
             [&](const TilingThreadIdInfo& thread_id_info,
                 const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
                 llvm::Value* x_loc) {
+              for (const auto& tr : transposes) {
+                llvm_ir::ElementGenerator input_gen =
+                    *fused_emitter.GetGenerator(*tr.instr->operand(0));
+                llvm_ir::IrArray::Index untiled_index =
+                    GetUnnormalizedIndex(index, tr.instr->operand(0)->shape(),
+                                         builder, tiling_scheme_.GetShape());
+                llvm::Value* value = *input_gen(untiled_index);
+                llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
+                    builder, tiles[tr.instr], {y_loc, x_loc});
+
+                builder->CreateStore(value, addr);
+              }
+
               // Compute all extra output values before writing them. This
               // avoids overwriting aliased input/output values before all reads
               // occurred.
               std::vector<std::tuple<llvm_ir::IrArray, llvm_ir::IrArray::Index,
                                      llvm::Value*>>
                   scheduled_writes;
-
-              for (const auto& [output_idx, root] :
-                   llvm::enumerate(hlo_roots)) {
-                if (transposes[output_idx].has_value()) {
-                  const HloInstruction& hero = *heroes[output_idx];
-                  llvm_ir::ElementGenerator input_gen =
-                      *fused_emitter.GetGenerator(*hero.operand(0));
-                  llvm_ir::IrArray::Index untiled_index =
-                      GetUnnormalizedIndex(index, hero.operand(0)->shape(),
-                                           builder, tiling_scheme_.GetShape());
-                  llvm::Value* value = *input_gen(untiled_index);
-                  llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
-                      builder, tiles[&hero], {y_loc, x_loc});
-
-                  builder->CreateStore(value, addr);
-                } else {
-                  llvm_ir::IrArray::Index untiled_index = GetUnnormalizedIndex(
-                      index, root->shape(), builder, tiling_scheme_.GetShape());
-                  llvm_ir::ElementGenerator output_gen =
-                      *fused_emitter.GetGenerator(*root);
-                  llvm::Value* output_value = *output_gen(untiled_index);
-                  scheduled_writes.emplace_back(outputs[output_idx],
-                                                untiled_index, output_value);
-                }
+              for (const auto& [output_idx, root] : extra_outputs) {
+                llvm_ir::IrArray::Index untiled_index = GetUnnormalizedIndex(
+                    index, root->shape(), builder, tiling_scheme_.GetShape());
+                llvm_ir::ElementGenerator output_gen =
+                    *fused_emitter.GetGenerator(*root);
+                llvm::Value* output_value = *output_gen(untiled_index);
+                scheduled_writes.emplace_back(outputs[output_idx],
+                                              untiled_index, output_value);
               }
 
               for (const auto& [output, idx, value] : scheduled_writes) {
@@ -233,39 +245,43 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
             [&](const TilingThreadIdInfo& thread_id_info,
                 const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
                 llvm::Value* x_loc) {
-              for (const auto& [output_idx, root] :
-                   llvm::enumerate(hlo_roots)) {
-                if (transposes[output_idx].has_value()) {
-                  const HloInstruction& hero = *heroes[output_idx];
+              for (const auto& tr : transposes) {
+                std::vector<llvm::Value*> idx = {x_loc, y_loc};
+                llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
+                    builder, tiles[tr.instr], idx);
+                llvm::Type* type = thread_id_info.GEPIntoSharedMemoryType(
+                    tiles[tr.instr], idx);
+                llvm::Value* loaded =
+                    builder->CreateLoad(type, gep, "tiled_buffer");
 
-                  std::vector<llvm::Value*> idx = {x_loc, y_loc};
-                  llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
-                      builder, tiles[&hero], idx);
-                  llvm::Type* type =
-                      thread_id_info.GEPIntoSharedMemoryType(tiles[&hero], idx);
-                  llvm::Value* loaded =
-                      builder->CreateLoad(type, gep, "tiled_buffer");
-
-                  FusedIrEmitter fused_emitter(elemental_emitter);
+                FusedIrEmitter fused_emitter(elemental_emitter);
+                fused_emitter.BindGenerator(
+                    *tr.instr, [&](const llvm_ir::IrArray::Index& index) {
+                      return loaded;
+                    });
+                for (int64_t i = 0;
+                     i <
+                     fusion.fused_instructions_computation()->num_parameters();
+                     ++i) {
+                  llvm_ir::IrArray ir_array = inputs[i];
+                  HloInstruction* fused_operand = fusion.fused_parameter(i);
                   fused_emitter.BindGenerator(
-                      hero, [&](const llvm_ir::IrArray::Index& index) {
-                        return loaded;
+                      *fused_operand,
+                      [=](const llvm_ir::IrArray::Index& index) {
+                        return ir_array.EmitReadArrayElement(
+                            index, builder, fused_operand->name());
                       });
-                  for (int64_t i = 0;
-                       i < fusion.fused_instructions_computation()
-                               ->num_parameters();
-                       ++i) {
-                    llvm_ir::IrArray ir_array = inputs[i];
-                    HloInstruction* fused_operand = fusion.fused_parameter(i);
-                    fused_emitter.BindGenerator(
-                        *fused_operand,
-                        [=](const llvm_ir::IrArray::Index& index) {
-                          return ir_array.EmitReadArrayElement(
-                              index, builder, fused_operand->name());
-                        });
-                  }
+                }
 
-                  // Apply code generation for the code after the real hero.
+                // Apply code generation for the code after the real hero.
+                // Compute all output values before writing them. This avoids
+                // overwriting aliased input/output values before all reads
+                // occurred.
+                std::vector<std::tuple<llvm_ir::IrArray,
+                                       llvm_ir::IrArray::Index, llvm::Value*>>
+                    scheduled_writes;
+                for (const auto& [output_idx, root] :
+                     transposes_to_roots[tr.instr]) {
                   TF_ASSIGN_OR_RETURN(llvm_ir::ElementGenerator gen,
                                       fused_emitter.GetGenerator(*root));
 
@@ -276,8 +292,11 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                       Permute(tiling_scheme_.GetShape(), permutation));
                   TF_ASSIGN_OR_RETURN(llvm::Value * generated,
                                       gen(untiled_index));
-                  outputs[output_idx].EmitWriteArrayElement(untiled_index,
-                                                            generated, builder);
+                  scheduled_writes.emplace_back(outputs[output_idx],
+                                                untiled_index, generated);
+                }
+                for (const auto& [output, idx, value] : scheduled_writes) {
+                  output.EmitWriteArrayElement(idx, value, builder);
                 }
               }
               return absl::OkStatus();

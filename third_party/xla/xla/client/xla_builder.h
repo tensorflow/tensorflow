@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1437,6 +1437,12 @@ class XlaBuilder {
                          const std::optional<ChannelHandle>& channel_id,
                          const std::optional<Layout>& layout,
                          std::optional<bool> use_global_device_ids);
+  friend XlaOp AllGatherTuple(absl::Span<const XlaOp> operands,
+                              int64_t all_gather_dimension, int64_t shard_count,
+                              absl::Span<const ReplicaGroup> replica_groups,
+                              const std::optional<ChannelHandle>& channel_id,
+                              const std::optional<Layout>& layout,
+                              std::optional<bool> use_global_device_ids);
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const std::optional<ChannelHandle>& channel_id,
@@ -2430,6 +2436,13 @@ XlaOp AllGather(XlaOp operand, int64_t all_gather_dimension,
                 const std::optional<ChannelHandle>& channel_id = std::nullopt,
                 const std::optional<Layout>& layout = std::nullopt,
                 std::optional<bool> use_global_device_ids = std::nullopt);
+
+XlaOp AllGatherTuple(
+    absl::Span<const XlaOp> operands, int64_t all_gather_dimension,
+    int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+    const std::optional<ChannelHandle>& channel_id = std::nullopt,
+    const std::optional<Layout>& layout = std::nullopt,
+    std::optional<bool> use_global_device_ids = std::nullopt);
 
 // Enqueues an operation that do an AllReduce of the operand cross cores. Here
 // AllReduce means doing a reduction on the input operand cross cores and then

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -88,6 +88,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   opts_.set_xla_gpu_dump_llvmir(false);
   // Avoid using another thread pool.
   opts_.set_xla_gpu_force_compilation_parallelism(1);
+  opts_.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
   // Avoid using GPU graphs as we don't want to measure graph construction time.
   opts_.clear_xla_gpu_enable_command_buffer();
   opts_.set_xla_embed_ir_in_executable(false);

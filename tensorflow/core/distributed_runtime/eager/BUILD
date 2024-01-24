@@ -203,6 +203,9 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

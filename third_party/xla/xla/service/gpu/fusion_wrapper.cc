@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -114,8 +114,8 @@ absl::StatusOr<bool> FusionWrapper::Run(
         auto* computation = instruction->parent();
         auto* fusion_instruction =
             computation->AddInstruction(HloInstruction::CreateFusion(
-                instruction->shape(), ChooseFusionKind(*instruction),
-                instruction));
+                instruction->shape(),
+                ChooseFusionKind(*instruction, *instruction), instruction));
         instruction->GetModule()->SetAndUniquifyInstrName(
             fusion_instruction, absl::StrCat("wrapped_", instruction->name()));
         if (module->has_schedule()) {

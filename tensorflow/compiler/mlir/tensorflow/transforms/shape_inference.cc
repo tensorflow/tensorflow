@@ -933,6 +933,10 @@ class ShapeInference {
   // module.  Returns true if a return type was changed.
   bool InferShapeForXlaHostComputeMlir(_XlaHostComputeMlirOp op);
 
+  // Infers the shape of function attached to XlaHostCompute.
+  // Returns true if a return type was changed.
+  bool InferShapeForFunctionAttachedToXlaHostCompute(XlaHostComputeOp op);
+
   // Infers the shape for MapDatasetOp and its associated function. Returns
   // whether either op or function type was changed.
   bool InferShapeForMapDataset(MapDatasetOp op, int64_t max_iterations);
@@ -1296,6 +1300,49 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
   }
 
   return changed;
+}
+
+bool ShapeInference::InferShapeForFunctionAttachedToXlaHostCompute(
+    XlaHostComputeOp op) {
+  const std::string kShapeInferenceGraph = "shape_inference_graph";
+  if (!op->hasAttr(kShapeInferenceGraph)) {
+    return false;
+  }
+
+  ModuleOp module = op->getParentOfType<ModuleOp>();
+  func::FuncOp func = module.lookupSymbol<func::FuncOp>(
+      op.getShapeInferenceGraphAttr().getRootReference());
+
+  if (func == nullptr) return false;
+
+  std::vector<_XlaRecvAtHostOp> xla_recv_at_host_ops;
+  func.walk([&](_XlaRecvAtHostOp op) { xla_recv_at_host_ops.push_back(op); });
+  if (xla_recv_at_host_ops.empty()) return false;
+  auto xla_recv_at_host_op = xla_recv_at_host_ops.front();
+
+  // Copy const op into func body and replace the uses of the corresponding args
+  OpBuilder builder(&func.front().front());
+  for (auto arg : func.getArguments()) {
+    Value operand = op.getOperand(arg.getArgNumber());
+    if (isa_and_nonnull<TF::ConstOp>(operand.getDefiningOp())) {
+      xla_recv_at_host_op.getResult(arg.getArgNumber())
+          .replaceAllUsesWith(
+              builder.clone(*operand.getDefiningOp())->getResult(0));
+    }
+  }
+
+  // Update/use input shapes for function.
+  FunctionType func_type = func.getFunctionType();
+  func.setType(FunctionType::get(func.getContext(), op.getOperandTypes(),
+                                 func_type.getResults()));
+
+  // Run shape inference on the function.
+  if (failed(
+          PropagateShapeToRegions(op.getOperandTypes(), {&func.getBody()}, 10)))
+    return false;
+  if (failed(InferShapeForFunctionReturnType(func))) return false;
+
+  return false;
 }
 
 bool ShapeInference::InferShapeForXlaHostComputeMlir(
@@ -1925,8 +1972,17 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
     return false;
 
   DenseIntElementsAttr slice_sizes_attr;
-  if (!matchPattern(op.getSliceSizes(), m_Constant(&slice_sizes_attr)))
+  if (DenseIntElementsAttr attr;
+      matchPattern(op.getSliceSizes(), m_Constant(&attr))) {
+    slice_sizes_attr = attr;
+  } else if (const auto it = results_.find(ValuePort(op.getSliceSizes()));
+             it != results_.end() &&
+             llvm::isa<DenseIntElementsAttr>(it->second)) {
+    slice_sizes_attr = llvm::cast<DenseIntElementsAttr>(it->second);
+  } else {
     return false;
+  }
+
   llvm::SmallVector<int64_t> slice_sizes;
   for (const auto& attr : slice_sizes_attr.getValues<APInt>()) {
     slice_sizes.push_back(attr.getSExtValue());
@@ -2490,9 +2546,14 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // But if the type is a resource/variant, we do not skip it because we might
   // not have the handle shapes.
   if (none_of(op->getResultTypes(), CanBeRefined)) {
-    LLVM_DEBUG(llvm::dbgs() << "Skipping inference for statically shaped op '"
-                            << op->getName() << "'.\n");
-    return false;
+    if (auto host_compute_op = dyn_cast<XlaHostComputeOp>(op)) {
+      LLVM_DEBUG(llvm::dbgs() << "Keep inference for statically shaped op '"
+                              << op->getName() << "'.\n");
+    } else {
+      LLVM_DEBUG(llvm::dbgs() << "Skipping inference for statically shaped op '"
+                              << op->getName() << "'.\n");
+      return false;
+    }
   }
 
   if (isa<TF::RestoreOp, TF::RestoreV2Op>(op)) return InferShapeForRestore(op);
@@ -2537,6 +2598,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   if (auto host_compute_op = dyn_cast<_XlaHostComputeMlirOp>(op)) {
     return InferShapeForXlaHostComputeMlir(host_compute_op);
+  }
+
+  if (auto host_compute_op = dyn_cast<XlaHostComputeOp>(op)) {
+    return InferShapeForFunctionAttachedToXlaHostCompute(host_compute_op);
   }
 
   // TODO(jpienaar): Extract function input arg constraint interface.

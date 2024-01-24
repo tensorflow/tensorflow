@@ -1100,6 +1100,7 @@ cc_library(
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":byte_size",
         ":common",
         ":common_proto_cc",
         ":data_transfer",

@@ -1,7 +1,7 @@
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
-@@ -13,135 +13,20 @@
+@@ -13,131 +13,20 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  #
@@ -134,10 +134,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -#-------------------------------------------------------------------------------
 -
 -if(STABLEHLO_ENABLE_BINDINGS_PYTHON)
--  if(NOT STABLEHLO_EXTERNAL_PROJECT_BUILD)
--    message(WARNING "StableHLO Python bindings are not supported in standalone mode")
--  endif()
--
 -  include(MLIRDetectPythonEnv)
 -  mlir_configure_python_dev_packages()
 -endif()
@@ -156,91 +152,6 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel b/stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
---- stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
-+++ stablehlo/stablehlo/conversions/linalg/tests/BUILD.bazel
-@@ -37,6 +37,7 @@
- [
-     lit_test(
-         name = "%s.test" % src,
-+        size = "small",
-         srcs = [src],
-         data = [
-             "lit.cfg.py",
-@@ -44,7 +45,6 @@
-             "//:stablehlo-opt",
-             "@llvm-project//llvm:FileCheck",
-         ],
--        size = "small",
-         tags = ["stablehlo_linalg_tests"],
-     )
-     for src in glob(["**/*.mlir"])
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py b/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
---- stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
-+++ stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py
-@@ -26,6 +26,10 @@
- config.suffixes = ['.mlir']
- config.test_source_root = os.path.dirname(__file__)
- 
-+# Disallow reusing variables across CHECK-LABEL matches.
-+# A variable can eschew this (be made "global") by prefixing its name with $.
-+config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
-+
- # Make LLVM and StableHLO tools available in RUN directives
- tools = [
-   'stablehlo-opt',
-diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
---- stablehlo/stablehlo/dialect/Base.td
-+++ stablehlo/stablehlo/dialect/Base.td
-@@ -238,7 +238,7 @@
- 
- // TODO(#1578) migrate uses to DenseI64ArrayAttr and delete this attr
- def I64DenseArrayOrElements1DAttr : Attr<Or<[DenseI64ArrayAttr.predicate, I64Elements1D]>, "either a DenseI64ArrayAttr or a 1-dimensional I64ElementsAttr."> {
--  let storageType = "Attribute";
-+  let storageType = "mlir::Attribute";
-   let returnType = "SmallVector<int64_t>";
-   let convertFromStorage = "hlo::getI64Array($_self)";
- }
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloAttrs.td b/stablehlo/stablehlo/dialect/StablehloAttrs.td
---- stablehlo/stablehlo/dialect/StablehloAttrs.td
-+++ stablehlo/stablehlo/dialect/StablehloAttrs.td
-@@ -191,7 +191,7 @@
- }
- 
- def BoolDenseArrayOrElementsAttr : Attr<Or<[DenseBoolArrayAttr.predicate, StableHLO_BoolElementsAttr.predicate]>, "either a DenseBoolArrayAttr or a StableHLO_BoolElementsAttr"> {
--  let storageType = "Attribute";
-+  let storageType = "mlir::Attribute";
-   let returnType = "SmallVector<bool>";
-   let convertFromStorage = "hlo::getBoolArray($_self)";
- }
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -4153,8 +4153,8 @@
- //   P5. Check if the result type of window operation matches the source type.
- LogicalResult verifySelectAndScatterOp(
-     std::optional<Location> location, Value operand, Value source,
--    Value initValue, std::optional<SmallVector<int64_t>> windowDimensionsOpt,
--    std::optional<SmallVector<int64_t>> windowStridesOpt,
-+    Value initValue, std::optional<ArrayRef<int64_t>> windowDimensionsOpt,
-+    std::optional<ArrayRef<int64_t>> windowStridesOpt,
-     std::optional<DenseIntElementsAttr> padding, Region& select,
-     Region& scatter) {
-   auto operandType = operand.getType().cast<ShapedType>();
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
---- stablehlo/stablehlo/dialect/TypeInference.h
-+++ stablehlo/stablehlo/dialect/TypeInference.h
-@@ -501,8 +501,8 @@
- 
- LogicalResult verifySelectAndScatterOp(
-     std::optional<Location> location, Value operand, Value source,
--    Value initValue, std::optional<SmallVector<int64_t>> windowDimensions,
--    std::optional<SmallVector<int64_t>> windowStrides,
-+    Value initValue, std::optional<ArrayRef<int64_t>> windowDimensions,
-+    std::optional<ArrayRef<int64_t>> windowStrides,
-     std::optional<DenseIntElementsAttr> padding, Region& select,
-     Region& scatter);
- 
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -2809,58 +2720,4 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
-diff --ruN a/stablehlo/stablehlo/testdata/lit.cfg.py b/stablehlo/stablehlo/testdata/lit.cfg.py
---- stablehlo/stablehlo/testdata/lit.cfg.py
-+++ stablehlo/stablehlo/testdata/lit.cfg.py
-@@ -28,6 +28,10 @@
- config.suffixes = ['.mlir']
- config.test_source_root = os.path.dirname(__file__)
- 
-+# Disallow reusing variables across CHECK-LABEL matches.
-+# A variable can eschew this (be made "global") by prefixing its name with $.
-+config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
-+
- # Make LLVM and StableHLO tools available in RUN directives
- tools = [
-   'FileCheck',
-diff --ruN a/stablehlo/stablehlo/tests/lit.cfg.py b/stablehlo/stablehlo/tests/lit.cfg.py
---- stablehlo/stablehlo/tests/lit.cfg.py
-+++ stablehlo/stablehlo/tests/lit.cfg.py
-@@ -28,6 +28,10 @@
- config.suffixes = ['.mlir']
- config.test_source_root = os.path.dirname(__file__)
- 
-+# Disallow reusing variables across CHECK-LABEL matches.
-+# A variable can eschew this (be made "global") by prefixing its name with $.
-+config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
-+
- # Make LLVM and StableHLO tools available in RUN directives
- tools = [
-   'FileCheck',
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir b/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
---- stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.0_17_0.mlir
-@@ -1955,7 +1955,8 @@
- func.func @op_select_and_scatter_with_promotable_types(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<12x13x13x66xf32>, %arg2: tensor<f32>) -> tensor<10x24x24x64xf64> {
-   // CHECK: "vhlo.select_and_scatter_v1"(%arg0, %arg1, %arg2)
-   // CHECK:   ^[[BB:bb.*]](%[[ARG1:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>, %[[ARG2:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>):
--  // CHECK:     "vhlo.return_v1"(%[[VAL12]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
-+  // CHECK:     %[[VAL:.*]] = "vhlo.add_v1"(%[[ARG1]], %[[ARG2]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>, !vhlo.tensor_v1<!vhlo.f64_v1>) -> !vhlo.tensor_v1<!vhlo.f64_v1>
-+  // CHECK:     "vhlo.return_v1"(%[[VAL]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
-   // CHECK: }) : (!vhlo.tensor_v1<10x24x24x64x!vhlo.f32_v1>, !vhlo.tensor_v1<12x13x13x66x!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<10x24x24x64x!vhlo.f64_v1>
-   %0 = "stablehlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
-     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
---- stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_legalize_to_vhlo.mlir
-@@ -1960,7 +1960,8 @@
- func.func @op_select_and_scatter_with_promotable_types(%arg0: tensor<10x24x24x64xf32>, %arg1: tensor<12x13x13x66xf32>, %arg2: tensor<f32>) -> tensor<10x24x24x64xf64> {
-   // CHECK: "vhlo.select_and_scatter_v1"(%arg0, %arg1, %arg2)
-   // CHECK:   ^[[BB:bb.*]](%[[ARG1:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>, %[[ARG2:arg.*]]: !vhlo.tensor_v1<!vhlo.f64_v1>):
--  // CHECK:     "vhlo.return_v1"(%[[VAL12]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
-+  // CHECK:     %[[VAL:.*]] = "vhlo.add_v1"(%[[ARG1]], %[[ARG2]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>, !vhlo.tensor_v1<!vhlo.f64_v1>) -> !vhlo.tensor_v1<!vhlo.f64_v1>
-+  // CHECK:     "vhlo.return_v1"(%[[VAL]]) : (!vhlo.tensor_v1<!vhlo.f64_v1>) -> ()
-   // CHECK: }) : (!vhlo.tensor_v1<10x24x24x64x!vhlo.f32_v1>, !vhlo.tensor_v1<12x13x13x66x!vhlo.f32_v1>, !vhlo.tensor_v1<!vhlo.f32_v1>) -> !vhlo.tensor_v1<10x24x24x64x!vhlo.f64_v1>
-   %0 = "stablehlo.select_and_scatter"(%arg0, %arg1, %arg2) ({
-     ^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
 

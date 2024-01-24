@@ -18,12 +18,14 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/data/snapshot_utils.h"
@@ -41,7 +43,7 @@ namespace data {
 // Usage example:
 //
 // ParallelTFRecordWriter writer(
-//     "/path/to/directory", tsl::io::compression::kSnappy, Env::Default());
+//     "/path/to/file", tsl::io::compression::kSnappy, Env::Default());
 //
 // std::vector<Tensor> record;
 // bool end_of_sequence = false;
@@ -50,11 +52,11 @@ namespace data {
 //   TF_RETURN_IF_ERROR(writer.Write(record));
 //   TF_RETURN_IF_ERROR(iterator.GetNext(record, end_of_sequence));
 // }
-// TF_ASSIGN_OR_RETURN(absl::flat_hash_set<std::string> files,
+// TF_ASSIGN_OR_RETURN(ParallelTFRecordWriter::FileToStatsMap file_stats,
 //                     writer.Finalize());
 class ParallelTFRecordWriter {
  public:
-  explicit ParallelTFRecordWriter(const std::string& directory,
+  explicit ParallelTFRecordWriter(const std::string& file_prefix,
                                   const std::string& compression, tsl::Env* env,
                                   ByteSize max_file_size = ByteSize::GB(2),
                                   int64_t num_write_threads = 10,
@@ -78,7 +80,7 @@ class ParallelTFRecordWriter {
   // Flushes the writer and finalizes the files. Returns a map from absolute
   // paths to the file stats. After the writer is finalized, `Write` will return
   // `FailedPreconditionErrors`. The caller should make sure all `Write` calls
-  // have finished before calling `Finalize`. Will blocks until the writer is
+  // have finished before calling `Finalize`. Will block until the writer is
   // finalized or an error occurs.
   absl::StatusOr<FileToStatsMap> Finalize();
 
@@ -99,6 +101,11 @@ class ParallelTFRecordWriter {
   absl::Status WriteRecord(const std::string& filename,
                            snapshot_util::TFRecordWriter& writer);
 
+  // Gets the next record from the buffer to write. Returns `std::nullopt` if
+  // there are no more records to write.
+  absl::StatusOr<std::optional<std::vector<Tensor>>> GetNextRecord(
+      const std::string& filename);
+
   // Deletes the file if it's empty.
   absl::Status DeleteEmptyFile(const std::string& filename);
 
@@ -109,7 +116,7 @@ class ParallelTFRecordWriter {
   void UpdateStatus(absl::Status status);
 
   tsl::Env* const env_;
-  const std::string directory_;
+  const std::string file_prefix_;
   const std::string compression_;
   const ByteSize max_file_size_;
   const int64_t buffer_size_;

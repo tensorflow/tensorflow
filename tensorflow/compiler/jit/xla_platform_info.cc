@@ -209,8 +209,11 @@ Status BuildXlaDeviceCompiler(DeviceBase* device, FunctionLibraryRuntime* flr,
                               XlaDeviceCompiler** xla_device_compiler) {
   if (platform_info.platform_id() == nullptr &&
       platform_info.device_type() == DEVICE_GPU) {
-    // We do not need to build a device compiler for GPU if the platform ID is
-    // null. This is for supporting cross platform lowering.
+    // We do not need to (and cannot) build a real device compiler for GPU
+    // if the platform ID is null. We just return a placeholder for supporting
+    // cross platform lowering.
+    *xla_device_compiler = new XlaDeviceCompiler(/*persistor=*/nullptr,
+                                                 /*compiler_client=*/nullptr);
     return OkStatus();
   }
   std::string persistent_cache_directory =

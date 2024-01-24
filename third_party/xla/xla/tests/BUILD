@@ -194,6 +194,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_client_registry",
+        "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
     ],
 )
@@ -1312,6 +1313,7 @@ xla_test(
         "requires-gpu-sm80",
     ]},
     backends = ["gpu"],
+    tags = ["no_rocm"],  # No int8
     deps = [
         ":hlo_test_base",
         ":xla_internal_test_main",
@@ -2867,6 +2869,7 @@ xla_test(
         "cpu",
     ],
     copts = tsl_copts(),
+    tags = ["no_oss"],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",

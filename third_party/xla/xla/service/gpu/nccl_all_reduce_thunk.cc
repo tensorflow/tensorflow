@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,22 +48,22 @@ namespace gpu {
 using mlir::lmhlo_gpu::AllReduceStartOp;
 using mlir::lmhlo_gpu::ReduceScatterStartOp;
 
-absl::Status RunAllReduce(ReductionKind reduction_kind,
+absl::Status RunAllReduce(NcclApi* nccl_api, ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
-                          se::Stream& stream, ncclComm_t comm) {
+                          se::Stream& stream, NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
 
-  TF_RETURN_IF_ERROR(NcclApi::GroupStart());
+  TF_RETURN_IF_ERROR(nccl_api->GroupStart());
   for (DeviceBufferPair& buffer : buffers) {
-    TF_RETURN_IF_ERROR(NcclApi::AllReduce(
+    TF_RETURN_IF_ERROR(nccl_api->AllReduce(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count, reduction_kind,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+        buffer.element_count, reduction_kind, comm, &stream));
   }
 
-  return NcclApi::GroupEnd();
+  return nccl_api->GroupEnd();
 }
 
 namespace {
@@ -120,8 +120,6 @@ namespace impl {
 
 absl::Status CheckImplementableInst(const HloInstruction* inst,
                                     Thunk::Kind reduction_op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
-
   for (HloInstruction* operand : inst->operands()) {
     TF_RETURN_IF_ERROR(IsValidOperand(operand->shape(), reduction_op));
   }
@@ -136,7 +134,6 @@ absl::Status CheckImplementableInst(const HloInstruction* inst,
 
 template <typename OpT>
 absl::Status CheckImplementable(OpT op, Thunk::Kind reduction_op) {
-  TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   for (mlir::Value operand : op.getInputs()) {
     TF_RETURN_IF_ERROR(IsValidOperand(operand, reduction_op));
   }
@@ -231,27 +228,28 @@ NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
 }
 
 NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
-    Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
-    std::vector<Buffer> buffers, bool is_sync)
-    : NcclCollectiveThunk(kind, thunk_info, is_sync),
+    Thunk::Kind kind, ThunkInfo thunk_info, NcclApi* nccl_api,
+    NcclAllReduceConfig config, std::vector<Buffer> buffers, bool is_sync)
+    : NcclCollectiveThunk(kind, thunk_info, nccl_api, is_sync),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(ThunkInfo thunk_info,
+                                                 NcclApi* nccl_api,
                                                  AllReduceStartOp op,
                                                  std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclAllReduceStart,
-                                          thunk_info,
+                                          thunk_info, nccl_api,
                                           impl::GetNcclAllReduceConfig(op),
                                           std::move(buffers), op.getIsSync()) {}
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
-    ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
-    std::vector<Buffer> buffers)
+    ThunkInfo thunk_info, NcclApi* nccl_api,
+    const HloAllReduceInstruction* inst, std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclAllReduceStart, thunk_info,
+          Thunk::kNcclAllReduceStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<GpuBackendConfig>()
               ->collective_backend_config()
@@ -283,28 +281,29 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
 }
 
 absl::Status NcclAllReduceStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return ::xla::gpu::RunAllReduce(config_.reduction_kind, device_buffers,
-                                  stream, comm);
+  return ::xla::gpu::RunAllReduce(nccl_api(), config_.reduction_kind,
+                                  device_buffers, stream, comm);
 }
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
-    ThunkInfo thunk_info, ReduceScatterStartOp op,
+    ThunkInfo thunk_info, NcclApi* nccl_api, ReduceScatterStartOp op,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclReduceScatterStart,
-                                          thunk_info,
+                                          thunk_info, nccl_api,
                                           impl::GetNcclAllReduceConfig(op),
                                           std::move(buffers), op.getIsSync()) {}
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
-    ThunkInfo thunk_info, const HloReduceScatterInstruction* inst,
-    std::vector<Buffer> buffers)
+    ThunkInfo thunk_info, NcclApi* nccl_api,
+    const HloReduceScatterInstruction* inst, std::vector<Buffer> buffers)
     : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclReduceScatterStart, thunk_info,
+          Thunk::kNcclReduceScatterStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
           inst->backend_config<GpuBackendConfig>()
               ->collective_backend_config()
@@ -336,28 +335,29 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
 }
 
 absl::Status NcclReduceScatterStartThunk::RunNcclCollective(
-    const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
+    const ExecuteParams& params, se::Stream& stream,
+    NcclApi::NcclCommHandle comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  return ::xla::gpu::RunReduceScatter(config_.reduction_kind, device_buffers,
-                                      stream, comm);
+  return ::xla::gpu::RunReduceScatter(nccl_api(), config_.reduction_kind,
+                                      device_buffers, stream, comm);
 }
 
-absl::Status RunReduceScatter(ReductionKind reduction_kind,
+absl::Status RunReduceScatter(NcclApi* nccl_api, ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
-                              se::Stream& stream, ncclComm_t comm) {
+                              se::Stream& stream,
+                              NcclApi::NcclCommHandle comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(device_ordinal, buffers, comm));
+  TF_RETURN_IF_ERROR(
+      MaybeRegisterBuffers(nccl_api, device_ordinal, buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(
-      int32_t num_participants,
-      NcclApi::CommCount(reinterpret_cast<NcclApi::NcclCommHandle>(comm)));
+  TF_ASSIGN_OR_RETURN(int32_t num_participants, nccl_api->CommCount(comm));
 
-  TF_RETURN_IF_ERROR(NcclApi::GroupStart());
+  TF_RETURN_IF_ERROR(nccl_api->GroupStart());
 
   for (DeviceBufferPair& buffer : buffers) {
     // buffer.element_count is the source buffers element count. For
@@ -366,13 +366,13 @@ absl::Status RunReduceScatter(ReductionKind reduction_kind,
         << "Source buffer was not an exact multiple of the number of "
            "participants.";
 
-    TF_RETURN_IF_ERROR(NcclApi::ReduceScatter(
+    TF_RETURN_IF_ERROR(nccl_api->ReduceScatter(
         buffer.source_buffer, buffer.destination_buffer, buffer.element_type,
-        buffer.element_count / num_participants, reduction_kind,
-        reinterpret_cast<NcclApi::NcclCommHandle>(comm), &stream));
+        buffer.element_count / num_participants, reduction_kind, comm,
+        &stream));
   }
 
-  return NcclApi::GroupEnd();
+  return nccl_api->GroupEnd();
 }
 
 }  // namespace gpu

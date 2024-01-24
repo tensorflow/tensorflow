@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
-#include "xla/status.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
+#include "xla/service/gpu/thunk.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -36,9 +38,13 @@ ForThunk::ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
           // this ForThunk, and shouldn't be profiled separately from it.
           ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
 
+absl::Status ForThunk::Prepare(const PrepareParams& params,
+                               ResourceRequests& resource_requests) {
+  return body_thunk_sequence_->Prepare(params, resource_requests);
+}
+
 absl::Status ForThunk::Initialize(const InitializeParams& params) {
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
-  return absl::OkStatus();
+  return body_thunk_sequence_->Initialize(params);
 }
 
 absl::Status ForThunk::ExecuteOnStream(const ExecuteParams& params) {

@@ -13,17 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <absl/log/log.h>
-
 #include <initializer_list>
 #include <utility>
 #include <vector>
 
-#include "include/shlo.h"
-#include "src/debug.h"
-#include "src/storage.h"
-#include "test/util.h"
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "tensorflow/lite/experimental/shlo/include/shlo.h"
+#include "tensorflow/lite/experimental/shlo/src/debug.h"  // IWYU pragma: keep, b/321245930
+#include "tensorflow/lite/experimental/shlo/src/storage.h"
+#include "tensorflow/lite/experimental/shlo/test/util.h"
 
 namespace stablehlo {
 namespace testing {

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -167,6 +167,7 @@ class IrEmitterUnnested : public IrEmitter {
                                    const HloCustomCallInstruction* instr);
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFftThunk(mlir::Operation* op);
+  absl::Status EmitFftThunk(const HloFftInstruction* instr);
   absl::Status EmitFusion(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -456,11 +457,12 @@ class IrEmitterUnnested : public IrEmitter {
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 
-  // Maps async start ops to their executors so done can access the thunk.
-  // Executor may be null if the start op is degenerate (so not emitted).
+  // Maps async start ops to their async events so we can emit done thunk
+  // sharing events with corresponding start thunk. Async events may be null if
+  // the start op is degenerate (so not emitted).
   absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*>,
-                      NcclCollectiveThunk::AsyncExecutor*>
-      async_executors_;
+                      std::shared_ptr<NcclCollectiveThunk::AsyncEvents>>
+      collectives_async_events_;
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;

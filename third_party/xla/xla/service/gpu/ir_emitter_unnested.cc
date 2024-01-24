@@ -1,4 +1,4 @@
-/*Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/*Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -112,7 +112,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
 #include "xla/service/gpu/kernel_arguments.h"
-#include "xla/service/gpu/kernels/custom_fusion.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/topk_custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -120,6 +119,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
@@ -173,9 +173,9 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/cub_sort_thunk.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #include "xla/service/gpu/runtime3/cholesky_thunk.h"
+#include "xla/service/gpu/runtime3/cub_sort_thunk.h"
 #include "xla/service/gpu/runtime3/triangular_solve_thunk.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -235,7 +235,7 @@ absl::StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnfMHAKind(
     case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmaxDropout:
       return xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout;
     default:
-      return xla::InternalError("Unsupported fused_mha_dag_signature");
+      return xla::Internal("Unsupported fused_mha_dag_signature");
   }
 }
 
@@ -263,7 +263,7 @@ absl::StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnBackwardfMHAKind(
       return xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout;
       break;
     default:
-      return xla::InternalError("Unsupported fused_mha_backward_dag_signature");
+      return xla::Internal("Unsupported fused_mha_backward_dag_signature");
   }
 }
 
@@ -944,7 +944,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     descriptor.backend_config.set_side_input_scale(
         conv.getSideInputScale().convertToDouble());
   } else {
-    return InternalError("EmitConvolutionThunk: Unexpected operation");
+    return Internal("EmitConvolutionThunk: Unexpected operation");
   }
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(descriptor, ""));
   AddThunkToThunkSequence(std::make_unique<ConvolutionThunk>(
@@ -1119,7 +1119,7 @@ absl::Status IrEmitterUnnested::EmitConvolutionReorderThunk(
   } else if (auto reorder = dyn_cast<CudnnConvReorderFilterOp>(op)) {
     TF_RETURN_IF_ERROR(set_filter_data(reorder));
   } else {
-    return InternalError("Unexpected operation");
+    return Internal("Unexpected operation");
   }
 
   auto thunk = std::make_unique<ConvolutionReorderThunk>(
@@ -1302,7 +1302,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
     descriptor.kind = kind;
     TF_RETURN_IF_ERROR(populate_common(fmha_op));
   } else {
-    return InternalError("Unexpected operation");
+    return Internal("Unexpected operation");
   }
   TF_ASSIGN_OR_RETURN(GpufMHAConfig config, GpufMHAConfig::For(descriptor));
   AddThunkToThunkSequence(std::make_unique<FusedMHAThunk>(
@@ -1509,7 +1509,7 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
     descriptor.kind = kind;
     TF_RETURN_IF_ERROR(populate_common(fmha_backward_op));
   } else {
-    return InternalError("Unexpected operation");
+    return Internal("Unexpected operation");
   }
   TF_ASSIGN_OR_RETURN(GpufMHABackwardConfig config,
                       GpufMHABackwardConfig::For(descriptor));
@@ -1529,9 +1529,8 @@ absl::Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
 absl::StatusOr<BufferAllocation::Slice>
 IrEmitterUnnested::GetAllocationSliceForHlo(const HloInstruction* instr,
                                             const ShapeIndex& index) const {
-  const BufferAssignment& buffer_assignment =
-      ir_emitter_context_->buffer_assignment();
-  return buffer_assignment.GetUniqueSlice(instr, index);
+  return xla::gpu::GetAllocationSlice(ir_emitter_context_->buffer_assignment(),
+                                      instr, index);
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -1540,7 +1539,7 @@ absl::Status IrEmitterUnnested::EmitCubDeviceRadixSort(mlir::Operation* op) {
   auto radix_sort_op = mlir::cast<mlir::lmhlo_gpu::RadixSortOp>(op);
   if (radix_sort_op.getInputs().size() != 1 &&
       radix_sort_op.getInputs().size() != 2) {
-    return InternalError("Invalid number of operands for radix sort");
+    return Internal("Invalid number of operands for radix sort");
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> operands,
@@ -1842,8 +1841,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
       // We already checked `handler` above.
       break;
     default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           custom_call.getApiVersion());
+      return Internal("Unknown custom-call API version enum value: %d",
+                      custom_call.getApiVersion());
   }
 
   auto backend_config =
@@ -1869,8 +1868,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
           "Unsupported backend config. Expected a dictionary attribute");
 
     default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           custom_call.getApiVersion());
+      return Internal("Unknown custom-call API version enum value: %d",
+                      custom_call.getApiVersion());
   }
 
   auto ffi_thunk = [&] {
@@ -2006,8 +2005,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
       // We already checked `handler` above.
       break;
     default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           instr->api_version());
+      return Internal("Unknown custom-call API version enum value: %d",
+                      instr->api_version());
   }
 
   auto& backend_config_str = instr->raw_backend_config_string();
@@ -2035,8 +2034,8 @@ absl::Status IrEmitterUnnested::EmitCustomCallThunk(
       break;
 
     default:
-      return InternalError("Unknown custom-call API version enum value: %d",
-                           instr->api_version());
+      return Internal("Unknown custom-call API version enum value: %d",
+                      instr->api_version());
   }
 
   auto ffi_thunk = [&] {
@@ -2083,6 +2082,21 @@ absl::Status IrEmitterUnnested::EmitFftThunk(mlir::Operation* op) {
       /*output_buffer=*/dest_slice,
       /*input_shape=*/operand_shape,
       /*output_shape=*/output_shape));
+  return absl::OkStatus();
+}
+
+absl::Status IrEmitterUnnested::EmitFftThunk(const HloFftInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice arg_slice,
+                      GetAllocationSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dest_slice,
+                      GetAllocationSliceForHlo(instr));
+  AddThunkToThunkSequence(
+      std::make_unique<FftThunk>(Thunk::ThunkInfo::WithProfileAnnotation(instr),
+                                 instr->fft_type(), instr->fft_length(),
+                                 /*input_buffer=*/arg_slice,
+                                 /*output_buffer=*/dest_slice,
+                                 /*input_shape=*/instr->operand(0)->shape(),
+                                 /*output_shape=*/instr->shape()));
   return absl::OkStatus();
 }
 
@@ -3203,7 +3217,6 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
   const int64_t replica_count = hlo_config.replica_count();
   const int64_t partition_count = hlo_config.num_partitions();
 
-  NcclCollectiveThunk::AsyncExecutor* async_executor;
   if (NcclCollectivePermuteStartThunk::IsDegenerate(
           collective_permute_op, replica_count, partition_count)) {
     // For a degenerate collective permute, just generate a copy thunk.
@@ -3214,20 +3227,20 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
         /*source_value=*/collective_permute_op.getOperand(),
         /*destination_value=*/collective_permute_op.getOutput()));
+
     // Signal that start thunk not created with nullptr.
-    async_executor = nullptr;
+    collectives_async_events_.try_emplace(op, nullptr);
   } else {
     const NcclCollectiveThunk::Buffer buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/result_slice};
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(op), collective_permute_op,
-        replica_count, partition_count, buffer);
-    async_executor = thunk->async_executor();
+        Thunk::ThunkInfo::WithProfileAnnotation(op), NcclApi::Default(),
+        collective_permute_op, replica_count, partition_count, buffer);
+    collectives_async_events_.try_emplace(op, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
   }
-  async_executors_.insert({op, async_executor});
   return absl::OkStatus();
 }
 
@@ -3249,7 +3262,6 @@ Status IrEmitterUnnested::EmitCollectivePermute(
   const int64_t replica_count = hlo_config.replica_count();
   const int64_t partition_count = hlo_config.num_partitions();
 
-  NcclCollectiveThunk::AsyncExecutor* async_executor;
   if (NcclCollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
                                                     partition_count)) {
     // For a degenerate collective permute, just generate a copy thunk.
@@ -3261,19 +3273,19 @@ Status IrEmitterUnnested::EmitCollectivePermute(
         /*source_value=*/nullptr,
         /*destination_value=*/nullptr));
     // Signal that start thunk not created with nullptr.
-    async_executor = nullptr;
+    collectives_async_events_.try_emplace(instr, nullptr);
+
   } else {
     const NcclCollectiveThunk::Buffer buffer = {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/result_slice};
     auto thunk = std::make_unique<NcclCollectivePermuteStartThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
-        partition_count, buffer);
-    async_executor = thunk->async_executor();
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), NcclApi::Default(),
+        instr, replica_count, partition_count, buffer);
+    collectives_async_events_.try_emplace(instr, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
   }
-  async_executors_.insert({instr, async_executor});
   return absl::OkStatus();
 }
 
@@ -3286,8 +3298,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   VLOG(2) << NcclThunkType::GetHloOpName()
           << "; replica count: " << replica_count
           << "; partition count: " << partition_count
-          << "; operand count: " << op.getOperands().size()
-          << "; NCCL is enabled: " << NcclThunkType::NcclIsEnabled();
+          << "; operand count: " << op.getOperands().size();
 
   // A given collective op can be degenerate if across all groups formed
   // by it are singleton. In such a case, we don't need to do any communication
@@ -3313,15 +3324,17 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
         /*element_count=*/ShapeUtil::ElementsIn(shape),
         /*source_buffer=*/source_slice,
         /*destination_buffer=*/dest_slice,
+        /*source_memory_space=*/0,       // always 0 for LMHLO
+        /*destination_memory_space=*/0,  // always 0 for LMHLO
         /*source_value=*/operand,
         /*destination_value=*/result});
   }
 
   if (should_use_nccl_thunk) {
     auto thunk = std::make_unique<NcclThunkType>(
-        Thunk::ThunkInfo::WithProfileAnnotation(op), op,
+        Thunk::ThunkInfo::WithProfileAnnotation(op), NcclApi::Default(), op,
         /*buffers=*/std::move(buffers));
-    async_executors_.insert({untyped_op, thunk->async_executor()});
+    collectives_async_events_.try_emplace(untyped_op, thunk->async_events());
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
   }
@@ -3331,7 +3344,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
   }
 
   // Signal that start thunk not created with nullptr.
-  async_executors_.insert({untyped_op, nullptr});
+  collectives_async_events_.try_emplace(untyped_op, nullptr);
 
   VLOG(1) << "Collective call is degenerate, not doing NCCL call";
 
@@ -3362,15 +3375,15 @@ absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
                                                   mlir::Operation* op,
                                                   mlir::Value token) {
   auto start_op = token.getDefiningOp();
-  auto async_executor = async_executors_.extract(start_op);
-  TF_RET_CHECK(async_executor) << "couldn't find async executor for start op";
+  auto async_events = collectives_async_events_.extract(start_op);
+  TF_RET_CHECK(async_events) << "couldn't find async events for start op";
 
   // Can be null if no start thunk was created (e.g. if the start op is
   // degenerate), in which case there's nothing to do here.
-  if (async_executor.mapped() != nullptr) {
+  if (async_events.mapped()) {
     AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
         kind, Thunk::ThunkInfo::WithProfileAnnotation(op),
-        *async_executor.mapped()));
+        std::move(async_events.mapped())));
   }
   return absl::OkStatus();
 }
@@ -3385,8 +3398,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   VLOG(2) << NcclThunkType::GetHloOpName()
           << "; replica count: " << replica_count
           << "; partition count: " << partition_count
-          << "; operand count: " << inst->operand_count()
-          << "; NCCL is enabled: " << NcclThunkType::NcclIsEnabled();
+          << "; operand count: " << inst->operand_count();
 
   // A given collective op can be degenerate if across all groups formed
   // by it are singleton. In such a case, we don't need to do any communication
@@ -3400,15 +3412,20 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   // Stash relevant information in NcclCollectiveThunk::Buffer even if we may
   // not generate an NcclCollectiveThunk.
   std::vector<NcclCollectiveThunk::Buffer> buffers;
-  buffers.reserve(inst->operand_count());
+
+  int64_t operand_count = inst->operand_count();
+  buffers.reserve(operand_count);
 
   // Adds a source and destination buffers pair to `buffers`.
-  auto add_buffer = [&](const Shape& shape, BufferAllocation::Slice src,
-                        BufferAllocation::Slice dst) {
+  auto add_buffer = [&](int64_t element_count, BufferAllocation::Slice src,
+                        int64_t src_memory_space, BufferAllocation::Slice dst,
+                        int64_t dst_memory_space) {
     buffers.push_back(NcclCollectiveThunk::Buffer{
-        /*element_count=*/ShapeUtil::ElementsIn(shape),
+        /*element_count=*/element_count,
         /*source_buffer=*/src,
         /*destination_buffer=*/dst,
+        /*source_memory_space=*/src_memory_space,
+        /*destination_memory_space=*/dst_memory_space,
         /*source_value=*/nullptr,
         /*destination_value=*/nullptr});
   };
@@ -3416,32 +3433,36 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   if (kind == Thunk::Kind::kNcclAllGatherStart) {
     // Start operations return a tuple of (<<inputs>>, <<outputs>>) where
     // outputs can be a tuple itself (if operation has multiple operands).
-    for (int64_t i = 0; i < inst->operand_count(); i++) {
+    for (int64_t i = 0; i < operand_count; i++) {
+      ShapeIndex idx = operand_count > 1 ? ShapeIndex({1, i}) : ShapeIndex({1});
+      const Shape& src_shape = inst->operand(i)->shape();
+      const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
       TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-      TF_ASSIGN_OR_RETURN(
-          auto dst, GetAllocationSliceForHlo(inst, inst->operand_count() > 1
-                                                       ? ShapeIndex({1, i})
-                                                       : ShapeIndex({1})));
-      add_buffer(inst->operand(i)->shape(), src, dst);
+      TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+      add_buffer(ShapeUtil::ElementsIn(src_shape), src,
+                 src_shape.layout().memory_space(), dst,
+                 dst_shape.layout().memory_space());
     }
 
   } else {
     // For other operations simply zip operands with results.
-    for (int64_t i = 0; i < inst->operand_count(); i++) {
+    for (int64_t i = 0; i < operand_count; i++) {
+      ShapeIndex idx = operand_count > 1 ? ShapeIndex({i}) : ShapeIndex({});
+      const Shape& src_shape = inst->operand(i)->shape();
+      const Shape& dst_shape = ShapeUtil::GetSubshape(inst->shape(), idx);
       TF_ASSIGN_OR_RETURN(auto src, GetAllocationSliceForHlo(inst->operand(i)));
-      TF_ASSIGN_OR_RETURN(
-          auto dst, GetAllocationSliceForHlo(inst, inst->operand_count() > 1
-                                                       ? ShapeIndex({i})
-                                                       : ShapeIndex({})));
-      add_buffer(inst->operand(i)->shape(), src, dst);
+      TF_ASSIGN_OR_RETURN(auto dst, GetAllocationSliceForHlo(inst, idx));
+      add_buffer(ShapeUtil::ElementsIn(src_shape), src,
+                 src_shape.layout().memory_space(), dst,
+                 dst_shape.layout().memory_space());
     }
   }
 
   if (should_use_nccl_thunk) {
     auto thunk = std::make_unique<NcclThunkType>(
-        Thunk::ThunkInfo::WithProfileAnnotation(inst), inst,
+        Thunk::ThunkInfo::WithProfileAnnotation(inst), NcclApi::Default(), inst,
         /*buffers=*/std::move(buffers));
-    async_executors_.insert({async_start, thunk->async_executor()});
+    collectives_async_events_.insert({async_start, thunk->async_events()});
     AddThunkToThunkSequence(std::move(thunk));
     return absl::OkStatus();
   }
@@ -3451,7 +3472,7 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
   }
 
   // Signal that start thunk not created with nullptr.
-  async_executors_.insert({async_start, nullptr});
+  collectives_async_events_.insert({async_start, nullptr});
 
   VLOG(1) << "Collective call is degenerate, not doing NCCL call";
 
@@ -3480,16 +3501,16 @@ absl::Status IrEmitterUnnested::EmitNcclThunk(
 absl::Status IrEmitterUnnested::EmitNcclAsyncDone(Thunk::Kind kind,
                                                   const HloInstruction* inst) {
   const HloInstruction* start = inst->operand(0);
-  auto async_executor = async_executors_.extract(start);
-  TF_RET_CHECK(async_executor)
-      << "couldn't find async executor for start operation";
+  auto async_events = collectives_async_events_.extract(start);
+  TF_RET_CHECK(async_events)
+      << "couldn't find async events for start operation";
 
   // Can be null if no start thunk was created (e.g. if the start op is
   // degenerate), in which case there's nothing to do here.
-  if (async_executor.mapped() != nullptr) {
+  if (async_events.mapped()) {
     AddThunkToThunkSequence(std::make_unique<NcclCollectiveDoneThunk>(
         kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
-        *async_executor.mapped()));
+        std::move(async_events.mapped())));
   }
   return absl::OkStatus();
 }
@@ -3530,8 +3551,8 @@ absl::Status IrEmitterUnnested::EmitInfeed(const HloInfeedInstruction* instr) {
           shaped_slices.push_back(shaped_slice);
           return absl::OkStatus();
         }
-        return InternalError("Unexpected shape kind for %s and shape index %s",
-                             instr->ToString(), index.ToString());
+        return Internal("Unexpected shape kind for %s and shape index %s",
+                        instr->ToString(), index.ToString());
       }));
 
   auto thunk = std::make_unique<InfeedThunk>(
@@ -3567,8 +3588,8 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
           shaped_slices.push_back(shaped_slice);
           return absl::OkStatus();
         }
-        return InternalError("Unexpected shape kind for %s and shape index %s",
-                             source->ToString(), index.ToString());
+        return Internal("Unexpected shape kind for %s and shape index %s",
+                        source->ToString(), index.ToString());
       }));
 
   auto thunk = std::make_unique<OutfeedThunk>(
@@ -3779,7 +3800,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildForThunk(
 
 absl::Status IrEmitterUnnested::EmitTargetElementLoop(
     const HloInstruction& hlo, const llvm_ir::ElementGenerator& body_emitter) {
-  return InternalError("This should be unreachable");
+  return Internal("This should be unreachable");
 }
 
 static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
@@ -3960,11 +3981,14 @@ absl::Status IrEmitterUnnested::EmitOp(
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   if (mlir::isa<mlir::lmhlo::FftOp>(op)) {
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitFftThunk(Cast<HloFftInstruction>(hlo_for_lmhlo.at(op)));
+    }
     return EmitFftThunk(op);
   }
 
   if (mlir::isa<mlir::lmhlo::TriangularSolveOp>(op)) {
-    return InternalError(
+    return Internal(
         "TriangularSolve is implemented as a custom-call; we do not expect to "
         "lower a true HLO TriangularSolve op.");
   }
@@ -4180,7 +4204,7 @@ absl::Status IrEmitterUnnested::EmitOp(
         Cast<HloRecvDoneInstruction>(hlo_for_lmhlo.at(op)));
   }
 
-  return InternalError("Unrecognized op: %s", llvm_ir::DumpToString(op));
+  return Internal("Unrecognized op: %s", llvm_ir::DumpToString(op));
 }
 
 absl::Status IrEmitterUnnested::EmitLmhloRegion(
@@ -4223,8 +4247,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
         case HloOpcode::kAllToAll:
           return EmitNcclAsyncDone(Thunk::kNcclAllToAllDone, instr);
         default:
-          return InternalError("Unsupported async done wrapped instruction: %s",
-                               HloOpcodeString(wrapped->opcode()));
+          return Internal("Unsupported async done wrapped instruction: %s",
+                          HloOpcodeString(wrapped->opcode()));
       }
     }
     case HloOpcode::kAsyncStart: {
@@ -4243,9 +4267,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
               Thunk::kNcclAllToAll, instr, all_to_all, std::nullopt);
         }
         default:
-          return InternalError(
-              "Unsupported async start wrapped instruction: %s",
-              HloOpcodeString(wrapped->opcode()));
+          return Internal("Unsupported async start wrapped instruction: %s",
+                          HloOpcodeString(wrapped->opcode()));
       }
     }
 
@@ -4297,6 +4320,8 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
       return EmitOutfeed(Cast<HloOutfeedInstruction>(instr));
     case HloOpcode::kPartitionId:
       return EmitReplicaOrPartitionId<PartitionIdThunk>(instr);
+    case HloOpcode::kFft:
+      return EmitFftThunk(Cast<HloFftInstruction>(instr));
 
     case HloOpcode::kRecv:
       return EmitRecvThunk(Cast<HloRecvInstruction>(instr));
@@ -4331,19 +4356,19 @@ absl::Status IrEmitterUnnested::EmitHloInstruction(
     case HloOpcode::kTuple:
       return absl::OkStatus();
     default:
-      return InternalError("Unsupported instruction opcode: %s",
-                           HloOpcodeString(instr->opcode()));
+      return Internal("Unsupported instruction opcode: %s",
+                      HloOpcodeString(instr->opcode()));
   }
 
-  return InternalError("Unhandled HLO instruction");
+  return Internal("Unhandled HLO instruction");
 }
 
 absl::Status IrEmitterUnnested::EmitHloComputation(
     const HloComputation* computation) {
   const HloSchedule& schedule = computation->parent()->schedule();
   if (!schedule.is_computation_scheduled(computation))
-    return InternalError("Sequence not found for computation: %s",
-                         computation->name());
+    return Internal("Sequence not found for computation: %s",
+                    computation->name());
 
   const HloInstructionSequence& sequence = schedule.sequence(computation);
   for (HloInstruction* instr : sequence.instructions()) {

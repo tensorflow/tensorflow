@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_SRC_UTIL_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_SRC_UTIL_H_
 
-#include <absl/status/status.h>
-
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -26,8 +23,9 @@ limitations under the License.
 #include <ostream>
 #include <vector>
 
-#include "include/shlo.h"
-#include "src/storage.h"
+#include "absl/status/status.h"
+#include "tensorflow/lite/experimental/shlo/include/shlo.h"
+#include "tensorflow/lite/experimental/shlo/src/storage.h"
 
 namespace stablehlo {
 

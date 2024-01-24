@@ -2306,6 +2306,105 @@ struct FuseLogSoftmax : public OpRewritePattern<TFL::SubOp> {
   }
 };
 
+// This is the UndoBroadcastFullyConnectedBiasAdd pattern in
+// optimize_patterns.td but accounting for QDQ preceding Add's RHS.
+// The following doesn't work in TableGen due to some issues reconstructing
+// TFL_DequantizeOp.
+// def UndoBroadcastFullyConnectedBiasAddWithQDQs : Pat<
+//   (TFL_AddOp $lhs,
+//     (TFL_DequantizeOp
+//       (TFL_QuantizeOp
+//         (Arith_ConstantOp:$const_op $bias),
+//       $qparams)),
+//   $act_fn),
+//   (TFL_AddOp $lhs,
+//     (TFL_DequantizeOp
+//       (TFL_QuantizeOp
+//         (Arith_ConstantOp:$const_op (FlattenTo1D $bias),
+//       $qparams)),
+//   $act_fn),
+//   [(AnyStaticShapeTensor $lhs),
+//    (IsLastDimEqualToNumElements $bias, $bias),
+//    (HasOneUse $const_op),
+//    (HasRankAtMost<4> $bias),
+//    (HasRankAtLeast<2> $bias),
+//    (IsDefinedByFullyConnectedOp $lhs)]>;
+struct UndoBroadcastFullyConnectedBiasAddWithQDQs
+    : public OpRewritePattern<TFL::AddOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult match(TFL::AddOp add_op) const override {
+    if (!add_op->hasOneUse()) {
+      return failure();
+    }
+
+    auto fc_op = dyn_cast_or_null<TFL::FullyConnectedOp>(
+        add_op.getLhs().getDefiningOp());
+    if (!fc_op) {
+      return failure();
+    }
+
+    auto dq_op =
+        dyn_cast_or_null<TFL::DequantizeOp>(add_op.getRhs().getDefiningOp());
+    if (!dq_op) {
+      return failure();
+    }
+
+    auto q_op =
+        dyn_cast_or_null<TFL::QuantizeOp>(dq_op.getInput().getDefiningOp());
+    if (!q_op) {
+      return failure();
+    }
+
+    auto bias_op =
+        dyn_cast_or_null<arith::ConstantOp>(q_op.getInput().getDefiningOp());
+    if (!bias_op) {
+      return failure();
+    }
+
+    auto bias_type = bias_op.getType();
+    auto bias_rank = bias_type.cast<ShapedType>().getRank();
+    if (bias_rank > 4 || bias_rank < 2) {
+      return failure();
+    }
+
+    if (!IsLastDimEqualToNumElements(bias_type, bias_type)) {
+      return failure();
+    }
+
+    return success();
+  }
+
+  void rewrite(TFL::AddOp add_op, PatternRewriter &rewriter) const override {
+    auto dq_op = cast<TFL::DequantizeOp>(add_op.getRhs().getDefiningOp());
+    auto q_op = cast<TFL::QuantizeOp>(dq_op.getInput().getDefiningOp());
+    auto bias_op = cast<arith::ConstantOp>(q_op.getInput().getDefiningOp());
+    auto new_bias = FlattenTo1D(bias_op.getValueAttr());
+    auto new_bias_type = new_bias.getType();
+    auto new_bias_op = rewriter.create<arith::ConstantOp>(
+        bias_op.getLoc(), new_bias_type, new_bias);
+
+    // Update QuantizeOp with the new bias and its output shape
+    q_op.setOperand(new_bias_op);
+    auto new_q_op_type =
+        RankedTensorType::Builder(
+            q_op.getResult().getType().cast<RankedTensorType>())
+            .setShape(new_bias_type.cast<ShapedType>().getShape());
+    q_op.getResult().setType(new_q_op_type);
+    auto attr = TypeAttr::get(q_op.getResult().getType());
+    q_op.setQtypeAttr(attr);
+
+    // Update DequantizeOp's output shape
+    auto new_dq_op_type =
+        RankedTensorType::Builder(
+            dq_op.getResult().getType().cast<RankedTensorType>())
+            .setShape(new_bias_type.cast<ShapedType>().getShape());
+    dq_op.getResult().setType(new_dq_op_type);
+
+    // Remove old bias
+    rewriter.eraseOp(bias_op);
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2347,11 +2446,11 @@ void OptimizePass::runOnOperation() {
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.add<
-      FuseLogSoftmax, ScalarizeSplatConstantForAdd,
-      ScalarizeSplatConstantForSub, ScalarizeSplatConstantForMul,
-      ScalarizeSplatConstantForDiv, FuseFullyConnectedAndAdd,
-      FuseAddAndFullyConnected, FuseFullyConnectedAndMul,
-      FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+      UndoBroadcastFullyConnectedBiasAddWithQDQs, FuseLogSoftmax,
+      ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,
+      ScalarizeSplatConstantForMul, ScalarizeSplatConstantForDiv,
+      FuseFullyConnectedAndAdd, FuseAddAndFullyConnected,
+      FuseFullyConnectedAndMul, FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
       FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
       FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
       FuseBinaryOpToFollowingConv2D, FuseBinaryOpToFollowingDepthwiseConv2D,

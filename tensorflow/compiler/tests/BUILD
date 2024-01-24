@@ -2163,9 +2163,9 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = [
         "config-cuda-only",
-        "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
+        "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],
@@ -2184,9 +2184,9 @@ tf_cuda_cc_test(
     shard_count = 20,
     tags = [
         "config-cuda-only",
-        "no_cuda_asan",  # TODO(b/201651800)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",  # ROCmSoftwarePlatform #958
+        "noasan",  # TODO(b/201651800)
         "requires-gpu-nvidia",
     ] + tf_cuda_tests_tags(),
     deps = [":randomized_tests_library"],

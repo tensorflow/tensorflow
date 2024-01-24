@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -203,7 +203,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
     const HloInstructionSequence& input) {
   HloInstructionSequence result;
   auto is_synchronous_op = [](const HloInstruction* instr) {
-    return hlo_query::IsAsyncCollectiveStartOp(instr->opcode(),
+    return hlo_query::IsAsyncCollectiveStartOp(instr,
                                                /*include_send_recv=*/true) &&
            IsSyncCollective(instr);
   };
@@ -211,7 +211,7 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
     if (is_synchronous_op(instr)) {
       continue;
     }
-    if (hlo_query::IsAsyncCollectiveDoneOp(instr->opcode(),
+    if (hlo_query::IsAsyncCollectiveDoneOp(instr,
                                            /*include_send_recv=*/true)) {
       // Place the start op just before the done op if its synchronous.
       HloInstruction* start = instr->mutable_operand(0);
@@ -288,14 +288,14 @@ class GpuAsyncTrackerBase : public AsyncTracker {
       : AsyncTracker(config, func) {}
 
   bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode(),
+    return hlo_query::IsAsyncCollectiveDoneOp(&hlo,
                                               /*include_send_recv=*/true) &&
            !IsSyncCollective(hlo.operand(0));
   }
 
   // Returns if this is an Async op start that the scheduler supports.
   bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
-    return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode(),
+    return hlo_query::IsAsyncCollectiveStartOp(&hlo,
                                                /*include_send_recv=*/true) &&
            !IsSyncCollective(&hlo);
   }
@@ -632,12 +632,19 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
   return size + metadata_size;
 }
 
-absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                               int64_t memory_limit,
-                               const se::DeviceDescription& gpu_device_info) {
+static int64_t GetSchedulerMemoryLimit(
+    const HloModule* module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size);
+
+StatusOr<ScheduleMetadata> ScheduleGpuModule(
+    HloModule* module, int64_t pointer_size,
+    const se::DeviceDescription& gpu_device_info) {
+  int64_t memory_limit =
+      GetSchedulerMemoryLimit(module, gpu_device_info, pointer_size);
   if (module->has_schedule()) {
-    return absl::OkStatus();
+    return ScheduleMetadata{memory_limit};
   }
+
   HloPassPipeline prepare_pipeline("p2p-schedule-preparation");
   prepare_pipeline.AddPass<P2PSchedulePreparation>();
   TF_RETURN_IF_ERROR(prepare_pipeline.Run(module).status());
@@ -664,7 +671,7 @@ absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
           .xla_gpu_enable_latency_hiding_scheduler();
 
   if (!enable_latency_hiding_scheduler) {
-    return absl::OkStatus();
+    return ScheduleMetadata{memory_limit};
   }
 
   SchedulerConfig config = GetSchedulerConfig(memory_limit);
@@ -725,7 +732,7 @@ absl::Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   postprocessing_pipeline.AddPass<GpuSchedulePostprocessing>();
   TF_RETURN_IF_ERROR(postprocessing_pipeline.Run(module).status());
 
-  return absl::OkStatus();
+  return ScheduleMetadata{memory_limit};
 }
 
 HloInstructionSequence PostProcessSchedule(
@@ -736,9 +743,9 @@ HloInstructionSequence PostProcessSchedule(
 
 // Compute the device memory limit to be used by passes like scheduler and
 // HLO rematerialization.
-int64_t GetSchedulerMemoryLimit(const HloModule* module,
-                                const se::DeviceDescription& gpu_device_info,
-                                int pointer_size) {
+static int64_t GetSchedulerMemoryLimit(
+    const HloModule* module, const se::DeviceDescription& gpu_device_info,
+    int pointer_size) {
   // There is a "base" value which is either specified in HloModuleConfig (this
   // value should take into account the fact that we need to leave some memory
   // free for allocations that happen outside of XLA's allocator) or

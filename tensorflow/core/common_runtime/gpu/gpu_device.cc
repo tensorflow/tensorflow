@@ -1672,8 +1672,7 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #ifdef TF_GPU_USE_PJRT
   // After the GPU device creation loop, allocator_id_stream_tuples will be
   // populated.
-  std::vector<se::MultiDeviceAdapter::AllocatorWithLogicalIdAndStream>
-      allocator_id_stream_tuples;
+  std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocator_id_stream_tuples;
   allocator_id_stream_tuples.reserve(tf_device_specs.size());
   // We build a map of xla::LocalDeviceState in the GPU device creation loop.
   // Each xla::LocalDeviceState maps to each logical GPU device. The map key is
@@ -1804,8 +1803,8 @@ Status BaseGPUDeviceFactory::CreateDevices(
     if (should_create_new_pjrt_client) {
       auto gpu_allocator_ptr = std::unique_ptr<Allocator>(gpu_allocator);
       allocator_id_stream_tuples.emplace_back(
-          std::move(gpu_allocator_ptr), tf_device_id.value(),
-          local_device_state->compute_stream());
+          std::move(gpu_allocator_ptr), local_device_state->compute_stream(), 0,
+          tf_device_id.value());
     }
   }
 

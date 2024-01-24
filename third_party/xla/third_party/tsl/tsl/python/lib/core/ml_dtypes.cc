@@ -71,6 +71,7 @@ struct MlDtypesInitInfo {
       numpy_dtypes.int4 = py::dtype::from_args(ml_dtypes.attr("int4")).num();
       numpy_dtypes.uint4 = py::dtype::from_args(ml_dtypes.attr("uint4")).num();
     } catch (const std::exception& e) {
+      py::gil_scoped_acquire acquire;
       py::print(e.what());
       init_valid = false;
     }

@@ -21,6 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+
+// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
@@ -42,12 +46,15 @@ struct DeviceConfig {
 // This class is thread compatible.
 class IfrtModelContext {
  public:
-  explicit IfrtModelContext(std::shared_ptr<xla::ifrt::Client> client)
-      : client_(std::move(client)) {}
+  explicit IfrtModelContext(std::shared_ptr<xla::ifrt::Client> client,
+                            const Eigen::ThreadPoolDevice* thread_pool_device)
+      : client_(std::move(client)), thread_pool_device_(*thread_pool_device) {}
   IfrtModelContext(
       std::shared_ptr<xla::ifrt::Client> client,
+      const Eigen::ThreadPoolDevice* thread_pool_device,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : client_(std::move(client)),
+        thread_pool_device_(*thread_pool_device),
         shape_representation_fn_(shape_representation_fn) {}
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
@@ -56,6 +63,10 @@ class IfrtModelContext {
 
   std::shared_ptr<xla::ifrt::Client> GetClient() const { return client_; }
 
+  const Eigen::ThreadPoolDevice& GetThreadPoolDevice() const {
+    return thread_pool_device_;
+  }
+
   const tensorflow::XlaHelpers::ShapeRepresentationFn&
   GetShapeRepresentationFn() const {
     return shape_representation_fn_;
@@ -63,6 +74,7 @@ class IfrtModelContext {
 
  private:
   std::shared_ptr<xla::ifrt::Client> client_;
+  const Eigen::ThreadPoolDevice& thread_pool_device_;
   tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_ =
       tensorflow::IdentityShapeRepresentationFn();
 

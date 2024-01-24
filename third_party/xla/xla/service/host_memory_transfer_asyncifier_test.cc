@@ -298,7 +298,9 @@ ENTRY main {
               GmockMatch(m::Copy()));
 }
 
-TEST_F(HostMemoryTransferAsyncifierTest, CopyFromDeviceToHost) {
+// TODO(b/319466176): Once this bug is fixed, enable this test and delete the
+// OldCopyFromDeviceToHost test.
+TEST_F(HostMemoryTransferAsyncifierTest, DISABLED_CopyFromDeviceToHost) {
   const std::string& hlo_string = R"(
 HloModule MyModule
 
@@ -329,7 +331,35 @@ ENTRY main {
               GmockMatch(m::Copy()));
 }
 
-TEST_F(HostMemoryTransferAsyncifierTest, CopyFromHostToDevice) {
+TEST_F(HostMemoryTransferAsyncifierTest, OldCopyFromDeviceToHost) {
+  const std::string& hlo_string = R"(
+HloModule MyModule
+
+ENTRY main {
+  device = f32[32,1,1]{2,1,0:T(2,128)} parameter(0)
+  ROOT copy = f32[32,1,1]{2,1,0:T(2,128)S(5)} copy(device)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunAsyncifier(module.get()));
+
+  EXPECT_TRUE(changed);
+  // copy should have been converted into an async-copy.
+  HloInstruction* copy_start;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Op()
+              .WithOpcode(HloOpcode::kCopyDone)
+              .WithOperand(
+                  0, m::Op(&copy_start).WithOpcode(HloOpcode::kCopyStart))));
+}
+
+// TODO(b/319466176): Once this bug is fixed, enable this test and delete the
+// OldCopyFromHostToDevice test.
+TEST_F(HostMemoryTransferAsyncifierTest, DISABLED_CopyFromHostToDevice) {
   const std::string& hlo_string = R"(
 HloModule MyModule
 
@@ -358,6 +388,32 @@ ENTRY main {
       copy_start->called_computations().at(0);
   EXPECT_THAT(async_copy_computation->root_instruction(),
               GmockMatch(m::Copy()));
+}
+
+TEST_F(HostMemoryTransferAsyncifierTest, OldCopyFromHostToDevice) {
+  const std::string& hlo_string = R"(
+HloModule MyModule
+
+ENTRY main {
+  host_memory = f32[32,1,1]{2,1,0:T(2,128)S(5)} parameter(0)
+  ROOT copy = f32[32,1,1]{2,1,0:T(2,128)} copy(host_memory)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunAsyncifier(module.get()));
+
+  EXPECT_TRUE(changed);
+  // copy should have been converted into an async-copy.
+  HloInstruction* copy_start;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Op()
+              .WithOpcode(HloOpcode::kCopyDone)
+              .WithOperand(
+                  0, m::Op(&copy_start).WithOpcode(HloOpcode::kCopyStart))));
 }
 
 // =============================================================================

@@ -1,4 +1,3 @@
-compiler/xla/glob_lit_test.bzl:
 compiler/xla/mlir_hlo/WORKSPACE:
 compiler/xla/stream_executor/build_defs.bzl:
 third_party/BUILD:

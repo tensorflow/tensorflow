@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -87,6 +88,7 @@ using memory_space_assignment::MemoryBoundLoopOptimizerOptions;
 using memory_space_assignment::MemorySpaceAssignment;
 using memory_space_assignment::MemorySpaceAssignmentCostAnalysis;
 using memory_space_assignment::MemorySpaceAssignmentRepacker;
+using memory_space_assignment::MsaSortOrderOverrides;
 using memory_space_assignment::Options;
 using memory_space_assignment::PreferredPrefetchOverrides;
 using memory_space_assignment::PrefetchIntervalPicker;
@@ -4604,6 +4606,137 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
 }
 
+TEST_P(MemorySpaceAssignmentTest,
+       MemoryBoundednessOverrideSortOrderAssignFirst) {
+  // Override MSA sort order and try to assign all negates to alternate memory
+  // first.
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[3,4]{1,0} parameter(0)
+    p1 = f32[3,4]{1,0} parameter(1)
+    tanh0 = f32[3,4]{1,0} tanh(p0)
+    negate0 = f32[3,4]{1,0} negate(p1)
+    tanh1 = f32[3,4]{1,0} tanh(tanh0)
+    negate1 = f32[3,4]{1,0} negate(negate0)
+    tanh2 = f32[3,4]{1,0} tanh(tanh1)
+    negate2 = f32[3,4]{1,0} negate(negate1)
+    tanh3 = f32[3,4]{1,0} tanh(tanh2)
+    negate3 = f32[3,4]{1,0} negate(negate2)
+    tanh4 = f32[3,4]{1,0} tanh(tanh3)
+    negate4 = f32[3,4]{1,0} negate(negate3)
+    ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "negate(.*)" }
+      override_options { assign_first: true }
+    })pb";
+  TF_ASSERT_OK_AND_ASSIGN(options.msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  // Parameters are in the default memory space.
+  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+  // All negates are in alternate memory space except negate4.
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  EXPECT_EQ(negate0->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  EXPECT_EQ(negate1->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
+  EXPECT_EQ(negate2->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
+  EXPECT_EQ(negate3->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  EXPECT_EQ(tanh0->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
+  EXPECT_EQ(tanh1->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
+  EXPECT_EQ(tanh2->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
+  EXPECT_EQ(tanh3->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
+  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       MemoryBoundednessOverrideSortOrderAssignLast) {
+  // Override MSA sort order and try to assign all negates to alternate memory
+  // last.
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0 = f32[3,4]{1,0} parameter(0)
+    p1 = f32[3,4]{1,0} parameter(1)
+    tanh0 = f32[3,4]{1,0} tanh(p0)
+    negate0 = f32[3,4]{1,0} negate(p1)
+    tanh1 = f32[3,4]{1,0} tanh(tanh0)
+    negate1 = f32[3,4]{1,0} negate(negate0)
+    tanh2 = f32[3,4]{1,0} tanh(tanh1)
+    negate2 = f32[3,4]{1,0} negate(negate1)
+    tanh3 = f32[3,4]{1,0} tanh(tanh2)
+    negate3 = f32[3,4]{1,0} negate(negate2)
+    tanh4 = f32[3,4]{1,0} tanh(tanh3)
+    negate4 = f32[3,4]{1,0} negate(negate3)
+    ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  const std::string text_proto = R"pb(
+    overrides {
+      hlo_position_matcher { instruction_name_regex: "negate(.*)" }
+      override_options { assign_last: true }
+    }
+  )pb";
+  TF_ASSERT_OK_AND_ASSIGN(options.msa_sort_order_overrides,
+                          ParseTextProto<MsaSortOrderOverrides>(text_proto));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get(), options);
+  // Parameters are in the default memory space.
+  const HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  EXPECT_EQ(p0->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* p1 = FindInstruction(module.get(), "p1");
+  EXPECT_EQ(p1->shape().layout().memory_space(), kDefaultMemorySpace);
+  // All negates are in default memory space except negate3.
+  HloInstruction* negate0 = FindInstruction(module.get(), "negate0");
+  EXPECT_EQ(negate0->shape().layout().memory_space(), kDefaultMemorySpace);
+  HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
+  EXPECT_EQ(negate1->shape().layout().memory_space(), kDefaultMemorySpace);
+  HloInstruction* negate2 = FindInstruction(module.get(), "negate2");
+  EXPECT_EQ(negate2->shape().layout().memory_space(), kDefaultMemorySpace);
+  HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
+  EXPECT_EQ(negate3->shape().layout().memory_space(), kAlternateMemorySpace);
+  HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
+  EXPECT_EQ(negate4->shape().layout().memory_space(), kDefaultMemorySpace);
+  const HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
+  EXPECT_EQ(tanh0->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
+  EXPECT_EQ(tanh1->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* tanh2 = FindInstruction(module.get(), "tanh2");
+  EXPECT_EQ(tanh2->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* tanh3 = FindInstruction(module.get(), "tanh3");
+  EXPECT_EQ(tanh3->shape().layout().memory_space(), kAlternateMemorySpace);
+  const HloInstruction* tanh4 = FindInstruction(module.get(), "tanh4");
+  EXPECT_EQ(tanh4->shape().layout().memory_space(), kDefaultMemorySpace);
+}
+
 TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
   Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
   Shape f32v1 = ShapeUtil::MakeShape(F32, {1});
@@ -6873,15 +7006,14 @@ TEST_P(MemorySpaceAssignmentTest, RepackExportsAliasedOffsets) {
 
   // Expect that of the four separate allocations for the "a" buffer, the first
   // and the next three are in separate colocations.
-  auto check_fun =
-      [](absl::Span<AllocationBlock*> allocations) {
-        EXPECT_TRUE(allocations.at(0)->GetColocationsCount() == 1 ||
-                    allocations.at(0)->GetColocationsCount() == 3);
-        EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 3);
-        EXPECT_EQ(allocations.at(2)->GetColocationsCount(), 3);
-        EXPECT_TRUE(allocations.at(3)->GetColocationsCount() == 1 ||
-                    allocations.at(3)->GetColocationsCount() == 3);
-      };
+  auto check_fun = [](absl::Span<AllocationBlock*> allocations) {
+    EXPECT_TRUE(allocations.at(0)->GetColocationsCount() == 1 ||
+                allocations.at(0)->GetColocationsCount() == 3);
+    EXPECT_EQ(allocations.at(1)->GetColocationsCount(), 3);
+    EXPECT_EQ(allocations.at(2)->GetColocationsCount(), 3);
+    EXPECT_TRUE(allocations.at(3)->GetColocationsCount() == 1 ||
+                allocations.at(3)->GetColocationsCount() == 3);
+  };
   FakeMemorySpaceAssignmentRepacker repacker =
       FakeMemorySpaceAssignmentRepacker(repack_map, check_fun);
   Options options = DefaultMemorySpaceOptions();
@@ -10784,6 +10916,70 @@ TEST_F(MemoryBoundLoopOptimizerTest, TempAndPinnedAllocations) {
   EXPECT_EQ(remaining_memory.at(3), 512 - (3 * 16 + 16));
   // Time 4: 2 temporaries (16 B) + 1 pinned (16 B)
   EXPECT_EQ(remaining_memory.at(4), 512 - (2 * 16 + 16));
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, NegativeSavingNotPinned) {
+  absl::string_view hlo_str = R"(
+  HloModule module, is_scheduled=true
+
+  while_cond {
+    while_cond_param = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+    ROOT p = pred[] get-tuple-element(while_cond_param), index=5
+  }
+
+  while_body {
+    while_body_param = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+    pinned_prev_param0 = f32[28,4] get-tuple-element(while_body_param), index=0
+    zero = s32[] constant(0)
+    next_param0 = f32[1,4] get-tuple-element(while_body_param), index=1
+    prev_prev_op3 = f32[1,4] get-tuple-element(while_body_param), index=2
+    prev_prev_op4 = f32[1,4] get-tuple-element(while_body_param), index=3
+    prev_op0 = f32[1,4] add(f32[1,4] prev_prev_op3, f32[1,4] prev_prev_op4)
+    prev_op1 = f32[1,4] add(f32[1,4] prev_prev_op4, f32[1,4] prev_op0)
+    prev_op2 = f32[1,4] add(f32[1,4] prev_op0, f32[1,4] prev_op1)
+    prev_op3 = f32[1,4] add(f32[1,4] prev_op1, f32[1,4] prev_op2)
+    pinned_slice = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    prev_op4 = f32[1,4] multiply(f32[1,4] pinned_slice, f32[1,4] prev_op3)
+    op0 = f32[1,4] add(f32[1,4] prev_op3, f32[1,4] prev_op4)
+    op1 = f32[1,4] add(f32[1,4] prev_op4, f32[1,4] op0)
+    op2 = f32[1,4] add(f32[1,4] op0, f32[1,4] op1)
+    op3 = f32[1,4] add(f32[1,4] op1, f32[1,4] op2)
+    pinned_slice2 = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    op4 = f32[1,4] multiply(f32[1,4] pinned_slice2, f32[1,4] op3)
+    next_op0 = f32[1,4] add(f32[1,4] op3, f32[1,4] op4)
+    next_op1 = f32[1,4] add(f32[1,4] op4, f32[1,4] next_op0)
+    next_op2 = f32[1,4] add(f32[1,4] next_op0, f32[1,4] next_op1)
+    next_op3 = f32[1,4] add(f32[1,4] next_op1, f32[1,4] next_op2)
+    pinned_slice3 = f32[1,4] dynamic-slice(pinned_prev_param0, zero, zero), dynamic_slice_sizes={1,4}
+    next_op4 = f32[1,4] multiply(f32[1,4] pinned_slice3, f32[1,4] next_op3)
+    p = pred[] get-tuple-element(while_body_param), index=5
+    ROOT root = tuple(pinned_prev_param0, next_param0, prev_prev_op3, prev_prev_op4, next_op4, p)
+  }
+
+  ENTRY entry {
+    p0 = f32[28,4] parameter(0)
+    p1 = f32[1,4] parameter(1)
+    p2 = f32[1,4] parameter(2)
+    p3 = f32[1,4] parameter(3)
+    p4 = pred[] parameter(4)
+    copy = f32[1,4] copy(p3)
+    tuple = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) tuple(p0, p1, p2, p3, copy, p4)
+    while = (f32[28,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) while(tuple), condition=while_cond, body=while_body
+    ROOT root = f32[1,4] get-tuple-element(while), index=4
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto optimizer,
+                          CreateOptimizer(21, 27, module.get(),
+                                          /*alternate_memory_size=*/512));
+  optimizer->Optimize();
+
+  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  // We expect that pinned_prev_param0 would not get pinned due to negative
+  // savings: 32(uses) -  28 * 16(size) = -416 Time 0: 3 temporaries (16 B) + 1
+  // pinned (4 B)
+  EXPECT_EQ(remaining_memory.at(0), 512 - (3 * 16 + 4));
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndWhileLoop) {

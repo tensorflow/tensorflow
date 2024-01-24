@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,14 +22,14 @@ limitations under the License.
 
 #include "tsl/lib/math/math_util.h"
 
-namespace xla {
-namespace gpu {
-
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #else
 #include "rocm/include/hip/hip_runtime.h"
 #endif
+
+namespace xla {
+namespace gpu {
 
 #if GOOGLE_CUDA
 #define WAVEFRONT_SIZE 32

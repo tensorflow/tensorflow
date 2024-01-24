@@ -23,8 +23,8 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "src/bf16.h"
-#include "src/f16.h"
+#include "tensorflow/lite/experimental/shlo/src/bf16.h"
+#include "tensorflow/lite/experimental/shlo/src/f16.h"
 
 namespace stablehlo {
 

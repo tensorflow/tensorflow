@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -104,6 +104,9 @@ StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
     TF_ASSIGN_OR_RETURN(std::string cmps,
                         RenderAllComputationsToHtml(*optimized_module));
     return cmps;
+  } else if (stage == "hlo-backend") {
+    TF_ASSIGN_OR_RETURN(auto executable, GetExecutable(std::move(module)));
+    return executable->module().ToString();
   }
 
   return std::nullopt;
@@ -124,13 +127,19 @@ StatusOr<std::unique_ptr<HloModule>> OptProvider::GetOptimizedHlo(
   DebugOptions debug_opts = GetDebugOptionsFromFlags();
   Compiler::CompileOptions opts;
   TF_ASSIGN_OR_RETURN(Compiler * compiler, GetCompiler());
+  DebugOptions d = input_module->config().debug_options();
+  d.set_xla_embed_ir_in_executable(true);
+  input_module->mutable_config().set_debug_options(d);
+
+  if (input_module->has_schedule()) {
+    return input_module;
+  }
+
+  // But run-hlo-passes does not actually run the scheduling.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> optimized_module,
       compiler->RunHloPasses(std::move(input_module), executor, opts));
 
-  DebugOptions d = optimized_module->config().debug_options();
-  d.set_xla_embed_ir_in_executable(true);
-  optimized_module->mutable_config().set_debug_options(d);
   return optimized_module;
 }
 
@@ -147,6 +156,8 @@ StatusOr<std::unique_ptr<Executable>> OptProvider::GetExecutable(
   return executable;
 }
 
-std::set<std::string> OptProvider::SupportedStages() { return {"hlo", "html"}; }
+std::set<std::string> OptProvider::SupportedStages() {
+  return {"hlo", "html", "hlo-backend"};
+}
 
 }  // namespace xla

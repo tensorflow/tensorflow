@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERNS_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERNS_H_
 
@@ -45,8 +44,6 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir::quant::stablehlo {
@@ -55,7 +52,7 @@ namespace mlir::quant::stablehlo {
 // necessarily a StableHLO op.
 bool IsOpQuantizableStableHlo(Operation* op);
 
-// Checks whether an op is connnected with a quantized composite function. If
+// Checks whether an op is connected with a quantized composite function. If
 // not, the same-scale op will not be quantized. This decision is based on the
 // current assumption that the performance gain of the same-scale op itself
 // could not beat the overhead of the quantize and dequantize routines need to
@@ -101,7 +98,7 @@ class StableHloQuantizationPattern : public RewritePattern {
  private:
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    llvm::SmallVector<Operation*, 4> quantizing_ops;
+    SmallVector<Operation*, 4> quantizing_ops;
 
     // Collect all the ops to quantize, as the user / producer of the root op.
     if constexpr (std::is_same_v<RootOpT, DequantizeOpT>) {
@@ -287,6 +284,7 @@ void PopulateFusedGemmStylePatterns(MLIRContext& ctx,
 // stablehlo.reduce_window op.
 void PopulateQuantizeOpWithRegionPattern(MLIRContext& ctx,
                                          RewritePatternSet& patterns);
+
 }  // namespace mlir::quant::stablehlo
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_QUANTIZATION_PATTERNS_H_

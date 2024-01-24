@@ -577,14 +577,14 @@ def build_conversion_flags(
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
-    mlir_dump_dir=None,
-    mlir_dump_pass_regex=None,
-    mlir_dump_func_regex=None,
-    mlir_enable_timing=None,
-    mlir_print_ir_before=None,
-    mlir_print_ir_after=None,
-    mlir_print_ir_module_scope=None,
-    mlir_elide_elementsattrs_if_larger=None,
+    ir_dump_dir=None,
+    ir_dump_pass_regex=None,
+    ir_dump_func_regex=None,
+    enable_timing=None,
+    print_ir_before=None,
+    print_ir_after=None,
+    print_ir_module_scope=None,
+    elide_elementsattrs_if_larger=None,
     use_buffer_offset=False,
     reduce_type_precision=False,
     qdq_conversion_mode=None,
@@ -687,25 +687,23 @@ def build_conversion_flags(
       a custom method, and allows finer, modular control. This option will
       override any other existing quantization flags. We plan on gradually
       migrating all quantization-related specs into this option.
-    mlir_dump_dir: A string specifying the target directory to output MLIR dumps
+    ir_dump_dir: A string specifying the target directory to output MLIR dumps
       produced during conversion. If populated, enables MLIR dumps.
-    mlir_dump_pass_regex: A string containing a regular expression for filtering
-      the pass names to be dumped. Effective only if `mlir_dump_dir` is
+    ir_dump_pass_regex: A string containing a regular expression for filtering
+      the pass names to be dumped. Effective only if `ir_dump_dir` is populated.
+    ir_dump_func_regex: A string containing a regular expression for filtering
+      the function names to be dumped. Effective only if `ir_dump_dir` is
       populated.
-    mlir_dump_func_regex: A string containing a regular expression for filtering
-      the function names to be dumped. Effective only if `mlir_dump_dir` is
-      populated.
-    mlir_enable_timing: A boolean, if set to true reports the execution time of
-      each MLIR pass.
-    mlir_print_ir_before: A string containing a regular expression. If
-      specified, prints MLIR before passes which match.
-    mlir_print_ir_after: A string containing a regular expression. If specified,
+    enable_timing: A boolean, if set to true reports the execution time of each
+      MLIR pass.
+    print_ir_before: A string containing a regular expression. If specified,
+      prints MLIR before passes which match.
+    print_ir_after: A string containing a regular expression. If specified,
       prints MLIR after passes which match.
-    mlir_print_ir_module_scope: A boolean, if set to true always print the
-      top-level operation when printing IR for print_ir_[before|after].
-    mlir_elide_elementsattrs_if_larger: An int, if specified elides
-      ElementsAttrs with '...' that have more elements than the given upper
-      limit.
+    print_ir_module_scope: A boolean, if set to true always print the top-level
+      operation when printing IR for print_ir_[before|after].
+    elide_elementsattrs_if_larger: An int, if specified elides ElementsAttrs
+      with '...' that have more elements than the given upper limit.
     use_buffer_offset: Force the model use buffer_offset & buffer_size fields
       instead of data. i.e. store the constant tensor and custom op binaries
       outside of Flatbuffers
@@ -804,25 +802,23 @@ def build_conversion_flags(
   # leverage defaults specified in proto definition.
   # TODO: b/319329480 - Match the debug_options fields with the user-facing
   # flags.
-  if mlir_dump_dir is not None:
-    conversion_flags.debug_options.ir_dump_dir = mlir_dump_dir
-  if mlir_dump_pass_regex is not None:
-    conversion_flags.debug_options.ir_dump_pass_regex = mlir_dump_pass_regex
-  if mlir_dump_func_regex is not None:
-    conversion_flags.debug_options.ir_dump_func_regex = mlir_dump_func_regex
-  if mlir_enable_timing is not None:
-    conversion_flags.debug_options.enable_timing = mlir_enable_timing
-  if mlir_print_ir_before is not None:
-    conversion_flags.debug_options.print_ir_before = mlir_print_ir_before
-  if mlir_print_ir_after is not None:
-    conversion_flags.debug_options.print_ir_after = mlir_print_ir_after
-  if mlir_print_ir_module_scope is not None:
-    conversion_flags.debug_options.print_ir_module_scope = (
-        mlir_print_ir_module_scope
-    )
-  if mlir_elide_elementsattrs_if_larger is not None:
+  if ir_dump_dir is not None:
+    conversion_flags.debug_options.ir_dump_dir = ir_dump_dir
+  if ir_dump_pass_regex is not None:
+    conversion_flags.debug_options.ir_dump_pass_regex = ir_dump_pass_regex
+  if ir_dump_func_regex is not None:
+    conversion_flags.debug_options.ir_dump_func_regex = ir_dump_func_regex
+  if enable_timing is not None:
+    conversion_flags.debug_options.enable_timing = enable_timing
+  if print_ir_before is not None:
+    conversion_flags.debug_options.print_ir_before = print_ir_before
+  if print_ir_after is not None:
+    conversion_flags.debug_options.print_ir_after = print_ir_after
+  if print_ir_module_scope is not None:
+    conversion_flags.debug_options.print_ir_module_scope = print_ir_module_scope
+  if elide_elementsattrs_if_larger is not None:
     conversion_flags.debug_options.elide_elementsattrs_if_larger = (
-        mlir_elide_elementsattrs_if_larger
+        elide_elementsattrs_if_larger
     )
 
   if use_buffer_offset is not None:

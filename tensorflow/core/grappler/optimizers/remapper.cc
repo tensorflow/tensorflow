@@ -3237,8 +3237,8 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   const GraphDef* graph = ctx->graph_view.graph();
   const NodeDef& contraction = graph->node(matched.contraction);
   const NodeDef& bias_add = graph->node(matched.bias_add);
-  VLOG(2) << "Fuse " << contraction.op() << " with BiasAdd: "
-          << " bias_add=" << bias_add.name()
+  VLOG(2) << "Fuse " << contraction.op()
+          << " with BiasAdd: " << " bias_add=" << bias_add.name()
           << " contraction=" << contraction.name();
 
   NodeDef fused_op;
@@ -3340,8 +3340,7 @@ Status AddFusedContractionNode(
   const NodeDef& activation = graph->node(matched.activation);
 
   VLOG(2) << "Fuse " << contraction.op() << " with BiasAdd and "
-          << activation.op() << ":"
-          << " activation=" << activation.name()
+          << activation.op() << ":" << " activation=" << activation.name()
           << " bias_add=" << bias_add.name()
           << " contraction=" << contraction.name();
 
@@ -3395,8 +3394,8 @@ Status AddFusedConvNode(RemapperContext* ctx,
 
   const NodeDef& bias_add = graph->node(matched.bias_add);
   const NodeDef& squeeze = graph->node(matched.squeeze);
-  VLOG(2) << "Fuse Conv2D/3D with Squeeze and BiasAdd: "
-          << " bias_add=" << bias_add.name() << " squeeze=" << squeeze.name()
+  VLOG(2) << "Fuse Conv2D/3D with Squeeze and BiasAdd: " << " bias_add="
+          << bias_add.name() << " squeeze=" << squeeze.name()
           << " conv=" << contraction.name();
 
   // Replace Conv2D/3D node with a fused Conv2D/3D. Matched pattern guarantees
@@ -3585,8 +3584,8 @@ Status AddFusedConv3DNode(RemapperContext* ctx, const PadWithConv3D& matched,
   const NodeDef& pad_node_def = graph->node(matched.pad_idx);
   const NodeDef& padding_const_node_def =
       graph->node(matched.padding_const_idx);
-  VLOG(2) << "Fuse " << pad_node_def.op() << " with contraction: "
-          << " contraction=" << contraction.name();
+  VLOG(2) << "Fuse " << pad_node_def.op()
+          << " with contraction: " << " contraction=" << contraction.name();
 
   NodeDef fused_node;
   // Note: Currently, the attributes of fused op are superset of contraction
@@ -3922,8 +3921,9 @@ Status AddFusedBatchNormExNode(RemapperContext* ctx,
   const NodeDef& fused_batch_norm = graph->node(matched.fused_batch_norm);
   const NodeDef& activation = graph->node(matched.activation);
 
-  VLOG(2) << "Fuse " << activation.op() << " with FusedBatchNorm:"
-          << " activation=" << activation.name() << " side_input="
+  VLOG(2) << "Fuse " << activation.op()
+          << " with FusedBatchNorm:" << " activation=" << activation.name()
+          << " side_input="
           << (matched.side_input != kMissingIndex
                   ? graph->node(matched.side_input).name()
                   : "<none>")
@@ -4260,8 +4260,8 @@ Status AddTensorToHashBucketNode(RemapperContext* ctx,
   const NodeDef& as_string = graph->node(matched.as_string);
   const NodeDef& string_to_hash_bucket =
       graph->node(matched.string_to_hash_bucket);
-  VLOG(2) << "Fuse AsString with StringToHashBucketFast:"
-          << " as_string=" << as_string.name()
+  VLOG(2) << "Fuse AsString with StringToHashBucketFast:" << " as_string="
+          << as_string.name()
           << " string_to_hash_bucket=" << string_to_hash_bucket.name()
           << " on device=" << pre_as_string.device();
 

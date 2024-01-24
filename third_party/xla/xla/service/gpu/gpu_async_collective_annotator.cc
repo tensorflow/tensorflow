@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ absl::StatusOr<bool> GpuAsyncCollectiveAnnotator::Run(
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (!hlo_query::IsAsyncCollectiveStartOp(instruction->opcode())) {
+      if (!hlo_query::IsAsyncCollectiveStartOp(instruction)) {
         continue;
       }
       CollectiveBackendConfig config;

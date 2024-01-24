@@ -1,9 +1,11 @@
-// RUN: hlo_to_llvm_ir %s | FileCheck %{IR_SUBST} %s
+// RUN: hlo_to_llvm_ir %s | FileCheck --check-prefixes=CHECK,CHECK-%{PTX} %s
 
 // All fusions must reuse the same kernel:
 // CHECK-LABEL: target triple
-// CHECK: define [[KERNEL_ANNOTATION]]void
-// CHECK-NOT: define [[KERNEL_ANNOTATION]]void
+// CHECK-PTX: define void
+// CHECK-GCN: define amdgpu_kernelvoid
+// CHECK-PTX-NOT: define void
+// CHECK-GCN-NOT: define amdgpu_kernelvoid
 
 HloModule KernelReuse, is_scheduled=true
 
@@ -44,9 +46,12 @@ ENTRY main {
 
 // All (Triton) fusions must reuse the same kernel:
 // CHECK-LABEL: target triple
-// CHECK-NOT: define [[KERNEL_ANNOTATION]]void
-// CHECK: define [[KERNEL_ANNOTATION]]void @triton_gemm_dot1(
-// CHECK-NOT: define [[KERNEL_ANNOTATION]]void
+// CHECK-PTX-NOT: define void
+// CHECK-GCN-NOT: define amdgpu_kernelvoid
+// CHECK-PTX: define void @triton_gemm_dot1(
+// CHECK-GCN: define amdgpu_kernelvoid @triton_gemm_dot1(
+// CHECK-PTX-NOT: define void
+// CHECK-GCN-NOT: define amdgpu_kernelvoid
 
 HloModule t, is_scheduled=true
 
@@ -80,9 +85,12 @@ ENTRY e {
 // - @fusion_2's %arg0 must have align 16, because we are passing a module input
 // - @fusion_1's %arg0 must have align 128, because we are passing an internal buffer
 // CHECK-LABEL: target triple
-// CHECK: define [[KERNEL_ANNOTATION]]void @fusion_2(ptr noalias align 16 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK: define [[KERNEL_ANNOTATION]]void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK-NOT: define [[KERNEL_ANNOTATION]]void
+// CHECK-PTX: define void @fusion_2(ptr noalias align 16 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-GCN: define amdgpu_kernelvoid @fusion_2(ptr noalias align 16 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-PTX: define void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-GCN: define amdgpu_kernelvoid @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-PTX-NOT: define void
+// CHECK-GCN-NOT: define amdgpu_kernelvoid
 
 HloModule KernelReuse, is_scheduled=true
 
@@ -124,8 +132,10 @@ ENTRY main {
 // The first has just 2 parameters (1 input, 1 output) and the second has 3 (2 input, 1 output).
 // All the parameters are noalias, because we are not passing the same argument twice to the kernel.
 // CHECK-LABEL: target triple
-// CHECK: define [[KERNEL_ANNOTATION]]void @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK: define [[KERNEL_ANNOTATION]]void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1, ptr noalias align 128 dereferenceable(100) %arg2)
+// CHECK-PTX: define void @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-GCN: define amdgpu_kernelvoid @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-PTX: define void @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1, ptr noalias align 128 dereferenceable(100) %arg2)
+// CHECK-GCN: define amdgpu_kernelvoid @fusion_1(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1, ptr noalias align 128 dereferenceable(100) %arg2)
 // CHECK-NOT: define void
 
 HloModule KernelReuse, is_scheduled=true
@@ -168,12 +178,16 @@ ENTRY main {
 // "!invariant.load" (thanks to ir_array.MarkInvariantOverWholeProgram).
 //
 // CHECK-LABEL: target triple
-// CHECK: define [[KERNEL_ANNOTATION]]void @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0)
+// CHECK-PTX: define void @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0)
+// CHECK-GCN: define amdgpu_kernelvoid @fusion_2(ptr noalias align 128 dereferenceable(100) %arg0)
 // CHECK-NOT: !invariant.load
-// CHECK: define [[KERNEL_ANNOTATION]]void @fusion(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
-// CHECK-NOT: define [[KERNEL_ANNOTATION]]void
+// CHECK-PTX: define void @fusion(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-GCN: define amdgpu_kernelvoid @fusion(ptr noalias align 128 dereferenceable(100) %arg0, ptr noalias align 128 dereferenceable(100) %arg1)
+// CHECK-PTX-NOT: define void
+// CHECK-GCN-NOT: define amdgpu_kernelvoid
 // CHECK: !invariant.load
-// CHECK-NOT: define [[KERNEL_ANNOTATION]]void
+// CHECK-PTX-NOT: define void
+// CHECK-GCN-NOT: define amdgpu_kernelvoid
 
 HloModule KernelReuse, is_scheduled=true
 

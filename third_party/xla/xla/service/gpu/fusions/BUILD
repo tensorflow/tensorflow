@@ -1,3 +1,4 @@
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -25,6 +26,7 @@ cc_library(
         "//xla/service/llvm_ir:dynamic_update_slice_util",
         "//xla/service/llvm_ir:fused_ir_emitter",
         "//xla/service/llvm_ir:ir_array",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
@@ -55,21 +57,47 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":fusion_emitter",
+        "//xla:shape_util",
+        "//xla:status_macros",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:gemm_thunk",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:hlo_traversal",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter_context",
         "//xla/service/gpu:kernel_arguments",
+        "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:thunk",
-        "//xla/service/gpu/kernels:custom_fusion",
         "//xla/service/gpu/kernels:custom_kernel",
+        "//xla/service/gpu/kernels:custom_kernel_fusion",
         "//xla/service/gpu/runtime3:kernel_thunk",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
+    name = "address_computation_fusion_test",
+    srcs = ["address_computation_fusion_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//xla:array3d",
+        "//xla:array4d",
+        "//xla:error_spec",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla/tests:hlo_test_base",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -92,6 +120,7 @@ cc_library(
         "//xla/service/gpu:target_util",
         "//xla/service/gpu:thunk",
         "//xla/service/gpu/model:indexing_analysis",
+        "//xla/service/gpu/model:indexing_map",
         "//xla/service/gpu/runtime3:kernel_thunk",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
@@ -114,6 +143,7 @@ cc_library(
     hdrs = ["fusions.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":concatenate",
         ":copy",
         ":custom",
         ":fusion_emitter",
@@ -179,6 +209,7 @@ xla_cc_test(
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu/model:affine_map_printer",
+        "//xla/service/gpu/model:indexing_test_utils",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
@@ -387,6 +418,35 @@ cc_library(
 )
 
 cc_library(
+    name = "concatenate",
+    srcs = ["concatenate.cc"],
+    hdrs = ["concatenate.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":fusion_emitter",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:ir_emitter",
+        "//xla/service/gpu:ir_emitter_context",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:parallel_loop_emitter",
+        "//xla/service/gpu/model:indexing_map",
+        "//xla/service/llvm_ir:fused_ir_emitter",
+        "//xla/service/llvm_ir:ir_array",
+        "//xla/service/llvm_ir:loop_emitter",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "transpose",
     srcs = ["transpose.cc"],
     hdrs = ["transpose.h"],
@@ -459,6 +519,8 @@ xla_cc_test(
         ":input_slices",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
+        "//xla/service/gpu/model:affine_map_printer",
+        "//xla/service/gpu/model:indexing_test_utils",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",

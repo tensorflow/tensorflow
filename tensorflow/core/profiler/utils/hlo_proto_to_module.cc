@@ -30,7 +30,7 @@ namespace profiler {
 xla::StatusOr<std::unique_ptr<xla::HloModule>> ConvertHloProtoToModule(
     const xla::HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
-    return xla::InternalError("No HLO module found in the HLO proto");
+    return xla::Internal("No HLO module found in the HLO proto");
   }
   const xla::HloModuleProto& module_proto = hlo_proto.hlo_module();
   TF_ASSIGN_OR_RETURN(auto config, xla::HloModule::CreateModuleConfigFromProto(

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -193,7 +193,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
           // The subsharding contains data outside of the tile we are comparing
           // against.
           if (subsharding_offset_j < sharding_offset[j]) {
-            return InternalError("");
+            return Internal("");
           }
           // Skip last tile. It can never go beyond the limit as the shape is
           // the same for both shardings and sometimes there's padding making
@@ -203,7 +203,7 @@ bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
                   potential_sharded_shape.dimensions(j) &&
               subsharding_offset_j + potential_base_tile[j] >
                   sharding_offset[j] + base_tile[j]) {
-            return InternalError("");
+            return Internal("");
           }
         }
         return absl::OkStatus();
@@ -2907,7 +2907,8 @@ bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
   }
 
   bool matching_groups = true;
-  absl::flat_hash_map<int64_t, int64_t> device_to_ref_group;
+  std::vector<int64_t> device_to_ref_group(lhs.device_groups.size() *
+                                           lhs.device_groups[0].size());
   for (int64_t g = 0; g < lhs.device_groups.size(); ++g) {
     for (int64_t device : lhs.device_groups[g]) {
       device_to_ref_group[device] = g;

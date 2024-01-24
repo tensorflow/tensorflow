@@ -938,12 +938,6 @@ public final class InterpreterTest {
   // except that it passes in vectors rather than scalars.
   @Test
   public void testImplicitNonstrictResize() {
-    if (!SupportedFeatures.supportsNonstrictResize()) {
-      System.err.println(
-          "Not testing implicit resize to different dimension, "
-              + "since nonstrict resize isn't supported.");
-      return;
-    }
     try (Interpreter interpreter = new Interpreter(MODEL_WITH_MULTI_SIGNATURE_BUFFER)) {
       String[] signatureKeys = interpreter.getSignatureKeys();
       String[] expectedSignatureKeys = {"add", "sub"};
@@ -974,24 +968,38 @@ public final class InterpreterTest {
       inputs.put("b", inputB);
       Map<String, Object> outputs = new HashMap<>();
       outputs.put("add_result", output);
-      interpreter.runSignature(inputs, outputs, "add");
-      // Result should be a + b
-      FloatBuffer expected = fill(FloatBuffer.allocate(1), 6.0f);
-      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+      if (SupportedFeatures.supportsNonstrictResize()) {
+        interpreter.runSignature(inputs, outputs, "add");
+        // Result should be a + b
+        FloatBuffer expected = fill(FloatBuffer.allocate(1), 6.0f);
+        assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
 
-      // Test "sub" signature.
-      output = FloatBuffer.allocate(1);
-      float[] inputX = {4.0f};
-      float[] inputY = {2.0f};
-      inputs = new HashMap<>();
-      inputs.put("x", inputX);
-      inputs.put("y", inputY);
-      outputs = new HashMap<>();
-      outputs.put("sub_result", output);
-      interpreter.runSignature(inputs, outputs, "sub");
-      // Result should be x - y
-      expected = fill(FloatBuffer.allocate(1), 2.0f);
-      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+        // Test "sub" signature.
+        output = FloatBuffer.allocate(1);
+        float[] inputX = {4.0f};
+        float[] inputY = {2.0f};
+        inputs = new HashMap<>();
+        inputs.put("x", inputX);
+        inputs.put("y", inputY);
+        outputs = new HashMap<>();
+        outputs.put("sub_result", output);
+        interpreter.runSignature(inputs, outputs, "sub");
+        // Result should be x - y
+        expected = fill(FloatBuffer.allocate(1), 2.0f);
+        assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+      } else {
+        try {
+          interpreter.runSignature(inputs, outputs, "add");
+          fail();
+        } catch (IllegalArgumentException e) {
+          // Could report error message for either input 'a' or input 'b'; both have wrong
+          // shape, and we don't want the test to depend on the order of error checking.
+          assertThat(e).hasMessageThat().contains("Tensor passed for input '");
+          assertThat(e)
+              .hasMessageThat()
+              .contains("' of signature 'add' has different shape than expected");
+        }
+      }
     }
   }
 

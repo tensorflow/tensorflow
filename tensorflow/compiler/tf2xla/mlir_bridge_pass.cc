@@ -127,7 +127,6 @@ bool IsReplicatedGraphWithoutDeviceType(mlir::ModuleOp module) {
 }
 
 bool IsSingleCoreTPUGraph(mlir::ModuleOp module) {
-  if (!HasTPUDevice(module)) return false;
   auto walk_result = module.walk([&](mlir::Operation* op) {
     // Check for ops with compile device type "TPU". This allows us to support
     // TPU compilation without replication. Note that currently the compile
@@ -147,8 +146,8 @@ bool IsSingleCoreTPUGraph(mlir::ModuleOp module) {
 }
 
 bool RunReplicatedBridge(mlir::ModuleOp module) {
-  if (!HasTPUDevice(module)) return false;
-  return IsReplicatedGraph(module) || IsSingleCoreTPUGraph(module);
+  if (HasTPUDevice(module) && IsReplicatedGraph(module)) return true;
+  return IsSingleCoreTPUGraph(module);
 }
 
 bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
@@ -303,6 +302,7 @@ Status MlirBridgePass::Run(const std::string& function_name,
     replicated_graphs_without_device_type_counter->GetCell("v2")->IncrementBy(
         1);
   }
+
   // Check if the graph has any XLA-compilable ops.
   // This check needs to precede GetPassState for instrumentation purposes.
   bool run_replicated_bridge = RunReplicatedBridge(module);

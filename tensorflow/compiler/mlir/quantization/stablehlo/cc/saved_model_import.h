@@ -17,19 +17,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_IMPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_SAVED_MODEL_IMPORT_H_
 
-#include <string>
-
 #include "absl/container/flat_hash_map.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 
 namespace mlir::quant::stablehlo {
-
-// Introduces aliases for `std::string` to distinguish btw. function name and
-// its alias, to prevent confusion when used together in a container. For
-// example, it is easy to confuse function name -> alias mapping with alias ->
-// function name mapping when both are just represented as `std::string`.
-using FunctionAlias = std::string;
-using FunctionName = std::string;
 
 // Returns the updated function aliases. `module_op` may have different
 // function names from the original model, so it re-associates the aliases

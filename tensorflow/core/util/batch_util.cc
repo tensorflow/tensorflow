@@ -243,7 +243,6 @@ Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
         "rank >= 1. Source shape: ",
         src.shape().DebugString()));
   }
-
   if (dst->dims() < 1) {
     return absl::FailedPreconditionError(absl::StrCat(
         "MaybeMoveContiguousSlices cannot perform copy: dst has to be a tensor "
@@ -270,11 +269,9 @@ Status MaybeMoveContiguousSlices(Tensor& src, int64_t src_offset,
         src.shape().DebugString(),
         ", dst shape: ", dst->shape().DebugString()));
   }
-
   if (src_chip_size == 0 && dst_chip_size == 0) {
     return OkStatus();
   }
-
   if (src_offset < 0 || src_offset + num_slices > src_dim0 || dst_offset < 0 ||
       dst_offset + num_slices > dst_dim0) {
     return absl::FailedPreconditionError(absl::StrCat(

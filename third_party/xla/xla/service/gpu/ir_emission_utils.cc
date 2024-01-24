@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -193,6 +193,30 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
     if (verify_no_strides && !is_non_strided(slice.getStrides())) {
       return false;
     }
+  }
+  return true;
+}
+
+bool IsSliceWithUnitStrides(const HloInstruction* instr) {
+  auto slice = DynCast<HloSliceInstruction>(instr);
+  return slice && absl::c_all_of(slice->slice_strides(),
+                                 [](int64_t stride) { return stride == 1; });
+}
+
+bool IsContiguousSlice(const HloInstruction& instr) {
+  auto slice = DynCast<HloSliceInstruction>(&instr);
+  if (!slice) return false;
+  // No need to check for strides because if stride != 1 there's no way
+  // src and dst dimensions match.
+  const Shape& src_shape = slice->operand(0)->shape();
+  const Shape& dst_shape = slice->shape();
+  bool sliced_dim_found = false;
+  for (auto dim : src_shape.layout().minor_to_major()) {
+    if (!sliced_dim_found) {
+      sliced_dim_found = dst_shape.dimensions(dim) < src_shape.dimensions(dim);
+      continue;
+    }
+    if (dst_shape.dimensions(dim) != 1) return false;
   }
   return true;
 }
@@ -529,6 +553,12 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
       "StaticMemRefCastOp(ViewOp(arg)) or arg");
 }
 
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    const BufferAssignment& buffer_assignment, const HloInstruction* instr,
+    const ShapeIndex& index) {
+  return buffer_assignment.GetUniqueSlice(instr, index);
+}
+
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     const std::vector<const HloInstruction*>& roots) {
   // Same as GetOutputDefiningDynamicUpdateSliceOps but on a HLO fusion
@@ -612,7 +642,7 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   }
 
   if (output_buffers.empty()) {
-    return InternalError("Output buffers should not be empty");
+    return Internal("Output buffers should not be empty");
   }
 
   Shape update_shape = dus_instrs[0]->operand(1)->shape();
@@ -880,7 +910,7 @@ Shape GetShape(mlir::Value value) {
   return shape;
 }
 
-std::optional<TransposeDescription> FindTiledTranspose(
+static std::optional<TransposeDescription> FindTiledTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kCopy) {
     return std::nullopt;
@@ -912,7 +942,7 @@ std::optional<TransposeDescription> FindTiledTranspose(
 }
 
 // Find 021 or 210 transpose in logical + physical transposition.
-std::optional<TransposeDescription> FindTiledLogicalTranspose(
+static std::optional<TransposeDescription> FindTiledLogicalTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kTranspose) {
     return std::nullopt;
@@ -971,19 +1001,6 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
     return false;
   }
 
-  // Intermediate `instr` can't have multiple users.
-  // If we have a boundary function, only consider users within the
-  // boundary.
-  // TODO(jreiffers): Figure out the point of this check.
-  int64_t num_users =
-      fusion ? absl::c_count_if(
-                   HloInstructionAdaptor{*instr}.GetUsers(),
-                   [&](auto user) { return fusion->ContainsInstruction(user); })
-             : instr->user_count();
-  if (num_users > 1) {
-    return false;
-  }
-
   if (instr->IsElementwise()) {
     // All elementwise ops are considered intermediate, except for copies that
     // modify the layout. Copies that do not modify the layout are used in
@@ -1013,82 +1030,78 @@ static bool IsParameter(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kParameter;
 }
 
-std::optional<HloInstructionAdaptor> FindTransposeHero(
-    HloInstructionAdaptor root, const HloFusionAdaptor& fusion) {
-  std::optional<HloInstructionAdaptor> transpose = std::nullopt;
-  std::vector<HloInstructionAdaptor> non_trivial;
-  auto visit = [&transpose, &non_trivial](HloInstructionAdaptor node) {
-    if (FindTiledLogicalTranspose(node.instruction())) {
-      // If we do not find a unique transpose op, use the original non-trivial
-      // hero.
-      if (transpose) {
-        transpose = std::nullopt;
+static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
+    HloInstructionAdaptor root, const HloFusionAdaptor& fusion,
+    const std::function<bool(const HloInstruction&)>& predicate) {
+  std::optional<HloInstructionAdaptor> hero = std::nullopt;
+  auto visitor = [&](HloInstructionAdaptor node) {
+    if (predicate(node.instruction())) {
+      if (hero) {  // Bail out if we found multiple potential heros.
+        hero = std::nullopt;
         return TraversalResult::kInterrupt;
       }
-      transpose = node;
+      hero = node;
       return TraversalResult::kSkip;
     }
 
     if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
-      non_trivial.push_back(node);
       return TraversalResult::kSkip;
     }
     return TraversalResult::kAdvance;
   };
-  HloBfsConsumersFirstTraversal({root}, fusion, visit);
-
-  if (transpose) {
-    // There is a single transpose instruction that is a hero candidate.
-    // However, the transpose must be unreachable from any of the non-trivial
-    // instructions that were encountered, because that would mean that its
-    // output is accessed with different access patterns.
-    auto visit_nt = [&transpose](HloInstructionAdaptor node) {
-      if (node == transpose) {
-        transpose = std::nullopt;
-        return TraversalResult::kInterrupt;
-      }
-      return TraversalResult::kAdvance;
-    };
-    HloBfsConsumersFirstTraversal(non_trivial, fusion, visit_nt);
+  HloBfsConsumersFirstTraversal({root}, fusion, visitor);
+  if (!hero) {
+    return std::nullopt;
   }
-  return transpose;
+
+  // Make sure that no non-elementwise op is reachable from the transpose.
+  auto is_nontrivial = [](HloInstructionAdaptor node) {
+    return node.instruction().opcode() != HloOpcode::kTuple &&
+           node.instruction().opcode() != HloOpcode::kParameter &&
+           !IsIntermediate(&node.instruction(),
+                           /*allowed_operand_count=*/3);
+  };
+  bool visit_operands = false;
+  if (HloAnyOf(hero->GetUsers(), fusion, is_nontrivial, visit_operands)) {
+    return std::nullopt;
+  }
+
+  return hero;
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
                                          const HloFusionAdaptor& fusion) {
-  HloInstructionAdaptor idx{instr};
+  HloInstructionAdaptor hero{instr};
 
-  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Such
-  // chains are bound to be quite small, as we restrict the number of users as
-  // well. Note that no memoization is needed due to user number constraints: we
+  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
+  // that no memoization is needed due to number of operands constraints: we
   // never have to revisit same nodes.
-  auto get_intermediate_arg =
-      [&](HloInstructionAdaptor node) -> std::optional<HloInstructionAdaptor> {
-    if (IsIntermediate(&node.instruction(), 1, &fusion) &&
-        fusion.ContainsInstruction(node.GetOperand(0))) {
-      return node.GetOperand(0);
-    }
-    return std::nullopt;
-  };
-  while (auto arg = get_intermediate_arg(idx)) {
-    idx = *arg;
+  while (IsIntermediate(&hero.instruction(), /*allowed_operand_count=*/1,
+                        &fusion) &&
+         fusion.ContainsInstruction(hero.GetOperand(0))) {
+    hero = hero.GetOperand(0);
   }
 
-  // Try a bit harder to find a transpose hero. The shared memory transpose
-  // emitter also works if there are ops with more than 1 operand on the path
-  // between root and the transpose op, we still want the restriction though
-  // that each op on the path is elementwise and has only 1 user.
-  std::optional<HloInstructionAdaptor> transpose =
-      FindTransposeHero(idx, fusion);
-  return transpose ? transpose->instruction() : idx.instruction();
+  // Try a bit harder to find a transpose or concat hero. The shared memory
+  // transpose and concat emitters also work if there are elementwise ops with
+  // more than 1 operand on the path between root and the root op.
+  auto is_transpose = [](const HloInstruction& node) {
+    return FindTiledLogicalTranspose(node).has_value();
+  };
+  if (auto transpose = FindNonTrivialHero(hero, fusion, is_transpose)) {
+    return transpose->instruction();
+  }
+  auto is_concatenate = [](const HloInstruction& node) {
+    return node.opcode() == HloOpcode::kConcatenate;
+  };
+  if (auto concatenate = FindNonTrivialHero(hero, fusion, is_concatenate)) {
+    return concatenate->instruction();
+  }
+  return hero.instruction();
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
-  // It doesn't really make sense to call this function with a fusion, but it
-  // happens. Return the fusion itself for historical reasons.
-  // TODO(jreiffers): Clean this up.
-  if (instr.opcode() == HloOpcode::kFusion) return instr;
-
+  CHECK_NE(instr.opcode(), HloOpcode::kFusion);
   return FindNonTrivialHero(instr,
                             *HloFusionAdaptor::ForComputation(instr.parent()));
 }

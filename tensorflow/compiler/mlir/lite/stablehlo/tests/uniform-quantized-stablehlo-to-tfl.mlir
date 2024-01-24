@@ -516,3 +516,32 @@ func.func @dot_general_upstream_full_integer_per_axis_quantized_filter_with_mult
 // CHECK: %[[QCONST_1:.*]] =  "tfl.pseudo_qconst"() {qtype = tensor<3x!quant.uniform<i32<-128:127>:f32, 2.000000e+00>>, value = dense<0> : tensor<3xi32>} : () -> tensor<3x!quant.uniform<i32<-128:127>:f32, 2.000000e+00>>
 // CHECK: "tfl.fully_connected"(%[[ARG_1]], %[[QCONST_0]], %[[QCONST_1]])  {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x1024x!quant.uniform<i8:f32, 1.000000e+00>>, tensor<3x1024x!quant.uniform<i8:f32, 2.000000e+00>>, tensor<3x!quant.uniform<i32<-128:127>:f32, 2.000000e+00>>) -> tensor<1x3x!quant.uniform<i8:f32, 2.000000e+00:-127>>
 // CHECK-NOT: tfl.batch_matmul
+
+// -----
+
+// CHECK-LABEL: transpose
+// CHECK-SAME: %[[ARG0:.*]]: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+func.func @transpose(
+    %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+0:-1>>
+  ) -> tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+0:-1>> {
+  %0 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+0:-1>>) -> tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+0:-1>>
+  return %0 : tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+0:-1>>
+}
+
+// CHECK-NOT: stablehlo.transpose
+// CHECK: %[[CST:.*]] = arith.constant dense<[2, 1, 0]> : tensor<3xi32>
+// CHECK: %[[TRANSPOSE:.*]] = "tfl.transpose"(%[[ARG0]], %[[CST]]) : (tensor<2x3x4x!quant.uniform<i8:f32, 2.000000e+00:-1>>, tensor<3xi32>) -> tensor<4x3x2x!quant.uniform<i8:f32, 2.000000e+00:-1>>
+// CHECK: return %[[TRANSPOSE]]
+
+// -----
+
+// Test that a float stablehlo.transpose is not legalized to tfl.transpose.
+
+// CHECK-LABEL: float_transpose
+func.func @float_transpose(%arg0: tensor<2x3x4xf32>) -> tensor<4x3x2xf32> {
+  %0 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x3x4xf32>) -> tensor<4x3x2xf32>
+  return %0 : tensor<4x3x2xf32>
+}
+
+// CHECK-NOT: tfl.transpose
+// CHECK: stablehlo.transpose

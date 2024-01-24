@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,13 +27,17 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/map_util.h"
@@ -44,6 +48,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/nccl_clique.h"
+#include "xla/service/gpu/nccl_clique_key.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/executable.h"
 #include "xla/service/gpu/runtime/tracing.h"
@@ -59,7 +65,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -132,7 +137,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
     return result;
   }
 
-  return InternalError("No XLA gpu executable was provided");
+  return Internal("No XLA gpu executable was provided");
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -196,13 +201,92 @@ absl::Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
         << "}, but was {" << std::get<se::CudaComputeCapability>(cc).ToString()
         << "}";
   } else {
-    return InternalError("Unknown platform");
+    return Internal("Unknown platform");
   }
 
   return absl::OkStatus();
 }
 
 namespace {
+
+// Shared resources required for thunk initialization and execution.
+class ResourceRequests : public Thunk::ResourceRequests {
+ public:
+  absl::Status AddClique(const NcclCliqueKey& clique_key,
+                         int32_t num_local_participants) final {
+    VLOG(5) << "Add collective clique request: " << clique_key.ToString()
+            << "; num_local_participants: " << num_local_participants;
+
+    // We can't have multiple requests for a same clique key with different
+    // number of local participants as we can acquire a clique only once and we
+    // have to know how many executables will join the rendezvous.
+    auto emplaced = cliques_.try_emplace(clique_key, num_local_participants);
+    if (!emplaced.second && emplaced.first->second != num_local_participants) {
+      return absl::InternalError(absl::StrCat(
+          "Clique request for a clique key ", clique_key.ToString(),
+          " has number of local participants ", num_local_participants,
+          " different from previous value of ", emplaced.first->second, ".",
+          " This will lead to deadlock at run time and is an XLA compiler"
+          " bug. Please report it to XLA team."));
+    }
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<Thunk::CollectiveCliques> AcquireCollectiveCliques(
+      const Thunk::CollectiveExecuteParams& params) {
+    if (cliques_.empty()) return Thunk::CollectiveCliques();
+
+    VLOG(2) << "Acquire " << cliques_.size()
+            << " collective cliques for global device id "
+            << params.global_device_id.value()
+            << "; run_id=" << params.run_id.ToInt();
+
+    tsl::profiler::TraceMe trace([&] {
+      return tsl::profiler::TraceMeEncode("AcquireCollectiveCliques",
+                                          {{"num_cliques", cliques_.size()}});
+    });
+
+    auto start_micros = tsl::Env::Default()->NowMicros();
+
+    Thunk::CollectiveCliques::CliquesMap cliques_map;
+
+    for (const auto& [clique_key, num_local_participants] : cliques_) {
+      std::optional<int64_t> rank = clique_key.rank(params.global_device_id);
+
+      if (!rank.has_value()) {
+        return absl::InternalError(absl::StrCat(
+            "Can't find global device id ", params.global_device_id.value(),
+            " in clique key ", clique_key.ToString()));
+      }
+
+      bool is_local = clique_key.devices().size() == num_local_participants;
+      TF_ASSIGN_OR_RETURN(
+          const NcclCliqueIdCallback* clique_id_callback,
+          GetNcclCliqueIdCallback(params.nccl_clique_id_callback, is_local));
+
+      TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique::Lock> clique,
+                          AcquireNcclClique(params.run_id, OpId(0), clique_key,
+                                            *clique_id_callback, *rank,
+                                            num_local_participants, false));
+
+      cliques_map[clique_key] = std::move(clique);
+    }
+
+    auto end_micros = tsl::Env::Default()->NowMicros();
+    VLOG(2) << "Acquired " << cliques_map.size()
+            << " collective cliques for global device id "
+            << params.global_device_id.value() << " in "
+            << (end_micros - start_micros) << " μs"
+            << "; run_id=" << params.run_id.ToInt();
+
+    return Thunk::CollectiveCliques(std::move(cliques_map));
+  }
+
+ private:
+  // Keep all clique requests in an ordered container so that we acquire cliques
+  // in the same order for all participants and do not create a deadlock.
+  absl::btree_map<NcclCliqueKey, int64_t> cliques_;
+};
 
 absl::Status MaybeSyncAndProfile(
     const ServiceExecutableRunOptions* run_options,
@@ -265,29 +349,55 @@ absl::Status ExecuteThunks(const std::string& module_name,
   }
 #endif
 
-  Thunk::ExecuteParams execute_params{*run_options, buffer_allocations,
-                                      main_stream, command_buffer_trace_stream,
-                                      async_comms_streams};
+  // Parameters for executing collective operations.
+  TF_ASSIGN_OR_RETURN(
+      Thunk::CollectiveExecuteParams collective_params,
+      Thunk::CollectiveExecuteParams::Create(
+          *run_options, main_stream->parent()->device_ordinal()));
 
-  // Initialize thunks to prepare them for execution.
-  Thunk::InitializeParams initialize_params{
-      executor,    executable_source,           &buffer_allocations,
-      main_stream, command_buffer_trace_stream, &execute_params.nccl_params};
+  ResourceRequests resource_requests;
 
-  for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
+  {  // Collect resource requirements from thunks.
+    Thunk::PrepareParams prepare_params{&collective_params};
+
+    tsl::profiler::TraceMe trace([&] { return "Thunks::Prepare"; });
+    for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
+      TF_RETURN_IF_ERROR(thunk->Prepare(prepare_params, resource_requests));
+    }
+  }
+
+  // Acquire collective cliques requested by thunks.
+  TF_ASSIGN_OR_RETURN(
+      Thunk::CollectiveCliques collective_cliques,
+      resource_requests.AcquireCollectiveCliques(collective_params));
+
+  {  // Initialize thunks using prepared resources before execution.
+    Thunk::InitializeParams initialize_params{
+        executor,    executable_source,           &buffer_allocations,
+        main_stream, command_buffer_trace_stream, &collective_params};
+
+    tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
+    for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
+      TF_RETURN_IF_ERROR(thunk->Initialize(initialize_params));
+    }
   }
 
   // Maybe join a round of rendezvous after thunk initialization.
   TF_RETURN_IF_ERROR(
       MaybeRendezvousAfterInitialization(run_options, thunks_initialized));
 
+  // Prepare parameters for thunks execution.
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      *run_options, buffer_allocations, main_stream,
+      command_buffer_trace_stream, async_comms_streams, &collective_params,
+      &collective_cliques);
+
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
     ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
-    VLOG(2) << "Executing the thunk for " << thunk->profile_annotation();
+    VLOG(3) << "Executing the thunk for " << thunk->profile_annotation();
     if (NeedsAsyncCommsStream(*thunk)) {
       for (se::Stream* async_stream : async_comms_streams) {
         TF_RET_CHECK(async_stream != nullptr)
@@ -360,7 +470,13 @@ absl::Status MaybeRendezvousAfterInitialization(
           << num_local_participants << " local participants"
           << "; device_ordinal=" << run_options->device_ordinal();
 
-  RendezvousSingle(run_options->run_options().run_id(), num_local_participants,
+  auto rendezvous_key = run_options->run_options().run_id();
+  auto rendezvous_name = absl::StrFormat(
+      "thunk initialization completion for device ordinal %d; run_id=%d",
+      run_options->device_ordinal(),
+      run_options->run_options().run_id().ToInt());
+
+  RendezvousSingle(rendezvous_name, rendezvous_key, num_local_participants,
                    absl::Seconds(10), absl::Seconds(30));
 
   // Reload participant_id and use CAS to decide if we are the one who
@@ -408,7 +524,7 @@ absl::Status MaybeSyncAndProfile(
   if (stream_to_sync) {
     absl::Status block_status = stream_to_sync->BlockHostUntilDone();
     if (!block_status.ok()) {
-      return InternalError(
+      return Internal(
           "Failed to complete all kernels launched on stream %p: %s",
           stream_to_sync, block_status.message());
     }
@@ -575,7 +691,7 @@ static absl::Status CheckAlignment(const BufferAllocation& allocation,
   }();
   if (!buffer.is_null() &&
       reinterpret_cast<uintptr_t>(buffer.opaque()) % expected_alignment != 0) {
-    return InternalError(
+    return Internal(
         "Address of buffer %d must be a multiple of %x, but "
         "was %p",
         arg_idx, expected_alignment, buffer.opaque());
@@ -701,7 +817,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       BufferAllocations buffer_allocations,
       GenerateBufferAllocations(arguments, globals, memory_allocator,
                                 device_ordinal));
-  VLOG(2) << buffer_allocations.ToString();
+  VLOG(3) << buffer_allocations.ToString();
   std::set<se::DeviceMemoryBase> buffers_in_result;
 
   const bool is_entire_tuple_contents_aliased = [&] {
@@ -1076,8 +1192,8 @@ GetFunctionsToLoad(mlir::ModuleOp module, std::string_view entry) {
   auto convert = [&](mlir::func::FuncOp func) -> absl::Status {
     auto signature = type_converter.Convert(func.getFunctionType());
     if (!signature.ok())
-      return InternalError("Failed to convert entry function type: %s",
-                           signature.status().message());
+      return Internal("Failed to convert entry function type: %s",
+                      signature.status().message());
 
     // TODO(ezhulenev): Copy `signature` once FunctionType is copyable.
     auto rt_signature = type_converter.Convert(func.getFunctionType());
@@ -1120,8 +1236,8 @@ static absl::StatusOr<std::vector<int64_t>> GetBufferSizes(
     // Entry function argument must be a statically shaped 1d I8 memref.
     if (memref == nullptr || memref->element_type() != PrimitiveType::S8 ||
         memref->rank() != 1 || runtime::MemrefType::IsDynamic(memref->size(0)))
-      return InternalError("Illegal buffer argument type: %s",
-                           f.operand(0)->ToString());
+      return Internal("Illegal buffer argument type: %s",
+                      f.operand(0)->ToString());
 
     buffer_sizes.push_back(memref->size(0));
   }
@@ -1171,7 +1287,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   runtime::AppendXlaGpuDialectRegistry(context);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);
-  if (!module) return InternalError("Failed to parse AOT compiled module");
+  if (!module) return Internal("Failed to parse AOT compiled module");
 
   // Get the list of functions to be loaded from the object file.
   TF_ASSIGN_OR_RETURN(std::vector<runtime::Executable::LoadFunction> functions,
@@ -1208,8 +1324,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
       hlo_module->name(), std::move(buffer), std::move(functions), symbol_map);
 
   if (!executable.ok())
-    return InternalError("Failed to load XLA Runtime executable: %s",
-                         executable.status().message());
+    return Internal("Failed to load XLA Runtime executable: %s",
+                    executable.status().message());
 
   // Move runtime::Executable ownership to the GpuRuntimeExecutable.
   TF_ASSIGN_OR_RETURN(auto gpu_runtime_executable,

@@ -13,18 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <absl/status/status.h>
-#include <absl/types/span.h>
-
 #include <algorithm>
 #include <iterator>
 #include <type_traits>
 #include <vector>
 
-#include "include/shlo.h"
-#include "src/dispatch.h"
-#include "src/storage.h"
-#include "src/util.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
+#include "tensorflow/lite/experimental/shlo/include/shlo.h"
+#include "tensorflow/lite/experimental/shlo/src/dispatch.h"
+#include "tensorflow/lite/experimental/shlo/src/storage.h"
+#include "tensorflow/lite/experimental/shlo/src/util.h"
 
 namespace stablehlo {
 
@@ -35,7 +34,6 @@ bool IsUnique(absl::Span<const DimensionSize> span) {
   auto i = std::unique(temp.begin(), temp.end());
   return std::distance(temp.begin(), i) == span.size();
 }
-
 
 template <typename Value>
 absl::Status CheckParameters(
@@ -115,12 +113,12 @@ absl::Status CheckParameters(
   return absl::OkStatus();
 }
 
-
 template <ElementType storage_type, ElementType expressed_type, typename Value>
 absl::Status BroadcastInDim(
     const Value& operand, absl::Span<const DimensionSize> broadcast_dimensions,
     Value& result) {
-  if (auto check = CheckParameters(operand, broadcast_dimensions, result); !check.ok()) {
+  if (auto check = CheckParameters(operand, broadcast_dimensions, result);
+      !check.ok()) {
     return check;
   }
 
@@ -160,7 +158,8 @@ absl::Status BroadcastInDim(
 
     if (!(operand.is_per_tensor_quantized() and
           result.is_per_tensor_quantized())) {
-      return absl::InvalidArgumentError("Only per-tensor quantization is currently supported");
+      return absl::InvalidArgumentError(
+          "Only per-tensor quantization is currently supported");
     }
 
     using ET = typename Storage<expressed_type>::Type;

@@ -128,8 +128,7 @@ Status HostOffloader::HandlePipelineForwardCustomCall(
 
   // Look at the positions of this DUS:
   // TODO(b/319167527):
-  //  Add kOptimizationBarrier to the list after ensuring that it is always safe
-  //  to do so. Add kCopy to the list after ensuring that it is always safe to
+  //  Add kCopy to the list after ensuring that it is always safe to
   //  do so.
   constexpr std::array kAllowedPositionOpcodes = {
       HloOpcode::kTuple,
@@ -138,7 +137,7 @@ Status HostOffloader::HandlePipelineForwardCustomCall(
       HloOpcode::kBroadcast,
       HloOpcode::kWhile,
       HloOpcode::kParameter,
-  };
+      HloOpcode::kOptimizationBarrier};
   for (const HloValue* value : unique_buffer.values()) {
     for (const HloPosition& position : value->positions()) {
       // Check if this position is of an allowed type.

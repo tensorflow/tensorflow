@@ -1,26 +1,26 @@
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
-glob_lit_tests(
+lit_test_suite(
     name = "all_tests",
-    data = [":test_utilities"],
-    driver = "//xla:run_lit.sh",
-    test_file_exts = ["mlir"],
-)
-
-# Bundle together all of the test utilities that are used by tests.
-filegroup(
-    name = "test_utilities",
-    testonly = True,
-    data = [
+    srcs = enforce_glob(
+        [
+            "ops.mlir",
+            "ops_verify.mlir",
+            "testlib.mlir",
+        ],
+        include = [
+            "*.mlir",
+        ],
+    ),
+    cfg = "//xla:lit.cfg.py",
+    tools = [
         "//xla/mlir/runtime:xla-runtime-opt",
         "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
     ],
-    visibility = ["//visibility:public"],
 )
 
 td_library(

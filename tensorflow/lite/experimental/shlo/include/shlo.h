@@ -16,25 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_INCLUDE_SHLO_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_INCLUDE_SHLO_H_
 
-#include <absl/status/status.h>
-#include <absl/types/span.h>
-
+#include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
+#include <utility>
 #include <vector>
+
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 
 namespace stablehlo {
 
-enum class ElementType {
-  kUnknown,
-  kI1,
-  kSI8,
-  kSI16,
-  kSI32,
-  kBF16,
-  kF16,
-  kF32
-};
+enum class ElementType { kUnknown, kI1, kSI8, kSI16, kSI32, kBF16, kF16, kF32 };
 
 using DimensionSize = size_t;
 using Axes = std::vector<size_t>;
@@ -54,8 +48,7 @@ class Shape {
   Shape() = default;
   // Tensor shape, with rank > 0
   explicit Shape(std::vector<DimensionSize>&& dims) : dims_(std::move(dims)) {}
-  Shape(std::initializer_list<DimensionSize>&& dims)
-      : dims_(std::move(dims)) {}
+  Shape(std::initializer_list<DimensionSize>&& dims) : dims_(std::move(dims)) {}
   bool operator==(const Shape& other) const { return dims_ == other.dims_; }
   bool operator!=(const Shape& other) const { return !(*this == other); }
   size_t rank() const { return dims_.size(); }
@@ -90,7 +83,8 @@ class TensorType {
 // support only strides for the minor dimension.
 class Layout {
  public:
-  explicit Layout(size_t minor_dim_stride = 1) : minor_dim_stride_(minor_dim_stride) {}
+  explicit Layout(size_t minor_dim_stride = 1)
+      : minor_dim_stride_(minor_dim_stride) {}
   bool has_strides() const { return minor_dim_stride_ > 1; }
   size_t minor_dim_stride() const { return minor_dim_stride_; }
 
@@ -360,6 +354,8 @@ absl::Status ExponentialMinusOne(const QuantizedTensor& operand,
                                  QuantizedTensor& result);
 absl::Status Floor(const Tensor& operand, Tensor& result);
 absl::Status Floor(const QuantizedTensor& operand, QuantizedTensor& result);
+absl::Status Iota(DimensionSize iota_dimension, Tensor& result);
+absl::Status Iota(DimensionSize iota_dimension, QuantizedTensor& result);
 absl::Status IsFinite(const Tensor& operand, Tensor& result);
 absl::Status IsFinite(const QuantizedTensor& operand, QuantizedTensor& result);
 absl::Status Log(const Tensor& operand, Tensor& result);

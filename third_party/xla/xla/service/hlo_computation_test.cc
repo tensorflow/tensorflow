@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,8 +29,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -485,6 +487,44 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Negate(m::Op().Is(constant))));
   EXPECT_EQ(negate, computation->root_instruction());
+}
+
+TEST_F(HloComputationTest, ReplaceParameter) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val = f32[2] get-tuple-element(p_body), index=0
+      const = s32[] constant(-1)
+      ROOT root = (f32[2], s32[]) tuple(val, const)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant(42)
+      ROOT result = pred[] compare(gte, const), direction=EQ
+    }
+
+    ENTRY entry {
+      param.1 = s32[] parameter(0)
+      const = f32[2] constant({0,1})
+      while_init = (f32[2], s32[]) tuple(const, param.1)
+      while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+      ROOT out = s32[] get-tuple-element(while), index=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHloModule));
+  HloComputation* body = module->GetComputationWithName("body");
+
+  Shape new_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {2}), ShapeUtil::MakeShape(S32, {})});
+  body->ReplaceParameter(
+      0, HloInstruction::CreateParameter(0, new_param_shape, "new_p_body"));
+
+  EXPECT_TRUE(ShapeUtil::Equal(body->parameter_instruction(0)->shape(),
+                               new_param_shape));
 }
 
 TEST_F(HloComputationTest, CloneWithControlDependency) {

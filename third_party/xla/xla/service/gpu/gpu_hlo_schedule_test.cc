@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,10 +60,8 @@ class GpuHloScheduleTest : public HloTestBase {
     Backend& test_backend = backend();
     const se::DeviceDescription& gpu_device_info =
         test_backend.default_stream_executor()->GetDeviceDescription();
-    TF_CHECK_OK(ScheduleGpuModule(
-        module, /*pointer_size=*/8,
-        /*memory_limit=*/gpu_device_info.device_memory_size() * 8 / 10,
-        gpu_device_info));
+    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info)
+                    .status());
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -927,9 +925,9 @@ ENTRY e {
 })")
                     .value();
   TF_CHECK_OK(ScheduleGpuModule(
-      module.get(), /*pointer_size=*/8,
-      /*memory_limit=*/1024 * 1024 * 1024,
-      backend().default_stream_executor()->GetDeviceDescription()));
+                  module.get(), /*pointer_size=*/8,
+                  backend().default_stream_executor()->GetDeviceDescription())
+                  .status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: wrapped_negate = f32[1024,1024]{1,0}
@@ -1071,11 +1069,10 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
   uint32_t max_in_flight = 0;
   for (const HloInstruction* inst :
        order.SequentialOrder(*module->entry_computation())->instructions()) {
-    HloOpcode op = inst->opcode();
-    if (hlo_query::IsAsyncCollectiveStartOp(op)) {
+    if (hlo_query::IsAsyncCollectiveStartOp(inst)) {
       in_flight++;
       max_in_flight = std::max(max_in_flight, in_flight);
-    } else if (hlo_query::IsAsyncCollectiveDoneOp(op)) {
+    } else if (hlo_query::IsAsyncCollectiveDoneOp(inst)) {
       in_flight--;
     }
   }

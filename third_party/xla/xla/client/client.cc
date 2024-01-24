@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -202,7 +202,7 @@ StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
   VLOG(3) << "ComputeConstant: {" << response.DebugString() << "}";
 
   if (!response.has_literal()) {
-    return InternalError(
+    return Internal(
         "no computed literal in the provided response in ComputeConstantGraph "
         "request");
   }

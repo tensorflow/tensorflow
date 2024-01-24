@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,11 +71,9 @@ bool IsCollectiveOp(const HloInstruction* op) {
     return true;
   }
 
-  return hlo_query::IsAsyncCollectiveDoneOp(opcode,
-                                            /*include_send_recv=*/true) ||
+  return hlo_query::IsAsyncCollectiveDoneOp(op, /*include_send_recv=*/true) ||
          (hlo_query::IsCollectiveCommunicationOp(opcode) &&
-          !hlo_query::IsAsyncCollectiveStartOp(opcode,
-                                               /*include_send_recv=*/true));
+          !hlo_query::IsAsyncCollectiveStartOp(op, /*include_send_recv=*/true));
 }
 
 // Returns the corresponding Done op if the input is a Start op. Otherwise,
