@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
@@ -34,7 +34,7 @@ namespace xla::gpu {
 // Simple pattern matchers for testing custom fusion rewriter.
 //===----------------------------------------------------------------------===//
 
-struct SimpleGemmPattern : public CustomFusionPattern {
+struct SimpleGemmPattern : public CustomKernelFusionPattern {
   explicit SimpleGemmPattern(int64_t workspace = 0) : workspace(workspace) {}
 
   std::optional<Match> TryMatch(const se::DeviceDescription& device,
@@ -111,7 +111,7 @@ TEST_F(CustomFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK:   [[DOT:%[^ ]+]] = f16[15,17]{1,0} dot([[P0]], [[P1]]),
     ; CHECK:     lhs_contracting_dims={1}, rhs_contracting_dims={0}
     ; CHECK:   [[WORKSPACE:%[^ ]+]] = u8[1024]{0} custom-call(),
-    ; CHECK:     custom_call_target="__custom_fusion$workspace"
+    ; CHECK:     custom_call_target="__custom_kernel_fusion$workspace"
     ; CHECK:   ROOT [[TUPLE:%[^ ]+]] = (f16[15,17]{1,0}, u8[1024]{0})
     ; CHECK:     tuple([[DOT]], [[WORKSPACE]])
     ; CHECK: }

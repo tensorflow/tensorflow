@@ -26,9 +26,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/kernels/custom_fusion_pattern.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
+#include "xla/service/gpu/kernels/custom_kernel_fusion_pattern.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
 #include "xla/service/gpu/kernels/cutlass_gemm_custom_kernel.h"
 #include "xla/service/pattern_matcher.h"
@@ -59,9 +59,10 @@ struct RootWithWorkspace {
 
 static RootWithWorkspace MatchRootWithWorkspace(HloInstruction* root) {
   RootWithWorkspace result;
-  if (Match(root, m::Tuple(m::Op(&result.root),
-                           m::CustomCall(&result.workspace,
-                                         {CustomFusionPattern::kWorkspace})))) {
+  if (Match(root,
+            m::Tuple(m::Op(&result.root),
+                     m::CustomCall(&result.workspace,
+                                   {CustomKernelFusionPattern::kWorkspace})))) {
     return result;
   }
   return {root, nullptr};
@@ -171,7 +172,7 @@ static absl::StatusOr<GemmWithDynamicSlice> MatchGemmWithDynamicUpdateSlice(
 // Cutlass Gemm Patterns
 //===----------------------------------------------------------------------===//
 
-std::optional<CustomFusionPattern::Match> CutlassGemmPattern::TryMatch(
+std::optional<CustomKernelFusionPattern::Match> CutlassGemmPattern::TryMatch(
     const se::DeviceDescription& device, HloInstruction* instr) const {
   auto* dot = DynCast<HloDotInstruction>(instr);
   if (!dot) return std::nullopt;
@@ -184,7 +185,7 @@ std::optional<CustomFusionPattern::Match> CutlassGemmPattern::TryMatch(
   return Match{config, {instr}};
 }
 
-std::optional<CustomFusionPattern::Match>
+std::optional<CustomKernelFusionPattern::Match>
 CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
     const se::DeviceDescription& device, HloInstruction* instr) const {
   auto* update_slice = DynCast<HloDynamicUpdateSliceInstruction>(instr);
@@ -213,7 +214,7 @@ CutlassGemmWithDynamicUpdateSlicePattern::TryMatch(
   return match;
 }
 
-std::optional<CustomFusionPattern::Match>
+std::optional<CustomKernelFusionPattern::Match>
 CutlassGemmWithUpcastPattern::TryMatch(const se::DeviceDescription& device,
                                        HloInstruction* instr) const {
   auto* dot = DynCast<HloDotInstruction>(instr);
