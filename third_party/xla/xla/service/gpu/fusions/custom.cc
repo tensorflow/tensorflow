@@ -93,9 +93,6 @@ absl::StatusOr<BufferAllocation::Slice> GetSliceWithUpdatedOffsetAndSize(
   const auto& slice_instr = *static_cast<const HloSliceInstruction*>(
       &maybe_slice_adaptor->instruction());
 
-  TF_RET_CHECK(IsSliceWithUnitStrides(&slice_instr))
-      << "AddressComputationFusion only handles slices with unit strides "
-         "currently";
   TF_RET_CHECK(IsContiguousSlice(slice_instr))
       << "AddressComputationFusion only handles contiguous slices currently";
 
