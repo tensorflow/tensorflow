@@ -18,8 +18,10 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -198,6 +200,56 @@ TEST_F(PriorityFusionTest, FuseConvertIntoReduce) {
 CHECK-COUNT-3: ROOT {{.*}} convert(
 CHECK: ENTRY %main
 CHECK-COUNT-3: fusion
+  )");
+}
+
+TEST_F(PriorityFusionTest, FusionInstructionNames) {
+  absl::string_view kHlo = R"(
+      HloModule test_module
+
+      square {
+        p = f32[16384] parameter(0)
+        ROOT m = f32[16384] multiply(p, p)
+      }
+
+      exp {
+        p = f32[16384] parameter(0)
+        ROOT e = f32[16384] exponential(p)
+      }
+
+      log {
+        p = f32[16384] parameter(0)
+        ROOT l = f32[16384] log(p)
+      }
+
+      add {
+        p0 = f32[] parameter(0)
+        p1 = f32[] parameter(1)
+        ROOT add = f32[] add(p0, p1)
+      }
+
+      ENTRY main {
+        p0 = bf16[1024,8192] parameter(0)
+        p1 = f32[8192] parameter(1)
+        p2 = f32[16384] parameter(2)
+        convert = f32[1024,8192] convert(p0)
+        broadcast = f32[1024,8192] broadcast(p1), dimensions={1}
+        c0 = f32[] constant(0)
+        multiply = f32[1024,8192] multiply(broadcast, convert)
+        reduce = f32[1024] reduce(multiply, c0), dimensions={1}, to_apply=add
+        convert.1 = bf16[1024] convert(reduce)
+        s = f32[16384] fusion(p2), kind=kLoop, calls=square
+        e = f32[16384] fusion(s), kind=kLoop, calls=exp
+        l = f32[16384] fusion(s), kind=kInput, calls=log
+        ROOT result = (bf16[1024]{0}, f32[16384]{0}, f32[16384]{0}) tuple(convert.1, l, e)
+      })";
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+CHECK: ENTRY %main
+CHECK: %reduction_fusion{{.*}} fusion
+CHECK: %loop_fusion{{.*}} calls=%log
+CHECK: %loop_fusion{{.*}} calls=%exp
+CHECK: ROOT %result
   )");
 }
 

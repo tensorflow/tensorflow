@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -162,6 +163,29 @@ absl::StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
   return HloFusionAnalysis(std::move(backend_config), std::move(roots),
                            std::move(fusion), std::move(heroes), device_info,
                            tiled_transpose_hero, std::move(input_output_info));
+}
+
+// static
+absl::string_view HloFusionAnalysis::GetEmitterFusionKindString(
+    EmitterFusionKind kind) {
+  switch (kind) {
+    case EmitterFusionKind::kLoop:
+      return "loop";
+    case EmitterFusionKind::kCustomFusion:
+      return "custom";
+    case EmitterFusionKind::kTriton:
+      return "triton";
+    case EmitterFusionKind::kReduction:
+      return "reduction";
+    case EmitterFusionKind::kTranspose:
+      return "transpose";
+    case EmitterFusionKind::kConcatenate:
+      return "concatenate";
+    case EmitterFusionKind::kInputSlices:
+      return "input_slices";
+    case EmitterFusionKind::kScatter:
+      return "scatter";
+  }
 }
 
 // static
