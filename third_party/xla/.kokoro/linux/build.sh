@@ -39,9 +39,6 @@ docker run --name xla -w /tf/xla -itd --rm \
     "$DOCKER_IMAGE" \
     bash
 
-# bazelrc Files currently come from https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools
-RC_FILE="/usertools/cpu.bazelrc"
-TARGET_FILTER=""
 TAGS_FILTER="-no_oss,-oss_excluded,-oss_serial"
 ADDITIONAL_FLAGS=""
 RBE_CONFIG=""
@@ -49,7 +46,6 @@ RBE_CONFIG=""
 if is_linux_gpu_job ; then
     TAGS_FILTER="$TAGS_FILTER,gpu,requires-gpu-nvidia,-no_gpu"
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --run_under=//tools/ci_build/gpu_build:parallel_gpu_execute"
-    RC_FILE="/usertools/gpu.bazelrc"
     RBE_CONFIG="rbe_linux_cuda_nvcc"
     echo "***NOTE: nvidia-smi lists the highest CUDA version the driver supports, which may be different than the version of CUDA actually used!!***"
     nvidia-smi
@@ -60,7 +56,7 @@ else
 fi
 
 # Build & test XLA
-docker exec xla bazel --bazelrc=$RC_FILE \
+docker exec xla bazel \
         test \
         --build_tag_filters=$TAGS_FILTER  \
         --test_tag_filters=$TAGS_FILTER \
@@ -72,7 +68,7 @@ docker exec xla bazel --bazelrc=$RC_FILE \
         --jobs=150 \
         --nobuild_tests_only \
         $ADDITIONAL_FLAGS \
-        -- //xla/... //build_tools/... $TARGET_FILTER
+        -- //xla/... //build_tools/...
 
 
 # Print build time statistics, including critical path.
