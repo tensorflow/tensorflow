@@ -2,11 +2,9 @@
 # verify the IR emitted.
 
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
 load(
     "//xla:xla.bzl",
-    "xla_cc_binary",
     "xla_cc_test",
 )
 load(
@@ -654,54 +652,6 @@ xla_cc_test(
     ],
 )
 
-build_test(
-    name = "hlo_to_llvm_ir_build_test",
-    targets = [
-        ":hlo_to_llvm_ir",
-    ],
-)
-
-xla_cc_binary(
-    name = "hlo_to_llvm_ir",
-    testonly = True,
-    srcs = ["hlo_to_llvm_ir.cc"],
-    copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "-DTENSORFLOW_USE_ROCM=1",
-    ]),
-    deps = [
-        "//xla:status",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu:buffer_sharing",
-        "//xla/service/gpu:compile_module_to_llvm_ir",
-        "//xla/service/gpu:gpu_compiler",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:gpu_hlo_schedule",
-        "//xla/service/gpu:target_constants",
-        "//xla/service/gpu/llvm_gpu_backend",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:dnn",
-        "//xla/stream_executor/host:host_platform",
-        "//xla/tests:test_utils",
-        "//xla/tools:hlo_module_loader",
-        "@com_google_absl//absl/status",
-        "@llvm-project//llvm:Target",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/util:command_line_flags",
-    ] + if_cuda_is_configured([
-        "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/service/gpu:nvptx_compiler_impl",
-        "//xla/stream_executor/cuda:cublas_plugin",
-    ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:rocm_platform_id",  # build_cleaner: keep
-        "//xla/stream_executor/rocm:rocblas_plugin",
-        "//xla/stream_executor/rocm:rocm_helpers",
-        "//xla/service/gpu:amdgpu_compiler_impl",
-        "@local_tsl//tsl/platform:rocm_rocdl_path",  # build_cleaner: keep
-    ]),
-)
-
 lit_test_suite(
     name = "all_tests",
     srcs = enforce_glob(
@@ -741,10 +691,15 @@ lit_test_suite(
     ),
     args = if_cuda_is_configured([
         "--param=PTX=PTX",
+        "--param=GPU=a6000",
     ]) + if_rocm_is_configured([
         "--param=PTX=GCN",
+        "--param=GPU=mi200",
     ]),
     cfg = "//xla:lit.cfg.py",
+    data = [
+        ":test_utilities",
+    ],
     default_tags = tf_cuda_tests_tags(),
     tags_override = {
         "reduction_vectorization_sm_all.hlo": ["no_rocm"],
@@ -753,9 +708,25 @@ lit_test_suite(
         "reduce_unnested.hlo": ["no_rocm"],
     },
     tools = [
-        ":hlo_to_llvm_ir",
+        "//xla/tools:hlo-opt",
         "@llvm-project//llvm:FileCheck",
     ],
+)
+
+filegroup(
+    name = "test_utilities",
+    testonly = True,
+    data = [
+        "//xla/tools:hlo-opt",
+        "//xla/tools/hlo_opt:gpu_specs/a100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/a6000.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/h100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/mi200.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
+        "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
+        "@llvm-project//llvm:FileCheck",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 xla_cc_test(
