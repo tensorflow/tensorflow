@@ -263,12 +263,17 @@ PmapSharding::PmapSharding(py::array devices, ShardingSpec sharding_spec)
           py::cast<pybind11::tuple>(devices_.attr("flat")))) {}
 
 GSPMDSharding::GSPMDSharding(py::tuple devices, xla::HloSharding op_sharding,
-                             py::object memory_kind)
+                             py::object memory_kind, py::object device_list)
     : XLACompatibleSharding(/*num_devices=*/devices.size()),
       devices_(std::move(devices)),
       hlo_sharding_(std::move(op_sharding)),
-      memory_kind_(std::move(memory_kind)),
-      internal_device_list_(std::make_shared<PyDeviceList>(devices_)) {
+      memory_kind_(std::move(memory_kind)) {
+  if (device_list.is_none()) {
+    internal_device_list_ = std::make_shared<PyDeviceList>(devices_);
+  } else {
+    internal_device_list_ =
+        py::cast<std::shared_ptr<jax::PyDeviceList>>(std::move(device_list));
+  }
   // This checks in python if the memory kind is correct for the given
   // devices. Currently in python this check is optimized but we want to
   // move that check to C++ after which we can remove this call.
@@ -329,18 +334,22 @@ void RegisterSharding(py::module& m) {
 
   py::class_<GSPMDSharding, XLACompatibleSharding>(m, "GSPMDSharding",
                                                    py::dynamic_attr())
-      .def(py::init<py::list, xla::OpSharding, py::object>(),
+      .def(py::init<py::list, xla::OpSharding, py::object, py::object>(),
            py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
-           py::arg("memory_kind") = py::none())
-      .def(py::init<py::tuple, xla::OpSharding, py::object>(),
+           py::arg("memory_kind") = py::none(),
+           py::arg("_device_list") = py::none())
+      .def(py::init<py::tuple, xla::OpSharding, py::object, py::object>(),
            py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
-           py::arg("memory_kind") = py::none())
-      .def(py::init<py::list, xla::HloSharding, py::object>(),
+           py::arg("memory_kind") = py::none(),
+           py::arg("_device_list") = py::none())
+      .def(py::init<py::list, xla::HloSharding, py::object, py::object>(),
            py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
-           py::arg("memory_kind") = py::none())
-      .def(py::init<py::tuple, xla::HloSharding, py::object>(),
+           py::arg("memory_kind") = py::none(),
+           py::arg("_device_list") = py::none())
+      .def(py::init<py::tuple, xla::HloSharding, py::object, py::object>(),
            py::arg("devices"), py::arg("op_sharding"), py::kw_only(),
-           py::arg("memory_kind") = py::none())
+           py::arg("memory_kind") = py::none(),
+           py::arg("_device_list") = py::none())
       .def_property_readonly("_devices", &GSPMDSharding::devices)
       .def_property_readonly("_hlo_sharding", &GSPMDSharding::hlo_sharding)
       .def_property_readonly("_memory_kind", &GSPMDSharding::memory_kind)
