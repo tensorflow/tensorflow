@@ -57,7 +57,6 @@ namespace xla {
 namespace {
 
 static mlir::Attribute ArrayToElements(mlir::Attribute attr) {
-  if (!attr) return attr;  // Handle optional attrs
   if (auto array = attr.dyn_cast<mlir::DenseI64ArrayAttr>()) {
     return mlir::DenseIntElementsAttr::get(
         mlir::RankedTensorType::get(array.size(), array.getElementType()),
@@ -72,7 +71,6 @@ static mlir::Attribute ArrayToElements(mlir::Attribute attr) {
 }
 
 static mlir::Attribute ElementsToArray(mlir::Attribute attr) {
-  if (!attr) return attr;  // Handle optional attrs
   if (auto elements = llvm::dyn_cast<mlir::DenseIntElementsAttr>(attr)) {
     if (elements.getElementType().isInteger(64)) {
       return mlir::DenseI64ArrayAttr::get(
@@ -82,6 +80,14 @@ static mlir::Attribute ElementsToArray(mlir::Attribute attr) {
         attr.getContext(), llvm::to_vector(elements.getValues<bool>()));
   }
   return attr;
+}
+
+static void ConvertAttr(
+    mlir::Operation* op, llvm::StringRef attr_name,
+    llvm::function_ref<mlir::Attribute(mlir::Attribute)> convert) {
+  if (auto attr = op->getAttr(attr_name)) {
+    op->setAttr(attr_name, convert(attr));
+  }
 }
 
 // Convert attrs that use DenseI64ArrayAttr (or DenseBoolArrayAttr) to use a
@@ -95,78 +101,68 @@ void ConvertStablehloDenseAttributes(
     llvm::function_ref<mlir::Attribute(mlir::Attribute)> convert) {
   llvm::TypeSwitch<mlir::Operation*>(root_op)
       .Case([&](mlir::stablehlo::BroadcastOp op) {
-        op->setAttr("broadcast_sizes", convert(op->getAttr("broadcast_sizes")));
+        ConvertAttr(op, "broadcast_sizes", convert);
       })
       .Case([&](mlir::stablehlo::BroadcastInDimOp op) {
-        op->setAttr("broadcast_dimensions",
-                    convert(op->getAttr("broadcast_dimensions")));
+        ConvertAttr(op, "broadcast_dimensions", convert);
       })
       .Case([&](mlir::stablehlo::ConvolutionOp op) {
-        op->setAttr("window_strides", convert(op->getAttr("window_strides")));
-        op->setAttr("lhs_dilation", convert(op->getAttr("lhs_dilation")));
-        op->setAttr("rhs_dilation", convert(op->getAttr("rhs_dilation")));
-        op->setAttr("window_reversal", convert(op->getAttr("window_reversal")));
+        ConvertAttr(op, "window_strides", convert);
+        ConvertAttr(op, "lhs_dilation", convert);
+        ConvertAttr(op, "rhs_dilation", convert);
+        ConvertAttr(op, "window_reversal", convert);
       })
       .Case([&](mlir::stablehlo::DynamicBroadcastInDimOp op) {
-        op->setAttr("broadcast_dimensions",
-                    convert(op->getAttr("broadcast_dimensions")));
-        op->setAttr("known_expanding_dimensions",
-                    convert(op->getAttr("known_expanding_dimensions")));
-        op->setAttr("known_nonexpanding_dimensions",
-                    convert(op->getAttr("known_nonexpanding_dimensions")));
+        ConvertAttr(op, "broadcast_dimensions", convert);
+        ConvertAttr(op, "known_expanding_dimensions", convert);
+        ConvertAttr(op, "known_nonexpanding_dimensions", convert);
       })
       .Case([&](mlir::stablehlo::DynamicConvOp op) {
-        op->setAttr("window_strides", convert(op->getAttr("window_strides")));
-        op->setAttr("lhs_dilation", convert(op->getAttr("lhs_dilation")));
-        op->setAttr("rhs_dilation", convert(op->getAttr("rhs_dilation")));
-        op->setAttr("window_reversal", convert(op->getAttr("window_reversal")));
+        ConvertAttr(op, "window_strides", convert);
+        ConvertAttr(op, "lhs_dilation", convert);
+        ConvertAttr(op, "rhs_dilation", convert);
+        ConvertAttr(op, "window_reversal", convert);
       })
       .Case([&](mlir::stablehlo::DynamicSliceOp op) {
-        op->setAttr("slice_sizes", convert(op->getAttr("slice_sizes")));
+        ConvertAttr(op, "slice_sizes", convert);
       })
       .Case([&](mlir::stablehlo::FftOp op) {
-        op->setAttr("fft_length", convert(op->getAttr("fft_length")));
+        ConvertAttr(op, "fft_length", convert);
       })
       .Case([&](mlir::stablehlo::GatherOp op) {
-        op->setAttr("slice_sizes", convert(op->getAttr("slice_sizes")));
+        ConvertAttr(op, "slice_sizes", convert);
       })
       .Case([&](mlir::stablehlo::MapOp op) {
-        op->setAttr("dimensions", convert(op->getAttr("dimensions")));
+        ConvertAttr(op, "dimensions", convert);
       })
       .Case([&](mlir::stablehlo::PadOp op) {
-        op->setAttr("edge_padding_low",
-                    convert(op->getAttr("edge_padding_low")));
-        op->setAttr("edge_padding_high",
-                    convert(op->getAttr("edge_padding_high")));
-        op->setAttr("interior_padding",
-                    convert(op->getAttr("interior_padding")));
+        ConvertAttr(op, "edge_padding_low", convert);
+        ConvertAttr(op, "edge_padding_high", convert);
+        ConvertAttr(op, "interior_padding", convert);
       })
       .Case([&](mlir::stablehlo::ReduceOp op) {
-        op->setAttr("dimensions", convert(op->getAttr("dimensions")));
+        ConvertAttr(op, "dimensions", convert);
       })
       .Case([&](mlir::stablehlo::ReduceWindowOp op) {
-        op->setAttr("window_dimensions",
-                    convert(op->getAttr("window_dimensions")));
-        op->setAttr("window_strides", convert(op->getAttr("window_strides")));
-        op->setAttr("base_dilations", convert(op->getAttr("base_dilations")));
-        op->setAttr("window_dilations",
-                    convert(op->getAttr("window_dilations")));
+        ConvertAttr(op, "window_dimensions", convert);
+        ConvertAttr(op, "window_strides", convert);
+        ConvertAttr(op, "base_dilations", convert);
+        ConvertAttr(op, "window_dilations", convert);
       })
       .Case([&](mlir::stablehlo::ReverseOp op) {
-        op->setAttr("dimensions", convert(op->getAttr("dimensions")));
+        ConvertAttr(op, "dimensions", convert);
       })
       .Case([&](mlir::stablehlo::SelectAndScatterOp op) {
-        op->setAttr("window_dimensions",
-                    convert(op->getAttr("window_dimensions")));
-        op->setAttr("window_strides", convert(op->getAttr("window_strides")));
+        ConvertAttr(op, "window_dimensions", convert);
+        ConvertAttr(op, "window_strides", convert);
       })
       .Case([&](mlir::stablehlo::SliceOp op) {
-        op->setAttr("start_indices", convert(op->getAttr("start_indices")));
-        op->setAttr("limit_indices", convert(op->getAttr("limit_indices")));
-        op->setAttr("strides", convert(op->getAttr("strides")));
+        ConvertAttr(op, "start_indices", convert);
+        ConvertAttr(op, "limit_indices", convert);
+        ConvertAttr(op, "strides", convert);
       })
       .Case([&](mlir::stablehlo::TransposeOp op) {
-        op->setAttr("permutation", convert(op->getAttr("permutation")));
+        ConvertAttr(op, "permutation", convert);
       });
 }
 
