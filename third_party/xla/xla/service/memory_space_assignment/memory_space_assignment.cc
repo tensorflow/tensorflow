@@ -1671,10 +1671,14 @@ AlternateMemoryBestFitHeap::AlternateMemoryBestFitHeap(
     MemorySpaceAssignment::AllocationSequence* allocations,
     const Options& options, const HloAliasAnalysis& alias_analysis,
     const HloLiveRange& hlo_live_range)
-    : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes,
-                                      /*type=*/kSpatial,
-                                      /*buffer_interval_compare=*/nullptr,
-                                      SliceTimePermutationIterator::Ty::kAll),
+    : GlobalDecreasingSizeBestFitHeap(
+          options.alignment_in_bytes,
+          /*type=*/kSpatial, /*buffer_interval_compare=*/nullptr,
+          (options.sliced_prefetch_options.max_slices() >
+                   options.sliced_prefetch_options
+                       .all_slice_time_permutations_threshold()
+               ? SliceTimePermutationIterator::Ty::kPreferred
+               : SliceTimePermutationIterator::Ty::kAll)),
       allocations_(allocations),
       options_(options),
       alias_analysis_(alias_analysis),
