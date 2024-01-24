@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
@@ -143,6 +144,61 @@ static absl::StatusOr<NcclClique::Lock> AcquireNcclClique(
 }
 
 //===----------------------------------------------------------------------===//
+// NcclClique Heart Beat Monitor
+//===----------------------------------------------------------------------===//
+
+// Runs an async error check for a `comm` and aborts it if it is in the
+// error state. It will free resources that are allocated to a communicator
+// and abort any uncompleted operations before destroying the communicator.
+static absl::Status CheckComm(NcclComm& lockable_comm) {
+  NcclComm::Lock comm = lockable_comm.Acquire();
+  absl::Status async_err = NcclApi::Default()->CommGetAsyncError(*comm);
+  if (!async_err.ok()) {
+    LOG(ERROR) << "Aborting communicator: " << comm
+               << " due to async NCCL error: " << async_err;
+    TF_RETURN_IF_ERROR(NcclApi::Default()->CommAbort(*comm));
+  }
+  return async_err;
+}
+
+// Runs async check on all communicators in a clique.
+static void CheckClique(const NcclCliqueKey& clique_key,
+                        NcclClique& lockable_clique) {
+  NcclClique::Lock clique = lockable_clique.Acquire();
+  VLOG(5) << "Checking NCCL clique " << clique_key.ToString()
+          << " for async errors; num_communicators="
+          << clique->communicators.size();
+  for (auto& [rank, comm] : clique->communicators) {
+    if (auto status = CheckComm(comm); !status.ok()) {
+      LOG(ERROR) << status;
+    }
+  }
+}
+
+// TODO(ezhulenev): We need a mechanism to destroy whole clique when one of the
+// communicators is aborted to be able to recover from errors.
+static void NcclCliqueHeartBeatMonitorThread() {
+  VLOG(5) << "Starting NCCL clique heart beat monitor";
+  while (true) {
+    absl::SleepFor(absl::Seconds(30));
+    NcclCliques& cliques = GetNcclCliques();
+    absl::MutexLock lock(&cliques.mu);
+    VLOG(5) << "Checking NCCL communicators for async errors"
+            << "; num_cliques=" << cliques.map.size();
+    for (auto& [clique_key, lockable_clique] : cliques.map) {
+      CheckClique(clique_key, lockable_clique);
+    }
+  }
+}
+
+static void StartNcclCliqueHeartBeatMonitor() {
+  static auto* monitor_thread = tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "nccl_clique_heart_beat_monitor",
+      NcclCliqueHeartBeatMonitorThread);
+  (void)monitor_thread;  // suppress unused variable warning
+}
+
+//===----------------------------------------------------------------------===//
 // NcclClique Initialization
 //===----------------------------------------------------------------------===//
 
@@ -186,6 +242,9 @@ static absl::StatusOr<std::shared_ptr<NcclClique::Lock>> InitializeNcclClique(
   VLOG(3) << "Initialize NCCL clique " << clique_key.ToString() << " rank #"
           << rank << " of " << nranks
           << "; num_local_participants=" << num_local_participants;
+
+  // Start NCCL clique heart beat monitor when create a first clique.
+  StartNcclCliqueHeartBeatMonitor();
 
   // Creates initialization state for participating ranks.
   auto create_initialization_state = [&](absl::Span<const int32_t* const> ranks)
