@@ -25,26 +25,34 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
 fi
 source ci/official/utilities/get_versions.sh
 
-# $TF_VER_FULL will resolve to e.g. "2.15.0-rc2". When given a directory path,
-# gsutil copies the basename of the directory into the provided path. Uploading
-# /tmp/$TF_VER_FULL to gs://bucket/ will create gs://bucket/$TF_VER_FULL/files.
-# Since $TF_VER_FULL comes from get_versions.sh, which must be run *after*
-# update_version.py, this can't be set inside the rest of the _upload envs.
-DOWNLOADS="$(mktemp -d)/$TF_VER_FULL"
+# Note on gsutil commands:
+# "gsutil cp" always "copies into". It cannot act on the contents of a directory
+# and it does not seem possible to e.g. copy "gs://foo/bar" as anything other than
+# "/path/bar". This script uses "gsutil rsync" instead, which acts on directory
+# contents. About arguments to gsutil:
+# "gsutil -m rsync" runs in parallel.
+# "gsutil rsync -r" is recursive and makes directories work.
+# "gsutil rsync -d" is "sync and delete files from destination if not present in source"
+
+DOWNLOADS="$(mktemp -d)"
 mkdir -p "$DOWNLOADS"
-# -r is needed to copy a whole folder.
-gsutil -m cp -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
+gsutil -m rsync -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
 ls "$DOWNLOADS"
 
 # Upload all build artifacts to e.g. gs://tensorflow/versions/2.16.0-rc1 (releases) or
 # gs://tensorflow/nightly/2.16.0-dev20240105 (nightly), overwriting previous values.
 if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
   gcloud auth activate-service-account --key-file="$TFCI_ARTIFACT_FINAL_GCS_SA_PATH"
-  gsutil -m cp -r "$DOWNLOADS" "$TFCI_ARTIFACT_FINAL_GCS_URI"
+
+  # $TF_VER_FULL will resolve to e.g. "2.15.0-rc2". Since $TF_VER_FULL comes
+  # from get_versions.sh, which must be run *after* update_version.py, FINAL_URI
+  # can't be set inside the rest of the _upload envs.
+  FINAL_URI="$TFCI_ARTIFACT_FINAL_GCS_URI/$TF_VER_FULL"
+  gsutil -m rsync -d -r "$DOWNLOADS" "$FINAL_URI"
+
   # Also mirror the latest-uploaded folder to the "latest" directory.
-  # GCS does not support symlinks. -p preserves ACLs. -d deletes
-  # no-longer-present files (it's what makes this act as a mirror).
-  gsutil rsync -d -p -r "$TFCI_ARTIFACT_FINAL_GCS_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
+  # GCS does not support symlinks.
+  gsutil -m rsync -d -r "$FINAL_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
 fi
 
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then
