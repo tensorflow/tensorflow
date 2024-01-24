@@ -260,6 +260,7 @@ cc_library(
         ":program_cache",
         ":tensor",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "@com_google_absl//absl/strings",
     ],
 )
 

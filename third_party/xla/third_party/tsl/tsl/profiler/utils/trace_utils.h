@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "tsl/platform/types.h"
 
