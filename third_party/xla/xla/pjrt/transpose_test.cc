@@ -450,8 +450,9 @@ TEST(TransposeTest, NegativeStrides2D) {
   options.elem_size_in_bytes = sizeof(int16_t);
   options.dims = dims;
   options.permutation = permutation;
-  options.input_layout =
-      TransposePlan::Striding{{4 * sizeof(int16_t), -int64_t{sizeof(int16_t)}}};
+  std::vector<int64_t> strides = {4 * sizeof(int16_t),
+                                  -int64_t{sizeof(int16_t)}};
+  options.input_layout = TransposePlan::Striding{strides};
   TF_ASSERT_OK_AND_ASSIGN(auto plan, TransposePlan::Create(options));
   plan->Execute(input.data() + 3, output.data());
   EXPECT_EQ(expected, output);
