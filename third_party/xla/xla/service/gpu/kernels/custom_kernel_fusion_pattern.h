@@ -100,14 +100,14 @@ class CustomKernelFusionPattern {
 };
 
 //===----------------------------------------------------------------------===//
-// CustomFusionPatternRegistry
+// CustomKernelFusionPatternRegistry
 //===----------------------------------------------------------------------===//
 
-class CustomFusionPatternRegistry {
+class CustomKernelFusionPatternRegistry {
  public:
-  // Returns a pointer to a default custom fusion pattern registry, which is a
-  // global static registry.
-  static CustomFusionPatternRegistry *Default();
+  // Returns a pointer to a default custom kernel fusion pattern registry, which
+  // is a global static registry.
+  static CustomKernelFusionPatternRegistry *Default();
 
   std::vector<CustomKernelFusionPattern::Match> Match(
       const se::DeviceDescription &device, HloInstruction *instr) const;
@@ -137,12 +137,12 @@ class CustomFusionPatternRegistry {
 #define XLA_REGISTER_CUSTOM_FUSION_PATTERN_(PATTERN, N) \
   XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)
 
-#define XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)   \
-  ABSL_ATTRIBUTE_UNUSED static const bool                  \
-      xla_custom_fusion_pattern_##N##_registered_ = [] {   \
-        ::xla::gpu::CustomFusionPatternRegistry::Default() \
-            ->Emplace<PATTERN>();                          \
-        return true;                                       \
+#define XLA_REGISTER_CUSTOM_FUSION_PATTERN__(PATTERN, N)         \
+  ABSL_ATTRIBUTE_UNUSED static const bool                        \
+      xla_custom_fusion_pattern_##N##_registered_ = [] {         \
+        ::xla::gpu::CustomKernelFusionPatternRegistry::Default() \
+            ->Emplace<PATTERN>();                                \
+        return true;                                             \
       }()
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_PATTERN_H_

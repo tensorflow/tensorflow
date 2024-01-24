@@ -62,9 +62,10 @@ namespace xla::gpu {
 //
 class CustomFusionRewriter : public HloModulePass {
  public:
-  explicit CustomFusionRewriter(const se::DeviceDescription* device,
-                                const CustomFusionPatternRegistry* patterns =
-                                    CustomFusionPatternRegistry::Default());
+  explicit CustomFusionRewriter(
+      const se::DeviceDescription* device,
+      const CustomKernelFusionPatternRegistry* patterns =
+          CustomKernelFusionPatternRegistry::Default());
 
   absl::string_view name() const override { return "custom-fusion-rewriter"; }
 
@@ -74,7 +75,7 @@ class CustomFusionRewriter : public HloModulePass {
 
  private:
   const se::DeviceDescription* device_;
-  const CustomFusionPatternRegistry* patterns_;
+  const CustomKernelFusionPatternRegistry* patterns_;
 };
 
 }  // namespace xla::gpu

@@ -84,7 +84,7 @@ TEST_F(CustomFusionRewriterTest, SimpleGemm) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -127,7 +127,7 @@ TEST_F(CustomFusionRewriterTest, SimpleGemmWithWorkspace) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<SimpleGemmPattern>(1024);
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();

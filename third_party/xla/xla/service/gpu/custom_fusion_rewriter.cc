@@ -44,7 +44,7 @@ namespace xla::gpu {
 
 CustomFusionRewriter::CustomFusionRewriter(
     const se::DeviceDescription* device,
-    const CustomFusionPatternRegistry* patterns)
+    const CustomKernelFusionPatternRegistry* patterns)
     : device_(device), patterns_(patterns) {}
 
 // Returns a set of instruction that have users outside of a matched pattern

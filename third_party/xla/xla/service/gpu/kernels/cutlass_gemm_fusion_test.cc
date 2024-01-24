@@ -68,7 +68,7 @@ TEST_F(CutlassFusionTest, RowMajorGemm) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -108,7 +108,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -158,7 +158,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSlice) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
@@ -217,7 +217,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceMultipleUses) {
     ; CHECK: }
   )";
 
-  CustomFusionPatternRegistry patterns;
+  CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
