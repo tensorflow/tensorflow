@@ -729,6 +729,8 @@ lit_test_suite(
             "single_instruction.hlo",
             "slice_to_dynamic.hlo",
             "sorting.hlo",
+            "transpose_021.hlo",
+            "transpose_210.hlo",
             "triton_naming.hlo",
         ],
         include = [
