@@ -78,6 +78,10 @@ bool ReductionIsRaceFree(const HloModuleConfig& hlo_module_config,
 bool IsRealReductionHero(const HloInstruction& root,
                          const HloInstruction& hero);
 
+// Whether `reduction_hero` is compatible with `first_reduce`.
+bool AreReductionsMultiOutputFusionCompatible(
+    const HloInstruction* reduce_hero, const HloInstruction* first_reduce);
+
 }  // namespace gpu
 }  // namespace xla
 #endif  // XLA_SERVICE_GPU_REDUCTION_UTILS_H_

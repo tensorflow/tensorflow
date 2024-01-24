@@ -229,5 +229,20 @@ bool IsRealReductionHero(const HloInstruction& root,
                              GetReductionKindAndContiguousComponents(hero));
 }
 
+bool AreReductionsMultiOutputFusionCompatible(
+    const HloInstruction* reduce_hero, const HloInstruction* first_reduce) {
+  // Shapes, layouts and dimensions must be the same for all reduce heroes
+  // inside of a multioutput fusion.
+  return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
+                                             reduce_hero->shape()) &&
+         ShapeUtil::EqualIgnoringElementType(
+             first_reduce->operand(0)->shape(),
+             reduce_hero->operand(0)->shape()) &&
+         ShapeUtil::EqualIgnoringElementType(
+             first_reduce->operand(1)->shape(),
+             reduce_hero->operand(1)->shape()) &&
+         first_reduce->dimensions() == reduce_hero->dimensions();
+}
+
 }  // namespace gpu
 }  // namespace xla
