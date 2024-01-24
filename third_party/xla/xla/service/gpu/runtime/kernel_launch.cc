@@ -159,7 +159,7 @@ static absl::Status LaunchImpl(
 static absl::StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
     se::StreamExecutor* executor, std::string_view name,
     std::string_view custom_fusion_computation) {
-  auto* registry = CustomFusionRegistry::Default();
+  auto* registry = CustomKernelFusionRegistry::Default();
   auto* custom_kernel_fusion = registry->Lookup(name);
 
   // If custom fusion is not found it means that some of the build targets might

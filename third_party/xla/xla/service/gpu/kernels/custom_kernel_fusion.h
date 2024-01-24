@@ -110,17 +110,17 @@ class CustomKernelFusion {
 };
 
 //===----------------------------------------------------------------------===//
-// CustomFusionRegistry
+// CustomKernelFusionRegistry
 //===----------------------------------------------------------------------===//
 
 // Custom fusion registry is a mapping from a custom kernel fusion name to the
 // custom fusion implementation, and XLA compiler uses this registry to lower
 // fusion operations to kernels when emitting thunks.
-class CustomFusionRegistry {
+class CustomKernelFusionRegistry {
  public:
   // Returns a pointer to a default custom fusion registry, which is a global
   // static registry.
-  static CustomFusionRegistry* Default();
+  static CustomKernelFusionRegistry* Default();
 
   // Registers custom kernel fusion in the registry. Returns error if fusion
   // with the given name already registered.
@@ -144,14 +144,14 @@ class CustomFusionRegistry {
 #define XLA_REGISTER_CUSTOM_FUSION_(NAME, FUSION, N) \
   XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)
 
-#define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)              \
-  ABSL_ATTRIBUTE_UNUSED static const bool                          \
-      xla_custom_fusion_##N##_registered_ = [] {                   \
-        absl::Status status =                                      \
-            ::xla::gpu::CustomFusionRegistry::Default()->Register( \
-                NAME, std::make_unique<FUSION>());                 \
-        if (!status.ok()) LOG(ERROR) << status;                    \
-        return status.ok();                                        \
+#define XLA_REGISTER_CUSTOM_FUSION__(NAME, FUSION, N)                    \
+  ABSL_ATTRIBUTE_UNUSED static const bool                                \
+      xla_custom_fusion_##N##_registered_ = [] {                         \
+        absl::Status status =                                            \
+            ::xla::gpu::CustomKernelFusionRegistry::Default()->Register( \
+                NAME, std::make_unique<FUSION>());                       \
+        if (!status.ok()) LOG(ERROR) << status;                          \
+        return status.ok();                                              \
       }()
 
 #endif  // XLA_SERVICE_GPU_KERNELS_CUSTOM_KERNEL_FUSION_H_

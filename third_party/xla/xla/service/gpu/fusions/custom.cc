@@ -132,7 +132,7 @@ absl::StatusOr<FusionEmissionResult> CustomFusion::Emit(
 
   VLOG(3) << "Lower HLO fusion to a custom fusion " << config.name();
 
-  auto* registry = CustomFusionRegistry::Default();
+  auto* registry = CustomKernelFusionRegistry::Default();
   auto* custom_kernel_fusion = registry->Lookup(config.name());
 
   // If custom fusion is not found it means that some of the build targets might

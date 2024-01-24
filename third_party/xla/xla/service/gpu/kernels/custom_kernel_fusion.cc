@@ -29,15 +29,15 @@ limitations under the License.
 namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
-// CustomFusionRegistry
+// CustomKernelFusionRegistry
 //===----------------------------------------------------------------------===//
 
-CustomFusionRegistry* CustomFusionRegistry::Default() {
-  static auto* registry = new CustomFusionRegistry();
+CustomKernelFusionRegistry* CustomKernelFusionRegistry::Default() {
+  static auto* registry = new CustomKernelFusionRegistry();
   return registry;
 }
 
-absl::Status CustomFusionRegistry::Register(
+absl::Status CustomKernelFusionRegistry::Register(
     std::string name, std::unique_ptr<CustomKernelFusion> fusion) {
   absl::MutexLock lock(&mutex_);
   if (auto it = registry_.try_emplace(name, std::move(fusion)); it.second)
@@ -46,7 +46,8 @@ absl::Status CustomFusionRegistry::Register(
       absl::StrCat("Custom kernel fusion ", name, " already registered."));
 }
 
-CustomKernelFusion* CustomFusionRegistry::Lookup(std::string_view name) const {
+CustomKernelFusion* CustomKernelFusionRegistry::Lookup(
+    std::string_view name) const {
   absl::MutexLock lock(&mutex_);
   if (auto it = registry_.find(name); it != registry_.end())
     return it->second.get();
