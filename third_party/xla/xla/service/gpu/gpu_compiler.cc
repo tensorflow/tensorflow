@@ -126,7 +126,7 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/copy_fusion.h"
-#include "xla/service/gpu/custom_fusion_rewriter.h"
+#include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/dot_dimension_sorter.h"
 #include "xla/service/gpu/dot_operand_converter.h"
 #include "xla/service/gpu/fusion_merger_triton.h"
@@ -1262,15 +1262,15 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
-    // Greedy pattern matching for custom fusions. We run it before Triton
-    // rewriter or a regular Gemm rewriter to be able to match compatible GEMMs
-    // before they matched into Triton gemm or a cuBLAS custom call.
+    // Greedy pattern matching for custom kernel fusions. We run it before
+    // Triton rewriter or a regular Gemm rewriter to be able to match compatible
+    // GEMMs before they matched into Triton gemm or a cuBLAS custom call.
     //
     // TODO(ezhulenev): This should be plugged into the cost model and fusion
     // heuristic, so we can mix and match various Gemm implementations based
     // on projected (measured) performance.
     if (debug_options.xla_gpu_enable_custom_fusions()) {
-      pipeline.AddPass<CustomFusionRewriter>(
+      pipeline.AddPass<CustomKernelFusionRewriter>(
           &gpu_target_config.device_description);
     }
 
