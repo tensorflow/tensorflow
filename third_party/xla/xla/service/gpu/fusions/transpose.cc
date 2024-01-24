@@ -58,24 +58,46 @@ TilingScheme ComputeTransposeTilingScheme(
   constexpr int kNumRows = 4;
   static_assert(WarpSize() % kNumRows == 0);
 
-  // 3D view over the input shape.
-  Vector3 dims = tiled_transpose.dimensions;
-  Vector3 order = tiled_transpose.permutation;
+  // 3D view over the output shape.
+  Vector3 transposed_dims = tiled_transpose.dimensions;
+  Vector3 permutation = tiled_transpose.permutation;
 
-  Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
-  Vector3 tile_sizes{1, 1, 1};
-  tile_sizes[order[2]] = WarpSize() / kNumRows;
-  Vector3 num_threads{1, 1, WarpSize()};
-  num_threads[order[2]] = kNumRows;
+  // Note: the supported permutations are their own inverses. Therefore we
+  // always use the permutation, even when we want the inverse.
+  CHECK((permutation == Vector3{0, 2, 1}) || (permutation == Vector3{2, 1, 0}));
+
+  Vector3 input_dims{transposed_dims[permutation[0]],
+                     transposed_dims[permutation[1]],
+                     transposed_dims[permutation[2]]};
+  // The tiling corresponds to the two minor dimensions before and after the
+  // transpose. The remaining dimension is the batch dimension.
+  // The order is {batch, minor post-transpose, minor pre-transpose}.
+  //
+  // Examples for transposed_dims {200, 300, 700}:
+  // order             {0, 2, 1}         {2, 1, 0}
+  // input_dims        {200, 700, 300}   {700, 300, 200}
+  // tiled_shape       {200, 700, 300}   {300, 700, 200}
+  // tile -> input     {0, 1, 2}         {1, 0, 2}
+  Vector3 tiled_shape{input_dims[1 - permutation[2]], transposed_dims[2],
+                      input_dims[2]};
+
+  Vector3 tile_sizes{1, WarpSize() / kNumRows, 1};
+  Vector3 num_threads{1, kNumRows, WarpSize()};
 
   return TilingScheme(
-      /*dims_in_elems=*/permuted_dims,
+      /*dims_in_elems=*/tiled_shape,
       /*tile_sizes=*/tile_sizes,
       /*num_threads=*/num_threads,
       /*indexing_order=*/TilingScheme::LinearIndexingX,
       /*vector_size=*/1,
-      /*scaling_factor=*/1,
-      /*tiling_dimensions=*/{order[2], 2});
+      /*scaling_factor=*/1);
+}
+
+Vector3 TileToInoutPermutation(Vector3 permutation) {
+  // See ComputeTransposeTilingScheme.
+  // Note: this is also the tile to output permutation because we swap the
+  // last two components.
+  return permutation[2] == 1 ? Vector3{0, 1, 2} : Vector3{1, 0, 2};
 }
 
 llvm::GlobalVariable* AllocateShared(
@@ -179,31 +201,30 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                        llvm_ir::PrimitiveTypeToIrType(
                            tr.instr->operand(0)->shape().element_type(),
                            ir_emitter_context.llvm_module()),
-                       {block_tile_size[permutation[TilingScheme::DimX]],
-                        block_tile_size[TilingScheme::DimX] + 1},
+                       {block_tile_size[1], block_tile_size[2] + 1},
                        absl::StrCat("tr_tile_", tile_idx));
   }
 
+  auto tile_to_inout = TileToInoutPermutation(permutation);
+  auto input_shape = Permute(tiling_scheme_.GetShape(), tile_to_inout);
   TileElementGenerator tile_generator =
       [&](const TilingThreadIdInfo& thread_id_info,
           const llvm_ir::IrArray::Index& index,
           std::array<llvm::Value*, 2> tile_dimensions) {
         // Copy input parameter values to shared memory buffers:
         // tile[thread_id_y, thread_id_x] = input[index]
-        // Note that tile_width and tile_height are flipped here because we
-        // are reading a transposed tile.
         EmitTile(
             builder, tiling_scheme_, index, thread_id_info, tile_dimensions,
             [&](const TilingThreadIdInfo& thread_id_info,
-                const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
+                const llvm_ir::IrArray::Index& tiled_index, llvm::Value* y_loc,
                 llvm::Value* x_loc) {
+              auto index = PermuteIndex(tiled_index, tile_to_inout);
               for (const auto& tr : transposes) {
-                llvm_ir::ElementGenerator input_gen =
+                auto input_gen =
                     *fused_emitter.GetGenerator(*tr.instr->operand(0));
-                llvm_ir::IrArray::Index untiled_index =
-                    GetUnnormalizedIndex(index, tr.instr->operand(0)->shape(),
-                                         builder, tiling_scheme_.GetShape());
-                llvm::Value* value = *input_gen(untiled_index);
+                auto input_index = GetUnnormalizedIndex(
+                    index, tr.instr->operand(0)->shape(), builder, input_shape);
+                llvm::Value* value = *input_gen(input_index);
                 llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
                     builder, tiles[tr.instr], {y_loc, x_loc});
 
@@ -217,13 +238,13 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
                                      llvm::Value*>>
                   scheduled_writes;
               for (const auto& [output_idx, root] : extra_outputs) {
-                llvm_ir::IrArray::Index untiled_index = GetUnnormalizedIndex(
-                    index, root->shape(), builder, tiling_scheme_.GetShape());
-                llvm_ir::ElementGenerator output_gen =
-                    *fused_emitter.GetGenerator(*root);
-                llvm::Value* output_value = *output_gen(untiled_index);
+                llvm_ir::IrArray::Index extra_output_index =
+                    GetUnnormalizedIndex(index, root->shape(), builder,
+                                         input_shape);
+                auto output_gen = *fused_emitter.GetGenerator(*root);
+                llvm::Value* output_value = *output_gen(extra_output_index);
                 scheduled_writes.emplace_back(outputs[output_idx],
-                                              untiled_index, output_value);
+                                              extra_output_index, output_value);
               }
 
               for (const auto& [output, idx, value] : scheduled_writes) {
@@ -234,7 +255,7 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
         EmitSyncThreads(builder, ir_emitter_context);
 
         llvm_ir::IrArray::Index output_tile_index =
-            PermuteIndex(index, permutation);
+            PermuteIndex(index, {0, 2, 1});
         std::array<llvm::Value*, 2> transposed_tile_dimensions = {
             tile_dimensions[1], tile_dimensions[0]};
 
@@ -243,8 +264,9 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
             transposed_tile_dimensions,
             /*emit_elem_function=*/
             [&](const TilingThreadIdInfo& thread_id_info,
-                const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
+                const llvm_ir::IrArray::Index& tiled_index, llvm::Value* y_loc,
                 llvm::Value* x_loc) {
+              auto index = PermuteIndex(tiled_index, tile_to_inout);
               for (const auto& tr : transposes) {
                 std::vector<llvm::Value*> idx = {x_loc, y_loc};
                 llvm::Value* gep = thread_id_info.GEPIntoSharedMemory(
@@ -256,9 +278,8 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
                 FusedIrEmitter fused_emitter(elemental_emitter);
                 fused_emitter.BindGenerator(
-                    *tr.instr, [&](const llvm_ir::IrArray::Index& index) {
-                      return loaded;
-                    });
+                    *tr.instr,
+                    [&](const llvm_ir::IrArray::Index&) { return loaded; });
                 for (int64_t i = 0;
                      i <
                      fusion.fused_instructions_computation()->num_parameters();
@@ -287,9 +308,9 @@ absl::Status TransposeFusion::EmitKernel(IrEmitterContext& ir_emitter_context,
 
                   // Both for emission and writing it should be
                   // index-as-transformed by the computation.
-                  llvm_ir::IrArray::Index untiled_index = GetUnnormalizedIndex(
-                      index, root->shape(), builder,
-                      Permute(tiling_scheme_.GetShape(), permutation));
+                  llvm_ir::IrArray::Index untiled_index =
+                      GetUnnormalizedIndex(index, root->shape(), builder,
+                                           Permute(input_shape, permutation));
                   TF_ASSIGN_OR_RETURN(llvm::Value * generated,
                                       gen(untiled_index));
                   scheduled_writes.emplace_back(outputs[output_idx],
