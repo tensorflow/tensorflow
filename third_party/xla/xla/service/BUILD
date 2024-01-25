@@ -7548,9 +7548,6 @@ xla_cc_test(
         ":xla_aot_compile_test_gpu_executable_convolution",
         ":xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning",
     ]),
-    env = {
-        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-    },
     tags = [
         "gpu",
         "no_oss",
