@@ -49,7 +49,9 @@ else
               -k \
               --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
               --test_lang_filters=cc,py \
-              --jobs=${N_BUILD_JOBS} \
+	      --jobs=30 \
+              --local_ram_resources=60000 \
+              --local_cpu_resources=15 \
               --local_test_jobs=${N_BUILD_JOBS} \
               --test_timeout 920,2400,7200,9600 \
               --build_tests_only \
