@@ -1035,12 +1035,6 @@ class Model {
   // a vector which contains pairs of node names and tunable parameters.
   ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
 
-  // Copy parameter state values to parameter values if necessary.For some
-  // nodes, the parameter state values are not tuned by Autotune and hence the
-  // parameter values can be stale. We do not sync all parameters because it may
-  // increase mutex contention with `GetNext()`.
-  void MaybeSyncStateValuesToValues(ModelParameters* parameters);
-
   // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
   // Returns true if any buffer is downsized.
   bool DownsizeBuffers(std::shared_ptr<Node> snapshot);
