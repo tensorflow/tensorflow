@@ -823,6 +823,9 @@ Status GraphDefImporter::ConvertNodeDef(OpBuilder &builder, ConversionState &s,
   // Get the result types. Ops can have multiple named results. Track the
   // segment sizes.
   SmallVector<std::pair<unsigned, unsigned>> result_segments;
+
+  if (op_def->output_arg_size() < 0)
+    return InvalidArgument("Node ", node.name(), " output arg size < 0");
   result_segments.reserve(op_def->output_arg_size());
   state.types.reserve(op_def->output_arg_size() + 1);
   for (const OpDef::ArgDef &def : op_def->output_arg()) {
