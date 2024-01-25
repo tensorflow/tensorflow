@@ -519,6 +519,25 @@ func.func @dot_general_upstream_full_integer_per_axis_quantized_filter_with_mult
 
 // -----
 
+// Test that a `stablehlo.dot_general` with an i32 output remains unchanged when
+// it is not followed by a requantization (`stablehlo.quantize`).
+
+// CHECK-LABEL: dot_general_no_requantize
+func.func @dot_general_no_requantize(%arg0: tensor<1x4xf32>) -> tensor<1x3xf32> {
+  %0 = stablehlo.constant() {value = dense<5> : tensor<4x3xi8>} : () -> tensor<4x3x!quant.uniform<i8<-127:127>:f32, 2.000000e+00>>
+  %1 = stablehlo.uniform_quantize %arg0 : (tensor<1x4xf32>) -> tensor<1x4x!quant.uniform<i8:f32, 3.000000e+00>>
+  %2 = stablehlo.dot_general %1, %0, contracting_dims = [1] x [0] : (tensor<1x4x!quant.uniform<i8:f32, 3.000000e+00>>, tensor<4x3x!quant.uniform<i8<-127:127>:f32, 2.000000e+00>>) -> tensor<1x3x!quant.uniform<i32:f32, 5.000000e+00>>
+  %3 = stablehlo.uniform_dequantize %2 : (tensor<1x3x!quant.uniform<i32:f32, 5.000000e+00>>) -> tensor<1x3xf32>
+  return %3 : tensor<1x3xf32>
+}
+// CHECK: "tfl.quantize"
+// CHECK: stablehlo.dot_general
+// CHECK-NOT: tfl.fully_connected
+// CHECK-NOT: tfl.batch_matmul
+// CHECK: stablehlo.uniform_dequantize
+
+// -----
+
 // Test that a quantized stablehlo.transpose is converted to tfl.transpose.
 
 // CHECK-LABEL: transpose

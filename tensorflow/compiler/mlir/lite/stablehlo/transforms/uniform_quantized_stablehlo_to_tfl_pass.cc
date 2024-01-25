@@ -1266,6 +1266,9 @@ class RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp
         LLVM_DEBUG(llvm::dbgs() << "Expected a dequantize type.\n");
         return failure();
       }
+    } else {
+      // Op not followed by a requantization is not supported.
+      return failure();
     }
     return success();
   }
