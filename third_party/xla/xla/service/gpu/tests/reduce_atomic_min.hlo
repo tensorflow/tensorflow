@@ -75,7 +75,8 @@ ENTRY reduce.1 {
 // CHECK:         %[[VAL_44:.*]] = alloca i32, align 4
 // CHECK:         %[[VAL_45:.*]] = alloca float, align 4
 // CHECK:         %[[VAL_46:.*]] = alloca float, align 4
-// CHECK:         %[[VAL_47:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.y(), !range !4
+// CHECK-PTX:     %[[VAL_47:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.y(), !range !4
+// CHECK-GCN:     %[[VAL_56:.*]] = call i32 @llvm.amdgcn.workgroup.id.y
 // CHECK:         %[[VAL_48:.*]] = icmp eq i32 %[[VAL_47]], 0
 // CHECK:         br i1 %[[VAL_48]], label %[[VAL_49:.*]], label %[[VAL_50:.*]]
 // CHECK:       reduce-group-0-after:                             ; preds = %[[VAL_51:.*]], %[[VAL_52:.*]]
@@ -83,8 +84,10 @@ ENTRY reduce.1 {
 // CHECK:       reduce-group-0-true:                              ; preds = %[[VAL_52]]
 // CHECK:         %[[VAL_53:.*]] = load float, ptr %[[VAL_54:.*]], align 4, !invariant.load !5
 // CHECK:         store float %[[VAL_53]], ptr %[[VAL_45]], align 4
-// CHECK:         %[[VAL_55:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !6
-// CHECK:         %[[VAL_56:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !7
+// CHECK-PTX:     %[[VAL_55:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !6
+// CHECK-GCN:     %[[VAL_55:.*]] = call i32 @llvm.amdgcn.workitem.id.x
+// CHECK-PTX:     %[[VAL_56:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !7
+// CHECK-GCN:     %[[VAL_56:.*]] = call i32 @llvm.amdgcn.workgroup.id.x
 // CHECK:         %[[VAL_57:.*]] = urem i32 %[[VAL_55]], 1024
 // CHECK:         %[[VAL_58:.*]] = udiv i32 %[[VAL_55]], 1024
 // CHECK:         %[[VAL_59:.*]] = mul i32 %[[VAL_56]], 1
