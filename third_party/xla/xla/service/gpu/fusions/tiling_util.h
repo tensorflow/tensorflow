@@ -223,20 +223,17 @@ struct TilingKernelInfo {
 //
 // index: Absolute coordinate of the start of the tile in input.
 // tile_dimensions: Size of the tile
-using TileElementGenerator =
+using TileGenerator =
     std::function<void(const TilingThreadIdInfo& thread_id_info,
-                       const llvm_ir::IrArray::Index& index,
+                       const llvm_ir::IrArray::Index& tile_start_index,
                        std::array<llvm::Value*, 2> tile_dimensions)>;
 
 // A function object to generate code to process one element in a tile.
 //
-// index: the index for the first output element of the current thread.
 // y_loc: The y coordinate within a tile.
 // x_loc: The x coordinate within a tile.
-using EmitTileElementFunction =
-    std::function<void(const TilingThreadIdInfo& thread_id_info,
-                       const llvm_ir::IrArray::Index& index, llvm::Value* y_loc,
-                       llvm::Value* x_loc)>;
+using TileElementGenerator =
+    std::function<void(llvm::Value* y_loc, llvm::Value* x_loc)>;
 
 // Emits code to iterate through a 2-dimensional tile with a given tile
 // dimensions and given strides, and call the callback at each iteration.,
@@ -263,16 +260,15 @@ using EmitTileElementFunction =
 // }
 //
 void EmitTile(llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-              const llvm_ir::IrArray::Index& tile_origin_index,
               const TilingThreadIdInfo& thread_id_info,
               std::array<llvm::Value*, 2> tile_dimensions,
-              const EmitTileElementFunction& emit_elem_function);
+              const TileElementGenerator& emit_elem_function);
 
 // Emits a kernel for the hlo instruction using the given kernel mapping
 // scheme.
 absl::StatusOr<TilingKernelInfo> EmitTilingKernel(
     llvm::IRBuilder<>* builder, const TilingScheme& tiling_scheme,
-    llvm::Type* index_ty, const TileElementGenerator& tile_element_generator);
+    llvm::Type* index_ty, const TileGenerator& tile_element_generator);
 
 llvm_ir::IrArray::Index GetUnnormalizedIndex(
     const llvm_ir::IrArray::Index& normalized_shape_index,
