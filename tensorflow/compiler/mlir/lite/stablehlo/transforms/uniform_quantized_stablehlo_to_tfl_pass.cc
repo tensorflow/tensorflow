@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // NOLINT: Required to register quantization dialect.
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -55,6 +56,8 @@ namespace {
 using ::mlir::quant::IsI32F32UniformQuantizedType;
 using ::mlir::quant::IsI8F32UniformQuantizedPerAxisType;
 using ::mlir::quant::IsI8F32UniformQuantizedType;
+using ::mlir::quant::IsOpFullyQuantized;
+using ::mlir::quant::IsQuantizedTensorType;
 using ::mlir::quant::IsSupportedByTfliteQuantizeOrDequantizeOps;
 using ::mlir::quant::QuantizedType;
 using ::mlir::quant::UniformQuantizedPerAxisType;
@@ -1274,17 +1277,7 @@ class RewriteTransposeOp : public OpRewritePattern<stablehlo::TransposeOp> {
   using OpRewritePattern<stablehlo::TransposeOp>::OpRewritePattern;
 
   LogicalResult match(stablehlo::TransposeOp op) const override {
-    auto operand_type =
-        op.getOperand().getType().cast<TensorType>().getElementType();
-    if (!operand_type.isa<QuantizedType>()) {
-      return failure();
-    }
-    auto result_type =
-        op.getResult().getType().cast<TensorType>().getElementType();
-    if (!result_type.isa<QuantizedType>()) {
-      return failure();
-    }
-    return success();
+    return success(IsOpFullyQuantized(op));
   }
 
   void rewrite(stablehlo::TransposeOp op,
@@ -1310,6 +1303,81 @@ class RewriteTransposeOp : public OpRewritePattern<stablehlo::TransposeOp> {
   }
 };
 
+// Rewrites quantized stablehlo.reshape to tfl.reshape.
+class RewriteReshapeOp : public OpRewritePattern<stablehlo::ReshapeOp> {
+ public:
+  using OpRewritePattern<stablehlo::ReshapeOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::ReshapeOp op) const override {
+    return success(IsOpFullyQuantized(op));
+  }
+
+  void rewrite(stablehlo::ReshapeOp op,
+               PatternRewriter& rewriter) const override {
+    auto result_type = op->getResult(0).getType().cast<TensorType>();
+    // Cast result shapes from i64 to i32 as they are required to be i32 in
+    // TFLite.
+    SmallVector<int32_t> shape_i32;
+    for (int64_t dim : result_type.getShape()) {
+      shape_i32.push_back(static_cast<int32_t>(dim));
+    }
+
+    const int64_t shape_length = shape_i32.size();
+    ArrayRef<int64_t> shape(shape_length);
+    TensorType shape_type = result_type.cloneWith(shape, rewriter.getI32Type());
+    auto shape_attr = DenseIntElementsAttr::get(shape_type, shape_i32);
+    auto new_shape =
+        rewriter.create<arith::ConstantOp>(op.getLoc(), shape_attr);
+    rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(op, op.getOperand(), new_shape);
+  }
+};
+
+// Rewrites quantized stablehlo.select to tfl.select_v2.
+class RewriteSelectOp : public OpRewritePattern<stablehlo::SelectOp> {
+ public:
+  using OpRewritePattern<stablehlo::SelectOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::SelectOp op) const override {
+    if (!IsQuantizedTensorType(op.getOperand(1).getType())) {
+      return failure();
+    }
+    if (!IsQuantizedTensorType(op.getOperand(2).getType())) {
+      return failure();
+    }
+    if (!IsQuantizedTensorType(op.getResult().getType())) {
+      return failure();
+    }
+    return success();
+  }
+
+  void rewrite(stablehlo::SelectOp op,
+               PatternRewriter& rewriter) const override {
+    Value pred = op.getOperand(0);
+    Value on_true = op.getOperand(1);
+    Value on_false = op.getOperand(2);
+    rewriter.replaceOpWithNewOp<TFL::SelectV2Op>(op, pred, on_true, on_false);
+  }
+};
+
+// Rewrites quantized stablehlo.concatenate to tfl.concatenation.
+class RewriteConcatenateOp : public OpRewritePattern<stablehlo::ConcatenateOp> {
+ public:
+  using OpRewritePattern<stablehlo::ConcatenateOp>::OpRewritePattern;
+
+  LogicalResult match(stablehlo::ConcatenateOp op) const override {
+    return success(IsOpFullyQuantized(op));
+  }
+
+  void rewrite(stablehlo::ConcatenateOp op,
+               PatternRewriter& rewriter) const override {
+    Type output_type = op.getResult().getType();
+    uint32_t axis = static_cast<uint32_t>(op.getDimension());
+    rewriter.replaceOpWithNewOp<TFL::ConcatenationOp>(
+        op, output_type, op.getOperands(), axis,
+        /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+  }
+};
+
 void UniformQuantizedStablehloToTflPass::runOnOperation() {
   func::FuncOp func_op = getOperation();
   MLIRContext& ctx = getContext();
@@ -1320,7 +1388,8 @@ void UniformQuantizedStablehloToTflPass::runOnOperation() {
                RewriteUpstreamQuantizedDotGeneralOpToBatchMatmulOp,
                RewriteUpstreamQuantizedDotGeneralOpToTflFullyConnectedOp,
                RewriteQuantizedDotGeneralOpToTflFullyConnectedOrBatchMatmulOp,
-               RewriteTransposeOp>(&ctx);
+               RewriteTransposeOp, RewriteReshapeOp, RewriteSelectOp,
+               RewriteConcatenateOp>(&ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func_op, std::move(patterns)))) {
     func_op.emitError() << "Failed to convert stablehlo ops with uniform "
