@@ -6657,7 +6657,16 @@ GetCudnnFlashAttentionOperationGraph(
     bmm2_input_tensor = std::move(bias_out);
   }
 
-  if (use_causal_mask) {
+  if (use_mask) {
+    // Create mask op and tensor
+    TF_ASSIGN_OR_RETURN(
+        auto mask_out,
+        CreateCudnnMaskFwdTensor(intermediate_ops, intermediate_bmm2_lhs_dims,
+                                 intermediate_bmm2_lhs_strides,
+                                 intermediate_bmm2_lhs_descriptor.type(),
+                                 bmm2_input_tensor));
+    bmm2_input_tensor = std::move(mask_out);
+  } else if (use_causal_mask) {
     // Create mask op and tensor
     TF_ASSIGN_OR_RETURN(
         auto mask_out,
@@ -7130,7 +7139,15 @@ GetCudnnFlashAttentionBackwardOperationGraph(
                             tensor_p_after_alpha_scale));
     tensor_p_after_alpha_scale = std::move(tensor_p_after_bias);
   }
-  if (use_causal_mask) {
+
+  if (use_mask) {
+    // masking -> p_after_mask
+    TF_ASSIGN_OR_RETURN(
+        auto tensor_p_after_mask,
+        CreateCudnnMaskFwdTensor(intermediate_ops, p_dims, p_strides, dtype,
+                                 tensor_p_after_alpha_scale));
+    tensor_p_after_alpha_scale = std::move(tensor_p_after_mask);
+  } else if (use_causal_mask) {
     // Causal masking -> p_after_mask
     TF_ASSIGN_OR_RETURN(auto tensor_p_after_causal_mask,
                         CreateCudnnFlashAttentionCausalMaskTensor(
@@ -9433,11 +9450,15 @@ CudnnSupport::FusedMHABackwardRunnerFromDesc(
     scalar_values = {alpha_scale, dropout_scale, scale_prob};
     // push dropout seed and offset here
     dropout_rng_offset = GetDropoutRngOffset(intermediate_shape);
-    uids = {
-        CudnnfMHAUid::Q_ID,         CudnnfMHAUid::K_ID,  CudnnfMHAUid::P_ID,
-        CudnnfMHAUid::V_ID,         CudnnfMHAUid::dO_ID, CudnnfMHAUid::dQ_ID,
-        CudnnfMHAUid::dK_ID,        CudnnfMHAUid::dV_ID, CudnnfMHAUid::S_SUM_ID,
-        CudnnfMHAUid::d_Q_accum_ID, CudnnfMHAUid::O_ID};
+    uids = {CudnnfMHAUid::Q_ID,     CudnnfMHAUid::K_ID,
+            CudnnfMHAUid::P_ID,     CudnnfMHAUid::V_ID,
+            CudnnfMHAUid::dO_ID,    CudnnfMHAUid::dQ_ID,
+            CudnnfMHAUid::dK_ID,    CudnnfMHAUid::dV_ID,
+            CudnnfMHAUid::S_SUM_ID, CudnnfMHAUid::d_Q_accum_ID};
+    if (mask_descriptor != std::nullopt) {
+      uids.push_back(CudnnfMHAUid::MASK_ID);
+    }
+    uids.push_back(CudnnfMHAUid::O_ID);
     if (bias_descriptor != std::nullopt) {
       uids.push_back(CudnnfMHAUid::BIAS_ID);
     }

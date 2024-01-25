@@ -3875,16 +3875,18 @@ ENTRY main.92 {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
 
-  const HloInstruction* fmha;
+  const HloInstruction* fwd_fmha;
+  const HloInstruction* bwd_fmha;
   SCOPED_TRACE(m->ToString());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(
           m::GetTupleElement(
-              m::CustomCall(&fmha, {kCudnnfMHASoftmaxCallTarget}), 0)
+              m::CustomCall(&fwd_fmha, {kCudnnfMHASoftmaxCallTarget}), 0)
               .WithShape(BF16, {2, 6, 2048, 128}),
           m::GetTupleElement(
-              m::CustomCall(&fmha, {kCudnnfMHASoftmaxBackwardCallTarget}), 0)
+              m::CustomCall(&bwd_fmha, {kCudnnfMHASoftmaxBackwardCallTarget}),
+              0)
               .WithShape(BF16, {2, 6, 2048, 128}),
           m::Transpose(
               m::GetTupleElement(
@@ -3894,9 +3896,10 @@ ENTRY main.92 {
               m::CustomCall({kCudnnfMHASoftmaxBackwardCallTarget}), 2)
               .WithShape(BF16, {2, 6, 2048, 128}))));
   TF_ASSERT_OK_AND_ASSIGN(auto gpu_config,
-                          fmha->backend_config<GpuBackendConfig>());
+                          fwd_fmha->backend_config<GpuBackendConfig>());
   const CudnnfMHABackendConfig& config = gpu_config.cudnn_fmha_backend_config();
-  EXPECT_EQ(fmha->operands().size(), 6);
+  EXPECT_EQ(fwd_fmha->operands().size(), 3);
+  EXPECT_EQ(bwd_fmha->operands().size(), 6);
   EXPECT_NEAR(config.dropout_rate(), 0, 1e-2);
   EXPECT_EQ(config.is_flash_attention(), true);
   EXPECT_EQ(config.is_causal_mask(), true);

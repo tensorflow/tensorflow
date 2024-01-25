@@ -800,6 +800,13 @@ AsLhloFusedMhaBackwardDagSignature(xla::gpu::CudnnfMHAKind kind) {
     case xla::gpu::CudnnfMHAKind::kBackwardSoftmaxDropout:
       return lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardSoftmaxDropout;
       break;
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmax:
+      return lmhlo_gpu::FusedMhaBackwardDagSignature::BackwardScaleMaskSoftmax;
+      break;
+    case xla::gpu::CudnnfMHAKind::kBackwardScaleMaskSoftmaxDropout:
+      return lmhlo_gpu::FusedMhaBackwardDagSignature::
+          BackwardScaleMaskSoftmaxDropout;
+      break;
     default:
       return xla::Internal("unknown cudnn fmha bwd kind");
   }
