@@ -41,6 +41,11 @@ struct ReductionDimensions {
   // For row reduction, we do: [D, H, W] -> [D, H].
   // For column reduction, we do: [D, H, W] -> [D, W].
   Vector3 dimensions;
+
+  bool operator==(const ReductionDimensions& other) const {
+    return is_row_reduction == other.is_row_reduction &&
+           dimensions == other.dimensions;
+  }
 };
 
 // Returns true if using the reduction emitter is estimated to be faster than
