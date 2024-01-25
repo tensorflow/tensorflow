@@ -188,6 +188,8 @@ absl::StatusOr<bool> EpilogueHasAuxiliaryOutput(
 
 absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue);
+absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
+    GemmBackendConfig_Epilogue epilogue);
 
 }  // namespace gpublas_lt
 

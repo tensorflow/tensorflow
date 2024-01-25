@@ -387,6 +387,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:sort_util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
         "//xla/translate/mhlo_to_hlo:location_exporter",
