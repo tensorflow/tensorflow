@@ -58,7 +58,7 @@ else
     ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --config=nonccl"
 
     if is_linux_cpu_arm64_job ; then
-        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --action_env PYTHON_BIN_PATH=/usr/bin/python3.9 --python_path=/usr/bin/python3.9"
+        ADDITIONAL_FLAGS="$ADDITIONAL_FLAGS --action_env PYTHON_BIN_PATH=/usr/bin/python3.10 --python_path=/usr/bin/python3.10"
     else
         RBE_FLAGS="--config=rbe_linux_cpu"
     fi
