@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
     return xla::ShapeUtil::ByteSizeOf(shape, 8);
   });
 
-  TF_CHECK_OK(xla::LoadModuleFromFile(input, {}, format)
+  TF_CHECK_OK(xla::LoadModuleFromFile(input, format, {})
                   .value()
                   ->entry_computation()
                   ->root_instruction()

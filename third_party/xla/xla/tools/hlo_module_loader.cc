@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
@@ -28,18 +29,18 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/regexp.h"
 
 namespace xla {
 namespace {
 
-Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
-                      HloModuleConfig* config) {
+absl::Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
+                            HloModuleConfig* config) {
   config->set_replica_count(ovr_config.num_replicas);
   config->set_num_partitions(ovr_config.num_partitions);
   return OkStatus();
@@ -47,12 +48,12 @@ Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
 
 }  // namespace
 
-std::string StripLogHeaders(const std::string& hlo_string) {
+std::string StripLogHeaders(std::string_view hlo_string) {
   // I0521 12:04:45.883483    1509 service.cc:186] ...
   static RE2* matcher = new RE2(
       "[IWEF]\\d{4} "
       "\\d{2}:\\d{2}:\\d{2}\\.\\d+\\s+\\d+\\s+[^:]+:\\d+\\]\\s?(.*)");
-  absl::string_view matches[4];
+  std::string_view matches[4];
   std::vector<std::string> lines = absl::StrSplit(hlo_string, '\n');
   for (auto& line : lines) {
     if (matcher->Match(line, 0, line.size(), RE2::ANCHOR_START, matches, 4)) {
@@ -65,9 +66,9 @@ std::string StripLogHeaders(const std::string& hlo_string) {
                        });
 }
 
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const std::string& data, const std::string& format,
-    hlo_module_loader_details::Config ovr_config,
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
+    const std::string& data, std::string_view format,
+    const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
     BufferAssignmentProto* buffer_assignment_proto) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
@@ -125,9 +126,9 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
   return std::move(module);
 }
 
-StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
-    const std::string& path, hlo_module_loader_details::Config ovr_config,
-    std::string format,
+absl::StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
+    const std::string& path, std::string format,
+    const hlo_module_loader_details::Config& ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook,
     BufferAssignmentProto* buffer_assignment_proto) {
   std::string data;
@@ -139,8 +140,8 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
                             buffer_assignment_proto);
 }
 
-StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
-    const std::string& data, absl::string_view format) {
+absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
+LoadInputFromData(const std::string& data, std::string_view format) {
   HloSnapshot proto;
   if (format == "pb") {
     if (!proto.ParseFromString(data) &&
@@ -171,8 +172,8 @@ StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromData(
   return std::move(iteration_literals_proto);
 }
 
-StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>> LoadInputFromFile(
-    const std::string& path, std::string format) {
+absl::StatusOr<std::unique_ptr<RunHloModuleIterationLiterals>>
+LoadInputFromFile(const std::string& path, std::string format) {
   std::string data;
   if (format.empty()) {
     format = std::string(tsl::io::Extension(path));
