@@ -175,6 +175,8 @@ class Thunk {
     absl::StatusOr<NcclComm::Lock> GetComm(const NcclCliqueKey& clique_key,
                                            int32_t rank) const;
 
+    bool empty() const { return cliques_map_.empty(); }
+
    private:
     CliquesMap cliques_map_;
   };
