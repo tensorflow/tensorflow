@@ -585,7 +585,8 @@ StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
   }
   return std::make_unique<StreamExecutorExecutable>(
       compile_options, std::move(deserialized_aot_executables),
-      proto.num_replicas(), proto.num_partitions(), proto.name());
+      proto.num_replicas(), proto.num_partitions(), proto.name(),
+      proto.fingerprint());
 }
 #endif
 }  // namespace
