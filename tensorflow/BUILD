@@ -2,7 +2,6 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -39,6 +38,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # copybara:uncomment_begin
 # # buildifier: disable=out-of-order-load
@@ -333,7 +333,7 @@ config_setting(
 config_setting(
     name = "emscripten",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/cpu:wasm32"],
+        ["//third_party/bazel_platforms/os:emscripten"],
         [],
     ),
     values = if_oss(
@@ -1272,6 +1272,9 @@ tf_cc_shared_object(
         # "//tools/cpp:asan_build": [
         # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         # ],
+        # "//tools/cpp:hwasan_build": [
+        # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
+        # ],
         # "//tools/cpp:msan_build": [
         # "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         # ],
@@ -1374,6 +1377,7 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
@@ -1706,7 +1710,6 @@ py_library(
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
-        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 

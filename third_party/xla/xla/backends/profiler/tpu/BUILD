@@ -1,6 +1,6 @@
+load("@local_tsl//tsl:tsl.bzl", "if_with_tpu_support")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
-load("@local_tsl//tsl:tsl.bzl", "if_with_tpu_support")
 
 package(
     default_visibility = ["//visibility:public"],

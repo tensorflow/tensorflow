@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -156,7 +156,7 @@ static absl::Status LaunchImpl(
 // Define the custom kernel (fusion) launch custom call.
 //===----------------------------------------------------------------------===//
 
-static StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
+static absl::StatusOr<std::unique_ptr<se::Kernel>> CreateCustomKernel(
     se::StreamExecutor* executor, std::string_view name,
     std::string_view custom_fusion_computation) {
   auto* registry = CustomFusionRegistry::Default();

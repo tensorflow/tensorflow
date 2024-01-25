@@ -28,12 +28,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
+#include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
@@ -98,8 +98,8 @@ GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
 int GPUProcessState::BusIdForGPU(tsl::TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
   se::StreamExecutor* se =
-      se::DeviceIdUtil::ExecutorForTfDeviceId(
-          DEVICE_GPU, se::GPUMachineManager(), tf_device_id)
+      DeviceIdUtil::ExecutorForTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
+                                          tf_device_id)
           .value();
   int numa_node = se->GetDeviceDescription().numa_node();
   // bus_id must be non-negative.  If the numa_node is not known,
@@ -112,8 +112,8 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
     const GPUOptions& options, tsl::PlatformDeviceId platform_device_id,
     const std::vector<SubAllocator::Visitor>& alloc_visitors,
     size_t total_bytes, const std::vector<tsl::TfDeviceId>& peer_gpu_ids) {
-  auto executor = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                      se::GPUMachineManager(), platform_device_id)
+  auto executor = se::GPUMachineManager()
+                      ->ExecutorForDevice(platform_device_id.value())
                       .value();
 
   // FIXME(imintz): Observed OOM issues when using the virtual memory
@@ -154,10 +154,12 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
         .release();
   }
 #else
+  bool use_unified_memory = (options.per_process_gpu_memory_fraction() > 1.0 ||
+                             options.experimental().use_unified_memory());
   return absl::WrapUnique(new se::DeviceMemAllocator(
       executor, platform_device_id,
-      (options.per_process_gpu_memory_fraction() > 1.0 ||
-       options.experimental().use_unified_memory()),
+      use_unified_memory ? stream_executor::MemoryType::kUnified
+                         : stream_executor::MemoryType::kDevice,
       alloc_visitors, {}));
 #endif
 }
@@ -362,7 +364,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
 #else
     if (gpu_allocators_[i].allocator != nullptr) {
 #endif  // TF_GPU_USE_PJRT
-      se = se::DeviceIdUtil::ExecutorForTfDeviceId(
+      se = DeviceIdUtil::ExecutorForTfDeviceId(
                DEVICE_GPU, se::GPUMachineManager(), tsl::TfDeviceId(i))
                .value();
       break;

@@ -187,9 +187,7 @@ def _as_graph_element(obj):
   return None
 
 
-# Deprecated - do not use.
-# This API to avoid breaking estimator and tensorflow-mesh which depend on this
-# internal API. The stub should be safe to use after TF 2.3 is released.
+# Deprecated - legacy purposes only.
 def is_dense_tensor_like(t) -> bool:
   return isinstance(t, core_tf_types.Tensor)
 
@@ -378,7 +376,7 @@ class _EagerTensorBase(
     view of the contents without doing a copy:
 
     >>> t = tf.constant([42])
-    >>> np.array(memoryview(t))
+    >>> np.asarray(memoryview(t))
     array([42], dtype=int32)
 
     Note that `memoryview` is only zero-copy for Tensors on CPU. If a Tensor
@@ -2036,13 +2034,10 @@ class Graph(pywrap_tf_session.PyGraph):
     # actual outside graph).
     self._graph_key = "graph-key-%d/" % (uid(),)
     # A string with the last reduction method passed to
-    # losses.compute_weighted_loss(), or None. This is required only for
-    # backward compatibility with Estimator and optimizer V1 use cases.
+    # losses.compute_weighted_loss(), or None.
+    # Backward compatibility with optimizer V1 use cases.
     self._last_loss_reduction = None
-    # Flag that is used to indicate whether loss has been scaled by optimizer.
-    # If this flag has been set, then estimator uses it to scale losss back
-    # before reporting. This is required only for backward compatibility with
-    # Estimator and optimizer V1 use cases.
+    # Required only for backward compatibility with optimizer V1 use cases.
     self._is_loss_scaled_by_optimizer = False
     self._container = ""
 

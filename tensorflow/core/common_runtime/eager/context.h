@@ -280,7 +280,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
   Device* GetCachedDevice(Fprint128 device_cache_key);
 
-  void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
+  core::RefCountPtr<KernelAndDevice> AddKernelToCache(
+      Fprint128 cache_key, core::RefCountPtr<KernelAndDevice> kernel);
   void AddDeviceToCache(Fprint128 device_cache_key, Device* device);
 
   bool LogDevicePlacement() const { return log_device_placement_; }

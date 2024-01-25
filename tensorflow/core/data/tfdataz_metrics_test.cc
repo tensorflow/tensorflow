@@ -50,7 +50,7 @@ class TfDatazMetricsTest : public ::testing::Test {
     tfdataz_metrics_.reset();
   }
 
-  std::unique_ptr<IteratorBase> iterator_;
+  std::unique_ptr<DatasetBaseIterator> iterator_;
   std::unique_ptr<FakeClockEnv> env_;
   std::unique_ptr<TfDatazMetricsCollector> tfdataz_metrics_;
 };
@@ -198,7 +198,7 @@ class ScopedTfDataMetricsRegistration {
 };
 
 TEST(TfDatazMetricsRegistryTest, Register) {
-  std::unique_ptr<IteratorBase> iterator;
+  std::unique_ptr<DatasetBaseIterator> iterator;
   auto collector_one = std::make_shared<TfDatazMetricsCollector>(
       *Env::Default(), iterator.get());
   auto collector_two = std::make_shared<TfDatazMetricsCollector>(
@@ -211,7 +211,7 @@ TEST(TfDatazMetricsRegistryTest, Register) {
 }
 
 TEST(TfDatazMetricsRegistryTest, Deregister) {
-  std::unique_ptr<IteratorBase> iterator;
+  std::unique_ptr<DatasetBaseIterator> iterator;
   auto collector_one = std::make_shared<TfDatazMetricsCollector>(
       *Env::Default(), iterator.get());
   auto collector_two = std::make_shared<TfDatazMetricsCollector>(

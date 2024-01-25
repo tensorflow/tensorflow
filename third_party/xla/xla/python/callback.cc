@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,11 +70,14 @@ Status CpuCallback::PrepareAndCallInternal(void* result, void** arg_ptrs) {
     if (strides == results_[i].expected_strides) {
       std::memcpy(outputs[i], array.data(), results_[i].size_in_bytes);
     } else {
+      xla::TransposePlan::Options options;
+      options.elem_size_in_bytes =
+          xla::primitive_util::ByteWidth(results_[i].type);
+      options.dims = dims;
+      options.permutation = results_[i].reversed_layout;
+      options.input_layout = xla::TransposePlan::Striding{strides};
       xla::StatusOr<std::shared_ptr<xla::TransposePlan>> plan =
-          transpose_cache_.GetOrCreate(
-              xla::primitive_util::ByteWidth(results_[i].type), dims,
-              results_[i].reversed_layout,
-              /*input_layout=*/xla::TransposePlan::Striding{strides});
+          transpose_cache_.GetOrCreate(options);
       if (!plan.ok()) {
         return std::move(plan).status();
       }

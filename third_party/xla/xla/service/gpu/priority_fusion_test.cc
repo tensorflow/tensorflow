@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -506,6 +506,42 @@ TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
               GmockMatch(m::Scatter(m::Parameter(), m::Add(), m::Add())));
 }
 
+// This test is similar to DontFuseIntoFirstOperandOfScatter, but PriorityFusion
+// has a separate run to fuse constants. Fusing anything into a scatter fusion
+// will fail in the emitter.
+TEST_F(PriorityFusionTest, DontFuseConstantIntoFirstOperandOfScatter) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY FuseIntoScatter {
+      operand = s32[1] constant({0})
+      indices = s32[24,1] parameter(0)
+      constant = s32[] constant(1)
+      updates = s32[24,1] broadcast(constant)
+      ROOT scatter = s32[1] scatter(operand, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Fusion(m::Constant(), m::Parameter())));
+  EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kInput);
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Scatter(m::Parameter(), m::Parameter(),
+                                    m::Broadcast(m::Constant()))));
+}
+
 TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduceEvenIfOccupancyIsHigh) {
   constexpr absl::string_view kHlo = R"(
     HloModule test_module
@@ -694,6 +730,29 @@ TEST_F(PriorityFusionTest, DontFuseConcat) {
   )");
 
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(PriorityFusionTest, FuseOnlySmallConstant) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    ENTRY main {
+      param_0 = f32[32,32]{1,0} parameter(0)
+      c_1 = f32[] constant(1)
+      c_2 = f32[32,32] constant({...})
+      broadcast = f32[32,32]{1,0} broadcast(c_1), dimensions={}
+      add = f32[32,32]{1,0} add(param_0, broadcast)
+      ROOT mul = f32[32,32]{1,0} multiply(c_2, add)
+    }
+  )");
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Fusion(m::Constant(), m::Parameter())));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Multiply(
+                  m::Parameter(),
+                  m::Add(m::Parameter(), m::Broadcast(m::Constant())))));
 }
 
 }  // namespace gpu

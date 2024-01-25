@@ -7,35 +7,40 @@ package(
 )
 
 cc_library(
-    name = "sharding_param_to_op_sharding",
-    srcs = ["sharding_param_to_op_sharding.cc"],
-    hdrs = ["sharding_param_to_op_sharding.h"],
+    name = "sharding_conversions",
+    srcs = ["sharding_conversions.cc"],
+    hdrs = ["sharding_conversions.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/python/ifrt/ir",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 
 xla_cc_test(
-    name = "sharding_param_to_op_sharding_test",
-    srcs = ["sharding_param_to_op_sharding_test.cc"],
+    name = "sharding_conversions_test",
+    srcs = ["sharding_conversions_test.cc"],
     deps = [
-        ":sharding_param_to_op_sharding",
+        ":sharding_conversions",
+        "//xla:shape_util",
         "//xla:statusor",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:tile_assignment",
         "//xla/python/ifrt",
         "//xla/python/ifrt:sharding_test_util",
         "//xla/python/ifrt/ir",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
     ],

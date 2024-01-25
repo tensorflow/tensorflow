@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,14 +37,14 @@ class HloOpcodeHistogram : public std::map<std::set<std::string>, int64_t> {
 
 class HloFusionStatsVisitor : public ConstDfsHloVisitorWithDefault {
  public:
-  Status RunOnModule(HloModule* module);
+  absl::Status RunOnModule(HloModule* module);
 
   std::string ToString();
 
  protected:
-  Status DefaultAction(const xla::HloInstruction* instr) final;
+  absl::Status DefaultAction(const xla::HloInstruction* instr) final;
 
-  Status HandleFusion(const HloInstruction* fusion) override;
+  absl::Status HandleFusion(const HloInstruction* fusion) override;
 
  private:
   int64_t num_fusions_ = 0;

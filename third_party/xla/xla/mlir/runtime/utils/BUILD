@@ -42,12 +42,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/runtime:constraints",
-        "//xla/runtime:errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -72,8 +70,5 @@ cc_library(
     hdrs = ["float_16bits.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//mlir:mlir_float16_utils",
-    ],
+    deps = ["@llvm-project//llvm:OrcJIT"],
 )

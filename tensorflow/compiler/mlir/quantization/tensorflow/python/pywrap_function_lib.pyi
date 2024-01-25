@@ -35,7 +35,8 @@ class PyFunctionLibrary:
       tags: set[str],
       calibration_options_serialized: bytes,
       force_graph_mode_calibration: bool,
-      representative_dataset: Any,
+      # Value type: RepresentativeDatasetFile.
+      representative_dataset_file_map_serialized: dict[str, bytes],
   ) -> None: ...
   # LINT.ThenChange()
 

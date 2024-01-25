@@ -294,7 +294,8 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result) {
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    const float* per_channel_scale) {
   static const int kBlockSize = 16;
   TFLITE_DCHECK_EQ(  // NOLINT
       m_cols % kBlockSize, 0);
@@ -319,7 +320,11 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
           dotprod += (*row_ptr++) * (*vector_block_ptr++);
         }  // for block
       }    // for num_nonzero_blocks
-      result[batch * m_rows + row] += dotprod * batch_scaling_factor;
+      float scaling_factor = batch_scaling_factor;
+      if (per_channel_scale) {
+        scaling_factor *= per_channel_scale[row];
+      }
+      result[batch * m_rows + row] += dotprod * scaling_factor;
     }  // for row
   }    // for batch
 }

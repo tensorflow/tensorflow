@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -351,10 +351,8 @@ message HloInstructionProto {
   // status-returning API.
   CustomCallApiVersion custom_call_api_version = 77;
 
-  // Represents a unique identifier for an async group which consists of an
-  // async start, async done, and zero or more async update operations.
-  // Negative async_group_id is equivalent to no async group id.
-  int64 async_group_id = 78;
+  // Used to be async_group_id.
+  reserved 78;
 
   // Represents a unique execution thread name for one or more async groups.
   // Each HLO module may contain a main thread and one or more parallel threads.
@@ -371,17 +369,10 @@ message HloInstructionProto {
   // graph.
   xla.StatisticsViz statistics_viz = 82;
 
-  // Specifies which operation queue the current instruction will run on.
-  // A backend may have multiple operation queues to run instructions
-  // concurrently, use this to signal the backend which queue to dispatch to.
-  // The backend should keep a mapping of
-  // operation_queue_id->actual_hardware_queue_id if runtime will create
-  // different IDs.
-  int64 operation_queue_id = 83;
-
-  // Specifies which operation queues to await for data when running with
-  // multiple operation queues.
-  repeated int64 wait_on_operation_queues = 84;
+  // Used to be operation_queue_id.
+  reserved 83;
+  // Used to be wait_on_operation_queues.
+  reserved 84;
 }
 
 // Serialization of HloComputation.

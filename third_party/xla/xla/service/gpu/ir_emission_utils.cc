@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -167,6 +167,11 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
 }
 
+bool IsCustomCallToTopK(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kTopKCustomCallTarget;
+}
+
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
                           bool verify_no_strides) {
   auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo);
@@ -188,6 +193,30 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
     if (verify_no_strides && !is_non_strided(slice.getStrides())) {
       return false;
     }
+  }
+  return true;
+}
+
+bool IsSliceWithUnitStrides(const HloInstruction* instr) {
+  auto slice = DynCast<HloSliceInstruction>(instr);
+  return slice && absl::c_all_of(slice->slice_strides(),
+                                 [](int64_t stride) { return stride == 1; });
+}
+
+bool IsContiguousSlice(const HloInstruction& instr) {
+  auto slice = DynCast<HloSliceInstruction>(&instr);
+  if (!slice) return false;
+  // No need to check for strides because if stride != 1 there's no way
+  // src and dst dimensions match.
+  const Shape& src_shape = slice->operand(0)->shape();
+  const Shape& dst_shape = slice->shape();
+  bool sliced_dim_found = false;
+  for (auto dim : src_shape.layout().minor_to_major()) {
+    if (!sliced_dim_found) {
+      sliced_dim_found = dst_shape.dimensions(dim) < src_shape.dimensions(dim);
+      continue;
+    }
+    if (dst_shape.dimensions(dim) != 1) return false;
   }
   return true;
 }
@@ -282,6 +311,29 @@ llvm::Value* EmitNVPTXShflDown(llvm::Value* value, llvm::Value* offset,
       intrinsic, {b->getInt32(-1), value, offset, b->getInt32(WarpSize() - 1)});
 }
 
+// Helper function to emit call to SPIR shfl_down intrinsic.
+llvm::Value* EmitSPIRShflDown(llvm::Value* value, llvm::Value* offset,
+                              llvm::IRBuilder<>* b) {
+  CHECK_EQ(value->getType()->getPrimitiveSizeInBits(), 32);
+  if (value->getType()->isFloatTy()) {
+    return EmitDeviceFunctionCall(
+        "_Z34__spirv_GroupNonUniformShuffleDownffj",
+        {b->getInt32(3), value, offset}, {U32, F32, U32}, F32,
+        llvm::AttrBuilder(b->getContext())
+            .addAttribute(llvm::Attribute::NoUnwind)
+            .addAttribute(llvm::Attribute::Convergent),
+        b);
+  } else {
+    return EmitDeviceFunctionCall(
+        "_Z34__spirv_GroupNonUniformShuffleDownjjj",
+        {b->getInt32(3), value, offset}, {U32, U32, U32}, U32,
+        llvm::AttrBuilder(b->getContext())
+            .addAttribute(llvm::Attribute::NoUnwind)
+            .addAttribute(llvm::Attribute::Convergent),
+        b);
+  }
+}
+
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
@@ -294,6 +346,8 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       return EmitNVPTXShflDown(value, offset, builder);
     } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
       return EmitAMDGPUShflDown(value, offset, builder);
+    } else if (target_triple.isSPIR()) {
+      return EmitSPIRShflDown(value, offset, builder);
     } else {
       LOG(FATAL) << "Invalid triple " << target_triple.str();
     }
@@ -315,6 +369,9 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
     } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
       insert_val = EmitAMDGPUShflDown(builder->CreateExtractElement(x, i),
                                       offset, builder);
+    } else if (target_triple.isSPIR()) {
+      insert_val = EmitSPIRShflDown(builder->CreateExtractElement(x, i), offset,
+                                    builder);
     } else {
       LOG(FATAL) << "Invalid triple " << target_triple.str();
     }
@@ -434,7 +491,7 @@ static int64_t GetAllocationIndex(mlir::BlockArgument func_arg,
   return func_arg.getArgNumber();
 }
 
-StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
     mlir::Value v, absl::Span<const BufferAllocation* const> allocations,
     std::string* constant_name) {
   if (constant_name) {
@@ -496,6 +553,12 @@ StatusOr<BufferAllocation::Slice> GetAllocationSlice(
       "StaticMemRefCastOp(ViewOp(arg)) or arg");
 }
 
+absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
+    const BufferAssignment& buffer_assignment, const HloInstruction* instr,
+    const ShapeIndex& index) {
+  return buffer_assignment.GetUniqueSlice(instr, index);
+}
+
 std::vector<const HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     const std::vector<const HloInstruction*>& roots) {
   // Same as GetOutputDefiningDynamicUpdateSliceOps but on a HLO fusion
@@ -551,7 +614,7 @@ absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
   return result;
 }
 
-StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
+absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     const HloFusionInstruction* fusion,
     const BufferAssignment* buffer_assignment,
     const std::vector<const HloInstruction*>& roots) {
@@ -561,8 +624,7 @@ StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   // Get output buffers for fusion.
   std::vector<BufferAllocation::Slice> output_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      fusion->shape(),
-      [=, &output_buffers](const Shape& shape, const ShapeIndex index) {
+      fusion->shape(), [&](const Shape& shape, const ShapeIndex index) {
         if (shape.IsArray()) {
           TF_ASSIGN_OR_RETURN(BufferAllocation::Slice buffer,
                               buffer_assignment->GetUniqueSlice(fusion, index));
@@ -580,7 +642,7 @@ StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   }
 
   if (output_buffers.empty()) {
-    return InternalError("Output buffers should not be empty");
+    return Internal("Output buffers should not be empty");
   }
 
   Shape update_shape = dus_instrs[0]->operand(1)->shape();
@@ -588,45 +650,55 @@ StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   // TODO(anlunx): Reuse this code in both HLO and LMHLO path.
   for (int i = 0; i < dus_instrs.size(); ++i) {
     auto* dus = Cast<HloDynamicUpdateSliceInstruction>(dus_instrs[i]);
-    if (dus->user_count() == 0) {
-      if (!dus->IsRoot()) {
-        return InternalError("Dynamic slice update does not have a user.");
-      }
-    } else if (dus->user_count() == 1) {
-      // Since the direct consumer of an output dynamic slice update may be a
-      // bitcast, we also check that this bitcast is used a single time.
-      // This property is also important because reads and writes on the
-      // parameter to be updated are done using the shape and layout of the
-      // dynamic slice update. This is a valid approach only if a subsequent
-      // bitcast is not read by any other op within the fusion---as this may
-      // result in codegen accessing elements using the wrong physical layout.
-      HloInstruction* dus_user = dus->users()[0];
-      if (dus_user->opcode() == HloOpcode::kBitcast) {
-        if (dus_user->user_count() != 1) {
-          return false;
-        }
-        dus_user = dus_user->users()[0];
-      }
-      if (!dus_user->IsRoot()) {
-        return false;
-      }
-    } else {
-      // Dynamic slice updates should have a single path to the root---this to
-      // avoid allowing a dynamic slice update to depend on another, as this
-      // would not be guaranteed to work with the current codegen.
-      return false;
+
+    // Dynamic slice updates should have a single path to the root to avoid
+    // allowing a dynamic slice update to depend on another, as this would not
+    // be guaranteed to work with the current codegen.
+    if (!dus->IsRoot() && dus->user_count() != 1) return false;
+
+    // We follow DUS users until we find a root instruction. We support only
+    // few patterns:
+    //
+    //   (1) ROOT dynamic-update-slice
+    //   (2) ROOT tuple(dynamic-update-slice)
+    //   (3) ROOT bitcast(dynamic-update-slice)
+    //   (4) ROOT tuple(bitcast(dynamic-update-slice))
+    HloInstruction* dus_user = dus->IsRoot() ? nullptr : dus->users().front();
+
+    // Since the direct consumer of an output dynamic slice update may be a
+    // bitcast, we also check that this bitcast is used a single time.
+    // This property is also important because reads and writes on the parameter
+    // to be updated are done using the shape and layout of the dynamic slice
+    // update. This is a valid approach only if a subsequent bitcast is not read
+    // by any other op within the fusion as this may result in codegen
+    // accessing elements using the wrong physical layout.
+    if (dus_user && dus_user->opcode() == HloOpcode::kBitcast) {
+      if (!dus_user->IsRoot() && dus_user->user_count() != 1) return false;
+
+      // Stop following DUS users if we found a root.
+      dus_user = dus_user->IsRoot() ? nullptr : dus_user->users().front();
     }
 
+    // Check that last DUS user is a tuple operation at ROOT position.
+    if (dus_user && dus_user->opcode() == HloOpcode::kTuple) {
+      if (!dus_user->IsRoot()) return false;
+
+      // Stop following DUS users if we found a root.
+      dus_user = nullptr;
+    }
+
+    // We can't emit DUS fusion if we have unsupported DUS users.
+    if (dus_user != nullptr) return false;
+
+    // Find "real" DUS operand by skipping bitcasted operands.
     const HloInstruction* operand = dus->operand(0);
-    // A bitcast separating a fusion input from a dynamic slice update can be
-    // treated as a no-op.
     if (operand->opcode() == HloOpcode::kBitcast) {
       operand = operand->operand(0);
     }
+
+    // Operand to a DUS (or Bitcast) must be a fusion parameter.
     auto* parameter = DynCast<HloParameterInstruction>(operand);
-    if (!parameter) {
-      return false;
-    }
+    if (!parameter) return false;
 
     // We require that the parameter being updated is only read at the same
     // index positions by all users, since we otherwise risk a race condition
@@ -838,7 +910,7 @@ Shape GetShape(mlir::Value value) {
   return shape;
 }
 
-std::optional<TransposeDescription> FindTiledTranspose(
+static std::optional<TransposeDescription> FindTiledTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kCopy) {
     return std::nullopt;
@@ -870,7 +942,7 @@ std::optional<TransposeDescription> FindTiledTranspose(
 }
 
 // Find 021 or 210 transpose in logical + physical transposition.
-std::optional<TransposeDescription> FindTiledLogicalTranspose(
+static std::optional<TransposeDescription> FindTiledLogicalTranspose(
     const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kTranspose) {
     return std::nullopt;
@@ -929,19 +1001,6 @@ bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count,
     return false;
   }
 
-  // Intermediate `instr` can't have multiple users.
-  // If we have a boundary function, only consider users within the
-  // boundary.
-  // TODO(jreiffers): Figure out the point of this check.
-  int64_t num_users =
-      fusion ? absl::c_count_if(
-                   HloInstructionAdaptor{*instr}.GetUsers(),
-                   [&](auto user) { return fusion->ContainsInstruction(user); })
-             : instr->user_count();
-  if (num_users > 1) {
-    return false;
-  }
-
   if (instr->IsElementwise()) {
     // All elementwise ops are considered intermediate, except for copies that
     // modify the layout. Copies that do not modify the layout are used in
@@ -971,67 +1030,78 @@ static bool IsParameter(const HloInstruction& instr) {
   return instr.opcode() == HloOpcode::kParameter;
 }
 
-const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
-                                         const HloFusionAdaptor& fusion) {
-  HloInstructionAdaptor idx{instr};
-
-  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Such
-  // chains are bound to be quite small, as we restrict the number of users as
-  // well. Note that no memoization is needed due to user number constraints: we
-  // never have to revisit same nodes.
-  auto get_intermediate_arg =
-      [&](HloInstructionAdaptor node) -> std::optional<HloInstructionAdaptor> {
-    if (IsIntermediate(&node.instruction(), 1, &fusion) &&
-        fusion.ContainsInstruction(node.GetOperand(0))) {
-      return node.GetOperand(0);
-    }
-    return std::nullopt;
-  };
-  while (auto arg = get_intermediate_arg(idx)) {
-    idx = *arg;
-  }
-
-  // The reduction emitter can't handle multiple users.
-  if (idx.opcode() == HloOpcode::kReduce &&
-      absl::c_count_if(idx.GetUsers(), [&](auto user) {
-        return fusion.ContainsInstruction(user);
-      }) > 1) {
-    return instr;
-  }
-
-  std::optional<HloInstructionAdaptor> transpose = std::nullopt;
-  // Try a bit harder to find a transpose hero. The shared memory transpose
-  // emitter also works if there are ops with more than 1 operand on the path
-  // between root and the transpose op, we still want the restriction though
-  // that each op on the path is elementwise and has only 1 user.
-  auto visit = [&transpose](HloInstructionAdaptor node) {
-    if (FindTiledLogicalTranspose(node.instruction())) {
-      // If we do not find a unique transpose op, use the original non-trivial
-      // hero.
-      if (transpose) {
-        transpose = std::nullopt;
-        return TraversalResult::kAbortTraversal;
+static std::optional<HloInstructionAdaptor> FindNonTrivialHero(
+    HloInstructionAdaptor root, const HloFusionAdaptor& fusion,
+    const std::function<bool(const HloInstruction&)>& predicate) {
+  std::optional<HloInstructionAdaptor> hero = std::nullopt;
+  auto visitor = [&](HloInstructionAdaptor node) {
+    if (predicate(node.instruction())) {
+      if (hero) {  // Bail out if we found multiple potential heros.
+        hero = std::nullopt;
+        return TraversalResult::kInterrupt;
       }
-      transpose = node;
-      return TraversalResult::kDoNotVisitOperands;
+      hero = node;
+      return TraversalResult::kSkip;
     }
 
     if (!IsIntermediate(&node.instruction(), /*allowed_operand_count=*/3)) {
-      return TraversalResult::kDoNotVisitOperands;
+      return TraversalResult::kSkip;
     }
-    return TraversalResult::kVisitOperands;
+    return TraversalResult::kAdvance;
   };
-  HloBfsConsumersFirstTraversal({idx}, fusion, visit);
+  HloBfsConsumersFirstTraversal({root}, fusion, visitor);
+  if (!hero) {
+    return std::nullopt;
+  }
 
-  return transpose ? transpose->instruction() : idx.instruction();
+  // Make sure that no non-elementwise op is reachable from the transpose.
+  auto is_nontrivial = [](HloInstructionAdaptor node) {
+    return node.instruction().opcode() != HloOpcode::kTuple &&
+           node.instruction().opcode() != HloOpcode::kParameter &&
+           !IsIntermediate(&node.instruction(),
+                           /*allowed_operand_count=*/3);
+  };
+  bool visit_operands = false;
+  if (HloAnyOf(hero->GetUsers(), fusion, is_nontrivial, visit_operands)) {
+    return std::nullopt;
+  }
+
+  return hero;
+}
+
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr,
+                                         const HloFusionAdaptor& fusion) {
+  HloInstructionAdaptor hero{instr};
+
+  // Go up the chain of trivial element-wise(+bitcast, -copy) operations. Note
+  // that no memoization is needed due to number of operands constraints: we
+  // never have to revisit same nodes.
+  while (IsIntermediate(&hero.instruction(), /*allowed_operand_count=*/1,
+                        &fusion) &&
+         fusion.ContainsInstruction(hero.GetOperand(0))) {
+    hero = hero.GetOperand(0);
+  }
+
+  // Try a bit harder to find a transpose or concat hero. The shared memory
+  // transpose and concat emitters also work if there are elementwise ops with
+  // more than 1 operand on the path between root and the root op.
+  auto is_transpose = [](const HloInstruction& node) {
+    return FindTiledLogicalTranspose(node).has_value();
+  };
+  if (auto transpose = FindNonTrivialHero(hero, fusion, is_transpose)) {
+    return transpose->instruction();
+  }
+  auto is_concatenate = [](const HloInstruction& node) {
+    return node.opcode() == HloOpcode::kConcatenate;
+  };
+  if (auto concatenate = FindNonTrivialHero(hero, fusion, is_concatenate)) {
+    return concatenate->instruction();
+  }
+  return hero.instruction();
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
-  // It doesn't really make sense to call this function with a fusion, but it
-  // happens. Return the fusion itself for historical reasons.
-  // TODO(jreiffers): Clean this up.
-  if (instr.opcode() == HloOpcode::kFusion) return instr;
-
+  CHECK_NE(instr.opcode(), HloOpcode::kFusion);
   return FindNonTrivialHero(instr,
                             *HloFusionAdaptor::ForComputation(instr.parent()));
 }
@@ -1163,7 +1233,12 @@ bool IsAMDGPU(const llvm::Module* module) {
   return llvm::Triple(module->getTargetTriple()).isAMDGPU();
 }
 
-StatusOr<DenseDataIntermediate> LiteralToXlaFormat(const Literal& literal) {
+bool IsSPIR(const llvm::Module* module) {
+  return llvm::Triple(module->getTargetTriple()).isSPIR();
+}
+
+absl::StatusOr<DenseDataIntermediate> LiteralToXlaFormat(
+    const Literal& literal) {
   PrimitiveType element_type = literal.shape().element_type();
   if (!primitive_util::IsArrayType(element_type)) {
     return Internal("Unsupported type in LiteralToXlaFormat");

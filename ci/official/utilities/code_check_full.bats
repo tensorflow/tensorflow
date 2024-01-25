@@ -300,6 +300,11 @@ EOF
     bazel build --experimental_cc_shared_library --nobuild --keep_going -- //tensorflow/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/win/... -//tensorflow/tools/toolchains/win_1803/...
 }
 
+@test "API compatibility test passes, ensuring no unexpected changes to the TF API" {
+    bazel test $TFCI_BAZEL_COMMON_ARGS //tensorflow/tools/api/tests:api_compatibility_test
+    echo "You have to re-generate the TF API goldens and have the API changes reviewed."
+    echo "Look at the instructions for ':api_compatibility_test -- --update_goldens=True'"
+}
 
 teardown_file() {
     bazel shutdown

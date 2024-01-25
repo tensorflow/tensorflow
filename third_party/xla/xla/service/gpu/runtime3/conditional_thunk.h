@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_RUNTIME3_CONDITIONAL_THUNK_H_
 #define XLA_SERVICE_GPU_RUNTIME3_CONDITIONAL_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/runtime3/sequential_thunk.h"
 #include "xla/service/gpu/thunk.h"
+#include "xla/status.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -53,17 +56,22 @@ class ConditionalThunk : public Thunk {
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
-  Status Initialize(se::StreamExecutor* executor,
-                    ExecutableSource src) override;
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequests& resource_requests) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() {
+  absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() const {
     return config_.branch_thunks;
+  }
+
+  const BufferAllocation::Slice& branch_index_buffer() const {
+    return branch_index_buffer_index_;
   }
 
  private:
   const ConditionalThunkConfig config_;
-  BufferAllocation::Slice branch_index_buffer_index_;
+  const BufferAllocation::Slice branch_index_buffer_index_;
 };
 
 }  // namespace gpu

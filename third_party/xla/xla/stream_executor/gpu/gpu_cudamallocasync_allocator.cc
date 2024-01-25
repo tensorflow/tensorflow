@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/stream_executor/device_id_utils.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
@@ -102,11 +101,6 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatisticsNoLock() {
 #endif
 }
 
-void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
-  tsl::mutex_lock lock(lock_);
-  PrintAllocatorStatisticsNoLock();
-}
-
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
@@ -121,8 +115,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   (void)reserve_memory_;
 
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_device_id)
+  stream_exec_ = GPUMachineManager()
+                     ->ExecutorForDevice(platform_device_id.value())
                      .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.

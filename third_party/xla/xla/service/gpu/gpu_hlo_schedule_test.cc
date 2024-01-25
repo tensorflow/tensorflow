@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,10 +60,8 @@ class GpuHloScheduleTest : public HloTestBase {
     Backend& test_backend = backend();
     const se::DeviceDescription& gpu_device_info =
         test_backend.default_stream_executor()->GetDeviceDescription();
-    TF_CHECK_OK(ScheduleGpuModule(
-        module, /*pointer_size=*/8,
-        /*memory_limit=*/gpu_device_info.device_memory_size() * 8 / 10,
-        gpu_device_info));
+    TF_CHECK_OK(ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info)
+                    .status());
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -579,7 +577,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecv) {
 
   EXPECT_LT(get_index("recv"), get_index("send"));
   EXPECT_LT(get_index("send"), get_index("recv-done"));
-  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 9);
+  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 8);
   EXPECT_LT(abs(get_index("send-done") - get_index("result")), 2);
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
@@ -731,7 +729,7 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
       lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 
     all-reduce-start = f32[1, 1024, 1024] all-reduce-start(f32[1, 1024, 1024] p),
-      replica_groups={{0,1}}, to_apply=add,  backend_config={"is_sync":false}
+      replica_groups={{0,1}}, to_apply=add,  backend_config={"collective_backend_config":{"is_sync":false}}
     all-reduce-done = f32[1, 1024, 1024] all-reduce-done(f32[1, 1024, 1024] all-reduce-start)
     new-data = f32[1, 1024, 1024] add(s, all-reduce-done)
     ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, new-data)
@@ -927,9 +925,9 @@ ENTRY e {
 })")
                     .value();
   TF_CHECK_OK(ScheduleGpuModule(
-      module.get(), /*pointer_size=*/8,
-      /*memory_limit=*/1024 * 1024 * 1024,
-      backend().default_stream_executor()->GetDeviceDescription()));
+                  module.get(), /*pointer_size=*/8,
+                  backend().default_stream_executor()->GetDeviceDescription())
+                  .status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: wrapped_negate = f32[1024,1024]{1,0}
@@ -1071,11 +1069,10 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
   uint32_t max_in_flight = 0;
   for (const HloInstruction* inst :
        order.SequentialOrder(*module->entry_computation())->instructions()) {
-    HloOpcode op = inst->opcode();
-    if (hlo_query::IsAsyncCollectiveStartOp(op)) {
+    if (hlo_query::IsAsyncCollectiveStartOp(inst)) {
       in_flight++;
       max_in_flight = std::max(max_in_flight, in_flight);
-    } else if (hlo_query::IsAsyncCollectiveDoneOp(op)) {
+    } else if (hlo_query::IsAsyncCollectiveDoneOp(inst)) {
       in_flight--;
     }
   }
@@ -1110,7 +1107,7 @@ TEST_F(GpuHloSchedulePostProcessTest, PostProcessAsyncCollectives) {
 
     // This will be sync, so we expect the start/done to be moved next to each
     // other.
-    ag-start = (f32[32], f32[64]) all-gather-start(p1), dimensions={0}, backend_config="{\"is_sync\":true}"
+    ag-start = (f32[32], f32[64]) all-gather-start(p1), dimensions={0}, backend_config="{\"collective_backend_config\":{\"is_sync\":true}}"
     add1 = f32[32] add(p1, p1)
     ag-done = f32[64] all-gather-done(ag-start)
 

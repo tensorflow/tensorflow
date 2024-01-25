@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/ffi/api/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -155,37 +158,6 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
 }
 
-std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
-    absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {
-  xla::PjRtClient::KeyValueGetCallback kv_get =
-      [kv_store, &mu](std::string_view k,
-                      absl::Duration timeout) -> xla::StatusOr<std::string> {
-    absl::Duration wait_interval = absl::Milliseconds(10);
-    int num_retry = timeout / wait_interval;
-    for (int i = 0; i < num_retry; i++) {
-      {
-        absl::MutexLock lock(&mu);
-        auto iter = kv_store->find(k);
-        if (iter != kv_store->end()) {
-          return iter->second;
-        }
-      }
-      absl::SleepFor(wait_interval);
-    }
-    return absl::NotFoundError(
-        absl::StrCat(k, " is not found in the kv store."));
-  };
-  xla::PjRtClient::KeyValuePutCallback kv_put =
-      [kv_store, &mu](std::string_view k, std::string_view v) -> xla::Status {
-    {
-      absl::MutexLock lock(&mu);
-      kv_store->insert(std::pair<std::string, std::string>(k, v));
-    }
-    return tsl::OkStatus();
-  };
-  return ::pjrt::ConvertToCKeyValueCallbacks(kv_get, kv_put);
-}
-
 absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
     ::pjrt::PJRT_KeyValueCallbackData* kv_callback_data,
     std::vector<PJRT_NamedValue>& c_options) {
@@ -204,11 +176,9 @@ absl::StatusOr<PJRT_Client_Create_Args> BuildCreateArg(
 
 TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
   auto api = GetPjrtApi();
-  auto kv_store_ptr =
-      std::make_shared<absl::flat_hash_map<std::string, std::string>>();
-  absl::Mutex mu;
+  auto kv_store = std::make_shared<xla::InMemoryKeyValueStore>();
   std::shared_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data =
-      CreateTestCKVCallback(kv_store_ptr.get(), mu);
+      ::pjrt::ConvertToCKeyValueCallbacks(kv_store);
 
   int num_nodes = 2;
   std::vector<std::thread> threads;
@@ -216,7 +186,7 @@ TEST(PjrtCApiGpuKVStoreTest, CreateClientWithKVCallback) {
   for (int i = 0; i < num_nodes; i++) {
     threads.emplace_back([api, i, num_nodes,
                           kv_callback_data = kv_callback_data,
-                          kv_store_ptr = kv_store_ptr] {
+                          kv_store = kv_store] {
       absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
           {"num_nodes", static_cast<int64_t>(num_nodes)},
           {"node_id", static_cast<int64_t>(i)}};
@@ -410,15 +380,16 @@ TEST(PjrtCApiPlatformNameTest, UnavailablePlatformName) {
   api->PJRT_Error_Destroy(&error_destroy_args);
 }
 
-void TestCustomCall() {}
+void TestCustomCallV2() {}
 
-TEST(PjrtCApiGpuPrivTest, CustomCall) {
+TEST(PjrtCApiGpuPrivTest, CustomCallUntyped) {
   PJRT_Gpu_Register_Custom_Call_Args args;
   args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
-  std::string function_name = "function_name";
+  std::string function_name = "untyped_function_name";
   args.function_name = function_name.c_str();
   args.function_name_size = function_name.size();
-  args.custom_call_function = reinterpret_cast<void*>(&TestCustomCall);
+  args.api_version = 0;
+  args.custom_call_function = reinterpret_cast<void*>(&TestCustomCallV2);
   auto api = GetPjrtApi();
   const PJRT_Structure_Base* next =
       reinterpret_cast<const PJRT_Structure_Base*>(api->extension_start);
@@ -435,7 +406,37 @@ TEST(PjrtCApiGpuPrivTest, CustomCall) {
   CHECK_EQ(error, nullptr);
   void* custom_call =
       xla::CustomCallTargetRegistry::Global()->Lookup(function_name, "CUDA");
-  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCall));
+  EXPECT_EQ(custom_call, reinterpret_cast<void*>(&TestCustomCallV2));
+}
+
+static void* kNoop = xla::ffi::Ffi::Bind()
+                         .To([]() { return xla::ffi::Error::Success(); })
+                         .release();
+
+TEST(PjrtCApiGpuPrivTest, CustomCallTyped) {
+  PJRT_Gpu_Register_Custom_Call_Args args;
+  args.struct_size = PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE;
+  std::string function_name = "typed_function_name";
+  args.function_name = function_name.c_str();
+  args.function_name_size = function_name.size();
+  args.api_version = 1;
+  args.custom_call_function = kNoop;
+  auto api = GetPjrtApi();
+  const PJRT_Structure_Base* next =
+      reinterpret_cast<const PJRT_Structure_Base*>(api->extension_start);
+  while (next != nullptr &&
+         next->type !=
+             PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call) {
+    next = next->next;
+  }
+  ASSERT_NE(next, nullptr);
+
+  PJRT_Error* error =
+      reinterpret_cast<const PJRT_Gpu_Custom_Call*>(next)->custom_call(&args);
+
+  CHECK_EQ(error, nullptr);
+  auto* custom_call = xla::ffi::FindHandler(function_name, "CUDA").value();
+  EXPECT_EQ(reinterpret_cast<void*>(custom_call), kNoop);
 }
 
 }  // namespace

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_OP_KERNEL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_OP_KERNEL_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -101,6 +102,8 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
   int64_t GetStepId() const override { return TF_GetStepId(ctx_); }
 
   int GetDeviceId() const override { return TF_GetDeviceId(ctx_); }
+
+  std::string_view GetDeviceName() const override;
 
   std::string GetSessionName() const override {
     // TODO(haoyuzhang): Implement with ctx_->session_metadata() if needed.

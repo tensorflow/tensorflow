@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/reduction_utils.h"
@@ -30,20 +31,23 @@ namespace gpu {
 
 class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
  public:
-  Status HandleReduce(HloInstruction *reduce) override {
+  explicit ReductionSplitterVisitor(bool ignore_small_dims)
+      : ignore_small_dims_(ignore_small_dims) {}
+  absl::Status HandleReduce(HloInstruction *reduce) override {
     VLOG(4) << "Input: " << reduce->ToString();
 
     // Reductions with contiguous dimensions are lowered to efficient code. No
     // need to split such ops.
     if (IsReductionFromOrToContiguousDimensions(*reduce)) {
-      return OkStatus();
+      VLOG(4) << "Reduction with contiguous dimensions. Return.";
+      return absl::OkStatus();
     }
     if (reduce->dimensions().size() < 2) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (!reduce->shape().IsArray()) {
       // TODO(cheshire): Handle variadic reduction.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloInstruction *operand = reduce->mutable_operand(0);
@@ -71,9 +75,8 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
         max_shape_dim = input_shape.dimensions(max_reduce_dim);
       }
     }
-    // TODO(tjoerg): Run microbenchmarks to tune this threshold.
-    if (max_shape_dim < 128) {
-      return OkStatus();
+    if (ignore_small_dims_ && max_shape_dim <= 8) {
+      return absl::OkStatus();
     }
 
     // Split the reduction into a pre-reduction and a final reduction.
@@ -108,13 +111,17 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
         reduce->mutable_operand(1), final_reduce_dims, reduce->to_apply());
     return ReplaceWithNewInstruction(reduce, std::move(final_reduce));
   }
+
+ private:
+  bool ignore_small_dims_;
 };
 
-StatusOr<bool> ReductionSplitter::Run(
+absl::StatusOr<bool> ReductionSplitter::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
-  TF_ASSIGN_OR_RETURN(bool changed, ReductionSplitterVisitor().RunOnModule(
-                                        module, execution_threads));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ReductionSplitterVisitor(ignore_small_dims_)
+                          .RunOnModule(module, execution_threads));
   return changed;
 }
 

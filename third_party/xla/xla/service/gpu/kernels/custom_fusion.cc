@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,11 +37,11 @@ CustomFusionRegistry* CustomFusionRegistry::Default() {
   return registry;
 }
 
-Status CustomFusionRegistry::Register(std::string name,
-                                      std::unique_ptr<CustomFusion> fusion) {
+absl::Status CustomFusionRegistry::Register(
+    std::string name, std::unique_ptr<CustomFusion> fusion) {
   absl::MutexLock lock(&mutex_);
   if (auto it = registry_.try_emplace(name, std::move(fusion)); it.second)
-    return OkStatus();
+    return absl::OkStatus();
   return absl::InternalError(
       absl::StrCat("Custom fusion ", name, " already registered."));
 }

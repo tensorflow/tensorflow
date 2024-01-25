@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/python/saved_model/pywrap_saved_model_metrics.h"
 
+#include <cstdint>
 #include <exception>
 #include <string>
 #include <utility>
@@ -412,6 +413,53 @@ void DefineMetricsModule(py::module main_module) {
       py::kw_only(), py::arg("api_label"), py::arg("filesize"),
       py::doc("Get cell (api_label, filesize) for "
               "'/tensorflow/core/checkpoint/write/checkpoint_size'."));
+
+  m.def(
+      "GetShardingCallbackDuration",
+      []() { return metrics::ShardingCallbackDuration().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_duration'."));
+
+  m.def(
+      "AddShardingCallbackDuration",
+      [](int64_t callback_duration) {
+        metrics::ShardingCallbackDuration().IncrementBy(callback_duration);
+      },
+      py::kw_only(), py::arg("callback_duration"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_duration'."));
+
+  m.def(
+      "GetNumCheckpointShardsWritten",
+      []() { return metrics::NumCheckpointShardsWritten().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/"
+              "num_checkpoint_shards_written'."));
+
+  m.def(
+      "AddNumCheckpointShardsWritten",
+      [](int64_t num_shards) {
+        metrics::NumCheckpointShardsWritten().IncrementBy(num_shards);
+      },
+      py::kw_only(), py::arg("num_shards"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/"
+              "num_checkpoint_shards_written'."));
+
+  m.def(
+      "GetShardingCallbackDescription",
+      []() { return metrics::ShardingCallbackDescription().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_description'."));
+
+  m.def(
+      "SetShardingCallbackDescription",
+      [](std::string description) {
+        metrics::ShardingCallbackDescription().Set(description);
+      },
+      py::kw_only(), py::arg("description"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_description'."));
 }
 
 }  // namespace python

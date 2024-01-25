@@ -56,70 +56,11 @@ using mlir::func::FuncOp;
 #define GEN_PASS_DEF_XLACLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
-constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
-
 // Outlines partitioned call ops with `_XlaMustCompile` to device clusters.
 struct XlaClusterFormationPass
     : public impl::XlaClusterFormationPassBase<XlaClusterFormationPass> {
   void runOnOperation() override;
 };
-
-void CopyAttribute(const llvm::StringRef attr, Operation *src,
-                   Operation *dest) {
-  if (src->hasAttr(attr)) {
-    dest->setAttr(attr, src->getAttr(attr));
-  }
-}
-
-std::string getClusterOutlinedFunctionName(FuncOp func) {
-  return func.getSymName().str() + "_cluster_func";
-}
-
-void AddClusterAttributes(OpBuilder &builder, FuncOp entry_func,
-                          mlir::tf_device::ClusterOp cluster) {
-  mlir::TF::CopyDeviceAndUnderscoredAttributes(entry_func, cluster);
-  CopyAttribute(kAllowSoftPlacementAttr, entry_func, cluster);
-  cluster->setAttr(
-      mlir::TF::kClusterOutlinedFunctionNameAttr,
-      builder.getStringAttr(getClusterOutlinedFunctionName(entry_func)));
-}
-
-// Wrap the body of `func` in a device cluster. `func` must have a single
-// region and a single block.
-mlir::LogicalResult EncapsulateEntryFunctionBody(FuncOp entry_func) {
-  // We've verified the input graph has single-entry and single-block entry
-  // functions. This is just in case passes in the pipeline uninteionally break
-  // the assumption, and not expected to happen in practice.
-  if (!HasSingleBlock(entry_func)) {
-    entry_func->emitError() << "TF2XLA MLIR CPU/GPU MLIR phase 1 bridge "
-                               "expects single region and single "
-                               "block in an entry function.";
-    return mlir::failure();
-  }
-  std::vector<Operation *> ops_without_terminator;
-  for (auto &op : entry_func.front().without_terminator()) {
-    ops_without_terminator.push_back(&op);
-  }
-  Operation *original_return_op = entry_func.front().getTerminator();
-  OpBuilder builder(entry_func.getContext());
-  builder.setInsertionPointToEnd(&entry_func.front());
-  auto cluster = builder.create<mlir::tf_device::ClusterOp>(
-      entry_func.getLoc(), entry_func.getResultTypes());
-  cluster.getBody().push_back(new Block);
-  for (auto &op : ops_without_terminator) {
-    op->moveBefore(&cluster.GetBody(), cluster.GetBody().end());
-  }
-  builder.setInsertionPointToEnd(&cluster.GetBody());
-  builder.create<mlir::tf_device::ReturnOp>(
-      original_return_op->getLoc(), original_return_op->getResultTypes(),
-      original_return_op->getOperands());
-  original_return_op->erase();
-  builder.setInsertionPointToEnd(&entry_func.front());
-  builder.create<mlir::func::ReturnOp>(entry_func->getLoc(),
-                                       cluster->getResults());
-  AddClusterAttributes(builder, entry_func, cluster);
-  return mlir::success();
-}
 
 void EncapsulatePartitionedCall(Operation *call_op,
                                 mlir::StringAttr callee_name) {
@@ -136,7 +77,8 @@ void EncapsulatePartitionedCall(Operation *call_op,
   // the function will have correct attributes.
   mlir::TF::CopyDeviceAndUnderscoredAttributes(call_op, cluster);
   cluster->setAttr(mlir::TF::kClusterOutlinedFunctionNameAttr, callee_name);
-  cluster->setAttr(kAllowSoftPlacementAttr, builder.getBoolAttr(true));
+  cluster->setAttr(mlir::TF::kAllowSoftPlacementAttr,
+                   builder.getBoolAttr(true));
 }
 
 // Encapsulate the first partitioned call that can be reached from
@@ -188,13 +130,9 @@ void XlaClusterFormationPass::runOnOperation() {
   SymbolTable symtab = symbol_table_collection.getSymbolTable(module);
   llvm::SmallVector<FuncOp> entry_funcs = GetEntryFunctions(module);
   for (auto &entry_func : entry_funcs) {
-    if (entry_func->hasAttr(mlir::TF::kCompileDeviceTypeAttr)) {
-      if (EncapsulateEntryFunctionBody(entry_func).failed()) {
-        return signalPassFailure();
-      }
-    } else if (EncapsulateFirstXlaCompilablePartitionedCalls(
-                   entry_func, symbol_table_collection, symtab)
-                   .failed()) {
+    if (EncapsulateFirstXlaCompilablePartitionedCalls(
+            entry_func, symbol_table_collection, symtab)
+            .failed()) {
       return signalPassFailure();
     }
   }

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,6 +47,9 @@ const char* const kUsage = R"(
 This tool lets you run a given HloModule from a file (or stdin) and convert it
 to expanded HLO, fully optimized HLO, or a binary depending on options.
 
+HLO passes are always run, unless the HLO module is already scheduled (has
+is_scheduled=True).
+
 You can also pass in debug option flags for the HloModule.
 
 Usage:
@@ -84,9 +87,9 @@ StatusOr<std::string> GetHloContents(const HloOptConfig& opts, int argc,
                                      char** argv) {
   std::string hlo_path = GetHloPath(opts, argc, argv);
   if (hlo_path == "-") {
-    std::string stdin;
-    std::getline(std::cin, stdin, static_cast<char>(EOF));
-    return stdin;
+    std::string input;
+    std::getline(std::cin, input, static_cast<char>(EOF));
+    return input;
   }
 
   std::string data;
@@ -163,7 +166,8 @@ int main(int argc, char** argv) {
                 "\t\t\t * hlo : HLO after all optimizations\n"
                 "\t\t\t * llvm : LLVM IR\n"
                 "\t\t\t * ptx : PTX dump\n"
-                "\t\t\t * buffer-assignment: Buffer Assignment\n"),
+                "\t\t\t * buffer-assignment: Buffer Assignment\n"
+                "\t\t\t * hlo-backend: HLO after backend passes\n"),
       tsl::Flag("list-stages", &opts.list_stages,
                 "Print all supported stages for a given platform and exit")};
   // Modifies global DebugOptions, populates flags with every flag available

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/global_device_id.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -87,7 +90,8 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
 }
 
 StatusOr<std::vector<int>> GetParticipatingIDs(
-    int current_id, std::optional<int> total_participant_count,
+    CollectiveOpGroupMode group_mode, int current_id,
+    std::optional<int> total_participant_count,
     absl::Span<const ReplicaGroup> groups) {
   // Empty replica_groups() means that all replicas participate.
   if (groups.empty()) {
@@ -97,17 +101,30 @@ StatusOr<std::vector<int>> GetParticipatingIDs(
     return all_participants;
   }
 
+  // Formatter for printing replica groups in StrJoin.
+  auto group_formatter = [](std::string* out, const ReplicaGroup& group) {
+    out->append("[");
+    out->append(absl::StrJoin(group.replica_ids(), ", "));
+    out->append("]");
+  };
+
   // Figure out the other replicas that go together with this one.
   std::optional<ReplicaGroup> group;
   for (const ReplicaGroup& g : groups) {
     if (absl::c_linear_search(g.replica_ids(), current_id)) {
       TF_RET_CHECK(!group.has_value())
-          << "ID " << current_id << " appears twice in replica groups";
+          << "Replica ID " << current_id << " appears twice in replica groups"
+          << "; group_mode=" << CollectiveOpGroupModeToString(group_mode)
+          << "; groups_size=" << groups.size()
+          << "; groups= " << absl::StrJoin(groups, ", ", group_formatter);
       group = g;
     }
   }
   TF_RET_CHECK(group.has_value())
-      << "ID " << current_id << " doesn't appear in replica groups";
+      << "Replica ID " << current_id << " doesn't appear in replica groups"
+      << "; group_mode=" << CollectiveOpGroupModeToString(group_mode)
+      << "; groups_size=" << groups.size()
+      << "; groups= " << absl::StrJoin(groups, ", ", group_formatter);
   return std::vector<int>(group->replica_ids().begin(),
                           group->replica_ids().end());
 }
@@ -382,8 +399,8 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // use current replica id to find the set of participating replicas. If
       // replica groups are empty, assume a group with all replicas.
       TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
-                          GetParticipatingIDs(current_replica_id, replica_count,
-                                              replica_groups));
+                          GetParticipatingIDs(group_mode, current_replica_id,
+                                              replica_count, replica_groups));
 
       // The set of participating devices is the replicas from the current
       // partition.
@@ -401,7 +418,7 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // replica_groups contain partition_id, group contains all partitions for
       // the current replica.
       TF_ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
-                          GetParticipatingIDs(current_partition_id,
+                          GetParticipatingIDs(group_mode, current_partition_id,
                                               partition_count, replica_groups));
       participants.reserve(participating_partitions.size());
       for (int partition_id : participating_partitions) {
@@ -417,8 +434,8 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // replica_groups contain replica_ids. Group contains replicas for all
       // partitions.
       TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
-                          GetParticipatingIDs(current_replica_id, replica_count,
-                                              replica_groups));
+                          GetParticipatingIDs(group_mode, current_replica_id,
+                                              replica_count, replica_groups));
       participants.reserve(participating_replicas.size() * partition_count);
       for (int replica_id : participating_replicas) {
         TF_RET_CHECK(0 <= replica_id && replica_id < replica_count)
@@ -444,7 +461,7 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // so no need to pass in total_participant_count.
       TF_ASSIGN_OR_RETURN(
           std::vector<int> participating_flattened_ids,
-          GetParticipatingIDs(current_flattened_id,
+          GetParticipatingIDs(group_mode, current_flattened_id,
                               /*total_participant_count=*/std::nullopt,
                               replica_groups));
 
@@ -583,6 +600,14 @@ bool IsCollective(const HloInstruction* instruction) {
     default:
       return false;
   }
+}
+
+bool IsSyncCollective(const HloInstruction* instr) {
+  auto backend_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return false;
+  }
+  return backend_config->collective_backend_config().is_sync();
 }
 
 }  // end namespace xla

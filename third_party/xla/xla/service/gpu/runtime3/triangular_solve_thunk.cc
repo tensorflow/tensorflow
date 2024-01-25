@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/triangular_solve_thunk.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/service/gpu/make_batch_pointers.h"
 #include "xla/stream_executor/blas.h"
@@ -70,7 +71,8 @@ TriangularSolveThunk::TriangularSolveThunk(
   }();
 }
 
-Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status TriangularSolveThunk::ExecuteOnStream(
+    const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
   return RunTriangularSolve(buffer_allocations.GetDeviceAddress(a_buffer_),
                             buffer_allocations.GetDeviceAddress(b_buffer_),
@@ -80,15 +82,13 @@ Status TriangularSolveThunk::ExecuteOnStream(const ExecuteParams& params) {
                             a_batch_stride_, b_batch_stride_, params.stream);
 }
 
-Status RunTriangularSolve(se::DeviceMemoryBase a_data,
-                          se::DeviceMemoryBase b_data,
-                          se::DeviceMemoryBase temp_data,
-                          se::GpuAsmOpts asm_opts, se::blas::UpperLower uplo,
-                          se::blas::Side side, se::blas::Diagonal unit_diagonal,
-                          se::blas::Transpose transpose_a, PrimitiveType type,
-                          int64_t batch_size, int64_t m, int64_t n,
-                          int64_t a_batch_stride, int64_t b_batch_stride,
-                          se::Stream* stream) {
+absl::Status RunTriangularSolve(
+    se::DeviceMemoryBase a_data, se::DeviceMemoryBase b_data,
+    se::DeviceMemoryBase temp_data, se::GpuAsmOpts asm_opts,
+    se::blas::UpperLower uplo, se::blas::Side side,
+    se::blas::Diagonal unit_diagonal, se::blas::Transpose transpose_a,
+    PrimitiveType type, int64_t batch_size, int64_t m, int64_t n,
+    int64_t a_batch_stride, int64_t b_batch_stride, se::Stream* stream) {
   VLOG(3) << "uplo=" << se::blas::UpperLowerString(uplo)
           << " side=" << se::blas::SideString(side)
           << " diagonal=" << se::blas::DiagonalString(unit_diagonal)
@@ -215,9 +215,9 @@ Status RunTriangularSolve(se::DeviceMemoryBase a_data,
   }
 
   if (!launch_ok) {
-    return InternalError("Unable to launch triangular solve");
+    return Internal("Unable to launch triangular solve");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

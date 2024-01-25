@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -511,15 +511,13 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         parent_->evaluated_[power],
         ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
                                       ElementwiseT rhs_el) {
-          // Case 0: 1^x = 1
-          if (lhs_el == ElementwiseT(1)) {
+          // Case 0: 1^x = 1 and x^0 = 1, regardless of X, see
+          // Branch Cuts for Complex Elementary Functions or Much Ado About
+          // Nothing's Sign Bit, W. Kahan, Section 10.
+          if (lhs_el == ElementwiseT(1) || rhs_el == ElementwiseT(0)) {
             return static_cast<ElementwiseT>(1);
           }
-          // Case 1: 0^0 = 1
-          if (lhs_el == ElementwiseT(0) && rhs_el == ElementwiseT(0)) {
-            return static_cast<ElementwiseT>(1);
-          }
-          // Case 2:
+          // Case 1:
           // 1. inf^(a + 0i) = inf, if a > 0.
           // 2. inf^(a + 0i) = 0, if a < 0.
           if constexpr (is_complex_v<ElementwiseT>) {
@@ -539,7 +537,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
               return static_cast<ElementwiseT>(0);
             }
           }
-          // Case 3:
+          // Case 2:
           // Fallback to pow.
           if constexpr (std::is_same_v<ElementwiseT, bool>) {
             return lhs_el || !rhs_el;

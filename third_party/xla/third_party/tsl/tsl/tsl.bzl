@@ -27,7 +27,7 @@ load(
     "onednn_v3_define",
 )
 load(
-    "//tsl/platform:rules_cc.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
     "cc_shared_library",
@@ -191,6 +191,7 @@ def if_nccl(if_true, if_false = []):
     return select({
         clean_dep("//tsl:no_nccl_support"): if_false,
         clean_dep("//tsl:windows"): if_false,
+        clean_dep("//tsl:arm"): if_false,
         "//conditions:default": if_true,
     })
 
@@ -592,8 +593,6 @@ def tsl_pybind_extension_opensource(
     filegroup_name = "%s_filegroup" % name
     pyd_file = "%s%s.pyd" % (prefix, sname)
     exported_symbols = [
-        "init%s" % sname,
-        "init_%s" % sname,
         "PyInit_%s" % sname,
     ] + additional_exported_symbols
 

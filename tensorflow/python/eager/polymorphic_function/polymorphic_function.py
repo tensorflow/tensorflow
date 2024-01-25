@@ -1007,9 +1007,8 @@ class Function(core.PolymorphicFunction, trackable.Trackable):
         device_name: The name of the device with the form as
           "/job:localhost/replica:0/task:0/device:CPU:0", "/device:TPU:0" etc.
           When this is used, actual device is used for getting the compiler IR.
-        platform_name: The name of the platform, e.g. "TPU". When this is used,
-          no actual device is needed but the compiler IR is obtained as if using
-          that device. The scenarios supported are more limited.
+        platform_name: The name of the platform, e.g. "TPU". See the comment in
+          `get_compiler_ir` in `context.py`.
 
       Returns:
         The compiler IR bytes.

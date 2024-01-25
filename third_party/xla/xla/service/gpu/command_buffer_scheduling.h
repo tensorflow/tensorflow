@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -75,19 +75,29 @@ class CommandBufferScheduling : public HloModulePass {
   using CommandBufferConfig =
       absl::flat_hash_set<DebugOptions::CommandBufferCmdType>;
 
+  CommandBufferScheduling(const se::GpuComputeCapability& gpu_compute_comp,
+                          int32_t gpu_toolkit_version,
+                          int32_t gpu_driver_version);
+
   absl::string_view name() const override {
     return "command-buffer-scheduling";
   }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
-      HloInstructionSequence inst_sequence, const CommandBufferConfig& config);
+      HloInstructionSequence schedule, const CommandBufferConfig& config,
+      int32_t min_num_commands = 1);
 
-  static void MoveParametersAndConstantsToFront(HloComputation* computation);
+  // Moves kParameter and kConstant instructions in a computation to
+  // the beginning of the computation. This simplifies the construction of
+  // command buffer computations because we don't need to deal with parameters
+  // and constants that have users outside of a command buffer.
+  static absl::Status MoveParametersAndConstantsToFront(
+      HloComputation* computation);
 
   struct CommandBuffer {
     // Command buffer arguments (call instruction arguments).
@@ -107,14 +117,23 @@ class CommandBufferScheduling : public HloModulePass {
   // constructed by instructions outside of the sequence are passed in as
   // parameters. Results of instructions in the sequence are returned in a tuple
   // (if command buffer has a single result we don't wrap it into tuple).
-  static StatusOr<CommandBuffer> PrepareCommandBuffer(
+  static absl::StatusOr<CommandBuffer> PrepareCommandBuffer(
       const HloInstructionSequence& seq);
 
   // Rewrites prepared command buffer computation into Hlo operations in the
   // parent computation (calls command buffer and replaced all users).
-  static Status RewriteCommandBuffer(HloComputation* parent,
-                                     const HloInstructionSequence& seq,
-                                     CommandBuffer command_buffer);
+  static absl::StatusOr<HloComputation*> RewriteCommandBuffer(
+      HloComputation* parent, const HloInstructionSequence& seq,
+      CommandBuffer command_buffer);
+
+ private:
+  se::GpuComputeCapability gpu_compute_comp_;
+  // For NVIDIA gpus XLA can be compiled with a CUDA version that is larger than
+  // the version supported by the driver, e.g. we can compile for CUDA 12.3 but
+  // have 12.1 driver installed. When deciding what command buffer features we
+  // can use we have to consider both versions.
+  int32_t gpu_toolkit_version_;
+  int32_t gpu_driver_version_;
 };
 
 }  // namespace xla::gpu

@@ -151,6 +151,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.shuffle_and_repeat_fusion = True
     options.experimental_warm_start = True
     options.experimental_slack = True
+    options.dataset_name = "test_name"
     options.threading.max_intra_op_parallelism = 30
     options.threading.private_threadpool_size = 40
     pb = options._to_proto()

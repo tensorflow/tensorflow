@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CONTEXT_H_
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_CONTEXT_H_
 
+#include <memory>
+
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -23,10 +25,10 @@ namespace mlir::quant::stablehlo {
 
 // Creates an MLIRContext with the extensions required for quantization are
 // registered.
-inline MLIRContext CreateMlirContextForQuantization() {
+inline std::unique_ptr<MLIRContext> CreateMlirContextForQuantization() {
   DialectRegistry registry{};
   func::registerAllExtensions(registry);
-  return MLIRContext(registry);
+  return std::make_unique<MLIRContext>(registry);
 }
 
 }  // namespace mlir::quant::stablehlo

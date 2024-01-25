@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/service/cpu/compiler_functor.h"
@@ -62,7 +64,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
-      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
+      absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
+          post_codegen_hook);
 
   static llvm::Expected<std::unique_ptr<SimpleOrcJIT>> Create(
       const llvm::TargetOptions& target_options,
@@ -71,7 +74,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
-      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
+      absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
+          post_codegen_hook);
 
   ~SimpleOrcJIT() override;
 
@@ -79,6 +83,7 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   const llvm::Triple& target_triple() const { return target_triple_; }
 
+  llvm::Error AddObjFile(std::unique_ptr<llvm::MemoryBuffer> obj_file);
   llvm::Error AddModule(llvm::orc::ThreadSafeModule module);
 
   // Discards objects we no longer need once we are done compiling.

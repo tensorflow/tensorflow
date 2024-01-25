@@ -3045,7 +3045,7 @@ class Subgraph {
       const TfLiteConcatenationParams* concat_params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
-        CheckNumInputsAndOutputs(logging_context, node, 2, 4, 1,
+        CheckNumInputsAndOutputs(logging_context, node, 2, 5, 1,
                                  BuiltinOperator_CONCATENATION, node_index));
     const int num_inputs = NumInputs(node);
 
@@ -3145,6 +3145,16 @@ class Subgraph {
             /*input2_id=*/input_output_tensors.at(node->inputs->data[1]),
             /*input3_id=*/input_output_tensors.at(node->inputs->data[2]),
             /*input4_id=*/input_output_tensors.at(node->inputs->data[3]),
+            /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+            /*flags=*/0);
+      } else if (num_inputs == 5) {
+        status = xnn_define_concatenate5(
+            subgraph, axis,
+            /*input1_id=*/input_output_tensors.at(node->inputs->data[0]),
+            /*input2_id=*/input_output_tensors.at(node->inputs->data[1]),
+            /*input3_id=*/input_output_tensors.at(node->inputs->data[2]),
+            /*input4_id=*/input_output_tensors.at(node->inputs->data[3]),
+            /*input5_id=*/input_output_tensors.at(node->inputs->data[4]),
             /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
             /*flags=*/0);
       }

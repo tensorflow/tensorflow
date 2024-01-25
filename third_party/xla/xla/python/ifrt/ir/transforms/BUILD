@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@local_tsl//tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -7,6 +8,7 @@ package(
 
 gentbl_cc_library(
     name = "passes_inc_gen",
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -31,6 +33,7 @@ cc_library(
         "spmd_expansion_pass.cc",
     ],
     hdrs = ["passes.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         ":constants",
@@ -53,6 +56,7 @@ cc_library(
     name = "built_in_spmd_expansions",
     srcs = ["built_in_spmd_expansions.cc"],
     hdrs = ["built_in_spmd_expansions.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
         "//xla/python/ifrt/ir/transforms/spmd_expanders:spmd_expander",
@@ -64,6 +68,7 @@ cc_library(
 cc_library(
     name = "constants",
     hdrs = ["constants.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = ["@llvm-project//llvm:Support"],
 )

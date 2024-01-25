@@ -112,12 +112,11 @@ class GpuKernelToBlobPass
         return tensorflow::errors::Internal(
             "Could not parse ROCm architecture prefix (expected gfx)");
       }
-      std::string libdevice_dir = tensorflow::RocdlRoot();
       auto llvm_module_copy = llvm::CloneModule(*llvmModule);
       auto hsaco_or = xla::gpu::amdgpu::CompileToHsaco(
           llvm_module_copy.get(),
           tensorflow::se::RocmComputeCapability{arch_str}, options,
-          libdevice_dir, options.DebugString());
+          options.DebugString());
       if (!hsaco_or.ok()) {
         return tensorflow::errors::Internal("Failure when generating HSACO");
       }

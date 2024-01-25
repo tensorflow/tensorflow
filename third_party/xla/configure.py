@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -484,25 +484,25 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
 
 def set_clang_cuda_compiler_path(environ_cp):
   """Set CLANG_CUDA_COMPILER_PATH."""
-  default_clang_path = which('clang') or ''
-  ask_clang_path = ('Please specify which clang should be used as device and '
-                    'host compiler. [Default is %s]: ') % default_clang_path
+  default_clang_path = '/usr/lib/llvm-16/bin/clang'
+  if not os.path.exists(default_clang_path):
+    default_clang_path = which('clang') or ''
 
-  while True:
-    clang_cuda_compiler_path = get_from_env_or_user_or_default(
-        environ_cp, 'CLANG_CUDA_COMPILER_PATH', ask_clang_path,
-        default_clang_path)
-    if os.path.exists(clang_cuda_compiler_path):
-      break
-
-    # Reset and retry
-    print('Invalid clang path: %s cannot be found.' % clang_cuda_compiler_path)
-    environ_cp['CLANG_CUDA_COMPILER_PATH'] = ''
+  clang_cuda_compiler_path = prompt_loop_or_load_from_env(
+      environ_cp,
+      var_name='CLANG_CUDA_COMPILER_PATH',
+      var_default=default_clang_path,
+      ask_for_var='Please specify clang path that to be used as host compiler.',
+      check_success=os.path.exists,
+      resolve_symlinks=True,
+      error_msg='Invalid clang path. %s cannot be found.',
+  )
 
   # Set CLANG_CUDA_COMPILER_PATH
   environ_cp['CLANG_CUDA_COMPILER_PATH'] = clang_cuda_compiler_path
   write_action_env_to_bazelrc('CLANG_CUDA_COMPILER_PATH',
                               clang_cuda_compiler_path)
+  return clang_cuda_compiler_path
 
 
 def prompt_loop_or_load_from_env(environ_cp,
@@ -592,6 +592,97 @@ def set_gcc_host_compiler_path(environ_cp):
   )
 
   write_action_env_to_bazelrc('GCC_HOST_COMPILER_PATH', gcc_host_compiler_path)
+
+
+def choose_compiler(environ_cp):
+  question = 'Do you want to use Clang to build TensorFlow?'
+  yes_reply = 'Clang will be used to compile TensorFlow.'
+  no_reply = 'GCC will be used to compile TensorFlow.'
+  var = int(
+      get_var(
+          environ_cp, 'TF_NEED_CLANG', None, True, question, yes_reply, no_reply
+      )
+  )
+  return var
+
+
+def set_clang_compiler_path(environ_cp):
+  """Set CLANG_COMPILER_PATH and environment variables.
+
+  Loop over user prompts for clang path until receiving a valid response.
+  Default is used if no input is given. Set CLANG_COMPILER_PATH and write
+  environment variables CC and BAZEL_COMPILER to .bazelrc.
+
+  Args:
+    environ_cp: (Dict) copy of the os.environ.
+
+  Returns:
+    string value for clang_compiler_path.
+  """
+  # Default path if clang-16 is installed by using apt-get install
+  default_clang_path = '/usr/lib/llvm-16/bin/clang'
+  if not os.path.exists(default_clang_path):
+    default_clang_path = which('clang') or ''
+
+  clang_compiler_path = prompt_loop_or_load_from_env(
+      environ_cp,
+      var_name='CLANG_COMPILER_PATH',
+      var_default=default_clang_path,
+      ask_for_var='Please specify the path to clang executable.',
+      check_success=os.path.exists,
+      resolve_symlinks=True,
+      error_msg=(
+          'Invalid clang path. %s cannot be found. Note that TensorFlow now'
+          ' requires clang to compile. You may override this behavior by'
+          ' setting TF_NEED_CLANG=0'
+      ),
+  )
+
+  write_action_env_to_bazelrc('CLANG_COMPILER_PATH', clang_compiler_path)
+  write_to_bazelrc('build --repo_env=CC=%s' % clang_compiler_path)
+  write_to_bazelrc('build --repo_env=BAZEL_COMPILER=%s' % clang_compiler_path)
+  write_to_bazelrc('build --linkopt="-fuse-ld=lld"')
+  write_to_bazelrc('build --linkopt="-lm"')
+
+  return clang_compiler_path
+
+
+def retrieve_clang_version(clang_executable):
+  """Retrieve installed clang version.
+
+  Args:
+    clang_executable: (String) path to clang executable
+
+  Returns:
+    The clang version detected.
+  """
+  stderr = open(os.devnull, 'wb')
+  curr_version = run_shell(
+      [clang_executable, '--version'], allow_non_zero=True, stderr=stderr
+  )
+
+  curr_version_split = curr_version.lower().split('clang version ')
+  if len(curr_version_split) > 1:
+    curr_version = curr_version_split[1].split()[0]
+
+  curr_version_int = convert_version_to_int(curr_version)
+  # Check if current clang version can be detected properly.
+  if not curr_version_int:
+    print('WARNING: current clang installation is not a release version.\n')
+    return None
+
+  print('You have Clang %s installed.\n' % curr_version)
+  return curr_version
+
+
+# Disable clang extension that rejects type definitions within offsetof.
+# This was added in clang-16 by https://reviews.llvm.org/D133574.
+# Can be removed once upb is updated, since a type definition is used within
+# offset of in the current version of ubp. See
+# https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
+def disable_clang16_offsetof_extension(clang_version):
+  if int(clang_version.split('.')[0]) == 16:
+    write_to_bazelrc('build --copt=-Wno-gnu-offsetof-extensions')
 
 
 def set_tf_cuda_paths(environ_cp):
@@ -1025,8 +1116,9 @@ def main():
     else:
       raise UserInputError(
           'Invalid CUDA setting were provided %d '
-          'times in a row. Assuming to be a scripting mistake.' %
-          _DEFAULT_PROMPT_ASK_ATTEMPTS)
+          'times in a row. Assuming to be a scripting mistake.'
+          % _DEFAULT_PROMPT_ASK_ATTEMPTS
+      )
 
     set_tf_cuda_compute_capabilities(environ_cp)
     if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
@@ -1036,14 +1128,10 @@ def main():
 
     set_tf_cuda_clang(environ_cp)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
-      # Ask whether we should download the clang toolchain.
-      set_tf_download_clang(environ_cp)
-      if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
-        # Set up which clang we should use as the cuda / host compiler.
-        set_clang_cuda_compiler_path(environ_cp)
-      else:
-        # Use downloaded LLD for linking.
-        write_to_bazelrc('build:cuda_clang --config=download_clang_use_lld')
+      # Set up which clang we should use as the cuda / host compiler.
+      clang_cuda_compiler_path = set_clang_cuda_compiler_path(environ_cp)
+      clang_version = retrieve_clang_version(clang_cuda_compiler_path)
+      disable_clang16_offsetof_extension(clang_version)
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows
@@ -1051,9 +1139,13 @@ def main():
         set_gcc_host_compiler_path(environ_cp)
     set_other_cuda_vars(environ_cp)
   else:
-    # CUDA not required. Ask whether we should download the clang toolchain and
-    # use it for the CPU build.
-    set_tf_download_clang(environ_cp)
+    # CUDA not required. Ask whether we should use clang for the CPU build.
+    if is_linux():
+      environ_cp['TF_NEED_CLANG'] = str(choose_compiler(environ_cp))
+      if environ_cp.get('TF_NEED_CLANG') == '1':
+        clang_compiler_path = set_clang_compiler_path(environ_cp)
+        clang_version = retrieve_clang_version(clang_compiler_path)
+        disable_clang16_offsetof_extension(clang_version)
 
   # ROCm / CUDA are mutually exclusive.
   # At most 1 GPU platform can be configured.

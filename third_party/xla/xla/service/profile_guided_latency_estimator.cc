@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,9 +61,8 @@ LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
 
 LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  const HloOpcode opcode = instr->opcode();
-  if (hlo_query::IsAsyncCollectiveStartOp(opcode, /*include_send_recv=*/true) ||
-      hlo_query::IsAsyncCollectiveDoneOp(opcode, /*include_send_recv=*/true)) {
+  if (hlo_query::IsAsyncCollectiveStartOp(instr, /*include_send_recv=*/true) ||
+      hlo_query::IsAsyncCollectiveDoneOp(instr, /*include_send_recv=*/true)) {
     static constexpr TimeCost kLowCost = 1.0;
     return kLowCost;
   }

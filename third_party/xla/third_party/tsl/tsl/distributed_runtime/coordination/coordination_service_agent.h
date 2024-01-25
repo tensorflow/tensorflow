@@ -169,12 +169,7 @@ class CoordinationServiceAgent {
   // If the key-value is not inserted yet, this is a blocking call that waits
   // until the corresponding key is inserted.
   //   - DeadlineExceeded: timed out waiting for key.
-  //   - InvalidArgument: `timeout_seconds` is <= 0.
   virtual StatusOr<std::string> GetKeyValue(std::string_view key) = 0;
-  virtual StatusOr<std::string> GetKeyValue(const char* key,
-                                            int64_t key_size) = 0;
-  virtual StatusOr<std::string> GetKeyValue(const char* key, int64_t key_size,
-                                            int64_t timeout_seconds) = 0;
   virtual StatusOr<std::string> GetKeyValue(std::string_view key,
                                             absl::Duration timeout) = 0;
   // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
@@ -200,12 +195,9 @@ class CoordinationServiceAgent {
   //   - AlreadyExists: key is already set.
   virtual Status InsertKeyValue(std::string_view key,
                                 std::string_view value) = 0;
-  virtual Status InsertKeyValue(const char* key, int64_t key_size,
-                                const char* value, int64_t value_size) = 0;
 
   // Delete config keys in the coordination service.
   virtual Status DeleteKeyValue(std::string_view key) = 0;
-  virtual Status DeleteKeyValue(const char* key, int64_t key_size) = 0;
 
   // Update the value of a config key.
   virtual Status UpdateKeyValue(std::string_view key,

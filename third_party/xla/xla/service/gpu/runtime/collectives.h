@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ class AsyncCollectivesSupport {
   absl::StatusOr<se::Event> PopEvent(int32_t uid);
 
   se::Stream* async_comm_stream(AsyncStreamKind async_stream_kind) const {
-    return async_comm_streams_[async_stream_kind];
+    return async_comm_streams_[static_cast<int64_t>(async_stream_kind)];
   }
 
  private:

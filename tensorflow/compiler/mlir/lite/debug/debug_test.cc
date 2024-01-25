@@ -145,7 +145,7 @@ class InitPassManagerTest : public testing::Test {
 
 TEST_F(InitPassManagerTest, CrashReproducer) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_dump_dir() = path_;
+  *debug_options.mutable_ir_dump_dir() = path_;
 
   mlir::PassManager pm(&context_);
   InitPassManager(pm, debug_options);
@@ -164,8 +164,8 @@ TEST_F(InitPassManagerTest, CrashReproducer) {
 
 TEST_F(InitPassManagerTest, DumpToDir) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_dump_dir() = path_;
-  *debug_options.mutable_mlir_dump_pass_regex() = R"(.*NopPass)";
+  *debug_options.mutable_ir_dump_dir() = path_;
+  *debug_options.mutable_ir_dump_pass_regex() = R"(.*NopPass)";
 
   mlir::PassManager pm(&context_);
   InitPassManager(pm, debug_options);
@@ -198,7 +198,7 @@ TEST_F(InitPassManagerTest, DumpToDir) {
 
 TEST_F(InitPassManagerTest, PrintIRBeforeEverything) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
+  *debug_options.mutable_print_ir_before() = R"(.*)";
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 
@@ -217,7 +217,7 @@ TEST_F(InitPassManagerTest, PrintIRBeforeEverything) {
 
 TEST_F(InitPassManagerTest, PrintIRAfterEverything) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_after() = R"(.*)";
+  *debug_options.mutable_print_ir_after() = R"(.*)";
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 
@@ -237,8 +237,8 @@ TEST_F(InitPassManagerTest, PrintIRAfterEverything) {
 
 TEST_F(InitPassManagerTest, PrintIRBeforeAndAfterEverything) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
-  *debug_options.mutable_mlir_print_ir_after() = R"(.*)";
+  *debug_options.mutable_print_ir_before() = R"(.*)";
+  *debug_options.mutable_print_ir_after() = R"(.*)";
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 
@@ -258,8 +258,8 @@ TEST_F(InitPassManagerTest, PrintIRBeforeAndAfterEverything) {
 
 TEST_F(InitPassManagerTest, ElideLargeElementAttrs) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
-  debug_options.set_mlir_elide_elementsattrs_if_larger(5);
+  *debug_options.mutable_print_ir_before() = R"(.*)";
+  debug_options.set_elide_elementsattrs_if_larger(5);
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 
@@ -273,8 +273,8 @@ TEST_F(InitPassManagerTest, ElideLargeElementAttrs) {
 
 TEST_F(InitPassManagerTest, DontElideSmallerElementAttrs) {
   converter::DebugOptions debug_options;
-  *debug_options.mutable_mlir_print_ir_before() = R"(.*)";
-  debug_options.set_mlir_elide_elementsattrs_if_larger(11);
+  *debug_options.mutable_print_ir_before() = R"(.*)";
+  debug_options.set_elide_elementsattrs_if_larger(11);
   std::string captured_out;
   llvm::raw_string_ostream out(captured_out);
 

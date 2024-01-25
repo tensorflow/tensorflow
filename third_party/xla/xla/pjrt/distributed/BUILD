@@ -48,13 +48,10 @@ xla_cc_test(
     name = "topology_util_test",
     srcs = ["topology_util_test.cc"],
     deps = [
+        ":in_memory_key_value_store",
         ":protocol_proto_cc",
         ":topology_util",
-        "//xla:status",
-        "//xla:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
@@ -73,10 +70,14 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":key_value_store_interface",
         ":util",
         "//xla:statusor",
         "//xla:types",
         "//xla:util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/distributed_runtime/coordination:coordination_client",
@@ -119,6 +120,7 @@ cc_library(
     hdrs = ["topology_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":key_value_store_interface",
         ":protocol_proto_cc",
         "//xla:status",
         "//xla:statusor",
@@ -159,4 +161,31 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ] + tsl_grpc_cc_dependencies(),
+)
+
+cc_library(
+    name = "key_value_store_interface",
+    hdrs = ["key_value_store_interface.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "in_memory_key_value_store",
+    srcs = ["in_memory_key_value_store.cc"],
+    hdrs = ["in_memory_key_value_store.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":key_value_store_interface",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
 )

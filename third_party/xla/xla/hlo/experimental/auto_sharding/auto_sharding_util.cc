@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -49,9 +49,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/ptrvec.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/sharding_propagation.h"
+#include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -1610,11 +1612,9 @@ HloSharding Tile(const Shape& tensor_shape,
              : HloSharding::Tile(std::move(tile_assignment));
 }
 
-AliasMap BuildAliasMap(const HloModule* module) {
+AliasMap BuildAliasMap(const HloModule* module,
+                       const HloInputOutputAliasConfig& alias_config) {
   AliasMap alias_map;
-
-  const HloInputOutputAliasConfig& alias_config =
-      module->input_output_alias_config();
 
   HloComputation* entry = module->entry_computation();
   const auto& parameter_instructions = entry->parameter_instructions();
@@ -1676,13 +1676,11 @@ AliasMap BuildAliasMap(const HloModule* module) {
 }
 
 AliasSet BuildAliasSet(const HloModule* module,
+                       const HloInputOutputAliasConfig& alias_config,
                        const StrategyMap& strategy_map) {
-  // Adjust the edge cost for aliases (donated buffer).
-  // Typically, old weights and new weights are aliases, so we should
+  // We also look at alias_config to adjust the edge cost for aliases (donated
+  // buffer). Typically, old weights and new weights are aliases, so we should
   // let them have the same sharding spec.
-  const HloInputOutputAliasConfig& alias_config =
-      module->input_output_alias_config();
-
   HloComputation* entry = module->entry_computation();
   const auto& parameter_instructions = entry->parameter_instructions();
   const HloInstruction* output_tuple = entry->root_instruction();
@@ -1766,9 +1764,10 @@ AliasSet BuildAliasSet(const HloModule* module,
   return alias_set;
 }
 
-void CheckAliasSetCompatibility(const AliasSet& alias_set,
-                                const StrategyGroups& strategy_groups,
-                                const HloInstructionSequence& sequence) {
+Status CheckAliasSetCompatibility(const AliasSet& alias_set,
+                                  const StrategyGroups& strategy_groups,
+                                  const HloInstructionSequence& sequence,
+                                  bool crash_on_error) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   // Checks the compatibility
   for (const auto& pair : alias_set) {
@@ -1806,17 +1805,23 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
           << src_strategy_group->ToString() << "\n"
           << dst_strategy_group->ToString();
     }
-    CHECK(compatible_cnt > 0)
-        << "Alias pair does not have any sharding strategy in common: "
-        << "(" << instructions.at(src_strategy_group->instruction_id)->name()
-        << ", " << instructions.at(dst_strategy_group->instruction_id)->name()
-        << ")"
-        << "\n"
-        << "(" << src_strategy_group->node_idx << ", "
-        << dst_strategy_group->node_idx << ")\n"
-        << src_strategy_group->ToString() << "\n"
-        << dst_strategy_group->ToString();
+    if (compatible_cnt <= 0) {
+      std::string err_msg = absl::StrCat(
+          "Alias pair does not have any sharding strategy in common: (",
+          instructions.at(src_strategy_group->instruction_id)->name(), ", ",
+          instructions.at(dst_strategy_group->instruction_id)->name(), ")\n(",
+          src_strategy_group->node_idx, ", ", dst_strategy_group->node_idx,
+          ")\n", src_strategy_group->ToString(), "\n",
+          dst_strategy_group->ToString());
+      if (crash_on_error) {
+        LOG(FATAL) << err_msg;
+      } else {
+        LOG(WARNING) << err_msg;
+        return absl::InternalError(err_msg);
+      }
+    }
   }
+  return OkStatus();
 }
 
 size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
@@ -2135,50 +2140,56 @@ bool IsEntryComputationInputOrOutput(const HloModule* module,
 
 void ComputeInstructionExecutionCountsHelper(
     const HloComputation* computation, int64_t computation_execution_count,
-    int64_t loop_iteration_count_estimate,
-    absl::flat_hash_map<const HloInstruction*, int64_t>*
+    int64_t static_loop_iteration_count_estimate,
+    absl::flat_hash_map<const HloInstruction*, int64_t>&
         instruction_execution_counts) {
-  for (auto instruction : computation->instructions()) {
-    (*instruction_execution_counts)[instruction] = computation_execution_count;
+  for (const HloInstruction* instruction : computation->instructions()) {
+    (instruction_execution_counts)[instruction] = computation_execution_count;
     if (instruction->opcode() == HloOpcode::kWhile) {
+      int64_t loop_iteration_count = static_loop_iteration_count_estimate;
+      if (std::optional<int64_t> upper_bound =
+              ComputeWhileLoopTripCountUpperBound(instruction)) {
+        loop_iteration_count = *upper_bound;
+      }
       int64_t while_body_condition_execution_count =
-          computation_execution_count * loop_iteration_count_estimate;
+          computation_execution_count * loop_iteration_count;
       ComputeInstructionExecutionCountsHelper(
           instruction->while_body(),
-          /*computation_execution_count */
+          /* computation_execution_count */
           while_body_condition_execution_count,
-          /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
-          instruction_execution_counts);
+          /* loop_iteration_count_estimate */
+          static_loop_iteration_count_estimate, instruction_execution_counts);
       ComputeInstructionExecutionCountsHelper(
           instruction->while_condition(),
-          /*computation_execution_count */
+          /* computation_execution_count */
           while_body_condition_execution_count,
-          /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
-          instruction_execution_counts);
+          /* loop_iteration_count_estimate */
+          static_loop_iteration_count_estimate, instruction_execution_counts);
     } else if (instruction->opcode() == HloOpcode::kConditional) {
       // TODO(pratikf): For now, we do not scale down the execution counts of
       // branch statements, though we should at some point.
-      auto branch_computations = instruction->branch_computations();
+      PtrVec<HloComputation*> branch_computations =
+          instruction->branch_computations();
       for (size_t i = 0; i < branch_computations.size(); ++i) {
         ComputeInstructionExecutionCountsHelper(
             branch_computations[i],
-            /*computation_execution_count */
+            /* computation_execution_count */
             computation_execution_count,
-            /*loop_iteration_count_estimate*/ loop_iteration_count_estimate,
-            instruction_execution_counts);
+            /* loop_iteration_count_estimate */
+            static_loop_iteration_count_estimate, instruction_execution_counts);
       }
     }
   }
 }
 
 absl::flat_hash_map<const HloInstruction*, int64_t>
-ComputeInstructionExecutionCounts(const HloModule* module,
-                                  int64_t loop_iteration_count_estimate) {
+ComputeInstructionExecutionCounts(
+    const HloModule* module, int64_t static_loop_iteration_count_estimate) {
   absl::flat_hash_map<const HloInstruction*, int64_t>
       instruction_execution_counts;
   ComputeInstructionExecutionCountsHelper(module->entry_computation(), 1,
-                                          loop_iteration_count_estimate,
-                                          &instruction_execution_counts);
+                                          static_loop_iteration_count_estimate,
+                                          instruction_execution_counts);
   return instruction_execution_counts;
 }
 
@@ -2238,7 +2249,7 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
       for (const HloSharding& child : sharding.tuple_elements()) {
         process_sharding(child);
       }
-    } else if (!sharding.IsReplicated()) {
+    } else if (!sharding.IsReplicated() && !sharding.IsTileMaximal()) {
       absl::Span<const int64_t> dims = sharding.tile_assignment().dimensions();
       std::vector<int64_t> dims_greater_than_one;
       for (const int64_t dim : dims) {

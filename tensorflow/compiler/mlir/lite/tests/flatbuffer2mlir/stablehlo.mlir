@@ -130,11 +130,7 @@ func.func @reduce(%arg0: tensor<1x16x16x320xf32>, %arg3 : tensor<f32>) -> tensor
 }
 
 //CHECK:func.func private @reduce(%arg0: tensor<1x16x16x320xf32>, %arg1: tensor<f32>) -> tensor<1x320xf32> {
-//CHECK-NEXT: %0 = stablehlo.reduce(%arg0 init: %arg1) across dimensions = [1, 2] : (tensor<1x16x16x320xf32>, tensor<f32>) -> tensor<1x320xf32>
-//CHECK-NEXT: reducer(%arg2: tensor<f32>, %arg3: tensor<f32>) {
-//CHECK-NEXT:  %1 = stablehlo.add %arg2, %arg3 : tensor<f32>
-//CHECK-NEXT:  return %1 : tensor<f32>
-//CHECK-NEXT: }
+//CHECK-NEXT: %0 = stablehlo.reduce(%arg0 init: %arg1) applies stablehlo.add across dimensions = [1, 2] : (tensor<1x16x16x320xf32>, tensor<f32>) -> tensor<1x320xf32>
 //CHECK-NEXT: return %0 : tensor<1x320xf32>
 //CHECK-NEXT:}
 

@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/scoped_mock_log.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/pattern_matcher.h"
@@ -43,7 +44,8 @@ using ::testing::TempDir;
 
 class GpuCompilerTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(HloModule* module) {
+  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
+      HloModule* module) {
     auto compiler = backend().compiler();
     return compiler->AssignBuffers(module, backend().default_stream_executor());
   }

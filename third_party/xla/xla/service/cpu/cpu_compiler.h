@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -115,7 +115,7 @@ class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
   FromString(const std::string& serialized) {
     XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable;
     if (!xla_runtime_cpu_executable.ParseFromString(serialized)) {
-      return InternalError("Failed to parse serialized JitRtExecutableProto.");
+      return Internal("Failed to parse serialized JitRtExecutableProto.");
     }
     return std::make_unique<CpuXlaRuntimeAotCompilationResult>(
         xla_runtime_cpu_executable);
@@ -206,9 +206,7 @@ class CpuCompiler : public LLVMCompiler {
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
   StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
-      const std::string& serialized_aot_result) override {
-    return CpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
-  }
+      const std::string& serialized_aot_result) override;
 
   StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
       std::unique_ptr<HloModule> module);

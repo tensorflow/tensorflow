@@ -2101,7 +2101,7 @@ def TF_CeilOp : TF_Op<"Ceil", [Pure, TF_Idempotent, TF_SameOperandsAndResultType
   }];
 }
 
-def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>, DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_CheckNumericsOp : TF_Op<"CheckNumerics", [TF_MustExecute, TF_NoConstantFold, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Checks a tensor for NaN and Inf values.";
 
   let description = [{

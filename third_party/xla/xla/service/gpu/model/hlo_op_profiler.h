@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,13 +34,13 @@ class HloOpProfiler {
   static std::unique_ptr<HloModule> MakeModuleForMeasurements(
       HloOpcode op, PrimitiveType data_type, int chain_length);
 
-  StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
-                                                  PrimitiveType data_type,
-                                                  int chain_length);
+  absl::StatusOr<absl::Duration> MeasureOpChainDuration(HloOpcode op,
+                                                        PrimitiveType data_type,
+                                                        int chain_length);
 
  public:
   explicit HloOpProfiler(HloRunner& runner);
-  StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
+  absl::StatusOr<HloInstructionProfile> MeasureClockCyclesPerOp(
       HloOpcode op, PrimitiveType data_type);
 
  private:

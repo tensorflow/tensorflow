@@ -96,9 +96,7 @@ def collect_function_arg_names(function_names, return_all_args_function_names,
   visitor.do_not_descend_map['tf'].append('contrib')
   visitor.private_map['tf.compat'] = ['v1', 'v2']
   traverse.traverse(tf.compat.v1, visitor)
-  traverse.traverse(tf.compat.v1.estimator, visitor)
   traverse.traverse(tf.compat.v2, visitor)
-  traverse.traverse(tf.compat.v2.estimator, visitor)
 
   def get_arguments_list(attr):
     if tf_inspect.isclass(attr):

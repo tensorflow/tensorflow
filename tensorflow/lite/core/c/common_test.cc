@@ -224,24 +224,6 @@ TEST(TensorCopy, TensorCopy_INVALID) {
   EXPECT_EQ(kTfLiteError, TfLiteTensorCopy(&src, &dst));
 }
 
-TEST(TestTfLiteOpaqueDelegate, CreateAndDelete) {
-  std::unique_ptr<TfLiteOpaqueDelegateBuilder> opaque_delegate_builder(
-      new TfLiteOpaqueDelegateBuilder{});
-
-  TfLiteOpaqueDelegate* opaque_delegate =
-      TfLiteOpaqueDelegateCreate(opaque_delegate_builder.get());
-
-  TfLiteOpaqueDelegateDelete(opaque_delegate);
-}
-
-TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateCreateWithNull) {
-  EXPECT_EQ(nullptr, TfLiteOpaqueDelegateCreate(nullptr));
-}
-
-TEST(TestTfLiteOpaqueDelegate, CallTfLiteOpaqueDelegateDeleteWithNull) {
-  TfLiteOpaqueDelegateDelete(nullptr);
-}
-
 TEST(TestTensorRealloc, TensorReallocMoreBytesSucceeds) {
   const TfLiteType t = kTfLiteFloat32;
   const int num_elements = 4;
@@ -387,46 +369,6 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   TfLiteTensorFree(tensor);
   free(data);
   free(tensor);
-}
-
-TEST(TestTfLiteOpaqueDelegate, GetData_WellFormedOpaqueDelegate) {
-  int delegate_data = 42;
-  TfLiteOpaqueDelegateBuilder builder{};
-  builder.data = &delegate_data;
-
-  TfLiteOpaqueDelegate* opaque_delegate = TfLiteOpaqueDelegateCreate(&builder);
-
-  EXPECT_EQ(&delegate_data, TfLiteOpaqueDelegateGetData(opaque_delegate));
-
-  TfLiteOpaqueDelegateDelete(opaque_delegate);
-}
-
-TEST(TestTfLiteOpaqueDelegate,
-     GetData_NotConstructedWithTfLiteOpaqueDelegateCreate) {
-  // Given a non-opaque delegate, that was created with 'TfLiteDelegateCreate'
-  // and has its 'data_' field set manually.
-  int delegate_data = 42;
-  TfLiteDelegate non_opaque_delegate = TfLiteDelegateCreate();
-  non_opaque_delegate.data_ = &delegate_data;
-  // The following cast is safe only because this code is part of the
-  // TF Lite test suite.  Apps using TF Lite should not rely on
-  // 'TfLiteOpaqueDelegate' and 'TfLiteDelegate' being equivalent.
-  auto* opaque_delegate =
-      reinterpret_cast<TfLiteOpaqueDelegate*>(&non_opaque_delegate);
-
-  // The accessor returns '&delegate_data', because the
-  // 'opaque_delegate_builder' field inside the delegate was not set so it falls
-  // back to returning the data_ field of TfLiteDelegate.
-  EXPECT_EQ(&delegate_data, TfLiteOpaqueDelegateGetData(opaque_delegate));
-}
-
-TEST(TestTfLiteOpaqueDelegate, GetData_NoDataSetViaOpaqueDelegateBuilder) {
-  TfLiteOpaqueDelegateBuilder builder{};
-  TfLiteOpaqueDelegate* opaque_delegate = TfLiteOpaqueDelegateCreate(&builder);
-  // The accessor returns 'nullptr', because the 'data' field inside the opaque
-  // delegate builder was not set.
-  EXPECT_EQ(nullptr, TfLiteOpaqueDelegateGetData(opaque_delegate));
-  TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
 TEST(TestTfLiteTensorGetAllocationStrategy, MemNoneIsAllocatedWithNone) {

@@ -75,3 +75,14 @@ def VerifyQuantLegalization : Pass<"verify-quant-legalization", "mlir::func::Fun
                             "quant::QuantizationDialect"];
 
 }
+
+def OptimizeIntGraph : Pass<"optimize-int-graph", "mlir::func::FuncOp"> {
+  let summary = "Optimization patterns for quantized integer graph";
+
+  let description = [{
+    This includes patterns for merging addition of zp offset and bias.
+  }];
+
+  let constructor = "mlir::quant::stablehlo::CreateOptimizeIntGraphPass()";
+  let dependentDialects = ["mhlo::MhloDialect"];
+}

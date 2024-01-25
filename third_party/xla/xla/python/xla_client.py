@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 224
+_version = 233
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -103,6 +103,8 @@ def make_gpu_client(
     config.memory_fraction = options['memory_fraction']
   if 'preallocate' in options:
     config.preallocate = options['preallocate']
+  if 'collective_memory_size' in options:
+    config.collective_memory_size = options['collective_memory_size']
   register_custom_call_handler('CUDA', _xla.register_custom_call_target)
   register_custom_call_handler('ROCM', _xla.register_custom_call_target)
 
@@ -256,10 +258,12 @@ float8_e5m2fnuz = ml_dtypes.float8_e5m2fnuz
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
+    PrimitiveType.S4: np.dtype('int4'),
     PrimitiveType.S8: np.dtype('int8'),
     PrimitiveType.S16: np.dtype('int16'),
     PrimitiveType.S32: np.dtype('int32'),
     PrimitiveType.S64: np.dtype('int64'),
+    PrimitiveType.U4: np.dtype('uint4'),
     PrimitiveType.U8: np.dtype('uint8'),
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),

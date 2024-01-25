@@ -23,4 +23,8 @@ limitations under the License.
 PYBIND11_MODULE(_pywrap_utils, m) {
   m.def("TF_DATA_DefaultProtocol",
         []() -> std::string { return tensorflow::data::DefaultProtocol(); });
+
+  m.def("TF_DATA_DisableCompressionAtRegistrationTime", []() -> bool {
+    return tensorflow::data::DisableCompressionAtRegistrationTime();
+  });
 };

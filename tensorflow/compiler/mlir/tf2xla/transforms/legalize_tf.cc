@@ -1707,7 +1707,8 @@ class ConvertDiagPartOp : public OpRewritePattern<TF::DiagPartOp> {
         rewriter.create<SelectOp>(op.getLoc(), reshaped_input.getType(),
                                   compare, reshaped_input, zero_matrix);
     auto reduce = rewriter.create<ReduceOp>(op.getLoc(), masked, zero,
-                                            GetI64ElementsAttr({0}, &rewriter));
+                                            GetI64ElementsAttr({0}, &rewriter),
+                                            input_type.getElementType());
     assert(!input_type.getElementType().isInteger(1) &&
            "data type should not be i1");
     BuildReduceBody<AddOp>(input_type.getElementType(), &reduce.getBody(),
@@ -4063,7 +4064,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 
     auto reduction = rewriter.create<ReduceOp>(
         loc, casted_input.getResult(), init,
-        GetI64ElementsAttr(xla_dimensions, &rewriter));
+        GetI64ElementsAttr(xla_dimensions, &rewriter), reduce_element_type);
     BuildReduceBody<ReductionOp>(reduce_element_type, &reduction.getBody(),
                                  &rewriter);
     Value result = reduction.getResult(0);
@@ -4294,7 +4295,8 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     auto reduction = rewriter.create<ReduceOp>(
         loc, llvm::ArrayRef<Value>(operands),
-        llvm::ArrayRef<Value>(init_values), reduction_dimensions);
+        llvm::ArrayRef<Value>(init_values), reduction_dimensions,
+        TypeRange({input_element_type, index_element_type}));
     auto direction = Derived::GetDirection();
     BuildArgMinMaxReductionBody(input_element_type, index_element_type,
                                 direction, &reduction.getBody(), &rewriter);
@@ -6658,14 +6660,19 @@ class ConvertXlaVariadicReduceV2Op
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    // Create the mhlo.reduce op.
-    auto reduce_op = rewriter.create<mhlo::ReduceOp>(
-        loc, op.getInputs(), op.getInitValues(),
-        GetI64ElementsAttr(op.getDimensionsToReduce()));
     mlir::SymbolRefAttr func = op.getReducer();
     auto func_op = cast<mlir::func::FuncOp>(SymbolTable::lookupSymbolIn(
         op->getParentOfType<mlir::ModuleOp>(), func));
     auto func_ty = func_op.getFunctionType();
+    SmallVector<Type> elementTypes{llvm::map_range(
+        func_ty.getResults(),
+        [](Type ty) { return ty.cast<ShapedType>().getElementType(); })};
+
+    // Create the mhlo.reduce op.
+    auto reduce_op = rewriter.create<mhlo::ReduceOp>(
+        loc, op.getInputs(), op.getInitValues(),
+        GetI64ElementsAttr(op.getDimensionsToReduce()), elementTypes);
+
     // Insert a call to the reducer in the region of the mhlo op.
     BuildBodyWithCall(rewriter, loc, func, func_ty, &reduce_op.getBody());
 

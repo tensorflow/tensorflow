@@ -1189,9 +1189,9 @@ func.func @send(%arg0: !mhlo.token) -> !mhlo.token {
 // CHECK-LABEL: func @gather
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<3x4x2xi32>, %[[ARG1:.*]]: tensor<?x3x2xi64>
 func.func @gather(%operand : tensor<3x4x2xi32>, %start_indices : tensor<?x3x2xi64>) -> tensor<4xindex> {
-  // CHECK: %[[C2:.*]] = arith.constant 2 : index
-  // CHECK: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: %[[C3:.*]] = arith.constant 3 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
   // CHECK: %[[DIM:.*]] = tensor.dim %[[ARG1]], %[[C0]] : tensor<?x3x2xi64>
   // CHECK: %[[RES:.*]] = tensor.from_elements %[[DIM]], %[[C3]], %[[C2]], %[[C2]] : tensor<4xindex>
   // CHECK: return %[[RES]] : tensor<4xindex>
@@ -1213,8 +1213,8 @@ func.func @gather(%operand : tensor<3x4x2xi32>, %start_indices : tensor<?x3x2xi6
 // CHECK-LABEL: func @pad
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x48x48x32xf32>
 func.func @pad(%arg0: tensor<?x48x48x32xf32>) -> tensor<4xindex> {
-  // CHECK: %[[CST0:.*]] = arith.constant 0 : index
-  // CHECK: %[[CST1:.*]] = arith.constant 48 : index
+  // CHECK-DAG: %[[CST0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[CST1:.*]] = arith.constant 48 : index
   // CHECK: %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[CST0]] : tensor<?x48x48x32xf32>
   // CHECK: %[[RES:.*]] = tensor.from_elements %[[DIM]], %[[CST1]], %[[CST1]], %[[CST1]] : tensor<4xindex>
   // CHECK: return %[[RES]] : tensor<4xindex>
@@ -1241,8 +1241,8 @@ func.func @cholesky_bounds(%input: tensor<2x?x?xf32, #mhlo.type_extensions<bound
 // CHECK-LABEL: func @concatenate
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?xi32>, %[[ARG1:.*]]: tensor<?x?xi32>, %[[ARG2:.*]]: tensor<?x?xi32>
 func.func @concatenate(%arg0: tensor<?x?xi32>, %arg1: tensor<?x?xi32>, %arg2: tensor<?x?xi32>) -> tensor<2xindex> {
-  // CHECK: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK: %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x?xi32>
   // CHECK: %[[DIM0:.*]] = tensor.dim %[[ARG0]], %[[C1]] : tensor<?x?xi32>
   // CHECK: %[[DIM1:.*]] = tensor.dim %[[ARG1]], %[[C0]] : tensor<?x?xi32>
@@ -1302,8 +1302,8 @@ func.func @real_dynamic_slice(%arg0: tensor<?xf32>, %arg1: tensor<1xindex>, %arg
 // CHECK-LABEL: func @dot_general
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?x?xf32>, %[[ARG1:.*]]: tensor<?x?x?xf32>
 func.func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) -> tensor<3xindex> {
-  // CHECK: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
   // CHECK: %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x?x?xf32>
   // CHECK: %[[DIM0:.*]] = tensor.dim %[[ARG0]], %[[C2]] : tensor<?x?x?xf32>
   // CHECK: %[[DIM1:.*]] = tensor.dim %[[ARG1]], %[[C2]] : tensor<?x?x?xf32>
@@ -1367,10 +1367,10 @@ func.func @broadcast(%arg0: tensor<?xi32>) -> tensor<3xindex> {
 // CHECK-LABEL: func @transpose
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?x?x?xi32>
 func.func @transpose(%arg0: tensor<?x?x?x?xi32>) -> tensor<4xindex> {
-  // CHECK: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK: %[[C1:.*]] = arith.constant 1 : index
-  // CHECK: %[[C2:.*]] = arith.constant 2 : index
-  // CHECK: %[[C3:.*]] = arith.constant 3 : index
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+  // CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
   // CHECK: %[[DIM:.*]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?x?x?x?xi32>
   // CHECK: %[[DIM0:.*]] = tensor.dim %[[ARG0]], %[[C1]] : tensor<?x?x?x?xi32>
   // CHECK: %[[DIM1:.*]] = tensor.dim %[[ARG0]], %[[C2]] : tensor<?x?x?x?xi32>

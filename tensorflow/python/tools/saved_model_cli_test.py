@@ -38,6 +38,7 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_cli
 from tensorflow.python.trackable import autotrackable
@@ -62,6 +63,31 @@ class SavedModelCLITestCase(test.TestCase, parameterized.TestCase):
     super(SavedModelCLITestCase, self).setUp()
     if platform.system() == 'Windows':
       self.skipTest('Skipping failing tests on Windows.')
+
+  def _save_dummy_model(self, get_ops_mock):
+    class DummyModel(autotrackable.AutoTrackable):
+      """Model with a callable concrete function."""
+
+      def __init__(self):
+        function = def_function.function(
+            self.multiply,
+            input_signature=[
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
+                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
+            ])
+        self.pure_concrete_function = function.get_concrete_function()
+
+      def multiply(self, a, b):
+        return a * b
+
+    # Mocking _get_ops_in_metagraph because it returns a nondeterministically
+    # ordered set of ops.
+    get_ops_mock.return_value = {'Op1'}
+    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
+    dummy_model = DummyModel()
+    with self.cached_session():
+      save.save(dummy_model, saved_model_dir)
+    return saved_model_dir
 
   @test.mock.patch.object(saved_model_cli, '_get_ops_in_metagraph')
   def testShowCommandAll(self, get_ops_mock):
@@ -270,30 +296,7 @@ Concrete Functions:
 
   @test.mock.patch.object(saved_model_cli, '_get_ops_in_metagraph')
   def testShowAllWithPureConcreteFunction(self, get_ops_mock):
-
-    class DummyModel(autotrackable.AutoTrackable):
-      """Model with a callable concrete function."""
-
-      def __init__(self):
-        function = def_function.function(
-            self.multiply,
-            input_signature=[
-                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
-                tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)
-            ])
-        self.pure_concrete_function = function.get_concrete_function()
-        super(DummyModel, self).__init__()
-
-      def multiply(self, a, b):
-        return a * b
-
-    # Mocking _get_ops_in_metagraph because it returns a nondeterministically
-    # ordered set of ops.
-    get_ops_mock.return_value = {'Op1'}
-    saved_model_dir = os.path.join(test.get_temp_dir(), 'dummy_model')
-    dummy_model = DummyModel()
-    with self.cached_session():
-      save.save(dummy_model, saved_model_dir)
+    saved_model_dir = self._save_dummy_model(get_ops_mock)
 
     exp_out = """MetaGraphDef with tag-set: 'serve' contains the following SignatureDefs:
 
@@ -359,6 +362,49 @@ Concrete Functions:
       saved_model_cli.show()
     output = out.getvalue().strip()
     self.assertMultiLineEqual(output, exp_out)
+    self.assertEqual(err.getvalue().strip(), '')
+
+  @test.mock.patch.object(saved_model_cli, '_get_ops_in_metagraph')
+  def testShowAllWithCustomOp(self, get_ops_mock):
+    saved_model_dir = self._save_dummy_model(get_ops_mock)
+    # Manually edit in a custom op into one of the functions
+    saved_model_proto = loader_impl.parse_saved_model(saved_model_dir)
+    saved_model_proto.meta_graphs[0].graph_def.library.function[0].node_def.add(
+        name='TestCustomOp', op='CustomOp')
+    file_io.atomic_write_string_to_file(
+        os.path.join(saved_model_dir, 'saved_model.pb'),
+        saved_model_proto.SerializeToString(deterministic=True))
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS(
+        ['saved_model_cli', 'show', '--dir', saved_model_dir, '--all'])
+    parser = saved_model_cli.create_parser()
+    parser.parse_args()
+    with captured_output() as (out, err):
+      saved_model_cli.show()
+    output = out.getvalue().strip()
+    self.assertIn('could not be listed due to the existence of custom ops',
+                  output)
+    self.assertEqual(err.getvalue().strip(), '')
+
+  @test.mock.patch.object(saved_model_cli, '_get_ops_in_metagraph')
+  def testShowAllWithInvalidFuncGraph(self, get_ops_mock):
+    saved_model_dir = self._save_dummy_model(get_ops_mock)
+    # Manually edit one of the functions to make `tf.saved_model.load` fail.
+    saved_model_proto = loader_impl.parse_saved_model(saved_model_dir)
+    saved_model_proto.meta_graphs[0].graph_def.library.function[0].node_def.add(
+        name='TestInvalidOp', op='VarHandleOp')
+    file_io.atomic_write_string_to_file(
+        os.path.join(saved_model_dir, 'saved_model.pb'),
+        saved_model_proto.SerializeToString(deterministic=True))
+    saved_model_cli.flags.FLAGS.unparse_flags()
+    saved_model_cli.flags.FLAGS(
+        ['saved_model_cli', 'show', '--dir', saved_model_dir, '--all'])
+    parser = saved_model_cli.create_parser()
+    parser.parse_args()
+    with captured_output() as (out, err):
+      saved_model_cli.show()
+    output = out.getvalue().strip()
+    self.assertIn('could not be listed due to unknown reasons', output)
     self.assertEqual(err.getvalue().strip(), '')
 
   def testShowCommandSignature(self):

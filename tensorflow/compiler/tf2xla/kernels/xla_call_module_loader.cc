@@ -21,8 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -103,17 +105,62 @@ bool IsShapeAssertionsCheckDisabled(
 constexpr llvm::StringRef kUsesShapePolymorphismAttr =
     "jax.uses_shape_polymorphism";
 
-// For a module whose "main" takes a first platform_index argument, sets
-// the argument to a constant value, and erases the argument.
-tsl::Status SetPlatformIndex(mlir::func::FuncOp main, int platform_index) {
-  mlir::Block &main_body = main.front();
+}  // namespace
 
-  if (main.getNumArguments() < 1) {
+bool IsTokenType(mlir::Type type) {
+  return type.isa<mlir::stablehlo::TokenType>() ||
+         type.isa<mlir::mhlo::TokenType>();
+}
+
+tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
+    mlir::MLIRContext *context, int version, std::string module_str,
+    std::vector<std::string> disabled_checks,
+    std::vector<std::string> platforms, int num_invocation_args,
+    bool main_has_token_input_output) {
+  std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
+  TF_RETURN_IF_ERROR(loader->LoadModule(
+      context, version, std::move(module_str), std::move(disabled_checks),
+      std::move(platforms), num_invocation_args, main_has_token_input_output));
+  return loader;
+}
+
+tsl::Status XlaCallModuleLoader::SetPlatformIndex(
+    absl::string_view compilation_platform) {
+  int platform_index = -1;
+  if (!platforms_.empty()) {
+    auto found_platform =
+        std::find(platforms_.begin(), platforms_.end(), compilation_platform);
+    if (found_platform == platforms_.end()) {
+      if (!IsPlatformCheckDisabled(loading_disabled_checks_)) {
+        return absl::NotFoundError(absl::StrCat(
+            "The current platform ", compilation_platform,
+            " is not among the platforms required by the module: [",
+            absl::StrJoin(platforms_, ", "), "]"));
+      } else {
+        if (platforms_.size() > 1) {
+          platform_index = 0;
+        }
+      }
+    } else {
+      // We only use a platform index argument if we support at least 2
+      // platforms.
+      if (platforms_.size() > 1) {
+        platform_index = found_platform - platforms_.begin();
+      }
+    }
+  }
+
+  if (platform_index < 0) return tsl::OkStatus();
+  VLOG(3) << "XlaCallModule setting the platform_index to " << platform_index
+          << " for platform " << compilation_platform << ".";
+  mlir::Block &main_body = main_.front();
+
+  if (main_.getNumArguments() < 1) {
     return absl::InvalidArgumentError(absl::StrCat(
         "The module should have a platform index argument but it has no ",
         "arguments"));
   }
-  mlir::OpBuilder op_builder(main);
+  mlir::OpBuilder op_builder(main_);
   op_builder.setInsertionPointToStart(&main_body);
   mlir::BlockArgument platform_index_arg = main_body.getArgument(0);
   mlir::RankedTensorType arg_ranked_type =
@@ -134,29 +181,9 @@ tsl::Status SetPlatformIndex(mlir::func::FuncOp main, int platform_index) {
       platform_index_arg.getLoc(), const_attr);
   platform_index_arg.replaceAllUsesWith(platform_index_op);
 
-  main.eraseArgument(0);
-
+  main_.eraseArgument(0);
+  platform_index_arg_set_ = true;
   return tsl::OkStatus();
-}
-
-}  // namespace
-
-bool IsTokenType(mlir::Type type) {
-  return type.isa<mlir::stablehlo::TokenType>() ||
-         type.isa<mlir::mhlo::TokenType>();
-}
-
-tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
-    mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, std::string loading_platform,
-    int num_invocation_args, bool main_has_token_input_output) {
-  std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
-  TF_RETURN_IF_ERROR(loader->LoadAndPreprocessModule(
-      context, version, std::move(module_str), std::move(disabled_checks),
-      std::move(platforms), std::move(loading_platform), num_invocation_args,
-      main_has_token_input_output));
-  return loader;
 }
 
 tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
@@ -186,17 +213,50 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
       return tsl::OkStatus();
     }
   }
+  // Add the tokens to the input_shapes. Starting with version 9, the main
+  // function may take token arguments that do not correspond with op inputs.
+  int nr_inputs = NrInputs();
+  int nr_expected_tokens = llvm::count_if(InputTypes(), IsTokenType);
+  bool has_platform_index_arg =
+      platforms_.size() > 1 && !platform_index_arg_set_;
+  int nr_expected_platform_index_args = has_platform_index_arg ? 1 : 0;
+  if (input_shapes.size() !=
+      nr_inputs - nr_expected_tokens - nr_expected_platform_index_args) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XlaCallModule RefineDynamicShapes called with ", input_shapes.size(),
+        " input shapes, but the main function takes ",
+        nr_inputs - nr_expected_tokens - nr_expected_platform_index_args,
+        " non-token and non-platform-index arguments. The input ",
+        "shapes are (",
+        absl::StrJoin(input_shapes, ", ",
+                      [](std::string *out, const xla::Shape &s) {
+                        absl::StrAppend(out, s.ToString());
+                      }),
+        ") and the main function argument types are ",
+        absl::StrJoin(InputTypes(), ", ",
+                      [](std::string *out, const mlir::Type &t) {
+                        absl::StrAppend(out, mlir::debugString(t));
+                      }),
+        ")"));
+  }
 
   mlir::Block &main_body = main_.front();
-  int non_dimension_arguments = input_shapes.size();
-
   mlir::Builder builder(module_->getContext());
-  std::vector<mlir::Type> static_array_input_types(non_dimension_arguments);
-  for (int i = 0, end = non_dimension_arguments; i < end; ++i) {
-    const xla::Shape &xla_shape = input_shapes[i];
-    if (xla_shape.IsToken()) {
+  std::vector<mlir::Type> static_array_input_types(nr_inputs);
+  int next_actual_input = 0;
+  for (int i = 0, end = nr_inputs; i < end; ++i) {
+    mlir::Type arg_type = main_body.getArgument(i).getType();
+    if (i == 0 && has_platform_index_arg) {
+      static_array_input_types[i] = arg_type;
+      continue;
+    }
+    if (IsTokenType(arg_type)) {
       static_array_input_types[i] = mlir::stablehlo::TokenType::get(context_);
+      VLOG(3) << "XlaCallModule static array input type #" << i << ": "
+              << mlir::debugString(static_array_input_types[i])
+              << " for argument type " << mlir::debugString(arg_type);
     } else {
+      const xla::Shape &xla_shape = input_shapes[next_actual_input++];
       std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
                                           xla_shape.dimensions().end());
       TF_ASSIGN_OR_RETURN(
@@ -209,12 +269,15 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
       //     mlir::Type type,
       //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
       VLOG(3) << "XlaCallModule static array input type #" << i << ": "
-              << mlir::debugString(type);
+              << mlir::debugString(type) << " for argument type "
+              << mlir::debugString(arg_type);
       mlir::TensorType arg_type =
           main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
       if (arg_type == nullptr) {
         return absl::InvalidArgumentError(absl::StrCat(
-            "Argument ", i, " passed to XlaCallModule is not a tensor"));
+            "Argument ", i, " passed to XlaCallModule is not a tensor, ",
+            "has type ",
+            mlir::debugString(main_body.getArgument(i).getType())));
       }
 
       if (arg_type.getElementType() != type.getElementType()) {
@@ -286,13 +349,19 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   return tsl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
+tsl::Status XlaCallModuleLoader::LoadModule(
     mlir::MLIRContext *context, int version, std::string module_str,
     std::vector<std::string> disabled_checks,
-    std::vector<std::string> platforms, std::string loading_platform,
-    int num_invocation_args, bool main_has_token_input_output) {
+    std::vector<std::string> platforms, int num_invocation_args,
+    bool main_has_token_input_output) {
   context_ = context;
   version_ = version;
+  platforms_ = platforms;
+  loading_disabled_checks_ = disabled_checks;
+  loading_disabled_checks_.insert(
+      loading_disabled_checks_.end(),
+      GetXlaCallModuleFlags()->disabled_checks.begin(),
+      GetXlaCallModuleFlags()->disabled_checks.end());
 
   // Load a superset of dialects; we should check at serialization time that
   // we only include allowable dialects.
@@ -315,20 +384,12 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   } else {
     module_ = mlir::parseSourceString<mlir::ModuleOp>(module_str, context_);
   }
-
-  loading_disabled_checks_ = disabled_checks;
-  loading_disabled_checks_.insert(
-      loading_disabled_checks_.end(),
-      GetXlaCallModuleFlags()->disabled_checks.begin(),
-      GetXlaCallModuleFlags()->disabled_checks.end());
   if (!module_) {
     return absl::InvalidArgumentError("Cannot deserialize computation");
   }
-
   VLOG(3) << "Parsed serialized module (version = " << version
           << ", platforms = [" << absl::StrJoin(platforms, ", ")
-          << "], loading_platform = " << loading_platform
-          << ", main_has_token_input_output = " << main_has_token_input_output
+          << "], main_has_token_input_output = " << main_has_token_input_output
           << ", disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
           << "], loading_disabled_checks = ["
           << absl::StrJoin(loading_disabled_checks_, ", ") << "]), module = "
@@ -345,31 +406,6 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
                      " is not supported by this build. Must be <= ",
                      kVersionMaximumSupported));
   }
-
-  platform_index_ = -1;
-  if (!platforms.empty()) {
-    auto found_platform =
-        std::find(platforms.begin(), platforms.end(), loading_platform);
-    if (found_platform == platforms.end()) {
-      if (!IsPlatformCheckDisabled(loading_disabled_checks_)) {
-        return absl::NotFoundError(absl::StrCat(
-            "The current platform ", loading_platform,
-            " is not among the platforms required by the module: [",
-            absl::StrJoin(platforms, ", "), "]"));
-      } else {
-        if (platforms.size() > 1) {
-          platform_index_ = 0;
-        }
-      }
-    } else {
-      // We only use a platform index arguments if we support at least 2
-      // platforms.
-      if (platforms.size() > 1) {
-        platform_index_ = found_platform - platforms.begin();
-      }
-    }
-  }
-
   {
     mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
     if (mlir::failed(mlir::verify(*module_))) {
@@ -380,12 +416,6 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   main_ = module_->lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_) {
     return absl::InvalidArgumentError("Cannot find 'main' in module");
-  }
-
-  if (platforms.size() > 1) {
-    VLOG(3) << "XlaCallModule setting the platform_index to "
-            << platform_index_;
-    TF_RETURN_IF_ERROR(SetPlatformIndex(main_, platform_index_));
   }
 
   mlir::Block &main_body = main_.front();
@@ -402,15 +432,16 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
           " and main_has_token_input_output = ", main_has_token_input_output));
     }
   }
-  int nr_platform_args = (platform_index_ >= 0 ? 1 : 0);
-  if (num_invocation_args != main_body.getNumArguments() - nr_token_arguments) {
+  int nr_platform_args = (platforms.size() > 1 ? 1 : 0);
+  if (num_invocation_args !=
+      main_body.getNumArguments() - nr_platform_args - nr_token_arguments) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Incorrect number of arguments passed to XlaCallModule = ",
-        num_invocation_args, ". The module main function takes ",
-        main_body.getNumArguments() + nr_platform_args + nr_token_arguments,
+        num_invocation_args, ". It must be called with ",
+        main_body.getNumArguments() - nr_platform_args - nr_token_arguments,
+        " because the module main function takes ", main_body.getNumArguments(),
         " arguments of which ", nr_platform_args, " platform index arguments, ",
-        "and ", nr_token_arguments, " token arguments. It must be called with ",
-        main_body.getNumArguments() - nr_token_arguments, " arguments."));
+        "and ", nr_token_arguments, " token arguments."));
   }
   return tsl::OkStatus();
 }

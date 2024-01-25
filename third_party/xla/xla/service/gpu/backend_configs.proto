@@ -11,6 +11,10 @@ import "tsl/protobuf/dnn.proto";
 // These are metadata that the GPU backend attaches to HloInstructions and later
 // uses during e.g. codegen.
 //
+// GpuBackendConfig serves as a parent config for all backend configs so
+// configs won't overwrite each other. Any new backend config proto
+// should be added to and used in GpuBackendConfig.
+//
 // Remember that proto3 doesn't give clients a way to tell the difference
 // between a field not being present and a field having the default value.
 // Choose your defaults carefully.
@@ -196,4 +200,35 @@ message CudnnfMHABackendConfig {
 
   // Is causal mask
   bool is_causal_mask = 21;
+}
+
+// Generic backend config for XLA:GPU
+message GpuBackendConfig {
+  // Specifies which operation queue the current instruction will run on.
+  // A backend may have multiple operation queues to run instructions
+  // concurrently, use this to signal the backend which queue to dispatch to.
+  // The backend should keep a mapping of
+  // operation_queue_id->actual_hardware_queue_id if runtime will create
+  // different IDs.
+  int64 operation_queue_id = 1;
+
+  // Specifies which operation queues to await for data when running with
+  // multiple operation queues.
+  repeated int64 wait_on_operation_queues = 2;
+
+  oneof backend_config {
+    CudnnConvBackendConfig cudnn_conv_backend_config = 3;
+
+    GemmBackendConfig gemm_backend_config = 4;
+
+    BitcastBackendConfig bitcast_backend_config = 5;
+
+    CollectiveBackendConfig collective_backend_config = 6;
+
+    FusionBackendConfig fusion_backend_config = 7;
+
+    CudnnNormBackendConfig cudnn_norm_backend_config = 8;
+
+    CudnnfMHABackendConfig cudnn_fmha_backend_config = 9;
+  }
 }

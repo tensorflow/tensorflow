@@ -7,6 +7,7 @@ package(
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
         "//learning/brain/mlir/quantization:__subpackages__",
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/quantization:__subpackages__",
     ],
     licenses = ["notice"],
@@ -107,6 +108,23 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "attrs_and_constraints_test",
+    srcs = ["attrs_and_constraints_test.cc"],
+    deps = [
+        ":attrs_and_constraints",
+        ":test_base",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
 td_library(
     name = "quant_td_files",
     srcs = [
@@ -114,8 +132,8 @@ td_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":lift_as_function_call_td_files",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
-        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",

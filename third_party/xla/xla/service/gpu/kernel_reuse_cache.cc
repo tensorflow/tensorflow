@@ -1,4 +1,4 @@
-/*Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/*Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -82,17 +82,18 @@ std::pair<KernelReuseCache::Entry, bool> KernelReuseCache::Get(
     absl::Span<const KernelArgument> kernel_arguments,
     absl::string_view discriminator,
     const std::function<KernelReuseCache::Entry()>& generator) {
-  auto ret = GetWithStatus(fused_computation, kernel_arguments, discriminator,
-                           [&]() -> StatusOr<Entry> { return generator(); });
+  auto ret =
+      GetWithStatus(fused_computation, kernel_arguments, discriminator,
+                    [&]() -> absl::StatusOr<Entry> { return generator(); });
   return {*ret.first, ret.second};
 }
 
-std::pair<StatusOr<KernelReuseCache::Entry>, bool>
+std::pair<absl::StatusOr<KernelReuseCache::Entry>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,
     absl::Span<const KernelArgument> kernel_arguments,
     absl::string_view discriminator,
-    const std::function<StatusOr<KernelReuseCache::Entry>()>& generator) {
+    const std::function<absl::StatusOr<KernelReuseCache::Entry>()>& generator) {
   std::string fingerprint = GetComputationFingerprint(
       fused_computation, kernel_arguments, discriminator);
   VLOG(4) << "Fingerprint: ";

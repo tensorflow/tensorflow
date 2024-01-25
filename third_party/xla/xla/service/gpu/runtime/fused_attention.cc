@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -394,7 +394,7 @@ static absl::Status FusedAttentionForwardImpl(
             bmm1_dot_dimension_numbers, bmm2_dot_dimension_numbers,
             is_flash_attention, is_causal_mask, dropout_attrs);
 
-        StatusOr<GpufMHAConfig> config = GpufMHAConfig::For(descriptor);
+        absl::StatusOr<GpufMHAConfig> config = GpufMHAConfig::For(descriptor);
         if (!config.ok()) return tsl::ToAbslStatus(config.status());
 
         return FusedAttentionRunner(*std::move(config));
@@ -478,7 +478,7 @@ static absl::Status FusedAttentionBackwardImpl(
             bmm2_grad_gemm2_dot_dimension_numbers,
             intermediate_tensor_dimensions, intermediate_tensor_layout,
             is_flash_attention, is_causal_mask, dropout_attrs);
-        StatusOr<GpufMHABackwardConfig> config =
+        absl::StatusOr<GpufMHABackwardConfig> config =
             GpufMHABackwardConfig::For(descriptor);
         if (!config.ok()) return tsl::ToAbslStatus(config.status());
 
@@ -1119,6 +1119,50 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .Value(std::optional<int64_t>())  // seed
 );
 
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    FlashAttentionScaleBiasSoftmaxDropoutBackward,
+    FunctionWrapper<FusedAttentionBackwardImpl>(), checks,
+    BindFusedAttentionBackwardAttributes(
+        FusedAttentionBackwardCall(
+            "xla.gpu.flash.attention.backward.scale.bias.softmax.dropout")
+            .Value(std::optional<StridedMemrefView>())  // mask
+            .Arg<StridedMemrefView>()                   // bias
+            .Arg<StridedMemrefView>()                   // fwd_output
+            .Arg<StridedMemrefView>()                   // d_bmm1_lhs
+            .Arg<StridedMemrefView>()                   // d_bmm1_rhs
+            .Arg<StridedMemrefView>()                   // d_bmm2_rhs
+            .Value(std::optional<StridedMemrefView>())  // d_S
+            .Arg<StridedMemrefView>()                   // softmax_sum
+            .Arg<StridedMemrefView>()                   // d_Q_accum
+            .Arg<FlatMemrefView>()                      // scratch
+            .Value(std::optional<StridedMemrefView>())  // d_bias
+        )
+        .Attr<double>("dropout_rate")  // dropout_rate
+        .Attr<int64_t>("seed")         // seed
+);
+
+XLA_RUNTIME_DEFINE_CUSTOM_CALL(
+    FlashAttentionScaleSoftmaxDropoutBackward,
+    FunctionWrapper<FusedAttentionBackwardImpl>(), checks,
+    BindFusedAttentionBackwardAttributes(
+        FusedAttentionBackwardCall(
+            "xla.gpu.flash.attention.backward.scale.softmax.dropout")
+            .Value(std::optional<StridedMemrefView>())  // mask
+            .Value(std::optional<StridedMemrefView>())  // bias
+            .Arg<StridedMemrefView>()                   // fwd_output
+            .Arg<StridedMemrefView>()                   // d_bmm1_lhs
+            .Arg<StridedMemrefView>()                   // d_bmm1_rhs
+            .Arg<StridedMemrefView>()                   // d_bmm2_rhs
+            .Value(std::optional<StridedMemrefView>())  // d_S
+            .Arg<StridedMemrefView>()                   // softmax_sum
+            .Arg<StridedMemrefView>()                   // d_Q_accum
+            .Arg<FlatMemrefView>()                      // scratch
+            .Value(std::optional<StridedMemrefView>())  // d_bias
+        )
+        .Attr<double>("dropout_rate")  // dropout_rate
+        .Attr<int64_t>("seed")         // seed
+);
+
 //===----------------------------------------------------------------------===//
 // cuBLASLt custom calls bindings and registration.
 //===----------------------------------------------------------------------===//
@@ -1195,6 +1239,10 @@ void RegisterFusedAttentionBackwardCustomCalls(
                     FlashAttentionScaleBiasSoftmaxBackward);
   registry.Register(flash_attention("scale.softmax"),
                     FlashAttentionScaleSoftmaxBackward);
+  registry.Register(flash_attention("scale.bias.softmax.dropout"),
+                    FlashAttentionScaleBiasSoftmaxDropoutBackward);
+  registry.Register(flash_attention("scale.softmax.dropout"),
+                    FlashAttentionScaleSoftmaxDropoutBackward);
 }
 }  // namespace gpu
 }  // namespace xla

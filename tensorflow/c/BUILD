@@ -2,7 +2,6 @@
 # C API for TensorFlow, for use by client language bindings.
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -14,12 +13,13 @@ load(
     "tf_custom_op_library",
     "tf_kernel_library",
 )
-load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
 load(
     "//tensorflow/core/tpu:build_defs.bzl",
     "if_libtpu_tf_status",
 )
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -769,6 +769,8 @@ cc_library(
         ":tf_status_headers",
         ":tf_tensor_hdrs",
         "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api",
+        "@local_tsl//tsl/platform",
     ],
 )
 
@@ -790,6 +792,8 @@ tf_cuda_library(
         ":tf_status",
         ":tf_status_helper",
         ":tf_tensor_internal",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api",
+        "//tensorflow/core/common_runtime/next_pluggable_device/c:tf_rendezvous_c_api_internal",
         "//tensorflow/core/platform:notification",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

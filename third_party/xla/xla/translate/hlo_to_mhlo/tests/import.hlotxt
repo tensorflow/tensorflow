@@ -72,6 +72,18 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT ag = f32[128,128] all-gather(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
 }
 
+// CHECK-LABEL:  func private @test_all_gather_variadic
+%test_all_gather_variadic {
+  input.0 = f32[128,8] parameter(0)
+  input.1 = f32[128,16] parameter(1)
+  // CHECK-NEXT: "mhlo.all_gather"(%arg0, %arg1)
+  // CHECK-SAME: all_gather_dim = 1 : i64
+  // CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
+  // CHECK-SAME: use_global_device_ids
+  ROOT ag = (f32[128,32], f32[128,64]) all-gather(f32[128,8] input.0, f32[128,16] input.1), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
+}
+
 // Test all-to-all
 
 // CHECK-LABEL:  func private @test_all_to_all
@@ -594,6 +606,26 @@ add {
   // CHECK-SAME{LITERAL}: output_operand_aliases = [#mhlo.output_operand_alias<output_tuple_indices = [0], operand_index = 0, operand_tuple_indices = [1]>]
   // CHECK-SAME: (tuple<tensor<1x1xf32>, tensor<2x3xf32>>, tensor<5x5xf32>) -> tuple<tensor<2x3xf32>>
   ROOT %custom-call = (f32[2,3]) custom-call((f32[1,1], f32[2,3]) %arg1, f32[5,5] %arg2), custom_call_target="foo", output_to_operand_aliasing={{0}: (0, {1})}
+}
+
+// CHECK-LABEL:  func private @test_custom_call_dynamic_broadcast_in_dim
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<1x?xf32>, [[ARG_1:%.*]]: tensor<3xi64>) -> tensor<2x?x2xf32>
+%test_custom_call_dynamic_broadcast_in_dim (arg1: f32[1,?], arg2: s64[3]) -> f32[2,?,2] {
+  %arg1 = f32[1,?] parameter(0)
+  %arg2 = s64[3] parameter(1)
+  // CHECK:  "mhlo.dynamic_broadcast_in_dim"([[ARG_0]], [[ARG_1]]) {
+  // CHECK-SAME: broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK-SAME: (tensor<1x?xf32>, tensor<3xi64>) -> tensor<2x?x2xf32>
+  ROOT %custom-call = f32[2,?,2] custom-call(f32[1,?] %arg1, s64[3] %arg2), custom_call_target="mhlo.dynamic_broadcast_in_dim", backend_config={broadcast_dimensions=[0,1]}
+}
+
+// CHECK-LABEL:  func private @test_custom_call_dynamic_reshape
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<?xf32>, [[ARG_1:%.*]]: tensor<2xi64>) -> tensor<?x?xf32>
+%test_custom_call_dynamic_reshape (arg1: f32[?], arg2: s64[2]) -> f32[?,?] {
+  %arg1 = f32[?] parameter(0)
+  %arg2 = s64[2] parameter(1)
+  // CHECK:  mhlo.dynamic_reshape [[ARG_0]], [[ARG_1]] : (tensor<?xf32>, tensor<2xi64>) -> tensor<?x?xf32>
+  ROOT %custom-call = f32[?,?] custom-call(f32[?] %arg1, s64[2] %arg2), custom_call_target="mhlo.dynamic_reshape"
 }
 
 // CHECK-LABEL:  func private @test_div(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32>
@@ -1797,23 +1829,18 @@ add {
   // CHECK:  %[[START:.*]] = "mhlo.async_start"(%[[ARG0]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
-   %async-start = (f32[10]{0}, f32[20]{0}, s32[]) async-start(%p0),
-                                                    calls=%AsyncOp,
-                                                    async_group_id=1
+   %async-start = ((f32[10]{0}), f32[20]{0}, s32[]) async-start(%p0),
+                                                    calls=%AsyncOp
   // CHECK: %[[UPDATE:.*]] = "mhlo.async_update"(%[[START]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
-   %async-update = (f32[10]{0}, f32[20]{0}, s32[]) async-update(
+   %async-update = ((f32[10]{0}), f32[20]{0}, s32[]) async-update(
                                                          %async-start),
-                                                     calls=%AsyncOp,
-                                                     async_group_id=1
+                                                     calls=%AsyncOp
   // CHECK: "mhlo.async_done"(%[[UPDATE]])
   // CHECK-SAME: called_computation = @AsyncOp
   // CHECK-SAME: execution_thread = "main"
-  // CHECK-SAME: group_id = 1
-   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp, async_group_id=1
+   ROOT %async-done = f32[20]{0} async-done(%async-update), calls=%AsyncOp
  }
 
 // CHECK-LABEL: func private @test_args_and_result_with_sharding

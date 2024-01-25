@@ -69,6 +69,15 @@ StatusOr<std::string> CPluginCoordinationServiceAgent::GetKeyValue(
   return ProcessGetKeyValueResult(result_buf, status);
 }
 
+StatusOr<std::string> CPluginCoordinationServiceAgent::TryGetKeyValue(
+    std::string_view key) {
+  TF_StatusPtr c_status_ptr(TF_NewStatus());
+  TF_Status* status = c_status_ptr.get();
+  TF_Buffer* result_buf = TF_CoordinationServiceTryGetKeyValue(
+      key.data(), key.size(), agent_, status);
+  return ProcessGetKeyValueResult(result_buf, status);
+}
+
 Status CPluginCoordinationServiceAgent::DeleteKeyValue(std::string_view key) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Status* status = c_status_ptr.get();

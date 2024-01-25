@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -595,7 +595,7 @@ ENTRY e {
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
 
-  StatusOr<TritonFusionAnalysis> analysis =
+  absl::StatusOr<TritonFusionAnalysis> analysis =
       TritonFusionAnalysis::Execute(*dot_computation);
   // It can fail but shouldn't crash.
   (void)analysis;

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,20 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_executable_run_options.h"
 
+#include <cstdint>
 #include <map>
 #include <optional>
+#include <utility>
 
-#include "absl/algorithm/container.h"
-#include "xla/status_macros.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/executable_run_options.h"
+#include "xla/service/global_device_id.h"
+#include "xla/service/gpu/nccl_clique_key.h"
+#include "xla/service/service_executable_run_options.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -35,44 +44,15 @@ GpuExecutableRunOptions::gpu_global_device_ids() const {
   return gpu_global_device_ids_;
 }
 
-GpuExecutableRunOptions& GpuExecutableRunOptions::set_nccl_unique_id_callback(
-    NcclUniqueIdCallback nccl_unique_id_callback) {
-  nccl_unique_id_callback_ = std::move(nccl_unique_id_callback);
+GpuExecutableRunOptions& GpuExecutableRunOptions::set_nccl_clique_id_callback(
+    NcclCliqueIdCallback nccl_clique_id_callback) {
+  nccl_clique_id_callback_ = std::move(nccl_clique_id_callback);
   return *this;
 }
 
-const NcclUniqueIdCallback& GpuExecutableRunOptions::nccl_unique_id_callback()
+const NcclCliqueIdCallback& GpuExecutableRunOptions::nccl_clique_id_callback()
     const {
-  return nccl_unique_id_callback_;
-}
-
-NcclExecuteParams::NcclExecuteParams(
-    const ServiceExecutableRunOptions& run_options,
-    se::StreamExecutor* stream_executor)
-    : stream_executor(stream_executor),
-      run_id(run_options.run_options().run_id()),
-      device_assn(run_options.run_options().device_assignment()) {
-  const GpuExecutableRunOptions* gpu_options =
-      run_options.run_options().gpu_executable_run_options();
-  gpu_global_device_ids = gpu_options && gpu_options->gpu_global_device_ids()
-                              ? &*gpu_options->gpu_global_device_ids()
-                              : nullptr;
-  nccl_unique_id_callback =
-      gpu_options && gpu_options->nccl_unique_id_callback()
-          ? &gpu_options->nccl_unique_id_callback()
-          : nullptr;
-}
-
-StatusOr<GlobalDeviceId> NcclExecuteParams::GetGlobalDeviceId() const {
-  int64_t local_device_ordinal = stream_executor->device_ordinal();
-  if (gpu_global_device_ids) {
-    auto it = gpu_global_device_ids->find(local_device_ordinal);
-    TF_RET_CHECK(it != gpu_global_device_ids->end()) << local_device_ordinal;
-    return it->second;
-  } else {
-    // No local -> global mapping was provided; assume the identity mapping.
-    return GlobalDeviceId(local_device_ordinal);
-  }
+  return nccl_clique_id_callback_;
 }
 
 }  // namespace gpu

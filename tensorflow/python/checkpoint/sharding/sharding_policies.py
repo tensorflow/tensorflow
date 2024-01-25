@@ -73,7 +73,7 @@ _OffsetAndShape = tuple[Sequence[int], Sequence[int]]
 @tf_export.tf_export("train.experimental.MaxShardSizePolicy")
 class MaxShardSizePolicy(sharding_util.ShardingCallback):
   """Policy that splits tensors into shards with a max shard size.
-  
+
   Shards may exceed the max shard size if they contain 1. a single scalar/string
   tensor that could not be sliced and exceeds the max shard size or 2. the
   checkpoint object graph, whose size cannot be calculated when saving.

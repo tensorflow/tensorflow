@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
       break;
     }
     default:
-      return InternalError("Unexpected async start op %s",
+      return Internal("Unexpected async start op %s",
                            HloOpcodeString(async_start->opcode()));
   }
 
@@ -89,20 +89,6 @@ StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
   // async-start/done.
   TF_RETURN_IF_ERROR(async_start->DropAllControlDeps());
   TF_RETURN_IF_ERROR(async_done->DropAllControlDeps());
-
-  // For the generic async-start/done, we also need to disconnect them from
-  // the called computations.
-  if (async_start_op == HloOpcode::kAsyncStart) {
-    auto disconnect_called_computation =
-        [](HloInstruction* async_op) -> Status {
-      TF_RET_CHECK(async_op->called_computations().size() == 1);
-      HloComputation* called = async_op->called_computations().front();
-      called->RemoveAsyncInstruction(async_op);
-      return OkStatus();
-    };
-    TF_RETURN_IF_ERROR(disconnect_called_computation(async_start));
-    TF_RETURN_IF_ERROR(disconnect_called_computation(async_done));
-  }
 
   // When we remove the async-done (and its unused operands), in most cases,
   // the async-start may not be deleted if its considered as having side effects
@@ -171,10 +157,10 @@ StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
   absl::flat_hash_set<HloInstruction*> in_flight_ops;
 
   for (HloInstruction* instruction : sequence.instructions()) {
-    if (hlo_query::IsAsyncCollectiveStartOp(instruction->opcode())) {
+    if (hlo_query::IsAsyncCollectiveStartOp(instruction)) {
       in_flight_ops.insert(instruction);
       VLOG(3) << "Found async start " << instruction->ToString();
-    } else if (hlo_query::IsAsyncCollectiveDoneOp(instruction->opcode())) {
+    } else if (hlo_query::IsAsyncCollectiveDoneOp(instruction)) {
       // If this done is matching with the previous start and all intervening
       // ops are nops (i.e., prev_async_start was not reset to null), then we
       // were unable to schedule an independent op to overlap with this async

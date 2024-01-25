@@ -15,17 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_UTILS_H_
 
-#include <cstdint>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {
 
-int64_t EstimatedSizeBytes(const std::vector<Tensor>& tensors);
+ByteSize EstimatedSize(const std::vector<Tensor>& tensors);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -81,15 +81,15 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/meta/type_traits.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -227,7 +227,7 @@ class Kernel {
   // registering custom CUDA C++ kernels with non-trivial C++ API with a
   // StreamExecutor as a generic `Kernel`.
   using KernelArgsPacking =
-      std::function<tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
+      std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
           const Kernel &kernel, const KernelArgs &args)>;
 
   Kernel(Kernel &&from);
@@ -272,7 +272,7 @@ class Kernel {
 
   // Returns the maximum number of blocks (per multiprocessor) occupied by the
   // kernel given the number of threads per block and shared memory size.
-  tsl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
+  absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const;
 
   // Sets custom kernels arguments packing function for a kernel.
@@ -527,8 +527,9 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
 }
 }  // namespace internal
 
-inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
-    absl::Span<const DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
+inline absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>
+PackKernelArgs(absl::Span<const DeviceMemoryBase> args,
+               uint32_t shared_mem_bytes) {
   static constexpr int kKernelArgsLimit = 1024;
 
   if (args.size() > kKernelArgsLimit)
@@ -558,8 +559,9 @@ inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
   return internal::PackKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
 }
 
-inline tsl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>> PackKernelArgs(
-    absl::Span<const DeviceMemoryBase> args, const KernelMetadata &metadata) {
+inline absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>
+PackKernelArgs(absl::Span<const DeviceMemoryBase> args,
+               const KernelMetadata &metadata) {
   return PackKernelArgs(args, metadata.shared_memory_bytes().value_or(0));
 }
 

@@ -1,4 +1,6 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -87,16 +89,39 @@ package_group(
     ],
 )
 
+# TODO(b/315862822): Deprecate the usage of `--define=tensorflow_mkldnn_contraction_kernel=0` flag
 config_setting(
-    # Add "--define tensorflow_mkldnn_contraction_kernel=0" to your build command to disable mkldnn
-    # sgemm in Eigen tensor contractions (matrix multiplications and convolutions). The mkldnn
+    name = "defines_no_mkldnn_contraction_kernel",
+    define_values = {
+        "tensorflow_mkldnn_contraction_kernel": "0",
+    },
+)
+
+bool_flag(
+    name = "disable_mkldnn_contraction_kernel",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "flag_no_mkldnn_contraction_kernel",
+    flag_values = {
+        ":disable_mkldnn_contraction_kernel": "True",
+    },
+)
+
+selects.config_setting_group(
+    # Add "--define tensorflow_mkldnn_contraction_kernel=0" (not preferable) or build flag
+    # "//tensorflow/core/kernels:disable_mkldnn_contraction_kernel=True" (preferred)
+    # to your build command to disable mkldnn sgemm in
+    # Eigen tensor contractions (matrix multiplications and convolutions). The mkldnn
     # kernels are generated at runtime and use avx/avx2/fma/avx512 based on cpu status registers
     # (https://en.wikipedia.org/wiki/CPUID). Default Eigen contraction kernel is
     # Eigen::internal::gebp_kernel (general block-panel kernel).
     name = "no_mkldnn_contraction_kernel",
-    define_values = {
-        "tensorflow_mkldnn_contraction_kernel": "0",
-    },
+    match_any = [
+        ":defines_no_mkldnn_contraction_kernel",
+        ":flag_no_mkldnn_contraction_kernel",
+    ],
 )
 
 # Public support libraries ----------------------------------------------------
@@ -149,6 +174,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
+        "@com_google_absl//absl/base:prefetch",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -866,6 +892,7 @@ ARRAY_DEPS = [
     ":gather_functor",
     ":ops_util",
     ":transpose_functor",
+    "@com_google_absl//absl/base:prefetch",
     "//tensorflow/core:array_grad",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
@@ -1697,6 +1724,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 
@@ -2016,6 +2044,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:bounds_check",
+        "@com_google_absl//absl/base:prefetch",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -3641,6 +3670,7 @@ tf_kernel_library(
     prefix = "cwise_op",
     deps = MATH_DEPS + [
         "//tensorflow/core/kernels/mlir_generated:cwise_op",
+        "@com_google_absl//absl/base:prefetch",
     ],
 )
 

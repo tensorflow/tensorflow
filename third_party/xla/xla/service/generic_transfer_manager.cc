@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -203,7 +203,7 @@ void GenericTransferManager::TransferLiteralFromDevice(
           ->callback_is_host_callback_safe) {
     stream->ThenDoHostCallback([done = std::move(done), stream] {
       done(stream->ok() ? OkStatus()
-                        : InternalError("`TransferLiteralFromDevice` failed"));
+                        : Internal("`TransferLiteralFromDevice` failed"));
     });
   } else {
     done(stream->BlockHostUntilDone());

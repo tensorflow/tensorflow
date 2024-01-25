@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <initializer_list>
+#include <utility>
 #include <vector>
 
 #define EIGEN_USE_THREADS
@@ -31,6 +33,7 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/runtime_lightweight_check.h"
+#include "tsl/platform/logging.h"
 #include "tsl/util/onednn_threadpool.h"
 
 namespace xla {
@@ -75,7 +78,7 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
 
   auto lhs_md = lhs_minfo.GetOneDnnMemDesc();
   auto rhs_md = rhs_minfo.GetOneDnnMemDesc();
-  auto bias_md = memory::desc(nullptr);
+  auto bias_md = memory::desc();
   auto result_md = result_minfo.GetOneDnnMemDesc();
 
   // Update dims and strides for transposed inputs.
@@ -99,46 +102,77 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_OneDnnMatMul(
   auto rhs_mem = memory(rhs_md, cpu_engine, rhs_minfo.Data());
   auto bias_mem = memory(nullptr);
   auto result_mem = memory(result_md, cpu_engine, result_minfo.Data());
+  std::vector<std::pair<int, dnnl::memory>> postop_args;
 
-  bool bias_fusion = (!matmul_config.fused_ops().empty() &&
-                      matmul_config.fused_ops(0) == OneDnnMatMulConfig::BIAS);
+  // Currently, GELU/ReLU only fusion is supported.
+  dnnl::post_ops post_ops;
+  for (auto& fused_op : matmul_config.fused_ops()) {
+    switch (fused_op) {
+      case OneDnnMatMulConfig::RELU:
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_relu, 0.f, 0.f);
+        break;
+      case OneDnnMatMulConfig::TANH:
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_tanh, 0.f, 0.f);
+        break;
+      case OneDnnMatMulConfig::GELU_TANH:
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_gelu_tanh, 0.f, 0.f);
+        break;
+      case OneDnnMatMulConfig::GELU_ERF:
+        post_ops.append_eltwise(dnnl::algorithm::eltwise_gelu_erf, 0.f, 0.f);
+        break;
+      case OneDnnMatMulConfig::BIAS: {
+        MemrefInfo bias_minfo(args[arg_indx++]);
+        bias_md = bias_minfo.GetOneDnnMemDesc();
 
-  auto matmul_pd =
-      matmul::primitive_desc(cpu_engine, lhs_md, rhs_md, result_md);
-
-  if (bias_fusion) {
-    auto bias_mem_desc = [](MemrefInfo base, dnnl::memory::data_type dtype) {
-      std::vector<int64_t> dims(base.GetRank(), 1);
-      std::vector<int64_t> strides(base.GetRank(), 1);
-      dims.at(base.GetRank() - 1) = base.GetChannels();
-      return memory::desc{dims, dtype, strides};
-    };
-    MemrefInfo bias_minfo(args[arg_indx++]);
-    bias_md = bias_minfo.GetOneDnnMemDesc();
-
-    // extend bias rank to match result rank
-    auto missed_rank = result_md.get_ndims() - bias_md.get_ndims();
-    XLA_LIGHTWEIGHT_CHECK(missed_rank >= 0);
-    if (missed_rank > 0) {
-      auto bias_dims = bias_md.get_dims();
-      bias_dims.insert(bias_dims.begin(), missed_rank, 1);
-      bias_md = bias_md.reshape(bias_dims);
+        // Extend bias rank to match result rank.
+        auto missed_rank = result_md.get_ndims() - bias_md.get_ndims();
+        XLA_LIGHTWEIGHT_CHECK(missed_rank >= 0);
+        if (missed_rank > 0) {
+          auto bias_dims = bias_md.get_dims();
+          bias_dims.insert(bias_dims.begin(), missed_rank, 1);
+          bias_md = bias_md.reshape(bias_dims);
+        }
+        bias_mem = memory(bias_md, cpu_engine, bias_minfo.Data());
+      } break;
+      case OneDnnMatMulConfig::BINARY_ADD: {
+        MemrefInfo binary_minfo(args[arg_indx++]);
+        auto binary_md = binary_minfo.GetOneDnnMemDesc();
+        auto arg_idx =
+            DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_ops.len()) | DNNL_ARG_SRC_1;
+        post_ops.append_binary(dnnl::algorithm::binary_add, binary_md);
+        postop_args.emplace_back(
+            arg_idx, dnnl::memory(binary_md, cpu_engine, binary_minfo.Data()));
+      } break;
+      default:
+        LOG(FATAL) << __FILE__ << ":" << __LINE__
+                   << " Attempt to call OneDNN MatMul runtime library with "
+                      "unsupported post op."
+                   << std::endl;
     }
-
-    bias_mem = memory(bias_md, cpu_engine, bias_minfo.Data());
-    matmul_pd =
-        matmul::primitive_desc(cpu_engine, lhs_md, rhs_md, bias_md, result_md);
   }
 
   XLA_LIGHTWEIGHT_CHECK(num_args == arg_indx);
 
+  dnnl::primitive_attr attrs;
+  if (post_ops.len() > 0) {
+    attrs.set_post_ops(post_ops);
+  }
+
+  auto matmul_pd = matmul::primitive_desc(cpu_engine, lhs_md, rhs_md, bias_md,
+                                          result_md, attrs);
+
+  if (std::strstr(matmul_pd.impl_info_str(), "ref") != nullptr) {
+    LOG(WARNING) << "[Perf]: MatMul reference implementation being executed";
+  }
+
   auto matmul_prim = matmul(matmul_pd);
 
-  std::unordered_map<int, memory> matmul_args;
-  matmul_args.insert({DNNL_ARG_SRC, lhs_mem});
-  matmul_args.insert({DNNL_ARG_WEIGHTS, rhs_mem});
-  matmul_args.insert({DNNL_ARG_BIAS, bias_mem});
-  matmul_args.insert({DNNL_ARG_DST, result_mem});
+  std::unordered_map<int, memory> matmul_args{{DNNL_ARG_SRC, lhs_mem},
+                                              {DNNL_ARG_WEIGHTS, rhs_mem},
+                                              {DNNL_ARG_BIAS, bias_mem},
+                                              {DNNL_ARG_DST, result_mem}};
+
+  matmul_args.insert(postop_args.begin(), postop_args.end());
 
   matmul_prim.execute(onednn_stream, matmul_args);
 }

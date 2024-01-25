@@ -46,6 +46,54 @@ func.func @scatter_with_unranked_inputs(%input_tensor: tensor<*xf32>,
 
 // -----
 
+// CHECK: func @scatter_with_promotable_types
+func.func @scatter_with_promotable_types(%input_tensor: tensor<200x100x300xf32>,
+    %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
+      tensor<200x100x300xf64> {
+  %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+  ^bb0(%lhs: tensor<f64>, %rhs: tensor<f64>):
+    %add = mhlo.add %lhs, %rhs : tensor<f64>
+    "mhlo.return"(%add) : (tensor<f64>) -> ()
+  }) {
+    scatter_dimension_numbers = #mhlo.scatter<
+      update_window_dims = [1],
+      inserted_window_dims = [0, 1],
+      scatter_dims_to_operand_dims = [0, 1],
+      index_vector_dim = 1
+    >,
+    indices_are_sorted = true,
+    unique_indices = true
+  } : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) ->
+      tensor<200x100x300xf64>
+  func.return %0 : tensor<200x100x300xf64>
+}
+
+// -----
+
+// CHECK: func @scatter_with_promotable_quantized_types
+func.func @scatter_with_promotable_quantized_types(%input_tensor: tensor<200x100x300x!quant.uniform<i8:f32, 2.000000e+00:15>>,
+    %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+      tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>> {
+  %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+  ^bb0(%lhs: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>, %rhs: tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>):
+    %add = mhlo.add %lhs, %rhs : tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>
+    "mhlo.return"(%add) : (tensor<!quant.uniform<i32:f32, 2.000000e+00:15>>) -> ()
+  }) {
+    scatter_dimension_numbers = #mhlo.scatter<
+      update_window_dims = [1],
+      inserted_window_dims = [0, 1],
+      scatter_dims_to_operand_dims = [0, 1],
+      index_vector_dim = 1
+    >,
+    indices_are_sorted = true,
+    unique_indices = true
+  } : (tensor<200x100x300x!quant.uniform<i8:f32, 2.000000e+00:15>>, tensor<10x2xi32>,
+      tensor<10x300x!quant.uniform<i8:f32, 2.000000e+00:15>>) ->
+      tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>>
+  func.return %0 : tensor<200x100x300x!quant.uniform<i32:f32, 2.000000e+00:15>>
+}
+// -----
+
 func.func @invalid_scatter(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xf32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
@@ -685,7 +733,7 @@ func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xf32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xi32>) ->
       tensor<200x100x300xf32> {
 
-  // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<f32>' vs 'tensor<i32>'}}
+  // expected-error@+1 {{The element-type of reduction-region's result type at index 0 is expected to be promotable from the op's corresponding init-value element-type: 'tensor<f32>' vs 'tensor<i32>'}}
   %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %add = mhlo.add %lhs, %rhs :  tensor<f32>
@@ -710,7 +758,7 @@ func.func @invalid_scatter_reducer(%input_tensor: tensor<200x100x300xi32>,
     %scatter_indices: tensor<10x2xi32>, %updates: tensor<10x300xf32>) ->
       tensor<200x100x300xf32> {
 
-  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be 'i32', but got 'tensor<f32>' as its type.}}
+  // expected-error@+1 {{The element-type of reduction-region's argument at index 1 is expected to be promotable from 'i32', but got 'f32'}}
   %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
     %add = mhlo.add %lhs, %rhs :  tensor<f32>

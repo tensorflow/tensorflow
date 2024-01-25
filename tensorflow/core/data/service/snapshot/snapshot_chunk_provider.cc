@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/snapshot_chunk_provider.h"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -21,7 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/btree_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -29,16 +31,17 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tsl/distributed_runtime/rpc/grpc_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/retrying_utils.h"
 #include "tsl/platform/status_to_from_proto.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/tstring.h"
@@ -64,20 +67,21 @@ std::string AbsPath(absl::string_view snapshot_path, absl::string_view chunk) {
 // Waits for a short period of time before retrying.
 void Backoff(int num_retries, tsl::Env* env) {
   if (num_retries >= 1) {  // Does not backoff for the first try.
-    env->SleepForMicroseconds(tsl::ComputeBackoffMicroseconds(num_retries - 1));
+    absl::Duration retry_backoff = tsl::ComputeRetryBackoff(num_retries - 1);
+    env->SleepForMicroseconds(absl::ToInt64Microseconds(retry_backoff));
   }
 }
 
-std::string SetToString(const absl::flat_hash_set<std::string>& s) {
+std::string SetToString(const absl::btree_set<std::string>& s) {
   return absl::StrJoin(s, kSetElementDelimiter);
 }
 
-absl::flat_hash_set<std::string> SetFromString(absl::string_view s) {
+absl::btree_set<std::string> SetFromString(absl::string_view s) {
   if (s.empty()) {
     return {};
   }
   std::vector<std::string> split = absl::StrSplit(s, kSetElementDelimiter);
-  return absl::flat_hash_set<std::string>(split.begin(), split.end());
+  return absl::btree_set<std::string>(split.begin(), split.end());
 }
 
 }  // namespace
@@ -178,6 +182,20 @@ absl::Status SnapshotChunkProvider::Restore(
   TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kChunksRead), &chunks_read));
   chunks_read_ = SetFromString(chunks_read);
   return UpdateSnapshot();
+}
+
+int64_t SnapshotChunkProvider::Cardinality() const {
+  return SnapshotChunksCardinality(snapshot_path_, env_);
+}
+
+void SnapshotChunkProvider::Cancel() {
+  absl::MutexLock l(&mu_);
+  if (snapshot_state_.snapshot_is_done || !snapshot_state_.status.ok()) {
+    return;
+  }
+  snapshot_state_.status = absl::CancelledError(
+      absl::StrCat("Cancelled loading tf.data snapshot at ", snapshot_path_));
+  VLOG(2) << snapshot_state_.status;
 }
 
 }  // namespace data

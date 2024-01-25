@@ -57,9 +57,16 @@ if(TFLITE_ENABLE_GPU)
 endif()  # TFLITE_ENABLE_GPU
 
 add_executable(label_image
-  EXCLUDE_FROM_ALL
   ${TFLITE_LABEL_IMAGE_SRCS}
 )
+if(TFLITE_ENABLE_LABEL_IMAGE)
+  set_target_properties(label_image PROPERTIES EXCLUDE_FROM_ALL FALSE)
+  if(TFLITE_ENABLE_INSTALL)
+    install(TARGETS label_image)
+  endif()  # TFLITE_ENABLE_INSTALL
+else()
+  set_target_properties(label_image PROPERTIES EXCLUDE_FROM_ALL TRUE)
+endif()  # TFLITE_ENABLE_LABEL_IMAGE
 target_compile_options(label_image
   PRIVATE
     ${TFLITE_LABEL_IMAGE_CC_OPTIONS}

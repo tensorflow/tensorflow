@@ -2433,7 +2433,7 @@ func.func @convert_group_conv2d(%arg0: tensor<1x14x14x2240xf32>, %arg1: tensor<3
 // CHECK:            %[[VAL_4:.*]] = "tf.Const"() <{value = dense<[0, 1]> : tensor<2xi64>}> : () -> tensor<2xi64>
 // CHECK:            %[[VAL_5:.*]] = "tf.ReverseV2"(%[[VAL_1:.*]], %[[VAL_4:.*]]) : (tensor<2x2x64x256xf32>, tensor<2xi64>) -> tensor<2x2x64x256xf32>
 // CHECK:            %[[VAL_6:.*]] = "tf.Const"() <{value = dense<[1, 128, 128, 64]> : tensor<4xi32>}> : () -> tensor<4xi32>
-// CHECK:            %[[VAL_7:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_6:.*]], %[[VAL_5:.*]], %[[VAL_3:.*]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<2x2x64x256xf32>, tensor<1x64x64x256xf32>) -> tensor<1x128x128x64xf32>
+// CHECK:            %[[VAL_7:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_6:.*]], %[[VAL_5:.*]], %[[VAL_3:.*]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<2x2x64x256xf32>, tensor<1x64x64x256xf32>) -> tensor<1x128x128x64xf32>
 // CHECK:            %[[VAL_8:.*]] = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : () -> tensor<4xi64>
 // CHECK:            %[[VAL_9:.*]] = "tf.Transpose"(%[[VAL_7:.*]], %[[VAL_8:.*]]) : (tensor<1x128x128x64xf32>, tensor<4xi64>) -> tensor<1x64x128x128xf32>
 // CHECK:            return %[[VAL_9:.*]] : tensor<1x64x128x128xf32>
@@ -2455,7 +2455,7 @@ func.func @convert_transpose_conv_with_transpose(%arg0: tensor<1x256x64x64xf32>,
 // CHECK:            %[[VAL_4:.*]] = "tf.Const"() <{value = dense<[0, 1]> : tensor<2xi64>}> : () -> tensor<2xi64>
 // CHECK:            %[[VAL_5:.*]] = "tf.ReverseV2"(%[[VAL_1:.*]], %[[VAL_4:.*]]) : (tensor<2x2x64x256xf32>, tensor<2xi64>) -> tensor<2x2x64x256xf32>
 // CHECK:            %[[VAL_6:.*]] = "tf.Const"() <{value = dense<[1, 128, 128, 64]> : tensor<4xi32>}> : () -> tensor<4xi32>
-// CHECK:            %[[VAL_7:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_6:.*]], %[[VAL_5:.*]], %[[VAL_3:.*]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<2x2x64x256xf32>, tensor<1x64x64x256xf32>) -> tensor<1x128x128x64xf32>
+// CHECK:            %[[VAL_7:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_6:.*]], %[[VAL_5:.*]], %[[VAL_3:.*]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<2x2x64x256xf32>, tensor<1x64x64x256xf32>) -> tensor<1x128x128x64xf32>
 // CHECK:            %[[VAL_8:.*]] = "tf.Const"() <{value = dense<[1, 2, 0, 3]> : tensor<4xi64>}> : () -> tensor<4xi64>
 // CHECK:            %[[VAL_9:.*]] = "tf.Transpose"(%[[VAL_7:.*]], %[[VAL_8:.*]]) : (tensor<1x128x128x64xf32>, tensor<4xi64>) -> tensor<128x128x1x64xf32>
 // CHECK:            return %[[VAL_9:.*]] : tensor<128x128x1x64xf32>
@@ -2848,7 +2848,7 @@ func.func @convert_conv2d_back_prop_input_negative_pad(%arg0: tensor<1x256x256x2
 // CHECK:           %[[VAL_2:.*]] = "tf.Const"() <{value = dense<[0, 1]> : tensor<2xi64>}> : () -> tensor<2xi64>
 // CHECK:           %[[VAL_3:.*]] = "tf.ReverseV2"(%[[VAL_1]], %[[VAL_2]]) : (tensor<3x3x64x32xf32>, tensor<2xi64>) -> tensor<3x3x64x32xf32>
 // CHECK:           %[[VAL_4:.*]] = "tf.Const"() <{value = dense<[8, 8, 8, 64]> : tensor<4xi32>}> : () -> tensor<4xi32>
-// CHECK:           %[[VAL_5:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_4]], %[[VAL_3]], %[[VAL_0]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<3x3x64x32xf32>, tensor<8x4x4x32xf32>) -> tensor<8x8x8x64xf32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_4]], %[[VAL_3]], %[[VAL_0]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<3x3x64x32xf32>, tensor<8x4x4x32xf32>) -> tensor<8x8x8x64xf32>
 // CHECK:           return %[[VAL_5]] : tensor<8x8x8x64xf32>
 // CHECK:         }
 func.func @convert_conv2d_back_prop_input(%arg0: tensor<8x4x4x32xf32>, %arg1: tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32> {
@@ -2877,7 +2877,7 @@ func.func @convert_conv2d_back_prop_input(%arg0: tensor<8x4x4x32xf32>, %arg1: te
 // CHECK-DAG:       %[[VAL_4:.*]] = "tf.Transpose"(%[[VAL_1]], %[[VAL_3]]) : (tensor<3x3x32x64xf32>, tensor<4xi64>) -> tensor<3x3x64x32xf32>
 // CHECK:           %[[VAL_5:.*]] = "tf.ReverseV2"(%[[VAL_4]], %[[VAL_2]]) : (tensor<3x3x64x32xf32>, tensor<2xi64>) -> tensor<3x3x64x32xf32>
 // CHECK:           %[[VAL_6:.*]] = "tf.Const"() <{value = dense<[8, 8, 8, 64]> : tensor<4xi32>}> : () -> tensor<4xi32>
-// CHECK:           %[[VAL_7:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_6]], %[[VAL_5]], %[[VAL_0]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<3x3x64x32xf32>, tensor<8x4x4x32xf32>) -> tensor<8x8x8x64xf32>
+// CHECK:           %[[VAL_7:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_6]], %[[VAL_5]], %[[VAL_0]]) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "VALID", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true}> : (tensor<4xi32>, tensor<3x3x64x32xf32>, tensor<8x4x4x32xf32>) -> tensor<8x8x8x64xf32>
 // CHECK:           return %[[VAL_7]] : tensor<8x8x8x64xf32>
 // CHECK:         }
 func.func @convert_conv2d_back_prop_input_transpose_filter(%arg0: tensor<8x4x4x32xf32>, %arg1: tensor<3x3x32x64xf32>) -> tensor<8x8x8x64xf32> {

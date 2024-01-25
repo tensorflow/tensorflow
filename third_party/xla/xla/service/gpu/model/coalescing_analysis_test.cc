@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,8 +24,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/model/tile_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -48,18 +50,18 @@ class CoalescingTest : public HloTestBase {
           << "If there are multiple instructions, they need to be wrapped in a "
              "fusion.";
     }
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto root_indexing,
-        ComputeOutputToInputIndexing(root, /*output_id=*/0, &mlir_context_));
-    auto grouped_indexing_maps =
-        GroupIndexingMapsByProducers(root_indexing, root);
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+
+    auto grouped_indexing_maps = ComputeGroupedOutputToInputIndexing(
+        *fusion_adaptor, /*output_id=*/0, &mlir_context_);
+    EXPECT_TRUE(grouped_indexing_maps.has_value());
 
     std::vector<bool> actual_results;
     actual_results.reserve(expected_results.size());
     for (auto [operand_id, is_coalesced] : llvm::enumerate(expected_results)) {
       auto* operand = root->operand(operand_id);
       actual_results.push_back(IsReadCoalesced(
-          operand, root, grouped_indexing_maps, &mlir_context_));
+          operand, root, *grouped_indexing_maps, &mlir_context_));
     }
     EXPECT_THAT(actual_results, ElementsAreArray(expected_results));
   }

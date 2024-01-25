@@ -1,6 +1,6 @@
 load("//tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "set_external_visibility", "tsl_copts")
 load("//tsl:tsl.default.bzl", "filegroup")
-load("//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
@@ -94,17 +94,6 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",
         "@local_config_tensorrt//:tensorrt_headers",
     ],
-)
-
-cc_library(
-    name = "dynamic_annotations",
-    hdrs = ["dynamic_annotations.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -275,7 +264,6 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
-        "dynamic_annotations.h",
         "integral_types.h",
     ] + if_not_windows(["env_time.cc"]),
     visibility = ["//visibility:public"],
@@ -321,21 +309,6 @@ cc_library(
         "//tsl/platform:strcat",
     ],
     alwayslink = True,
-)
-
-cc_library(
-    name = "notification",
-    hdrs = ["notification.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:mutex",
-        "//tsl/platform:types",
-    ],
 )
 
 cc_library(
@@ -398,25 +371,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tsl/platform:stringpiece",
-    ],
-)
-
-cc_library(
-    name = "resource_loader",
-    testonly = 1,
-    srcs = ["resource_loader.cc"],
-    hdrs = ["//tsl/platform:resource_loader.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:path",
-        "//tsl/platform:test",
-        "@bazel_tools//tools/cpp/runfiles",
     ],
 )
 
@@ -610,7 +564,6 @@ filegroup(
     srcs = [
         "casts.h",
         "context.h",
-        "dynamic_annotations.h",
         "env.cc",
         "integral_types.h",
         "load_library.cc",
@@ -634,7 +587,6 @@ filegroup(
         "error_logging.cc",
         "mutex.h",
         "mutex_data.h",
-        "notification.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
     ] + if_not_fuchsia([

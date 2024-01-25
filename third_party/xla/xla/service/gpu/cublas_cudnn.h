@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,7 +69,8 @@ enum class CudnnfMHAKind {
   kBackwardScaleBiasSoftmaxDropout,
 };
 
-StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
+absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
+    const HloCustomCallInstruction* instr);
 
 // Converts a CudnnConvKind value to a string.
 std::string CudnnConvKindToString(CudnnConvKind kind);
@@ -87,6 +88,9 @@ bool IsCublasLtMatmul(const HloInstruction& hlo);
 
 // Scaled matrix multiplication in FP8. Calls into cublasLt.
 bool IsCublasLtMatmulF8(const HloInstruction& hlo);
+
+// Triangular solve that calls into legacy cublas.
+bool IsTriangularSolve(const HloInstruction& hlo);
 
 // A call to cuBLAS general matrix multiplication API.
 extern const absl::string_view kGemmCallTarget;
@@ -199,10 +203,11 @@ bool IsFwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsBwdCustomCallTofMHA(const HloInstruction& hlo);
 bool IsCustomCallTofMHA(const HloInstruction& hlo);
 
-StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(const HloCustomCallInstruction* instr);
+absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
+    const HloCustomCallInstruction* instr);
 
 std::string CudnnfMHAKindToString(CudnnfMHAKind kind);
-Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
+absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 
 bool MHACallHasDropout(absl::string_view fmha_call_name);
 

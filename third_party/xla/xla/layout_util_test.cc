@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -435,8 +435,9 @@ TEST_F(LayoutUtilTest, ValidateLayout_InvalidArrayLayout) {
 TEST_F(LayoutUtilTest, ValidateLayout_InvalidDimLevelTypes) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   *shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  *shape.mutable_layout()->mutable_dim_level_types() = {DIM_DENSE, DIM_DENSE,
-                                                        DIM_DENSE};
+  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
+  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
+  shape.mutable_layout()->add_dim_level_type(DIM_DENSE);
   auto status =
       LayoutUtil::ValidateLayoutInShape(shape, /*allow_missing_layouts=*/false);
   EXPECT_FALSE(status.ok());

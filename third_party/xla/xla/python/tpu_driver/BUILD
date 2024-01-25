@@ -126,6 +126,6 @@ cc_library(
 go_grpc_library(
     name = "tpu_service_go_grpc",
     srcs = [":tpu_service_proto"],
-    compatible_with = ["//buildenv/target:gce"],
+    compatible_with = ["//buildenv/target:non_prod"],
     deps = [":tpu_service_go_proto"],
 )

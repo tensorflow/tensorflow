@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_EXECUTABLE_H_
 #define XLA_SERVICE_GPU_GPU_EXECUTABLE_H_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -43,7 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -96,7 +97,6 @@ class GpuExecutable : public Executable {
     xla::Shape output_shape;
     std::optional<std::vector<BufferAllocation>> mlir_allocations;
     std::unique_ptr<const BufferAssignment> buffer_assignment;
-    bool enable_persistent_temp_buffers;
     int64_t debug_buffer_assignment_show_max;
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
@@ -107,7 +107,7 @@ class GpuExecutable : public Executable {
   //
   // TODO(ezhulenev): Once Xla runtime enabled by default, hide this method as
   // an implementation detail of GpuExecutable.
-  static Status SetUpMlirAllocation(
+  static absl::Status SetUpMlirAllocation(
       mlir::func::FuncOp func, llvm::ArrayRef<int64_t> buffer_sizes,
       std::vector<BufferAllocation>* allocations,
       absl::flat_hash_map<ShapeIndex, OutputInfo>* output_info,
@@ -115,7 +115,7 @@ class GpuExecutable : public Executable {
 
   // Returns an Executable that is loaded from an object file (XLA program
   // compiled to a native function using the XLA Runtime stack).
-  static StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
+  static absl::StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
       std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
       absl::string_view mlir_module, DebugOptions debug_options,
       absl::string_view asm_text, absl::string_view binary,
@@ -134,7 +134,7 @@ class GpuExecutable : public Executable {
                 absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
                 std::unique_ptr<GpuRuntimeExecutable> runtime_executable);
 
-  static StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
+  static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
@@ -165,19 +165,19 @@ class GpuExecutable : public Executable {
 
   // ExecuteAsyncOnStream will fail if the compute capability of the stream
   // doesn't match the compute capability passed to this object's constructor.
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   using VariantArguments = std::variant<absl::Span<const ShapedBuffer* const>,
                                         absl::Span<ExecutionInput>>;
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStreamImpl(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStreamImpl(
       const ServiceExecutableRunOptions* run_options,
       VariantArguments arguments);
 
@@ -203,8 +203,8 @@ class GpuExecutable : public Executable {
 
   const std::vector<ConstantInfo>& constants() const { return constants_; }
 
-  StatusOr<std::string_view> GetObjFile() const;
-  StatusOr<std::string_view> GetMlirModule() const;
+  absl::StatusOr<std::string_view> GetObjFile() const;
+  absl::StatusOr<std::string_view> GetMlirModule() const;
 
   const BufferAssignment* buffer_assignment() const {
     return buffer_assignment_.get();
@@ -219,7 +219,7 @@ class GpuExecutable : public Executable {
   // clients, such as Tensorflow, that use a single stream of execution for
   // computations, and allow host-side deallocation from the allocator before
   // GPU execution completes.
-  Status ExecuteThunksOrXlaRuntime(
+  absl::Status ExecuteThunksOrXlaRuntime(
       const ServiceExecutableRunOptions* run_options,
       const BufferAllocations& buffer_allocations, bool block_host_until_done,
       NonAtomicallyUpgradeableRWLock& gpu_lock);
@@ -237,27 +237,20 @@ class GpuExecutable : public Executable {
   // The returned map is cached. If the above process has already been run for
   // the given stream, it is skipped and the cached map is immediately returned
   // instead.
-  StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
+  absl::StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
       stream_executor::Stream* stream);
-
-  // Allocate the temp buffers and store them with the GpuExecutable. This
-  // function only allocates buffers on the first run for each executor.
-  Status PopulatePersistentTempBuffers(se::StreamExecutor* executor)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(persistent_temp_buffers_mu_);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
-  Status CheckCompatibilityWithServiceExecutableRunOptions(
+  absl::Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
 
-  StatusOr<BufferAllocations> GenerateBufferAllocations(
+  absl::StatusOr<BufferAllocations> GenerateBufferAllocations(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
-      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-      const BufferAllocToDeviceMemoryMap&
-          buffer_alloc_to_persistent_memory_map);
+      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal);
 
-  StatusOr<se::DeviceMemoryBase> BufferForAllocation(
+  absl::StatusOr<se::DeviceMemoryBase> BufferForAllocation(
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       const BufferAllocation& allocation,
@@ -291,6 +284,14 @@ class GpuExecutable : public Executable {
   // IrEmitter (null if XLA:GPU runtime is enabled).
   OwnedThunkSequence thunks_;
 
+  // A flag that signals if `thunks_` initialization is completed. Thunks
+  // initialization might allocate new control data structures on device, which
+  // can lead to deadlocks if executed concurrently with other replicas.
+  //
+  // We use atomic CAS operations to decide if a thread running XLA executable
+  // should join the rendezvous, see implementation for details.
+  std::atomic<int64_t> thunks_initialized_{0};
+
   // Gpu runtime executable that encapsulates all the state for running Gpu
   // runtime custom calls implementing gpu abstraction layer (available only if
   // Xla runtime is enabled).
@@ -313,16 +314,6 @@ class GpuExecutable : public Executable {
   std::unique_ptr<const xla::BufferAssignment> buffer_assignment_;
 
   std::optional<ModuleAnnotations> annotation_info_;
-
-  bool enable_persistent_temp_buffers_ = false;
-
-  absl::Mutex persistent_temp_buffers_mu_;
-  // Temp buffers can be allocated once and be reused whenever the GpuExecutable
-  // is executed. The persistent temp buffer is stored in a map that maps from
-  // a BufferAllocation to the temp buffer.
-  absl::flat_hash_map<stream_executor::StreamExecutor*,
-                      BufferAllocToDeviceMemoryMap>
-      persistent_temp_buffers_ ABSL_GUARDED_BY(persistent_temp_buffers_mu_);
 
   int64_t debug_buffer_assignment_show_max_;
 
@@ -347,7 +338,7 @@ class GpuExecutable : public Executable {
   GpuExecutable& operator=(const GpuExecutable&) = delete;
 };
 
-StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
+absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
 GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment);
 
 }  // namespace gpu

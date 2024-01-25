@@ -110,6 +110,10 @@ TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceGetKeyValueWithTimeout(
     const char* key, int64_t key_size, int64_t timeout_seconds,
     TF_CoordinationServiceAgent* agent, TF_Status* status);
 
+TF_CAPI_EXPORT extern TF_Buffer* TF_CoordinationServiceTryGetKeyValue(
+    const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
+    TF_Status* status);
+
 TF_CAPI_EXPORT extern void TF_CoordinationServiceDeleteKeyValue(
     const char* key, int64_t key_size, TF_CoordinationServiceAgent* agent,
     TF_Status* status);

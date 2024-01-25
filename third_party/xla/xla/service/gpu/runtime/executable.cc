@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/runtime/executable.h"
 #include "xla/runtime/jit_executable.h"
@@ -186,7 +187,7 @@ GpuRuntimeExecutable::GpuRuntimeExecutable(
 // Compile Xla program lowered to runtime dialects to Gpu runtime executable.
 //===----------------------------------------------------------------------===//
 
-/*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
+/*static*/ absl::StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(std::string module_name,
                              std::unique_ptr<GpuRuntimeProgram> program) {
   // Options for the default XLA Runtime compilation pipeline.
@@ -218,6 +219,7 @@ GpuRuntimeExecutable::Create(std::string module_name,
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
         runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+        return absl::OkStatus();
       };
 
   // Do not run expensive optimization passes because we do not expect any
@@ -228,13 +230,13 @@ GpuRuntimeExecutable::Create(std::string module_name,
   auto jit_executable =
       JitExecutable::Instantiate(program->module, program->entry_point, opts);
   if (!jit_executable.ok())
-    return InternalError("Failed to compile XLA Runtime program: %s",
+    return Internal("Failed to compile XLA Runtime program: %s",
                          jit_executable.status().message());
 
   // Instantiate state for all registered runtime modules.
   auto modules_state = ModulesState::Instantiate();
   if (!modules_state.ok())
-    return InternalError("Failed to instantiate modules state: %s",
+    return Internal("Failed to instantiate modules state: %s",
                          modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
@@ -248,7 +250,7 @@ GpuRuntimeExecutable::Create(std::string module_name,
 // Constructs Gpu runtime executable from AOT compiled runtime artifact.
 //===----------------------------------------------------------------------===//
 
-/*static*/ StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
+/*static*/ absl::StatusOr<std::unique_ptr<GpuRuntimeExecutable>>
 GpuRuntimeExecutable::Create(
     std::string module_name, std::vector<int64_t> buffer_sizes,
     std::vector<std::vector<int64_t>> allocation_indices, Executable executable,
@@ -256,7 +258,7 @@ GpuRuntimeExecutable::Create(
   // Instantiate state for all registered runtime modules.
   auto modules_state = ModulesState::Instantiate();
   if (!modules_state.ok())
-    return InternalError("Failed to instantiate modules state: %s",
+    return Internal("Failed to instantiate modules state: %s",
                          modules_state.status().message());
 
   return std::unique_ptr<GpuRuntimeExecutable>(new GpuRuntimeExecutable(
@@ -312,7 +314,7 @@ static void InitializeCallFrame(runtime::Executable::CallFrame& call_frame,
   }
 }
 
-Status GpuRuntimeExecutable::Execute(
+absl::Status GpuRuntimeExecutable::Execute(
     const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
     const std::vector<uint8_t>& binary,
     const BufferAllocations& buffer_allocations,
@@ -336,7 +338,7 @@ Status GpuRuntimeExecutable::Execute(
   // arguments bounds and crash with a segfault.
   const runtime::FunctionType& signature = executable.signature();
   if (signature.num_operands() != buffer_allocations.size())
-    return InternalError("Expected %d arguments but got %d buffer allocations",
+    return Internal("Expected %d arguments but got %d buffer allocations",
                          signature.num_operands(), buffer_allocations.size());
 
   for (unsigned i = 0; i < executable.signature().num_operands(); ++i) {
@@ -364,8 +366,9 @@ Status GpuRuntimeExecutable::Execute(
   // b/293945751.
   absl::InlinedVector<se::Stream*, kAsyncStreamTotal> async_comm_streams(
       kAsyncStreamTotal, nullptr);
-  StatusOr<std::vector<StreamPool::Ptr>> streams = run_options->BorrowStreams(
-      executor->device_ordinal(), kAsyncStreamTotal, stream_priority);
+  absl::StatusOr<std::vector<StreamPool::Ptr>> streams =
+      run_options->BorrowStreams(executor->device_ordinal(), kAsyncStreamTotal,
+                                 stream_priority);
   if (streams.ok()) {
     for (int64_t i = 0; i < kAsyncStreamTotal; ++i) {
       async_comm_streams[i] = streams->at(i).get();
@@ -443,14 +446,14 @@ Status GpuRuntimeExecutable::Execute(
       &concurrent_region_status,
       // Null pointer will be interpreted as an absence of async collectives
       // support and custom calls will safely return an error.
-      async_collectives.async_comm_stream(kAsyncStreamCollective)
+      async_collectives.async_comm_stream(AsyncStreamKind::kCollective)
           ? &async_collectives
           : nullptr);
 
   // Initialize state required for running functions from registered modules.
   auto state_ref = modules_state_.InitializeUserData(user_data);
   if (!state_ref.ok())
-    return InternalError("Failed to initialize runtime modules state: %s",
+    return Internal("Failed to initialize runtime modules state: %s",
                          state_ref.status().message());
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -462,7 +465,7 @@ Status GpuRuntimeExecutable::Execute(
             buffer_sizes_, allocation_indices_,
             debug_options_.xla_gpu_graph_eviction_timeout_seconds());
         !instantiated.ok()) {
-      return InternalError("Failed to instantiate GPU graphs: %s",
+      return Internal("Failed to instantiate GPU graphs: %s",
                            instantiated.message());
     }
   }
@@ -484,12 +487,12 @@ Status GpuRuntimeExecutable::Execute(
   executable.Execute(call_frame, opts);
 
   if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {
-    return InternalError("Failed to execute XLA Runtime executable: %s%s%s.",
+    return Internal("Failed to execute XLA Runtime executable: %s%s%s.",
                          st.message(), diagnostic.empty() ? "" : ": ",
                          diagnostic);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 //===----------------------------------------------------------------------===//
@@ -501,16 +504,16 @@ const Executable& GpuRuntimeExecutable::executable() const {
   return *std::get<std::unique_ptr<Executable>>(executable_);
 }
 
-StatusOr<std::string_view> GpuRuntimeExecutable::GetObjFile() const {
+absl::StatusOr<std::string_view> GpuRuntimeExecutable::GetObjFile() const {
   if (auto obj_file = executable().obj_file())
     return std::string_view(obj_file->getBuffer());
 
-  return InternalError("gpu runtime executable didn't save the obj file");
+  return Internal("gpu runtime executable didn't save the obj file");
 }
 
-StatusOr<std::string_view> GpuRuntimeExecutable::GetMlirModule() const {
+absl::StatusOr<std::string_view> GpuRuntimeExecutable::GetMlirModule() const {
   const auto* jit = std::get_if<std::unique_ptr<JitExecutable>>(&executable_);
-  if (!jit) return InternalError("MLIR module is not available");
+  if (!jit) return Internal("MLIR module is not available");
 
   return (*jit)->mlir_module();
 }

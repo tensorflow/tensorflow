@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -91,16 +91,11 @@ class GpuPerformanceModelCache {
 };
 
 struct GpuPerformanceModelOptions {
-  // Whether to attempt to model the effect of uncoalesced reads.
-  bool consider_coalescing = false;
-
-  // Use better read modelling, when first read always happends from DRAM and
-  // re-reads can happen from cache.
-  bool first_read_from_dram = false;
-
-  // Properly calculate read+write and compute time in both fused and unfused
-  // case for producer and consumer.
-  bool calculate_full_priority = false;
+  // Factor for how much parallelism between compute and memory accesses should
+  // be assumed. If 1.0, assume perfect parallelism (the run time is the maximum
+  // of both times). If 0.0, assume no parallelism (the run time is the sum of
+  // both times).
+  double memory_compute_parallelism = 1.0;
 
   // If present, use this to retrieve fusion analyses.
   HloFusionAnalysisCache* fusion_analysis_cache = nullptr;
@@ -112,21 +107,23 @@ struct GpuPerformanceModelOptions {
   }
 
   static GpuPerformanceModelOptions PriorityFusion(
-      HloFusionAnalysisCache* fusion_analysis_cache,
-      GpuPerformanceModelCache* gpu_performance_model_cache) {
+      HloFusionAnalysisCache* fusion_analysis_cache = nullptr,
+      GpuPerformanceModelCache* gpu_performance_model_cache = nullptr) {
     GpuPerformanceModelOptions config;
-    config.consider_coalescing = true;
-    config.first_read_from_dram = true;
-    config.calculate_full_priority = true;
     config.fusion_analysis_cache = fusion_analysis_cache;
     config.gpu_performance_model_cache = gpu_performance_model_cache;
+    // This constant was chosen empirically in early 2024, based on runtime
+    // performance on a set of benchmarks internal to Google. Intuitively, we
+    // expect it to be close to 1, but not quite 1 (i.e., sometimes, compute
+    // or memory accesses will be stalled waiting for the other, but usually
+    // they won't).
+    config.memory_compute_parallelism = 0.95;
     return config;
   }
 
   static GpuPerformanceModelOptions ForModule(const HloModule* module) {
     return module->config().debug_options().xla_gpu_enable_priority_fusion()
-               ? PriorityFusion(nullptr,
-                                nullptr)  // Only cache within priority fusion.
+               ? PriorityFusion()  // Only cache within priority fusion.
                : Default();
   }
 };
@@ -151,10 +148,14 @@ class GpuPerformanceModel {
       const HloInstruction* producer, const HloInstruction* consumer,
       const EstimateRunTimeData& producer_runtime,
       const EstimateRunTimeData& consumer_runtime,
-      const LaunchDimensions& launch_dimensions,
-      float utilization_by_this_consumer,
       const GpuHloCostAnalysis* cost_analysis,
-      const std::optional<HloFusionAnalysis>& fusion_analysis,
+      const GpuPerformanceModelOptions& config);
+
+  static absl::Duration EstimateRunTimeForFusionCached(
+      const HloInstruction* producer, const HloInstruction* consumer,
+      const EstimateRunTimeData& producer_runtime,
+      const EstimateRunTimeData& consumer_runtime,
+      const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config);
 
   static absl::Duration EstimateUnfusedExecTime(
@@ -162,19 +163,22 @@ class GpuPerformanceModel {
       const EstimateRunTimeData& producer_runtime,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
-      const std::vector<HloInstruction*>& fused_consumers,
-      const std::vector<EstimateRunTimeData>& consumer_runtime);
+      const std::vector<HloInstruction*>& fused_consumers);
 
   static absl::Duration EstimateFusedExecTime(
       const HloInstruction* producer,
       const EstimateRunTimeData& producer_runtime,
       const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
-      const std::vector<HloInstruction*>& fused_consumers,
-      const std::vector<EstimateRunTimeData>& consumer_runtimes,
-      bool multi_output);
+      const std::vector<HloInstruction*>& fused_consumers, bool multi_output);
 
   static RunTimes EstimateRunTimes(
+      const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
+      const GpuPerformanceModelOptions& config,
+      std::vector<HloInstruction*> fused_consumers = {},
+      bool multi_output = false);
+
+  static RunTimes EstimateRunTimesForPriorityFusion(
       const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
       const GpuPerformanceModelOptions& config,
       std::vector<HloInstruction*> fused_consumers = {},

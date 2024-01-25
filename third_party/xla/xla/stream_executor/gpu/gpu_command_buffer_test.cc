@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -169,9 +168,12 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   KernelArgsDeviceMemoryArray args({a, b, c}, 0);
 
   // Create a command buffer by tracing kernel launch operations.
-  auto cmd_buffer = CommandBuffer::Trace(executor, [&](Stream* stream) {
-    return executor->Launch(stream, ThreadDim(), BlockDim(4), add, args);
-  });
+  auto cmd_buffer = CommandBuffer::Trace(
+      executor,
+      [&](Stream* stream) {
+        return executor->Launch(stream, ThreadDim(), BlockDim(4), add, args);
+      },
+      primary);
 
   TF_ASSERT_OK(cmd_buffer.status());
   TF_ASSERT_OK(executor->Submit(&stream, *cmd_buffer));
@@ -803,7 +805,7 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
       for (int i = 1; i < state.range(0); ++i) {
         CHECK_OK(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, b, b, b));
       }
-      return tsl::OkStatus();
+      return absl::OkStatus();
     };
 
     CHECK_OK(CommandBuffer::Trace(executor, launch_kernels, nested));

@@ -1,26 +1,7 @@
-diff --ruN a/stablehlo/.bazelversion b/stablehlo/.bazelversion
---- stablehlo/.bazelversion
-+++ stablehlo/.bazelversion
-@@ -1 +1,15 @@
-+# Copyright 2023 The StableHLO Authors. All Rights Reserved.
-+#
-+# Licensed under the Apache License, Version 2.0 (the "License");
-+# you may not use this file except in compliance with the License.
-+# You may obtain a copy of the License at
-+#
-+#      https://www.apache.org/licenses/LICENSE-2.0
-+#
-+# Unless required by applicable law or agreed to in writing, software
-+# distributed under the License is distributed on an "AS IS" BASIS,
-+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-+# See the License for the specific language governing permissions and
-+# limitations under the License.
-+
- 6.1.0
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
-@@ -13,135 +13,20 @@
+@@ -13,131 +13,20 @@
  # See the License for the specific language governing permissions and
  # limitations under the License.
  #
@@ -153,10 +134,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 -#-------------------------------------------------------------------------------
 -
 -if(STABLEHLO_ENABLE_BINDINGS_PYTHON)
--  if(NOT STABLEHLO_EXTERNAL_PROJECT_BUILD)
--    message(WARNING "StableHLO Python bindings are not supported in standalone mode")
--  endif()
--
 -  include(MLIRDetectPythonEnv)
 -  mlir_configure_python_dev_packages()
 -endif()
@@ -175,18 +152,6 @@ diff --ruN a/stablehlo/stablehlo/CMakeLists.txt b/stablehlo/stablehlo/CMakeLists
  add_subdirectory(integrations)
  add_subdirectory(reference)
  add_subdirectory(tests)
-diff --ruN a/stablehlo/stablehlo/api/PortableApi.h b/stablehlo/stablehlo/api/PortableApi.h
---- stablehlo/stablehlo/api/PortableApi.h
-+++ stablehlo/stablehlo/api/PortableApi.h
-@@ -27,7 +27,7 @@
- 
- /// Return the current version for portable API.
- /// Increments on all meaningful changes to this file.
--inline int64_t getApiVersion() { return 4; }
-+inline int64_t getApiVersion() { return 5; }
- 
- // Get the current StableHLO version.
- //
 diff --ruN a/stablehlo/stablehlo/experimental/BUILD.bazel b/stablehlo/stablehlo/experimental/BUILD.bazel
 --- stablehlo/stablehlo/experimental/BUILD.bazel
 +++ stablehlo/stablehlo/experimental/BUILD.bazel
@@ -458,7 +423,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/CMakeLists.txt b/stablehlo
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp
-@@ -0,0 +1,615 @@
+@@ -0,0 +1,641 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1071,13 +1036,39 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.cpp b/stableh
 +  return TopKOpAdaptor(op);
 +}
 +
++LogicalResult TanOpAdaptor::verify() {
++  if (op_->getNumOperands() != 1)
++    return op_.emitError("expects size(operands) = 1");
++  if (op_->getNumResults() != 1)
++    return op_.emitError("expects size(results) = 1");
++  auto operand = op_.getInputs()[0];
++  auto result = op_.getResults()[0];
++
++  // tan_c1
++  auto operandType = operand.getType().dyn_cast<ShapedType>();
++  auto resultType = result.getType().dyn_cast<ShapedType>();
++  if (!hlo::isCompatibleForHloTypeInference(operandType, resultType))
++    return op_.emitError()
++           << "expects operand and result to have compatible shapes";
++  return success();
++}
++
++TypedValue<ShapedType> TanOpAdaptor::getOperand() {
++  return op_.getInputs()[0].cast<TypedValue<ShapedType>>();
++}
++
++std::optional<TanOpAdaptor> getTanOp(CustomCallOp op) {
++  if (op.getCallTargetName() != "mhlo.tan") return {};
++  return TanOpAdaptor(op);
++}
++
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 --- stablehlo/stablehlo/experimental/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/experimental/dialect/StablehloOps.h
-@@ -0,0 +1,299 @@
+@@ -0,0 +1,347 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -1372,6 +1363,54 @@ diff --ruN a/stablehlo/stablehlo/experimental/dialect/StablehloOps.h b/stablehlo
 +// "mhlo.topk".
 +std::optional<TopKOpAdaptor> getTopKOp(CustomCallOp op);
 +
++// The TanOp experiment provides a StableHLO adapter to MHLO TanOp.
++// In the future we expect stablehlo.tan to be added which will use the same
++// refinement rules.
++//
++// Within this experiment, TanOp is represented via the serialized MHLO
++// `stablehlo.custom_call @mhlo.tan` custom call. S
++//
++// Semantics of experimental TanOp are inherited from semantics of mhlo.tan.
++//
++// #### Inputs
++//
++// | Label | Name            | Type                                         |
++// |-------|-----------------|----------------------------------------------|
++// | (I1)  | `operand`       | tensor of floating-point or complex type     |
++//
++// #### Outputs
++//
++// | Name           | Type                                     |
++// |----------------|------------------------------------------|
++// | `result`       | tensor of floating-point or complex type |
++//
++// #### Constraints
++//
++// * (C1) baseline_type(operand) = baseline_type(result)
++//
++class TanOpAdaptor {
++ public:
++  TanOpAdaptor(CustomCallOp op) : op_(op) {}
++  operator Operation*() { return op_; }
++  Operation* operator->() { return op_; }
++
++  // These accessors assume that the operation is well-formed (i.e. that it
++  // can pass verification).
++  TypedValue<ShapedType> getOperand();
++
++  // Verifies the constraints documented above.
++  // Emits errors if errors are detected.
++  LogicalResult verify();
++
++ private:
++  CustomCallOp op_;
++};
++
++// Wraps a custom call in a TanOpAdaptor.
++// Fails if the call_target_name of the custom call doesn't match
++// "mhlo.tan".
++std::optional<TanOpAdaptor> getTanOp(CustomCallOp op);
++
 +}  // namespace experimental
 +}  // namespace stablehlo
 +}  // namespace mlir
@@ -1476,7 +1515,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/CMakeLists.txt b/stablehlo/s
 diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stablehlo/experimental/tests/lit.cfg.py
 --- stablehlo/stablehlo/experimental/tests/lit.cfg.py
 +++ stablehlo/stablehlo/experimental/tests/lit.cfg.py
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,46 @@
 +"""Lit configuration to drive test in this repo."""
 +# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 +# Copyright 2023 The StableHLO Authors.
@@ -1506,6 +1545,10 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/lit.cfg.py b/stablehlo/stabl
 +config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 +config.suffixes = ['.mlir']
 +config.test_source_root = os.path.dirname(__file__)
++
++# Disallow reusing variables across CHECK-LABEL matches.
++# A variable can eschew this (be made "global") by prefixing its name with $.
++config.environment['FILECHECK_OPTS'] = '-enable-var-scope'
 +
 +# Make LLVM and StableHLO tools available in RUN directives
 +tools = [
@@ -1895,7 +1938,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_canonicalize_dynam
 diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
-@@ -0,0 +1,152 @@
+@@ -0,0 +1,196 @@
 +// RUN: experimental-stablehlo-opt --experimental-stablehlo-refine-shapes --split-input-file --verify-diagnostics %s | FileCheck %s
 +
 +// CHECK-LABEL: @main
@@ -2047,6 +2090,50 @@ diff --ruN a/stablehlo/stablehlo/experimental/tests/stablehlo_refine_shapes.mlir
 +    mhlo.attributes = { k = -4 : i64, largest = true}
 +  } : (tensor<5x16xf32>) -> (tensor<?x?xf32>, tensor<?x?xi32>)
 +  return %0#0, %0#1 : tensor<?x?xf32>, tensor<?x?xi32>
++}
++
++
++// -----
++
++// CHECK-LABEL: @refine_tan
++func.func @refine_tan(%arg0: tensor<16xf32>) -> tensor<?xf32> {
++  // CHECK: mhlo.tan{{.*}} -> tensor<16xf32>
++  %0 = "stablehlo.custom_call"(%arg0) {
++    call_target_name = "mhlo.tan",
++    mhlo.attributes = {},
++    mhlo.version = 1 : i64
++  } : (tensor<16xf32>) -> tensor<?xf32>
++  func.return %0 : tensor<?xf32>
++}
++
++// -----
++
++// tan_op I1
++// CHECK-LABEL: func @tan_op_error_too_many_inputs
++func.func @tan_op_error_too_many_inputs(%arg0: tensor<1xf32>) -> (tensor<1xf32>) {
++  // expected-error@+1{{expects size(operands) = 1}}
++  %0 = "stablehlo.custom_call"(%arg0, %arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
++  return %0 : tensor<1xf32>
++}
++
++// -----
++
++// tan_op O1
++// CHECK-LABEL: func @tan_op_error_too_many_outputs
++func.func @tan_op_error_too_many_outputs(%arg0: tensor<1xf32>) -> (tensor<1xf32>) {
++  // expected-error@+1{{expects size(results) = 1}}
++  %0:2 = "stablehlo.custom_call"(%arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>) -> (tensor<1xf32>, tensor<1xf32>)
++  return %0#1 : tensor<1xf32>
++}
++
++// -----
++
++// tan_op C1
++// CHECK-LABEL: func @tan_op_error_values_bad_element_type
++func.func @tan_op_error_values_bad_element_type(%arg0: tensor<1xf32>) -> (tensor<1xi32>) {
++  // expected-error@+1{{expects operand and result to have compatible shapes}}
++  %0 = "stablehlo.custom_call"(%arg0) {call_target_name = "mhlo.tan", mhlo.attributes = {}, mhlo.version = 1 : i64} : (tensor<1xf32>) -> tensor<1xi32>
++  return %0 : tensor<1xi32>
 +}
 diff --ruN a/stablehlo/stablehlo/experimental/tools/CMakeLists.txt b/stablehlo/stablehlo/experimental/tools/CMakeLists.txt
 --- stablehlo/stablehlo/experimental/tools/CMakeLists.txt
@@ -2436,7 +2523,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloCanonicalizeDy
 diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.cpp
-@@ -0,0 +1,178 @@
+@@ -0,0 +1,196 @@
 +/* Copyright 2022 The StableHLO Authors.
 +Licensed under the Apache License, Version 2.0 (the "License");
 +you may not use this file except in compliance with the License.
@@ -2509,11 +2596,16 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    SmallVector<ShapedTypeComponents> inferredReturnTypes;
 +    if (failed(hlo::inferReduceWindowOp(
 +            /*location=*/{}, op.getInputs(), op.getInitValues(),
-+            rewriter.getI64TensorAttr(windowDimensions),
-+            rewriter.getI64TensorAttr(windowStrides),
-+            rewriter.getI64TensorAttr(baseDilations),
-+            rewriter.getI64TensorAttr(windowDilations),
-+            hlo::getPaddingAttr(&rewriter, padding), inferredReturnTypes)))
++            llvm::to_vector(rewriter.getI64TensorAttr(windowDimensions)
++                                .getValues<int64_t>()),
++            llvm::to_vector(
++                rewriter.getI64TensorAttr(windowStrides).getValues<int64_t>()),
++            llvm::to_vector(
++                rewriter.getI64TensorAttr(baseDilations).getValues<int64_t>()),
++            llvm::to_vector(rewriter.getI64TensorAttr(windowDilations)
++                                .getValues<int64_t>()),
++            hlo::getPaddingAttr(&rewriter, padding), op.getBody(),
++            inferredReturnTypes)))
 +      return rewriter.notifyMatchFailure(op, "inferReduceWindowOp failed");
 +    return refineReturnTypes(rewriter, op, inferredReturnTypes);
 +  }
@@ -2577,6 +2669,18 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +  }
 +};
 +
++struct RefineTanOpPattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getTanOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    TanOpAdaptor op = *maybeOp;
++    return refineReturnShape(rewriter, op,
++                             op.getOperand().getType().getShape());
++  }
++};
++
 +struct StablehloRefineShapesPass
 +    : public impl::StablehloRefineShapesPassBase<StablehloRefineShapesPass> {
 +  using StablehloRefineShapesPassBase::StablehloRefineShapesPassBase;
@@ -2603,6 +2707,7 @@ diff --ruN a/stablehlo/stablehlo/experimental/transforms/StablehloRefineShapes.c
 +    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
 +    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
 +    patterns.add<RefineDynamicTopKOpPattern>(&getContext());
++    patterns.add<RefineTanOpPattern>(&getContext());
 +    patterns.add<RefineTopKOpPattern>(&getContext());
 +    if (failed(
 +            applyPatternsAndFoldGreedily(func, std::move(patterns), config))) {

@@ -31,7 +31,6 @@ cc_library(
     compatible_with = [],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/mlir_hlo:lhlo",
         "//xla/mlir_hlo:lhlo_gpu",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
@@ -75,6 +74,9 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu/runtime3:conditional_thunk",
+        "//xla/service/gpu/runtime3:copy_thunk",
+        "//xla/service/gpu/runtime3:kernel_thunk",
+        "//xla/service/gpu/runtime3:memset_thunk",
         "//xla/service/gpu/runtime3:sequential_thunk",
         "//xla/service/gpu/runtime3:while_thunk",
         "//xla/stream_executor:blas",

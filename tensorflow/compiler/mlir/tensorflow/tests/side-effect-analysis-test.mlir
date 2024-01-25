@@ -2850,6 +2850,33 @@ func.func @func(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
 
 // -----
 
+func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  // expected-remark@above {{ID: 2}}
+  %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  func.return %sum : tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  // expected-remark@above {{Sinks: {}}}
+}
+
+// CHECK-LABEL: func @call_pure_function
+func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
+  // expected-remark@above {{ID: 5}}
+  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
+  // expected-remark@above {{ID: 0}}
+  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 1}}
+  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 2}}
+  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
+  // expected-remark@above {{ID: 3}}
+  func.return %arg0 : tensor<!tf_type.resource>
+  // expected-remark@above {{ID: 4}}
+  // expected-remark@above {{Sinks: {1,3}}}
+}
+
+// -----
+
 // Tests that we create a dependency between ops with `TF__XlaRunSideEffect`.
 func.func @tpu_execute_effect(
   // expected-remark@above {{ID: 7}}
@@ -2940,8 +2967,6 @@ func.func @global_iter_id_effect() -> () {
 
 // -----
 
-// Tests that IsCallToPureFunction supports CallOp.
-
 func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   // expected-remark@above {{ID: 2}}
   %sum = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
@@ -2978,8 +3003,6 @@ func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_ty
 
 // -----
 
-// Tests that IsCallToPureFunction supports SymbolUserOpInterface.
-
 func.func @assert(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<i1> {
   // expected-remark@above {{ID: 3}}
   %cond = builtin.unrealized_conversion_cast to tensor<i1>
@@ -3003,7 +3026,7 @@ func.func @intermediary(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1x
   // expected-remark@-5 {{ID: 1}}
   func.return %arg0 : tensor<1xf32>
   // expected-remark@above {{ID: 2}}
-  // expected-remark@above {{Sinks: {}}}
+  // expected-remark@above {{Sinks: {1}}}
 }
 
 // CHECK-LABEL: func @assert_within_if
@@ -3014,42 +3037,6 @@ func.func @assert_within_if(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type
   %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
   // expected-remark@above {{ID: 1}}
   %result = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@intermediary} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-  // expected-remark@above {{ID: 2}}
-  %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
-  // expected-remark@above {{ID: 3}}
-  func.return %arg0 : tensor<!tf_type.resource>
-  // expected-remark@above {{ID: 4}}
-  // expected-remark@above {{Sinks: {1,3}}}
-}
-
-// -----
-
-// Tests that IsCallToPureFunction skips tf_executor ops.
-
-func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
-// expected-remark@above {{ID: 6}}
-  %0 = tf_executor.graph {
-  // expected-remark@above {{ID: 4}}
-    %outputs, %control = tf_executor.island wraps "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-    // expected-remark@above {{ID: 0}}
-    // expected-remark@above {{ID: 1}}
-    // expected-remark@above {{ID: 2}}
-    tf_executor.fetch %outputs : tensor<1xf32>
-    // expected-remark@above {{ID: 3}}
-  }
-  return %0 : tensor<1xf32>
-  // expected-remark@above {{ID: 5}}
-  // expected-remark@above {{Sinks: {}}}
-}
-
-// CHECK-LABEL: func @call_pure_function
-func.func @call_pure_function(%arg0: tensor<!tf_type.resource>) -> tensor<!tf_type.resource> {
-// expected-remark@above {{ID: 5}}
-  %one = "tf.Const"() { value = dense<1.0> : tensor<1xf32> } : () -> tensor<1xf32>
-  // expected-remark@above {{ID: 0}}
-  %r1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
-  // expected-remark@above {{ID: 1}}
-  %two = "tf.StatefulPartitionedCall"(%one, %one) {config="", config_proto="", executor_type="", f=@add} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
   // expected-remark@above {{ID: 2}}
   %r2 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf_type.resource>) -> tensor<1xf32>
   // expected-remark@above {{ID: 3}}

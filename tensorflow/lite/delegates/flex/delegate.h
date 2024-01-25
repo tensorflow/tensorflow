@@ -108,7 +108,7 @@ class FlexDelegate : public SimpleDelegateInterface {
 
   TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
                                     TfLiteBufferHandle buffer_handle,
-                                    TfLiteTensor* output);
+                                    TfLiteTensor* output) override;
 
   flex::DelegateData delegate_data_;
 

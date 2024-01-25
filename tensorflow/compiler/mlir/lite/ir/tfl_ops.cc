@@ -3154,7 +3154,7 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   assert(operands.size() == 1);
-  if (getElementTypeOrSelf(getInput()) == getElementTypeOrSelf(getType())) {
+  if (getInput().getType() == getType()) {
     return getInput();
   }
 

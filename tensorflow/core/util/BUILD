@@ -189,7 +189,6 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
-        "zen_util.h",
         "@local_tsl//tsl/util:framework_internal_private_hdrs",
     ],
 )
@@ -759,7 +758,7 @@ tf_kernel_library(
         "@local_xla//xla/stream_executor/rocm:hipsolver_wrapper",
         "@local_xla//xla/stream_executor/rocm:rocblas_plugin",
         "@local_xla//xla/stream_executor/rocm:rocblas_wrapper",
-        "@local_xla//xla/stream_executor/rocm:rocm_gpu_executor",
+        "@local_xla//xla/stream_executor/rocm:rocm_executor",
         "@local_xla//xla/stream_executor/rocm:rocsolver_wrapper",
     ] + if_rocm([
         "@local_config_rocm//rocm:rocprim",

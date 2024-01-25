@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/executable.h"
 #include "xla/service/collective_ops_utils.h"
@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/nccl_all_gather_thunk.h"
 #include "xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "xla/service/gpu/nccl_all_to_all_thunk.h"
+#include "xla/service/gpu/nccl_api.h"
 #include "xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "xla/service/gpu/nccl_collective_thunk.h"
 #include "xla/service/gpu/nccl_recv_thunk.h"
@@ -42,14 +43,9 @@ limitations under the License.
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/service_executable_run_options.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/stream.h"
 
 #if XLA_ENABLE_XCCL
-#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
-#include "xla/service/gpu/runtime/sleep_kernel.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/service/gpu/mock_nccl_utils.h"
 #endif  // XLA_ENABLE_XCCL
 
 namespace xla {
@@ -61,14 +57,14 @@ using xla::runtime::StridedMemrefView;
 
 namespace {
 
-Status RunRepeated(int32_t count, absl::FunctionRef<Status()> to_run) {
+absl::Status RunRepeated(int32_t count, absl::FunctionRef<Status()> to_run) {
   if (count != 0) {
     VLOG(3) << "Running each collective " << count << " times\n";
   }
   for (int32_t i = 0; i < count; ++i) {
     TF_RETURN_IF_ERROR(to_run());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper function to run a collective either synchronously on main stream or
@@ -78,7 +74,7 @@ absl::Status RunSyncOrAsync(
     CollectivesSupport* collectives, AsyncCollectivesSupport* async_collectives,
     int32_t uid, bool is_async,
     absl::FunctionRef<absl::Status(se::Stream*)> to_run,
-    AsyncStreamKind stream_kind = kAsyncStreamCollective) {
+    AsyncStreamKind stream_kind = AsyncStreamKind::kCollective) {
   se::Stream* main_stream = run_options->stream();
   se::Stream* async_stream =
       is_async ? async_collectives->async_comm_stream(stream_kind) : nullptr;
@@ -99,20 +95,20 @@ absl::Status RunSyncOrAsync(
 }
 
 #if XLA_ENABLE_XCCL
-bool ShouldEnableCliqueOptimization(const NcclExecuteParams& params,
-                                    const DebugOptions* debug_options,
-                                    bool no_parallel_custom_call) {
+bool ShouldEnableCliqueOptimization(
+    const Thunk::CollectiveExecuteParams& params,
+    const DebugOptions* debug_options, bool no_parallel_custom_call) {
   // Enable clique optimization for single-host application, which is indicated
-  // by the absence of nccl_unique_id_callback. For multiple-host, only enable
+  // by the absence of nccl_clique_id_callback. For multiple-host, only enable
   // when a debug flag is set for now, due to some divergent compilation issues.
   return no_parallel_custom_call &&
-         (!params.nccl_unique_id_callback ||
+         (!params.nccl_clique_id_callback ||
           debug_options->xla_gpu_enable_nccl_clique_optimization());
 }
 
-StatusOr<NcclComm::Lock> GetNcclComm(
-    const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
-    absl::Span<const int64_t> replica_group_offsets,
+absl::StatusOr<NcclComm::Lock> GetNcclComm(
+    const Thunk::CollectiveExecuteParams& params, int64_t group_mode,
+    int64_t op_id, absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, int64_t stream_id,
     bool enable_clique_optimization) {
   // TODO(b/233930690): Pass the attribute below as a nested array.
@@ -133,9 +129,34 @@ StatusOr<NcclComm::Lock> GetNcclComm(
                       static_cast<CollectiveOpGroupMode>(group_mode), op_id,
                       stream_id, enable_clique_optimization);
 }
+
+absl::StatusOr<NcclComm::Lock> GetMockNcclComm(
+    const Thunk::CollectiveExecuteParams& params, int64_t group_mode,
+    int64_t op_id, absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values, int64_t stream_id,
+    bool enable_clique_optimization,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
+  // TODO(b/233930690): Pass the attribute below as a nested array.
+  // Pass an array of arrays using two vectors; one specifying all the values
+  // and another specifying the (ending) offsets of each array in the other
+  // vector. Example: [ [10, 20, 30, 40], [50, 60], [70, 80, 90] ] turns into
+  // offsets=[4, 6, 9] values=[10, 20, 30, 40, 50, 60, 70, 80, 90].
+  std::vector<ReplicaGroup> replica_groups;
+  int i = 0;
+  for (int64_t replica_group_end : replica_group_offsets) {
+    ReplicaGroup replica_group;
+    while (i < replica_group_end)
+      replica_group.add_replica_ids(replica_group_values[i++]);
+    replica_groups.push_back(replica_group);
+  }
+
+  return LockMockNcclComm(params, replica_groups,
+                          static_cast<CollectiveOpGroupMode>(group_mode), op_id,
+                          stream_id, enable_clique_optimization, topo_model);
+}
 #endif  // XLA_ENABLE_XCCL
 
-StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
+absl::StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
     CustomCall::RemainingArgs& args) {
   // Add MemRef arguments as buffer arguments.
   TF_RET_CHECK(args.size() % 2 == 0);
@@ -160,7 +181,7 @@ StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
 
 // Expects a single argument, and returns a device buffer pair with that
 // argument replicated in both source and destination buffer.
-StatusOr<std::vector<DeviceBufferPair>> GetSingleArgAsDeviceBufferPair(
+absl::StatusOr<std::vector<DeviceBufferPair>> GetSingleArgAsDeviceBufferPair(
     CustomCall::RemainingArgs& args) {
   TF_RET_CHECK(args.size() == 1);
   auto buffer = args.get<StridedMemrefView>(0);
@@ -190,35 +211,31 @@ absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
 #endif  // XLA_ENABLE_XCCL
 }
 
-// TODO: shall we use GpuDriver::LaunchKernel() to avoid macros here ?
 #if XLA_ENABLE_XCCL
-absl::Status NcclMockImplCommon(se::Stream* stream) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#define CHK(x)                                              \
-  if (auto res = (x); res != gpuSuccess) {                  \
-    return absl::InternalError(                             \
-        absl::StrFormat("Call failed with '%s' at line %d", \
-                        gpuGetErrorString(res), __LINE__)); \
-  }
-  auto gpu_stream = se::gpu::AsGpuStreamValue(stream);
-  uint32_t sleep_duration_ns = 1000;
-  void* kernel = GetSleepKernel();
-  dim3 gridDim = {1, 1, 1};
-  dim3 blockDim = {512, 1, 1};
+absl::Status MockNcclImplCommon(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, se::Stream* stream,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values, bool is_async,
+    Thunk::Kind reduce_op,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
 
-#if GOOGLE_CUDA
-  void* kernel_args[] = {&sleep_duration_ns};
-#else
-  int devID = 0;
-  hipDeviceProp_t prop{};
-  CHK(hipGetDevice(&devID));
-  CHK(hipGetDeviceProperties(&prop, devID));
-  void* kernel_args[] = {&sleep_duration_ns, &prop.clockRate};
-#endif
-  CHK(gpuLaunchKernel(kernel, gridDim, blockDim, kernel_args, 0, gpu_stream));
-#undef CHK
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return absl::OkStatus();
+  auto comm =
+      GetMockNcclComm(params, group_mode, op_id, replica_group_offsets,
+                      replica_group_values, GetStreamId(is_async),
+                      debug_options->xla_gpu_enable_nccl_clique_optimization(),
+                      topo_model);  //);
+  if (absl::IsCancelled(comm.status())) return absl::OkStatus();
+  if (!comm.ok()) return comm.status();
+
+  TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
+
+  return RunMockNcclCollectives(NcclApi::Default(), device_buffers, *stream,
+                                **comm, reduce_op);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -228,35 +245,36 @@ absl::Status NcclMockImplCommon(se::Stream* stream) {
 
 #if XLA_ENABLE_XCCL
 using NcclP2PRunner = absl::FunctionRef<absl::Status(
-    NcclP2PConfig::SourceTargetMapEntry source_target, DeviceBufferPair& buffer,
-    se::Stream& stream, ncclComm_t comm, absl::string_view device_string,
-    int64_t current_id)>;
+    NcclApi* nccl_api, NcclP2PConfig::SourceTargetMapEntry source_target,
+    DeviceBufferPair& buffer, se::Stream& stream, NcclApi::NcclCommHandle comm,
+    absl::string_view device_string, int64_t current_id)>;
 
 using DeviceBuffersGetter =
-    absl::FunctionRef<StatusOr<std::vector<DeviceBufferPair>>(
+    absl::FunctionRef<absl::StatusOr<std::vector<DeviceBufferPair>>(
         CustomCall::RemainingArgs& args)>;
 
-absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
-                           const DebugOptions* debug_options,
-                           se::Stream* stream, CustomCall::RemainingArgs args,
-                           int64_t group_mode, int64_t op_id,
-                           bool no_parallel_custom_call,
-                           absl::Span<const int64_t> replica_group_offsets,
-                           absl::Span<const int64_t> replica_group_values,
-                           absl::Span<const int64_t> source_peers,
-                           absl::Span<const int64_t> target_peers,
-                           NcclP2PRunner runner,
-                           DeviceBuffersGetter device_buffers_getter,
-                           uint64_t stream_id) {
-  (void)no_parallel_custom_call;
-  NcclExecuteParams params(*run_options, stream->parent());
-  bool enable_clique_opt = ShouldEnableCliqueOptimization(
-      params, debug_options, no_parallel_custom_call);
+absl::Status MockNcclP2PImplCommon(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, se::Stream* stream,
+    CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values,
+    absl::Span<const int64_t> source_peers,
+    absl::Span<const int64_t> target_peers, NcclP2PRunner runner,
+    DeviceBuffersGetter device_buffers_getter, uint64_t stream_id,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
 
   const std::string device_string =
       NcclCollectiveThunk::GetDeviceString(params);
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values, stream_id, enable_clique_opt);
+
+  auto comm = GetMockNcclComm(
+      params, group_mode, op_id, replica_group_offsets, replica_group_values,
+      stream_id, debug_options->xla_gpu_enable_nccl_clique_optimization(),
+      topo_model);
+  if (absl::IsCancelled(comm.status())) return absl::OkStatus();
   if (!comm.ok()) return comm.status();
 
   auto device_buffers = device_buffers_getter(args);
@@ -266,8 +284,7 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
         "Expected device buffer size: 1, got %d", device_buffers->size()));
   }
 
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
+  GlobalDeviceId global_device_id = params.global_device_id;
 
   TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID current_logical_id,
                       params.device_assn->LogicalIdForDevice(global_device_id));
@@ -285,11 +302,66 @@ absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
   const NcclP2PConfig::SourceTargetMapEntry source_target =
       NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
 
-  return RunRepeated(
-      debug_options->xla_gpu_collective_inflation_factor(), [&]() -> Status {
-        return runner(source_target, (*device_buffers)[0], *stream, **comm,
-                      device_string, current_id);
-      });
+  return runner(NcclApi::Default(), source_target, (*device_buffers)[0],
+                *stream, **comm, device_string, current_id);
+}
+
+absl::Status P2PImplCommon(const ServiceExecutableRunOptions* run_options,
+                           const DebugOptions* debug_options,
+                           se::Stream* stream, CustomCall::RemainingArgs args,
+                           int64_t group_mode, int64_t op_id,
+                           bool no_parallel_custom_call,
+                           absl::Span<const int64_t> replica_group_offsets,
+                           absl::Span<const int64_t> replica_group_values,
+                           absl::Span<const int64_t> source_peers,
+                           absl::Span<const int64_t> target_peers,
+                           NcclP2PRunner runner,
+                           DeviceBuffersGetter device_buffers_getter,
+                           uint64_t stream_id) {
+  (void)no_parallel_custom_call;
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
+  bool enable_clique_opt = ShouldEnableCliqueOptimization(
+      params, debug_options, no_parallel_custom_call);
+
+  const std::string device_string =
+      NcclCollectiveThunk::GetDeviceString(params);
+  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                          replica_group_values, stream_id, enable_clique_opt);
+  if (!comm.ok()) return comm.status();
+
+  auto device_buffers = device_buffers_getter(args);
+  if (!device_buffers.ok()) return device_buffers.status();
+  if (device_buffers->size() != 1) {
+    return absl::InternalError(absl::StrFormat(
+        "Expected device buffer size: 1, got %d", device_buffers->size()));
+  }
+
+  GlobalDeviceId global_device_id = params.global_device_id;
+
+  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID current_logical_id,
+                      params.device_assn->LogicalIdForDevice(global_device_id));
+
+  const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
+                                     CollectiveOpGroupMode::kCrossReplica
+                                 ? current_logical_id.replica_id
+                                 : current_logical_id.computation_id;
+
+  NcclP2PConfig::IdToSourceTargetMap id_to_source_target;
+  for (int i = 0; i < source_peers.size(); ++i) {
+    id_to_source_target[target_peers[i]].source = source_peers[i];
+    id_to_source_target[source_peers[i]].target = target_peers[i];
+  }
+  const NcclP2PConfig::SourceTargetMapEntry source_target =
+      NcclP2PConfig::GetSourceTarget(id_to_source_target, current_id);
+
+  return RunRepeated(debug_options->xla_gpu_collective_inflation_factor(),
+                     [&]() -> absl::Status {
+                       return runner(NcclApi::Default(), source_target,
+                                     (*device_buffers)[0], *stream, **comm,
+                                     device_string, current_id);
+                     });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -312,7 +384,11 @@ absl::Status CollectivePermuteImpl(
         const gpu::GpuExecutableRunOptions* gpu_opts =
             run_options->run_options().gpu_executable_run_options();
         if (gpu_opts && gpu_opts->enable_mock_nccl_collectives()) {
-          return NcclMockImplCommon(stream);
+          return MockNcclP2PImplCommon(
+              run_options, debug_options, stream, args, group_mode, op_id,
+              replica_group_offsets, replica_group_values, source_peers,
+              target_peers, RunMockCollectivePermute, GetDeviceBufferPairs,
+              GetStreamId(is_async), gpu_opts->mock_nccl_topo_model());
         }
         return P2PImplCommon(run_options, debug_options, stream, args,
                              group_mode, op_id, no_parallel_custom_call,
@@ -371,9 +447,9 @@ static absl::Status P2PSendImpl(const ServiceExecutableRunOptions* run_options,
             /*no_parallel_custom_call=*/true, replica_group_offsets,
             replica_group_values, source_peers, target_peers, RunSend,
             GetSingleArgAsDeviceBufferPair,
-            GetStreamId(is_async, kAsyncStreamP2P));
+            GetStreamId(is_async, AsyncStreamKind::kP2P));
       },
-      kAsyncStreamP2P);
+      AsyncStreamKind::kP2P);
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
@@ -425,9 +501,9 @@ static absl::Status P2PRecvImpl(const ServiceExecutableRunOptions* run_options,
             /*no_parallel_custom_call=*/true, replica_group_offsets,
             replica_group_values, source_peers, target_peers, RunRecv,
             GetSingleArgAsDeviceBufferPair,
-            GetStreamId(is_async, kAsyncStreamP2P));
+            GetStreamId(is_async, AsyncStreamKind::kP2P));
       },
-      kAsyncStreamP2P);
+      AsyncStreamKind::kP2P);
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
@@ -463,7 +539,9 @@ absl::Status AllGatherImplCommon(
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, bool is_async,
     bool no_parallel_custom_call) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
   TF_ASSIGN_OR_RETURN(
@@ -474,8 +552,9 @@ absl::Status AllGatherImplCommon(
   TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
   return RunRepeated(
-      debug_options->xla_gpu_collective_inflation_factor(),
-      [&]() { return RunAllGather(device_buffers, *stream, *comm); });
+      debug_options->xla_gpu_collective_inflation_factor(), [&]() {
+        return RunAllGather(NcclApi::Default(), device_buffers, *stream, *comm);
+      });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -497,7 +576,10 @@ absl::Status AllGatherImpl(const ServiceExecutableRunOptions* run_options,
         const gpu::GpuExecutableRunOptions* gpu_opts =
             run_options->run_options().gpu_executable_run_options();
         if (gpu_opts && gpu_opts->enable_mock_nccl_collectives()) {
-          return NcclMockImplCommon(stream);
+          return MockNcclImplCommon(
+              run_options, debug_options, stream, args, group_mode, op_id,
+              replica_group_offsets, replica_group_values, is_async,
+              Thunk::kNcclAllGather, gpu_opts->mock_nccl_topo_model());
         }
         return AllGatherImplCommon(run_options, debug_options, stream, args,
                                    group_mode, op_id, replica_group_offsets,
@@ -537,7 +619,9 @@ absl::Status AllReduceImplCommon(
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, bool is_async,
     bool no_parallel_custom_call) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
 
@@ -550,7 +634,8 @@ absl::Status AllReduceImplCommon(
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunAllReduce(static_cast<ReductionKind>(reduction_kind),
+        return RunAllReduce(NcclApi::Default(),
+                            static_cast<ReductionKind>(reduction_kind),
                             device_buffers, *stream, *comm);
       });
 }
@@ -574,7 +659,10 @@ absl::Status AllReduceImpl(const ServiceExecutableRunOptions* run_options,
         const gpu::GpuExecutableRunOptions* gpu_opts =
             run_options->run_options().gpu_executable_run_options();
         if (gpu_opts && gpu_opts->enable_mock_nccl_collectives()) {
-          return NcclMockImplCommon(stream);
+          return MockNcclImplCommon(
+              run_options, debug_options, stream, args, group_mode, op_id,
+              replica_group_offsets, replica_group_values, is_async,
+              Thunk::kNcclAllReduce, gpu_opts->mock_nccl_topo_model());
         }
         return AllReduceImplCommon(run_options, debug_options, stream, args,
                                    group_mode, op_id, reduction_kind,
@@ -609,6 +697,35 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 //===----------------------------------------------------------------------===//
 
 #if XLA_ENABLE_XCCL
+absl::Status MockAllToAllImplCommon(
+    const ServiceExecutableRunOptions* run_options,
+    const DebugOptions* debug_options, se::Stream* stream,
+    CustomCall::RemainingArgs args, int64_t group_mode,
+    bool has_split_dimension, int64_t op_id,
+    absl::Span<const int64_t> replica_group_offsets,
+    absl::Span<const int64_t> replica_group_values, bool is_async,
+    GpuExecutableRunOptions::MockNcclTopoModel topo_model) {
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
+
+  auto comm = GetMockNcclComm(
+      params, group_mode, op_id, replica_group_offsets, replica_group_values,
+      GetStreamId(is_async),
+      debug_options->xla_gpu_enable_nccl_clique_optimization(), topo_model);
+  // Skip mock nccl calls for gpus with non-zero ranks. Only run the nccl mock
+  // calls for the gpu with rank 0.
+  // TODO: Remove the check, once the pjrt client supports running benchmark
+  // with single gpu.
+  if (absl::IsCancelled(comm.status())) return absl::OkStatus();
+  if (!comm.ok()) return comm.status();
+
+  TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
+
+  return RunMockNcclAllToAll(NcclApi::Default(), has_split_dimension,
+                             device_buffers, *stream, **comm);
+}
+
 absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
                                 const DebugOptions* debug_options,
                                 se::Stream* stream,
@@ -618,7 +735,9 @@ absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
                                 absl::Span<const int64_t> replica_group_offsets,
                                 absl::Span<const int64_t> replica_group_values,
                                 bool is_async, bool no_parallel_custom_call) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
 
@@ -631,7 +750,8 @@ absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunAllToAll(has_split_dimension, device_buffers, *stream, *comm);
+        return RunAllToAll(NcclApi::Default(), has_split_dimension,
+                           device_buffers, *stream, *comm);
       });
 }
 #endif  // XLA_ENABLE_XCCL
@@ -655,7 +775,10 @@ absl::Status AllToAllImpl(const ServiceExecutableRunOptions* run_options,
         const gpu::GpuExecutableRunOptions* gpu_opts =
             run_options->run_options().gpu_executable_run_options();
         if (gpu_opts && gpu_opts->enable_mock_nccl_collectives()) {
-          return NcclMockImplCommon(stream);
+          return MockAllToAllImplCommon(
+              run_options, debug_options, stream, args, group_mode,
+              has_split_dimension, op_id, replica_group_offsets,
+              replica_group_values, is_async, gpu_opts->mock_nccl_topo_model());
         }
         return AllToAllImplCommon(run_options, debug_options, stream, args,
                                   group_mode, has_split_dimension, op_id,
@@ -696,7 +819,9 @@ absl::Status ReduceScatterImplCommon(
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values, bool is_async,
     bool no_parallel_custom_call) {
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
   bool enable_clique_opt = ShouldEnableCliqueOptimization(
       params, debug_options, no_parallel_custom_call);
 
@@ -709,7 +834,8 @@ absl::Status ReduceScatterImplCommon(
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
+        return RunReduceScatter(NcclApi::Default(),
+                                static_cast<ReductionKind>(reduction_kind),
                                 device_buffers, *stream, *comm);
       });
 }
@@ -734,7 +860,10 @@ absl::Status ReduceScatterImpl(const ServiceExecutableRunOptions* run_options,
         const gpu::GpuExecutableRunOptions* gpu_opts =
             run_options->run_options().gpu_executable_run_options();
         if (gpu_opts && gpu_opts->enable_mock_nccl_collectives()) {
-          return NcclMockImplCommon(stream);
+          return MockNcclImplCommon(
+              run_options, debug_options, stream, args, group_mode, op_id,
+              replica_group_offsets, replica_group_values, is_async,
+              Thunk::kNcclReduceScatter, gpu_opts->mock_nccl_topo_model());
         }
         return ReduceScatterImplCommon(
             run_options, debug_options, stream, args, group_mode, op_id,
@@ -784,10 +913,11 @@ absl::Status ReplicaPartitionIdImpl(
     bool is_replica_id) {
   VLOG(3) << "Running " << (is_replica_id ? "ReplicaId" : "PartitionId");
   se::Stream* stream = run_options->stream();
-  NcclExecuteParams params(*run_options, stream->parent());
+  TF_ASSIGN_OR_RETURN(Thunk::CollectiveExecuteParams params,
+                      Thunk::CollectiveExecuteParams::Create(
+                          *run_options, stream->parent()->device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      params.GetGlobalDeviceId());
+  GlobalDeviceId global_device_id = params.global_device_id;
 
   TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
                       params.device_assn->LogicalIdForDevice(global_device_id));

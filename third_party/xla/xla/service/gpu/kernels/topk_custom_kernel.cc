@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,26 +22,30 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // from @eigen_archive
-#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/runtime/gpu_kernel_helper.h"
 #include "xla/service/gpu/runtime/topk_kernel_common.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu::kernel::topk {
 
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+
 namespace {
 
 using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
-
-#define WAVEFRONT_SIZE 32
 
 // The optimal number of threads is the smaller value between the number of
 // threads available per block and the number of slices of data.
@@ -61,7 +65,7 @@ size_t EstimateOptimalNumThreads(size_t n, size_t k, size_t batch_size) {
 
 // Gets the right version of TopK kernel based on the value of `k`.
 template <typename T>
-StatusOr<void*> GetKernel(int n, int k) {
+absl::StatusOr<void*> GetKernel(int n, int k) {
   if (k <= 1) return GetTopKKernelForK<T, 1>(n);
   if (k <= 2) return GetTopKKernelForK<T, 2>(n);
   if (k <= 4) return GetTopKKernelForK<T, 4>(n);
@@ -73,7 +77,7 @@ StatusOr<void*> GetKernel(int n, int k) {
 // Returns the function creating packed arguments for TopK kernel.
 template <typename T>
 KernelArgsPacking CreateTopKArgsPacking(size_t num_elements, size_t k) {
-  using Packed = StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
+  using Packed = absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
     auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
@@ -90,10 +94,10 @@ KernelArgsPacking CreateTopKArgsPacking(size_t num_elements, size_t k) {
 // Implementation for creating a CustomKernel for TopK operation with element
 // type `T`.
 template <typename T>
-StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
-                                    size_t k, size_t batch_size) {
+absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
+                                          size_t k, size_t batch_size) {
   constexpr size_t kMaxKVSize = sizeof(uint64_t);
-  constexpr size_t kWavefrontSize = 32;
+  constexpr size_t kWavefrontSize = WAVEFRONT_SIZE;
   // Allocate shmem assuming we have a full reduction.
   int shmem_size = absl::bit_ceil(k) * kMaxKVSize * kWavefrontSize;
   int num_threads = EstimateOptimalNumThreads(num_elements, k, batch_size);
@@ -116,9 +120,10 @@ StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
 
 }  // namespace
 
-StatusOr<CustomKernel> GetTopKKernel(std::string name, PrimitiveType dtype,
-                                     size_t num_elements, size_t k,
-                                     size_t batch_size) {
+absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
+                                           PrimitiveType dtype,
+                                           size_t num_elements, size_t k,
+                                           size_t batch_size) {
   switch (dtype) {
     case PrimitiveType::F32:
       return GetTypedTopK<float>(std::move(name), num_elements, k, batch_size);
@@ -130,5 +135,16 @@ StatusOr<CustomKernel> GetTopKKernel(std::string name, PrimitiveType dtype,
           absl::StrCat("Unsupported GpuTopK data type: ", dtype));
   }
 }
+
+#else
+
+// Fallback implementation of creating a CustomKernel for TopK operation.
+StatusOr<CustomKernel> GetTopKKernel(std::string name, PrimitiveType dtype,
+                                     size_t num_elements, size_t k,
+                                     size_t batch_size) {
+  return absl::InternalError("XLA compiled without CUDA support");
+}
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace xla::gpu::kernel::topk

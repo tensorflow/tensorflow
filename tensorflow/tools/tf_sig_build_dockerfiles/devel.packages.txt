@@ -1,28 +1,34 @@
 # All required CUDA packages
-cuda-command-line-tools-12-2
-cuda-cudart-dev-12-2
-cuda-nvcc-12-2
-cuda-cupti-12-2
-cuda-nvprune-12-2
-cuda-libraries-12-2
-cuda-libraries-dev-12-2
-cuda-nvml-dev-12-2
-libcufft-12-2
-libcurand-12-2
-libcusolver-dev-12-2
-libcusparse-dev-12-2
-libcublas-12-2
-libcublas-dev-12-2
-libnccl-dev=2.18.5-1+cuda12.2
-libnccl2=2.18.5-1+cuda12.2
+cuda-compat-12-3
+cuda-command-line-tools-12-3
+cuda-cudart-dev-12-3
+cuda-nvcc-12-3
+cuda-cupti-12-3
+cuda-nvprune-12-3
+cuda-libraries-12-3
+cuda-libraries-dev-12-3
+cuda-nvml-dev-12-3
+libcufft-12-3
+libcurand-12-3
+libcusolver-dev-12-3
+libcusparse-dev-12-3
+libcublas-12-3
+libcublas-dev-12-3
+libnccl-dev=2.19.3-1+cuda12.3
+libnccl2=2.19.3-1+cuda12.3
 # CuDNN: https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#ubuntu-network-installation
-libcudnn8-dev=8.9.4.25-1+cuda12.2
-libcudnn8=8.9.4.25-1+cuda12.2
+libcudnn8-dev=8.9.6.50-1+cuda12.2
+libcudnn8=8.9.6.50-1+cuda12.2
 # TensorRT: See https://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html#maclearn-net-repo-install-rpm
 libnvinfer-plugin8=8.6.1.6-1+cuda12.0
 libnvinfer8=8.6.1.6-1+cuda12.0
 libnvinfer-dev=8.6.1.6-1+cuda12.0
 libnvinfer-plugin-dev=8.6.1.6-1+cuda12.0
+
+# This can be removed once NVIDIA publishes a cuda-12.3.2 Docker image.
+# For now it ensures that we install at least version 12.3.107 of PTXAS,
+# since 12.3.103 has a bug.
+cuda-compiler-12-3=12.3.2-1
 
 # Other build-related tools
 apt-transport-https

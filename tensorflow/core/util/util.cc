@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/util.h"
 
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -124,16 +125,66 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
 // TODO(penporn): Remove this function from util.cc
 bool IsMKLEnabled() { return IsMklEnabled(); }
 
-bool IsBF16SupportedByOneDNNOnThisCPU() {
+void DataTypeUnsupportedWarning(const DataType& dt) {
+  static absl::once_flag cpu_dt_warn_once_flag;
+  absl::call_once(cpu_dt_warn_once_flag, [dt] {
+    LOG(ERROR) << "oneDNN supports " << DataType_Name(dt) << " only on "
+               << "platforms with AVX-512. Falling back to the default "
+               << "Eigen-based implementation if present.";
+  });
+}
+
+bool IsDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt) {
+  bool result = false;
 #ifdef INTEL_MKL
-  if (port::TestCPUFeature(port::CPUFeature::AVX512F) ||
-      port::TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT)) {
-    return true;
+  using port::TestCPUFeature;
+  if (dt == DT_FLOAT) {
+    result = true;
+  } else if (dt == DT_BFLOAT16) {
+    result = (TestCPUFeature(port::CPUFeature::AVX512F) ||
+              TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+  } else if (DataTypeIsQuantized(dt)) {
+    result = (TestCPUFeature(port::CPUFeature::AVX512F) ||
+              TestCPUFeature(port::CPUFeature::AVX_VNNI_INT8));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+  } else if (dt == DT_HALF) {
+    // Float16 is not supported in oneDNN v2.x
+#ifdef ENABLE_ONEDNN_V3
+    result = (TestCPUFeature(port::CPUFeature::AVX512BW) &&
+              (TestCPUFeature(port::CPUFeature::AVX512_FP16) ||
+               TestCPUFeature(port::CPUFeature::AMX_FP16) ||
+               TestCPUFeature(port::CPUFeature::AVX_NE_CONVERT)));
+    if (result) VLOG(2) << "CPU supports " << DataType_Name(dt);
+#endif  // ENABLE_ONEDNN_V3
   } else {
-    return false;
+    LOG(WARNING) << "Not handling type " << DataType_Name(dt);
   }
 #endif  // INTEL_MKL
-  return false;
+  return result;
+}
+
+bool IsAMXDataTypeSupportedByOneDNNOnThisCPU(const DataType& dt) {
+  bool result = false;
+#ifdef INTEL_MKL
+  using port::TestCPUFeature;
+  if (dt == DT_BFLOAT16) {
+    result = TestCPUFeature(port::CPUFeature::AMX_BF16);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+  } else if (dt == DT_HALF) {
+    // Float16 is not supported in oneDNN v2.x
+#ifdef ENABLE_ONEDNN_V3
+    result = TestCPUFeature(port::CPUFeature::AMX_FP16);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+#endif  // ENABLE_ONEDNN_V3
+  } else if (DataTypeIsQuantized(dt)) {
+    result = TestCPUFeature(port::CPUFeature::AMX_INT8);
+    if (result) VLOG(2) << "CPU supports AMX " << DataType_Name(dt);
+  } else {
+    LOG(WARNING) << "Not handling type " << DataType_Name(dt);
+  }
+#endif  // INTEL_MKL
+  return result;
 }
 
 }  // namespace tensorflow

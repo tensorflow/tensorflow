@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/tile_analysis.h"
+#include "xla/service/gpu/model/indexing_analysis.h"
 
 namespace xla {
 namespace gpu {
@@ -115,8 +115,10 @@ bool IsReadCoalesced(const HloInstruction* operand, const HloInstruction* instr,
 
   bool is_coalesced = true;
   for (const auto& indexing_map : indexing_maps.at(operand)) {
+    if (!indexing_map.has_value()) return false;
+
     AffineMap normalized_indexing_map = operand_transpose.compose(
-        indexing_map.affine_map.compose(output_transpose));
+        indexing_map->affine_map.compose(output_transpose));
     // First version is naive, we just check that the affine maps of input and
     // output have the same minor dimension.
     is_coalesced &= normalized_indexing_map.isMinorIdentityWithBroadcasting();

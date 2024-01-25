@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -1359,18 +1359,20 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
   // !show_backend_config, but this is simpler, and it's not too noisy.)
   std::vector<std::pair<std::string, std::string>> props;
   if (gpu::IsCustomCallToDnnConvolution(*instr)) {
-    StatusOr<gpu::CudnnConvBackendConfig> config =
-        instr->backend_config<gpu::CudnnConvBackendConfig>();
+    StatusOr<gpu::GpuBackendConfig> config =
+        instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
-      props = ExtractCudnnConvBackendConfigProps(*config);
+      props = ExtractCudnnConvBackendConfigProps(
+          config->cudnn_conv_backend_config());
     }
   } else if (gpu::IsCublasGemm(*instr)) {
-    StatusOr<gpu::GemmBackendConfig> config =
-        instr->backend_config<gpu::GemmBackendConfig>();
+    StatusOr<gpu::GpuBackendConfig> config =
+        instr->backend_config<gpu::GpuBackendConfig>();
     if (config.ok()) {
       // gemm strides are generally uninteresting (derived from the instruction
       // shape), so we hide them by default.
-      props = ExtractGemmBackendConfigProps(*config, instr);
+      props =
+          ExtractGemmBackendConfigProps(config->gemm_backend_config(), instr);
     }
   }
 
@@ -1780,7 +1782,6 @@ static std::pair<int, int> FusionVisualizerStateKey(
                         computation.unique_id());
 }
 
-
 }  // namespace
 
 // Compress with zlib + b64 encode.
@@ -1829,7 +1830,7 @@ StatusOr<std::string> WrapFusionExplorer(
     const FusionVisualizerProgress& visualizer_progress,
     absl::string_view graph_title) {
   if (visualizer_progress.frames.empty()) {
-    return InternalError("Empty");
+    return Internal("Empty");
   }
 
   std::string dot_graphs =
@@ -1929,7 +1930,7 @@ StatusOr<std::string> WrapFusionExplorer(
       var area = document.getElementById('rendered');
       area.innerHTML = `${svg}<style>${css_data}</style>`;
       var panzoom = svgPanZoom(area.children[0], {
-          zoomEnabled: true, controlIconsEnabled: true, });
+          zoomEnabled: true, controlIconsEnabled: true, maxZoom: 200, });
       var to_highlight = frame[2].length ?
         document.querySelector(`${frame[2]}`) : null;
       if (to_highlight) {

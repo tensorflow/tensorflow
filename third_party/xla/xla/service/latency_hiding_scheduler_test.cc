@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -996,9 +996,9 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
     ENTRY after_optimizations_test {
     %parameter.1 = bf16[8]{0} parameter(0)
     %collective-permute.2 = bf16[8]{0} collective-permute(bf16[8]{0} parameter.1), source_target_pairs={{0,1},{1,2},{2,3}}
-    %constant.3 = bf16[] constant(1)
-    %broadcast.4 = bf16[8]{0} broadcast(bf16[] %constant.3), dimensions={}
-    %add.5 = bf16[8]{0} add(%collective-permute.2, %broadcast.4)
+    %add.3 = bf16[8]{0} add(%parameter.1, %parameter.1)
+    %add.4 = bf16[8]{0} add(%add.3, parameter.1)
+    %add.5 = bf16[8]{0} add(%collective-permute.2, %add.4)
     %collective-permute.6 = bf16[8]{0} collective-permute(bf16[8]{0} add.5), source_target_pairs={{1,0},{0,3},{3,2}}
   }
 )";
@@ -1035,7 +1035,7 @@ TEST_F(LatencyHidingSchedulerTest, SerialCollectivePermutesTest) {
                              original_instruction_sequence[3]),
             PositionInVector(new_instruction_sequence,
                              original_instruction_sequence[4]));
-  EXPECT_EQ(original_instruction_sequence[0]->user_count(), 1);
+  EXPECT_EQ(original_instruction_sequence[0]->user_count(), 3);
   EXPECT_EQ(original_instruction_sequence[0]->users()[0]->opcode(),
             HloOpcode::kCollectivePermuteStart);
   HloInstruction* collective_permute_start_1 =
@@ -2938,27 +2938,24 @@ ENTRY main {
 
   %call-start.1 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
     call-start(s32[<=4096]{0:T(8)M(1024)} %get-tuple-element.1),
-      async_group_id=17, async_execution_thread="sparsecore", to_apply=%called_computation
+      async_execution_thread="sparsecore", to_apply=%called_computation
 
   %call-done.1 = s32[<=4096]{0:T(8)M(1024)}
-    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.1),
-      async_group_id=17, async_execution_thread="sparsecore", to_apply=%called_computation
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.1)
 
   %call-start.2 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
     call-start(s32[<=4096]{0:T(8)M(1024)} %call-done.1),
-      async_group_id=27, async_execution_thread="sparsecore", to_apply=%called_computation
+      async_execution_thread="sparsecore", to_apply=%called_computation
 
   %call-done.2 = s32[<=4096]{0:T(8)M(1024)}
-    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.2),
-      async_group_id=27, async_execution_thread="sparsecore", to_apply=%called_computation
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.2)
 
   %call-start.3 = ((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)})
     call-start(s32[<=4096]{0:T(8)M(1024)} %get-tuple-element.0),
-      async_group_id=14, async_execution_thread="sparsecore", to_apply=%called_computation
+      async_execution_thread="sparsecore", to_apply=%called_computation
 
   %call-done.3 = s32[<=4096]{0:T(8)M(1024)}
-    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.3),
-      async_group_id=14, async_execution_thread="sparsecore", to_apply=%called_computation
+    call-done(((s32[<=4096]{0:T(8)M(1024)}), s32[<=4096]{0:T(8)M(1024)}, u32[]{:T(8)S(8)}) %call-start.3)
 
   ROOT %tuple.6 = (s32[<=4096]{0:T(8)M(1024)}, s32[<=4096]{0:T(8)M(1024)})
     tuple(s32[<=4096]{0:T(8)M(1024)} %call-done.2, s32[<=4096]{0:T(8)M(1024)} %call-done.3),

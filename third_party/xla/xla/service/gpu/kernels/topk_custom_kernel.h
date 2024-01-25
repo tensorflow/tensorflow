@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,9 +25,10 @@ limitations under the License.
 namespace xla::gpu::kernel::topk {
 
 // Creates a CustomKernel for TopK operation.
-StatusOr<CustomKernel> GetTopKKernel(std::string name, PrimitiveType dtype,
-                                     size_t num_elements, size_t k,
-                                     size_t batch_size);
+absl::StatusOr<CustomKernel> GetTopKKernel(std::string name,
+                                           PrimitiveType dtype,
+                                           size_t num_elements, size_t k,
+                                           size_t batch_size);
 
 }  // namespace xla::gpu::kernel::topk
 

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -52,8 +53,8 @@ limitations under the License.
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
-#include "tsl/platform/float8.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -211,87 +212,105 @@ void StridedCopy(D* dest, int64_t dest_stride, const S* src, int64_t src_stride,
 Status AddStatus(Status prior, absl::string_view context);
 Status AppendStatus(Status prior, absl::string_view context);
 
-// Status error shorthands -- StrFormat's the arguments to be used as an error
-// message and returns a status in the canonical error space.
-template <typename... Args>
-Status InvalidArgument(const absl::FormatSpec<Args...>& format,
-                       const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::InvalidArgument(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unimplemented(const absl::FormatSpec<Args...>& format,
-                     const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unimplemented(absl::StrFormat(format, args...)));
-}
 template <typename... Args>
 Status InternalError(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
       tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
-template <typename... Args>
-Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
-                          const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::FailedPrecondition(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Cancelled(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
-                         const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::NotFound(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unavailable(const absl::FormatSpec<Args...>& format,
-                   const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unavailable(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Unknown(absl::StrFormat(format, args...)));
-}
-template <typename... Args>
-Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
-  return WithLogBacktrace(
-      tsl::errors::Internal(absl::StrFormat(format, args...)));
-}
 
-template <typename... Args>
-Status InvalidArgumentStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::InvalidArgument(std::forward<Args>(concat)...));
-}
+// This macro defines the arguments to be used as an error
+// message to be passed to absl::StrFormat, and returns a status in the
+// canonical error space.
+#define DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(error_type)  \
+  template <typename... Args>                                       \
+  Status error_type(const absl::FormatSpec<Args...>& format,        \
+                    const Args&... args) {                          \
+    return WithLogBacktrace(                                        \
+        tsl::errors::error_type(absl::StrFormat(format, args...))); \
+  }
 
-template <typename... Args>
-Status UnimplementedStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::Unimplemented(std::forward<Args>(concat)...));
-}
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(InvalidArgument);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unimplemented);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Internal);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(FailedPrecondition);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Cancelled);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(ResourceExhausted);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(NotFound);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unavailable);
+DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE(Unknown);
 
-template <typename... Args>
-Status InternalErrorStrCat(Args&&... concat) {
-  return WithLogBacktrace(tsl::errors::Internal(std::forward<Args>(concat)...));
-}
+#undef DEFINE_XLA_ERROR_WITH_STRFORMAT_WITH_BACKTRACE
 
-template <typename... Args>
-Status ResourceExhaustedStrCat(Args&&... concat) {
-  return WithLogBacktrace(
-      tsl::errors::ResourceExhausted(std::forward<Args>(concat)...));
-}
+// The following three macros define a common set of code for creating
+// absl::Status errors with the given error_type, with the addition of adding
+// absl::SourceLocation if it's available (PLATFORM_GOOGLE).  They're a
+// complicated by the need to use #ifdefs within the code.  This would be the
+// equivalent code for ResourceExhausted if a #define macro could have embedded
+// #ifdef directives:
+//
+// template <typename... Args>
+// struct ResourceExhaustedStrCat {
+//   Status status;
+// #if defined(PLATFORM_GOOGLE)
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   ResourceExhaustedStrCat(Args&&... concat, absl::SourceLocation loc =
+//                                                 absl::SourceLocation::current())
+//       : status(WithLogBacktrace(
+//             tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)
+//                 .WithSourceLocation(loc))) {}
+// #else
+//   ResourceExhaustedStrCat(Args&&... concat)
+//       : status(WithLogBacktrace(
+//             tsl::errors::ResourceExhausted(std::forward<Args>(concat)...)))
+//             {}
+// #endif
+//
+//   // NOLINTNEXTLINE(google-explicit-constructor)
+//   operator Status() const { return status; }
+// };
+//
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type) \
+  template <typename... Args>                                  \
+  struct error_type##StrCat {                                  \
+    Status status;                                             \
+    /* NOLINTNEXTLINE(google-explicit-constructor) */
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)           \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                      \
+  operator Status() const { return status; }                             \
+  }                                                                      \
+  ;                                                                      \
+  /*Deduction guide to make variadic arguments play nice with default */ \
+  /* absl::SourceLocation argument. */                                   \
+  template <typename... Args>                                            \
+  error_type##StrCat(Args&&...)->error_type##StrCat<Args...>;
+
+#if defined(PLATFORM_GOOGLE)
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                     \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                    \
+  error_type##StrCat(Args&&... concat, absl::SourceLocation loc =           \
+                                           absl::SourceLocation::current()) \
+      : status(WithLogBacktrace(                                            \
+            tsl::errors::error_type(std::forward<Args>(concat)...)          \
+                .WithSourceLocation(loc))) {}                               \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
+#else
+#define XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(error_type)                 \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX(error_type)                \
+  error_type##StrCat(Args&&... concat)                                  \
+      : status(WithLogBacktrace(                                        \
+            tsl::errors::error_type(std::forward<Args>(concat)...))) {} \
+  XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX(error_type)
+#endif
+
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(ResourceExhausted);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(InvalidArgument);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Unimplemented);
+XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Internal);
+
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_PREFIX
+#undef XLA_ERROR_WITH_STRCAT_AND_BACKTRACE_SUFFIX
 
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
@@ -728,16 +747,6 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
   container->erase(it);
   return OkStatus();
 }
-
-// Utility function which splits a double-precision float (F64) into a pair of
-// single-precision floating point numbers. The most significant 49 bits (out of
-// the total 53 available) in the mantissa of the F64 is represented as the
-// unevaluated sum of two non-overlapping single-precision F32s; the 'high' part
-// contains 24 bits in its mantissa, and the 'low' part contains 25 bits in its
-// sign bit and its mantissa.
-// Note: The resulting representation can still only represent 8-bit exponent
-// range that is available in F32s (out of a total of 11 exponent bits in F64s).
-std::pair<float, float> SplitF64ToF32(double x);
 
 // Takes a sequence of unpacked int4 values, such that every byte stores one
 // int4 value in the low-order four bits, and packs them so every byte stores

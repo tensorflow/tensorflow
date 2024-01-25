@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ inline constexpr runtime::CustomCall::RuntimeChecks checks =  // NOLINT
 #endif
 
 template <typename T>
-absl::StatusOr<T> ToAbsl(StatusOr<T> status_or) {
+absl::StatusOr<T> ToAbsl(absl::StatusOr<T> status_or) {
   if (!status_or.ok()) return status_or.status();
   return std::move(status_or).value();
 }
@@ -96,7 +96,7 @@ inline Shape ToShape(const runtime::StridedMemrefView& memref) {
                                              minor_to_major);
 }
 
-inline StatusOr<GemmConfig> GetGemmConfig(
+inline absl::StatusOr<GemmConfig> GetGemmConfig(
     const runtime::StridedMemrefView& lhs,
     const runtime::StridedMemrefView& rhs,
     const runtime::StridedMemrefView& out, int64_t algorithm, double alpha_real,

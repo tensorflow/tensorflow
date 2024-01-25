@@ -1244,8 +1244,8 @@ class ConvertUniformQuantizedConvolutionOp
 // TODO: b/310685906 - Add operand/result type validations.
 class ConvertGenericOp : public ConversionPattern {
  public:
-  explicit ConvertGenericOp(MLIRContext *ctx)
-      : ConversionPattern(MatchAnyOpTypeTag(), 1, ctx) {}
+  explicit ConvertGenericOp(MLIRContext *ctx, TypeConverter &converter)
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), 1, ctx) {}
 
   LogicalResult matchAndRewrite(
       Operation *op, ArrayRef<Value> operands,
@@ -1253,9 +1253,9 @@ class ConvertGenericOp : public ConversionPattern {
     // This pattern only handle selected ops.
     if (!isa<mhlo::BroadcastInDimOp, mhlo::ConcatenateOp, mhlo::ConstantOp,
              mhlo::ConvertOp, mhlo::GatherOp, mhlo::MaxOp, mhlo::MinOp,
-             mhlo::PadOp, mhlo::ReshapeOp, mhlo::SelectOp, mhlo::SliceOp,
-             mhlo::TransposeOp, mhlo::GetDimensionSizeOp,
-             mhlo::DynamicBroadcastInDimOp>(op)) {
+             mhlo::PadOp, mhlo::ReduceWindowOp, mhlo::ReshapeOp, mhlo::ReturnOp,
+             mhlo::SelectOp, mhlo::SliceOp, mhlo::TransposeOp,
+             mhlo::GetDimensionSizeOp, mhlo::DynamicBroadcastInDimOp>(op)) {
       return failure();
     }
 
@@ -1268,6 +1268,14 @@ class ConvertGenericOp : public ConversionPattern {
 
     OperationState state(op->getLoc(), op->getName().getStringRef(), operands,
                          new_result_types, op->getAttrs(), op->getSuccessors());
+    for (Region &region : op->getRegions()) {
+      Region &new_region = *state.addRegion();
+      rewriter.inlineRegionBefore(region, new_region, new_region.begin());
+      if (failed(
+              rewriter.convertRegionTypes(&new_region, *getTypeConverter()))) {
+        return failure();
+      }
+    }
     Operation *new_op = rewriter.create(state);
     rewriter.replaceOp(op, new_op);
     return success();
@@ -1305,11 +1313,11 @@ class ConvertMHLOQuantToInt
     patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
                  ConvertUniformQuantizedAddOp, ConvertUniformQuantizedDotOp,
                  ConvertUniformQuantizedDotGeneralOp,
-                 ConvertUniformQuantizedConvolutionOp, ConvertGenericOp>(
-        context);
+                 ConvertUniformQuantizedConvolutionOp>(context);
 
-    // uq->int convert patterns for func.func and func.return.
+    // uq->int convert patterns for func.func, func.return and generic ops.
     UQTypeConverter converter;
+    patterns.add<ConvertGenericOp>(context, converter);
     populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                    converter);
     populateReturnOpTypeConversionPattern(patterns, converter);

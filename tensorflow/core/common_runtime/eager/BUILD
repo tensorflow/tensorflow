@@ -415,6 +415,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
+        "@com_google_absl//absl/cleanup",
     ],
 )
 

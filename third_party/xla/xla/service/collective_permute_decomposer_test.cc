@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ TEST_F(CollectivePermuteDecomposerTest, SyncNotTransformed) {
         p = u32[] replica-id()
         start = (u32[], u32[]) collective-permute-start(p), channel_id=1,
           source_target_pairs={{0,1}, {1,2}},
-          backend_config="{\"is_sync\":true}"
+          backend_config="{ \"collective_backend_config\": {\"is_sync\":true}}"
         ROOT done = u32[] collective-permute-done(start)
       }
     )";

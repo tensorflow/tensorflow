@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ namespace gpu {
 namespace {
 
 // Sort contracting dimensions of a dot() instruction preserving lhs-rhs pairs.
-Status SortDotDimensions(HloInstruction* dot) {
+absl::Status SortDotDimensions(HloInstruction* dot) {
   const DotDimensionNumbers& dims = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dims(dims);
   new_dims.clear_lhs_contracting_dimensions();
@@ -79,7 +79,7 @@ Status SortDotDimensions(HloInstruction* dot) {
 
 }  // namespace
 
-StatusOr<bool> DotDimensionSorter::Run(
+absl::StatusOr<bool> DotDimensionSorter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> dots_to_process;

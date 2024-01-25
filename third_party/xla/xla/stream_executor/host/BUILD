@@ -2,9 +2,9 @@
 #   Host-platform specific StreamExecutor support code.
 
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("@local_tsl//tsl:tsl.bzl", "set_external_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -62,9 +62,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:denormal",
         "@local_tsl//tsl/platform:env",
@@ -89,6 +89,8 @@ cc_library(
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:errors",
@@ -106,6 +108,7 @@ xla_cc_test(
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:errors",

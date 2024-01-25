@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -84,11 +85,18 @@ class CustomCallThunk : public Thunk {
                   AttributesMap attributes,
                   const HloComputation* called_computation);
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  const CustomCallTarget& call_target() const { return call_target_; }
+  const std::vector<std::optional<Slice>>& operands() const {
+    return operands_;
+  }
+  const std::vector<std::optional<Slice>>& results() const { return results_; }
+  absl::string_view opaque() const { return opaque_; }
 
  private:
-  Status ExecuteCustomCall(const ExecuteParams& params);
-  Status ExecuteFfiHandler(const ExecuteParams& params);
+  absl::Status ExecuteCustomCall(const ExecuteParams& params);
+  absl::Status ExecuteFfiHandler(const ExecuteParams& params);
 
   std::vector<std::optional<Slice>> operands_;
   std::vector<std::optional<Slice>> results_;

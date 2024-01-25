@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
@@ -42,7 +43,7 @@ GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
       workspace_(workspace),
       deterministic_(deterministic) {}
 
-Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Running GEMM thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
   se::DeviceMemoryBase workspace(/*opaque=*/nullptr, /*size=*/0);
@@ -55,12 +56,11 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
                  deterministic_, params.stream);
 }
 
-Status GemmThunk::Initialize(se::StreamExecutor* executor,
-                             ExecutableSource src) {
-  if (!executor->AsBlas()) {
+absl::Status GemmThunk::Initialize(const InitializeParams& params) {
+  if (!params.executor->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

@@ -32,7 +32,9 @@ int_dtypes = [
 ]
 float_dtypes = [np.float16, np.float32, np.float64]
 complex_dtypes = [np.complex64, np.complex128]
-dlpack_dtypes = int_dtypes + float_dtypes + [dtypes.bfloat16] + complex_dtypes
+dlpack_dtypes = (
+    int_dtypes + float_dtypes + [dtypes.bfloat16] + complex_dtypes + [np.bool_]
+)
 
 testcase_shapes = [(), (1,), (2, 3), (2, 0), (0, 7), (4, 1, 2)]
 
@@ -58,7 +60,10 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
   @parameterized.named_parameters(GetNamedTestParameters())
   def testRoundTrip(self, dtype, shape):
     np.random.seed(42)
-    np_array = np.random.randint(0, 10, shape)
+    if dtype == np.bool_:
+      np_array = np.random.randint(0, 1, shape, np.bool_)
+    else:
+      np_array = np.random.randint(0, 10, shape)
     # copy to gpu if available
     tf_tensor = array_ops.identity(constant_op.constant(np_array, dtype=dtype))
     tf_tensor_device = tf_tensor.device

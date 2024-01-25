@@ -26,6 +26,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+
+// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -43,13 +47,26 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 using ::tensorflow::test::TensorEq;
 using ::testing::ElementsAre;
+
+Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+  constexpr int kMaxParallelism = 16;
+  static tsl::thread::ThreadPool* thread_pool = []() {
+    return new tsl::thread::ThreadPool(tsl::Env::Default(),
+                                       tsl::ThreadOptions(), "IfrtSharding",
+                                       kMaxParallelism);
+  }();
+  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
+                                 kMaxParallelism);
+}
 
 TEST(IfrtServingExecutableTest, Basic) {
   // Create test input module
@@ -72,9 +89,10 @@ TEST(IfrtServingExecutableTest, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client,
+                                   client, &thread_pool_device,
                                    tensorflow::IdentityShapeRepresentationFn());
 
   auto x = tensorflow::test::AsTensor<int32_t>({1, 2, 3},
@@ -113,9 +131,10 @@ TEST(IfrtServingExecutableTest, MultipleShapes) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client,
+                                   client, &thread_pool_device,
                                    tensorflow::IdentityShapeRepresentationFn());
 
   auto x1 = tensorflow::test::AsTensor<int32_t>(
@@ -171,9 +190,10 @@ TEST(IfrtServingExecutableTest, Spmd) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client,
+                                   client, &thread_pool_device,
                                    tensorflow::IdentityShapeRepresentationFn());
 
   auto x = tensorflow::test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
@@ -215,9 +235,10 @@ TEST(IfrtServingExecutableTest, SpmdTwoReturns) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client,
+                                   client, &thread_pool_device,
                                    tensorflow::IdentityShapeRepresentationFn());
 
   auto x = tensorflow::test::AsTensor<int32_t>({1, 2, 3, 4, 5, 6, 7, 8},
@@ -262,9 +283,10 @@ TEST(IfrtServingExecutableTest, NoReturn) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
+  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   IfrtServingExecutable executable("test", "main", std::move(mlir_module),
-                                   client,
+                                   client, &thread_pool_device,
                                    tensorflow::IdentityShapeRepresentationFn());
 
   auto x = tensorflow::test::AsTensor<int32_t>({1, 2, 3},

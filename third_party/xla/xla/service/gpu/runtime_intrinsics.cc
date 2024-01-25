@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/collective_ops_utils.h"
@@ -46,8 +47,8 @@ std::string GetGpuPlatformName() {
       PlatformUtil::CanonicalPlatformName("gpu").value());
 }
 
-Status AssertOnGpu(void* stream_handle, void* buffer,
-                   absl::string_view error_msg) {
+absl::Status AssertOnGpu(void* stream_handle, void* buffer,
+                         absl::string_view error_msg) {
   TF_ASSIGN_OR_RETURN(
       se::Platform * platform,
       se::MultiPlatformManager::PlatformWithName(GetGpuPlatformName()));
@@ -57,7 +58,7 @@ Status AssertOnGpu(void* stream_handle, void* buffer,
                       platform->GetExecutor(config));
   se::Stream* stream = executor->FindAllocatedStream(stream_handle);
   if (!stream) {
-    return InternalError("Stream not found for: %p", stream_handle);
+    return Internal("Stream not found for: %p", stream_handle);
   }
 
   int8_t expected = false;
@@ -68,16 +69,16 @@ Status AssertOnGpu(void* stream_handle, void* buffer,
       byte_size);
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   if (!static_cast<bool>(expected)) {
-    return InternalError("%s", error_msg);
+    return Internal("%s", error_msg);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AssertionCustomCall(void* stream_handle, void** buffers,
                          const char* opaque, int opaque_len,
                          XlaCustomCallStatus* status) {
-  Status s =
+  absl::Status s =
       AssertOnGpu(stream_handle, buffers[0],
                   absl::string_view{opaque, static_cast<uint64_t>(opaque_len)});
   if (!s.ok()) {

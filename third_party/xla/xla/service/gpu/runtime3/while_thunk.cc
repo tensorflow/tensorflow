@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,14 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_format.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/runtime3/sequential_thunk.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -35,14 +42,21 @@ WhileThunk::WhileThunk(
       body_thunk_sequence_(std::make_unique<SequentialThunk>(
           ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
 
-Status WhileThunk::Initialize(se::StreamExecutor* executor,
-                              ExecutableSource src) {
-  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(executor, src));
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executor, src));
-  return OkStatus();
+absl::Status WhileThunk::Prepare(const PrepareParams& params,
+                                 ResourceRequests& resource_requests) {
+  TF_RETURN_IF_ERROR(
+      condition_thunk_sequence_->Prepare(params, resource_requests));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Prepare(params, resource_requests));
+  return absl::OkStatus();
 }
 
-Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
+absl::Status WhileThunk::Initialize(const InitializeParams& params) {
+  TF_RETURN_IF_ERROR(condition_thunk_sequence_->Initialize(params));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(params));
+  return absl::OkStatus();
+}
+
+absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto& stream = *params.stream;
 
   se::DeviceMemoryBase condition_result_data =
@@ -58,11 +72,11 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     bool condition_result;
     stream.ThenMemcpy(&condition_result, condition_result_data, sizeof(bool));
     VLOG(3) << "condition_result = " << condition_result;
-    Status block_status = stream.BlockHostUntilDone();
+    absl::Status block_status = stream.BlockHostUntilDone();
     if (!block_status.ok()) {
-      return InternalError(
+      return absl::InternalError(absl::StrFormat(
           "Failed to complete all kernels launched on stream %p: %s", &stream,
-          block_status.message());
+          block_status.message()));
     }
 
     if (!condition_result) {
@@ -73,7 +87,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     // Invoke thunk sequence for while 'body' computation.
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

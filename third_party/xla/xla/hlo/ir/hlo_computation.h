@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -64,14 +66,12 @@ class HloModule;
 class HloComputation {
  public:
   // Used by instructions_.
-  using InstructionList = std::list<std::unique_ptr<HloInstruction>>;
+  using InstructionList = std::vector<HloInstructionInfo>;
 
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(absl::string_view name,
-                     HloInstruction* fusion_instruction = nullptr)
-        : name_(name), fusion_instruction_(fusion_instruction) {}
+    explicit Builder(absl::string_view name) : name_(name) {}
     Builder(Builder&& b) = default;
     virtual ~Builder() = default;
 
@@ -102,8 +102,8 @@ class HloComputation {
     StatusOr<HloInstruction*> AddParameter(
         std::unique_ptr<HloInstruction> parameter) {
       if (!parameter_numbers_.insert(parameter->parameter_number()).second) {
-        return InternalError("Duplicate parameter number %d",
-                             parameter->parameter_number());
+        return Internal("Duplicate parameter number %d",
+                        parameter->parameter_number());
       }
       return AddInstruction(std::move(parameter));
     }
@@ -122,7 +122,6 @@ class HloComputation {
 
    private:
     const std::string name_;
-    HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
     absl::flat_hash_set<int> parameter_numbers_;
 
@@ -146,6 +145,49 @@ class HloComputation {
    private:
     HloComputation* computation_;
     OpMetadata metadata_;
+  };
+
+  // Helper class for returning the instruction post order for a computation,
+  // but maintaining a cache to avoid repeated calls to
+  // computation->MakeInstructionPostorder().  The cache is invalidated if
+  // RecordChange(<something evaluating to true>)  is called.
+  //
+  // This class can be handy to avoid recomputing the instruction post order
+  // when an optimization pass wants to make multiple passes over the
+  // instructions.
+  //
+  // Example usage:
+  //   for (auto* computation : module->computations(execution_threads)) {
+  //     HloComputation::CachingPostOrder cpo(computation);
+  //     for (auto instruction : cpo.PostOrder()) {  // Pass 1
+  //       bool did_change = ... maybe do something to instruction ...;
+  //       cpo.RecordChange(did_change);
+  //     }
+  //     for (auto instruction : cpo.PostOrder()) {  // Pass 2
+  //       bool did_change = ... maybe do something else to instruction ...;
+  //       cpo.RecordChange(did_change);
+  //     }
+  //   }
+  class CachingPostOrder {
+   public:
+    explicit CachingPostOrder(const HloComputation* computation)
+        : computation_(computation), recompute_(true) {}
+
+    // Returns the instruction post-order for "computation"
+    const std::vector<HloInstruction*>& PostOrder() {
+      if (recompute_) {
+        cached_post_order_ = computation_->MakeInstructionPostOrder();
+        recompute_ = false;
+      }
+      return cached_post_order_;
+    }
+
+    void RecordChange(bool changed) { recompute_ |= changed; }
+
+   private:
+    const HloComputation* computation_;
+    bool recompute_;
+    std::vector<HloInstruction*> cached_post_order_;
   };
 
   ~HloComputation();
@@ -319,10 +361,10 @@ class HloComputation {
   }
 
   using InstructionSequence = tsl::gtl::iterator_range<
-      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
+      UnwrappingIterator<HloInstructionList::iterator>>;
 
-  using ConstInstructionSequence = tsl::gtl::iterator_range<UnwrappingIterator<
-      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
+  using ConstInstructionSequence = tsl::gtl::iterator_range<
+      UnwrappingIterator<HloInstructionList::const_iterator>>;
 
   // Gets the instructions in this computation.
   //
@@ -331,13 +373,33 @@ class HloComputation {
   //
   //   for (HloInstruction* instr : computation->instructions()) { ... }
   //
-  ConstInstructionSequence instructions() const {
-    return {MakeUnwrappingIterator(instructions_.begin()),
-            MakeUnwrappingIterator(instructions_.end())};
+
+  tsl::gtl::iterator_range<xla::HloInstructionUnwrappingConstIterator>
+  instructions() const {
+    const int end = instructions_.size();
+    return {HloInstructionUnwrappingConstIterator(
+                HloInstructionConstIterator(&instructions_, 0, end)),
+            HloInstructionUnwrappingConstIterator(
+                HloInstructionConstIterator(&instructions_, end, end))};
   }
-  InstructionSequence instructions() {
-    return {MakeUnwrappingIterator(instructions_.begin()),
-            MakeUnwrappingIterator(instructions_.end())};
+  tsl::gtl::iterator_range<xla::HloInstructionUnwrappingIterator>
+  instructions() {
+    const int end = instructions_.size();
+    return {HloInstructionUnwrappingIterator(
+                HloInstructionIterator(&instructions_, 0, end)),
+            HloInstructionUnwrappingIterator(
+                HloInstructionIterator(&instructions_, end, end))};
+  }
+  tsl::gtl::iterator_range<HloInstructionIterator> instructions_with_info() {
+    const int end = instructions_.size();
+    return {HloInstructionIterator(&instructions_, 0, end),
+            HloInstructionIterator(&instructions_, end, end)};
+  }
+  tsl::gtl::iterator_range<HloInstructionConstIterator> instructions_with_info()
+      const {
+    const int end = instructions_.size();
+    return {HloInstructionConstIterator(&instructions_, 0, end),
+            HloInstructionConstIterator(&instructions_, end, end)};
   }
 
   using ChannelDependencies =
@@ -362,7 +424,7 @@ class HloComputation {
   void ForEachInstructionPostOrder(
       absl::FunctionRef<void(HloInstruction*)> func) const;
 
-  int64_t instruction_count() const { return instruction_iterators_.size(); }
+  int64_t instruction_count() const { return instruction_indices_.size(); }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -646,7 +708,8 @@ class HloComputation {
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
     CHECK(!IsCustomCallComputation() && !IsAsyncComputation() &&
-          !IsCollectiveCalledComputation() && !IsWhileBodyComputation());
+          !IsCollectiveCalledComputation() && !IsWhileBodyComputation() &&
+          !IsConditionalBranchComputation());
     fusion_instruction_ = fusion_instruction;
     is_fusion_computation_ |= (fusion_instruction != nullptr);
   }
@@ -661,7 +724,8 @@ class HloComputation {
   }
   void SetCustomCallInstruction(HloInstruction* custom_call_instruction) {
     CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCollectiveCalledComputation() && !IsWhileBodyComputation());
+          !IsCollectiveCalledComputation() && !IsWhileBodyComputation() &&
+          !IsConditionalBranchComputation());
     custom_call_instruction_ = custom_call_instruction;
     is_custom_call_computation_ |= (custom_call_instruction != nullptr);
   }
@@ -680,7 +744,8 @@ class HloComputation {
   void SetCollectiveCallInstruction(
       HloInstruction* collective_call_instruction) {
     CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCustomCallComputation() && !IsWhileBodyComputation());
+          !IsCustomCallComputation() && !IsWhileBodyComputation() &&
+          !IsConditionalBranchComputation());
     collective_call_instruction_ = collective_call_instruction;
     is_collective_called_computation_ |=
         (collective_call_instruction != nullptr);
@@ -699,43 +764,50 @@ class HloComputation {
 
   void SetWhileCallInstruction(HloInstruction* while_call_instruction) {
     CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
-          !IsCustomCallComputation() && !IsCollectiveCalledComputation());
+          !IsCustomCallComputation() && !IsCollectiveCalledComputation() &&
+          !IsConditionalBranchComputation());
     CHECK(while_call_instruction != nullptr);
     CHECK(while_call_instruction->opcode() == HloOpcode::kWhile);
     while_call_instruction_ = while_call_instruction;
-    is_while_call_body_computation_ |= (while_call_instruction != nullptr);
+    is_while_call_body_computation_ = true;
+  }
+
+  // Returns if this computation is a branch computation of a conditional.
+  bool IsConditionalBranchComputation() const {
+    return is_conditional_branch_computation_;
+  }
+
+  // Returns the owning conditional call instruction, or nullptr if this is not
+  // a conditional branch computation.
+  HloInstruction* ConditionalCallInstruction() const {
+    return conditional_call_instruction_;
+  }
+
+  void SetConditionalCallInstruction(
+      HloInstruction* conditional_call_instruction) {
+    CHECK(!IsFusionComputation() && !IsAsyncComputation() &&
+          !IsCustomCallComputation() && !IsCollectiveCalledComputation() &&
+          !IsWhileBodyComputation());
+    CHECK(conditional_call_instruction != nullptr);
+    CHECK(conditional_call_instruction->opcode() == HloOpcode::kConditional);
+    conditional_call_instruction_ = conditional_call_instruction;
+    is_conditional_branch_computation_ = true;
   }
 
   // Returns if this computation is an async computation.
-  bool IsAsyncComputation() const { return !async_instructions_.empty(); }
+  bool IsAsyncComputation() const { return async_start_ != nullptr; }
 
-  // Returns the owning async instruction. It's empty if this is not an async
+  // Returns the owning async instruction. It's nullptr if this is not an async
   // computation.
-  const std::vector<HloInstruction*>& AsyncInstructions() const {
-    return async_instructions_;
+  HloInstruction* AsyncStart() const { return async_start_; }
+
+  void AddAsyncStart(HloInstruction* async_instruction) {
+    CHECK(!IsCalledComputation());
+    CHECK(async_instruction->opcode() == HloOpcode::kAsyncStart);
+    async_start_ = async_instruction;
   }
 
-  std::vector<HloInstruction*>& AsyncInstructions() {
-    return async_instructions_;
-  }
-
-  void AddAsyncInstruction(HloInstruction& async_instruction) {
-    CHECK(!IsFusionComputation() && !IsCustomCallComputation());
-    CHECK(async_instruction.opcode() == HloOpcode::kAsyncStart ||
-          async_instruction.opcode() == HloOpcode::kAsyncUpdate ||
-          async_instruction.opcode() == HloOpcode::kAsyncDone);
-    async_instructions_.push_back(&async_instruction);
-  }
-
-  void RemoveAsyncInstruction(HloInstruction* async_instruction) {
-    if (async_instruction == nullptr) {
-      return;
-    }
-    async_instructions_.erase(
-        std::remove(async_instructions_.begin(), async_instructions_.end(),
-                    async_instruction),
-        async_instructions_.end());
-  }
+  void RemoveAsyncStart() { async_start_ = nullptr; }
 
   // Returns if this computation is invoked by an Hlo instruction.
   bool IsCalledComputation() const {
@@ -785,7 +857,7 @@ class HloComputation {
   explicit HloComputation(
       const std::string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, HloInstruction* fusion_instruction);
+      HloInstruction* root_instruction);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -870,10 +942,18 @@ class HloComputation {
   // Determines whether this computation is a while body computation.
   bool is_while_call_body_computation_;
 
+  // If this computation is a conditional branch computation, this field points
+  // to the corresponding conditional instruction. Otherwise, this is null.
+  HloInstruction* conditional_call_instruction_;
+
+  // Determines whether this computation is a conditional branch computation.
+  bool is_conditional_branch_computation_;
+
   // If this computation is an async computation, this field points to the
-  // corresponding async instructions (if live) that call this computation.
+  // first async instruction (async-start) in the asynchronous op chain that
+  // calls this computation.
   // Otherwise, this is empty.
-  std::vector<HloInstruction*> async_instructions_;
+  HloInstruction* async_start_ = nullptr;
 
   // Execution thread of this computation. By default, it's main thread.
   std::string execution_thread_ = HloInstruction::kMainExecutionThread;
@@ -881,12 +961,11 @@ class HloComputation {
   // Module containing this computation.
   HloModule* parent_ = nullptr;
 
-  // Store instructions in std::list as they can be added and removed
+  // Store instructions in std::vector as they can be added and removed
   // arbitrarily and we want a stable iteration order. Keep a map from
-  // instruction pointer to location in the list for fast lookup.
-  InstructionList instructions_;
-  absl::flat_hash_map<const HloInstruction*, InstructionList::iterator>
-      instruction_iterators_;
+  // instruction pointer to index in the vector for fast lookup.
+  HloInstructionList instructions_;
+  absl::flat_hash_map<const HloInstruction*, int> instruction_indices_;
 
   // Removed instructions are moved into to_be_deleted_ first and then
   // deallocated when Cleanup is called.
@@ -929,7 +1008,7 @@ Status HloComputation::AcceptOrdered(
   absl::flat_hash_set<const HloInstruction*> visited;
   for (const HloInstruction* instruction : order) {
     VLOG(3) << "Visiting ordered: " << instruction->ToString();
-    TF_RET_CHECK(instruction_iterators_.contains(instruction))
+    TF_RET_CHECK(instruction_indices_.contains(instruction))
         << "Instruction " << instruction->name() << " is not in computation "
         << name();
     TF_RET_CHECK(!visited.contains(instruction))

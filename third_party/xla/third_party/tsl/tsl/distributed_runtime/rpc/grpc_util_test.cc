@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/distributed_runtime/rpc/grpc_util.h"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "grpcpp/grpcpp.h"

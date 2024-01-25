@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,8 +27,9 @@ namespace spmd {
 
 // Partition convolution.
 StatusOr<HloInstruction*> PartitionConvolution(
-    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
-    const HloSharding& output_sharding, const DotConvDimsMapping& dims_mapping,
+    const PartitionedHlo& lhs, const PartitionedHlo& rhs,
+    const Shape& output_base_shape, const HloSharding& output_sharding,
+    const DotConvDimsMapping& dims_mapping,
     absl::FunctionRef<StatusOr<HloInstruction*>(HloInstruction*,
                                                 HloInstruction*, SpmdBuilder*,
                                                 const Window& conv_window)>

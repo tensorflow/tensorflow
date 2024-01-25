@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,6 +32,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "xla/service/heap_simulator/allocation_block.h"
+
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
 #include "absl/container/btree_map.h"
@@ -46,7 +48,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
-#include "xla/service/heap_simulator.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
@@ -611,7 +613,6 @@ class MemorySpaceAssignment {
       const absl::flat_hash_set<
           std::pair<int, ShapeIndex>>& /*operands_in_alternate_memory*/,
       const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
-  using UpdateLayoutFunction = std::function<void(Shape*)>;
 
   // The BufferInterval sorting interface that MemorySpaceAssignment expects.
   class BufferIntervalComparator {
@@ -961,13 +962,9 @@ class MemorySpaceAssignment {
       bool operator==(const SliceDetail& other) const;
 
       // Create the instructions to copy the slice. This method updates
-      // copy_start and copy_done. Given a Shape, the hardware may have
-      // constraints on how the shape is physically laid out in memory.
-      // update_layout_fn updates a Shape's layout in accordance with those
-      // constraints.
+      // copy_start and copy_done.
       Status CreateAsyncSlice(const Shape& original_shape,
-                              HloInstruction& producer, HloComputation& parent,
-                              absl::FunctionRef<void(Shape*)> update_layout_fn);
+                              HloInstruction& producer, HloComputation& parent);
 
       SliceDecision slice_decision;
       int64_t copy_start_after_time = -1;
@@ -982,8 +979,7 @@ class MemorySpaceAssignment {
     SlicedCopyAllocation(
         const Allocation& prev_allocation, MemorySpace memory_space,
         std::vector<SliceDecision> slice_decisions_sorted_by_start_time,
-        int64_t copy_done_schedule_before_time, int64_t end_time,
-        absl::FunctionRef<void(Shape*)> update_layout_fn);
+        int64_t copy_done_schedule_before_time, int64_t end_time);
 
     bool is_sliced_copy_allocation() const override { return true; }
 
@@ -1006,8 +1002,7 @@ class MemorySpaceAssignment {
     void AddDiffToAllSliceOffsets(int64_t diff);
 
     // Used to update offsets and start times after repacking.
-    void ImportRepackedSliceData(
-        const MemorySpaceAssignmentRepacker::SlicedAllocationData& data);
+    void ImportRepackedSliceData(const SlicedAllocationData& data);
 
     const std::vector<SliceDetail>& slice_details_sorted_by_start_time() const;
     std::vector<SliceDetail>& mutable_slice_details_sorted_by_start_time();
@@ -1035,7 +1030,6 @@ class MemorySpaceAssignment {
     //   sorted_segments_[i+j].copy.start_before_time
     std::vector<SliceDetail> slice_details_sorted_by_start_time_;
     HloInstruction* concat_ = nullptr;
-    absl::FunctionRef<void(Shape*)> update_layout_fn_;
   };
 
   // An allocation in the default memory space that mirrors another Allocation
@@ -1410,88 +1404,6 @@ class DefaultCrossProgramPrefetchBufferIntervalComparator
   const HloLiveRange& hlo_live_range_;
 };
 
-// Filters prefetches by matching against multiple filters and overrides the
-// preferred prefetch time for matching prefetches by the provided override
-// strategy.
-class FilterUpdatePreferredPrefetch {
- public:
-  // Supported filters for prefetch filtering by operand size, instruction name,
-  // operand number and operand index matching.
-  enum class FilterType {
-    OP_SIZE_LTE,  // sting value: op_size_lte, filter value type: integer
-    OP_SIZE_GTE,  // sting value: op_size_gte, filter value type: integer
-    INSTRUCTION_NAME_EXACT,  // sting value: instruction_name_exact,
-                             // filter value type: string
-    OP_NUMBER_EXACT,         // sting value: op_number_exact,
-                             // filter value type: integer
-    OP_INDEX_EXACT  // sting value: op_index_exact, filter value type: string
-                    // (empty string for {}, 1 for {1} and 1#2 for {1,2})
-  };
-  // Strategies to compute new perferred prefetch time. Prefetch eagerness
-  // sets prefetch time to a time within the live-range depending on a value,
-  // e.g. 0.5 sets it exactly in the middle of the live-range. Put after
-  // instruction or put before instruction finds an instruction in the schedule
-  // and puts the preferred prefetch time before or after the found instruction.
-  enum class OverrideType {
-    PREFETCH_EAGERNESS,     // sting value: prefetch_eagerness,
-                            // override value type : float
-    PUT_AFTER_INSTRUCTION,  // sting value: put_after_instruction,
-                            // override value type: string
-    PUT_BEFORE_INSTRUCTION  // sting value: put_before_instruction,
-                            // override value type: string
-  };
-  std::vector<std::pair<FilterType, std::string>> filter_list_;
-  OverrideType override_type_;
-  std::string override_value_;
-
-  std::string ToString() const { return config_string_; }
-
-  static StatusOr<std::vector<FilterUpdatePreferredPrefetch>>
-  ParseFilterUpdatePreferredPrefetches(std::string config);
-
-  static StatusOr<bool> IsOpSizeGte(int64_t operand_size, std::string config);
-
-  static StatusOr<bool> IsOpSizeLte(int64_t operand_size, std::string config);
-
-  static StatusOr<bool> IsInstructionNameExact(
-      absl::string_view instruction_name, std::string config);
-
-  static StatusOr<bool> IsOpNumberExact(int64_t operand_number,
-                                        std::string config);
-
-  static StatusOr<bool> IsOpIndexExact(const ShapeIndex& operand_index,
-                                       std::string config);
-
-  StatusOr<std::optional<int64_t>> GetPrefetchByEagerness(
-      int64_t earliest_prefetch_time, int64_t latest_prefetch_time) const;
-
-  StatusOr<std::optional<int64_t>> GetPrefetchTimeAfterInstruction(
-      const absl::flat_hash_map<const xla::HloInstruction*,
-                                xla::HloLiveRange::LogicalTime>& schedule)
-      const;
-
-  StatusOr<std::optional<int64_t>> GetPrefetchTimeBeforeInstruction(
-      const absl::flat_hash_map<const xla::HloInstruction*,
-                                xla::HloLiveRange::LogicalTime>& schedule)
-      const;
-
- private:
-  std::string config_string_;
-  StatusOr<xla::HloLiveRange::LogicalTime> GetScheduleTimeFromInstructionName(
-      const absl::flat_hash_map<const xla::HloInstruction*,
-                                xla::HloLiveRange::LogicalTime>& schedule)
-      const;
-
-  static StatusOr<FilterType> ParseFilterType(std::string config);
-
-  static StatusOr<OverrideType> ParseOverrideType(std::string config);
-
-  static StatusOr<ShapeIndex> ParseOperandIndex(std::string config);
-
-  static StatusOr<FilterUpdatePreferredPrefetch>
-  ParseFilterUpdatePreferredPrefetch(std::string config);
-};
-
 // The different options to be passed to the Run() API.
 struct Options {
   // Backend-specific integer value that describes the alternate memory.
@@ -1664,17 +1576,14 @@ struct Options {
   float pipeline_overhead_window_size_mib = 0;
 
   // Config to filter prefetches and update preferred prefetch times for the
-  // filtered prefetches according to an update config.
-  std::vector<FilterUpdatePreferredPrefetch> filter_update_preferred_prefetches;
+  // filtered prefetches.
+  PreferredPrefetchOverrides preferred_prefetch_overrides;
 
   // Options for slicing prefetches into smaller asynchronously copied pieces.
   SlicedPrefetchOptions sliced_prefetch_options;
 
   // Options for the memory-bound loop optimizer feature.
   MemoryBoundLoopOptimizerOptions memory_bound_loop_optimizer_options;
-
-  // A function for updating shape layouts.
-  MemorySpaceAssignment::UpdateLayoutFunction update_layout_fn = [](Shape*) {};
 
   MemorySpaceAssignment::SliceProposalFunction propose_slice_fn =
       [](const Shape&, const SlicedPrefetchOptions&)
@@ -2119,7 +2028,7 @@ class AlternateMemoryBestFitHeap
   void AllocateCrossProgramPrefetchBuffer(
       HloModule* module, const BufferInterval& prefetch_candidate);
 
-  HeapSimulator::Result<HloValue> Finish() override;
+  StatusOr<HeapSimulator::Result<HloValue>> Finish() override;
 
  protected:
   // Given a buffer interval, returns the colocated intervals. Unlike the
@@ -2155,8 +2064,7 @@ class AlternateMemoryBestFitHeap
  private:
   // We inherit AllocationBlock struct to attach the Allocation information to
   // make importing repacked offsets easier.
-  struct RepackAllocationBlock
-      : MemorySpaceAssignmentRepacker::AllocationBlock {
+  struct RepackAllocationBlock : AllocationBlock {
     MemorySpaceAssignment::Allocation* allocation;
   };
 
@@ -2194,6 +2102,7 @@ class AlternateMemoryBestFitHeap
     int64_t size;
     bool prefer_no_copy_alternate_mem_allocation;
     bool allow_no_copy_alternate_mem_allocation;
+    bool require_no_copy_alternate_mem_allocation;
     bool allow_prefetch;
     std::optional<int64_t> earliest_prefetch_time;
     std::optional<int64_t> preferred_prefetch_time;
@@ -2388,7 +2297,9 @@ class AlternateMemoryBestFitHeap
     kFailRequiresUncommit = 64,
     // For prefetching, indicates that all slices have the same start time, in
     // which case, we fallback to an unsliced solution.
-    kAllSlicesHaveTheSameStartTime = 128
+    kAllSlicesHaveTheSameStartTime = 128,
+    // There were conflicting preferred offsets.
+    kFailConflictingPreferredOffsets = 256
   };
 
   // Return true if the result belongs to a failure.
@@ -2457,7 +2368,7 @@ class AlternateMemoryBestFitHeap
   // All of the allocation values have a must-alias relationship with each
   // other. Returns either kSuccess if all of the sites could be placed in the
   // alternate memory or a bitwise OR of failure reasons why they couldn't
-  Result AllocateAllocationValues(
+  StatusOr<Result> AllocateAllocationValues(
       absl::Span<AllocationValue> allocation_values);
 
   // Finds an allocation for an allocation request for a segment (see the
@@ -2624,8 +2535,7 @@ class AlternateMemoryBestFitHeap
   // Exports the allocations for repacking and puts them into the vector in the
   // parameter.
   void ExportAllocationsForRepacking(
-      std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>&
-          allocations);
+      std::vector<AllocationBlock*>& allocations);
 
   // Update reserved scoped allocation size for instructions when their
   // operand/output has been allocated in alternate memory by invoking
@@ -2638,6 +2548,7 @@ class AlternateMemoryBestFitHeap
   // Helper functions to implement ImportRepackedAllocations.
   void ImportRepackedNonSlicedAllocation(RepackAllocationBlock& block);
   void ImportRepackedSlicedAllocation(RepackAllocationBlock& block);
+  Status AreRepackedSlicesValid(const RepackAllocationBlock& block);
 
   // Adds an asynchronous copy to allocations.
   void AddAsyncCopy(
@@ -2712,7 +2623,7 @@ class AlternateMemoryBestFitHeap
     allocation_block.offset = -1;
     allocation_block.initial_offset = initial_offset;
     allocation_block.id = id;
-    allocation_block.colocations = {};
+    allocation_block.next_colocated = nullptr;
     allocation_block.allocation = allocation;
     return allocation_block;
   }
@@ -2721,6 +2632,10 @@ class AlternateMemoryBestFitHeap
   // instruction.
   const std::vector<const HloInstruction*>* GetRepeatedInstructionList(
       const HloInstruction* instruction) const;
+
+  // Returns true if the interval is pinned in the alternate memory. Buffers are
+  // pinned when their layout has the alternate memory space before MSA runs.
+  bool IsIntervalPinnedToAlternateMemory(const BufferInterval& interval) const;
 
   MemorySpaceAssignment::AllocationSequence* allocations_;
   const Options& options_;

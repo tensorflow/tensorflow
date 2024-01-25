@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -490,21 +490,6 @@ struct PjRtPluginAttributes {
 // will eventually be able to make progress.
 class PjRtClient {
  public:
-  // In the multi-node case, the caller of PjRtClient can provide a key-value
-  // store accessible across nodes. The caller can provide the two callbacks
-  // below to access the key-value store. There are a few requirements:
-  // (1) KeyValueGetCallback and KeyValuePutCallback must be thread-safe.
-  // (2) The caller that provides the two callbacks is responsible for avoiding
-  // key collisions between different users of key-value store (i.e. between
-  // different plugins, but not between different GPU plugin nodes).
-  // (3) KeyValueGetCallback is blocking.
-  // Subclasses of PjRtClient can optionally take these callbacks in their
-  // constructors.
-  using KeyValueGetCallback = std::function<xla::StatusOr<std::string>(
-      std::string_view key, absl::Duration timeout)>;
-  using KeyValuePutCallback =
-      std::function<xla::Status(std::string_view key, std::string_view value)>;
-
   PjRtClient() = default;
   explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
                           host_memory_for_device_manager)
@@ -810,7 +795,8 @@ class PjRtClient {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer, PjRtDevice* device) = 0;
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtDevice* device) = 0;
 
   // Variant of BufferFromHostBuffer that takes an optional device layout. It is
   // used when non-compact layout is preferred.
@@ -820,8 +806,8 @@ class PjRtClient {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer, PjRtDevice* device,
-      const Layout* device_layout) {
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
+      PjRtDevice* device, const Layout* device_layout) {
     return tsl::errors::Unimplemented(
         "BufferFromHostBuffer with an optional device layout is not "
         "implemented on platform: ",
@@ -834,7 +820,7 @@ class PjRtClient {
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
-      std::function<void()> on_done_with_host_buffer,
+      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       PjRtMemorySpace* memory_space, const Layout* device_layout) {
     return tsl::errors::Unimplemented(
         "BufferFromHostBuffer with PjRtMemorySpace is not implemented on "
@@ -1069,20 +1055,11 @@ class PjRtBuffer {
   // particular layout, set the layout before calling `ToLiteral`.
   virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
 
-  // Copies the buffer's value into `literal`. Calls `on_ready` when the value
-  // (or an error) is ready. The transfer respects the layout of `literal`; to
-  // specify a particular layout, set the layout before calling `ToLiteral`.
-  ABSL_DEPRECATED("Use ToLiteral(...).OnReady() instead")
-  void ToLiteral(MutableLiteralBase* literal,
-                 std::function<void(Status)> on_ready) {
-    ToLiteral(literal).OnReady(std::move(on_ready));
-  }
-
   // Synchronous overload of ToLiteral, as a convenience.
   Status ToLiteralSync(MutableLiteralBase* literal) {
     absl::Notification done;
     Status status;
-    ToLiteral(literal, [&](Status s) {
+    ToLiteral(literal).OnReady([&](Status s) {
       status = std::move(s);
       done.Notify();
     });
@@ -1344,25 +1321,6 @@ class PjRtBuffer {
           "BlockHostUntilReady() called on deleted or donated buffer");
     }
     return s;
-  }
-
-  // Calls callback when the buffer is ready.
-  //
-  //   buf->OnReady(callback);
-  //
-  // is semantically almost identical to:
-  //
-  //   ForkThread([]() { callback(buf->Await()); });
-  //
-  // the only difference being that the callback may happen immediately on the
-  // calling thread. (The implementation may also be more efficient.)
-  //
-  // The interface makes no assumptions about what thread calls callback, so the
-  // caller must ensure that callback returns quickly and hands off long-running
-  // work or any blocking operation to a caller-managed threadpool.
-  ABSL_DEPRECATED("Use GetReadyFuture().OnReady() instead")
-  void OnReady(std::function<void(Status)> callback) {
-    return GetReadyFuture().OnReady(std::move(callback));
   }
 
   // Whether this buffer is on CPU and thus allows for certain optimizations.
