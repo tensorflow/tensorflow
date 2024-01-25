@@ -681,7 +681,7 @@ class FusedMatMulOpsTest : public OpsTestBase {
 
 TYPED_TEST_SUITE_P(FusedMatMulOpsTest);
 
-// Realnumer typed test
+// Realnumber typed test.
 TYPED_TEST_P(FusedMatMulOpsTest, BiasAddGeluApproximate) {
   this->VerifyFusedMatMul({"BiasAdd", "GeluApproximate"});
 }

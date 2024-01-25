@@ -560,7 +560,7 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 #endif  // !ENABLE_ONEDNN_V3
         key_creator.AddAsKey(post_op_param.name);
         if (post_op_param.partial_key.empty()) {
-          DCHECK_EQ(post_op_param.param.size(), 1);
+          DCHECK_GE(post_op_param.param.size(), 1);
           // Old Quantized MatMul kernels do not create part of key beforehand
           // as primitive caching-key-creation optimization.
           key_creator.AddAsKey(post_op_param.param[0]);

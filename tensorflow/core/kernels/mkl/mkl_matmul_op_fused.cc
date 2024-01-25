@@ -39,8 +39,9 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
  public:
   explicit MklFusedMatMulOp(OpKernelConstruction* ctx)
       : MklDnnMatMulOpBase<T2, Tbias, Toutput>(ctx) {
-    if (std::is_same<T2, qint8>::value)
+    if (std::is_same<T2, qint8>::value) {
       return;  // Quantized version will have own contstruction code.
+    }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
@@ -247,7 +248,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
         src_mkl.SetUsrMem(src_md, src_data);
         src_mkl.CheckReorderToOpMem(matmul_pd.get()->src_desc(),
                                     this->cpu_engine_, ctx);
-        src_data = reinterpret_cast<T1*>(src_mkl.GetOpMem().get_data_handle());
+        src_data = static_cast<T1*>(src_mkl.GetOpMem().get_data_handle());
       }
 
       // Get cached data when weight is const.
@@ -280,7 +281,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
           weight_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
                                          this->cpu_engine_, ctx);
           weight_data =
-              reinterpret_cast<T2*>(weight_mkl.GetOpMem().get_data_handle());
+              static_cast<T2*>(weight_mkl.GetOpMem().get_data_handle());
         }
       }
       std::shared_ptr<stream> cpu_stream;
@@ -448,9 +449,9 @@ class QuantizedFusedMatMulOp
           OP_REQUIRES(
               context,
               (last_fusion == "Dequantize" || last_fusion == "Requantize"),
-              errors::Unimplemented(
-                  "Nonlinear activation except Relu can be supported only "
-                  "with Dequantize or Requantize fusion."));
+              absl::UnimplementedError(absl::StrCat(
+                  "Nonlinear activation except Relu can be ",
+                  "supported only with Dequantize or Requantize fusion.")));
         }
         activation_type_ = *it;
         // Canonicalize all activation types into "Activation" for simplifying
@@ -487,9 +488,9 @@ class QuantizedFusedMatMulOp
       case FCT::kBiasAdd:
         // No post op is required.
         OP_REQUIRES(context, (std::is_same<Toutput, qint32>::value),
-                    errors::Unimplemented("Qunatized fusion: [",
-                                          absl::StrJoin(fused_ops, ","),
-                                          "] needs output in qint32."));
+                    absl::UnimplementedError(absl::StrCat(
+                        "Qunatized fusion: [", absl::StrJoin(fused_ops, ","),
+                        "] needs output in qint32.")));
         break;
       case FCT::kBiasAdd_Dequantize:
         post_op_info_list_ = {{PostOpKind::kOutputScale, {}, {}}};
@@ -502,10 +503,10 @@ class QuantizedFusedMatMulOp
         OP_REQUIRES(context,
                     (std::is_same<Toutput, qint32>::value &&
                      activation_type_ == "Relu"),
-                    errors::Unimplemented("Qunatized fusion: [",
-                                          absl::StrJoin(fused_ops, ","),
-                                          "] needs output in qint32 and "
-                                          "activation supported is only Relu"));
+                    absl::UnimplementedError(absl::StrCat(
+                        "Qunatized fusion: [", absl::StrJoin(fused_ops, ","),
+                        "] needs output in qint32 and ",
+                        "activation supported is only Relu")));
         post_op_info_list_ = {{PostOpKind::kActivation, {}, {}}};
         break;
       case FCT::kBiasAdd_Activation_Dequantize:
@@ -521,7 +522,7 @@ class QuantizedFusedMatMulOp
         OP_REQUIRES(
             context,
             (std::is_same<U, float>::value || std::is_same<U, bfloat16>::value),
-            errors::Unimplemented(
+            absl::UnimplementedError(
                 "Quantized addend tensor is not implemented yet."));
         // Addend tensor precedes all minmax tensors. Shift the indices from
         // default initilized values.
@@ -534,8 +535,9 @@ class QuantizedFusedMatMulOp
       } break;
       default:
         OP_REQUIRES(context, false,
-                    errors::Unimplemented("Fusion is not implemented: [",
-                                          absl::StrJoin(fused_ops, ","), "]"));
+                    absl::UnimplementedError(
+                        absl::StrCat("Fusion is not implemented: [",
+                                     absl::StrJoin(fused_ops, ","), "]")));
     }
   }
 
@@ -559,7 +561,7 @@ class QuantizedFusedMatMulOp
       const Tensor& min_weight = ctx->input(weight_min_idx_);
       const Tensor& max_weight = ctx->input(weight_max_idx_);
       OP_REQUIRES(ctx, min_weight.shape() == max_weight.shape(),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Shape of min-weight and max-weight must be same."));
 
       if (std::is_same<Toutput, qint32>::value) {
@@ -610,7 +612,8 @@ class QuantizedFusedMatMulOp
                std::is_same<Toutput, bfloat16>::value) {
       // Kernel is registered for Dequantization fusion. Nothing to do.
     } else {
-      OP_REQUIRES_OK(ctx, errors::InvalidArgument("Unsupported output type."));
+      OP_REQUIRES_OK(ctx,
+                     absl::InvalidArgumentError("Unsupported output type."));
     }
   }
 
@@ -727,8 +730,8 @@ class QuantizedFusedMatMulOp
         } break;
 
         default:
-          OP_REQUIRES_OK(ctx,
-                         errors::InvalidArgument("Unsupported post-op-kind."));
+          OP_REQUIRES_OK(
+              ctx, absl::InvalidArgumentError("Unsupported post-op-kind."));
       }
     }
   }
