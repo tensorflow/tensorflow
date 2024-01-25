@@ -225,7 +225,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               nn_ops.relu6,
           ),
           'has_batch_norm': (False,),
-          'input_shape_dynamic': (False,),
+          'input_shape_dynamic': (
+              False,
+              True,
+          ),
           'enable_per_channel_quantization': (False,),
       }])
   )
@@ -239,7 +242,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       enable_per_channel_quantization: bool,
       dilations: Sequence[int] = None,
   ):
-    input_shape = (None, None, None, 3) if input_shape_dynamic else (1, 3, 4, 3)
+    input_shape = (None, 3, 4, 3) if input_shape_dynamic else (1, 3, 4, 3)
     filter_shape = (2, 3, 3, 2)
     strides = (1, 1, 1, 1)
     model = self._create_conv2d_model(
