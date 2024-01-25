@@ -46,10 +46,8 @@ class PostCalibrationComponent : public Component {
       const ::stablehlo::quantization::QuantizationConfig& config) override;
 
   // Adds MLIR passes to the pass manager. `Run` will essentially run these
-  // passes on the module op.
-  // When `unpack_quantized_types` is set to true, then ops using uniform
-  // quantized types will be decomposed into equivalent ops without using
-  // uniform quantized types (mostly i8 or i32 types).
+  // passes on the module op. `pipeline_config` configures the behavior of the
+  // passes.
   void AddPasses(
       OpPassManager& pm,
       const ::stablehlo::quantization::PipelineConfig& pipeline_config) const;
