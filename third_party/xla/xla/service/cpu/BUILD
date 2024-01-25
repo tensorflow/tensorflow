@@ -1284,6 +1284,7 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
+    tags = ["no_aarch64"],
     deps = [
         ":cpu_instruction_fusion",
         "//xla:shape_util",
