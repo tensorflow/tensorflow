@@ -306,6 +306,7 @@ cc_library(
         "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:split_provider",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
